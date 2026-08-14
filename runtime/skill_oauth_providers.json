@@ -1,0 +1,42 @@
+{
+  "_schema_version": 1,
+  "_doc": "Lookup table: skill_name -> OAuth provider config. Usato da skill_codegen per inferire la sezione [oauth_provider] del manifest. La specializzazione provider (scopes URL, mirror paths legacy) sta qui — il core (orchestration, http_routes_agent, oauth_flow) e' general purpose.",
+  "providers": {
+    "google-workspace": {
+      "scopes_options": [
+        {"label": "calendar", "scopes": [
+          "https://www.googleapis.com/auth/calendar"
+        ]},
+        {"label": "calendar,drive,sheets,docs", "scopes": [
+          "https://www.googleapis.com/auth/calendar",
+          "https://www.googleapis.com/auth/drive",
+          "https://www.googleapis.com/auth/spreadsheets",
+          "https://www.googleapis.com/auth/documents"
+        ]},
+        {"label": "all", "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/gmail.send",
+          "https://www.googleapis.com/auth/gmail.modify",
+          "https://www.googleapis.com/auth/calendar",
+          "https://www.googleapis.com/auth/drive",
+          "https://www.googleapis.com/auth/contacts.readonly",
+          "https://www.googleapis.com/auth/spreadsheets",
+          "https://www.googleapis.com/auth/documents",
+          "https://www.googleapis.com/auth/cloud-vision",
+          "https://www.googleapis.com/auth/photoslibrary.appendonly",
+          "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata",
+          "https://www.googleapis.com/auth/photospicker.mediaitems.readonly"
+        ]}
+      ],
+      "client_secret_install_path": "~/.local/share/metnos/skills/google-workspace/google_client_secret.json",
+      "mirror_paths": ["~/.local/share/metnos/skills/google-workspace/google_token.json"]
+    }
+  },
+  "_inference_hints": {
+    "_doc": "Quando skill_name non e' direttamente in providers, prova match euristico.",
+    "required_credential_files": {
+      "google_token.json":         "google-workspace",
+      "google_client_secret.json": "google-workspace"
+    }
+  }
+}

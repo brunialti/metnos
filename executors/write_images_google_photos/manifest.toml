@@ -1,0 +1,114 @@
+# Manifest dell'executor `write_images_google_photos` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_provider (suffisso multi-token).
+# Dispatcher canonical Google Photos upload (spec Google Photos P1).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name             = "write_images_google_photos"
+version          = "0.2.0"
+author           = "Roberto Brunialti"
+affinity         = [
+    "google photos", "google foto", "gphotos", "carica foto",
+    "upload photos", "upload foto", "backup foto", "photo backup",
+    "album", "carica immagini", "upload images"
+]
+revertible       = false
+critical         = true
+lifecycle        = "active"
+
+[description]
+it = "SCOPO: carica foto locali su Google Photos. PATTERN: write_images_google_photos(paths=['/a.jpg'], album='Vacanze'). NON: per Google Drive usa write_files; upload NON annullabile (l'API non cancella foto). OUT: results=[{path,media_item_id,album}]."
+en = "SCOPO: uploads local photos to Google Photos. PATTERN: write_images_google_photos(paths=['/a.jpg'], album='Vacanze'). NON: for Google Drive use write_files; upload NOT undoable (API cannot delete photos). OUT: results=[{path,media_item_id,album}]."
+
+[code]
+files  = ["write_images_google_photos.py"]
+digest = "sha256:f87906f34bef57a1140580bea4b5c1c0595c46f62ec711ae994e3fc9013dad08"
+
+[args]
+type     = "object"
+required = []
+# Foto da caricare: `paths` (path locali, anche 1) OPPURE `entries` (from_step,
+# es. output di find_files locale). Disgiunzione §7.3.
+requires_one_of = [["paths", "entries"]]
+
+[args.properties.paths]
+type    = "array"
+
+[args.properties.paths.description]
+it = "Path locali dei file immagine da caricare (es. ['/home/utente/Immagini/mare.jpg']). Accetta anche un solo elemento."
+en = "Local paths of the image files to upload (e.g. ['/home/user/Pictures/sea.jpg']). A single element is accepted too."
+
+[args.properties.entries]
+type    = "array"
+
+[args.properties.entries.description]
+it = "Record con campo `path`, tipicamente via `from_step: N` (es. output di find_files o list_dirs locali)."
+en = "Records with a `path` field, typically via `from_step: N` (e.g. local find_files or list_dirs output)."
+
+[args.properties.album]
+type    = "string"
+default = ""
+
+[args.properties.album.description]
+it = "Nome dell'album Google Photos in cui mettere le foto (es. 'Vacanze 2026'). Se non esiste viene CREATO. Vuoto = nessun album (solo libreria)."
+en = "Name of the Google Photos album to add the photos to (e.g. 'Holidays 2026'). Created if it does not exist. Empty = no album (library only)."
+
+[args.properties.max_total]
+type    = "integer"
+default = 200
+
+[args.properties.max_total.description]
+it = "Cap sul numero di foto caricate in una chiamata (default 200). Oltre il cap le restanti NON sono caricate e il risultato lo segnala."
+en = "Cap on how many photos are uploaded in one call (default 200). Beyond the cap the remaining ones are NOT uploaded and the result flags it."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  results: Array<{ok, path, media_item_id, filename, album}>,
+  used: int,
+  images_source: 'google_photos',
+  revertible: false,
+  failed?: Array<object>,
+  truncated?: bool,
+  truncated_what?: str,
+  available_total?: int,
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:write"
+hint = ["photos:remote"]
+
+# fs:read: l'upload LEGGE le foto locali da caricare — senza, la sandbox
+# (tmpfs /tmp, niente home) non vede i file (take-6 live: «nessun elemento
+# trovato» su una dir esistente). Stessa superficie di get_files.
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+
+[[tests]]
+name   = "missing_paths_and_entries_fails"
+input  = {}
+expect = { ok = false, error_contains = "paths" }
+
+[[tests]]
+name   = "empty_paths_list_fails"
+input  = { paths = [] }
+expect = { ok = false, error_contains = "paths" }
+
+[[tests]]
+name   = "happy_path_oauth_missing_returns_needs_inputs"
+input  = { paths = ["/tmp/x.jpg"] }
+env    = { METNOS_SKILL_HOME = "{RUNTIME}/tests/data/skill_home_no_creds" }
+expect = { ok = true }

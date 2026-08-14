@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — Perspectives and Judgement v1.1</title>
+    <meta name="description" content="The Metnos design assessed through four expert lenses (agentic programming, psychology, UI, AI/ML) and weighed against three goals: useful, intelligent, autonomous. 24 critiques, five verdicts, the seven blocking ones accepted, the updated work plan.">
+    <meta name="keywords" content="Metnos design review, agent architecture review, autonomy emergence, approval UX, ExecutionTrace, reasoning loop, eval harness, LLM self-judge">
+    <meta name="author" content="the owner">
+    <meta name="robots" content="index, follow">
+
+    <link rel="canonical" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/Metnos_Perspectives_Judgement_v1">
+    <meta property="og:title" content="Perspectives and judgement — Metnos">
+    <meta property="og:description" content="A multidisciplinary assessment of the Metnos design and its quality criteria.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Perspectives and judgement — Metnos">
+    <meta name="twitter:description" content="The Metnos design assessed from four complementary perspectives.">
+
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Calibri, -apple-system, sans-serif;
+    font-size: 11pt; line-height: 1.65; color: var(--text);
+    background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px;
+}
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+
+
+.title-page { text-align: center; padding: 120px 0 60px; page-break-after: always; }
+.title-page h1 { font-size: 36pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 18pt; color: var(--navy-light); margin: 10px 0 40px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+
+.verdict { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 9pt; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
+.v-must    { background: #dcfce7; color: #14532d; }
+.v-reinf   { background: #E5EBDA; color: #3F6212; }
+.v-defer   { background: #FDF3DC; color: #92400E; }
+.v-tension { background: #EDE4F7; color: #6B21A8; }
+.v-reject  { background: #fee2e2; color: #7F1D1D; }
+
+.persp {
+    padding: 14px 18px; border-radius: 8px; margin: 16px 0;
+    border-left: 5px solid; page-break-inside: avoid;
+}
+.persp h3 { margin-top: 0; color: inherit; }
+.p-agentic    { background: #F0F9FF; border-color: #0369A1; color: #0C4A6E; }
+.p-psych      { background: #FAF5FF; border-color: #7C3AED; color: #4C1D95; }
+.p-ui         { background: #FFF7ED; border-color: #EA580C; color: #7C2D12; }
+.p-ai         { background: #F0FDF4; border-color: #16A34A; color: #14532D; }
+
+.triangle {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px; margin: 20px 0; text-align: center;
+}
+.triangle .t-cell {
+    padding: 16px 12px; border-radius: 8px;
+    border: 2px solid;
+}
+.triangle .t-utile      { background: #DBEAFE; border-color: #2563EB; color: #1E3A8A; }
+.triangle .t-intell     { background: #E9EFDB; border-color: #548235; color: #3F6212; }
+.triangle .t-auto       { background: #EDE4F7; border-color: #7C3AED; color: #4C1D95; }
+.triangle h4 { margin: 0 0 6px; font-size: 12pt; }
+.triangle p  { margin: 0; font-size: 10pt; }
+
+@media print {
+    body { max-width: none; padding: 0; font-size: 10pt; }
+    h1 { font-size: 16pt; } h2 { font-size: 12pt; }
+    .title-page { padding: 80px 0 40px; }
+    .title-page h1 { font-size: 28pt; }
+}
+    </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<!-- lang-switch -->
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/Metnos_Prospettive_Giudizio_v1.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/Metnos_Perspectives_Judgement_v1.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">← Documentation index</a>
+    <span style="color:#8e8e93;">Foundations &rsaquo; <strong style="color:#1a1a1a;">Perspectives &amp; Judgement</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle">Perspectives and judgement</div>
+    <div class="meta">
+        Criteria for assessing usefulness, reliability, autonomy and initiative.<br>
+        Current operational decisions are documented in the
+        <a href="architecture/index.html">Architecture guide</a>.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+    <li><a href="#cap1">Purpose and method</a></li>
+    <li><a href="#cap2">Four qualities that should not be confused</a></li>
+    <li><a href="#cap3">Assessment perspectives</a></li>
+    <li><a href="#cap4">How to state a judgement</a></li>
+    <li><a href="#cap5">Seven non-negotiable conditions</a></li>
+    <li><a href="#cap6">Tensions that do not disappear</a></li>
+    <li><a href="#cap7">Autonomy and proactivity belong to the mandate</a></li>
+    <li><a href="#cap7b">The proactive lens</a></li>
+    <li><a href="#cap8">Using the judgement in practice</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Purpose and method</h1>
+
+<p class="lead">This page provides a stable method for assessing a Metnos
+capability. It does not recount the order in which components were designed,
+and it does not replace their technical contracts.</p>
+
+<p>The first question is not “is the feature interesting?” but “does it
+produce a useful result, with understandable sources and boundaries, in the
+right user's context?” Assessment combines observable behaviour, tests,
+traceability and interaction quality. Persuasive prose or a polished answer
+is not evidence by itself.</p>
+
+<h1 id="cap2">2. Four qualities that should not be confused</h1>
+
+<table>
+<thead><tr><th style="width:20%">Quality</th><th>Operational meaning</th><th>It does not mean</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Useful</strong></td>
+  <td>Brings the user to a relevant result at a proportionate cost.</td>
+  <td>Taking more steps or displaying more text.</td>
+</tr>
+<tr>
+  <td><strong>Intelligent</strong></td>
+  <td>Selects suitable tools and strategies, states uncertainty and uses the right sources.</td>
+  <td>Producing self-assured prose or anthropomorphising the system.</td>
+</tr>
+<tr>
+  <td><strong>Autonomous</strong></td>
+  <td>Completes, within a declared mandate, the steps that require no new consent.</td>
+  <td>Expanding the assignment's scope, privileges or duration on its own.</td>
+</tr>
+<tr>
+  <td><strong>Proactive</strong></td>
+  <td>Makes a proposal or starts an authorised task when an explicit condition is met.</td>
+  <td>Observing indiscriminately or deciding what the user ought to want.</td>
+</tr>
+</tbody>
+</table>
+
+<p>The four qualities can diverge. A flow may be autonomous but useless,
+intelligent but unauthorised, or useful precisely because it stops and asks
+for confirmation.</p>
+
+<h1 id="cap3">3. Assessment perspectives</h1>
+
+<table>
+<thead><tr><th style="width:24%">Perspective</th><th>Essential questions</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>User outcome</strong></td>
+  <td>Does the result answer the request? Is it presented in the right language and channel? Does the user know what was done and what remains to be decided?</td>
+</tr>
+<tr>
+  <td><strong>Correctness and safety</strong></td>
+  <td>Are inputs, outputs and permissions validated? Does external data remain untrusted? Do operations with effects require the intended consent?</td>
+</tr>
+<tr>
+  <td><strong>Operational reliability</strong></td>
+  <td>Do errors, timeouts and restarts have defined outcomes? Can work resume without duplicating effects? Are audit and recovery tools available?</td>
+</tr>
+<tr>
+  <td><strong>Sources and data rights</strong></td>
+  <td>Does each personal claim refer to an original source? Are data, credentials and preferences isolated per user, correctable and deletable?</td>
+</tr>
+</tbody>
+</table>
+
+<h1 id="cap4">4. How to state a judgement</h1>
+
+<p>A useful judgement states the decision, its evidence and its consequence.
+The following categories avoid vague conclusions such as “needs
+improvement”.</p>
+
+<table>
+<thead><tr><th style="width:22%">Outcome</th><th>When to use it</th></tr></thead>
+<tbody>
+<tr><td><span class="verdict v-must">required</span></td><td>A missing requirement makes the capability incorrect, insufficiently isolated or uncontrollable.</td></tr>
+<tr><td><span class="verdict v-reinf">strengthen</span></td><td>The contract is sound, but tests, messages or error handling do not yet cover relevant cases.</td></tr>
+<tr><td><span class="verdict v-defer">conditional</span></td><td>The benefit is plausible but depends on a measurable signal, a source or a mandate that is currently absent.</td></tr>
+<tr><td><span class="verdict v-tension">accepted tension</span></td><td>Two legitimate goals remain in conflict; the boundary, choice and mitigation are documented.</td></tr>
+<tr><td><span class="verdict v-reject">excluded</span></td><td>It crosses a product boundary, or its cost and risk exceed its demonstrated benefit.</td></tr>
+</tbody>
+</table>
+
+<p>Every outcome must cite inspectable evidence: tests, audit events, an
+original source, persisted state or behaviour reproducible under stated
+conditions. Language-model prose does not become evidence merely because it
+was stored.</p>
+
+<h1 id="cap5">5. Seven non-negotiable conditions</h1>
+
+<ol>
+    <li><strong>Identity and authorisation.</strong> Every request, session,
+        credential and datum belongs to an authenticated user. A guest or a
+        different user cannot inspect the owner's profile, sources or
+        services.</li>
+    <li><strong>Executor contracts.</strong> Arguments, types, effects,
+        errors and reversibility must be declared and validated before
+        execution.</li>
+    <li><strong>Separation of content and control.</strong> The web,
+        documents, tool output and model text cannot modify policy,
+        privileges or system instructions.</li>
+    <li><strong>Understandable consent.</strong> Approval shows the action,
+        recipient, account, device and relevant consequences; it does not
+        hide effects behind technical labels.</li>
+    <li><strong>Traceability and recovery.</strong> The served plan,
+        approvals, outcomes and errors must be correlatable without exposing
+        secrets or duplicating effects after a restart.</li>
+    <li><strong>Original sources for personal data.</strong> Preferences and
+        observations cite the authorised turn or datum from which they
+        derive. One model-generated summary cannot cite another as proof.</li>
+    <li><strong>Representative evaluation.</strong> Tests cover languages,
+        channels, users, failures and real capabilities, not only one
+        developer's ideal path.</li>
+</ol>
+
+<h1 id="cap6">6. Tensions that do not disappear</h1>
+
+<h2>Personalisation and reproducible routing</h2>
+
+<p>A profile can improve tone, examples and the final answer's form, but it
+must not be injected into a planner governed by shared caches. If it is absent
+from the cache key, cache hits ignore it; if it enters the key, a shared plan
+cache becomes per-user and loses hit rate and reproducibility. Sound options
+are to apply the profile during final generation or to rewrite the request
+explicitly before the cache, with a coherent signature.</p>
+
+<h2>Autonomy and control</h2>
+
+<p>Reducing confirmations makes a flow faster but increases the risk of
+unexpected effects. A global “trust level” is not a solution: authority must
+be bounded by operation, source, duration, account and user.</p>
+
+<h2>Usefulness and privacy</h2>
+
+<p>More sources may improve an answer while creating an excessive personal
+dossier. Sensitive directories, medical or financial data and secrets require
+default exclusion or specific consent. Technical readability does not
+authorise their conversion into profile data.</p>
+
+<h2>Fluency and transparency</h2>
+
+<p>A natural answer must not hide which service was used, which datum was
+found or which operation failed. Transparency should be made readable, not
+removed.</p>
+
+<h1 id="cap7">7. Autonomy and proactivity belong to the mandate</h1>
+
+<p>Metnos is not autonomous or proactive in the abstract. It is so with
+respect to a specific assignment: “check my calendar every Monday”, “notify
+me if a message arrives from this sender”, or “continue until you have found
+three official sources”. The mandate defines:</p>
+
+<ul>
+    <li>the user and delivery channel;</li>
+    <li>the triggering event or recurrence;</li>
+    <li>permitted sources and accounts;</li>
+    <li>allowed operations and approval points;</li>
+    <li>cost, retry and expiry limits;</li>
+    <li>revocation and failure behaviour.</li>
+</ul>
+
+<p>Outside those boundaries, Metnos must stop, request a new mandate or make a
+proposal. It cannot enlarge the assignment by relying on an inferred
+preference.</p>
+
+<h1 id="cap7b">7-bis. The proactive lens</h1>
+
+<p>Before introducing a new trigger or automatic proposal, verify in order:</p>
+
+<ol>
+    <li><strong>Signal:</strong> which observable event activates it?</li>
+    <li><strong>Relevance:</strong> why does that signal concern this user
+        and this mandate?</li>
+    <li><strong>Source:</strong> is access to the source authorised and
+        necessary?</li>
+    <li><strong>Action:</strong> does the system propose, notify or execute?</li>
+    <li><strong>Consent:</strong> where does approval occur?</li>
+    <li><strong>Limit:</strong> when does it expire or pause?</li>
+    <li><strong>Reconciliation:</strong> how does it handle new data that
+        contradicts earlier observations?</li>
+    <li><strong>Verification:</strong> which event or test proves the
+        behaviour is correct?</li>
+</ol>
+
+<p>If any question has no answer, the capability is not ready to be presented
+as available.</p>
+
+<h1 id="cap8">8. Using the judgement in practice</h1>
+
+<p>For a change or new capability, the review result should be readable in
+this form:</p>
+
+<table>
+<thead><tr><th style="width:24%">Field</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td>User request</td><td>A concrete natural-language example.</td></tr>
+<tr><td>Expected outcome</td><td>What the user will see, including the point of confirmation.</td></tr>
+<tr><td>Mandate and sources</td><td>User, account, device, paths and services involved.</td></tr>
+<tr><td>Evidence</td><td>Tests, events and original data that prove the outcome.</td></tr>
+<tr><td>Risks and limits</td><td>Irreversible effects, sensitive data, costs and failure conditions.</td></tr>
+<tr><td>Judgement</td><td>Required, strengthen, conditional, accepted tension or excluded.</td></tr>
+</tbody>
+</table>
+
+<p>The relevant current specifications are
+<a href="architecture/agent_runtime.html">agent runtime</a>,
+<a href="architecture/executor.html">executors</a>,
+<a href="architecture/approval_ux.html">approval</a>,
+<a href="architecture/observability.html">observability</a>,
+<a href="architecture/pairing.html">users and sessions</a>,
+<a href="architecture/telos.html">telos</a> and
+<a href="architecture/vaglio.html">vaglio</a>.</p>
+
+<hr>
+
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>Perspectives and judgement</em><br>
+Current criteria for assessing capabilities, boundaries and interaction quality.
+</p>
+
+</body>
+</html>

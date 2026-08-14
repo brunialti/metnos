@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Vaglio and action guard</title>
+ <meta name="description" content="How Metnos checks an action before execution: deterministic guard, graded-judgement API, logs, and limits of the guarantees.">
+ <meta name="keywords" content="Metnos, vaglio, guard, security, executor, policy">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/vaglio">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/vaglio">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/vaglio">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/vaglio">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/vaglio.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/vaglio.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Vaglio</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Vaglio and action guard</div>
+ <div class="meta">Pre-execution controls, optional judgement, and verifiable boundaries.</div>
+</div>
+
+<p class="lead">The production path applies a deterministic guard immediately
+before invoking an executor. The guard blocks closed classes of dangerous accesses
+and commands. The module also exposes a graded judge, but that second phase is not
+part of the current engine's ordinary path: documenting both as if they always ran
+would be inaccurate.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">Responsibilities and boundaries</a></li>
+ <li><a href="#cap2">The full API verdict</a></li>
+ <li><a href="#cap3">The deterministic guard</a></li>
+ <li><a href="#cap4">The graded judge</a></li>
+ <li><a href="#cap5">Optional LLM judge</a></li>
+ <li><a href="#cap6">Logs and recorded data</a></li>
+ <li><a href="#cap7">Current runtime integration</a></li>
+ <li><a href="#cap8">Natural-language example</a></li>
+ <li><a href="#cap9">Limits of the guarantees</a></li>
+ <li><a href="#cap10">Configuration and references</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Responsibilities and boundaries</h1>
+
+<p>The Vaglio checks one action that the engine has already selected. It does not
+select the executor, interpret the request by itself, grant permissions, or replace
+the <a href="policy.html">policy</a>, human consent, sandbox, or executor-level
+checks.</p>
+
+<p>The main distinction is between:</p>
+
+<ul>
+ <li><strong>binary guard</strong>: local deterministic rules over the executor
+ and its arguments; a prohibited match stops the step;</li>
+ <li><strong>graded judge</strong>: a separate API that assigns a score and may
+ deny below a threshold; it is available in the module, but the production engine
+ currently wires only the pre-execution guard.</li>
+</ul>
+
+<h1 id="cap2">2. The full API verdict</h1>
+
+<p><code>judge(intent, executor_name, args, context)</code> returns a
+<code>Verdict</code> with these fields:</p>
+
+<table>
+<thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>approved</code></td><td>Whether the action passes the complete call.</td></tr>
+<tr><td><code>reason</code></td><td>Readable reason produced by the guard or judge.</td></tr>
+<tr><td><code>ts</code></td><td>Unix time of the decision.</td></tr>
+<tr><td><code>judge_kind</code></td><td><code>rule-based-v1</code>,
+<code>llm-v1</code>, or <code>safe-verb-shortcut</code>.</td></tr>
+<tr><td><code>score</code></td><td>A value from 0 to 1; it is 0 for a guard block.</td></tr>
+<tr><td><code>blocked_by</code></td><td><code>guard</code>, <code>judge</code>, or
+no value when the call approves.</td></tr>
+</tbody>
+</table>
+
+<p>This contract describes the module's complete API. It does not imply that every
+call site uses both phases.</p>
+
+<h1 id="cap3">3. The deterministic guard</h1>
+
+<p><code>guard_check(executor_name, args, context)</code> recursively inspects
+arguments that may represent an access target. Strings under content fields such as
+body, text, comment, or message are not treated as paths: mentioning a protected
+path in a document is not the same as accessing it.</p>
+
+<p>The guard applies three families of checks:</p>
+
+<ol>
+ <li><strong>Always-forbidden paths.</strong> These include
+ <code>~/.ssh</code>, cloud credentials, <code>/etc/passwd</code>,
+ <code>/etc/shadow</code>, <code>/root</code>, <code>/boot</code>, and block
+ devices.</li>
+ <li><strong>System trees protected against mutation.</strong> For executors
+ whose verb changes state, the platform policy prevents writes, moves, and
+ deletions in operating-system trees. A legitimate read remains distinct from a
+ mutation.</li>
+ <li><strong>Nearly irreversible shell commands.</strong> When the capability
+ executes shell commands, closed patterns block operations such as formatting
+ filesystems, writing directly to devices, and recursively deleting the root.</li>
+</ol>
+
+<p>The first violation returns <code>(False, reason)</code>. With no match, the
+guard returns <code>(True, None)</code>; this does not certify that the action is
+harmless under every possible effect.</p>
+
+<h1 id="cap4">4. The graded judge</h1>
+
+<p>If a caller uses <code>judge()</code>, the guard runs first. After a positive
+guard result, verbs in the <code>SAFE_VERBS</code> vocabulary take a short circuit
+and receive an approved verdict with
+<code>judge_kind=safe-verb-shortcut</code>.</p>
+
+<p>For other verbs, the default <code>rule-based-v1</code> backend starts from a
+base score, adds signals that match the intent to the executor, and reduces the
+score for indicators such as path traversal or unusual argument names. The final
+comparison uses <code>METNOS_JUDGE_THRESHOLD</code>, whose default is
+<code>0.30</code>.</p>
+
+<p>This score is a local heuristic. It does not prove alignment with the user's
+ends and must not be described as a general semantic verification.</p>
+
+<h1 id="cap5">5. Optional LLM judge</h1>
+
+<p>With <code>METNOS_JUDGE_KIND=llm-v1</code>, a caller of <code>judge()</code>
+uses the <code>middle</code> LLM role. The prompt follows the turn language and
+receives the intent, executor name, argument keys only, and selected context
+fields; argument values are not sent.</p>
+
+<p>If the router, call, or parsing fails, the module returns a fallback score of
+<code>0.5</code>. With the default threshold, this degradation tends to approve.
+It is therefore an explicit availability behaviour, not fail closed and not a
+security guarantee.</p>
+
+<h1 id="cap6">6. Logs and recorded data</h1>
+
+<p><code>judge()</code> writes monthly JSONL records under the user's
+<code>vaglio/</code> directory. A record includes the verdict, intent, executor,
+argument-key names, and context-key names; it does not include argument values. A
+logging failure does not change the verdict.</p>
+
+<p>The log makes an API decision inspectable. It does not reconstruct the whole
+turn by itself, nor does it turn a model's explanation into evidence.</p>
+
+<h1 id="cap7">7. Current runtime integration</h1>
+
+<p>The shared engine receives <code>guard_check</code> as
+<code>vaglio_guard</code>. It invokes the guard immediately before the executor
+and during parallel-wave preflight. A block produces a result in the
+<code>vaglio_guard</code> error class and aborts the plan before the effect.</p>
+
+<p>The engine has a separate judge hook, but the current dispatcher does not pass
+<code>judge()</code> to it. Therefore, in the ordinary path:</p>
+
+<table>
+<thead><tr><th>Component</th><th>Status in the production path</th></tr></thead>
+<tbody>
+<tr><td>Deterministic pre-execution guard</td><td>Wired and active.</td></tr>
+<tr><td>Rule-based or LLM graded judge</td><td>Available as an API, not wired into the ordinary dispatcher.</td></tr>
+<tr><td>Policy and human approval</td><td>Separate flows, applied when required by the capability contract.</td></tr>
+<tr><td>Module cross-user check</td><td>Helper available; its existence does not prove that every send calls it.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap8">8. Natural-language example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+&ldquo;Read <code>/etc/hosts</code> and show me the uncommented lines.&rdquo;</p>
+
+<p>Reading a configuration file is not confused with changing the system tree. If
+you instead ask &ldquo;Replace <code>/etc/hosts</code> with this content,&rdquo; the
+guard recognizes the mutating verb and protected path and stops the step before
+invocation.</p>
+
+<p>The visible answer should describe the blocked operation and a useful reason in
+the turn language. The guard's internal text remains technical data and does not
+authorize the renderer to invent exceptions.</p>
+
+<h1 id="cap9">9. Limits of the guarantees</h1>
+
+<ul>
+ <li>The rules cover declared patterns and trees; they are not a formal proof of
+ every program's effects.</li>
+ <li>The engine treats an unexpected guard exception as fail open and records it.
+ Sandbox, policy, and executor controls must therefore remain independent.</li>
+ <li>The LLM judge produces a probabilistic assessment and rationale, not
+ verifiable evidence.</li>
+ <li>The Vaglio does not read a biography of the user and does not infer
+ authorization from habits, repetition, or silence.</li>
+ <li>An approval verdict does not replace consent required by a critical
+ capability.</li>
+</ul>
+
+<h1 id="cap10">10. Configuration and references</h1>
+
+<table>
+<thead><tr><th>Setting</th><th>Default</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_JUDGE_KIND</code></td><td><code>rule-based-v1</code></td><td>Backend used by callers of <code>judge()</code>.</td></tr>
+<tr><td><code>METNOS_JUDGE_THRESHOLD</code></td><td><code>0.30</code></td><td>Threshold for the graded judge.</td></tr>
+</tbody>
+</table>
+
+<ul>
+ <li><code>runtime/vaglio.py</code>: guard, judges, verdict, and logging.</li>
+ <li><code>runtime/platform_policy.py</code>: protected trees by platform.</li>
+ <li><code>runtime/engine/executor.py</code>: pre-invocation guard.</li>
+ <li><code>runtime/agent_runtime.py</code>: current dispatcher wiring.</li>
+ <li><a href="policy.html">Policy</a> and the
+ <a href="approval_ux.html">approval flow</a>: authorization and consent.</li>
+</ul>
+
+</body>
+</html>

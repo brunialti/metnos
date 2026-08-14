@@ -1,0 +1,116 @@
+# Manifest dell'executor `get_images_google_photos` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_provider (suffisso multi-token).
+# Dispatcher canonical Google Photos download (spec Google Photos P1).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name             = "get_images_google_photos"
+version          = "0.1.0"
+author           = "Roberto Brunialti"
+affinity         = [
+    "google photos", "google foto", "gphotos", "scarica foto",
+    "download photos", "download foto", "recupera foto", "retrieve photos",
+    "salva in locale", "scarica album", "download album",
+    "seleziona foto", "pick photos"
+]
+revertible       = true
+reverse_pattern  = "delete_created_paths"
+lifecycle        = "active"
+
+[description]
+it = "SCOPO: scarica foto da Google Photos nel workspace. PATTERN: get_images_google_photos(picker=true) = scegli TU nella UI Google (link in chat, anche album interi); ids=['AB...'] via from_step. NON: da Google Drive usa read_files. OUT: results=[{id,local_path,bytes}]."
+en = "SCOPO: downloads photos from Google Photos into the workspace. PATTERN: get_images_google_photos(picker=true) = YOU pick in the Google UI (link in chat, whole albums too); ids=['AB...'] via from_step. NON: for Google Drive use read_files. OUT: results=[{id,local_path,bytes}]."
+
+[code]
+files  = ["get_images_google_photos.py"]
+digest = "sha256:d4a8896f971a179deaa448ea675671e8f6eea5f97937c0bbbba03c24d766f7bb"
+
+[args]
+type     = "object"
+required = []
+# Foto da scaricare: `ids`/`entries` (app-created, via from_step) OPPURE
+# `picker=true` (l'utente seleziona nella UI Google — QUALSIASI foto/album,
+# anche non caricati da Metnos). `picker_session_id` = solo resume del dialog.
+requires_one_of = [["ids", "entries", "picker", "picker_session_id"]]
+
+[args.properties.ids]
+type    = "array"
+
+[args.properties.ids.description]
+it = "media_item_id delle foto da scaricare (id opachi Google Photos). Di norma NON li conosci: arrivano via from_step da find_images_google_photos."
+en = "media_item_id of the photos to download (opaque Google Photos ids). Normally unknown: they arrive via from_step from find_images_google_photos."
+
+[args.properties.entries]
+type    = "array"
+
+[args.properties.entries.description]
+it = "Record con campo `id`, tipicamente via `from_step: N` (output di find_images_google_photos)."
+en = "Records with an `id` field, typically via `from_step: N` (find_images_google_photos output)."
+
+[args.properties.picker]
+type    = "boolean"
+default = false
+
+[args.properties.picker.description]
+it = "true = l'utente sceglie le foto nella UI Google via link (Picker): funziona su TUTTA la libreria, anche album non caricati da Metnos. Metnos scarica i selezionati alla conferma."
+en = "true = the user picks photos in the Google UI via link (Picker): works on the WHOLE library, including albums not uploaded by Metnos. Metnos downloads the selection on confirm."
+
+[args.properties.picker_session_id]
+type    = "string"
+default = ""
+
+[args.properties.picker_session_id.description]
+it = "USO INTERNO (resume del dialog picker): id della sessione di selezione. Non fornirlo a mano."
+en = "INTERNAL USE (picker dialog resume): selection session id. Do not set manually."
+
+[args.properties.dst_dir]
+type    = "string"
+default = ""
+
+[args.properties.dst_dir.description]
+it = "Cartella locale di destinazione. Vuoto = workspace foto default (~/.local/share/metnos/Immagini/google-photos)."
+en = "Local destination folder. Empty = default photo workspace (~/.local/share/metnos/Immagini/google-photos)."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  results: Array<{ok, id, local_path, filename, bytes}>,
+  used: int,
+  images_source: 'google_photos',
+  failed?: Array<object>,
+  _undo?: {reverse_pattern, paths},
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["photos:remote"]
+
+# fs:write: il download SCRIVE i file nel workspace foto (default
+# ~/.local/share/metnos/Immagini/google-photos) — senza, la sandbox non ha
+# superficie scrivibile per dst_dir.
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/share/metnos/Immagini/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+
+[[tests]]
+name   = "missing_ids_and_entries_fails"
+input  = {}
+expect = { ok = false, error_contains = "ids" }
+
+[[tests]]
+name   = "happy_path_oauth_missing_returns_needs_inputs"
+input  = { ids = ["AB123"] }
+env    = { METNOS_SKILL_HOME = "{RUNTIME}/tests/data/skill_home_no_creds" }
+expect = { ok = true }

@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "lang": "it",
+  "generated_at": "2026-05-19T12:10:00",
+  "metnos_commit": "PLACEHOLDER",
+  "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+  "corpus_size": 0,
+  "corpus_hash": "",
+  "threshold_default": 0.80,
+  "threshold_by_verb": {
+    "delete": 0.90,
+    "send": 0.90,
+    "move": 0.90,
+    "share": 0.90,
+    "write": 0.85,
+    "set": 0.85,
+    "create": 0.80,
+    "change": 0.80,
+    "extract": 0.80,
+    "compress": 0.80,
+    "render": 0.80,
+    "order": 0.80
+  },
+  "rank_distance_min": 0.15,
+  "notes": "Placeholder pre-bake (19/5/2026 v3, ADR 0151). Real calibration pending #H0c.2 bench corpus 20-30q × 3 run + helper _compute_calibration. Soglie deliberatamente conservative: split DISABLED su mutating verbs senza per-verb override basso. Quando bench reali dimostrano sicurezza, soglie scenderanno (es. 0.80 → 0.60) e riducendo i fallback."
+}

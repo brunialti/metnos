@@ -1,0 +1,65 @@
+# Manifest dell'executor `delete_images_indices` — Metnos v1.1
+# Naming compositivo: azione_oggetto[_modalita'] (verb=delete, obj=images,
+# modalita'=indices). ADR 0086 (rinominato 5/5/2026).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "delete_images_indices"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = ["cancella", "delete", "rimuovi", "remove", "indice", "index", "rebuild", "free-storage", "foto", "image"]
+revertible  = false
+
+[output]
+schema_inline = "{ ok: bool, base_path?: string, idx?: string, deleted?: array, freed_bytes?: integer, dry_run?: bool, error?: string }"
+
+[description]
+it = "SCOPO: cancella l'indice persistente unificato delle immagini. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
+en = "SCOPO: delete the persistent unified image index. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: delete actual photos (-> delete_files); rebuild (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
+
+[code]
+files  = ["delete_images_indices.py"]
+digest = "sha256:0bd2da54c425f9718479cdfcfbd84c844364002f448c5a44d15ebaae3d14c20f"
+
+[args]
+type     = "object"
+required = ["base_path"]
+
+[args.properties.base_path]
+type        = "string"
+
+[args.properties.base_path.description]
+it = "Directory radice della collezione (la stessa usata in create_images_indices). Path assoluto o ~ espandibile."
+en = "Root directory of the collection (the same one used in create_images_indices). Absolute path or expandable ~."
+
+[args.properties.idx]
+type        = "string"
+enum        = ["unified", "all"]
+default     = "all"
+
+[args.properties.idx.description]
+it = "Indice da cancellare. `all` e `unified` indicano entrambi l'unico indice attivo post-ADR0117."
+en = "Index to delete. `all` and `unified` both select the single active post-ADR0117 index."
+
+[args.properties.dry_run]
+type        = "boolean"
+default     = false
+
+[args.properties.dry_run.description]
+it = "Se true, non cancella, solo elenca cosa cancellerebbe."
+en = "If true, it does not delete, it only lists what it would delete."
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/share/metnos/index/image/**"]
+
+[[tests]]
+name   = "base_path_inesistente_ok_nothing_to_delete"
+input  = { base_path = "/tmp/metnos_does_not_exist_xyz_del_idx", idx = "all" }
+expect = { ok = true }
+
+[[tests]]
+name   = "idx_invalido_fallisce"
+input  = { base_path = "/tmp/metnos_test_idx_del", idx = "pippo" }
+expect = { ok = false, error_contains = "idx" }

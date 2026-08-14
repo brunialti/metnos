@@ -1,0 +1,705 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <!-- Locale homes -->
+  <url>
+    <loc>https://metnos.com/en/</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/"/>
+  </url>
+
+  <!-- Corpus primario: 9 coppie bilingue -->
+
+  <url>
+    <loc>https://metnos.com/en/Metnos_Dialogue_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.95</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Dialogue_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Dialogo_v1"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/Metnos_Dialogo_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.95</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Dialogue_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Dialogo_v1"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/Metnos_Dialogue_Executors_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Dialogue_Executors_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Dialogo_Executor_v1"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/Metnos_Dialogo_Executor_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Dialogue_Executors_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Dialogo_Executor_v1"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/Metnos_QuickTour</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/Metnos_QuickTour</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/domains</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/domains"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/domains"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/domains"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/domains</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/domains"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/domains"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/domains"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/interface</loc>
+    <lastmod>2026-07-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/interface"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/interface"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/interface"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/interface</loc>
+    <lastmod>2026-07-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/interface"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/interface"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/interface"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/Metnos_Glossary_v1</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Glossary_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Glossario_v1"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/Metnos_Glossario_v1</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Glossary_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Glossario_v1"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/Metnos_Extended_Perspectives_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Extended_Perspectives_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Estese_v1"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/Metnos_Prospettive_Estese_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Extended_Perspectives_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Estese_v1"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/Metnos_Perspectives_Judgement_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/Metnos_Prospettive_Giudizio_v1</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1"/>
+  </url>
+
+  <!-- Guida all'architettura e contratti dei componenti -->
+
+  <url>
+    <loc>https://metnos.com/en/architecture/</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/executor</loc>
+    <lastmod>2026-05-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/executor</loc>
+    <lastmod>2026-05-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/remote_executors</loc>
+    <lastmod>2026-07-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/remote_executors"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/remote_executors"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/remote_executors</loc>
+    <lastmod>2026-07-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/remote_executors"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/remote_executors"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/intelligent_executors</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/intelligent_executors"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/intelligent_executors"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/intelligent_executors</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/intelligent_executors"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/intelligent_executors"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/executor_catalog</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_catalog"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_catalog"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/executor_catalog</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_catalog"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_catalog"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/mnest</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnest"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnest"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/mnest</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnest"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnest"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/mnestome</loc>
+    <lastmod>2026-05-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/mnestoma</loc>
+    <lastmod>2026-05-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/synt</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/synt"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/synt"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/synt</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/synt"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/synt"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/fast_path</loc>
+    <lastmod>2026-05-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/fast_path</loc>
+    <lastmod>2026-05-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/telos</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/telos"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/telos"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/telos</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/telos"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/telos"/>
+  </url>
+
+  <!-- lifecycle: stato-macchina unificato dei cambiamenti -->
+  <url>
+    <loc>https://metnos.com/en/architecture/lifecycle</loc>
+    <lastmod>2026-06-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/lifecycle</loc>
+    <lastmod>2026-06-08</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle"/>
+  </url>
+
+  <!-- virtualization: tre facciate get_llm/get_embedder/get_vlm, modello via TOML -->
+  <url>
+    <loc>https://metnos.com/en/architecture/virtualization</loc>
+    <lastmod>2026-06-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/virtualization"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/virtualization</loc>
+    <lastmod>2026-06-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/virtualization"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization"/>
+  </url>
+
+  <!-- Tutor: fonti firmate, osservazioni correnti, consegna e riscontro privato -->
+  <url>
+    <loc>https://metnos.com/en/architecture/tutor</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/tutor"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/tutor</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/tutor"/>
+  </url>
+
+  <!-- Contratti dei componenti: agent_runtime, scratchpad, grammar -->
+  <url>
+    <loc>https://metnos.com/en/architecture/agent_runtime</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/agent_runtime</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/scratchpad</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/scratchpad"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/scratchpad"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/scratchpad</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/scratchpad"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/scratchpad"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/en/architecture/grammar</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/grammar</loc>
+    <lastmod>2026-05-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar"/>
+  </url>
+
+  <!-- multilang: pipeline traduzione manifest + prompts -->
+  <url>
+    <loc>https://metnos.com/en/architecture/multilang</loc>
+    <lastmod>2026-05-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilang"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/multilang</loc>
+    <lastmod>2026-05-06</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilang"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang"/>
+  </url>
+
+  <!-- skill_importer: agentskills.io → executor -->
+  <url>
+    <loc>https://metnos.com/en/architecture/skill_importer</loc>
+    <lastmod>2026-05-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skill_importer"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/skill_importer</loc>
+    <lastmod>2026-05-15</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skill_importer"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer"/>
+  </url>
+
+  <!-- skills & backends: due assi ortogonali -->
+  <url>
+    <loc>https://metnos.com/en/architecture/skills_backends</loc>
+    <lastmod>2026-06-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skills_backends"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skills_backends"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/skills_backends</loc>
+    <lastmod>2026-06-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skills_backends"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skills_backends"/>
+  </url>
+
+  <!-- vaglio, channel, pairing, observability -->
+  <url>
+    <loc>https://metnos.com/en/architecture/vaglio</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/vaglio"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/vaglio"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/vaglio</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/vaglio"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/vaglio"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/channel</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/channel"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/channel"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/channel</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/channel"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/channel"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/pairing</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/pairing"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/pairing"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/pairing</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/pairing"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/pairing"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/http_api</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/http_api"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/http_api"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/http_api</loc>
+    <lastmod>2026-05-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/http_api"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/http_api"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/it/architecture/observability</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability"/>
+  </url>
+
+  <!-- sandbox -->
+  <url>
+    <loc>https://metnos.com/en/architecture/sandbox</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/sandbox"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/sandbox"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/sandbox</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/sandbox"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/sandbox"/>
+  </url>
+
+<!-- policy, approval_ux, observability -->
+  <url>
+    <loc>https://metnos.com/en/architecture/policy</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/policy"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/policy"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/policy</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/policy"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/policy"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/approval_ux</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/approval_ux"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/approval_ux"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/approval_ux</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/approval_ux"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/approval_ux"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/observability</loc>
+    <lastmod>2026-05-01</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.55</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/mail_accounts</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mail_accounts"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mail_accounts"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/mail_accounts</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mail_accounts"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mail_accounts"/>
+  </url>
+
+  <!-- Note dell'autore -->
+
+  <url>
+    <loc>https://metnos.com/en/code</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/code"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/code"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/code</loc>
+    <lastmod>2026-06-09</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/code"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/code"/>
+  </url>
+
+  <!-- Praxis Engine (pentade Mētis/Noûs/Praxis/Pronoia/Aporia) -->
+
+  <url>
+    <loc>https://metnos.com/en/architecture/praxis_engine</loc>
+    <lastmod>2026-05-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/it/architecture/praxis_engine</loc>
+    <lastmod>2026-05-25</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine"/>
+  </url>
+
+  <!-- Service -->
+
+  <url>
+    <loc>https://metnos.com/security/</loc>
+    <lastmod>2026-04-27</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+</urlset>

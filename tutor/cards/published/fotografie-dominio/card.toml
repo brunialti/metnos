@@ -1,0 +1,39 @@
+id = "fotografie-dominio"
+audience_minima = "user"
+priorita = 85
+
+[semantic]
+it = "Guida alle capacità di ricerca, indicizzazione e consultazione di fotografie, immagini e archivi fotografici locali."
+en = "Guide to searching, indexing, and browsing photographs, images, and local photo archives."
+
+[title]
+it = "Ricerca negli archivi fotografici"
+en = "Search photo archives"
+
+
+[catalog]
+object_suffix = "images_indices"
+membership = "builtin"
+expected_min = 3
+
+[catalog.heading]
+it = "L’istanza dispone di {count} operazioni builtin sugli indici fotografici:"
+en = "The instance has {count} builtin photo-index operations:"
+
+[catalog.labels.it]
+images_indices = "Indici fotografici"
+
+[catalog.labels.en]
+images_indices = "Photo indexes"
+
+[catalog.verbs.it]
+create = "creare"
+delete = "eliminare"
+find = "cercare"
+get = "consultare"
+
+[catalog.verbs.en]
+create = "create"
+delete = "delete"
+find = "search"
+get = "inspect"

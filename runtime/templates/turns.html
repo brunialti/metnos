@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Turni · Console Metnos{% endblock %}
+{% block body %}
+<h1>Turni ({{ rows|length }})</h1>
+<p class="page-sub">Ogni richiesta utente è un turno: canale, attore, passi
+eseguiti dal planner, esito finale e tempo totale.</p>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>turno</th><th>inizio</th><th>canale</th><th>attore</th>
+        <th>passi</th><th>esito</th><th>durata</th><th>query</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="muted"><code>{{ r.turn_id[:10] }}</code></td>
+      <td class="muted">{{ r.ts_start_iso }}</td>
+      <td><span class="chip">{{ r.channel or "-" }}</span></td>
+      <td>{{ r.actor or "-" }}</td>
+      <td>{{ r.n_steps }}</td>
+      <td>
+        {% if r.final_kind == "answer" %}<span class="chip ok">{{ r.final_kind }}</span>
+        {% elif r.final_kind == "error" %}<span class="chip bad">{{ r.final_kind }}</span>
+        {% else %}<span class="chip warn">{{ r.final_kind }}</span>{% endif %}
+      </td>
+      <td>{{ r.elapsed_s }}s</td>
+      <td>{{ r.user_query[:80] }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">nessun turno</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

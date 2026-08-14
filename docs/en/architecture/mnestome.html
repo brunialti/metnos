@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Mnestome</title>
+ <meta name="description" content="The mnestome SQLite store: schema, queries, maintenance, observability, and the actual state of its Metnos integration.">
+ <meta name="keywords" content="Metnos, mnestome, mnest, SQLite, graph, ager">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/mnestome">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnestome">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/mnestoma.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/mnestome.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Mnestome</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Mnestome: store of operational edges</div>
+ <div class="meta">SQLite schema, queries, maintenance, and actual integrations.</div>
+</div>
+
+<p class="lead">The mnestome is the local store that can represent a graph of
+<a href="mnest.html">mnests</a> between executors. Its code implements
+persistence, traversal, decay, and inspection tools. It is not currently a graph
+that the runtime populates automatically from every turn, and it is not a personal
+memory of the user.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">Scope and status</a></li>
+ <li><a href="#cap2">Graph model</a></li>
+ <li><a href="#cap3">What it does not contain</a></li>
+ <li><a href="#cap4">Database schema</a></li>
+ <li><a href="#cap5">Writes and queries</a></li>
+ <li><a href="#cap6">Nightly ager</a></li>
+ <li><a href="#cap7">Archiving and retention</a></li>
+ <li><a href="#cap8">Names in the two languages</a></li>
+ <li><a href="#cap9">Bootstrap and population</a></li>
+ <li><a href="#cap10">Inspection and observability</a></li>
+ <li><a href="#cap11">Operational boundaries</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scope and status</h1>
+
+<p><code>Mnestoma</code> opens a SQLite database with WAL and foreign keys
+enabled. Its API can record edges, change their state, traverse them, find
+recurring protos, and read statistics and events.</p>
+
+<p>The turn runtime populates the separate <code>canonical_query_log</code> table
+in the same file when it receives a useful canonical query. It does not call
+<code>record_passing()</code> for edges. These two kinds of telemetry must not be
+confused.</p>
+
+<span id="cap-broth"></span>
+<h1 id="cap2">2. Graph model</h1>
+
+<p>In the logical model, nodes are executor names and versions and edges are
+directed, weighted mnests. A <code>proto</code> edge ends at a desired name with
+no version. <code>walk(start, max_depth)</code> performs breadth-first search,
+excludes protos by default, and orders paths by decreasing average weight.</p>
+
+<p>Synt's composer can use this structure to find a chain of existing executors.
+It does not generate L0 or L1, alter the ordinary planner ranking, or replace the
+signed catalog.</p>
+
+<h1 id="cap3">3. What it does not contain</h1>
+
+<table>
+<thead><tr><th>It is not</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Complete turn history</td><td>Turns have separate logs; an event may store only their identifier.</td></tr>
+<tr><td>A user profile</td><td>The schema describes executors, edges, and technical telemetry, not preferences or personal facts.</td></tr>
+<tr><td>A plan cache</td><td>L0 and L1 use their own stores, keys, and validity rules.</td></tr>
+<tr><td>Proof of effects</td><td>An edge exists because a caller wrote it.</td></tr>
+<tr><td>An automatic synthesis system</td><td>Protos are signals; Synt, tests, and the promoter have separate responsibilities.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap4">4. Database schema</h1>
+
+<table>
+<thead><tr><th>Object</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td><code>executors</code></td><td>Name, version, state, load time, and manifest hash. The current API does not populate it automatically.</td></tr>
+<tr><td><code>mnests</code></td><td>Edges, weights, uses, timestamps, states, tags, and desired signature.</td></tr>
+<tr><td><code>events</code></td><td>Reinforcements, decays, and state changes, with an optional <code>turn_id</code>.</td></tr>
+<tr><td><code>v_mnestoma</code></td><td>View of <code>active</code> and <code>proto</code> edges.</td></tr>
+<tr><td><code>canonical_query_log</code></td><td>Canonical query, tool, observed argument shape and values, counters, and outcome. It is telemetry separate from the graph.</td></tr>
+</tbody>
+</table>
+
+<p>On open, idempotent migrations add <code>events.turn_id</code> and
+<code>canonical_query_log.args_observed</code> to older databases.</p>
+
+<h1 id="cap5">5. Writes and queries</h1>
+
+<p>The main public operations are:</p>
+
+<ul>
+ <li><code>record_passing()</code>: create or reinforce a mnest or proto;</li>
+ <li><code>transition_state()</code> and
+ <code>promote_proto_to_active()</code>: change state with an event;</li>
+ <li><code>top_k_outgoing()</code>, <code>top_k_incoming()</code>,
+ <code>walk()</code>, and <code>by_tag()</code>: query the graph;</li>
+ <li><code>recurring_protos()</code>, <code>decaying()</code>, and
+ <code>top_active()</code>: select operational sets;</li>
+ <li><code>events_for()</code>, <code>audit_recent()</code>, and
+ <code>stats()</code>: support inspection and audit;</li>
+ <li><code>record_canonical_query()</code>: update separate normalized-query
+ telemetry.</li>
+</ul>
+
+<h1 id="cap6">6. Nightly ager</h1>
+
+<p>The scheduler installs the <code>nightly_aging</code> job at 03:30. It runs
+executor aging and <code>Mnestoma.apply_ager()</code> in sequence. The latter:</p>
+
+<ol>
+ <li>decays <code>active</code> and <code>proto</code> edges with time;</li>
+ <li>moves below-threshold <code>active</code> edges to <code>decaying</code>;</li>
+ <li>counts <code>decaying</code> archive candidates;</li>
+ <li>deletes below-threshold protos;</li>
+ <li>counts protos that reached recurrence thresholds.</li>
+</ol>
+
+<p>The job is idempotent for the same logical instant only if it is not repeated
+with an advancing timestamp: each run updates <code>ts_last</code> and writes
+events for decayed records.</p>
+
+<h1 id="cap7">7. Archiving and retention</h1>
+
+<p>The ager does not automatically archive <code>decaying</code> edges: it returns
+a <code>proposed_archive</code> count. The module has no routine that creates
+monthly snapshots, compresses annual copies, or includes the database in a backup.
+Those operations require an explicit external policy.</p>
+
+<p>The only automatic graph deletion performed by the ager concerns proto-mnests
+with weight below <code>0.05</code>. Their associated events are also removed by
+the foreign key's <code>ON DELETE CASCADE</code>.</p>
+
+<h1 id="cap8">8. Names in the two languages</h1>
+
+<p>Italian documentation uses <em>mnestoma</em>; English documentation uses
+<em>mnestome</em>. The Python module, class, and SQLite-directory name remain
+<code>mnestoma</code> in both languages. <em>Mnest</em> is the technical name of
+one edge and is not translated.</p>
+
+<h1 id="cap9">9. Bootstrap and population</h1>
+
+<p>On first open, the database is created with an empty schema. No hidden edge
+seed is installed, and the <code>Mnest</code> class does not admit a
+<code>seed</code> state. Edges appear only through explicit API calls or data
+already present in the configured database.</p>
+
+<p>Turns may instead add records to <code>canonical_query_log</code>. This
+activity must not be shown as the birth of mnests, clusters, or L0/L1 paths.</p>
+
+<h1 id="cap10">10. Inspection and observability</h1>
+
+<p><code>python3 -m mnestoma</code> provides commands for statistics, aging,
+top incoming/outgoing edges, protos, walks, summaries, and audit. The
+<code>python3 -m observability render</code> renderer can include counts, active
+edges, protos, and recent events in static HTML.</p>
+
+<p>These tools read store contents; they do not establish that those contents are
+complete. An empty mnestome is a legitimate outcome of the current integration.</p>
+
+<h1 id="cap11">11. Operational boundaries</h1>
+
+<ul>
+ <li>The default path is
+ <code>&lt;workspace&gt;/.mnestoma/mnest.sqlite</code>: its scope is the configured
+ workspace, not a user derived from the turn.</li>
+ <li>Do not put personal facts, credentials, or document contents in tags and
+ desired signatures.</li>
+ <li>Using the graph for per-user decisions would require explicit ownership,
+ authorization, and filtering; the current schema does not represent them.</li>
+ <li>The composer can only propose recorded chains: catalog, signatures, policy,
+ arguments, and guards remain independent constraints.</li>
+ <li>The operational contract is defined by
+ <code>runtime/mnestoma.py</code>, <code>runtime/synt.py</code>,
+ <code>runtime/jobs/maintenance_tasks.py</code>, and
+ <code>runtime/observability.py</code>.</li>
+</ul>
+
+</body>
+</html>

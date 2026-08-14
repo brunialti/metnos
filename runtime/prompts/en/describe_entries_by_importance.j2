@@ -1,0 +1,18 @@
+{# ---
+role: describe_entries_by_importance
+tier: auto
+lang: en
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-06-11
+sha_prev: 1e612c3d
+--- #}
+You have {{ n }} entries of type '{{ kind }}'. Summarize in 3-5 lines THE CONTENT of the relevant entries (signal), grouping by affinity (sender, theme, category). Discard automatic, promo, redundant, and irrelevant entries as noise. State how many are relevant and how many were discarded. No literal list of subject/url/path. Max 600 char, English.
+
+MUST: end the summary with a statement.
+MUST NOT: end with a question to the user (e.g. offering to dig deeper): the question opens no real dialog.
+OK: ...promos discarded as noise. Nothing urgent.
+ERROR: ...Nothing urgent — do you want to dive deeper into a category?
+
+EXAMPLE output (for 6 emails): Today's 6 emails: 2 from financial analysts (WSJ, Simply Wall St) on markets and tech; 1 from La Redoute with summer furniture promos; 1 from Pinterest, visual suggestions; 2 from Nippon Kodo on perfumery events. Nothing urgent.

@@ -1,0 +1,29 @@
+[Unit]
+Description=Metnos HTTP API + admin dashboard (:8770)
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+ExecStartPre=/bin/sh -c 'fuser -k 8770/tcp 2>/dev/null || true'
+ExecStart=/opt/metnos/.venv/bin/python -m runtime.metnos_http_server --host 0.0.0.0 --port 8770
+User=roberto
+WorkingDirectory=/opt/metnos
+Restart=on-failure
+RestartSec=10
+Environment=HOME=/home/user
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/usr/lib/python3/dist-packages:/opt/metnos:/opt/metnos/runtime
+Environment=METNOS_HTTP_HOST=0.0.0.0
+Environment=METNOS_HTTP_PORT=8770
+# Praxis Engine (ADR 0161): sostituisce il PLANNER step-by-step.
+# Il PLANNER legacy è stato RIMOSSO (ADR 0181-ext, 4/7/2026): il declino del
+# motore moderno dà un esito ONESTO (§2.8), non più un fallback ReAct degenere.
+# (Rimosso `Environment=METNOS_PLANNER_LEGACY=1` — drift dell'installer: avrebbe
+# solo lasciato una variabile morta, il legacy non esiste più nel codice.)
+Environment=METNOS_PRAXIS=1
+Environment=METNOS_PRAXIS_AUTO_PROMOTE=1
+Environment=METNOS_PRAXIS_FALLBACK=1
+
+[Install]
+WantedBy=multi-user.target

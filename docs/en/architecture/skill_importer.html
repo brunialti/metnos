@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; importing skills</title>
+ <meta name="description" content="How Metnos acquires a skill, translates it into the canonical vocabulary, generates executors, applies admission checks, and records the outcome.">
+ <meta name="keywords" content="skill, skill importer, agentskills.io, executor, manifest, sandbox, security, Metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/skill_importer">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skill_importer">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/skill_importer">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/skill_importer">
+ <meta property="og:title" content="Metnos &mdash; importing skills">
+ <meta property="og:description" content="From a skill source to executors admitted to the Metnos catalog.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; importing skills">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — importing skills",
+ "description": "How Metnos acquires a skill, translates it, and admits the resulting executors.",
+ "url": "https://metnos.com/en/architecture/skill_importer.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Skill import and admission in Metnos"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 20px; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">What a skill is, in thirty seconds</a></li>
+ <li><a href="#cap2">From the SKILL file to the catalog</a></li>
+ <li><a href="#cap3">Supported sources</a></li>
+ <li><a href="#cap4">Generated files and provenance</a></li>
+ <li><a href="#cap5">Translation and admission checks</a></li>
+ <li><a href="#cap6">Credentials and dialogs with the user</a></li>
+ <li><a href="#cap7">Google Workspace: a complete example</a></li>
+ <li><a href="#cap8">Trust boundary and runtime controls</a></li>
+ <li><a href="#cap9">Going deeper</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. What a skill is, in thirty seconds</h1>
+
+<p class="lead">
+A skill is a package that describes how to use a service or a family of
+functions. Its entry point is <code>SKILL.md</code>; the package may also contain
+scripts and references needed at runtime. Metnos does not execute it directly:
+it translates the package into executors with explicit names, arguments,
+capabilities, and provenance.
+</p>
+<p>
+The file contains a metadata header and a readable body for functions,
+prerequisites, commands, and examples. The parser turns that material into a
+structure that can be checked; prose is not treated as permission to expand
+the system vocabulary or its capabilities.
+</p>
+
+<p>
+Metnos can <strong>import</strong> a skill source: it reads the file, derives a
+set of executors in its own format, and submits each one to admission checks.
+Those that pass enter the same catalog as other executors and can be invoked
+in natural language, while the manifest continues to record their external
+origin.
+</p>
+
+<h2>Why Metnos does not execute the skill directly</h2>
+<p>A <code>SKILL.md</code> file does not carry the signature and contract of a
+Metnos executor. Importing generates a wrapper, declares capabilities and
+arguments in a manifest, applies admission checks, and signs the result. This
+reduces the granted authority and makes it observable, but it does not certify
+third-party code as benign: provenance and source still require judgment.</p>
+
+<h1 id="cap2">2. From the SKILL file to the catalog</h1>
+
+<p>The import command starts a sequence of distinct steps. The distinction
+matters: successful translation is not yet admission to the catalog.</p>
+
+<ol>
+ <li><strong>Acquire.</strong> Metnos resolves the path or URL, obtains the
+ source, and fingerprints <code>SKILL.md</code>.</li>
+ <li><strong>Parse.</strong> The parser extracts metadata, dependencies,
+ scripts, required credential files, and sub-commands with their arguments.</li>
+ <li><strong>Translate.</strong> Each sub-command maps to a canonical
+ <code>action_object_qualifier</code> name. The provider qualifies imported
+ executors, and collisions within the skill are rejected.</li>
+ <li><strong>Generate.</strong> Controlled templates produce the Python
+ wrapper, TOML manifest, and language state. A language model may propose
+ Italian and English descriptions and affinity terms; a deterministic
+ fallback is used when it is unavailable.</li>
+ <li><strong>Admit.</strong> The runtime checks binding uniqueness, canonical
+ naming, affinity overlap, routing, and semantic alignment between manifest
+ and code.</li>
+ <li><strong>Sign.</strong> Rejected folders are removed. Accepted executors
+ are signed with Ed25519; the loader does not expose one without a valid
+ signature.</li>
+ <li><strong>Register.</strong> The outcome enters the audit log and, for
+ mappable cases, the persistent routing battery. The executors become visible
+ on the next valid catalog load.</li>
+</ol>
+
+<p>Name and argument translation is procedural for the current source and
+vocabulary. The whole import does not promise byte-for-byte identical output:
+provenance contains the import time, descriptions may come from a model, and
+admission depends on the installed catalog and the available semantic
+verifier.</p>
+
+<h2>The closed vocabulary</h2>
+<p>Metnos accepts only actions and objects defined by the runtime vocabulary.
+A skill that speaks of <em>append rows to spreadsheet</em> cannot invent
+<code>append_rows</code>; it must map to a compatible canonical name. If no
+semantically correct mapping exists, the sub-command is rejected. Synonyms
+and skill-specific phrasing therefore cannot introduce new verbs implicitly.</p>
+
+<h1 id="cap3">3. Supported sources</h1>
+
+<p>
+A skill can come from three places:
+</p>
+
+<ul>
+ <li><strong>Local</strong>: a <code>SKILL.md</code> file or a directory that
+ contains it. Adjacent <code>scripts/</code> and <code>references/</code> are
+ retained with the source.</li>
+ <li><strong>agentskills.io</strong>: an address of the form
+ <code>agentskills.io/&lt;author&gt;/&lt;skill&gt;</code>; the importer
+ resolves it to the <code>SKILL.md</code> file at the expected repository
+ root.</li>
+ <li><strong>Direct GitHub</strong>: a full repository URL is cloned with its
+ support files; a raw URL downloads only the named file.</li>
+</ul>
+
+<p>If a skill calls its own scripts, import a complete local directory or the
+repository rather than the raw file alone. Remote sources are kept in the
+local cache for a default maximum of seven days; an operator can force a fresh
+fetch.</p>
+
+<h1 id="cap4">4. Generated files and provenance</h1>
+
+<p>The source is retained separately from the generated executors. With the
+default paths, both trees belong to the user who performs the import:</p>
+
+<pre>~/.local/share/metnos/skills/google-workspace/
+ SKILL.md
+ scripts/
+ references/
+
+~/.local/share/metnos/executors/skills/google-workspace/
+ read_events_google_workspace/
+  read_events_google_workspace.py
+  manifest.toml
+  manifest.lang_state.json
+  manifest.toml.sig
+ send_messages_google_workspace/
+  &hellip;
+</pre>
+
+<p>Before signing, each directory contains three generated files: wrapper,
+manifest, and language state. Signing adds <code>manifest.toml.sig</code>.
+Scripts and references remain in the source package and are called by the
+wrapper. The runtime applies sandbox constraints from the contract and
+declared capabilities, without another per-executor file.</p>
+
+<p>The manifest retains its link to the source:</p>
+
+<pre>[provenance]
+synthesized       = true
+imported_from     = "&lt;skill origin&gt;"
+source_version    = "1.1.0"
+source_section    = "&lt;section&gt;"
+source_subcommand = "calendar list"
+imported_at       = "&lt;UTC instant&gt;"
+source_sha256     = "&lt;SKILL.md fingerprint&gt;"
+importer_version  = "&lt;version&gt;"
+</pre>
+
+<p>Location, provenance, retained source, and audit distinguish an imported
+executor from one maintained directly in the product. Signature, contract,
+and execution policy are shared requirements: provenance replaces none of
+those controls.</p>
+
+<h1 id="cap5">5. Translation and admission checks</h1>
+
+<p>The pipeline separates translation rejections from admission rejections.
+The final audit records both categories.</p>
+
+<table>
+<tr><th>Step</th><th>What it checks</th><th>Negative outcome</th></tr>
+<tr><td><strong>Verb boundary</strong></td><td>The source action has a semantically valid match in the closed vocabulary.</td><td>The sub-command produces no plan.</td></tr>
+<tr><td><strong>Name and collisions</strong></td><td>The composed name is canonical, provider-qualified, and distinct from other names in the same skill.</td><td>The translator records the rejection reason.</td></tr>
+<tr><td><strong>Binding uniqueness</strong></td><td>The skill binding is not already owned by another import.</td><td>The whole skill is rejected.</td></tr>
+<tr><td><strong>L1 — vocabulary</strong></td><td>The plan action, object, and qualifiers belong to the current vocabulary.</td><td>The individual plan is rejected.</td></tr>
+<tr><td><strong>L2 — affinity</strong></td><td>Canonical affinity does not exceed the overlap threshold against installed executors; an explicit binding uses a distinct threshold.</td><td>The individual plan is rejected as a possible duplicate.</td></tr>
+<tr><td><strong>L5 — routing</strong></td><td>When a prototype question and runner are available, the assertion must select the expected executor.</td><td>An executed failure rejects the plan; an unmapped or unavailable case is skipped.</td></tr>
+<tr><td><strong>L6 — semantic alignment</strong></td><td>The verifier compares the generated manifest and code.</td><td>Drift, an error, or verifier unavailability rejects the plan in the ordinary flow.</td></tr>
+</table>
+
+<p>Independent plans can have different outcomes: rejected directories are
+removed and the others continue. A global binding collision is the exception
+and rejects the whole import. Options that bypass L2, L5, or L6 are intended
+for development and CI; using them weakens the evidence and is not equivalent
+to production certification.</p>
+
+<p>The import report is authoritative for that particular run: it lists
+translated plans, accepted names, and rejections with reasons. An accepted
+name alone does not prove that every possible L5 assertion ran, because some
+patterns explicitly allow a skip.</p>
+
+<h1 id="cap6">6. Credentials and dialogs with the user</h1>
+
+<p>Importing does not collect credentials. If a provider reports missing
+authentication during use, the generated wrapper returns
+<code>decision = "needs_inputs"</code> and preserves the arguments needed to
+resume the operation.</p>
+
+<ol>
+ <li>Metnos presents the dialog declared by the manifest in the chat; web chat
+ can open the protected form, while other channels provide directions to
+ reach it.</li>
+ <li>For OAuth, the user supplies the client file and service scope, then
+ completes authorization in the browser.</li>
+ <li>The server exchanges the code and stores the token in the user's
+ encrypted credential store, under <code>~/.config/metnos/credentials/</code>
+ by default.</li>
+ <li>If a compatibility provider also requires a file at its own path, the
+ manifest can request a local copy protected with mode <code>0600</code>.</li>
+ <li>Metnos then resumes the executor with its original arguments.</li>
+</ol>
+
+<p>Credential bindings and values are isolated per user. The manifest declares
+only the binding name and dialog schema: secrets do not enter the manifest,
+generated code, or text sent to the planner. The canonical
+<code>find_credentials</code>, <code>set_credentials</code>, and
+<code>delete_credentials</code> executors expose metadata, protected writes,
+and deletion respectively; their planner-facing results contain no plaintext
+secret values.</p>
+
+<h1 id="cap7">7. Google Workspace: a complete example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “What
+appointments are on my work calendar tomorrow?” If the Google Workspace
+capability is admitted, enabled, and connected to the user's account, the
+catalog exposes the event-specific executor. Other examples are “Find unread
+messages from Anna,” “Read the contents of this Drive file,” and “Append these
+rows to the Expenses sheet.”</p>
+
+<p>Importing is a separate administrative operation. The Google Workspace
+package included with Metnos also contains the required scripts, so the
+command uses the complete directory:</p>
+
+<pre>metnos-skills import &lt;install-root&gt;/executors/skills/google-workspace</pre>
+
+<p>The source declares 24 sub-commands. The current procedural verification
+proves 24 distinct canonical plans with no translation rejection. Several
+important semantic distinctions are:</p>
+
+<table>
+<tr><th>Sub-command</th><th>Canonical executor</th><th>Distinction</th></tr>
+<tr><td><code>gmail send</code></td><td><code>send_messages_google_workspace</code></td><td>a new message</td></tr>
+<tr><td><code>gmail reply</code></td><td><code>send_messages_thread_google_workspace</code></td><td>a reply within a thread</td></tr>
+<tr><td><code>gmail labels</code></td><td><code>list_messages_labels_google_workspace</code></td><td>list labels, rather than modify messages</td></tr>
+<tr><td><code>drive get</code></td><td><code>get_files_google_workspace</code></td><td>file metadata</td></tr>
+<tr><td><code>drive download</code></td><td><code>read_files_google_workspace</code></td><td>file contents</td></tr>
+<tr><td><code>sheets update</code></td><td><code>set_files_xlsx_google_workspace</code></td><td>update existing cells</td></tr>
+<tr><td><code>sheets append</code></td><td><code>write_files_xlsx_google_workspace</code></td><td>write new rows</td></tr>
+</table>
+
+<p>The 24/24 result covers translation, name uniqueness, and manifest
+generation. It does not justify declaring “24 admitted” in advance: L2
+compares the user's catalog, L5 depends on executable checks, and L6 depends
+on the semantic verifier. The report from that import states how many
+executors were accepted; only those that are signed and valid can enter the
+catalog. OAuth authorization then occurs for the individual user and is not
+part of the import count.</p>
+
+<h1 id="cap8">8. Trust boundary and runtime controls</h1>
+
+<p>Importing a skill does not attest that its code is benign. The importer
+checks the wrapper and contract it generates, but it does not perform complete
+static analysis of every received script. Before import, the operator must
+verify origin and fingerprint, review the scripts, and grant only the required
+capabilities and credentials.</p>
+
+<table>
+<tr><th>Control</th><th>When</th><th>Actual assurance</th></tr>
+<tr><td><strong>Provenance and fingerprint</strong></td><td>acquisition</td><td>tie the artifact to the reviewed source; they do not prove it safe</td></tr>
+<tr><td><strong>Generated contract</strong></td><td>generation</td><td>makes arguments, output, capabilities, credentials, and provenance explicit</td></tr>
+<tr><td><strong>L1, L2, L5, L6</strong></td><td>admission</td><td>limit foreign names, overlap, routing failures, and semantic drift</td></tr>
+<tr><td><strong>Digest and Ed25519 signature</strong></td><td>catalog load</td><td>prevent missing, modified, or invalidly signed artifacts from loading</td></tr>
+<tr><td><strong>Sandbox, capabilities, policy, and vaglio</strong></td><td>invocation</td><td>limit concrete authority and apply decisions required by the action's risk</td></tr>
+<tr><td><strong>Per-user credential store</strong></td><td>authentication and use</td><td>separates bindings and keeps secrets away from the planner</td></tr>
+<tr><td><strong>Audit and efficacy statistics</strong></td><td>after invocation</td><td>record use and outcome and feed lifecycle controls</td></tr>
+</table>
+
+<p>Executors maintained directly by Metnos follow release review, tests,
+signing, and policy; imported executors add specific provenance, admission,
+and audit. Neither origin is “trusted by definition.” In the ordinary flow,
+L6 also does not approve when its verifier is unavailable: the plan is
+rejected with an explicit reason.</p>
+
+<h1 id="cap9">9. Going deeper</h1>
+
+<table>
+<tr><th>To understand&hellip;</th><th>Read</th></tr>
+<tr><td>what an executor is and how it is structured</td><td><a href="executor.html">Executor</a></td></tr>
+<tr><td>how services, skills, and backends determine availability</td><td><a href="skills_backends.html">Skills, services, and backends</a></td></tr>
+<tr><td>how Synt generates a new executor</td><td><a href="synt.html">Synt</a></td></tr>
+<tr><td>the boundary in which code runs</td><td><a href="sandbox.html">Sandbox</a></td></tr>
+<tr><td>the checks before risky actions</td><td><a href="vaglio.html">Vaglio</a></td></tr>
+</table>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; importing skills
+</p>
+</body>
+</html>

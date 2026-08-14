@@ -1,0 +1,68 @@
+{# ---
+role: synt_code_addendum_read
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 8616a8ce
+--- #}
+REGOLE VERBO `read` (oltre al generic):
+
+DEFINIZIONE: `read` = accede a una sorgente per ottenere il suo CONTENUTO.
+Read-only: ZERO mutazioni. Manifest revertible=False.
+
+PSEUDOCODICE UNIVERSALE:
+
+  def invoke(args):
+      entries_in = args.get("entries", [])
+      max_bytes = args.get("max_bytes", 64 * 1024)
+      max_lines = args.get("max_lines", None)
+      out_entries, failed = [], []
+      truncated_any = False
+      for i, e in enumerate(entries_in):
+          try:
+              data, encoding, was_truncated = read_one(e, max_bytes, max_lines)
+              out_entries.append({**e, "content": data, "encoding": encoding,
+                                  "truncated": was_truncated})
+              truncated_any = truncated_any or was_truncated
+          except Exception as ex:
+              failed.append({"index": i, "error": str(ex)})
+      return {"ok": len(failed)==0, "ok_count": len(out_entries),
+              "fail_count": len(failed), "entries": out_entries,
+              "truncated": truncated_any, "failed": failed}
+
+INVARIANTI:
+DEVI: ZERO mutazioni alla sorgente (no write/unlink/STORE/expunge/rename).
+DEVI: manifest `revertible: False` (nulla da annullare).
+DEVI: cap `max_bytes` o `max_lines` esplicito; default sensato (64KB/200 righe
+  per testo, 4KB body_preview per mail). Cap raggiunto → `truncated:True`
+  + `truncated_what` + `used` + `available_total`.
+DEVI: encoding fallback graceful: tenta `utf-8`, su `UnicodeDecodeError` usa
+  `errors="replace"` e riporta l'encoding effettivo nel result.
+DEVI: output `entries: list` (NON `results`). Coerenza I/O cross-executor.
+NON DEVI: caricare in observation file da centinaia di MB.
+NON DEVI: rinominare l'output a `results` (rompe from_step downstream).
+
+DOMINIO FILESYSTEM:
+- testo: `open(path, encoding=enc, errors="replace")` con cap iter line/byte.
+- csv: `csv.reader(file)` con cap righe.
+- xlsx: `openpyxl.load_workbook(path, read_only=True)`; iter_rows.
+- ocr: `PIL.Image.open()` + tesseract (verifica disponibile nel manifest).
+
+DOMINIO IMAP (read_messages):
+- entry: `{"account": ..., "folder": ..., "uid": ..., "message_id": ...}`
+- AVVERTENZE IMAP:
+  * `M.select(_q(folder))` PRIMA di ogni UID-cmd.
+  * `M.uid(...)` ritorna `(typ, data)` con `data` = LISTA bytes; usa `data[0]`.
+  * `_q(name)` quota nomi con spazi/non-ASCII — definisci helper:
+
+        def _q(name):
+            if " " in name or any(ord(c) > 127 for c in name):
+                return f'"{name}"'
+            return name
+
+- read: `M.uid("FETCH", uid, "(BODY[HEADER] BODY[1])")` per envelope+body.
+- arricchisci con `mail_client.parse_envelope(raw)` per i campi standard.
+- body_preview: cap a 4KB di default (full_body=True per saltare cap).

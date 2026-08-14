@@ -1,0 +1,67 @@
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+name        = "compute_signatures"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity = ["compute", "canonicalize", "signature", "reversibility", "seed", "bootstrap"]
+
+revertible       = false
+
+[output]
+schema_inline = "{ ok: bool, signature?: string, binary?: string, subcommand_or_flag?: string, target_kind?: string, requires_sudo?: bool, class?: string, undo_hint?: string | null, reason?: string, applied?: integer, skipped?: integer, seed_version?: integer, db_version?: integer, upgraded?: bool, skipped_signatures?: array, summary?: string, error?: string }"
+
+[[capabilities]]
+name = "compute:pure"
+hint = ["signature"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/state/metnos/safety.db"]
+when = { arg = "op", values = ["seed_apply"] }
+
+[[tests]]
+name = "missing_op"
+input = {}
+expect = { ok = false }
+
+[description]
+it = "SCOPO: calcola o classifica signature; può applicare idempotentemente il seed di sicurezza. PATTERN: compute_signatures(op='command', argv=[...]). NON: consultare liste (-> get_signatures); modificare curatela utente (-> set_signatures). OUT: per `command` {signature,binary,subcommand_or_flag,target_kind,requires_sudo}; per `reversibility` {class,undo_hint,reason}; per `seed_apply` {applied,skipped,seed_version,...}."
+en = "SCOPO: compute or classify a signature; it can idempotently apply the safety seed. PATTERN: compute_signatures(op='command', argv=[...]). NON: query lists (-> get_signatures); modify user curation (-> set_signatures). OUT: for `command` {signature,binary,subcommand_or_flag,target_kind,requires_sudo}; for `reversibility` {class,undo_hint,reason}; for `seed_apply` {applied,skipped,seed_version,...}."
+
+[code]
+files  = ["compute_signatures.py"]
+digest = "sha256:f07c058248c5a195d1be8643d61fdb608b4e76d497edf471ea9f9c17f01890f4"
+
+[args]
+type     = "object"
+required = ["op"]
+
+[args.properties.op]
+type        = "string"
+enum        = ["command", "reversibility", "seed_apply"]
+
+[args.properties.op.description]
+it = "Operazione da eseguire."
+en = "Operation to be executed."
+
+[args.properties.argv]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.argv.description]
+it = "Per op='command': argv da canonicalizzare. MATCH ESATTO sui token (security): wildcard `*`/`?` NON supportati e non interpretati come glob — un token argv = un token shell letterale."
+en = "For op='command': argv to be canonicalized. EXACT MATCH on tokens (security): wildcards `*`/`?` NOT supported and not interpreted as glob — one argv token = one literal shell token."
+
+[args.properties.signature]
+type        = "string"
+
+[args.properties.signature.description]
+it = "Per op='reversibility': signature da classificare."
+en = "For op='reversibility': signature to classify."
+
+[args.properties.seed_path]
+type        = "string"
+
+[args.properties.seed_path.description]
+it = "Per op='seed_apply': path del seed file. Default runtime/safety_seeds/v1.toml."
+en = "For op='seed_apply': path of the seed file. Default runtime/safety_seeds/v1.toml."

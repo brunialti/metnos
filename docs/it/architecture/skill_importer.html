@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; importazione delle skill</title>
+ <meta name="description" content="Come Metnos acquisisce una skill, la traduce nel vocabolario canonico, genera executor, applica i controlli di ammissione e registra gli esiti.">
+ <meta name="keywords" content="skill, skill importer, agentskills.io, executor, manifest, sandbox, sicurezza, Metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/skill_importer">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skill_importer">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skill_importer">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/skill_importer">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/skill_importer">
+ <meta property="og:title" content="Metnos &mdash; importazione delle skill">
+ <meta property="og:description" content="Dalla sorgente di una skill agli executor ammessi nel catalogo di Metnos.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; importazione delle skill">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — importazione delle skill",
+ "description": "Come Metnos acquisisce una skill, la traduce e ammette gli executor risultanti.",
+ "url": "https://metnos.com/it/architecture/skill_importer.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Importazione e ammissione delle skill in Metnos"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 20px; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Cos'&egrave; una skill, in trenta secondi</a></li>
+ <li><a href="#cap2">Dal file SKILL al catalogo</a></li>
+ <li><a href="#cap3">Sorgenti supportate</a></li>
+ <li><a href="#cap4">File generati e provenienza</a></li>
+ <li><a href="#cap5">Traduzione e controlli di ammissione</a></li>
+ <li><a href="#cap6">Credenziali e dialoghi con l'utente</a></li>
+ <li><a href="#cap7">Google Workspace: esempio completo</a></li>
+ <li><a href="#cap8">Confine di fiducia e controlli durante l'uso</a></li>
+ <li><a href="#cap9">Per andare pi&ugrave; a fondo</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Cos'&egrave; una skill, in trenta secondi</h1>
+
+<p class="lead">
+Una skill &egrave; un pacchetto che descrive come usare un servizio o una famiglia
+di funzioni. Il suo punto d'ingresso &egrave; <code>SKILL.md</code>; il pacchetto può
+includere anche script e riferimenti necessari all'esecuzione. Metnos non lo
+esegue direttamente: lo traduce in executor con nomi, argomenti, capacità e
+provenienza espliciti.
+</p>
+<p>
+Il file contiene un'intestazione con i metadati e un corpo leggibile, nel
+quale trovano posto funzioni, prerequisiti, comandi ed esempi. Il parser ne
+ricava una struttura controllabile; non considera la prosa un'autorizzazione
+ad ampliare il vocabolario o le capacità del sistema.
+</p>
+
+<p>
+Metnos può <strong>importare</strong> il sorgente di una skill: legge il file,
+ne ricava una serie di executor nel proprio formato e sottopone ciascuno ai
+controlli di ammissione. Quelli ammessi entrano nello stesso catalogo degli
+altri executor e possono essere richiamati in linguaggio naturale; il manifest
+continua però a registrarne l'origine esterna.
+</p>
+
+<h2>Perché non eseguire direttamente la skill</h2>
+<p>Un file <code>SKILL.md</code> non porta con sé la firma e il contratto di un
+executor Metnos. L'importazione genera un wrapper, dichiara capacità e
+argomenti nel manifest, applica i controlli di ammissione e firma il risultato.
+Questo riduce e rende osservabile l'autorità concessa, ma non certifica come
+innocuo il codice di terzi: provenienza e sorgente restano da valutare.</p>
+
+<h1 id="cap2">2. Dal file SKILL al catalogo</h1>
+
+<p>Il comando di importazione avvia una sequenza di passaggi distinti. Questa
+separazione è importante: una traduzione riuscita non equivale ancora
+all'ammissione nel catalogo.</p>
+
+<ol>
+ <li><strong>Acquisizione.</strong> Metnos risolve il percorso o l'URL, recupera
+ la sorgente e calcola l'impronta del file <code>SKILL.md</code>.</li>
+ <li><strong>Lettura.</strong> Il parser estrae metadati, dipendenze, script,
+ file di credenziali richiesti e sotto-comandi con i relativi argomenti.</li>
+ <li><strong>Traduzione.</strong> Ogni sotto-comando viene ricondotto a un nome
+ canonico nel formato <code>azione_oggetto_qualificatore</code>. Il nome del
+ fornitore qualifica gli executor importati e le collisioni interne alla skill
+ vengono rifiutate.</li>
+ <li><strong>Generazione.</strong> Template controllati producono il wrapper
+ Python, il manifest TOML e lo stato linguistico. Un modello linguistico può
+ proporre descrizioni e termini di affinità in italiano e in inglese; se non è
+ disponibile, il generatore usa un testo deterministico di riserva.</li>
+ <li><strong>Ammissione.</strong> Il runtime verifica unicità del binding, nome
+ canonico, sovrapposizioni di affinità, instradamento e coerenza semantica fra
+ manifest e codice.</li>
+ <li><strong>Firma.</strong> Le cartelle rifiutate vengono eliminate. Gli
+ executor accettati vengono firmati con Ed25519; senza una firma valida il
+ loader non li rende disponibili.</li>
+ <li><strong>Registrazione.</strong> L'esito entra nel registro di audit e, per
+ i casi mappabili, nella batteria persistente di prove di instradamento. Il
+ catalogo li vede al successivo caricamento valido.</li>
+</ol>
+
+<p>La traduzione di nomi e argomenti è procedurale rispetto alla sorgente e al
+vocabolario correnti. L'intera importazione, invece, non promette un output
+identico byte per byte: la provenienza contiene l'istante di importazione, le
+descrizioni possono essere generate da un modello e l'ammissione dipende dal
+catalogo già installato e dal verificatore semantico disponibile.</p>
+
+<h2>Il vocabolario chiuso</h2>
+<p>Metnos accetta soltanto azioni e oggetti definiti nel vocabolario del
+runtime. Una skill che parla di <em>append rows to spreadsheet</em> non può
+inventare <code>append_rows</code>: deve essere ricondotta a un nome canonico
+compatibile. Se non esiste una corrispondenza semanticamente corretta, il
+sotto-comando viene rifiutato. In questo modo sinonimi e formule proprie della
+skill non introducono nuovi verbi in modo implicito.</p>
+
+<h1 id="cap3">3. Sorgenti supportate</h1>
+
+<p>
+La skill pu&ograve; arrivare da tre posti:
+</p>
+
+<ul>
+ <li><strong>Locale</strong>: un file <code>SKILL.md</code> o una cartella che lo
+ contiene. Gli eventuali <code>scripts/</code> e <code>references/</code> adiacenti
+ vengono conservati insieme alla sorgente.</li>
+ <li><strong>agentskills.io</strong>: un indirizzo del tipo
+ <code>agentskills.io/&lt;autore&gt;/&lt;skill&gt;</code>; l'importatore
+ lo risolve nel file <code>SKILL.md</code> pubblicato nella radice del
+ repository atteso.</li>
+ <li><strong>GitHub diretto</strong>: l'URL completo di un repository viene
+ clonato con i file di supporto; un URL <em>raw</em> scarica invece soltanto il
+ file indicato.</li>
+</ul>
+
+<p>Se una skill invoca script propri, occorre quindi importare una cartella
+locale completa o il repository, non il solo file <em>raw</em>. Le sorgenti
+remote sono conservate nella cache locale per un massimo predefinito di sette
+giorni; l'operatore può forzare un nuovo recupero.</p>
+
+<h1 id="cap4">4. File generati e provenienza</h1>
+
+<p>La sorgente viene conservata separatamente dagli executor generati. Con i
+percorsi predefiniti, entrambi gli alberi appartengono all'utente che esegue
+l'importazione:</p>
+
+<pre>~/.local/share/metnos/skills/google-workspace/
+ SKILL.md
+ scripts/
+ references/
+
+~/.local/share/metnos/executors/skills/google-workspace/
+ read_events_google_workspace/
+  read_events_google_workspace.py
+  manifest.toml
+  manifest.lang_state.json
+  manifest.toml.sig
+ send_messages_google_workspace/
+  &hellip;
+</pre>
+
+<p>Prima della firma, ogni cartella contiene tre file generati: wrapper,
+manifest e stato linguistico. La firma aggiunge
+<code>manifest.toml.sig</code>. Script e riferimenti restano nel pacchetto
+sorgente e vengono richiamati dal wrapper. I vincoli della sandbox sono
+applicati dal runtime a partire dal contratto e dalle capacità dichiarate,
+senza un altro file per executor.</p>
+
+<p>Il manifest conserva il legame con la sorgente:</p>
+
+<pre>[provenance]
+synthesized       = true
+imported_from     = "&lt;origine della skill&gt;"
+source_version    = "1.1.0"
+source_section    = "&lt;sezione&gt;"
+source_subcommand = "calendar list"
+imported_at       = "&lt;istante UTC&gt;"
+source_sha256     = "&lt;impronta del file SKILL.md&gt;"
+importer_version  = "&lt;versione&gt;"
+</pre>
+
+<p>Posizione, provenienza, sorgente conservata e audit distinguono un executor
+importato da uno curato direttamente nel prodotto. Firma, contratto e policy
+di esecuzione sono invece requisiti comuni: la provenienza non sostituisce
+nessuno di questi controlli.</p>
+
+<h1 id="cap5">5. Traduzione e controlli di ammissione</h1>
+
+<p>La pipeline separa i rifiuti di traduzione da quelli di ammissione. Il
+registro finale riporta entrambe le categorie.</p>
+
+<table>
+<tr><th>Passaggio</th><th>Cosa verifica</th><th>Esito negativo</th></tr>
+<tr><td><strong>Confine del verbo</strong></td><td>L'azione della sorgente ha una corrispondenza semanticamente valida nel vocabolario chiuso.</td><td>Il sotto-comando non produce alcun piano.</td></tr>
+<tr><td><strong>Nome e collisioni</strong></td><td>Il nome composto è canonico, qualificato dal fornitore e distinto dagli altri nomi della stessa skill.</td><td>Il traduttore registra il motivo del rifiuto.</td></tr>
+<tr><td><strong>Unicità del binding</strong></td><td>Il binding della skill non appartiene già a un'altra importazione.</td><td>L'intera skill viene rifiutata.</td></tr>
+<tr><td><strong>L1 — vocabolario</strong></td><td>Azione, oggetto e qualificatori del piano appartengono al vocabolario corrente.</td><td>Il singolo piano viene rifiutato.</td></tr>
+<tr><td><strong>L2 — affinità</strong></td><td>L'affinità canonica non si sovrappone oltre la soglia agli executor già installati; il binding esplicito consente una soglia distinta.</td><td>Il singolo piano viene rifiutato come possibile doppione.</td></tr>
+<tr><td><strong>L5 — instradamento</strong></td><td>Quando esistono una domanda prototipica e un runner disponibile, l'asserzione deve scegliere l'executor atteso.</td><td>Un'asserzione eseguita e fallita rifiuta il piano; un caso non mappato o non eseguibile viene saltato.</td></tr>
+<tr><td><strong>L6 — coerenza semantica</strong></td><td>Il verificatore confronta manifest e codice generato.</td><td>Una divergenza, un errore o l'indisponibilità del verificatore rifiutano il piano nel flusso ordinario.</td></tr>
+</table>
+
+<p>I piani indipendenti possono avere esiti diversi: quelli rifiutati vengono
+rimossi e gli altri proseguono. La collisione globale del binding costituisce
+l'eccezione e interrompe l'intera importazione. Le opzioni che saltano L2, L5
+o L6 servono a sviluppo e CI; usarle riduce le garanzie e non equivale a una
+certificazione per l'esercizio.</p>
+
+<p>Il report dell'importazione è l'autorità per quella specifica esecuzione:
+elenca piani tradotti, nomi accettati e rifiuti con le rispettive motivazioni.
+Un nome accettato non dimostra, da solo, che ogni possibile asserzione L5 sia
+stata eseguita, perché alcuni pattern ammettono esplicitamente lo <em>skip</em>.</p>
+
+<h1 id="cap6">6. Credenziali e dialoghi con l'utente</h1>
+
+<p>L'importazione non raccoglie credenziali. Se, durante l'uso, un fornitore
+segnala che manca l'autenticazione, il wrapper generato restituisce
+<code>decision = "needs_inputs"</code> e conserva gli argomenti necessari a
+riprendere l'operazione.</p>
+
+<ol>
+ <li>Metnos presenta nella chat il dialogo previsto dal manifest; la chat web
+ può aprire il modulo protetto e gli altri canali forniscono le indicazioni per
+ raggiungerlo.</li>
+ <li>Per OAuth l'utente indica il file del client e l'ambito dei servizi,
+ quindi completa l'autorizzazione nel browser.</li>
+ <li>Il server scambia il codice e conserva il token nell'archivio cifrato
+ dell'utente, per impostazione predefinita sotto
+ <code>~/.config/metnos/credentials/</code>.</li>
+ <li>Se un fornitore compatibile richiede anche un file in una posizione
+ propria, il manifest può dichiarare una copia locale protetta con permessi
+ <code>0600</code>.</li>
+ <li>Al termine Metnos riprende l'executor con gli argomenti originari.</li>
+</ol>
+
+<p>I collegamenti e i valori delle credenziali sono isolati per utente. Il
+manifest dichiara soltanto il nome del binding e lo schema del dialogo: i
+segreti non entrano nel manifest, nel codice generato o nel testo inviato al
+pianificatore. Gli executor <code>find_credentials</code>,
+<code>set_credentials</code> e
+<code>delete_credentials</code> espongono rispettivamente metadati, scrittura
+protetta e cancellazione; le loro risposte al pianificatore non contengono i
+valori in chiaro.</p>
+
+<h1 id="cap7">7. Google Workspace: esempio completo</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Che appuntamenti ho domani nel calendario di lavoro?&raquo; Se la capacità
+Google Workspace è ammessa, abilitata e collegata all'account dell'utente, il
+catalogo rende disponibile l'executor specifico per gli eventi. Altri esempi
+sono &laquo;Trova le email non lette di Anna&raquo;, &laquo;Leggi il contenuto di questo file
+su Drive&raquo; e &laquo;Aggiungi queste righe al foglio Spese&raquo;.</p>
+
+<p>L'importazione è un'operazione amministrativa distinta. Il pacchetto
+Google Workspace incluso con Metnos contiene anche gli script necessari, per
+cui il comando usa la cartella completa:</p>
+
+<pre>metnos-skills import &lt;install-root&gt;/executors/skills/google-workspace</pre>
+
+<p>La sorgente dichiara 24 sotto-comandi. La verifica procedurale corrente
+dimostra 24 piani canonici distinti e nessun rifiuto di traduzione. Alcune
+distinzioni semantiche decisive sono:</p>
+
+<table>
+<tr><th>Sotto-comando</th><th>Executor canonico</th><th>Distinzione</th></tr>
+<tr><td><code>gmail send</code></td><td><code>send_messages_google_workspace</code></td><td>nuovo messaggio</td></tr>
+<tr><td><code>gmail reply</code></td><td><code>send_messages_thread_google_workspace</code></td><td>risposta entro una conversazione</td></tr>
+<tr><td><code>gmail labels</code></td><td><code>list_messages_labels_google_workspace</code></td><td>elenco delle etichette, non modifica dei messaggi</td></tr>
+<tr><td><code>drive get</code></td><td><code>get_files_google_workspace</code></td><td>metadati del file</td></tr>
+<tr><td><code>drive download</code></td><td><code>read_files_google_workspace</code></td><td>contenuto del file</td></tr>
+<tr><td><code>sheets update</code></td><td><code>set_files_xlsx_google_workspace</code></td><td>aggiornamento di celle esistenti</td></tr>
+<tr><td><code>sheets append</code></td><td><code>write_files_xlsx_google_workspace</code></td><td>scrittura di nuove righe</td></tr>
+</table>
+
+<p>Il dato 24/24 riguarda traduzione, unicità dei nomi e generazione dei
+manifest. Non autorizza a dichiarare in anticipo «24 ammessi»: L2 confronta il
+catalogo dell'utente, L5 dipende dalle prove eseguibili e L6 dal verificatore
+semantico. Il report prodotto da quella importazione indica quanti executor
+sono stati accettati; soltanto quelli firmati e validi possono entrare nel
+catalogo. L'autorizzazione OAuth avviene poi per il singolo utente e non fa
+parte del conteggio di importazione.</p>
+
+<h1 id="cap8">8. Confine di fiducia e controlli durante l'uso</h1>
+
+<p>Importare una skill non significa attestare che il suo codice sia innocuo.
+L'importatore controlla il wrapper e il contratto che genera, ma non esegue
+un'analisi statica completa di ogni script ricevuto. Prima dell'importazione
+l'operatore deve verificare origine e impronta, leggere gli script e concedere
+soltanto capacità e credenziali necessarie.</p>
+
+<table>
+<tr><th>Controllo</th><th>Momento</th><th>Garanzia effettiva</th></tr>
+<tr><td><strong>Provenienza e impronta</strong></td><td>acquisizione</td><td>collegano l'artefatto alla sorgente esaminata; non ne provano la sicurezza</td></tr>
+<tr><td><strong>Contratto generato</strong></td><td>generazione</td><td>rende espliciti argomenti, output, capacità, credenziali e provenienza</td></tr>
+<tr><td><strong>L1, L2, L5, L6</strong></td><td>ammissione</td><td>limitano nomi estranei, sovrapposizioni, errori di instradamento e divergenze semantiche</td></tr>
+<tr><td><strong>Digest e firma Ed25519</strong></td><td>caricamento del catalogo</td><td>impediscono di caricare artefatti mancanti, alterati o non firmati validamente</td></tr>
+<tr><td><strong>Sandbox, capacità, policy e vaglio</strong></td><td>invocazione</td><td>limitano l'autorità concreta e applicano le decisioni richieste dal rischio dell'azione</td></tr>
+<tr><td><strong>Archivio delle credenziali per utente</strong></td><td>autenticazione e uso</td><td>separa i collegamenti e non espone i segreti al pianificatore</td></tr>
+<tr><td><strong>Audit e statistiche di efficacia</strong></td><td>dopo l'invocazione</td><td>registrano uso ed esito e alimentano i controlli del ciclo di vita</td></tr>
+</table>
+
+<p>Gli executor curati direttamente da Metnos seguono revisione, prove,
+firma e policy del rilascio; quelli importati aggiungono provenienza,
+ammissione e audit specifici. Nessuna delle due origini è «fidata per
+definizione». Nel flusso ordinario, inoltre, L6 non approva quando il
+verificatore è indisponibile: il piano viene rifiutato con un motivo esplicito.</p>
+
+<h1 id="cap9">9. Per andare pi&ugrave; a fondo</h1>
+
+<table>
+<tr><th>Per capire&hellip;</th><th>Leggi</th></tr>
+<tr><td>cos'è un executor e come è fatto</td><td><a href="executor.html">Executor</a></td></tr>
+<tr><td>come servizi, skill e backend determinano la disponibilità</td><td><a href="skills_backends.html">Skill, servizi e backend</a></td></tr>
+<tr><td>come Synt genera un nuovo executor</td><td><a href="synt.html">Synt</a></td></tr>
+<tr><td>il recinto nel quale viene eseguito il codice</td><td><a href="sandbox.html">Sandbox</a></td></tr>
+<tr><td>i controlli prima delle azioni rischiose</td><td><a href="vaglio.html">Vaglio</a></td></tr>
+</table>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; importazione delle skill
+</p>
+</body>
+</html>

@@ -1,0 +1,102 @@
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "act_sites"
+version     = "0.2.0"
+intelligence = "agentic"
+timeout_s   = 180
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+critical    = true
+revertible  = false
+affinity    = [
+    "clicca sul sito", "compila il modulo", "invia il form", "premi il bottone",
+    "cerca nel sito", "trova nella dashboard", "naviga nel portale",
+    "click on website", "fill the form", "submit form", "press the button",
+    "search the site", "find in dashboard", "navigate the portal",
+]
+
+[description]
+it = "SCOPO: naviga a un fine dentro una sessione web, con conferma se sensibile. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"). NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}]."
+en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"). NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}]."
+
+[code]
+files = ["act_sites.py"]
+digest = "sha256:715ca257ce5a197cb75574eb4f48211b079b8bfffe89302566ebf5bef6c4db74"
+
+[args]
+type = "object"
+required = ["session_ids", "action"]
+
+[args.properties.session_ids]
+type = "array"
+from_entries_key = "session_id"
+[args.properties.session_ids.description]
+it = "Sessioni prodotte da open_sites, normalmente via from_step. ID esatti, mai wildcard."
+en = "Sessions produced by open_sites, normally via from_step. Exact IDs, never wildcards."
+
+[args.properties.action]
+type = "string"
+[args.properties.action.description]
+it = "Il FINE in linguaggio naturale, mai selettori. DEVI nominare la COSA da raggiungere, non solo il verbo: 'le mie prenotazioni', non 'vai'. NON DEVI usare 'mie/miei' per dire dove sta: quello e' il campo `ambito`. DEVI aggiungere il tratto che distingue, se c'e': 'passate', 'future', 'cancellate', un anno. NON DEVI nominare il sito ('su booking'): sulla sua pagina quel nome sta ovunque e non distingue niente. NON DEVI mettere due fini in una chiamata. OK: 'le mie prenotazioni future'. ERRORE: 'vai su booking e guarda'."
+en = "The GOAL in natural language, never selectors. DEVI name the THING to reach, not just the verb: 'my bookings', not 'go'. NON DEVI use 'my' to say where it lives: that is the `ambito` field. DEVI add the distinguishing trait when there is one: 'past', 'upcoming', 'cancelled', a year. NON DEVI name the site ('on booking'): on its own pages that name is everywhere and distinguishes nothing. NON DEVI put two goals in one call. OK: 'my upcoming bookings'. ERRORE: 'go to booking and look'."
+
+[args.properties.done_when]
+type = "string"
+[args.properties.done_when.description]
+it = "Come si RICONOSCE di essere arrivati: cosa deve comparire nella pagina. Senza, si riconosce dal fine stesso, che a volte non basta. DEVI descrivere il contenuto atteso, non l'aspetto: 'l'elenco delle prenotazioni con le date', non 'la pagina giusta'. OK: done_when=\"elenco con destinazione e date\". ERRORE: done_when=\"ho finito\"."
+en = "How to RECOGNISE arrival: what must appear on the page. Without it, arrival is judged from the goal itself, which is sometimes not enough. DEVI describe the expected content, not the looks: 'the list of bookings with dates', not 'the right page'. OK: done_when=\"list with destination and dates\". ERRORE: done_when=\"I am done\"."
+
+[args.properties.ambito]
+type = "string"
+enum = ["personale", "pubblico"]
+[args.properties.ambito.description]
+it = "DOVE sta il fine: 'personale' se la cosa e' nell'area dell'utente (le sue prenotazioni, i suoi ordini, il suo profilo), 'pubblico' se e' una parte del sito visibile a chiunque. DEVI dichiararlo quando lo sai: apre il menu dell'account invece di cercare in home, e non dipende da come e' scritta la frase. Senza, si prova a dedurlo dal possesso ('le MIE ...'), che spesso non c'e'. OK: ambito=\"personale\". ERRORE: ambito=\"account\"."
+en = "WHERE the goal lives: 'personale' when the thing is in the user's own area (their bookings, their orders, their profile), 'pubblico' when it is a part of the site anyone can see. DEVI declare it when you know it: it opens the account menu instead of searching the home page, and it does not depend on how the sentence is worded. Without it, the scope is guessed from possession ('MY ...'), which is often absent. OK: ambito=\"personale\". ERRORE: ambito=\"account\"."
+
+[args.properties.value_ref]
+type = "string"
+[args.properties.value_ref.description]
+it = "Opzionale. Valore da inserire; per credenziali usare cred:<dominio>:<campo>. Il broker sceglie autonomamente il campo."
+en = "Optional. Value to enter; for credentials use cred:<domain>:<field>. The broker selects the field itself."
+
+[args.properties.approval_tokens]
+type = "object"
+runtime_resolved = true
+[args.properties.approval_tokens.description]
+it = "Solo runtime: token opachi emessi dal broker e ripresentati dopo approvazione."
+en = "Runtime only: opaque tokens issued by the broker and replayed after approval."
+
+[args.properties._goal_mode]
+type = "boolean"
+runtime_resolved = true
+[args.properties._goal_mode.description]
+it = "Solo runtime: interpreta action come fine semantico da raggiungere prima della lettura."
+en = "Runtime only: treat action as the semantic goal to reach before reading."
+
+[output]
+schema_inline = """
+{ok: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, reason_code?: str}>}
+"""
+
+[[capabilities]]
+name = "network:sites"
+hint = ["*"]
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
+
+[[tests]]
+name = "manca_session_ids"
+input = { action = "clicca Accedi" }
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[[tests]]
+name = "manca_action"
+input = { session_ids = ["abc"] }
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[placement]
+scope = "server"
+device_ok = false

@@ -1,0 +1,41 @@
+{# ---
+role: describe_format
+tier: auto
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev: 00000000
+--- #}
+DEVI: scrivere tutto il testo rivolto all'utente in {{ lang_name }} e rispettare il formato {{ format_name }} indicato sotto.
+NON DEVI: usare la lingua di questo prompt quando differisce da {{ lang_name }}, né aggiungere un secondo formato.
+OK: la risposta usa {{ lang_name }} e un solo formato {{ format_name }}.
+ERRORE: la risposta segue la lingua del prompt di ripiego o mescola più formati.
+
+{% if format_name == "markdown" %}
+DEVI: usare Markdown leggero, elenchi con `* ` e grassetto soltanto per evidenziare.
+NON DEVI: creare tabelle complesse o HTML.
+OK: `* voce` su una riga separata.
+ERRORE: una tabella larga o tag HTML.
+{% elif format_name == "html" %}
+DEVI: usare soltanto HTML semplice: `<b>`, `<i>`, `<code>` e `<a href="...">`; per gli elenchi usa righe separate con prefisso `• `.
+NON DEVI: usare `<ul>`, `<li>` o tag diversi da quelli ammessi.
+OK: `<b>Titolo</b>` seguito da righe `• voce`.
+ERRORE: `<table>` o un tag non ammesso.
+{% elif format_name == "plain" %}
+DEVI: usare testo piano e paragrafi separati da una riga vuota quando serve.
+NON DEVI: usare Markdown, HTML o simboli decorativi.
+OK: frasi pulite in testo piano.
+ERRORE: `**grassetto**` oppure `<b>testo</b>`.
+{% elif format_name == "json" %}
+DEVI: restituire un solo oggetto JSON valido con `summary`, `highlights`, `total` e `noise_filtered`.
+NON DEVI: aggiungere prosa o recinzioni Markdown fuori dal JSON.
+OK: `{"summary":"...","highlights":[],"total":0,"noise_filtered":0}`.
+ERRORE: testo prima o dopo l'oggetto JSON.
+{% elif format_name == "bullet_list" %}
+DEVI: restituire soltanto un elenco con `* `, una voce per riga e al massimo dieci voci.
+NON DEVI: aggiungere introduzione, conclusione o paragrafi fuori dall'elenco.
+OK: `* una voce`.
+ERRORE: una prefazione seguita dall'elenco.
+{% endif %}

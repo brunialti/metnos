@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metnos — A quick tour through examples</title>
+  <meta name="description" content="Six natural-language requests show installation, Tutor, complete results, workflows, consent, remote devices, and undo in Metnos.">
+  <meta name="keywords" content="Metnos, quick tour, self-hosted assistant, Tutor, installation, security, undo, OpenClaw, Hermes Agent">
+  <meta name="author" content="the owner">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://metnos.com/en/Metnos_QuickTour">
+  <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour">
+  <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour">
+  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/Metnos_QuickTour">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://metnos.com/en/Metnos_QuickTour">
+  <meta property="og:title" content="Metnos — A quick tour through examples">
+  <meta property="og:description" content="See Metnos at work in six requests, from installation to undo.">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Metnos — A quick tour through examples">
+  <meta name="twitter:description" content="Six representative requests show how Metnos is used and governed.">
+  <link rel="stylesheet" href="/assets/metnos.css">
+  <style>
+    :root{--ink:#282521;--muted:#6e685f;--paper:#fbf9f4;--white:#fff;--line:#ddd3c4;--navy:#173f6b;--blue:#2f6ea7;--bronze:#9b4f2f;--green:#496f45;--green-bg:#edf5ea;--amber:#a56a14;--amber-bg:#fff7e8}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth}
+    body{max-width:1080px;margin:0 auto;padding:0 42px 70px;background:var(--paper);color:var(--ink);font:16px/1.65 Inter,"Segoe UI",system-ui,sans-serif}
+    a{color:var(--navy)}
+    .lang-switch{position:fixed;top:18px;right:24px;z-index:4;background:rgba(251,249,244,.94);border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:.78rem;font-weight:800;letter-spacing:.08em}
+    .lang-switch a{text-decoration:none}.lang-switch .active{color:var(--bronze)}.lang-switch .sep{padding:0 5px;color:var(--muted)}
+    .back{padding:22px 0;border-bottom:1px solid var(--line);font-size:.9rem}.back a{text-decoration:none;font-weight:650}
+    .print-cover{display:none}
+    .hero{padding:86px 0 44px}
+    .eyebrow,.group-title{color:var(--bronze);font-size:.74rem;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+    .hero h1{margin:.12em 0;color:var(--navy);font:clamp(3.4rem,9vw,7.2rem)/.93 Georgia,serif;letter-spacing:-.045em}
+    .subtitle{max-width:850px;color:#384b5e;font:clamp(1.25rem,2.5vw,1.72rem)/1.45 Georgia,serif}
+    .kleos{margin-top:18px;color:var(--bronze);font:italic 1rem Georgia,serif}
+    .facts{display:grid;grid-template-columns:repeat(5,1fr);margin:42px 0 20px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    .facts .f{padding:18px 12px;border-right:1px solid var(--line);text-align:center}.facts .f:last-child{border-right:0}
+    .facts .v{display:block;color:var(--navy);font:1.35rem Georgia,serif}.facts .k{display:block;margin-top:5px;color:var(--muted);font-size:.69rem;font-weight:750;letter-spacing:.06em;text-transform:uppercase}
+    .meta{color:var(--muted);font-size:.82rem}.meta b{color:var(--ink)}
+    .toc{margin:18px 0 76px;padding:27px 30px;background:var(--white);border:1px solid var(--line)}
+    .toc ol{margin:14px 0 0;padding:0;list-style:none;columns:2;column-gap:50px}.toc li{break-inside:avoid;border-top:1px solid var(--line);padding:10px 0}.toc a{text-decoration:none}.toc .tn{display:inline-block;width:32px;color:var(--bronze);font-weight:800}
+    section.cap{margin:0 0 86px;scroll-margin-top:25px}
+    section h2{margin:0 0 24px;padding-bottom:13px;border-bottom:2px solid var(--navy);color:var(--navy);font:2.1rem/1.15 Georgia,serif}
+    p.lead{max-width:850px;color:#4c4740;font:1.23rem/1.6 Georgia,serif}
+    .scene{counter-increment:scene;position:relative;margin:30px 0;padding:30px 34px 32px 58px;background:var(--white);border:1px solid var(--line);border-left:5px solid var(--navy);box-shadow:0 10px 28px rgba(47,40,31,.05)}
+    main{counter-reset:scene}
+    .scene::before{content:counter(scene);position:absolute;left:-24px;top:27px;width:42px;height:42px;border-radius:50%;background:var(--navy);color:#fff;font:700 1rem/42px Georgia,serif;text-align:center}
+    .scene h3{margin:7px 0 15px;color:var(--navy);font:1.65rem/1.25 Georgia,serif}
+    .q{margin:19px 0;padding:17px 20px;background:#eef4fa;border-left:4px solid var(--blue);color:#213c59;font:italic 1.08rem/1.55 Georgia,serif}
+    .q::before{content:"Ask Metnos with a request like this example:";display:block;margin-bottom:8px;color:var(--blue);font:800 .68rem/1.3 Inter,"Segoe UI",sans-serif;letter-spacing:.08em;text-transform:uppercase}
+    .reply,.truth{margin:18px 0;padding:17px 20px;background:var(--green-bg);border-left:4px solid var(--green)}
+    .reply::before{content:"Answer";display:block;margin-bottom:7px;color:var(--green);font-size:.68rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
+    .truth{background:#f6f1e9;border-left-color:var(--bronze)}.truth::before{content:"Why this result is trustworthy";display:block;margin-bottom:7px;color:var(--bronze);font-size:.68rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase}
+    .pipe{margin:18px 0;padding:13px 16px;background:#f5f2ec;border:1px solid var(--line);color:#4b4741;font:13px/1.65 ui-monospace,"Cascadia Code",Consolas,monospace}.pipe .a{color:var(--bronze);font-weight:900}
+    pre{overflow:auto;margin:18px 0;padding:18px 20px;background:#172433;color:#eef4fa;border-radius:4px;font:13px/1.65 ui-monospace,"Cascadia Code",Consolas,monospace}
+    .approval-card{margin:18px 0;padding:18px 20px;background:var(--amber-bg);border:1px solid #ead0a4;border-left:5px solid var(--amber)}
+    .approval-card .line1{color:#68420b;font-weight:850}.approval-card .line2{margin:6px 0;color:#544b3e}.approval-card .line3{color:var(--muted);font-size:.8rem}
+    .btns{display:flex;gap:9px;margin-top:14px}.btn{padding:7px 13px;border-radius:5px;background:#fff;border:1px solid var(--line);font-weight:750}.btn.ok{border-color:#94b08f;color:#385f34}.btn.no{border-color:#d6aaa2;color:#8d3c32}
+    .table-scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--line);background:var(--white)}
+    table{width:100%;border-collapse:collapse;min-width:880px;font-size:.88rem}th,td{padding:14px 15px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{background:#eef3f8;color:var(--navy)}th:last-child,td:last-child{border-right:0}tr:last-child td{border-bottom:0}td:first-child{color:var(--navy);font-weight:800}
+    .source-note{padding:17px 20px;background:#f3efe7;border-left:4px solid var(--bronze);color:var(--muted);font-size:.86rem}
+    .next{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.next a{display:block;padding:18px;background:var(--white);border:1px solid var(--line);text-decoration:none;font-weight:750}.next span{display:block;margin-top:5px;color:var(--muted);font-size:.82rem;font-weight:400}
+    footer{margin-top:70px;padding:28px 0;border-top:1px solid var(--line);color:var(--muted);font-size:.84rem}
+    @media(max-width:760px){body{padding:0 18px 45px}.lang-switch{position:static;float:right;margin-top:14px}.back{clear:both}.hero{padding-top:58px}.facts{grid-template-columns:repeat(2,1fr)}.facts .f{border-bottom:1px solid var(--line)}.toc ol{columns:1}.scene{padding:25px 20px 27px 35px;margin-left:10px}.scene::before{left:-20px}.next{grid-template-columns:1fr}}
+    @media print{.pdf-dl{display:none}}
+  </style>
+  <link rel="stylesheet" href="../assets/quicktour-print.css" media="print">
+  <style media="print">@page{@top-right{content:"QUICK TOUR · EXAMPLES"}}.pipe::before{content:"EXECUTOR CHAIN"}</style>
+</head>
+<body>
+<nav class="lang-switch" aria-label="Language">
+  <a href="/it/Metnos_QuickTour.html" hreflang="it" lang="it">IT</a><span class="sep">·</span><a class="active" href="/en/Metnos_QuickTour.html" hreflang="en" lang="en">EN</a>
+</nav>
+<nav class="back"><a href="index.html">← Documentation index</a></nav>
+
+<div class="print-cover" aria-hidden="true">
+  <img class="print-cover__art" src="../assets/metnos-quicktour-cover.png" alt="">
+  <div class="print-cover__title">
+    <div class="print-cover__eyebrow">Quick tour · Six requests</div>
+    <h1>Metnos</h1>
+    <p class="print-cover__deck">The clearest way to understand an assistant is to watch it work.</p>
+  </div>
+  <div class="print-cover__credit">Introductory booklet · the owner · 2026</div>
+</div>
+
+<header class="hero">
+  <div class="eyebrow">A quick tour through examples</div>
+  <h1>Metnos at work</h1>
+  <div class="subtitle">There is no catalog of functions to memorize before you begin. These six conversations follow the whole path: install, ask, understand, act — and, when the operation truly supports it, undo.</div>
+  <div class="kleos">mētis (μῆτις), practical intelligence · noûs (νοῦς), mind</div>
+  <div class="facts">
+    <div class="f"><span class="v">4 commands</span><span class="k">to begin</span></div>
+    <div class="f"><span class="v">6 phases</span><span class="k">resumable</span></div>
+    <div class="f"><span class="v">14 pages</span><span class="k">of administration</span></div>
+    <div class="f"><span class="v">Tutor</span><span class="k">inside Metnos</span></div>
+    <div class="f"><span class="v">undo</span><span class="k">only when real</span></div>
+  </div>
+  <div class="meta"><b>License:</b> AGPL-3.0 · <b>Code:</b> <a href="https://github.com/brunialti/metnos">GitHub</a> · <b>Installation:</b> <a href="https://github.com/brunialti/metnos/blob/main/install/README.md">guide</a><span class="pdf-dl"> · <b>PDF:</b> <a href="Metnos_QuickTour.pdf" type="application/pdf">A4 edition</a></span></div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <div class="group-title">Six requests and one comparison</div>
+  <ol>
+    <li><a href="#cap1"><span class="tn">01</span>From installation to the first answer</a></li>
+    <li><a href="#cap2"><span class="tn">02</span>Ask the Tutor for help</a></li>
+    <li><a href="#cap3"><span class="tn">03</span>Find files that are exactly identical</a></li>
+    <li><a href="#cap4"><span class="tn">04</span>From mail to a sheet, then consent</a></li>
+    <li><a href="#cap5"><span class="tn">05</span>Work on Windows and undo</a></li>
+    <li><a href="#cap6"><span class="tn">06</span>Follow a portal every morning</a></li>
+    <li><a href="#cap7"><span class="tn">07</span>Metnos, OpenClaw, and Hermes</a></li>
+  </ol>
+</nav>
+
+<main>
+<section class="cap" id="cap1">
+  <h2>1 · From installation to the first answer</h2>
+  <p class="lead">Installation manages the whole instance, not just a Python package: an isolated environment, models, optional services, encrypted secrets, service units, the interface, and the Tutor catalog.</p>
+  <div class="scene">
+    <div class="group-title">Starting out</div>
+    <h3>Four commands, then conversation</h3>
+    <pre>git clone https://github.com/brunialti/metnos.git
+cd metnos
+bash install/bootstrap.sh --check
+bash install/bootstrap.sh</pre>
+    <p>The preflight is read-only. The installer leads you through six phases, verifies each outcome, and records completed work. If a download or the Tutor build is interrupted, the same command resumes from the last valid point.</p>
+    <p class="q">What time is it, and which time zone are you using?</p>
+    <div class="reply">It is 09:42 in Europe/Rome (UTC+02:00).</div>
+    <div class="truth">An open HTTP port proves only that a process responds. This first request crosses classification, planning, an executor, and final presentation: it is a minimal proof of the complete chain.</div>
+    <div class="meta"><b>Installation:</b> guided, idempotent, and resumable · <b>Environment:</b> owned by the installation root, separate from user data · <b>First access:</b> one-use administrative link</div>
+  </div>
+</section>
+
+<section class="cap" id="cap2">
+  <h2>2 · Ask the Tutor for help</h2>
+  <p class="lead">You do not need to know the shape of Settings or guess a capability's technical name. Tutor answers questions about Metnos before the operational planner can mistake the question for an action.</p>
+  <div class="scene">
+    <div class="group-title">Orientation</div>
+    <h3>“Where can I see the configured embedder?”</h3>
+    <p class="q">Show me which embedder is configured under Settings &gt; System &gt; Models, and guide me there from the web chat.</p>
+    <div class="reply"><strong>Path in the web chat:</strong> Settings → System → Models. The page shows the effective configuration for LLM, embedding, and vision-language models: LLM and VLM are editable; embedding is view-only. <a href="interface.html#settings" data-url="metnos.com/en/interface#settings">Open the official interface guide</a>.</div>
+    <p>If the question arrives from Telegram, Tutor says that the path must be opened in the web chat. It can also describe the page attested by the current instance, give its address, and say what is missing rather than inventing a menu.</p>
+    <div class="truth">Tutor is compiled locally from published documentation, admitted executor manifests, and permitted runtime registries. Changes to those sources rebuild and sign the catalog; internal notes and personal files are never Tutor sources.</div>
+    <div class="meta"><b>Settings:</b> 14 pages in four areas · <b>Validated languages:</b> Italian and English · <b>Boundary:</b> Tutor explains; it never acts quietly</div>
+  </div>
+</section>
+
+<section class="cap" id="cap3">
+  <h2>3 · Find files that are exactly identical</h2>
+  <p class="lead">A broad request should not yield a convenient but incomplete answer. Metnos keeps the limit on what fits in chat separate from the limit on the work that must be completed.</p>
+  <div class="scene">
+    <div class="group-title">Completeness</div>
+    <h3>Count everything, compare content, create the sheet</h3>
+    <p class="q">Inspect the Pictures directory on the Metnos server: count every file and directory, then find every image that is certainly duplicated. Create a sheet with both paths and filenames for each pair.</p>
+    <div class="pipe">complete scan <span class="a">→</span> counts <span class="a">→</span> group by size <span class="a">→</span> full SHA-256 <span class="a">→</span> sheet containing every relation</div>
+    <div class="reply">In the illustrated run, the complete count found 34,060 files, 928 directories, and no symbolic links: 34,988 items in all. The duplicate search then examined the 32,239 image-type files, finding 2,809 exact-duplicate groups and 3,084 redundant copies. I created “Duplicate images” with 3,084 data rows.</div>
+    <div class="truth">“Certainly duplicated” means identical content verified by the full digest — not a similar size or a visual probability. A row limit may keep the chat readable; it cannot silently reduce the data handed to the spreadsheet.</div>
+    <div class="meta"><b>Search:</b> recursive and parallel within the instance budget · <b>Outcome:</b> complete counts and declared truncation · <b>Sheet:</b> headings map semantically to fields, never by position</div>
+  </div>
+</section>
+
+<section class="cap" id="cap4">
+  <h2>4 · From mail to a sheet, then consent</h2>
+  <p class="lead">One sentence can join several domains. Typed results pass between steps; the model does not need to copy the data and cannot freely pick an account or provider.</p>
+  <div class="scene">
+    <div class="group-title">Composition</div>
+    <h3>Search, extract, and deliver</h3>
+    <p class="q">Find June's invoice emails, extract date, supplier, invoice number, and amount, then create a sheet sorted by date.</p>
+    <div class="pipe">message search <span class="a">→</span> structured extraction <span class="a">→</span> sort <span class="a">→</span> create sheet</div>
+    <div class="reply">I created “June invoices” with 27 data rows. Three messages had no recognizable amount and are marked incomplete.</div>
+    <p class="q">Send the sheet to my accountant.</p>
+    <div class="approval-card">
+      <div class="line1">May I send a message with an attachment?</div>
+      <div class="line2">Recipient: accountant@example.com · attachment: June invoices.xlsx</div>
+      <div class="line3">External effect · cannot be undone after sending</div>
+      <div class="btns"><span class="btn ok">Approve</span><span class="btn no">Reject</span></div>
+    </div>
+    <div class="truth">Reading and creating a local document do not require the same decision as sending it outside. Consent is bound to the user, recipient, attachment, and this proposal. A sent email is never described as undoable.</div>
+    <div class="meta"><b>Account:</b> selected by configuration and explicit context · <b>Secrets:</b> resolved only at execution time · <b>Errors:</b> incomplete rows are declared, never filled by plausibility</div>
+  </div>
+</section>
+
+<section class="cap" id="cap5">
+  <h2>5 · Work on Windows and undo</h2>
+  <p class="lead">The server retains the plan, policy, consent, and audit trail. A paired client carries only compatible execution to the device where the data lives.</p>
+  <div class="scene">
+    <div class="group-title">Remote device</div>
+    <h3>The photos remain on the PC</h3>
+    <p class="q">On OFFICE-PC, organize the photos in Pictures into subfolders by year without changing their names.</p>
+    <div class="reply">Completed on OFFICE-PC: 486 photos moved, 12 subfolders created, 0 errors. Undo is available.</div>
+    <p class="q">Undo the last operation.</p>
+    <div class="reply">I restored 486 photos to their original paths on OFFICE-PC and removed the 12 folders that remained empty.</div>
+    <div class="truth">Undo is not a model-generated repair. The runtime retains the source/destination pairs and device identity, then executes the inverse on the same PC. If the PC is off, Metnos never falls back silently to the server: it waits or reports that the device is unavailable.</div>
+    <div class="meta"><b>Connection:</b> outbound client, signed invocations · <b>Authority:</b> paths granted for this call · <b>Undo:</b> idempotent and limited to recorded effects</div>
+  </div>
+</section>
+
+<section class="cap" id="cap6">
+  <h2>6 · Follow a portal every morning</h2>
+  <p class="lead">When the route may change but the purpose remains narrow, an executor may observe a page and choose among enumerated actions. That does not turn it into an unbounded agent.</p>
+  <div class="scene">
+    <div class="group-title">Website and schedule</div>
+    <h3>From the school portal to Telegram</h3>
+    <p class="q">Every morning at 7, sign in to the school portal, collect homework, marks, and notices, read attached PDFs too, and send the five most important updates to my daughter on Telegram.</p>
+    <div class="pipe">07:00 schedule <span class="a">→</span> site session <span class="a">→</span> encrypted credential login <span class="a">→</span> pages and PDFs <span class="a">→</span> summary <span class="a">→</span> authorized user delivery</div>
+    <div class="reply"><strong>School — today's summary</strong><br>1. Notice about Friday's strike<br>2. Mathematics test postponed<br>3. New weekend homework<br>4. Parent meetings open for booking<br>5. Latin mark published</div>
+    <div class="truth">The mandate, allowed site, recipient identity, maximum item count, and output format remain fixed. If login expires, a second factor appears, or the site changes beyond what the executor can interpret, the task reports the block; it never invents a summary.</div>
+    <div class="meta"><b>Credentials:</b> encrypted and outside the prompt · <b>Schedule:</b> visible under Settings → Activity → Scheduler · <b>Users:</b> authorization and delivery remain independent for each identity</div>
+  </div>
+</section>
+
+<section class="cap" id="cap7">
+  <h2>7 · Metnos, OpenClaw, and Hermes Agent</h2>
+  <p class="lead">All three can be installed locally and accept natural-language requests. The decisive difference is where each one places management, guidance, authority, and recovery. This table compares behavior described by the projects' official sources; it is not an absolute score.</p>
+  <p>OpenClaw and Hermes both offer guided setup and capable operating surfaces. Metnos is distinguished by the depth of the integrated whole: one installer provisions and verifies the stack, one Settings area administers the instance, and Tutor answers from the capabilities and configuration that instance actually admits.</p>
+  <div class="table-scroll" role="region" aria-label="Comparison of Metnos, OpenClaw, and Hermes Agent" tabindex="0">
+    <table>
+      <thead><tr><th>Area</th><th>OpenClaw</th><th>Hermes Agent</th><th>Metnos</th></tr></thead>
+      <tbody>
+        <tr><td>Everyday use</td><td>A personal assistant across WebChat and many messaging channels.</td><td>CLI, desktop, and several channels, with automation and delegation.</td><td>Web chat and Telegram turn an ordinary-language outcome into a typed workflow across server, providers, and devices.</td></tr>
+        <tr><td>Installation</td><td>One-line installers and guided onboarding on several operating systems.</td><td>Desktop packages or a one-line installer, a setup wizard, and native Windows support.</td><td>A read-only preflight and six resumable phases configure environment, models, sidecars, secrets, services, and Tutor, then verify the complete instance.</td></tr>
+        <tr><td>Management</td><td>Control UI and CLI for gateway, channels, agents, and configuration.</td><td>Desktop, TUI, CLI, and dashboard provide operational surfaces.</td><td>Settings unifies 14 authenticated pages for activity, executors, memory, editable models, services, safety, users, and devices.</td></tr>
+        <tr><td>Built-in guidance</td><td>Documentation, setup flows, and configuration commands are available from chat and the UI.</td><td><code>/help</code>, setup, doctor, and extensive documentation guide the operator.</td><td>The semantic Tutor is compiled from installed sources and manifests: it answers in the user's language, observes permitted registries, and provides exact paths and official links.</td></tr>
+        <tr><td>Security boundary</td><td>The main personal session runs on the host by default; sandbox modes, tool policies, pairing, and security audits are configurable.</td><td>Dangerous-command approval, protected paths, pairing, and optional multi-layer isolation provide defense in depth.</td><td>The planner does not receive a general shell: it sees admitted, signed executors. Schema, per-call authority, isolation, policy, consent, and postconditions govern every path.</td></tr>
+        <tr><td>Undo and recovery</td><td>Recovery is session- or tool-specific; the core documentation does not define a uniform cross-domain inverse-operation contract.</td><td><code>/undo</code> manages conversation state; opt-in checkpoints restore project files changed by file tools and destructive commands.</td><td>Supporting executors declare the inverse and the runtime records resources, account, and device. Irreversible effects are stated explicitly.</td></tr>
+        <tr><td>Extension</td><td>Skills and plugins teach new procedures and add tools.</td><td>Installed or learned skills, MCP, and toolsets extend the agent.</td><td>Code becomes routable only after its name, schema, authority, signature, tests, and admission state satisfy the shared contract.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="source-note"><strong>The recovery models are not equivalent.</strong> Hermes checkpoints can restore everything below a tracked project root, even when no individual tool declared an inverse; inside that tree, Metnos has no equivalent snapshot. Metnos inverse operations instead reach effects a project copy cannot touch — for example a message moved on an IMAP server or files moved on a paired PC — but only when the responsible executor declares and records the reverse. Neither system can recall an email that has already been sent.</p>
+  <p class="source-note">Comparison checked on 31 July 2026 against the official sources: <a href="https://github.com/openclaw/openclaw" data-url="github.com/openclaw/openclaw">OpenClaw</a>, <a href="https://docs.openclaw.ai/cli/security" data-url="docs.openclaw.ai/cli/security">OpenClaw security</a>, <a href="https://github.com/NousResearch/hermes-agent" data-url="github.com/NousResearch/hermes-agent">Hermes Agent</a>, and <a href="https://hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback/" data-url="hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback/">Hermes checkpoints</a>. These projects evolve; this is a dated view of documented behavior, not an eternal ranking.</p>
+</section>
+
+<section class="cap" id="continue">
+  <h2>Continue from here</h2>
+  <div class="next">
+    <a href="domains.html" data-url="metnos.com/en/domains">Try more requests<span>Operational domains with examples ready to use.</span></a>
+    <a href="interface.html" data-url="metnos.com/en/interface">Explore the interface<span>The 14 Settings pages and their exact paths.</span></a>
+    <a href="architecture/index.html" data-url="metnos.com/en/architecture/">Understand the architecture<span>Contracts, authority, Tutor, memory, and devices.</span></a>
+  </div>
+</section>
+</main>
+
+<footer>Metnos · a quick tour through examples · <a href="https://github.com/brunialti/metnos">AGPL-3.0 code</a> · <a href="mailto:metnos@metnos.com">metnos@metnos.com</a></footer>
+</body>
+</html>

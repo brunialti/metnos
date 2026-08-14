@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Mnest</title>
+ <meta name="description" content="Il contratto corrente dei mnest: archi fra executor, persistenza, rinforzo, decadimento, proto-mnest e integrazioni effettive.">
+ <meta name="keywords" content="Metnos, mnest, mnestoma, executor, grafo, memoria operativa">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/mnest">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnest">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnest">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnest">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/mnest.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/mnest.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">Mnest</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Mnest: un arco operativo fra executor</div>
+ <div class="meta">Contratto dati, ciclo di vita e stato dell'integrazione.</div>
+</div>
+
+<p class="lead">Un mnest rappresenta una relazione diretta e pesata da un executor
+sorgente a uno di destinazione. Il relativo archivio, le query e l'ager sono
+implementati. Il runtime corrente, per&ograve;, non chiama automaticamente
+<code>record_passing()</code> alla fine dei turni: un record presente &egrave; quindi un
+dato inserito da un chiamante esplicito, non la prova che ogni passaggio osservato
+venga appreso dal prodotto.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Scopo e stato corrente</a></li>
+ <li><a href="#cap2">Che cosa rappresenta</a></li>
+ <li><a href="#cap3">Confine dell'evidenza</a></li>
+ <li><a href="#cap4">Campi e vincoli</a></li>
+ <li><a href="#cap5">Registrazione</a></li>
+ <li><a href="#cap6">Rinforzo e decadimento</a></li>
+ <li><a href="#cap7">Stati</a></li>
+ <li><a href="#cap8">Proto-mnest</a></li>
+ <li><a href="#cap9">Componenti che lo consultano</a></li>
+ <li><a href="#cap10">Persistenza e tracciabilit&agrave;</a></li>
+ <li><a href="#cap11">Esempio</a></li>
+ <li><a href="#cap12">Confini operativi</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scopo e stato corrente</h1>
+
+<p>Il tipo <code>Mnest</code> e le sue operazioni vivono in
+<code>runtime/mnestoma.py</code>. Conservano e interrogano collegamenti fra nomi
+e versioni di executor; non rappresentano una memoria personale e non implicano
+apprendimento automatico.</p>
+
+<table>
+<thead><tr><th>Parte</th><th>Stato</th></tr></thead>
+<tbody>
+<tr><td>Schema SQLite e API CRUD/query</td><td>Implementati.</td></tr>
+<tr><td>Rinforzo, decadimento e rilevazione dei proto ricorrenti</td><td>Implementati.</td></tr>
+<tr><td>Ager nel ciclo notturno</td><td>Registrato nello scheduler.</td></tr>
+<tr><td>Registrazione automatica degli archi da ogni turno</td><td>Non collegata al runtime ordinario.</td></tr>
+<tr><td>Uso diretto da pianificatore o Vaglio</td><td>Non collegato.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap2">2. Che cosa rappresenta</h1>
+
+<p>Un mnest ha direzione <code>src_executor &rarr; dst_executor</code>, versioni,
+numero di usi, peso, istanti di primo e ultimo aggiornamento e stato. La struttura
+pu&ograve; rappresentare il fatto operativo &laquo;un chiamante ha registrato il passaggio
+da A a B&raquo;.</p>
+
+<p>La direzione conta: A&rarr;B e B&rarr;A sono record diversi. Anche una nuova
+versione della destinazione produce una relazione distinta. Una catena A&rarr;B&rarr;C
+&egrave; composta da due archi; la navigazione di pi&ugrave; archi avviene nella query
+<code>walk()</code>.</p>
+
+<h1 id="cap3">3. Confine dell'evidenza</h1>
+
+<p>Il record non contiene l'output scambiato e non verifica da solo che il
+trasferimento sia avvenuto. La provenienza dipende dal chiamante di
+<code>record_passing()</code>. L'eventuale <code>turn_id</code> nell'evento permette
+di risalire al turno d'origine, ma soltanto se quel riferimento &egrave; stato fornito e
+il relativo log esiste ancora.</p>
+
+<p>Per questo un mnest non deve essere presentato come prova autonoma, memoria
+biografica o preferenza dell'utente. &Egrave; telemetria strutturata su una relazione
+fra capability.</p>
+
+<h1 id="cap4">4. Campi e vincoli</h1>
+
+<table>
+<thead><tr><th>Campo</th><th>Contratto</th></tr></thead>
+<tbody>
+<tr><td><code>id</code></td><td>Prefisso <code>mn_</code> seguito da un token casuale.</td></tr>
+<tr><td><code>src_executor</code>, <code>src_version</code></td><td>Sorgente e versione dichiarate dal chiamante.</td></tr>
+<tr><td><code>dst_executor</code>, <code>dst_version</code></td><td>Destinazione; la versione &egrave; nulla per un proto.</td></tr>
+<tr><td><code>weight</code></td><td>Numero reale vincolato fra 0 e 1.</td></tr>
+<tr><td><code>uses</code></td><td>Contatore intero, almeno 1.</td></tr>
+<tr><td><code>ts_first</code>, <code>ts_last</code></td><td>Timestamp UTC; l'ultimo non precede il primo.</td></tr>
+<tr><td><code>decay_lambda</code></td><td>Velocit&agrave; di decadimento.</td></tr>
+<tr><td><code>state</code></td><td><code>active</code>, <code>proto</code>,
+<code>decaying</code> o <code>superseded</code>.</td></tr>
+<tr><td><code>tags</code></td><td>Etichette JSON facoltative; non modificano il peso.</td></tr>
+<tr><td><code>desired_sig</code></td><td>Firma desiderata facoltativa, usata dai proto-mnest.</td></tr>
+</tbody>
+</table>
+
+<p>L'unicit&agrave; SQLite comprende sorgente, versioni, destinazione e stato. Poich&eacute;
+SQLite considera distinti pi&ugrave; valori <code>NULL</code>, il codice esegue una query
+esplicita per rinforzare un proto esistente.</p>
+
+<h1 id="cap5">5. Registrazione</h1>
+
+<p><code>record_passing()</code> apre una transazione. Se trova lo stesso arco
+<code>active</code>, applica il decadimento maturato, aggiunge il rinforzo,
+incrementa <code>uses</code> e registra un evento. Altrimenti crea un nuovo arco
+con peso <code>0.30</code> e un primo evento.</p>
+
+<p>Con <code>dst_exists=False</code> la stessa API crea o rinforza un proto-mnest.
+La chiamata &egrave; atomica per la coppia cercata, ma l'oggetto
+<code>Mnestoma</code> mantiene una connessione per processo e non dichiara la
+propria istanza thread-safe.</p>
+
+<h1 id="cap6">6. Rinforzo e decadimento</h1>
+
+<p>Prima di ogni rinforzo, il peso precedente viene moltiplicato per
+<code>exp(-lambda &times; giorni)</code>; quindi viene aggiunto
+<code>0.15</code> e il risultato viene limitato all'intervallo 0&ndash;1. Il lambda
+predefinito &egrave; <code>0.018</code> al giorno.</p>
+
+<p><code>apply_ager()</code> applica il decadimento agli archi
+<code>active</code> e <code>proto</code>. Un arco attivo sotto
+<code>0.20</code> passa a <code>decaying</code>; un proto sotto
+<code>0.05</code> viene eliminato. Un arco <code>decaying</code> sotto
+<code>0.05</code> e inattivo da almeno 90 giorni viene soltanto contato come
+candidato all'archiviazione: l'ager non lo cancella.</p>
+
+<h1 id="cap7">7. Stati</h1>
+
+<table>
+<thead><tr><th>Stato</th><th>Uso nel codice corrente</th></tr></thead>
+<tbody>
+<tr><td><code>active</code></td><td>Arco reale consultabile e rinforzabile.</td></tr>
+<tr><td><code>proto</code></td><td>Destinazione desiderata senza versione concreta.</td></tr>
+<tr><td><code>decaying</code></td><td>Arco sceso sotto la soglia dell'ager.</td></tr>
+<tr><td><code>superseded</code></td><td>Arco marcato come sostituito da un chiamante esplicito.</td></tr>
+</tbody>
+</table>
+
+<p><code>transition_state()</code> accetta soltanto questi valori e registra un
+evento. Un uso successivo di <code>record_passing()</code> cerca un arco
+<code>active</code>; non riattiva automaticamente un record
+<code>decaying</code>.</p>
+
+<h1 id="cap8">8. Proto-mnest</h1>
+
+<p>Un proto-mnest conserva una sorgente reale e il nome di una destinazione ancora
+mancante. <code>desired_sig</code> pu&ograve; contenere sommario, input, output ed errori
+attesi. <code>recurring_protos()</code> seleziona per default i record con almeno
+tre usi e peso almeno <code>0.30</code>.</p>
+
+<p><code>promote_proto_to_active()</code> imposta la versione di destinazione,
+rimuove la firma desiderata e registra la transizione. Non crea, testa o attiva
+l'executor: queste responsabilit&agrave; appartengono a <a href="synt.html">Synt</a> e
+al suo ciclo di promozione.</p>
+
+<h1 id="cap9">9. Componenti che lo consultano</h1>
+
+<ul>
+ <li><strong>Synt.</strong> Il composer pu&ograve; percorrere soltanto archi
+ <code>active</code>; i comandi diagnostici possono elencare proto ricorrenti.</li>
+ <li><strong>Ager.</strong> Il processo <code>nightly_aging</code> richiama
+ <code>apply_ager()</code> insieme all'ager degli executor.</li>
+ <li><strong>Osservabilit&agrave; e CLI.</strong> Possono mostrare statistiche, top
+ archi, proto ed eventi.</li>
+ <li><strong>Introvertiva.</strong> La funzione attiva cerca archi che nominano
+ executor non pi&ugrave; presenti e produce proposte di deduplicazione.</li>
+</ul>
+
+<p>Il pianificatore corrente non usa il peso dei mnest per ordinare il catalogo; il
+Vaglio non li legge. L0 e L1 hanno archivi e segnali distinti.</p>
+
+<h1 id="cap10">10. Persistenza e tracciabilit&agrave;</h1>
+
+<p>Il database predefinito &egrave;
+<code>&lt;workspace&gt;/.mnestoma/mnest.sqlite</code>, modificabile con
+<code>METNOS_WORKSPACE</code> o <code>MNESTOMA_DB_PATH</code>. Le tabelle
+<code>mnests</code> ed <code>events</code> conservano stato ed eventi; la vista
+<code>v_mnestoma</code> espone gli archi <code>active</code> e
+<code>proto</code>.</p>
+
+<p>Lo stesso database ospita <code>canonical_query_log</code>, alimentato da alcuni
+turni come telemetria di normalizzazione. Quella tabella non &egrave; un mnest e non
+dimostra che il grafo degli archi sia stato aggiornato. Il modulo non implementa
+snapshot mensili o compressione automatica.</p>
+
+<h1 id="cap11">11. Esempio</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Spiegami se il mnestoma viene alimentato automaticamente dai miei turni e
+quali componenti lo consultano oggi.&raquo;</p>
+
+<p>La risposta corretta deve distinguere il codice disponibile dall'integrazione:
+l'archivio, il compositore, l'ager e gli strumenti di ispezione esistono; la registrazione
+automatica degli archi dai turni non &egrave; collegata. Non deve inventare un grafo
+personale gi&agrave; appreso.</p>
+
+<h1 id="cap12">12. Confini operativi</h1>
+
+<ul>
+ <li>Il database predefinito appartiene al workspace dell'installazione, non a uno
+ ambito utente derivato automaticamente. Non va trattato come dossier personale.</li>
+ <li>Tag e firma desiderata sono dati forniti dal chiamante; possono contenere
+ prosa euristica e non sono evidenza indipendente.</li>
+ <li>Il decadimento modifica il peso in base al tempo del processo, ma non riconcilia
+ contraddizioni e non valuta la qualit&agrave; di un turno.</li>
+ <li>Per la ripetizione di richieste e piani, consultare
+ <a href="fast_path.html">L0 e L1</a>; non sono derivati automaticamente dai
+ mnest.</li>
+</ul>
+
+</body>
+</html>

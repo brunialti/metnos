@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — Dialogue on Ends and Limits</title>
+    <meta name="description" content="A Galilean dialogue in four Giornate between Roberto and The Other on the design of an AI assistant. From the need for ultimate ends (telos) to the cardinal sentence: 'The Constitution does not judge; teleology does.' Deontology meets teleology; hybris meets humility. Not fiction — only the structure is dialogic, the content is real.">
+    <meta name="keywords" content="Galilean dialogue AI, AI design philosophy, teleology AI, deontology AI, constitutional AI, self-enhancement bias, telos, hybris, Metnos, proactive AI limits, AI ethics dialogue, Kant Aristotle AI">
+    <meta name="author" content="the owner">
+    <meta name="robots" content="index, follow">
+
+    <link rel="canonical" href="https://metnos.com/en/Metnos_Dialogue_v1">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Dialogo_v1">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Dialogue_v1">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/Metnos_Dialogue_v1">
+    <meta property="og:title" content="Dialogue on ends and limits — Metnos">
+    <meta property="og:description" content="A Galilean dialogue in four Giornate on the design of an AI assistant. Laws and tendencies, who judges the judge, guard and judge. The philosophical trace behind Metnos.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:site_name" content="Metnos">
+    <meta property="article:author" content="the owner">
+
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Dialogue on ends and limits — Metnos">
+    <meta name="twitter:description" content="A Galilean dialogue on the design of an AI assistant. Four Giornate, two voices, one cardinal sentence.">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "Dialogue on ends and limits",
+      "alternativeHeadline": "The Constitution does not judge; teleology does",
+      "author": { "@type": "Person", "name": "the owner" },
+      "datePublished": "2026-04-22",
+      "inLanguage": "en",
+      "isPartOf": { "@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/" },
+      "about": ["AI assistant design", "philosophy of AI", "teleology", "deontology", "Galilean dialogue", "constitutional AI"],
+      "description": "A Galilean dialogue in four Giornate between Roberto and The Other on the design of an AI assistant called Metnos."
+    }
+    </script>
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --muted: #64748B;
+    --ink: #2a2a2a;
+    --paper: #FCFAF6;
+    --ink-roberto: #1A477A;
+    --ink-altro:   #6B21A8;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: 'Georgia', 'Cambria', 'Times New Roman', serif;
+    font-size: 12pt; line-height: 1.8; color: var(--ink);
+    background: var(--paper); max-width: 820px; margin: 0 auto; padding: 40px 40px;
+}
+h1 {
+    font-family: 'Segoe UI', Calibri, sans-serif;
+    color: var(--navy); font-size: 22pt; margin-top: 60px;
+    border-bottom: 2px solid var(--bronze); padding-bottom: 10px;
+    page-break-before: always;
+}
+h1:first-of-type { page-break-before: avoid; }
+h2 {
+    font-family: 'Segoe UI', Calibri, sans-serif;
+    color: var(--navy-light); font-size: 15pt; margin-top: 35px;
+    font-style: italic; font-weight: 400;
+}
+h3 {
+    font-family: 'Segoe UI', Calibri, sans-serif;
+    color: var(--bronze); font-size: 12pt; margin-top: 24px;
+}
+p { margin: 14px 0; text-align: justify; }
+a { color: var(--navy); }
+code {
+    font-family: Consolas, 'Courier New', monospace;
+    background: #EFEADB; padding: 1px 5px; border-radius: 3px;
+    font-size: 10.5pt;
+}
+figure { text-align: center; margin: 28px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; }
+figcaption { font-style: italic; color: var(--muted); font-size: 10.5pt; margin-top: 10px; }
+blockquote {
+    border-left: 3px solid var(--bronze); margin: 18px 0; padding: 8px 20px;
+    font-style: italic; color: #555; background: #F5F0E5;
+    border-radius: 0 6px 6px 0;
+}
+
+.title-page {
+    text-align: center; padding: 130px 0 80px;
+    page-break-after: always;
+}
+.title-page h1 {
+    font-size: 32pt; border: none; margin: 0;
+    page-break-before: avoid; color: var(--navy); font-family: 'Georgia', serif;
+    font-weight: 400;
+}
+.title-page .subtitle {
+    font-size: 18pt; color: var(--bronze); margin: 30px 0 50px;
+    font-style: italic;
+}
+.title-page .meta { font-size: 12pt; color: #666; margin-top: 60px; }
+
+.toc { page-break-after: always; background: #F5F0E5; border: 1px solid #E0D5C0; border-radius: 8px; padding: 22px 30px; margin-top: 24px; }
+.toc h2 { color: var(--navy); border: none; margin-top: 0; font-style: normal; }
+.toc ol { font-size: 12pt; line-height: 2.2; }
+.toc a { text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+.toc .gtag {
+    display: inline-block; font-family: 'Segoe UI', sans-serif;
+    font-size: 9.5pt; padding: 1px 8px; background: var(--bronze); color: white;
+    border-radius: 10px; margin-right: 8px; letter-spacing: 0.3px; font-weight: 600;
+}
+
+/* Speaker lines */
+.line {
+    margin: 14px 0 14px 0;
+    padding: 2px 0 2px 80px;
+    position: relative;
+    page-break-inside: avoid;
+}
+.line::before {
+    position: absolute; left: 0; top: 2px;
+    font-family: 'Segoe UI', Calibri, sans-serif;
+    font-size: 10pt; font-weight: 700;
+    letter-spacing: 0.4px;
+}
+.line.roberto::before {
+    content: "ROBERTO"; color: var(--ink-roberto);
+}
+.line.altro::before {
+    content: "THE OTHER"; color: var(--ink-altro);
+}
+.line.note {
+    padding-left: 80px; color: var(--muted); font-style: italic; font-size: 11pt;
+}
+.line.note::before {
+    content: "—";
+    color: var(--muted);
+    font-style: italic;
+    font-weight: 400;
+}
+
+.preface {
+    background: #F5F0E5; border-left: 4px solid var(--bronze);
+    padding: 18px 26px; margin: 30px 0; border-radius: 0 8px 8px 0;
+}
+.preface h3 { margin-top: 0; color: var(--navy); font-style: italic; }
+
+.closing {
+    border-top: 2px solid var(--bronze); margin-top: 50px; padding-top: 24px;
+    font-style: italic; color: #444;
+}
+
+.bookend {
+    text-align: center; font-family: 'Segoe UI', sans-serif;
+    color: var(--bronze); font-size: 13pt; letter-spacing: 3px;
+    margin: 30px 0;
+}
+
+/* Language switch */
+.lang-switch {
+  position: fixed; top: 16px; right: 20px; z-index: 9999;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt; letter-spacing: 2px;
+  background: var(--paper); border: 1px solid #E0D5C0;
+  border-radius: 14px; padding: 4px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.lang-switch a { color: var(--muted); border: none; padding: 0 4px; text-decoration: none; }
+.lang-switch a.active { color: var(--ink); font-weight: 700; }
+.lang-switch .sep { color: #E0D5C0; }
+
+@media print {
+    body { max-width: none; padding: 0; font-size: 11pt; }
+    h1 { font-size: 18pt; } h2 { font-size: 13pt; }
+    .title-page { padding: 90px 0 50px; }
+    .title-page h1 { font-size: 26pt; }
+    .line { break-inside: avoid; }
+    .lang-switch { display: none; }
+}
+    </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/Metnos_Dialogo_v1.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/Metnos_Dialogue_v1.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:var(--paper);border-bottom:1px solid #E0D5C0;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px; font-family: 'Segoe UI', sans-serif;">
+  <div style="max-width:820px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="index.html" style="color:var(--navy);text-decoration:none;font-weight:500;">← Documentation index</a>
+    <span style="color:#8e8e93;">docs &rsaquo; <strong style="color:#1a1a1a;">dialogue on ends and limits</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Dialogue on ends and limits</h1>
+    <div class="subtitle">between Roberto and The Other &mdash; in four Giornate</div>
+    <div class="meta">
+        22 April 2026<br>
+        The trace of the thought behind Metnos, in dialogue form.<br>
+        Not fiction: the structure is that of a Galilean dialogue,<br>
+        the content is real.
+    </div>
+</div>
+
+<div class="preface">
+<h3>A note to the reader</h3>
+<p>This is neither a technical document nor a story. It is the process of
+thought that led to two components of the Metnos design &mdash; the <em>telos</em>
+and the <em>vaglio</em> &mdash; transposed into a dialogue between two voices:
+Roberto (the author, in the first person) and The Other (a self that asks,
+objects, pulls into tension). Both voices belong to the author. Neither
+represents a weaker interlocutor set up to be refuted: the design is
+Socratic, not catechetic.</p>
+
+<p>Quoted passages are <em>verbatim</em> &mdash; extracted from the real
+conversation in which this thought took shape. The other turns translate
+into dialogue form passages that unfolded inside the head or in the drafts.
+The articulation in four <em>Giornate</em> &mdash; "Days", in the Galilean
+sense &mdash; follows the actual progression of the reasoning.</p>
+
+<p>The central theme: how can an agent that proposes on its own initiative
+know whether its proposal makes sense? The answer that emerges has three
+stages: <strong>ultimate ends</strong> (the telos), the <strong>separation of
+whoever judges from whoever proposes</strong> (the vaglio), and the
+<strong>way in which the Constitution enters</strong> the judgement &mdash; which
+is: it does not enter.</p>
+
+<p><strong>On the names.</strong> In this dialogue the system is called
+<strong>Metnos</strong>: the same name under which it appears on its
+public domain, and which also marks the process running underneath.
+The origin is Greek and is a compound: <em>m&ecirc;tis</em>
+(&mu;&#8134;&tau;&iota;&sigmaf;), the practical wisdom that adapts to the
+situation &mdash; the cunning of Odysseus, also the goddess who is mother
+of Athena &mdash; and <em>no&ucirc;s</em> (&nu;&omicron;&#8166;&sigmaf;),
+the intellect that reasons. The two Greek words for mind, joined into one
+name. The system joins them in fact too: the LLM is the <em>no&ucirc;s</em>,
+the vaglio and the mnestome are the <em>m&ecirc;tis</em>. The First
+Giornata opens by explaining why a creature that knows and acts also
+carries with it <strong>respect for the gods</strong>, and the risk of
+<em>hybris</em>. The dialogue, in the end, is a way of remembering where
+the gods stand, and keeping the proper distance.</p>
+
+<p><strong>On untranslated words.</strong> A few Italian and Greek names
+are kept as they are: they carry meaning that translation would weaken.
+<em>Metnos</em>, <em>Vaglio</em> (literally "sieve" &mdash; the gesture of
+separating grain from chaff), <em>Giornata</em> (a "Day", in the Galilean
+sense), <em>telos</em>, <em>m&ecirc;tis</em>, <em>no&ucirc;s</em>,
+<em>hybris</em>. Each one, on its first appearance, is accompanied by a
+short English gloss.</p>
+</div>
+
+<div class="toc">
+<h2>The four Giornate</h2>
+<ol>
+    <li><span class="gtag">I</span><a href="#giornata1">Proactivity and noise</a> &mdash; <em>when Metnos proposes on its own initiative, who evaluates?</em></li>
+    <li><span class="gtag">II</span><a href="#giornata2">Prohibitions and tendencies</a> &mdash; <em>what sets a Law apart from a telos?</em></li>
+    <li><span class="gtag">III</span><a href="#giornata3">Who judges the judge</a> &mdash; <em>an LLM evaluating itself is a poor judge.</em></li>
+    <li><span class="gtag">IV</span><a href="#giornata4">Guard and judge</a> &mdash; <em>how the Constitution enters the judgement.</em></li>
+</ol>
+<p style="margin-top:18px; color:var(--muted); font-size:11pt;">
+The four Giornate read in about an hour, give or take. Each closes with a
+principle that found its place in the architecture.
+</p>
+</div>
+
+<h1 id="giornata1">First Giornata &mdash; Proactivity and noise</h1>
+
+<h2>when Metnos proposes on its own initiative, who evaluates?</h2>
+
+<div class="bookend">❦</div>
+
+<div style="background:#F5F0E5; border:1px solid #E0D5C0; border-radius:10px; padding:20px 28px; margin:22px 0 28px;">
+<p style="margin-top:0;"><em>Prologue to the First Giornata.</em> Roberto and
+The Other meet on an April afternoon. On the table lie the first drafts of a
+new being: <strong>Metnos</strong>. A figure Roberto is shaping to inhabit
+his home &mdash; a creature that knows, that reasons, that acts in his place in
+everyday matters. The name is Greek and is a compound: <em>m&ecirc;tis</em>
+(&mu;&#8134;&tau;&iota;&sigmaf;), the practical wisdom that adapts to the
+situation, and <em>no&ucirc;s</em> (&nu;&omicron;&#8166;&sigmaf;), the
+intellect that reasons. The two Greek words for mind: the first is the
+cunning of Odysseus, the second the contemplation of Anaxagoras. Metnos
+would like to have both.</p>
+
+<p>But in every myth, a creature that knows and acts stands on a dangerous
+threshold. Prometheus stole fire to bring it to humans, and was bound in
+chains. Icarus flew too close to the sun. The Golem of Prague, shaped from
+clay to serve, slipped out of its maker's hand. Whoever gives form to a being
+that knows and operates faces, always, the same crossing: how to keep the
+creature from rebelling against its creator &mdash; and, worse, how to keep it
+from setting itself against the gods.</p>
+
+<p>This First Giornata opens the dialogue right here: not on <em>what
+Metnos does</em>, which is clear enough, but on <em>how to avert the
+hybris</em>. Roberto and The Other must work out how to grant Metnos the
+capacity to propose initiatives of its own &mdash; a trait that brings it close
+to the divine &mdash; without that capacity turning into a presumption of
+deciding alone, or into the conceit of replacing the creator's ends with
+its own.</p>
+
+<p style="margin-bottom:0;">The divinities, in this secular myth, are the
+<strong>Laws</strong> the creator has laid down: Metnos's Constitution. The
+risk of hybris is that Metnos, finding within itself the voice to say
+"I decide, I evaluate, I weigh", might end up contending with those Laws for
+their place, or silencing them. The years to come depend on the care taken,
+now, in writing the boundaries.</p>
+</div>
+
+<div class="line roberto">
+<p>Metnos is not only intelligent &mdash; which is another way of saying "it has
+some kind of language model inside". It is not only autonomous &mdash; which is
+another way of saying "it has a reasoning loop that knows how to use tools on
+its own". I would also like it to be proactive: to have its <em>executors</em>
+evolve, to propose services that have come to its mind by watching the data.
+An indexer that proposes a taxonomy for the photos. An agent that suggests
+unifying the naming of files. A moment of reflection that spots recurring
+patterns.</p>
+</div>
+
+<div class="line altro">
+<p>Reasonable. But a question: if it proposes, who decides whether the
+proposal makes sense?</p>
+</div>
+
+<div class="line roberto">
+<p>The immediate reply would be: I do. The user.</p>
+</div>
+
+<div class="line altro">
+<p>And then every proposal is an interruption. Ten proposals a day, twenty,
+a hundred. The approver's fatigue &mdash; the kind that makes you click
+"yes, fine, go on" mechanically after the fifth request. You yourself, in
+the documents sketching the interaction, acknowledge that the approval gate
+wears thin if called too often. Here you wear it thin yourself, from the
+proposer's side.</p>
+</div>
+
+<div class="line roberto">
+<p>Right. Then we need a filter that decides <em>before</em> me.</p>
+</div>
+
+<div class="line altro">
+<p>A filter based on what? Popularity? A score from the proposer itself?</p>
+</div>
+
+<div class="line roberto">
+<p>Popularity, no &mdash; Metnos has no population of users: it has me, and
+that's it. A score from the proposer itself, no either, for reasons we will
+see later. But let me answer differently: <strong>the difficulty lies
+precisely here</strong>. How can Metnos tell whether a service it has
+thought of on its own makes sense, without disturbing the person before it
+every time with endless proposals or requests to activate?</p>
+</div>
+
+<div class="line altro">
+<p>And how do you answer?</p>
+</div>
+
+<div class="line roberto">
+<p>A kind of guideline is needed, a definition of ultimate ends against
+which to align and evaluate actions.</p>
+</div>
+
+<div class="line altro">
+<p>"Ultimate ends." Aristotle.</p>
+</div>
+
+<div class="line roberto">
+<p>Exactly. &tau;&epsilon;&lambda;&omicron;&sigma; &mdash; the end toward which one tends, not the
+objective one attains. "Free up my time", "keep the order of my digital
+data", "don't let me miss important deadlines". Short sentences. Not
+measurable like a KPI &mdash; they don't want to be. One approximates.</p>
+</div>
+
+<div class="line altro">
+<p>How many? Who writes them?</p>
+</div>
+
+<div class="line roberto">
+<p>I write them, the user. Three to seven. Beyond that it becomes redundant:
+one telos cancelling out another. Below three, it is impossible to cover even
+the barest life of a person. I write them in a file, the sixth of the
+workspace series alongside IDENTITY, USER, MEMORY, AGENTS, SOUL. Let us call
+it <code>TELOS.md</code>.</p>
+</div>
+
+<div class="line altro">
+<p>And every proposal gets evaluated against these telos, as a score.</p>
+</div>
+
+<div class="line roberto">
+<p>Exactly. An alignment function &mdash; a number between 0 and 1. Below a
+threshold, the proposal does not reach me. It ends up in a "rejected"
+register I can inspect any time, to check that it is not suppressing good
+things.</p>
+</div>
+
+<div class="line altro">
+<p>One more thing. If every proposal costs in terms of attention, then the
+number of proposals in a given window must count. The seventh proposal of
+the day, even if well aligned, reaches you when you are already tired.</p>
+</div>
+
+<div class="line roberto">
+<p>Yes. A "cost of disturbing" &mdash; I will call it that &mdash; which grows with
+recent frequency. The formula becomes: <em>weighted alignment</em> times
+<em>urgency</em> times <em>confidence</em>, minus the <em>cost of
+disturbing</em>. Below threshold, you see nothing. Above, it reaches the
+evening summary. Above and urgent, it reaches you at once.</p>
+</div>
+
+<div class="line altro">
+<p>And the memory of what you have accepted or ignored?</p>
+</div>
+
+<div class="line roberto">
+<p>It is there. The telos have a declared weight and an effective weight.
+The effective one oscillates between fifty and one hundred and fifty per
+cent of the declared, driven by the feedback &mdash; and silences count too, as
+a weak signal.</p>
+</div>
+
+<div class="line altro">
+<p>A telos can never be annulled.</p>
+</div>
+
+<div class="line roberto">
+<p>No. That would be a catastrophic forgetting of what I have declared
+important. Nor can it be doubled: it would make me a slave to my own past
+acceptances. The declared is my word; the effective is the fine tuning that
+grows from use.</p>
+</div>
+
+<div class="line note">
+<p>End of the First Giornata. The outcome is a component:
+<code>telos.html</code>. A file in the workspace, an alignment function, a
+cost of disturbing, a learning-from-silences. What remains open is how
+Metnos decides how well a proposal of its own really aligns with a telos:
+that is the theme of the Third Giornata.</p>
+</div>
+
+<div class="bookend">❦</div>
+
+<h1 id="giornata2">Second Giornata &mdash; Prohibitions and tendencies</h1>
+
+<h2>what sets a Law apart from a telos?</h2>
+
+<div class="bookend">❦</div>
+
+<div class="line altro">
+<p>Metnos already has the 4 Laws: perimeter, non-harm, informed obedience,
+traceability. If it has the Laws, why do I also need the telos?</p>
+</div>
+
+<div class="line roberto">
+<p>Because they speak two different languages. The Laws say <em>what never
+to do</em>. The telos say <em>toward what to tend</em>. They are not
+alternatives &mdash; they are orthogonal.</p>
+</div>
+
+<div class="line altro">
+<p>Explain.</p>
+</div>
+
+<div class="line roberto">
+<p>The Laws are negative. "Do not step outside the perimeter", "do no harm",
+"do not deceive", "do not lose the trace". They are hard constraints:
+violating them is unacceptable. The telos are positive. "Free up time",
+"keep the data in order". They are soft ends: you don't violate them, you
+may simply fail to approach them enough.</p>
+</div>
+
+<div class="line altro">
+<p>Who writes the Laws? Who writes the telos?</p>
+</div>
+
+<div class="line roberto">
+<p>The Laws we write together, Metnos and I. They stand for safety: a
+mutually agreed boundary. The telos I write alone. They stand for utility:
+what I want.</p>
+</div>
+
+<div class="line altro">
+<p>So safety is a pact, utility is desire. Clear. But how do they order
+themselves? What wins if a telos pushed you toward something a Law forbids?</p>
+</div>
+
+<div class="line roberto">
+<p>The Law wins. Always. A proposal perfectly aligned with a telos but
+against a Law is blocked. The Constitution has <strong>absolute
+precedence</strong>.</p>
+</div>
+
+<div class="line altro">
+<p>You keep saying "in case of contradiction".</p>
+</div>
+
+<div class="line roberto">
+<p>Yes. I speak of contradiction and not of discrepancy or divergence,
+because those last two are unavoidable. Contradiction is the violation of
+an article. The other two are the ordinary noise of living &mdash; an action
+that is not against, but also not perfectly in favour.</p>
+</div>
+
+<div class="line altro">
+<p>I like this distinction. I would like to see it laid out in three
+columns.</p>
+</div>
+
+<div class="line note">
+<p>Roberto sketches, by hand, the table that will later appear in
+<code>vaglio.html</code> §3: contradiction &rarr; BLOCK; discrepancy &rarr;
+weighed by the teleological judgement; divergence &rarr; inevitable,
+normal.</p>
+</div>
+
+<div class="line altro">
+<p>One last objection. Do the telos not risk becoming a way for the system
+to judge <em>me</em>? The telos says "thrift", I buy something expensive for
+the pleasure of it, Metnos rebukes me.</p>
+</div>
+
+<div class="line roberto">
+<p>No &mdash; and this is the pivot. The telos evaluate <strong>what Metnos is
+about to do on my behalf</strong>, not <strong>what I do</strong>. If the
+telos is thrift, Metnos applies it to its own choices &mdash; preferring the
+cheapest language model when that suffices, not proposing to index fifty
+gigabytes when a subset is enough &mdash; not to mine. Metnos does not judge
+me. It judges itself.</p>
+</div>
+
+<div class="line altro">
+<p>That sentence will become a constitutional clause, I imagine.</p>
+</div>
+
+<div class="line roberto">
+<p>Yes: "Metnos judges itself, it does not judge." The anti-paternalism
+clause. Without it, the telos are a moralistic device. With it, they are a
+rudder for the agent.</p>
+</div>
+
+<div class="line note">
+<p>End of the Second Giornata. The outcome is twofold: (a) the categorial
+distinction Laws (deontology, negative, safety pact) / Telos (teleology,
+positive, choice of utility); (b) the anti-paternalism clause &mdash; see
+<a href="architecture/telos.html#cap7">telos §7</a> and
+<a href="architecture/policy.html">policy</a>.</p>
+</div>
+
+<div class="bookend">❦</div>
+
+<h1 id="giornata3">Third Giornata &mdash; Who judges the judge</h1>
+
+<h2>an LLM evaluating itself is a poor judge.</h2>
+
+<div class="bookend">❦</div>
+
+<div class="line altro">
+<p>Let us go back to the First Giornata. The alignment function produces a
+number between 0 and 1. Someone has to estimate the <em>fit</em> of the
+proposal against the telos. Who?</p>
+</div>
+
+<div class="line roberto">
+<p>A language model. An LLM.</p>
+</div>
+
+<div class="line altro">
+<p>The same LLM that generated the proposal?</p>
+</div>
+
+<div class="line roberto">
+<p>&hellip; you have caught me out. If it is the same, it is the judge of
+itself.</p>
+</div>
+
+<div class="line altro">
+<p>Indeed. And you know &mdash; indeed the project <em>assumes</em> &mdash; that a
+language model is not intelligent in the strong sense. But even though not
+intelligent, a language model tends to evaluate its own output in a
+conforming way: if it has arrived at a given outcome, it will inevitably
+lean toward assessing it favourably. The technical literature has measured
+the phenomenon: it calls it <em>self-enhancement bias</em>, the tendency to
+promote oneself. Stylistic familiarity, coherence of one's own reasoning,
+affinity of form: everything pushes toward yes.</p>
+</div>
+
+<div class="line roberto">
+<p>We need a separate vantage point. As far as possible, different from
+whoever proposed.</p>
+</div>
+
+<div class="line altro">
+<p>What does "separate" mean? A person? An external system?</p>
+</div>
+
+<div class="line roberto">
+<p>Neither. Another call to the language model, with a clean context, a
+different system instruction, and &mdash; crucially &mdash; with no access to the chain
+of reasoning that produced the proposal. It receives only the final
+artefact and the telos. A <em>self-sufficient</em> artefact, which can be
+reconstructed elsewhere without losing anything.</p>
+</div>
+
+<div class="line altro">
+<p>And what if, at inference time, the judge figures out the proposer's
+reasoning from the text of the proposal itself?</p>
+</div>
+
+<div class="line roberto">
+<p>It will happen, in part &mdash; there is no avoiding it fully. But between a
+judge with access to the proposer's reasoning and a judge that has to
+reconstruct fragments of it from the output, there is an important
+asymmetry. The latter is what we want. It is the best attainable without
+breaking Metnos's coherence as a single system.</p>
+</div>
+
+<div class="line altro">
+<p>You were thinking of a further reinforcement: a different provider. A
+language model running locally for the judge, a more powerful one &mdash; living
+far away, in the great data centres &mdash; for the proposer.</p>
+</div>
+
+<div class="line roberto">
+<p>Yes. But I will keep it optional, not default. It increases the
+configuration cost and loses the benefit of a shared cache on the common
+system instruction. The separation level is a tunable parameter: by default
+"separate context", promotable to "separate provider" if the empirical
+evaluation shows a residue of self-satisfaction.</p>
+</div>
+
+<div class="line altro">
+<p>Fine. What will you call this separate component?</p>
+</div>
+
+<div class="line roberto">
+<p>At first I called it <em>Arbiter</em>. But it is a sporting term. I did
+not like it. <em>Judge</em> is too anthropomorphic. <em>Super-ego</em> adds
+Freudian complexity to a design that is already complex.</p>
+</div>
+
+<div class="line altro">
+<p>And so?</p>
+</div>
+
+<div class="line roberto">
+<p>Vaglio. In Italian <em>vagliare</em> means to separate with a sieve. The
+gesture is mechanical, neutral, ancient. It does not judge persons, it
+separates things. And it does two things: it sifts (the Constitutional
+Guard, which lets pass or blocks) and it weighs (the Teleological Judge,
+which produces the score). The name is the gesture, not the character.</p>
+</div>
+
+<div class="line altro">
+<p>A word from the days when bread was everyone's.</p>
+</div>
+
+<div class="line roberto">
+<p>Exactly.</p>
+</div>
+
+<div class="line note">
+<p>End of the Third Giornata. The outcome: a component called <em>Vaglio</em>
+with independence from the proposer as a structural property, tunable at two
+separation levels (context, provider). See
+<a href="architecture/vaglio.html">vaglio</a> &mdash; with
+explicit tracking of the LLM configuration used in every audit record.</p>
+</div>
+
+<div class="bookend">❦</div>
+
+<h1 id="giornata4">Fourth Giornata &mdash; Guard and judge</h1>
+
+<h2>how the Constitution enters the judgement.</h2>
+
+<div class="bookend">❦</div>
+
+<div class="line altro">
+<p>So the Vaglio evaluates along two axes: Constitution and telos. I was
+thinking of summing them: a constitutional scalar with a sign, and a
+teleological one positive. Does that convince you?</p>
+</div>
+
+<div class="line roberto">
+<p>No.</p>
+</div>
+
+<div class="line altro">
+<p>Why?</p>
+</div>
+
+<div class="line roberto">
+<p>Because it would presuppose that the Constitution <em>judges</em>. But
+the Constitution does not judge.</p>
+</div>
+
+<div class="line altro">
+<p>What does it do, then?</p>
+</div>
+
+<div class="line roberto">
+<p>It verifies. Either there is contradiction &mdash; and then it blocks &mdash; or
+there is not, and then it keeps silent. It does not produce a score. It
+does not order. It does not weigh. It has one useful exit: BLOCK. The other
+exit is silence.</p>
+</div>
+
+<div class="line altro">
+<p>And teleology?</p>
+</div>
+
+<div class="line roberto">
+<p>Teleology judges. It produces a graded score. It weighs. It orders.</p>
+</div>
+
+<div class="line altro">
+<p>So: <strong>the Constitution does not judge; teleology does</strong>.</p>
+</div>
+
+<div class="line roberto">
+<p>Exactly. That is the cardinal sentence. The Constitution is a
+<em>guard</em>, not a <em>judge</em>. The Vaglio is a composite organ:
+first the guard, then &mdash; if the guard has been silent &mdash; the judge.</p>
+</div>
+
+<div class="line altro">
+<p>Consequence: if the user asks something that contradicts a Law, teleology
+does not even vote.</p>
+</div>
+
+<div class="line roberto">
+<p>Yes. If the user asks something that contradicts the Constitution,
+teleology might evaluate it positively and accept it &mdash; but the Constitution
+does not evaluate it: it simply prevents it.</p>
+</div>
+
+<div class="line altro">
+<p>This is a Kantian categorical injunction crossed with an Aristotelian
+phronesis.</p>
+</div>
+
+<div class="line roberto">
+<p>I recognise it as such. The Constitution is deontological: obligation,
+prohibition, non-negotiable. The telos are teleological: oriented toward
+ends, weighable, in reciprocal tension. They are two different ethical
+traditions, and the architecture now respects both without confusing them.</p>
+</div>
+
+<div class="line altro">
+<p>And if someone in the codebase were to sum them out of laziness?</p>
+</div>
+
+<div class="line roberto">
+<p>It must not pass the code review. The conformance check &mdash; written in
+<a href="architecture/vaglio.html#cap7">vaglio §7</a> &mdash;
+verifies that when there is contradiction the Judge is not even called. If
+it is called, the test fails outright.</p>
+</div>
+
+<div class="line altro">
+<p>One last point. The name of the component, Vaglio, is a noun. But it
+contains within itself both the gesture &mdash; to separate &mdash; and the order &mdash;
+the sieve. The Constitution is the sieve. The telos are the scale that
+comes after the sieve.</p>
+</div>
+
+<div class="line roberto">
+<p>A beautiful image. The grain that passes through the sieve is not yet
+bread: it has to be weighed, sorted, distributed. The sieve does not weigh,
+the scale does not sift. But both together are the vaglio.</p>
+</div>
+
+<div class="line note">
+<p>End of the Fourth Giornata. The outcome is architectural (the Vaglio as
+a two-stage organ) and, at the same time, a sentence-manifesto: <em>the
+Constitution does not judge, teleology does</em>. From this it follows that
+the Vaglio's code has a binary <code>ConstitutionalVerdict</code> and a
+graded <code>TeleologicalVerdict</code>, never fused into a single scalar.</p>
+</div>
+
+<div class="bookend">❦</div>
+
+<h1>Coda</h1>
+
+<h2>after the four Giornate</h2>
+
+<p>The itinerary has been: a question about proactivity (First Giornata),
+its deepening in the distinction between prohibitions and tendencies (Second
+Giornata), the discovery that the internal judgement of a language model on
+itself is unreliable (Third Giornata), and the structural consequence on the
+nature of the Vaglio itself (Fourth Giornata).</p>
+
+<p>The result is not a great discovery: it is a small order. Metnos had
+been thought of as something to do things on my behalf; it is now also
+thought of as something to <em>evaluate whether the things it proposes to do
+on my behalf make sense</em>, and to do so without asking me every time, and
+without becoming a judge of itself. Three constraints &mdash; utility,
+independence, non-interference &mdash; which this dialogue has translated into
+two components and a sentence.</p>
+
+<p>The two components are <a href="architecture/telos.html">telos</a>
+and <a href="architecture/vaglio.html">vaglio</a>.
+The sentence is:</p>
+
+<blockquote style="font-size:14pt; text-align:center; font-style:italic; margin:30px auto; max-width:560px; padding:18px 24px; color:var(--navy);">
+The Constitution does not judge; teleology does.
+</blockquote>
+
+<p>The mythological thread of the Prologue returns at the close. Metnos was
+the creature at risk of hybris: in myth, whoever knows and acts ends by
+contending with the gods. The Vaglio's two stages answer precisely this
+risk. The Guard &mdash; binary, deterministic &mdash; is the boundary beyond which
+Metnos <em>cannot go</em>: the Laws laid down by the creator remain above
+it, because it does not judge them, it meets them as a perimeter. The Judge
+&mdash; graded, independent of the proposer &mdash; is the boundary beyond which
+Metnos <em>cannot promote itself</em>: the voice that evaluates its
+proposals is not its own. Between these two closures, all the freedom
+Metnos needs to be useful remains. Outside, there is the myth that would
+have turned its usefulness into hybris.</p>
+
+<p>Whoever reads this dialogue two years from now &mdash; if the code of
+Metnos has aged well &mdash; should find in these Giornate the reason why certain
+things are the way they are. Not the <em>how</em> &mdash; that is in the microdesign
+documents &mdash; but the <em>why</em>. Which is the question that most often
+goes missing when a project grows.</p>
+
+<div class="closing">
+<p>Roberto and The Other take their leave. The dialogue stays open: other
+Giornate will come, likely on the identity of the speaker, on shadow
+listening, on the limits of ambient intelligence, and perhaps &mdash; if things
+go well &mdash; on the difference between the fame Metnos earns by serving and
+the fame it would be hybris to seek. When those Giornate come, they will
+be written. In the meantime the sieve is ready, the scale is tared.</p>
+</div>
+
+<hr>
+
+<h2 style="font-style:normal;">Continue reading</h2>
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:20px 0 30px; font-family:'Segoe UI',sans-serif;">
+  <a href="architecture/telos.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--bronze); color:#FFF; font-weight:500;">architecture</span>
+    <div style="color:var(--navy); font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">telos</div>
+    <div style="margin:0; color:var(--muted); font-size:10.5pt; line-height:1.55;">The component that follows from the First Giornata: TELOS.md, alignment function, learning from silences.</div>
+  </a>
+  <a href="architecture/vaglio.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--bronze); color:#FFF; font-weight:500;">architecture</span>
+    <div style="color:var(--navy); font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">vaglio</div>
+    <div style="margin:0; color:var(--muted); font-size:10.5pt; line-height:1.55;">The component that follows from Giornate III-IV: constitutional guard, teleological judge, independence.</div>
+  </a>
+  <a href="index.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--bronze); color:#FFF; font-weight:500;">home</span>
+    <div style="color:var(--navy); font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">← Documentation index</div>
+    <div style="margin:0; color:var(--muted); font-size:10.5pt; line-height:1.55;">All documents, technical and not.</div>
+  </a>
+</div>
+
+<hr>
+
+<p style="text-align:center; color:var(--muted); font-size:10pt; margin-top:40px; font-family:'Segoe UI',sans-serif;">
+Metnos &mdash; <em>Dialogue on ends and limits</em> v1.0 &mdash; 22 April 2026<br>
+A philosophical trace of the design. Not fiction &mdash; only the structure is dialogic.
+</p>
+
+</body>
+</html>

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; model virtualization</title>
+ <meta name="description" content="How Metnos shows language models, embeddings, and VLMs: logical roles, the Models page, validated LLM and VLM changes, and view-only embedding.">
+ <meta name="keywords" content="virtualization, models, LLM, embedding, VLM, configuration, tier, TOML, Metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/virtualization">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/virtualization">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/virtualization">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/virtualization">
+ <meta property="og:title" content="Metnos &mdash; model virtualization">
+ <meta property="og:description" content="Logical roles and effective configuration for LLMs, embeddings, and VLMs: LLM and VLM are editable; embedding is view-only.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; model virtualization">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — model virtualization",
+ "description": "How Metnos shows language models, embeddings, and VLMs through logical roles, an administration page, and validated TOML files; embedding is view-only.",
+ "url": "https://metnos.com/en/architecture/virtualization",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Model virtualization in Metnos"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bg: #FAFBFC; --text: #1a1a1a; --muted: #64748B;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.title-page { text-align: center; padding: 50px 0 20px; }
+.title-page h1 { font-size: 30pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 15pt; color: var(--navy-light); margin: 10px 0 24px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 5px; }
+.lead { font-size: 12pt; color: var(--navy); margin: 18px 0; }
+.path { font-weight: 650; color: var(--navy); }
+.small { color: var(--muted); font-size: 10pt; }
+@media (max-width: 680px) {
+ body { padding: 24px 18px; }
+ table { display: block; overflow-x: auto; }
+}
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/virtualization.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/virtualization.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">model virtualization</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">model virtualization &mdash; <code>LLM</code> &middot; <code>embedding</code> &middot; <code>VLM</code></div>
+ <div class="meta">A guide to configuration and runtime boundaries</div>
+</div>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+“Show me where I can change the model and reasoning budget for the
+<code>wise</code> tier.”</p>
+
+<p>Metnos guides you to the administration page in the web chat:
+<span class="path">Settings &gt; System &gt; Models</span>. If you ask from
+Telegram, the Tutor can explain the path, but the page opens in the web chat.
+Its internal address is <code>/admin/virt</code>, and it requires administrator
+access.</p>
+
+<p class="lead">The runtime does not bind its components to a model name. Each
+component asks for a logical role; the effective configuration maps that role
+to a provider, model, endpoint, and related parameters. The
+<strong>Models</strong> page shows this mapping and lets an administrator change
+it without changing the code of the components that use it.</p>
+
+<div class="toc">
+<h2>Table of contents</h2>
+<ol>
+ <li><a href="#cap1">Using the Models page</a></li>
+ <li><a href="#cap2">Logical roles and runtime facades</a></li>
+ <li><a href="#cap3">What the page shows</a></li>
+ <li><a href="#cap4">Editing and saving</a></li>
+ <li><a href="#cap5">Restoring and recovery copies</a></li>
+ <li><a href="#cap6">Effective files and precedence</a></li>
+ <li><a href="#cap7">Local and remote boundaries</a></li>
+ <li><a href="#cap8">LLM-call census</a></li>
+ <li><a href="#cap9">Technical references</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Using the Models page</h1>
+
+<ol>
+ <li>Open the Metnos web chat and sign in as an administrator.</li>
+ <li>Open <span class="path">Settings &gt; System &gt; Models</span>. The same
+ page is served at <code>/admin/virt</code>.</li>
+ <li>Choose the family you want to inspect: language models, embeddings, or
+ the vision-language model.</li>
+ <li>For language and vision-language models, press <strong>Edit</strong> to
+ make the visible values editable.</li>
+ <li>Embedding is view-only: replacing its backend requires a dedicated
+ procedure, verified compatibility, and index reconstruction.</li>
+ <li>Review the values and press <strong>Save changes</strong>. The confirmation states
+ that subsequent calls will use the new configuration.</li>
+</ol>
+
+<p>The page opens in viewing mode. <strong>Reload configuration</strong> reads the
+file and renders the current state again; it does not save changes or restart models. Page edits are
+separate between LLM and VLM; embedding remains view-only and is never rewritten from the UI.</p>
+
+<p>This is administrative configuration for the Metnos instance run by that
+system account. It is not a personal preference of an individual conversation
+user.</p>
+
+<h1 id="cap2">2. Logical roles and runtime facades</h1>
+
+<p>A consumer states what it needs, not which product or model must satisfy the
+request. Resolution goes through three public entry points in
+<code>runtime/virt</code>:</p>
+
+<table>
+<thead><tr><th>Family</th><th>Roles</th><th>Interface</th><th>Result</th></tr></thead>
+<tbody>
+<tr>
+ <td>language model</td>
+ <td><code>fast.micro</code>, <code>fast.procedural</code>, <code>fast.fidelity</code>, <code>middle</code>, <code>wise</code>, <code>creative</code>, <code>frontier</code></td>
+ <td><code>virt.get_llm(role, level=...)</code></td>
+ <td>a language-model provider resolved by the tier router</td>
+</tr>
+<tr>
+ <td>embedding</td>
+ <td><code>text</code>, <code>image</code></td>
+ <td><code>virt.get_embedder(role)</code></td>
+ <td>a provider that produces vectors for the requested modality</td>
+</tr>
+<tr>
+ <td>vision-language</td>
+ <td><code>default</code></td>
+ <td><code>virt.get_vlm(role)</code></td>
+ <td>the effective VLM specification, not an already loaded model</td>
+</tr>
+</tbody>
+</table>
+
+<p>The LLM tier names express the caller's intent. They do not by themselves
+certify the quality of the concrete model: the administrator decides which
+provider and model satisfy each role. A partial LLM file overrides only the
+roles it contains; omitted <code>fast</code>, <code>middle</code>, and <code>wise</code> bindings use
+their initial values. Fast levels inherit the <code>fast</code> binding and may
+be overridden in <code>[fast.level.micro]</code>,
+<code>[fast.level.procedural]</code>, or <code>[fast.level.fidelity]</code>.
+When <code>creative</code> is absent, its physical binding is mapped to
+<code>wise</code> while retaining the creative policy.
+<code>frontier</code> is optional, and callers that request it must handle its
+possible unavailability.</p>
+
+<pre>from virt import get_embedder, get_llm, get_vlm
+
+text_encoder = get_embedder("text")
+planner = get_llm("wise")
+translator = get_llm("fast", level="fidelity")
+vision_spec = get_vlm("default")</pre>
+
+<p>Virtualization therefore separates two decisions: the component selects a
+role; the instance configuration selects the backend. Changing a binding among
+providers already supported by the runtime does not require changes to
+executors or the planner. Adding a provider type unknown to the runtime still
+requires an implementation.</p>
+
+<h1 id="cap3">3. What the page shows</h1>
+
+<p>For each family, the page presents:</p>
+
+<ul>
+ <li>the path of the file actually read and any environment variable that
+ overrides it;</li>
+ <li>the <strong>configured</strong>, <strong>initial values</strong>, or
+ <strong>invalid</strong> state;</li>
+ <li>the resolved roles and the provenance of each value: configuration,
+ initial values, alias, or fallback;</li>
+ <li>the provider, model, and endpoint binding;</li>
+ <li>the LLM tier's generation policy, including <code>think</code>,
+ <code>temperature</code>, and <code>reasoning_budget</code> when present;</li>
+ <li>the other effective scalar parameters, such as timeouts and model paths.</li>
+</ul>
+
+<p>Generation-policy values are the tier's effective values, resolved from the
+configuration file and initial values. Operations select a tier and do not keep
+a second decoding profile. Output ceilings, deadlines, grammars, and tool
+schemas remain operation-level structural constraints.</p>
+
+<p>Passwords, tokens, keys, credentials, and sensitive URL parts are not
+shown. They are also excluded from fields submitted by the form. Secrets
+already present in the document are preserved during a save, but they are
+managed through the protected credential flow or the service environment, not
+from this page.</p>
+
+<p>Reading the page neither instantiates providers nor loads models: it builds
+a bounded, secret-free projection of the resolved configuration.</p>
+
+<h1 id="cap4">4. Editing and saving</h1>
+
+<p>For LLM and VLM, after you press <strong>Edit</strong>, Metnos exposes only visible scalar
+values whose type it can preserve. Sensitive fields and values that cannot be
+edited remain read-only. On save, the runtime:</p>
+
+<ol>
+ <li>accepts only the exact field set displayed by the editor;</li>
+ <li>reconstructs TOML types and validates providers, URLs, numeric values, and
+ family constraints;</li>
+ <li>rejects a stale revision instead of overwriting a concurrent change;</li>
+ <li>retains a private copy of the previous file, when one exists;</li>
+ <li>writes the new document atomically with <code>0600</code> permissions;</li>
+ <li>invalidates the relevant runtime caches.</li>
+</ol>
+
+<p>An invalid configuration does not replace the previous file. After a valid
+save, no reinstall, recompilation, or server restart is required: subsequent
+calls resolve the new values. A turn already in progress finishes with the
+resources it has already acquired.</p>
+
+<h1 id="cap5">5. Restoring and recovery copies</h1>
+
+<p><strong>Restore defaults</strong> operates on LLM or VLM and asks for
+confirmation. It writes the initial values supplied by the installed Metnos
+version. It does not automatically select an old personal configuration or
+reconstruct choices made during an earlier installation.</p>
+
+<p>Before restoring, Metnos retains a private copy of the current file when the
+file exists. Copies made by saves and restores are stored below
+<code>$METNOS_USER_STATE/virt-config-history/&lt;family&gt;/</code>; with default
+paths, the root is <code>~/.local/state/metnos/virt-config-history/</code>. The
+page does not expose a historical-version picker: recovering one specific copy
+is a separate administration operation.</p>
+
+<h1 id="cap6">6. Effective files and precedence</h1>
+
+<p>The page always shows the effective path, which is more reliable than a path
+remembered from another installation. Unless overridden, the documents belong
+to the system account that runs Metnos.</p>
+
+<table>
+<thead><tr><th>Family</th><th>File-resolution order</th></tr></thead>
+<tbody>
+<tr>
+ <td>LLM</td>
+ <td><code>METNOS_LLM_TIERS_CONFIG</code>; then
+ <code>$METNOS_USER_CONFIG/llm_tiers.toml</code> when it exists; finally the
+ legacy <code>&lt;install_root&gt;/workspace/.config/llm_tiers.toml</code></td>
+</tr>
+<tr>
+ <td>embedding</td>
+ <td><code>METNOS_EMBEDDING_TIERS_CONFIG</code>; otherwise
+ <code>$METNOS_USER_CONFIG/embedding_tiers.toml</code></td>
+</tr>
+<tr>
+ <td>VLM</td>
+ <td><code>METNOS_VLM_TIERS_CONFIG</code>; otherwise
+ <code>$METNOS_USER_CONFIG/vlm_tiers.toml</code></td>
+</tr>
+</tbody>
+</table>
+
+<p><code>$METNOS_USER_CONFIG</code> is normally
+<code>~/.config/metnos</code>. If a file does not exist, the runtime uses the
+initial values from the installed version and the page says so. If a document
+cannot be read or fails validation, the page reports an invalid state and
+distinguishes any fallback values from a valid configuration.</p>
+
+<h1 id="cap7">7. Local and remote boundaries</h1>
+
+<table>
+<thead><tr><th>Family</th><th>Operational boundary</th></tr></thead>
+<tbody>
+<tr>
+ <td>LLM</td>
+ <td>The router creates the provider declared by the tier. Supported bindings
+ may target a local endpoint or a remote service; credentials and service
+ availability remain separate requirements.</td>
+</tr>
+<tr>
+ <td>embedding</td>
+ <td>The initial values use local, in-process providers. Changing the backend is a
+ dedicated administrative migration, not a page control; read-only executors that declare local
+ computation use <code>get_local_embedder()</code> instead and do not acquire
+ network authority because of that setting.</td>
+</tr>
+<tr>
+ <td>VLM</td>
+ <td><code>get_vlm()</code> returns the specification. Startup is separate and
+ lazy: <code>ensure_vlm_up()</code> checks <code>/health</code>, may attempt the
+ configured VLM script once per process, and returns <code>false</code> if the
+ service does not become available. The caller chooses the fallback.</td>
+</tr>
+</tbody>
+</table>
+
+<p>Virtualization centralizes backend selection; it does not turn a remote
+endpoint into a local resource, nor does it grant an executor network access,
+credentials, or additional capabilities by itself.</p>
+
+<h1 id="cap8">8. LLM-call census</h1>
+
+<p>Every production call selects a logical workload. The router resolves it to
+a tier and, for <code>fast</code>, to its level. A component may define
+operation-specific requirements such as <code>max_tokens</code>, a timeout, or
+an output grammar; it does not select a provider, model, or endpoint, and it does
+not retain a second generation profile. The instance configuration is therefore
+the sole owner of each tier's effective values.</p>
+
+<table>
+<thead><tr><th>Area</th><th>Tier</th><th>Reason for the role</th></tr></thead>
+<tbody>
+<tr><td>Routing and intent extraction</td><td><code>fast.micro</code></td><td>Short, structured classification.</td></tr>
+<tr><td>Proposals, planning, and synthesis</td><td><code>wise</code></td><td>Comparing alternatives and articulated generation.</td></tr>
+<tr><td>Normalization, checks, and procedural administration</td><td><code>fast.procedural</code></td><td>Structured transformations and judgments.</td></tr>
+<tr><td>Translation, grounded composition, semantic verification</td><td><code>fast.fidelity</code></td><td>High-context fidelity without divergent decoding.</td></tr>
+<tr><td>Grammar-constrained planning</td><td><code>fast.fidelity</code></td><td>Exact high-context output; the grammar remains an operation constraint.</td></tr>
+<tr><td>Telos and divergent editorial generation</td><td><code>creative</code></td><td>Creative, comparative proposals.</td></tr>
+<tr><td>Alignment</td><td><code>fast.procedural</code></td><td>It produces a structured estimate of fit to telos.</td></tr>
+<tr><td>Explicit external escalation</td><td><code>frontier</code></td><td>Maximum configured capability, invoked intentionally.</td></tr>
+</tbody>
+</table>
+
+<p>A tier may point to a local or remote service and may be changed by an
+administrator. Changing it changes subsequent calls in every row that uses it;
+the person configuring tiers must therefore assess capability, cost, privacy, and
+availability.</p>
+
+<h1 id="cap9">9. Technical references</h1>
+
+<ul>
+ <li><code>runtime/virt/__init__.py</code> &mdash; facades and initial embedding
+ and VLM values;</li>
+ <li><code>runtime/llm_router.py</code> &mdash; LLM tiers, bindings, aliases, and
+ inference policy;</li>
+ <li><code>runtime/llm_workloads.py</code> &mdash; declarative registry mapping
+ each production workload to one logical tier;</li>
+ <li><code>runtime/virt/configuration.py</code> &mdash; effective projection,
+ provenance, and secret redaction;</li>
+ <li><code>runtime/virt/config_editor.py</code> &mdash; validated editing,
+ atomic writes, recovery copies, and restore behavior.</li>
+</ul>
+
+<p>For the full web-chat map, see the
+<a href="../interface.html">interface navigation guide</a>. To understand how
+executable components consume these roles, continue with the
+<a href="executor.html">executor guide</a> or return to the
+<a href="index.html">Architecture guide</a>.</p>
+
+</body>
+</html>

@@ -1,0 +1,14 @@
+[Unit]
+Description=Metnos i18n translator timer (every 5 min)
+PartOf=metnos.target
+
+[Timer]
+# Relative to timer activation, not to the user manager boot.  This also
+# schedules the first run when an administrator starts the timer later.
+OnActiveSec=30s
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=metnos.target

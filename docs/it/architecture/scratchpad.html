@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; scratchpad</title>
+ <meta name="description" content="Il modulo scratchpad di Metnos: API disponibile, stato dell'integrazione, archivio SQLite temporaneo, lettura a porzioni e limiti di isolamento.">
+ <meta name="keywords" content="Metnos, scratchpad, osservazioni, SQLite, scratchpad_read, contesto, isolamento utenti">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/scratchpad">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/scratchpad">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/scratchpad">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/scratchpad">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/scratchpad">
+ <meta property="og:title" content="Metnos &mdash; scratchpad">
+ <meta property="og:description" content="Archivio temporaneo delle osservazioni: API, integrazione corrente e confini di sicurezza.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — scratchpad",
+ "description": "API disponibile, stato dell'integrazione, archivio SQLite temporaneo, lettura a porzioni e limiti di isolamento.",
+ "url": "https://metnos.com/it/architecture/scratchpad.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/scratchpad.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/scratchpad.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">scratchpad</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Scratchpad delle osservazioni</div>
+ <div class="meta">Ci&ograve; che il modulo offre e ci&ograve; che il runtime usa davvero.</div>
+</div>
+
+<p class="lead"><code>runtime/scratchpad.py</code> implementa un archivio
+temporaneo per conservare un'osservazione completa e mostrarne al modello
+soltanto un riferimento o una porzione. L'API esiste, ma il motore corrente non
+collega automaticamente le grandi osservazioni a questo archivio e non espone
+<code>scratchpad_read</code> nel catalogo ordinario. La distinzione &egrave;
+essenziale: il modulo disponibile non va presentato come funzione attiva.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Comportamento corrente</a></li>
+ <li><a href="#cap2">API disponibile</a></li>
+ <li><a href="#cap3">Archivio e durata</a></li>
+ <li><a href="#cap4">Rappresentazione sintetica</a></li>
+ <li><a href="#cap5">Lettura a porzioni</a></li>
+ <li><a href="#cap6">Cosa occorre per collegarlo</a></li>
+ <li><a href="#cap7">Verifiche necessarie</a></li>
+ <li><a href="#cap8">Confini di sicurezza</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Comportamento corrente</h1>
+
+<p>Nel motore attivo, i risultati dei passi restano nella cronologia di
+esecuzione del turno. Un passo successivo li riusa con
+<code>from_step</code> o con un riferimento <code>&#36;{stepN.campo}</code>; il
+runtime risolve il valore effettivo senza chiedere al modello di ricopiarlo.
+La sintesi finale proietta e limita i campi testuali che presenta al modello,
+mentre i dati completi restano nel risultato del passo.</p>
+
+<p>All'inizio di un turno <code>agent_runtime</code> apre il database dello
+scratchpad ed elimina le voci scadute. Nel percorso corrente, per&ograve;, non
+chiama <code>Scratchpad.put</code>. Anche il parametro storico
+<code>scratchpad_threshold</code> non governa l'esecuzione del motore. Di
+conseguenza non &egrave; corretto affermare che ogni osservazione sopra i 4 KB
+venga scaricata automaticamente nel database.</p>
+
+<h1 id="cap2">2. API disponibile</h1>
+
+<table>
+<tr><th>Metodo o valore</th><th>Funzione</th></tr>
+<tr><td><code>Scratchpad.open(path)</code></td><td>Apre o crea il database SQLite e il relativo schema.</td></tr>
+<tr><td><code>put(turn_id, step_num, executor_name, observation, ttl_seconds)</code></td><td>Salva l'osservazione e restituisce una rappresentazione sintetica.</td></tr>
+<tr><td><code>get(id)</code></td><td>Restituisce la riga completa corrispondente all'identificatore.</td></tr>
+<tr><td><code>read(id, mode, n, start, end)</code></td><td>Restituisce tutto il contenuto oppure una porzione iniziale, finale o compresa in un intervallo.</td></tr>
+<tr><td><code>list_for_turn(turn_id)</code></td><td>Elenca metadati e riassunti delle voci appartenenti a un turno.</td></tr>
+<tr><td><code>gc(now)</code></td><td>Elimina le righe la cui scadenza &egrave; trascorsa.</td></tr>
+<tr><td><code>stats()</code></td><td>Conta voci e byte conservati.</td></tr>
+<tr><td><code>SCRATCHPAD_READ_TOOL</code></td><td>Descrive il possibile strumento incorporato, ma la sola costante non lo rende visibile al pianificatore corrente.</td></tr>
+</table>
+
+<h1 id="cap3">3. Archivio e durata</h1>
+
+<p>Il percorso predefinito &egrave;
+<code>PATH_USER_DATA/scratchpad.db</code>. La tabella conserva:</p>
+
+<pre>id · turn_id · step_num · executor_name · content_kind
+content · size_bytes · summary · created_at · expires_at</pre>
+
+<p>Il valore predefinito di <code>put</code> &egrave; una durata di un'ora.
+L'eliminazione non &egrave; un processo autonomo: avviene soltanto quando un
+chiamante esegue <code>gc</code>. Una voce scaduta pu&ograve; quindi restare su
+disco fino alla pulizia successiva.</p>
+
+<h1 id="cap4">4. Rappresentazione sintetica</h1>
+
+<p>Per un testo lungo, il modulo conserva l'intero contenuto e produce un
+riassunto formato dall'inizio e dalla fine. Per dati binari registra i byte e
+mostra dimensione e prefisso dell'impronta SHA-256. Per un risultato
+strutturato cerca campi quali <code>entries</code>, <code>matches</code> o
+<code>results</code> e comunica conteggio e schema, senza riversare gli
+elementi nel riassunto.</p>
+
+<p>La rappresentazione sintetica pu&ograve; mantenere anche scalari utili, per
+esempio conteggi, stato di troncamento, dimensione, messaggio ed errore. Il
+campo <code>ref_hint</code> spiega come riusare il risultato di un passo o
+come chiedere una porzione del contenuto.</p>
+
+<h1 id="cap5">5. Lettura a porzioni</h1>
+
+<table>
+<tr><th>Modalit&agrave;</th><th>Risultato</th></tr>
+<tr><td><code>full</code></td><td>Contenuto completo.</td></tr>
+<tr><td><code>head</code></td><td>Primi <code>n</code> caratteri o byte; il valore predefinito dichiarato dallo strumento &egrave; 2000.</td></tr>
+<tr><td><code>tail</code></td><td>Ultimi <code>n</code> caratteri o byte.</td></tr>
+<tr><td><code>range</code></td><td>Intervallo da <code>start</code> incluso a <code>end</code> escluso.</td></tr>
+</table>
+
+<p>Il testo viene restituito come UTF-8 con sostituzione dei byte non validi.
+Il contenuto binario viene codificato in Base64. I metadati indicano dimensione
+completa, dimensione restituita, tipo e modalit&agrave; di lettura.</p>
+
+<h1 id="cap6">6. Cosa occorre per collegarlo</h1>
+
+<p>Un'integrazione corretta nel motore richiede almeno:</p>
+
+<ol>
+<li>un solo punto di decisione che confronti la dimensione dell'osservazione con una configurazione canonica;</li>
+<li>la chiamata a <code>put</code> prima di costruire il contesto visibile al modello;</li>
+<li>l'esposizione di <code>scratchpad_read</code> soltanto quando esistono voci accessibili al turno e all'utente correnti;</li>
+<li>un controllo di propriet&agrave; su ogni <code>get</code>, <code>read</code> e <code>list_for_turn</code>;</li>
+<li>limiti sulla lettura <code>full</code>, cos&igrave; una voce grande non rientra interamente nel contesto che si voleva proteggere;</li>
+<li>pulizia, osservabilit&agrave; e prove di ripresa dopo un dialogo sospeso.</li>
+</ol>
+
+<h1 id="cap7">7. Verifiche necessarie</h1>
+
+<p>Il collegamento automatico fra motore e database non &egrave; attivo. La sua
+attivazione richiede prove dedicate su testo, binari, risultati strutturati,
+intervalli, scadenza, concorrenza e ripresa del turno.</p>
+
+<p>La verifica pi&ugrave; importante &egrave; multiutente: un identificatore ottenuto
+da un utente non deve permettere di leggere una voce appartenente a un altro,
+nemmeno passando direttamente l'identificatore all'API incorporata.</p>
+
+<h1 id="cap8">8. Confini di sicurezza</h1>
+
+<ul>
+<li><strong>Lo schema corrente non contiene un proprietario.</strong> Conserva <code>turn_id</code>, ma non <code>owner_user_id</code>, attore o canale. <code>get</code> e <code>read</code> accettano soltanto l'identificatore e non applicano autorizzazione.</li>
+<li><strong>L'identificatore opaco non &egrave; una credenziale.</strong> La difficolt&agrave; di indovinarlo non sostituisce un controllo di propriet&agrave;.</li>
+<li><strong>Il database &egrave; condiviso dall'installazione.</strong> Non va descritto come isolato per utente finch&eacute; schema e chiamanti non applicano quella separazione.</li>
+<li><strong>Il contenuto non &egrave; cifrato dal modulo.</strong> La protezione a riposo dipende dai permessi del percorso dati e dall'ambiente che lo ospita.</li>
+<li><strong>La scadenza &egrave; logica.</strong> I dati vengono rimossi soltanto all'esecuzione di <code>gc</code>.</li>
+</ul>
+
+<p>Per questi motivi il modulo pu&ograve; essere studiato e collaudato come
+componente, ma non deve essere collegato a una superficie multiutente senza
+prima aggiungere propriet&agrave;, autorizzazione e prove di isolamento.</p>
+
+</body>
+</html>

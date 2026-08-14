@@ -1,0 +1,168 @@
+# Manifest dell'executor `fs_list` — Metnos v1.1
+# Promosso a seed il 27 aprile 2026.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "list_dirs"
+version     = "0.3.0"
+author      = "Roberto Brunialti"
+
+# Cosa fa: una frase per il LLM. Cosa NON fa: una frase di rinvio al composer.
+affinity    = [
+    "list", "elenca", "lista", "ls", "dir", "directory", "contenuto", "cartella", "metadata"
+            ]
+
+# Piattaforme device supportate (W3.2/C7): list_dirs e' stdlib puro (os/pathlib),
+# gira su Linux e Windows. Senza questa riga il default e' ["linux"] e il
+# placement rifiuterebbe un device Windows (F1 review 2026-07-04).
+platforms   = ["linux", "windows"]
+
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "local_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
+[description]
+it = "SCOPO: elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: creare (create_dirs), cancellare (delete_dirs), cercare pattern (find_dirs). OUT: elementi ordinati e conteggio completo."
+en = "SCOPO: lists directories and files; recursive mode walks subdirectories in parallel. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: create (create_dirs), delete (delete_dirs), search patterns (find_dirs). OUT: sorted entries and complete count."
+
+# path_alias.py e' co-locato (symlink -> runtime/path_alias.py, zero-drift): e'
+# una dipendenza runtime SPECIFICA di list_dirs (non universale come lo shim
+# executor_helpers/messages), quindi viaggia COL bundle → l'esecuzione remota
+# sul device non dipende da uno shim aggiornato. §7.2 modulare, §7.3 generale.
+[code]
+files  = ["list_dirs.py", "path_alias.py"]
+digest = "sha256:050904d1457a6806790100f6201fa16bb147a57650d0281e129c69eb8cf664a1"
+
+[args]
+type     = "object"
+required = ["path"]
+
+[args.properties.path]
+type        = "string"
+
+[args.properties.path.description]
+it = "La directory da elencare. Path assoluto, oppure ~ che viene espanso (es. '~/images', '/opt/metnos'). Deve essere dentro lo scope di lettura concesso."
+en = "The directory to list. Absolute path, or ~ which is expanded (e.g., '~/images', '/opt/metnos'). Must be within the granted read scope."
+
+[args.properties.recursive]
+type        = "boolean"
+default     = false
+
+[args.properties.recursive.description]
+it = "Se true, lista anche il contenuto delle sottocartelle. Se false (default), solo gli elementi diretti della directory."
+en = "If true, also list the content of the subdirectories. If false (default), only the direct elements of the directory."
+
+[args.properties.sort]
+type        = "string"
+enum        = ["name", "mtime", "size"]
+default     = "name"
+
+[args.properties.sort.description]
+it = "Come ordinare la lista. 'name' = alfabetico (default), 'mtime' = più recente prima, 'size' = più grande prima."
+en = "How to sort the list. 'name' = alphabetical (default), 'mtime' = most recent first, 'size' = largest first."
+
+[args.properties.max_results]
+type        = "integer"
+minimum     = 0
+default     = 1000
+
+[args.properties.max_results.description]
+it = "Numero massimo di elementi mostrati dopo la scansione completa. Default 1000; 0 restituisce tutti gli elementi."
+en = "Maximum entries returned after the complete scan. Default 1000; 0 returns every entry."
+
+[args.properties.max_depth]
+type        = "integer"
+minimum     = 0
+default     = 10
+
+[args.properties.max_depth.description]
+it = "Quanti livelli di sottocartelle considerare in modalità ricorsiva. 0 = nessun limite. Default 10."
+en = "How many subdirectory levels to consider in recursive mode. 0 = unlimited. Default 10."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries?: Array<{
+    path: str,
+    name: str,
+    type: 'file' | 'dir' | 'symlink',
+    kind: str,
+    mime: str,
+    size: int,
+    mtime: str | null,
+    mtime_epoch: number
+  }>,
+  ok_count: int,
+  fail_count: int,
+  failed: Array<{path: str, error_class: str, error_code: str, error: str}>,
+  metadata?: {
+    path: str,
+    recursive: bool,
+    count: int,
+    available_total: int,
+    file_count_total: int,
+    dir_count_total: int,
+    symlink_count_total: int,
+    truncated: bool,
+    sort: 'name' | 'mtime' | 'size',
+    visited_dirs: int,
+    walk_workers: int,
+    source_complete: bool,
+    alias_resolved?: str
+  },
+  authoritative_presentation?: {scope: 'count', text: str, covers_truncation: bool},
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
+  cap_field?: str,
+  cap_value?: int,
+  error_code?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "fs:read"
+hint = ["arg:path"]
+
+[[tests]]
+name     = "lista_dir_semplice"
+setup    = "mkdir -p /tmp/metnos_test_fs_list && touch /tmp/metnos_test_fs_list/a.txt /tmp/metnos_test_fs_list/b.txt"
+input    = { path = "/tmp/metnos_test_fs_list" }
+expect   = { ok = true, metadata_field_eq = { count = 2 } }
+env      = { METNOS_EXECUTOR_ASSIGNED_WORKERS = "32" }
+equivalence_runs = 2
+teardown = "rm -rf /tmp/metnos_test_fs_list"
+
+[[tests]]
+name     = "ricorsivo_include_subdir"
+setup    = "mkdir -p /tmp/metnos_test_fs_list/sub && touch /tmp/metnos_test_fs_list/a.txt /tmp/metnos_test_fs_list/sub/b.txt"
+input    = { path = "/tmp/metnos_test_fs_list", recursive = true }
+expect   = { ok = true, metadata_field_gte = { count = 3 } }
+teardown = "rm -rf /tmp/metnos_test_fs_list"
+
+[[tests]]
+name   = "fallisce_su_path_inesistente"
+input  = { path = "/tmp/metnos_does_not_exist_xyz" }
+expect = { ok = false, error_contains = "Percorso non trovato" }
+
+[[tests]]
+name   = "rifiuta_file_al_posto_di_directory"
+setup  = "printf 'x' > /tmp/metnos_list_dirs_not_a_directory"
+input  = { path = "/tmp/metnos_list_dirs_not_a_directory" }
+expect = { ok = false }
+teardown = "rm -f /tmp/metnos_list_dirs_not_a_directory"
+
+[placement]
+# F2 (review 2026-07-04): manifest-driven — l'executor puo' girare su
+# un device remoto se la chat lo chiede (ADR 0034). Sostituisce la whitelist
+# hardcoded DEVICE_ELIGIBLE. scope="any" = server di default, device se nominato.
+scope    = "any"
+device_ok = true
+min_sandbox = "appcontainer"

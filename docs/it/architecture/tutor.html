@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; il Tutor integrato</title>
+ <meta name="description" content="Come il Tutor di Metnos riconosce le domande sul prodotto, usa fonti locali verificate, osserva lo stato corrente, separa le azioni e apprende dal riscontro di ciascun utente.">
+ <meta name="keywords" content="Metnos, Tutor, documentazione, catalogo firmato, stato servizi, dispositivi, attività programmate, riscontro, privacy">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/tutor">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/tutor">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/tutor">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/tutor">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/tutor">
+ <meta property="og:title" content="Metnos &mdash; il Tutor integrato">
+ <meta property="og:description" content="Una guida alle risposte documentali, alle osservazioni correnti e alla consegna sicura delle azioni in Metnos.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; il Tutor integrato">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — il Tutor integrato",
+ "description": "Come il Tutor risponde sulla base di fonti verificate, osserva lo stato corrente e apprende dal riscontro del singolo utente senza diventare un pianificatore.",
+ "url": "https://metnos.com/it/architecture/tutor",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Tutor integrato di Metnos"
+}
+ </script>
+ <style>
+:root{--navy:#1A477A;--blue:#2B6CB0;--sage:#548235;--bg:#FAFBFC;--text:#1a1a1a;--muted:#64748B;--border:#d0d7de;--code:#f6f8fa;--alt:#f0f4f8}
+*{box-sizing:border-box}body{font-family:'Segoe UI',Calibri,-apple-system,sans-serif;font-size:11pt;line-height:1.65;color:var(--text);background:var(--bg);max-width:960px;margin:0 auto;padding:40px 30px}
+h1{color:var(--navy);font-size:20pt;border-bottom:3px solid var(--navy);padding-bottom:8px;margin-top:46px}h1:first-of-type{margin-top:0}h2{color:var(--blue);font-size:14pt;margin-top:28px;border-bottom:1px solid var(--border);padding-bottom:4px}p{margin:10px 0}ul,ol{padding-left:24px}li{margin-bottom:5px}
+table{width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt}th{background:var(--navy);color:#fff;padding:8px 10px;text-align:left}td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}tr:nth-child(even) td{background:var(--alt)}code{font-family:Consolas,'Courier New',monospace}p code,li code,td code{background:var(--code);padding:1px 5px;border-radius:3px;font-size:9.5pt}
+.title-page{text-align:center;padding:54px 20px 26px}.title-page h1{font-size:30pt;border:0;margin:0}.title-page .subtitle{font-size:15pt;color:var(--blue);margin-top:9px}.lead{font-size:12pt;color:var(--navy);margin:18px 0}.path{font-weight:650;color:var(--navy)}.flow{margin:18px 0;padding:13px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;text-align:center;color:var(--navy)}.small{font-size:10pt;color:var(--muted)}
+@media(max-width:680px){body{padding:24px 18px}table{display:block;overflow-x:auto}}
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/tutor.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/tutor.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;gap:16px;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">Tutor</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Il Tutor integrato</h1>
+ <div class="subtitle">conoscenza verificata, stato corrente e apprendimento privato</div>
+</div>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Che cosa contiene il file <code>Metnos_Prospettive_Estese_v1.html</code>?&raquo;</p>
+
+<p class="lead">Il Tutor risponde alle domande su Metnos prima che intervenga il
+pianificatore operativo. Formula la risposta a partire da fonti ammesse e pu&ograve;
+aggiungere osservazioni correnti, ma non possiede strumenti e non esegue azioni.</p>
+
+<div class="flow">
+domanda &rarr; distinzione fra spiegazione e azione &rarr; fonti autorizzate
+&rarr; eventuale osservazione corrente &rarr; risposta
+</div>
+
+<h1 id="riconoscimento">1. Come riconosce una domanda sul prodotto</h1>
+
+<p>Il primo passaggio distingue una spiegazione, un'osservazione reale,
+un'azione che modifica lo stato, una richiesta mista oppure un'intenzione non
+abbastanza chiara. Una spiegazione pu&ograve; entrare nel Tutor. Un'osservazione vi
+entra soltanto quando una vista registrata copre per intero i dati richiesti;
+negli altri casi prosegue nel normale motore di Metnos.</p>
+
+<p>La forma grammaticale non basta. &laquo;Mostrami la pagina Servizi&raquo; chiede di
+spiegare una parte dell'interfaccia; &laquo;mostrami i file presenti nella mia
+cartella&raquo; chiede invece dati reali. Il bersaglio della domanda, non il solo
+verbo, decide il percorso.</p>
+
+<h2 id="identita-fonte">Il segnale di una fonte documentale</h2>
+
+<p>Quando la domanda contiene il <strong>nome esatto</strong>, il percorso relativo
+o l'indirizzo canonico di una pagina presente nell'inventario pubblico, il runtime
+riconosce l'identit&agrave; della fonte prima della classificazione. Il confronto non
+&egrave; una ricerca per somiglianza: &egrave; una corrispondenza con il catalogo pubblicato,
+senza distinzione fra maiuscole e minuscole.</p>
+
+<table>
+<thead><tr><th>Richiesta</th><th>Esito</th></tr></thead>
+<tbody>
+<tr><td>&laquo;Che cosa contiene <code>Metnos_Prospettive_Estese_v1.html</code>?&raquo;</td><td>Il Tutor vincola il recupero a quel documento e ne riassume il contenuto.</td></tr>
+<tr><td>&laquo;Riassumi <code>docs/it/Metnos_QuickTour.html</code>&raquo;</td><td>Il percorso identifica una fonte pubblicata; la risposta cita soltanto sezioni di quella pagina.</td></tr>
+<tr><td>&laquo;Cancella <code>Metnos_Prospettive_Estese_v1.html</code>&raquo;</td><td>Il nome &egrave; riconosciuto, ma l'intenzione &egrave; operativa: la richiesta non viene sottratta al motore.</td></tr>
+<tr><td>&laquo;Che cosa contiene <code>appunti_privati.html</code>?&raquo;</td><td>Il nome non appartiene alla documentazione pubblicata; resta una normale richiesta riguardante un file.</td></tr>
+</tbody>
+</table>
+
+<p>Se lo stesso nome appartiene a pi&ugrave; traduzioni, la lingua corrente risolve la
+corrispondenza. Se l'identit&agrave; resta ambigua, il controllo si arresta senza
+indovinare. Un percorso esplicito esterno alla pubblicazione, per esempio
+<code>/tmp/nome.html</code> o <code>C:\Users\...\nome.html</code>, resta un
+percorso dell'utente e non viene ridotto al solo nome. La parola &laquo;file&raquo;,
+da sola, non &egrave; un segnale documentale.</p>
+
+<h1 id="fonti">2. Da quali fonti nasce la risposta</h1>
+
+<p>Il catalogo del Tutor viene compilato localmente e firmato. Comprende:</p>
+
+<ul>
+ <li>i manifesti multilingue degli executor realmente ammessi;</li>
+ <li>le pagine HTML pubbliche e indicizzabili distribuite con Metnos;</li>
+ <li>le proiezioni dichiarate dei registri del runtime e dell'interfaccia;</li>
+ <li>le procedure curate che devono conservare passaggi e condizioni di arresto.</li>
+</ul>
+
+<p>Non comprende file personali, messaggi, calendari, conversazioni, registri di
+esecuzione, roadmap o note interne di sviluppo. L'autorizzazione viene applicata
+prima che il testo raggiunga il modello. Se una fonte non &egrave; visibile alla persona
+che pone la domanda, non pu&ograve; contribuire alla risposta.</p>
+
+<p>I documenti lunghi sono divisi in sezioni. Una corrispondenza semantica sceglie
+le sezioni pertinenti; quando &egrave; stata riconosciuta l'identit&agrave; di un documento,
+la somiglianza serve soltanto a ordinare le sezioni di quella stessa fonte. Il
+modello compone il testo finale, ma non pu&ograve; introdurre capacit&agrave;, permessi o fatti
+che le fonti non attestino.</p>
+
+<p>Anche i manifesti hanno una struttura. Il contratto completo di un executor
+descrive l'operazione; i singoli argomenti ne precisano parametri e limiti. Se un
+campo generico risulta vicino alla domanda, ma nella stessa banda di pertinenza
+si trova un contratto completo, quest'ultimo diventa la fonte primaria. Le
+descrizioni dei suoi argomenti restano come fonti di dettaglio. La regola riguarda
+la gerarchia delle fonti e non contiene elenchi di domande, parole speciali o
+eccezioni per un dominio.</p>
+
+<h1 id="stato-corrente">3. Quando serve lo stato corrente</h1>
+
+<p>Alcune domande non chiedono soltanto che cosa una pagina dovrebbe mostrare,
+ma che cosa sta mostrando in questo momento. Una fonte firmata pu&ograve; allora
+richiamare una sonda di sola lettura registrata dal runtime. Il modello non
+sceglie la sonda e non ne inventa gli argomenti.</p>
+
+<p>La vicinanza di argomento non basta. Il runtime prima propone una vista, poi
+verifica di nuovo che quella sola vista comprenda ogni fatto richiesto e infine
+la confronta semanticamente con tutte le altre viste visibili. Deve risultare
+il primario con un margine sufficiente. Se uno dei controlli fallisce, il Tutor
+si ritira e la richiesta passa al normale executor di lettura. Per esempio,
+&laquo;Controlla se c'&egrave; posta metnos&raquo; usa la casella di posta: non viene
+gestita mediante lo stato dei servizi.</p>
+
+<p>I controlli che attribuiscono autorit&agrave; al Tutor hanno una finestra breve e
+comune. Una volta ammessa la vista, la sonda di sola lettura e la composizione
+dispongono invece del termine complessivo del turno. Se il controllo preliminare
+del Tutor &egrave; occupato, oppure la vista o il compositore non restituiscono un esito valido,
+la richiesta prosegue nel normale motore: un aiuto facoltativo non diventa un
+errore HTTP e non sottrae il turno al pianificatore.</p>
+
+<p>Per una lingua appena aggiunta, una vista pu&ograve; usare temporaneamente il
+contratto inglese come fonte di ripiego. Il compositore riceve comunque la
+lingua corrente dell'utente: la lingua della fonte non determina quella della
+risposta.</p>
+
+<table>
+<thead><tr><th>Osservazione</th><th>Ambito</th><th>Protezione</th></tr></thead>
+<tbody>
+<tr><td>executor ammessi, ciclo di vita e provenienza</td><td>amministratore dell'istanza</td><td>nessun percorso o dettaglio dei rifiuti</td></tr>
+<tr><td>salute dei servizi</td><td>amministratore dell'istanza</td><td>nessun endpoint, PID o nome di unit&agrave; esposto al modello</td></tr>
+<tr><td>salute e causa dello scheduler</td><td>amministratore dell'istanza</td><td>stato del ciclo e diagnosi limitata; nessun testo delle attività o risultato delle esecuzioni</td></tr>
+<tr><td>dispositivi registrati e raggiungibilit&agrave;</td><td>solo i dispositivi posseduti dall'utente</td><td>chiavi, impronte e profili restano esclusi</td></tr>
+<tr><td>attivit&agrave; programmate e ultime esecuzioni</td><td>solo l'attore autenticato</td><td>testo delle richieste e risultati delle esecuzioni restano esclusi</td></tr>
+</tbody>
+</table>
+
+<p>Ogni osservazione dichiara l'istante, la scadenza, la versione della fonte e
+uno stato fra <code>ok</code>, <code>partial</code>, <code>stale</code> e
+<code>unavailable</code>. Le dimensioni, il tempo di attesa e la durata in memoria
+sono limitati. Un dato scaduto o incompleto viene indicato come tale; non diventa
+mai, per omissione, uno stato sano.</p>
+
+<p>Lo scheduler v2 vive nel processo HTTP: non &egrave; un servizio systemd
+separato. La sonda ne osserva direttamente il loop e distingue
+<code>running</code>, <code>degraded</code>, <code>failed</code> e
+<code>stopped</code>. Un'attività fallita non rende inattivo lo scheduler, cos&igrave;
+come un periodo senza esecuzioni non dimostra che il motore sia fermo. Se la
+domanda presuppone erroneamente un guasto, il Tutor corregge la premessa; indica
+una causa soltanto quando l'osservazione corrente la attesta.</p>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Quali servizi sono attivi e a che cosa servono?&raquo;</p>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Perch&eacute; lo scheduler risulta fermo?&raquo;</p>
+
+<h1 id="richieste-miste">4. Spiegazione e azione nella stessa richiesta</h1>
+
+<p>Una domanda pu&ograve; contenere una parte informativa e una parte operativa:
+&laquo;Spiegami la pagina Servizi e poi cerca <code>README.md</code>&raquo;. Se le due
+clausole sono separabili senza riscriverle, il Tutor:</p>
+
+<ol>
+ <li>risponde alla parte informativa;</li>
+ <li>conserva la clausola d'azione esattamente come l'ha scritta l'utente;</li>
+ <li>chiede se affidarla al normale motore di Metnos;</li>
+ <li>la consegna soltanto dopo la conferma.</li>
+</ol>
+
+<p>La conferma &egrave; legata all'utente, alla conversazione, alla versione del
+catalogo e a una scadenza. Pu&ograve; essere usata una sola volta. Se nel frattempo la
+conoscenza di sistema cambia, i dati non coincidono o la conferma &egrave; gi&agrave; stata
+consumata, nessuna operazione viene avviata. Dopo la conferma si applicano gli
+stessi controlli di qualunque nuovo turno: pianificazione, Vaglio, autonomia,
+consensi ed executor.</p>
+
+<p>Un dialogo gi&agrave; aperto non viene sostituito. Se la separazione delle clausole
+non &egrave; sicura, Metnos chiede di formulare separatamente spiegazione e azione.</p>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Come si archiviano le email? Archivia anche quelle di ieri&raquo;.</p>
+
+<p>Il Tutor spiega l'operazione attestata dal manifest di
+<code>move_messages</code>, conserva senza riscriverla la clausola
+&laquo;Archivia anche quelle di ieri&raquo; e chiede il consenso. Solo dopo la conferma
+la clausola passa al normale motore, che applica contesto, pianificazione,
+autonomia e consensi. La risposta resta limitata alle procedure attestate dalle
+fonti.</p>
+
+<h1 id="apprendimento">5. Come usa il riscontro dell'utente</h1>
+
+<p>I pulsanti di riscontro della chat possono rendere pi&ugrave; preciso il recupero
+per la stessa persona. Un riscontro positivo associa la rappresentazione della
+domanda alla fonte primaria effettivamente usata; un riscontro negativo
+rimuove l'eventuale associazione e registra una lacuna tipizzata.</p>
+
+<p>Questo apprendimento ha confini stretti:</p>
+
+<ul>
+ <li>&egrave; separato per utente e non modifica le risposte degli altri;</li>
+ <li>non conserva in chiaro la domanda, ma soltanto un'impronta e, quando serve,
+ un vettore con durata e quantit&agrave; limitate;</li>
+ <li>vale soltanto finch&eacute; coincidono il modello di rappresentazione, il catalogo
+ firmato e l'impronta del contenuto della fonte;</li>
+ <li>interviene nel recupero dopo la distinzione fra spiegazione e azione: non
+ modifica il pianificatore e non entra nelle sue cache;</li>
+ <li>pu&ograve; essere cancellato insieme al registro delle lacune per il solo utente
+ interessato.</li>
+</ul>
+
+<p>Le lacune sono raggruppate per causa e vicinanza semantica senza ricostruire
+il testo originario. Un controllo controfattuale verifica che le associazioni
+rimaste puntino ancora a fonti presenti e immutate. Il Tutor non pubblica da solo
+nuova documentazione e non trasforma la propria prosa in una prova.</p>
+
+<h1 id="lingue">6. Lingua e canale</h1>
+
+<p>Il recupero preferisce la lingua corrente per ogni concetto e usa l'inglese
+come ripiego quando manca una traduzione. La lingua della risposta &egrave; un dato
+esplicito: non viene scelta dalla lingua della fonte o dell'istruzione usata dal
+modello.</p>
+
+<p>Le stesse domande possono essere poste nella chat web o su Telegram. Quando
+la risposta indica una pagina di <span class="path">Settings</span>, il percorso si
+riferisce alla chat web dell'istanza; Telegram pu&ograve; mostrarne le istruzioni e il
+collegamento, ma non incorpora l'interfaccia amministrativa.</p>
+
+<h1 id="aggiornamento">7. Aggiornamento e comportamento in caso di errore</h1>
+
+<p>Ogni modifica a una fonte ammessa cambia l'impronta del materiale in ingresso. Il compilatore
+costruisce un candidato completo, ne verifica schema, vettori e firma e lo
+sostituisce atomicamente al catalogo corrente. I vettori delle unit&agrave; immutate
+possono essere riutilizzati, ma nessun catalogo parziale viene ammesso.</p>
+
+<p>Se non esiste una fonte sufficiente, il Tutor dichiara una lacuna. Se invece
+falliscono il catalogo, il modello di rappresentazione o la composizione, segnala l'indisponibilit&agrave;
+tecnica. In entrambi i casi una domanda informativa non viene trasformata per
+errore in un'azione.</p>
+
+<h1 id="riferimenti">8. Riferimenti tecnici</h1>
+
+<ul>
+ <li><a href="../domains.html">Riferimento dei domini</a>: capacità,
+ origini e confini operativi descritti dal Tutor.</li>
+ <li><a href="../interface.html">Guida all'interfaccia</a>: percorsi della
+ chat web e pagine di <span class="path">Settings</span> citate nelle risposte.</li>
+ <li><a href="fast_path.html">Fastpath e autopath</a>: perch&eacute; l'apprendimento
+ del Tutor resta fuori dalle cache dei piani.</li>
+ <li><a href="http_api.html">Canale HTTP e chat web</a>: identit&agrave;,
+ conversazioni e riscontri.</li>
+ <li><a href="observability.html">Osservabilit&agrave;</a>: esiti e misure senza
+ conservare la domanda in chiaro.</li>
+ <li><a href="virtualization.html">Virtualizzazione dei modelli</a>: ruoli del
+ classificatore, del compositore e dell'embedder.</li>
+</ul>
+
+</body>
+</html>

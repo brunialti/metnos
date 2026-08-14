@@ -1,0 +1,74 @@
+role: synt_code_addendum_send
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+# Stage 5 addendum verbo `send` (the design guide §6.1: style few_shot).
+# YAML envelope: il body resta prosa narrativa (pseudocodice + invarianti +
+# esempi di codice). Il rendering yaml_raw/json_raw produce un wrapper
+# strutturato senza spezzare gli esempi few_shot.
+section:
+  name: synt_code_addendum_send
+  header: "Stage 5 addendum verbo `send`"
+
+body: |
+  REGOLE VERBO `send` (oltre al generic):
+  
+  DEFINIZIONE: `send` = produce side-effect remoto IRREVERSIBILE (mail/HTTP/IM).
+  Manifest: revertible=False, niente reverse_pattern.
+  
+  PSEUDOCODICE UNIVERSALE:
+  
+    def invoke(args):
+        entries = args.get("entries", [])
+        max_recipients = args.get("max_recipients", 50)
+        if len(entries) > max_recipients:
+            return error_all("max_recipients exceeded — split the batch")
+        try:
+            conn = open_outbound(args)             # fail-fast credenziali
+        except Exception as ex:
+            return error_all(f"connect failed: {type(ex).__name__}")
+        results, failed = [], []
+        for i, e in enumerate(entries):
+            try:
+                key = idempotency_key(e)
+                if seen_before(key):
+                    results.append({**identity(e), "status": "duplicate"})
+                    continue
+                ack = submit(conn, e)
+                persist_key(key)                   # PRIMA del prossimo invio
+                results.append({**identity(e), "message_id": ack, "status": "sent"})
+            except Exception as ex:
+                failed.append({"index": i, **identity(e), "error": str(ex)[:200]})
+  
+  INVARIANTI:
+  DEVI: manifest `revertible: False` (send non e' annullabile dal runtime).
+  DEVI: open connection / auth FAIL-FAST prima del loop. Credenziali
+    mancanti/sbagliate non diventano valide con retry.
+  DEVI: cap `max_recipients` (default 50) — anti-spam. Eccesso → fail di tutto
+    il batch, NON partial submit.
+  DEVI: `idempotency_key` deterministico (es. sha256 di
+    `recipient + subject + body + day_bucket`) persistito in
+    `{{ install_root }}/_history/sent_keys.jsonl` PRIMA del prossimo submit. Match
+    → entry skip con status "duplicate".
+  NON DEVI: retry-loop con sleep su credenziali invalide.
+  NON DEVI: includere password/token/api_key nel campo `error` (leak nei log).
+    Riferisci solo l'account name o un nome simbolico.
+  NON DEVI: scrivere `def reverse(...)`.
+  
+  DOMINIO MAIL (send_messages):
+  - entry: `{"to": ..., "subject": ..., "body": ..., "cc"?, "bcc"?}`
+  - conn: `mail_client.open_smtp(account=e["account"])`
+  - submit: costruisci `email.message.EmailMessage`; `smtp.send_message(msg)`;
+    ritorna l'ID del Message-ID generato dal server (header `Message-ID:`).
+  - validate: ogni `to`/`cc`/`bcc` matcha regex base (`r"[^@]+@[^@]+\.[^@]+"`);
+    malformato → entry fallisce, batch continua.
+  
+  DOMINIO HTTP (send_*):
+  - entry: `{"endpoint": ..., "payload": ..., "method": "POST"|"PUT"}`
+  - conn: nessuna pre-connessione (HTTP stateless); ogni submit = `urllib.request.Request`.
+  - submit: status 2xx → ok; 4xx/5xx → entry fallisce con status code.

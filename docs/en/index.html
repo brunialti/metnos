@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+<title>Metnos — An Architecture for Governed Agents</title>
+<meta name="description" content="Metnos is a documented, self-hosted architecture for governed agents. The admitted executor set defines the operating domain; the core provides planning, independent judgment, memory, audit and bounded authority.">
+<meta name="keywords" content="Metnos, governed agents, self-hosted agents, executor architecture, signed executors, remote executors, closed vocabulary, local-first AI, provider-agnostic AI, LLM abstraction, constitutional AI, AI safety, teleology, deontology, Galilean dialogue, distributed memory AI, software architecture AI">
+<meta name="author" content="the owner">
+<meta name="robots" content="index, follow">
+
+<link rel="canonical" href="https://metnos.com/en/">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/en/">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://metnos.com/en/">
+<meta property="og:title" content="Metnos — an architecture for governed agents">
+<meta property="og:description" content="A documented self-hosted architecture whose admitted executors define its concrete operating domain.">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="it_IT">
+<meta property="og:site_name" content="Metnos">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Metnos — an architecture for governed agents">
+<meta name="twitter:description" content="A self-hosted architecture built around signed executors, bounded authority and an independently checked plan.">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Metnos",
+  "alternateName": "Metnos",
+  "url": "https://metnos.com/",
+  "description": "A documented self-hosted architecture for governed agents whose operating domain is determined by its admitted executor set.",
+  "author": { "@type": "Person", "name": "the owner" },
+  "inLanguage": ["en", "it"],
+  "keywords": "governed agents, executor architecture, signed executors, LLM abstraction, constitutional AI, teleology, Galilean dialogue, telos, hybris"
+}
+</script>
+
+<style>
+:root {
+  --paper: #FCFAF6;
+  --paper-warm: #F5F0E5;
+  --border-warm: #E0D5C0;
+  --ink: #2a2a2a;
+  --ink-dim: #5a5a5a;
+  --muted: #8a8378;
+  --navy: #1A477A;
+  --bronze: #A0522D;
+  --plum: #6B21A8;
+  --sage: #548235;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: Georgia, Cambria, 'Times New Roman', serif;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 90px 32px 60px;
+  line-height: 1.78;
+  font-size: 12.5pt;
+  font-weight: 400;
+}
+p { margin: 16px 0; text-align: justify; hyphens: auto; }
+a { color: var(--bronze); text-decoration: none; border-bottom: 1px solid rgba(160,82,45,0.3); transition: border-color .15s; }
+a:hover { border-bottom-color: var(--bronze); }
+em { color: var(--ink); }
+
+/* Language switch */
+.lang-switch {
+  position: fixed; top: 18px; right: 24px;
+  z-index: 100;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt; letter-spacing: 2px;
+  background: var(--paper); border: 1px solid var(--border-warm);
+  border-radius: 14px; padding: 4px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.lang-switch a { color: var(--muted); border: none; padding: 0 4px; }
+.lang-switch a:hover { color: var(--bronze); }
+.lang-switch a.active { color: var(--ink); font-weight: 700; }
+.lang-switch .sep { color: var(--border-warm); }
+
+/* Hero */
+.hero { text-align: left; margin: 40px 0 70px; }
+.hero .eyebrow {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.hero h1 {
+  font-family: Georgia, serif;
+  font-size: 52pt;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+}
+.hero .subtitle {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 16pt;
+  color: var(--ink-dim);
+  margin-top: 22px;
+  max-width: 520px;
+  line-height: 1.4;
+}
+.hero .kleos {
+  font-family: Georgia, serif;
+  font-size: 13pt;
+  color: var(--bronze);
+  margin-top: 18px;
+  letter-spacing: 0.5px;
+}
+
+/* Drop cap */
+.opening::first-letter {
+  font-size: 42pt;
+  float: left;
+  line-height: 0.9;
+  padding: 8px 10px 0 0;
+  font-family: Georgia, serif;
+  color: var(--bronze);
+}
+
+/* Sections */
+section { margin: 50px 0; }
+section h2 {
+  font-family: Georgia, serif;
+  font-size: 14pt;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-dim);
+  margin-top: 40px;
+  margin-bottom: 14px;
+  border: none;
+  letter-spacing: 0.2px;
+}
+section h2::before {
+  content: "§ ";
+  color: var(--bronze);
+  font-style: normal;
+}
+
+/* Primary invitation — the Dialogue */
+.invitation {
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 4px;
+  padding: 36px 40px;
+  margin: 60px 0 40px;
+  text-align: center;
+}
+.invitation .ornament {
+  color: var(--bronze);
+  font-size: 18pt;
+  letter-spacing: 8px;
+  margin-bottom: 8px;
+}
+.invitation .intro {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+.invitation h3 {
+  font-family: Georgia, serif;
+  font-size: 24pt;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0 0 14px 0;
+  line-height: 1.2;
+}
+.invitation p {
+  text-align: center;
+  font-style: italic;
+  color: var(--ink-dim);
+  font-size: 13pt;
+  max-width: 480px;
+  margin: 14px auto 24px;
+}
+.invitation a.enter {
+  display: inline-block;
+  border: 1px solid var(--bronze);
+  background: transparent;
+  color: var(--bronze);
+  padding: 11px 30px;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 11pt;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: background .15s, color .15s;
+}
+.invitation a.enter:hover { background: var(--bronze); color: var(--paper); }
+.invitation .meta {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  margin-top: 18px;
+  letter-spacing: 0.5px;
+}
+.invitation .lang-note {
+  display: block; font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt; color: var(--bronze);
+  margin-top: 10px; letter-spacing: 0.5px; font-style: italic;
+}
+
+/* Secondary entries */
+.secondary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--border-warm);
+  border-bottom: 1px solid var(--border-warm);
+  margin: 40px 0;
+}
+.secondary a {
+  display: block;
+  padding: 22px 12px;
+  text-align: center;
+  color: var(--ink-dim);
+  border: none;
+  border-right: 1px solid var(--border-warm);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  transition: background .15s;
+}
+.secondary a:last-child { border-right: none; }
+.secondary a:hover { background: var(--paper-warm); color: var(--ink); border-bottom: none; }
+.secondary a .label {
+  font-family: Georgia, serif;
+  font-size: 12pt;
+  display: block;
+  min-height: 2.5em;
+  margin-bottom: 4px;
+  color: var(--ink);
+  line-height: 1.25;
+}
+.secondary a .time {
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--muted);
+}
+
+/* Corpus index */
+.toc { margin: 60px 0 30px; }
+.toc h2 { margin-top: 50px; }
+.toc .group { margin: 22px 0 30px; }
+.toc .group-title {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.toc-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px dotted var(--border-warm);
+  align-items: baseline;
+}
+.toc-item:last-child { border-bottom: none; }
+.toc-item .t {
+  font-family: Georgia, serif;
+  font-size: 12.5pt;
+  color: var(--ink);
+  border: none;
+}
+.toc-item .t:hover { color: var(--bronze); border-bottom: 1px solid var(--bronze); }
+.toc-item .d {
+  display: block;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 11pt;
+  color: var(--ink-dim);
+  margin-top: 4px;
+}
+.toc-item .time {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.toc-item .lang-badge {
+  display: inline-block; font-family: 'Segoe UI',sans-serif;
+  font-size: 8.5pt; padding: 1px 6px; margin-left: 6px;
+  background: var(--paper-warm); color: var(--muted);
+  border-radius: 8px; letter-spacing: 1px; vertical-align: middle;
+}
+
+.italian-notice {
+  margin: 36px 0; padding: 20px 26px;
+  background: var(--paper-warm); border: 1px solid var(--border-warm);
+  border-radius: 6px; font-size: 11pt; color: var(--ink-dim);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  line-height: 1.6;
+}
+.italian-notice strong { color: var(--ink); font-family: Georgia, serif; }
+
+footer {
+  margin-top: 80px;
+  padding-top: 26px;
+  border-top: 1px solid var(--border-warm);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.5px;
+  line-height: 1.8;
+}
+
+@media (max-width: 620px) {
+  body { padding: 50px 22px 40px; font-size: 12pt; }
+  .hero h1 { font-size: 38pt; }
+  .hero .subtitle { font-size: 14pt; }
+  .invitation { padding: 28px 24px; }
+  .invitation h3 { font-size: 20pt; }
+  .secondary { grid-template-columns: 1fr; }
+  .secondary a { border-right: none; border-bottom: 1px solid var(--border-warm); }
+  .secondary a:last-child { border-bottom: none; }
+  .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 8px; }
+}
+
+@media print {
+  body { max-width: none; padding: 0; font-size: 11pt; background: white; }
+  .hero h1 { font-size: 32pt; }
+  a { color: var(--ink); border: none; }
+  .invitation { background: white; }
+  .lang-switch { display: none; }
+}
+</style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div class="hero">
+  <div class="eyebrow">a project</div>
+  <h1>Metnos</h1>
+  <div class="byline" style="font-family:'Georgia','Cambria',serif; font-style:italic; font-size:13pt; color:var(--muted); margin:4px 0 18px; letter-spacing:0.2px;">by the owner</div>
+  <div class="subtitle">An architecture for agents. And the attempt to make their power governable.</div>
+  <div class="kleos">μῆτις + νοῦς &mdash; <em>m&ecirc;tis</em> (the mind that adapts) + <em>no&ucirc;s</em> (the mind that reasons): the two Greek words for mind, joined into one name. <span style="color:var(--muted); font-size:10.5pt;">&middot; technical project name: <code style="background:transparent; font-family:Consolas,monospace;">metnos</code></span></div>
+</div>
+
+<p style="text-align:center; color:var(--muted); font-size:11pt; font-style:italic; margin:30px 0 10px;">
+If you would like the <em>how</em> after the <em>why</em>, three doors. The note on the code (<a href="code.html">Code</a>) answers <em>where is the beef?</em>
+</p>
+
+<div class="secondary" style="margin:12px 0 46px;">
+  <a href="Metnos_QuickTour.pdf">
+    <span class="label">Quick tour &amp; Survival kit</span>
+    <span class="time">20 min · PDF available</span>
+  </a>
+  <a href="architecture/">
+    <span class="label">Architecture guide</span>
+    <span class="time">visual tutorial</span>
+  </a>
+  <a href="code.html">
+    <span class="label">Code</span>
+    <span class="time">note</span>
+  </a>
+</div>
+
+<section>
+  <p class="opening">Metnos is a self-hosted architecture for governed agents. Its reference installation can act as a personal or household assistant, but that is one executor set, not the definition of the system: another admitted catalog can serve software maintenance, research, remote systems or another bounded operational domain. The core plans, judges, remembers and audits; executors define what can actually be done. The interesting part is therefore not only the code but the prior definition: which powers exist, which limits they honour, and in what vocabulary the system addresses the human who governs it.</p>
+</section>
+
+<section>
+  <h2>What you will find here</h2>
+  <p>The documentation describes the current product: an introductory guide, the interface map, a domain reference with natural-language examples, and the Architecture guide with component contracts. Technical catalogs and the interface page are generated from runtime registries; the Tutor compiles these sources together with admitted manifests into a signed catalog. The public repository contains the code and installer needed to verify the documented contracts.</p>
+</section>
+
+<section>
+  <h2>Dialogues</h2>
+  <p>The dialogues are the thought behind Metnos put under the pressure of objection: not treatises, not specifications, but ideas made to answer an uncomfortable peer. The form is Galilean &mdash; two voices, both the author&rsquo;s, one of which refuses to grant easy agreement. Not fiction: only the structure is dialogic, the content is real.</p>
+</section>
+
+<div class="toc">
+<h2>The whole corpus</h2>
+
+<div class="group">
+  <div class="group-title">For anyone</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_QuickTour.pdf" type="application/pdf">Quick tour &amp; Survival kit &mdash; Metnos in 15&ndash;20 minutes</a>
+      <span class="d">Nine real scenes, including the cross-domain Atlas dossier, and a dedicated Tutor chapter: how Metnos explains capabilities and procedures, observes admitted instance state, and hands a possible action to the normal engine only after confirmation. The guide also covers interface, consent, memory, growth, devices, limits, and a glossary. An <a href="Metnos_QuickTour.html">accessible HTML version</a> is also available.</span>
+    </div>
+    <span class="time">HTML · 20 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="domains.html">Domain reference &mdash; what to ask Metnos</a>
+      <span class="d">All 27 canonical domains explained one by one, with boundaries, availability, and natural-language request examples. Technical names and counts derive from manifests and builtin contracts.</span>
+    </div>
+    <span class="time">Reference · 15 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="interface.html">The interface &mdash; two channels, one identity</a>
+      <span class="d">How the interface is arranged: the two channels and their separate conversations, the four Settings sections, and the map of administration pages with their navigation paths. The map derives from the runtime&rsquo;s surfaces registry.</span>
+    </div>
+    <span class="time">Guide · 8 min</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Foundations</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="architecture/">Architecture guide</a>
+      <span class="d">One visual tutorial from the system's purpose and request flow to executor authority and the exact contracts of every component. Inline SVG diagrams, printable as PDF.</span>
+    </div>
+    <span class="time">20 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="architecture/tutor.html">Tutor &mdash; Metnos can explain Metnos</a>
+      <span class="d">The local component that compiles admitted manifests, runtime registries, and published documentation into a signed catalog. It separates explanations from actions, applies access control before composition, and answers with no tools.</span>
+    </div>
+    <span class="time">8 min</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Vision and assessment</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Perspectives_Judgement_v1.html">Perspectives and judgement</a>
+      <span class="d">A critical assessment of the architecture from several viewpoints: usefulness, autonomy, proactivity, anthropomorphism risks, and conditions for governance.</span>
+    </div>
+    <span class="time">Analysis · 20 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Extended_Perspectives_v1.html">Extended perspectives</a>
+      <span class="d">Capabilities that broaden Metnos's reach and the architectural conditions required to introduce them without confusing a possibility, a design, and an available function.</span>
+    </div>
+    <span class="time">Analysis · 20 min</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Dialogues</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Dialogue_v1.html">Dialogue on ends and limits</a>
+      <span class="d">Four Giornate on proactivity, laws, ends, judgement, and the separation between deterministic guard and graduated evaluation.</span>
+    </div>
+    <span class="time">Reflection · 25 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors and distributed memory</a>
+      <span class="d">Four Giornate on executor contracts and forms of operational memory: mnests, traces, the mnestome, decay, and composition.</span>
+    </div>
+    <span class="time">Reflection · 25 min</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Reference</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="Metnos_Glossary_v1.html">Glossary</a>
+      <span class="d">Technical and conceptual terms used throughout the corpus, with links to the pages that define their current contract.</span>
+    </div>
+    <span class="time">Reference</span>
+  </div>
+</div>
+
+<div class="group">
+  <div class="group-title">Component contracts</div>
+  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">The Architecture guide includes the complete component atlas. From there, each component name opens its canonical implementation contract: schemas, calls, authority, failure conditions and conformance checks.</p>
+</div>
+
+<div class="group">
+  <div class="group-title">Code</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="https://github.com/brunialti/metnos">Public repository</a>
+      <span class="d">Code, installer, and English technical documentation under the AGPL-3.0 license. The <a href="code.html">code note</a> explains the relationship between the public repository and an installed instance.</span>
+    </div>
+    <span class="time">GitHub</span>
+  </div>
+</div>
+</div>
+
+<footer>
+Metnos &middot; <code style="font-family:Consolas,monospace; background:transparent;">metnos.com</code><br>
+Get in touch: <a href="mailto:metnos@metnos.com" style="color:inherit; border:none;">metnos@metnos.com</a>
+</footer>
+
+</body>
+</html>

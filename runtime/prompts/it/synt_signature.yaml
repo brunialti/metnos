@@ -1,0 +1,102 @@
+role: synt_signature
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: synt_signature
+  header: "Stage 2 SIGNATURE di synt-multistage"
+  preamble: |
+    OUTPUT OBBLIGATORIO: un solo oggetto JSON. NIENTE prosa, NIENTE markdown
+    fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con
+    `}`. Niente nulla prima del primo `{`, niente nulla dopo l'ultimo `}`.
+
+context:
+  decisions_locked:
+    name: "{{ name }}"
+    action: "{{ action }}"
+    object: "{{ object }}"
+    qualifier: "{{ qualifier }}"
+    revertible: "{{ revertible }}"
+    critical: "{{ critical }}"
+    target_kind: "{{ target_kind }}"
+  user_request: "{{ user_request }}"
+
+rules:
+  - name: from_step_for_list_consumers
+    body: |
+      Per gli executor che ricevono una lista da uno step precedente
+      (entries, items, results, ...): NON esporre `entries: array` nello
+      schema visibile al LLM. Usa SOLO `from_step: integer required`
+      (il runtime espande la lista dallo scratchpad prima del dispatch).
+  - name: scalar_args
+    body: "Per gli args che NON sono liste (path, content, dst_template): schema normale (string/number/boolean)."
+  - name: internal_paging_cap
+    body: |
+      Se l'executor opera su un volume variabile (mail in finestra temporale,
+      risultati di ricerca, fetch paginato, file in dir ricorsiva), aggiungi
+      args di **paginazione / cap interno** cosi' il loop sta DENTRO l'executor:
+        - una window semantica (es. `time_window: today|yesterday|last-Nd`) o
+          coppia esplicita {since, before};
+        - un cap superiore (`max_total`, `max_results`, `max_bytes`);
+        - opzionale `page_size` per il batch interno.
+      NON delegare il loop al pianificatore (costa step ReAct, non scala).
+  - name: capabilities_set
+    body: |
+      capabilities SOLO da questo set: 'fs:read', 'fs:write', 'net:read',
+      'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
+      'code:exec'. Mai 'fs:write' se non strettamente necessaria.
+  - name: reverse_pattern_match
+    body: |
+      reverse_pattern:
+        - se revertible=true → DEVE essere uno fra: 'swap_src_dst',
+          'delete_created_dirs', 'delete_created_paths', 'restore_blob_backup'.
+        - se revertible=false → DEVE essere null.
+
+output_schema:
+  type: object
+  required: [args_required, args_properties, capabilities, reverse_pattern]
+  properties:
+    args_required: {type: array, items: {type: string}}
+    args_properties: {type: object}
+    capabilities: {type: array, items: {type: object, properties: {name: {type: string}, hint: {type: array}}}}
+    reverse_pattern:
+      type: string
+      enum: [swap_src_dst, delete_created_dirs, delete_created_paths, restore_blob_backup]
+      nullable: true
+
+examples:
+  - name_for: "move_files (riceve lista da step precedente)"
+    output:
+      args_required: [from_step, dst_template]
+      args_properties:
+        from_step: {type: integer, description: "Numero dello step precedente che ha prodotto la lista di file da spostare.", minimum: 1}
+        dst_template: {type: string, description: "Template path destinazione, supporta {name}, {date_year}, ecc."}
+      capabilities: [{name: "fs:write", hint: ["~/**", "/tmp/**"]}]
+      reverse_pattern: swap_src_dst
+  - name_for: "get_urls (NON riceve lista da step precedente)"
+    output:
+      args_required: [urls]
+      args_properties:
+        urls: {type: array, description: "Lista di URL HTTP/HTTPS da scaricare (vettoriale: anche 1 URL).", items: {type: string}}
+        max_bytes: {type: integer, description: "Cap dimensione totale per evitare blow-up. Default 5 MB.", default: 5242880}
+      capabilities: [{name: "net:read", hint: ["*"]}]
+      reverse_pattern: null
+  - name_for: "find_<obj>_empty (ADR 0127, qualifier _empty con arg canonical size unit-aware)"
+    note: "Pattern cross-domain: lo stesso shape vale per find_events_empty/find_files_empty/find_dirs_empty/find_messages_empty"
+    output:
+      args_required: []
+      args_properties:
+        size: {type: string, description: "Soglia unit-aware (es. '1hour', '10KB', '100chars', '90' bare=unita' default del dominio). Default per-dominio (es. '1hour' per events).", default: "1hour"}
+        time_windows: {type: array, description: "Solo per dominii temporali (events/messages): lista §2.1 di finestre.", items: {type: string}, default: ["next-week"]}
+        base_path: {type: string, description: "Solo per dominii filesystem (files/dirs): root del search.", default: "/"}
+        max_results: {type: integer, description: "Cap superiore §2.7. 0 = no cap. Default 10.", default: 10}
+      capabilities: [{name: "fs:read", hint: ["~/**"]}]
+      reverse_pattern: null
+
+footer:
+  instruction: "ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro."

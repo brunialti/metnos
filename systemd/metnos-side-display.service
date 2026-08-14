@@ -1,0 +1,27 @@
+[Unit]
+Description=Metnos graphical side-browser display (Xvfb :99)
+Documentation=file:///opt/metnos/docs/it/architecture/intelligent_executors.html
+After=network-online.target
+Wants=network-online.target
+Before=metnos-playwright.service
+Before=metnos-stack-ready.service
+PartOf=metnos.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -ac -nolisten tcp -dpi 96
+Restart=always
+RestartSec=2s
+KillMode=mixed
+Environment=DISPLAY=:99
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+RestrictAddressFamilies=AF_UNIX
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=metnos-side-display
+
+[Install]
+WantedBy=metnos.target

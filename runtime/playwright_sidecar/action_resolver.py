@@ -1,0 +1,1386 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Risoluzione deterministica delle azioni web del dominio ``sites``.
+
+Il planner fornisce linguaggio naturale; questo modulo lo riduce a un
+vocabolario chiuso e seleziona solo elementi enumerati dal broker. Nessun
+selettore proveniente dall'LLM attraversa il confine di sicurezza.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import unicodedata
+import urllib.parse
+
+try:
+    import detection_lexicon as _detlex
+except ImportError:  # pragma: no cover - sidecar install incompleto
+    _detlex = None
+
+_VERBS_FALLBACK = {
+    "goto": ("vai", "naviga", "apri", "visita", "go", "navigate", "open", "visit"),
+    "click": ("clicca", "premi", "seleziona", "scegli", "click", "press", "select", "choose"),
+    "fill": ("compila", "scrivi", "inserisci", "digita", "fill", "write", "enter", "type"),
+    "submit": ("invia", "conferma", "salva", "pubblica", "submit", "confirm", "save", "publish"),
+    "wait": ("attendi", "aspetta", "wait", "pause"),
+}
+
+_OVERLAY_DISMISS_FALLBACK = (
+    "close", "close dialog", "close modal", "dismiss", "dismiss dialog",
+    "not now", "maybe later", "later", "got it", "understood", "okay",
+    "ok", "cancel", "chiudi", "chiudi dialogo", "chiudi finestra", "ignora",
+    "non ora", "non adesso", "forse dopo", "piu tardi", "ho capito",
+    "capito", "va bene", "annulla",
+)
+
+
+def _verbs() -> dict[str, tuple[str, ...]]:
+    if _detlex is not None:
+        try:
+            mapped = _detlex.mapping("sites.action_verb")
+            if all(mapped.get(k) for k in _VERBS_FALLBACK):
+                return {k: tuple(mapped[k]) for k in _VERBS_FALLBACK}
+        except Exception:
+            pass
+    return _VERBS_FALLBACK
+
+
+def normalize(text: str) -> str:
+    raw = unicodedata.normalize("NFKD", text or "")
+    raw = "".join(c for c in raw if not unicodedata.combining(c)).lower()
+    return " ".join(re.findall(r"[a-z0-9]+", raw))
+
+
+def _target_noise() -> tuple[str, ...]:
+    if _detlex is not None:
+        try:
+            forms = tuple(normalize(x) for x in _detlex.forms(
+                "sites.action_target_noise") if normalize(x))
+            if forms:
+                return forms
+        except Exception:
+            pass
+    return ("il", "lo", "la", "un", "una", "sul", "sulla", "pulsante",
+            "bottone", "the", "a", "an", "on", "button", "link")
+
+
+def _concept_forms(concept: str) -> tuple[str, ...]:
+    if _detlex is None:
+        return ()
+    try:
+        return tuple(normalize(x) for x in _detlex.forms(concept)
+                     if normalize(x))
+    except Exception:
+        return ()
+
+
+def overlay_dismiss_forms() -> tuple[str, ...]:
+    """Safe, non-committing exits for obstructing transient overlays."""
+    forms = (_concept_forms("sites.overlay_dismiss_target")
+             + _concept_forms("sites.overlay_acknowledge_target"))
+    return forms or _OVERLAY_DISMISS_FALLBACK
+
+
+def privacy_reject_forms() -> tuple[str, ...]:
+    """Translated controls that decline optional privacy processing."""
+    return (_concept_forms("sites.privacy_reject_target")
+            + _concept_forms("sites.privacy_reject_noun_target"))
+
+
+def privacy_overlay_marker_forms() -> tuple[str, ...]:
+    """Translated evidence that a fixed panel is a privacy overlay."""
+    return _concept_forms("sites.privacy_overlay_marker")
+
+
+def loading_marker_forms() -> tuple[str, ...]:
+    """Testi brevi che indicano contenuto asincrono non ancora stabile."""
+    return _concept_forms("sites.loading_marker")
+
+
+def is_collection_search_request(text: str) -> bool:
+    """Riconosce una richiesta enumerativa tramite il lessico traducibile."""
+    if _detlex is None:
+        return False
+    try:
+        return bool(_detlex.match("sites.collection_search_request", text or ""))
+    except Exception:
+        return False
+
+
+def action_verb_tokens() -> frozenset[str]:
+    """I verbi d'azione del vocabolario chiuso, normalizzati.
+
+    Dicono COME si chiede (vai, apri, clicca), non CHE COSA si cerca: chi deve
+    riconoscere il contenuto del fine li toglie, altrimenti «vai alle mie
+    prenotazioni» combacia con «Vai al contenuto principale», che e' il primo
+    link di ogni pagina accessibile.
+    """
+    return frozenset(normalize(forma)
+                     for forme in _verbs().values() for forma in forme
+                     if normalize(forma))
+
+
+# A bare domain in a goal names the SITE, which the manifest tells the planner
+# not to name: inside that site it distinguishes nothing, and normalisation
+# turns it into two words ("booking.com" -> "booking", "com") that no page
+# attests. It is dropped before the text becomes tokens.
+_DOMINIO = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b", re.IGNORECASE)
+
+
+def _grammatical_verb_patterns():
+    """Verb families that never name what is being looked for.
+
+    Two of them, asked in one place: the verb with which one ASKS ("show me",
+    "tell me") and the verb that only builds the sentence around another one
+    ("which mails HAVE I received"). Measured on 60 real requests, the second
+    family was the largest share of the noise that still reached a goal.
+    """
+    if _detlex is None:
+        return ()
+    patterns = []
+    for concept in ("text.request_verb", "text.auxiliary_verb"):
+        try:
+            patterns.extend(_detlex.regexes(concept))
+        except Exception:
+            continue
+    return tuple(patterns)
+
+
+def normalize_target(text: str) -> str:
+    grezzo = _DOMINIO.sub(" ", str(text or ""))
+    # The verbs leave AT THE ROOT, so every inflection leaves with them:
+    # "mostrami", "mostrandomi", "vorrei vedere". Enumerating the forms would
+    # be a list that ages; a root is a rule.
+    for pattern in _grammatical_verb_patterns():
+        try:
+            grezzo = pattern.sub(" ", grezzo) if hasattr(pattern, "sub") \
+                else re.sub(pattern, " ", grezzo, flags=re.IGNORECASE)
+        except Exception:
+            continue
+    target = normalize(grezzo)
+    for phrase in sorted(_target_noise(), key=len, reverse=True):
+        target = re.sub(rf"\b{re.escape(phrase)}\b", " ", target)
+    return " ".join(target.split())
+
+
+def _primary_action_clause(action: str) -> str:
+    """Select one bounded goal clause without turning policy text into a target."""
+    raw = str(action or "").strip()
+    clauses = [part.strip() for part in re.split(
+        r"(?:[\r\n]+|(?<=[.!?;])\s+)", raw) if part.strip()]
+    if len(clauses) <= 1:
+        return raw
+
+    search_forms = _concept_forms("sites.search_action_verb")
+    for clause in clauses:
+        normalized = normalize(clause)
+        if any(re.search(rf"\b{re.escape(form)}\b", normalized)
+               for form in search_forms):
+            return clause
+
+    action_forms = tuple(
+        normalize(form) for forms in _verbs().values() for form in forms)
+    for clause in clauses:
+        normalized = normalize(clause)
+        if (re.search(r"https?://", clause, re.IGNORECASE)
+                or any(re.search(rf"\b{re.escape(form)}\b", normalized)
+                       for form in action_forms)):
+            return clause
+    return clauses[0]
+
+
+# Punctuation a NAME on a page does not carry, while an expression, a selector
+# or a snippet does. It is what keeps the vocabulary closed once a text without
+# a verb is admitted as a goal: "le mie prenotazioni" is a name, "alert(1)" and
+# "div[id=x]" are not. Same structural refusal the goal reducer already applies
+# to its own output, so both ends judge a goal by the same standard.
+_CODE_MARKS = frozenset("(){}[]<>;=")
+
+
+def _names_something(text: str) -> bool:
+    """Does this text name a thing one could look for on a page?"""
+    return bool(text) and not any(ch in _CODE_MARKS for ch in str(text)) \
+        and bool(normalize_target(text))
+
+
+def is_goal_navigation_request(action: str) -> bool:
+    """Return whether natural language asks to *reach* page content.
+
+    Search is intrinsically goal-oriented.  A navigation verb without an
+    explicit URL is also a bounded semantic goal (for example ``vai alle mie
+    prenotazioni`` or ``apri il menu account``), whereas an explicit click,
+    fill, submit or wait remains an atomic command.  Forms come from the
+    detection lexicon through the same closed verb map used by ``parse_action``.
+
+    A text with NO verb at all is a goal too, and the commonest one: by
+    contract ``action`` carries the goal, and the manifest asks the planner to
+    name the thing without the verb ("le mie prenotazioni", not "vai").
+    """
+    clause = _primary_action_clause(action)
+    if re.search(r"https?://[^\s'\"<>]+", clause or "", re.I):
+        return False
+    normalized = normalize(clause)
+    if not normalized:
+        return False
+
+    search_forms = _concept_forms("sites.search_action_verb")
+    if any(re.search(rf"\b{re.escape(form)}\b", normalized)
+           for form in search_forms):
+        return True
+
+    verbs = _verbs()
+    # Match parse_action's precedence: an explicit atomic verb wins even if a
+    # later word also happens to be a navigation verb.
+    for kind in ("submit", "wait", "fill", "click"):
+        if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
+               for form in verbs[kind]):
+            return False
+    if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
+           for form in verbs["goto"]):
+        return True
+    return _names_something(clause)
+
+
+def parse_action(action: str) -> dict:
+    """Riduce una frase a ``{primitive,target,seconds}``.
+
+    ``submit`` ha precedenza: "compila e invia" e' un'unica azione batch e il
+    riempimento eventuale avviene dopo il gate, immediatamente prima del submit.
+    """
+    action = _primary_action_clause(action)
+    norm = normalize(action)
+    if not norm:
+        return {"ok": False, "error_class": "invalid_args"}
+    verbs = _verbs()
+    url_match = re.search(r"https?://[^\s'\"<>]+", action or "", re.I)
+    primitive = None
+    search_verbs = _concept_forms("sites.search_action_verb")
+    if any(re.search(rf"\b{re.escape(form)}\b", norm)
+           for form in search_verbs):
+        primitive = "search"
+    order = ("submit", "wait", "fill", "click", "goto")
+    for kind in order if primitive is None else ():
+        if any(re.search(rf"\b{re.escape(normalize(v))}\b", norm)
+               for v in verbs[kind]):
+            primitive = kind
+            break
+    # Un URL esplicito rende la destinazione non ambigua. Vale anche per
+    # "apri/open URL", che senza URL indica invece un elemento della pagina.
+    if url_match and primitive not in ("submit", "wait", "fill", "search"):
+        primitive = "goto"
+    elif primitive == "goto" and not url_match:
+        primitive = "click"
+    if primitive is None:
+        # A goal that names a thing and carries no verb is still a goal, and it
+        # is the shape the manifest ASKS the planner for ("le mie prenotazioni",
+        # "fatture 2026"). Demanding the verb back here made the manifest's own
+        # canonical example die with `unsupported_action` while every layer
+        # above treats the verb with which one asks as noise (real turn
+        # 0cde68a46a7a426d, 7/8). The vocabulary stays closed on the other
+        # side: what does not NAME anything is still refused.
+        if not _names_something(action):
+            return {"ok": False, "error_class": "unsupported_action"}
+        primitive = "search"
+    target = norm
+    if primitive == "goto":
+        if url_match:
+            target = url_match.group(0).rstrip(".,;)")
+    if primitive != "goto" or not target.startswith(("http://", "https://")):
+        removable = list(verbs.values())
+        if search_verbs:
+            removable.append(search_verbs)
+        for words in removable:
+            for word in words:
+                target = re.sub(rf"\b{re.escape(word)}\b", " ", target)
+        target = " ".join(target.split())
+        target = normalize_target(target)
+    seconds = 0
+    if primitive == "wait":
+        m = re.search(r"\b(\d{1,3})\b", norm)
+        seconds = min(20, max(1, int(m.group(1)))) if m else 2
+    return {"ok": True, "primitive": primitive, "target": target,
+            "seconds": seconds, "normalized": norm}
+
+
+def _candidate_text(candidate: dict) -> str:
+    return normalize(" ".join(str(candidate.get(k) or "") for k in (
+        "name", "label", "role", "tag", "type", "placeholder")))
+
+
+def active_goal_control_label(candidate: dict) -> str:
+    """Return a label only for a control whose active state is DOM-attested."""
+    state = any((
+        str(candidate.get("aria_selected") or "").lower() == "true",
+        str(candidate.get("aria_pressed") or "").lower() == "true",
+        str(candidate.get("aria_checked") or "").lower() == "true",
+        str(candidate.get("aria_expanded") or "").lower() == "true",
+        bool(candidate.get("checked")),
+        str(candidate.get("aria_current") or "").lower() in {
+            "true", "page", "step", "location", "date", "time"},
+    ))
+    if not state or candidate.get("disabled"):
+        return ""
+    return str(candidate.get("name") or candidate.get("label") or "").strip()
+
+
+def _is_semantic_control(candidate: dict) -> bool:
+    tag = str(candidate.get("tag") or "").lower()
+    role = str(candidate.get("role") or "").lower()
+    return tag in ("a", "button", "summary") or role in (
+        "button", "link", "tab", "menuitem")
+
+
+def _target_variants(target: str) -> tuple[str, ...]:
+    """Espande un target naturale solo quando coincide con un concetto noto.
+
+    L'espansione serve agli executor intelligenti drop-in: il broker puo'
+    cercare il concetto ``login`` e riconoscere ``Accedi``/``Sign in`` senza
+    imporre quelle forme al planner o codificarle nel motore browser.
+    """
+    target_n = normalize_target(target)
+    variants = [target_n] if target_n else []
+    semantic_targets = {
+        "login": "sites.login_entry_target",
+        "privacy reject": "sites.privacy_reject_target",
+        "login continue": "sites.login_continue_target",
+        "site search": "sites.search_entry_target",
+    }
+    for canonical, concept in semantic_targets.items():
+        source_forms = (privacy_reject_forms()
+                        if canonical == "privacy reject"
+                        else _concept_forms(concept))
+        forms = [normalize_target(form) for form in source_forms]
+        if target_n and (target_n == canonical or target_n in forms):
+            variants.extend(form for form in forms if form)
+    return tuple(dict.fromkeys(variants))
+
+
+def _contains_phrase(haystack: str, needle: str) -> bool:
+    return bool(needle and re.search(
+        rf"(?:^|\s){re.escape(needle)}(?:\s|$)", haystack))
+
+
+def _candidate_score_single(target: str, candidate: dict,
+                            primitive: str) -> float:
+    if (candidate.get("disabled") or candidate.get("visible") is False
+            or candidate.get("in_viewport") is False
+            or candidate.get("topmost") is False):
+        return 0.0
+    tag = str(candidate.get("tag") or "").lower()
+    typ = str(candidate.get("type") or "").lower()
+    editable = tag in ("input", "textarea", "select") or candidate.get("editable")
+    if primitive == "fill" and not editable:
+        return 0.0
+    if primitive == "submit" and not (typ == "submit" or candidate.get("form_action")):
+        return 0.0
+    hay = _candidate_text(candidate)
+    target_n = normalize(target)
+    if not hay:
+        return 0.0
+    score = 0.0
+    name = normalize(str(candidate.get("name") or candidate.get("label") or ""))
+    if target_n and target_n == name:
+        score = 1.0
+    elif target_n and (_contains_phrase(hay, target_n)
+                       or _contains_phrase(target_n, name)):
+        score = 0.88
+    else:
+        wanted = set(target_n.split())
+        present = set(hay.split())
+        if wanted:
+            score = 0.75 * len(wanted & present) / len(wanted)
+    if primitive == "submit" and typ == "submit":
+        score = max(score, 0.72)
+    if score > 0 and primitive == "click":
+        # Un framework puo' enumerare sia il vero link/button sia un wrapper
+        # grafico con cursor:pointer e lo stesso testo. Il controllo HTML/ARIA
+        # ha semantica browser-owned; il wrapper resta soltanto un fallback.
+        if _is_semantic_control(candidate):
+            if tag in ("button", "a"):
+                score += 0.05
+        else:
+            score *= 0.78
+    return min(score, 1.0)
+
+
+def candidate_score(target: str, candidate: dict, primitive: str) -> float:
+    variants = _target_variants(target) or (normalize_target(target),)
+    return max((_candidate_score_single(variant, candidate, primitive)
+                for variant in variants), default=0.0)
+
+
+def _candidate_has_unique_exact_name(target: str, candidate: dict) -> bool:
+    name = normalize(str(
+        candidate.get("name") or candidate.get("label") or ""))
+    return bool(name and any(
+        name == normalize(variant) for variant in _target_variants(target)))
+
+
+def _is_login_target(target: str) -> bool:
+    target_n = normalize_target(target)
+    forms = {normalize_target(form) for form in
+             _concept_forms("sites.login_entry_target")}
+    return bool(target_n and (target_n == "login" or target_n in forms))
+
+
+def _candidate_matches_concept(candidate: dict, concept: str) -> bool:
+    text = _candidate_text(candidate)
+    return bool(text and any(
+        _contains_phrase(text, form) for form in _concept_forms(concept)))
+
+
+def _safe_navigation_identity(candidate: dict) -> tuple[str, str, str] | None:
+    href = str(candidate.get("href") or "")
+    try:
+        parsed = urllib.parse.urlsplit(href)
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        return None
+    return (parsed.scheme.lower(), parsed.hostname.lower(), parsed.path or "/")
+
+
+def _model_eligible(candidate: dict, primitive: str) -> bool:
+    if (candidate.get("disabled") or candidate.get("visible") is False
+            or candidate.get("in_viewport") is False
+            or candidate.get("topmost") is False):
+        return False
+    tag = str(candidate.get("tag") or "").lower()
+    typ = str(candidate.get("type") or "").lower()
+    editable = tag in ("input", "textarea", "select") or candidate.get(
+        "editable")
+    if primitive == "fill":
+        return bool(editable)
+    if primitive == "submit":
+        return typ == "submit" or bool(candidate.get("form_action"))
+    if primitive == "click" and editable and typ not in (
+            "button", "submit", "image", "checkbox", "radio"):
+        return False
+    return True
+
+
+def choose_candidate(target: str, candidates: list[dict], primitive: str) -> dict:
+    all_ranked = sorted(
+        ((candidate_score(target, c, primitive), c) for c in candidates),
+        key=lambda x: x[0], reverse=True)
+    ranked = [(s, c) for s, c in all_ranked if s > 0]
+    # Se il testo accessibile non esprime il concetto (icone, UI custom,
+    # etichette inattese), il VLM puo' ancora scegliere fra elementi gia'
+    # enumerati. Lo score zero non viene mai eseguito deterministicamente.
+    model_ranked = ranked or [
+        (s, c) for s, c in all_ranked if _model_eligible(c, primitive)]
+    if not ranked or ranked[0][0] < 0.55:
+        return {"ok": False, "error_class": "selector_missing",
+                "ranked": model_ranked[:24]}
+    if primitive == "click" and _is_login_target(target):
+        # Un controllo diretto di autenticazione (es. "Accedi"/"Sign in")
+        # e' semanticamente piu' specifico di un reveal generico come
+        # "Account". Le forme arrivano dal detection_lexicon: nessun label o
+        # sito e' codificato nel resolver. Se non esiste un diretto, conserva
+        # integralmente il fallback precedente sui reveal.
+        direct = [
+            (score, candidate) for score, candidate in ranked
+            if _candidate_matches_concept(
+                candidate, "sites.login_direct_target")]
+        if direct and direct[0][0] >= 0.55:
+            ranked = direct
+        # Un href HTTP(S) e' verificabile dal broker prima del click; un
+        # controllo JavaScript opaco no. Se esistono link login validi, limita
+        # l'ambiguita' a questi senza inventare destinazioni o selettori.
+        navigable = [(score, candidate) for score, candidate in ranked
+                     if _safe_navigation_identity(candidate) is not None]
+        if navigable and navigable[0][0] >= 0.55:
+            ranked = navigable
+    top_score, top = ranked[0]
+    margin = top_score - (ranked[1][0] if len(ranked) > 1 else 0.0)
+    ambiguous = margin < 0.12
+    if ambiguous and _candidate_has_unique_exact_name(target, top):
+        close_exact = [
+            candidate for score, candidate in ranked[1:]
+            if top_score - score < 0.12
+            and _candidate_has_unique_exact_name(target, candidate)
+        ]
+        if not close_exact:
+            ambiguous = False
+    if ambiguous and primitive == "click" and _is_login_target(target):
+        close = [candidate for score, candidate in ranked
+                 if top_score - score < 0.12]
+        destinations = {_safe_navigation_identity(candidate)
+                        for candidate in close}
+        if len(destinations) == 1 and None not in destinations:
+            ambiguous = False
+    return {"ok": True, "candidate": top, "confidence": top_score,
+            "ambiguous": ambiguous, "ranked": ranked[:5]}
+
+
+def _goal_noise() -> set[str]:
+    # Action verbs are noise for EVERYONE who has to recognise the content of
+    # a goal, not only for whoever crops the text that was read: "go to my
+    # bookings" matches "Skip to main content" on every accessible page in the
+    # world. Dropping them here — where what counts as a goal token is decided
+    # — holds once for every consumer instead of being redone by hand in each.
+    return (set(_concept_forms("sites.goal_noise"))
+            | set(_concept_forms("sites.goal_noise_articulated_preposition"))
+            | set(_concept_forms("text.interrogative"))
+            | set(_concept_forms("sites.goal_scope_quantifier"))
+            | set(_concept_forms("sites.personal_goal_marker"))
+            | set(action_verb_tokens()))
+
+
+def _canonical_goal_text(text: str) -> str:
+    normalized = normalize_target(text)
+    if _detlex is None:
+        return normalized
+    for concept in ("sites.goal_term_alias", "sites.goal_state_alias"):
+        try:
+            aliases = _detlex.mapping(concept)
+        except Exception:
+            continue
+        for canonical, forms in aliases.items():
+            for form in sorted(
+                    (normalize(x) for x in forms), key=len, reverse=True):
+                if form:
+                    normalized = re.sub(
+                        rf"\b{re.escape(form)}\b",
+                        normalize(canonical), normalized)
+    return " ".join(normalized.split())
+
+
+# The declared scope of a goal. A closed enum, so the grammar can bind it at
+# production time; empty means the planner did not declare one and the old
+# heuristic still answers.
+SCOPE_PERSONAL = "personale"
+SCOPE_PUBLIC = "pubblico"
+GOAL_SCOPES = (SCOPE_PERSONAL, SCOPE_PUBLIC)
+
+
+def goal_is_personal(target: str, scope: str = "") -> bool:
+    """Is the goal inside the user's own area of the site?
+
+    A declared scope can only ADD the personal reading, never remove it.
+    Declaring `personale` settles the question, and that is the whole point of
+    the field: the possession marker ("my", "mie") is the most fragile signal
+    in this file — a language expresses possession in many ways, the goal
+    reducer can strip it, and a request phrased without it ("show me the
+    bookings") used to be indistinguishable from a public one, which is
+    exactly where the pilot failed to open the personal area.
+
+    Declaring `pubblico` does NOT erase the marker. The marker is evidence
+    from the user's own words; the scope is a label the planner attached. A
+    label that could switch off the guards the words earned would reopen, on
+    a single mislabelling, the failure this field exists to close.
+    """
+    if str(scope or "").strip().lower() == SCOPE_PERSONAL:
+        return True
+    return _is_personal_goal(target)
+
+
+def _is_personal_goal(target: str) -> bool:
+    normalized = normalize(target)
+    return any(re.search(rf"\b{re.escape(form)}\b", normalized)
+               for form in _concept_forms("sites.personal_goal_marker"))
+
+
+def _goal_facet_tokens() -> frozenset[str]:
+    """Tokens that QUALIFY content without naming it.
+
+    "past", "upcoming", "cancelled" say HOW to filter what is being looked
+    for, not WHAT is being looked for: on their own they name no destination.
+    They are the lexicon canonicals, not a list written in here: a state added
+    to the lexicon is covered without touching this file.
+    """
+    if _detlex is None:
+        return frozenset()
+    try:
+        return frozenset(x for x in (normalize(canonical) for canonical
+                                     in _detlex.mapping("sites.goal_state_alias"))
+                         if x)
+    except Exception:
+        return frozenset()
+
+
+def offered_facet_tokens(candidates: list[dict] | None) -> frozenset[str]:
+    """The state facets this page OFFERS as a control to press.
+
+    They tell "not there yet" apart from "here the facet is not spelled out".
+    If a "Past" tab exists and past items are what is wanted, one step is
+    still pending; if no control names the wanted facet, the site expresses it
+    some other way — usually through dates — and demanding it in words would
+    make arrival impossible to prove.
+    """
+    facets = _goal_facet_tokens()
+    if not facets:
+        return frozenset()
+    offered: set[str] = set()
+    for candidate in (candidates or ()):
+        name = str(candidate.get("name") or candidate.get("label") or "")
+        offered |= set(goal_tokens(name, navigation=True)) & facets
+    return frozenset(offered)
+
+
+def goal_is_exhaustive(target: str) -> bool:
+    normalized = normalize_target(target)
+    return any(_contains_phrase(normalized, form) for form in
+               _concept_forms("sites.goal_scope_quantifier"))
+
+
+def preserve_goal_qualifiers(query: str, goal: str, *,
+                             max_words: int = 6) -> str:
+    """Restore navigation semantics that a goal reducer may discard.
+
+    Ownership and exhaustive-scope markers do not contribute content tokens,
+    but they alter how the resolver reaches that content (for example through
+    a personal-area reveal or through continuation controls).  Every restored
+    phrase is copied from a translated detection concept that is actually
+    present in the original query; the model cannot invent it.
+    """
+    query_n = normalize(query)
+    goal_n = normalize(goal)
+    if not query_n or not goal_n:
+        return ""
+
+    matches: list[tuple[int, str]] = []
+    for concept in ("sites.goal_scope_quantifier",
+                    "sites.personal_goal_marker"):
+        forms = tuple(dict.fromkeys(_concept_forms(concept)))
+        if any(_contains_phrase(goal_n, form) for form in forms):
+            continue
+        found: list[tuple[int, int, str]] = []
+        for form in forms:
+            match = re.search(
+                rf"(?:^|\s)({re.escape(form)})(?=\s|$)", query_n)
+            if match:
+                found.append((match.start(1), -len(form.split()), form))
+        if found:
+            start, _neg_words, form = min(found)
+            matches.append((start, form))
+
+    qualifiers = [form for _start, form in sorted(matches)]
+    restored = " ".join((*qualifiers, goal_n)).strip()
+    if not restored or len(restored.split()) > max(1, int(max_words)):
+        return ""
+    return restored
+
+
+def goal_tokens(target: str, *, navigation: bool = False) -> tuple[str, ...]:
+    noise = _goal_noise()
+    out = []
+    for token in _canonical_goal_text(target).split():
+        # A single character is too short to name anything — unless it is a
+        # digit, which the request stated on purpose: "the last 7 days", "the
+        # 3 senders". Dropping it lost a quantity the user had written.
+        if token in noise or (len(token) < 2 and not token.isdigit()):
+            continue
+        if navigation and token.isdigit():
+            continue  # date/importi sono filtri differiti, non nomi di menu
+        out.append(token)
+    return tuple(dict.fromkeys(out))
+
+
+def goal_candidate_key(candidate: dict) -> str:
+    stable = "\0".join(str(candidate.get(k) or "") for k in (
+        "tag", "role", "name", "label", "href", "form_action"))
+    return hashlib.sha256(stable.encode("utf-8")).hexdigest()
+
+
+def _place_key(identity: tuple[str, str, str]) -> str:
+    return hashlib.sha256("\0".join(identity).encode("utf-8")).hexdigest()
+
+
+def goal_place_key(candidate: dict) -> str:
+    """Identity of the PLACE a candidate leads to, not of its label.
+
+    `goal_candidate_key` signs the ELEMENT, raw href included: the same link
+    re-emitted with a different `label`/`sid` yields two keys, and an
+    anti-loop built on those fails to notice it has already been there.
+    What "the same place" means is already decided elsewhere in this file
+    (`_safe_navigation_identity`) and in the broker (`_destinazione_di`),
+    always the same way: scheme, host, path. A control that leads nowhere (a
+    JS button) has no place, and stays identified by itself.
+    """
+    identity = _safe_navigation_identity(candidate)
+    return (goal_candidate_key(candidate) if identity is None
+            else _place_key(identity))
+
+
+def url_place_key(url: str) -> str:
+    """The same identity as `goal_place_key`, for a place already reached.
+
+    Returns an empty string for anything that is not a web destination, so
+    the caller does not pollute the visited set with a non-place.
+    """
+    identity = _safe_navigation_identity({"href": url})
+    return "" if identity is None else _place_key(identity)
+
+
+def _is_root_navigation(candidate: dict) -> bool:
+    href = str(candidate.get("href") or "").strip()
+    if not href:
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(href)
+    except ValueError:
+        return False
+    # UN SOLO predicato di «home», non due. Il lato ARRIVO sapeva gia' che
+    # `/index.it.html` e' la home di un sito localizzato (`_is_home_path`,
+    # scritto il 15/7 apposta); il lato PARTENZA continuava a chiedere
+    # `path == "/"` e quindi ammetteva il logo come passo verso un fine
+    # personale. Il pilota ci ha bruciato due dei quattro passi disponibili,
+    # andando dalla home alla home (turno reale 7/8/2026). Due funzioni che
+    # rispondono alla stessa domanda in modo diverso sono un difetto, non una
+    # differenza.
+    return (parsed.scheme.lower() in {"http", "https"}
+            and _is_home_path(parsed.path or "/"))
+
+
+def goal_candidate_is_admissible(target: str, candidate: dict, *,
+                                 scope: str = "") -> bool:
+    """Apply goal-level safety constraints to deterministic and model paths."""
+    return not (goal_is_personal(target, scope)
+                and _is_root_navigation(candidate))
+
+
+# Un nome accessibile lungo come una frase e' PROSA, non una destinazione.
+# Le etichette di navigazione sono corte per natura («Prenotazioni e viaggi»,
+# «Il tuo account: nome cognome, Livello 3 di Genius»); un paragrafo di
+# informativa non e' un posto dove si va. Misurato il 7/8/2026 su Booking: il
+# candidato in testa per «mostrami le mie prenotazioni» era il pulsante «I
+# prezzi mostrati sono stime e quindi possono variare. Vedrai l'importo
+# effettivo al momento della prenotazione…», che vince solo perche' contiene
+# la parola «prenotazione» — e la sua presenza rendeva ambiguo tutto il resto.
+_MAX_PAROLE_ETICHETTA = 12
+# I due punti NON sono punteggiatura di frase: le etichette li usano
+# («Il tuo account: nome cognome»). Il punto seguito da altro testo si
+# ("… possono variare. Vedrai l'importo…").
+_FRASE = re.compile(r"[.;!?]\s+\S")
+
+
+def _looks_like_prose(name: str) -> bool:
+    """Vero se il nome e' un testo descrittivo invece di un'etichetta.
+
+    Due segnali, entrambi indipendenti dalla lingua e dal sito: la lunghezza in
+    parole e la punteggiatura di frase (un punto seguito da altro testo). Una
+    voce di menu non ha ne' l'una ne' l'altra.
+    """
+    grezzo = str(name or "").strip()
+    if not grezzo:
+        return False
+    if len(normalize(grezzo).split()) > _MAX_PAROLE_ETICHETTA:
+        return True
+    return bool(_FRASE.search(grezzo))
+
+
+def goal_navigation_candidates(candidates: list[dict], *,
+                               excluded: set[str] | None = None) -> list[dict]:
+    excluded = excluded or set()
+    out = []
+    for candidate in candidates:
+        tag = str(candidate.get("tag") or "").lower()
+        typ = str(candidate.get("type") or "").lower()
+        role = str(candidate.get("role") or "").lower()
+        if (candidate.get("disabled") or candidate.get("visible") is False
+                or candidate.get("in_viewport") is False
+                or candidate.get("topmost") is False
+                or candidate.get("secret_input") or candidate.get("download")
+                or typ == "password"
+                or (typ == "submit" and candidate.get("form_action"))
+                or tag in ("input", "textarea", "select")
+                or role in ("textbox", "searchbox")):
+            continue
+        # `excluded` is a set of OPAQUE identities: navigation puts places in
+        # it, pagination puts exhausted controls in it. A candidate is excluded
+        # when either of its two identities is in there.
+        if (goal_candidate_key(candidate) in excluded
+                or goal_place_key(candidate) in excluded):
+            continue
+        nome = str(candidate.get("name") or candidate.get("label") or "")
+        if not normalize(nome):
+            continue
+        if _looks_like_prose(nome):
+            continue
+        out.append(candidate)
+    return out
+
+
+def prefer_verifiable_goal_candidates(candidates: list[dict]) -> list[dict]:
+    """Collapse same-name wrappers onto a unique broker-verifiable link."""
+    groups: dict[str, list[dict]] = {}
+    for candidate in candidates:
+        name = normalize(str(
+            candidate.get("name") or candidate.get("label") or ""))
+        groups.setdefault(name, []).append(candidate)
+    out = []
+    for group in groups.values():
+        navigable = [candidate for candidate in group
+                     if _safe_navigation_identity(candidate) is not None]
+        destinations = {
+            _safe_navigation_identity(candidate) for candidate in navigable}
+        if navigable and len(destinations) == 1:
+            out.append(min(navigable, key=lambda candidate: (
+                str(candidate.get("tag") or "").lower() != "a",
+                str(candidate.get("id") or ""))))
+        else:
+            out.extend(group)
+    return out
+
+
+def choose_authenticated_reveal_candidate(
+        candidates: list[dict], *, excluded: set[str] | None = None,
+        account_only: bool = False) -> dict:
+    """Choose one closed disclosure before failing an authenticated goal.
+
+    Account areas often expose only the user's name/avatar while the desired
+    links live in a collapsed menu.  The decision uses browser-owned ARIA/DOM
+    state, never a vendor label: a unique closed semantic disclosure is safe
+    to reveal and then rescan.  Multiple plausible disclosures remain an
+    explicit ambiguity.
+    """
+    eligible = []
+    for candidate in goal_navigation_candidates(
+            candidates, excluded=excluded):
+        if not _is_semantic_control(candidate):
+            continue
+        closed = str(candidate.get("aria_expanded") or "").lower() == "false"
+        controlled = bool(candidate.get("control_targets"))
+        if not (closed or controlled):
+            continue
+        eligible.append(candidate)
+    if not eligible:
+        return {"ok": False, "error_class": "selector_missing", "ranked": []}
+
+    account = [candidate for candidate in eligible
+               if _candidate_matches_concept(
+                   candidate, "sites.account_reveal_control")]
+    # Un pannello QUALUNQUE (un calendario, un filtro) serve solo a scoprire
+    # la prima volta dove sta l'area personale. Dopo che un passo e' stato
+    # eseguito, l'unica rivelazione legittima e' quella dell'area personale:
+    # altrimenti un controllo estraneo prende il posto di un candidato che
+    # manca, e il pilota apre cose a caso.
+    if account_only and not account:
+        return {"ok": False, "error_class": "selector_missing", "ranked": []}
+    pool = account or eligible
+    if len(pool) > 1:
+        # Lo STESSO controllo, reso piu' volte, non sono piu' controlli.
+        # Booking espone il pulsante account in testata, nel menu compatto e
+        # in una copia nascosta: tre elementi, un solo nome accessibile, una
+        # sola cosa da aprire. Trattarli come rivali fermava il flusso proprio
+        # dove serviva un clic — «elemento in alto a destra → Prenotazioni e
+        # viaggi» (turno reale 7803a3f2, 7/8/2026). E' la stessa equivalenza
+        # per nome canonico che il percorso goal applica gia' ai wrapper ARIA;
+        # qui mancava. Nomi diversi restano un'ambiguita' vera.
+        nomi = {tuple(goal_tokens(str(
+            candidate.get("name") or candidate.get("label") or ""),
+            navigation=True)) for candidate in pool}
+        if len(nomi) == 1:
+            pool = [min(pool, key=lambda candidate: (
+                not _is_semantic_control(candidate),
+                str(candidate.get("id") or "")))]
+    if len(pool) != 1:
+        return {"ok": False, "error_class": "selector_ambiguous",
+                "ranked": [(0.62, candidate) for candidate in pool[:24]]}
+    return {"ok": True, "candidate": pool[0], "confidence": 0.62,
+            "ranked": [(0.62, pool[0])]}
+
+
+def goal_discriminates_on_site(target: str, site_host: str) -> bool:
+    """Il fine distingue qualcosa, su QUESTO sito?
+
+    Il riduttore porta «le mie prenotazioni» al token `booking` (l'alias del
+    lessico copre prenotazione/viaggio/trip). Su `booking.com` quel token sta
+    nel logo, nel disclaimer prezzi, in mezza pagina: la somiglianza testuale
+    non sceglie piu' niente, e qualunque cosa vinca e' rumore. Misurato il
+    7/8/2026: tre voci a 0,860 e una a 0,751, margine sotto soglia, ambiguita'.
+
+    Quando il fine e' contenuto nell'identita' del sito, non e' un criterio di
+    somiglianza: e' una precondizione gia' soddisfatta dall'esserci. La scelta
+    deve passare al canale STRUTTURALE (aprire l'area personale), non a una
+    classifica di parole. Universale: nessun nome di sito qui dentro.
+    """
+    wanted = set(goal_tokens(target, navigation=True))
+    if not wanted or not site_host:
+        return True
+    del_sito = set(normalize(str(site_host).replace(".", " ")).split())
+    return not wanted.issubset(del_sito)
+
+
+def choose_goal_candidate(target: str, candidates: list[dict], *,
+                          excluded: set[str] | None = None,
+                          site_host: str = "", scope: str = "") -> dict:
+    """Sceglie un passo che copre una parte semantica del fine.
+
+    I numeri restano vincoli terminali (anno/importo) e non penalizzano il nome
+    di un menu. Il margine rende ambiguita' e collisioni un fallimento chiuso.
+    """
+    if site_host and not goal_discriminates_on_site(target, site_host):
+        return {"ok": False, "error_class": "goal_not_discriminating",
+                "ranked": []}
+    wanted = set(goal_tokens(target, navigation=True))
+    personal_goal = goal_is_personal(target, scope)
+    account_forms = _concept_forms("sites.account_reveal_control")
+    ranked = []
+    ripieghi = []          # candidati che non toccano il fine: si usano solo se
+    #                        nessun altro lo tocca (vedi sotto)
+    eligible = prefer_verifiable_goal_candidates(
+        goal_navigation_candidates(candidates, excluded=excluded))
+    for candidate in eligible:
+        if not goal_candidate_is_admissible(target, candidate, scope=scope):
+            continue
+        present = set(goal_tokens(str(
+            candidate.get("name") or candidate.get("label") or ""),
+            navigation=True))
+        overlap = wanted & present
+        name = normalize(str(candidate.get("name") or candidate.get("label") or ""))
+        account_reveal = (personal_goal and any(
+            re.search(rf"\b{re.escape(form)}\b", name)
+            for form in account_forms))
+        if overlap:
+            coverage = len(overlap) / len(wanted)
+            focus = len(overlap) / max(1, len(present))
+            score = min(1.0, 0.72 * coverage + 0.28 * focus)
+        elif account_reveal:
+            # Un RIPIEGO non compete con una corrispondenza vera. Il controllo
+            # «account» non condivide un token col fine — apre soltanto il
+            # posto dove il fine potrebbe stare — e mescolarlo alla classifica
+            # con un punteggio fisso lo mette alla pari dei candidati veri:
+            # nomi diversi allo stesso punteggio = margine nullo = ambiguita',
+            # e il flusso muore proprio dove prima proseguiva (regressione
+            # introdotta il 5/8, vista il 7/8 su «i tuoi prossimi viaggi»:
+            # «Il tuo account» a pari merito con tre «Viaggio per lavoro»
+            # identici, che da soli sarebbero collassati in uno).
+            # Resta in coda: se NESSUN candidato tocca il fine, aprire il menu
+            # e' l'unica mossa sensata ed e' quella che si fa.
+            ripieghi.append((0.62, candidate))
+            continue
+        else:
+            continue
+        if not _is_semantic_control(candidate):
+            score *= 0.72
+        ranked.append((score, candidate))
+    if not ranked:
+        ranked = ripieghi
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    if not ranked or ranked[0][0] < 0.55:
+        return {"ok": False, "error_class": "selector_missing",
+                "ranked": ranked[:24]}
+    top_score, top = ranked[0]
+    margin = top_score - (ranked[1][0] if len(ranked) > 1 else 0.0)
+    if margin < 0.12:
+        equivalent = [candidate for score, candidate in ranked
+                      if top_score - score < 0.12]
+        keys = {goal_candidate_key(candidate) for candidate in equivalent}
+        destinations = {_safe_navigation_identity(candidate)
+                        for candidate in equivalent}
+        canonical_names = {tuple(goal_tokens(str(
+            candidate.get("name") or candidate.get("label") or ""),
+            navigation=True)) for candidate in equivalent}
+        # Framework menus commonly expose both an ARIA ``menuitem`` wrapper
+        # and the nested HTTP link with the same accessible name.  The wrapper
+        # may consume a click without navigating (Booking regression 16/7),
+        # while the link has a broker-verifiable destination.  Prefer the
+        # unique navigable equivalent; never invent a URL and keep different
+        # labels or destinations ambiguous.
+        navigable = [candidate for candidate in equivalent
+                     if _safe_navigation_identity(candidate) is not None]
+        navigable_destinations = {
+            _safe_navigation_identity(candidate) for candidate in navigable}
+        if (len(canonical_names) == 1 and len(navigable_destinations) == 1
+                and navigable):
+            top = min(navigable, key=lambda candidate: (
+                str(candidate.get("tag") or "").lower() != "a",
+                str(candidate.get("id") or "")))
+            return {"ok": True, "candidate": top,
+                    "confidence": top_score, "ranked": ranked[:24]}
+        safe_destination = len(destinations) == 1 and None not in destinations
+        if safe_destination and (len(keys) == 1 or len(canonical_names) == 1):
+            top = min(equivalent, key=lambda candidate: (
+                not _is_semantic_control(candidate),
+                str(candidate.get("id") or "")))
+        else:
+            return {"ok": False, "error_class": "selector_ambiguous",
+                    "ranked": ranked[:24]}
+    return {"ok": True, "candidate": top, "confidence": top_score,
+            "ranked": ranked[:24]}
+
+
+def goal_candidate_is_exact(target: str, candidate: dict) -> bool:
+    wanted = set(goal_tokens(target, navigation=True))
+    present = set(goal_tokens(str(
+        candidate.get("name") or candidate.get("label") or ""),
+        navigation=True))
+    return bool(wanted) and present == wanted
+
+
+def choose_goal_continuation_candidate(
+        target: str, candidates: list[dict], *,
+        excluded: set[str] | None = None) -> dict:
+    """Choose a bounded load-more/next control related to an attained goal."""
+    forms = tuple(normalize(form) for form in _concept_forms(
+        "sites.continuation_target") if normalize(form))
+    wanted = set(goal_tokens(target, navigation=True))
+    ranked = []
+    for candidate in goal_navigation_candidates(
+            candidates, excluded=excluded):
+        if str(candidate.get("form_method") or "").upper() == "POST":
+            continue
+        name = normalize(str(
+            candidate.get("name") or candidate.get("label") or ""))
+        padded_name = f" {name} "
+        if not name or not any(f" {form} " in padded_name for form in forms):
+            continue
+        name_overlap = wanted & set(goal_tokens(name, navigation=True))
+        context = normalize(str(candidate.get("context_name") or ""))
+        context_overlap = wanted & set(goal_tokens(context, navigation=True))
+        if name_overlap:
+            score = 0.95
+        elif context_overlap:
+            score = 0.80
+        else:
+            score = 0.62
+        if not _is_semantic_control(candidate):
+            score *= 0.72
+        ranked.append((score, candidate,
+                       bool(name_overlap or context_overlap)))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    if not ranked:
+        return {"ok": False, "error_class": "selector_missing"}
+    contextual = [item for item in ranked if item[2]]
+    pool = contextual or ranked
+    if not contextual and len(pool) != 1:
+        return {"ok": False, "error_class": "selector_ambiguous"}
+    top_score, top, _ = pool[0]
+    if len(pool) > 1 and top_score - pool[1][0] < 0.12:
+        return {"ok": False, "error_class": "selector_ambiguous"}
+    return {"ok": True, "candidate": top, "confidence": top_score,
+            "ranked": [(score, candidate) for score, candidate, _ in pool[:12]]}
+
+
+def choose_search_field(candidates: list[dict]) -> dict:
+    forms = set(_concept_forms("sites.search_entry_target"))
+    ranked = []
+    for candidate in candidates:
+        tag = str(candidate.get("tag") or "").lower()
+        typ = str(candidate.get("type") or "").lower()
+        role = str(candidate.get("role") or "").lower()
+        if (candidate.get("disabled") or candidate.get("visible") is False
+                or candidate.get("in_viewport") is False
+                or candidate.get("topmost") is False
+                or candidate.get("secret_input")
+                or (tag not in ("input", "textarea")
+                    and not candidate.get("editable"))):
+            continue
+        semantic = max((_candidate_score_single(form, candidate, "fill")
+                        for form in forms), default=0.0)
+        structural = 1.0 if typ == "search" or role == "searchbox" else 0.0
+        score = max(semantic, structural)
+        if score:
+            ranked.append((score, candidate))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    if not ranked:
+        return {"ok": False, "error_class": "selector_missing"}
+    top_score, top = ranked[0]
+    margin = top_score - (ranked[1][0] if len(ranked) > 1 else 0.0)
+    if margin < 0.12:
+        return {"ok": False, "error_class": "selector_ambiguous",
+                "ranked": ranked[:12]}
+    return {"ok": True, "candidate": top, "confidence": top_score}
+
+
+def _offscreen_probe(candidate: dict) -> dict | None:
+    if (candidate.get("rendered") is not True
+            or candidate.get("in_viewport") is not False
+            or candidate.get("disabled")):
+        return None
+    probe = dict(candidate)
+    probe.update({"visible": True, "in_viewport": True, "topmost": True})
+    return probe
+
+
+def choose_scroll_candidate(target: str, candidates: list[dict],
+                            primitive: str) -> dict:
+    ranked = []
+    for candidate in candidates:
+        probe = _offscreen_probe(candidate)
+        if probe is None:
+            continue
+        score = candidate_score(target, probe, primitive)
+        if score:
+            ranked.append((score, candidate))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    if not ranked or ranked[0][0] < 0.55:
+        return {"ok": False, "error_class": "selector_missing"}
+    top_score, top = ranked[0]
+    margin = top_score - (ranked[1][0] if len(ranked) > 1 else 0.0)
+    if margin < 0.12:
+        return {"ok": False, "error_class": "selector_ambiguous"}
+    return {"ok": True, "candidate": top, "confidence": top_score}
+
+
+def choose_goal_scroll_candidate(target: str, candidates: list[dict], *,
+                                 excluded: set[str] | None = None) -> dict:
+    originals = {}
+    probes = []
+    for candidate in candidates:
+        probe = _offscreen_probe(candidate)
+        if probe is None:
+            continue
+        key = goal_candidate_key(probe)
+        originals[key] = candidate
+        probes.append(probe)
+    chosen = choose_goal_candidate(target, probes, excluded=excluded)
+    if chosen.get("ok"):
+        probe = chosen["candidate"]
+        chosen["candidate"] = originals.get(goal_candidate_key(probe), probe)
+    return chosen
+
+
+def choose_goal_continuation_scroll_candidate(
+        target: str, candidates: list[dict], *,
+        excluded: set[str] | None = None) -> dict:
+    originals = {}
+    probes = []
+    for candidate in candidates:
+        probe = _offscreen_probe(candidate)
+        if probe is None:
+            continue
+        key = goal_candidate_key(probe)
+        originals[key] = candidate
+        probes.append(probe)
+    chosen = choose_goal_continuation_candidate(
+        target, probes, excluded=excluded)
+    if chosen.get("ok"):
+        probe = chosen["candidate"]
+        chosen["candidate"] = originals.get(goal_candidate_key(probe), probe)
+    return chosen
+
+
+def choose_search_scroll_field(candidates: list[dict]) -> dict:
+    originals = {}
+    probes = []
+    for candidate in candidates:
+        probe = _offscreen_probe(candidate)
+        if probe is None:
+            continue
+        originals[str(candidate.get("id") or id(candidate))] = candidate
+        probes.append(probe)
+    chosen = choose_search_field(probes)
+    if chosen.get("ok"):
+        probe = chosen["candidate"]
+        chosen["candidate"] = originals.get(
+            str(probe.get("id") or id(probe)), probe)
+    return chosen
+
+
+# Home/landing di un sito: root, `/index[.htm[l]]` e le varianti LOCALIZZATE
+# `/index.<lang>[-<region>].htm[l]` (es. `/index.it.html`, `/index.en-gb.html`).
+# Booking redirige la home su `/index.it.html`: senza le localizzate il guard
+# home di page_satisfies_goal falliva a scattare e un goal personale a token
+# singolo (es. «prenotazioni»→«booking», onnipresente sul sito) risultava
+# "gia' raggiunto" sulla home → observe invece di aprire la sezione dedicata.
+_LOCALIZED_INDEX_RE = re.compile(r"/index\.[a-z]{2,3}(-[a-z]{2,4})?\.html?")
+
+
+def _is_home_path(path: str) -> bool:
+    if path in ("", "/", "/index", "/index.htm", "/index.html"):
+        return True
+    return bool(_LOCALIZED_INDEX_RE.fullmatch(path or ""))
+
+
+def page_satisfies_goal(target: str, body_text: str | list[str], *,
+                        scope_text: str = "",
+                        facets_offered: frozenset[str] = frozenset(),
+                        scope: str = "") -> bool:
+    wanted = set(goal_tokens(target))
+    if not wanted:
+        return False
+    try:
+        split = urllib.parse.urlsplit(scope_text)
+        path = split.path.lower()
+        # I punti si aprono PRIMA: qui l'host e' il soggetto, non un dominio
+        # citato dentro una frase, e il filtro che toglie i domini dai fini lo
+        # svuoterebbe (stessa forma gia' usata da `goal_discriminates_on_site`).
+        host_tokens = set(goal_tokens(
+            str(split.hostname or "").replace(".", " ")))
+    except ValueError:
+        path, host_tokens = "", set()
+    # The HOME of a site talks about EVERYTHING: attesting a goal there proves
+    # nothing about having arrived anywhere, and the dedicated section still
+    # has to be opened. The guard already existed, but only applied to a goal
+    # of ONE token — and a goal of two tokens (the thing plus its facet) is the
+    # NORMAL case, not the exception.
+    #
+    # The criterion is not how many tokens the goal has: it is whether one of
+    # them still DISTINGUISHES once the site name (which is everywhere) and the
+    # state facets (which say how to filter, not what to look for) are removed.
+    # The "my" marker stays a sufficient but not necessary hint: the reducer can
+    # strip it, so the guard cannot lean on it alone.
+    #
+    # Real turn 2026-08-07: "the upcoming bookings" reduces to {future,
+    # booking}; on booking.com the home shows "Your next trip", the proof
+    # passed, and the pilot answered with the page slogan instead of opening
+    # the personal area.
+    #
+    # State facets count as non-distinctive ONLY here: saying "the past ones"
+    # names no destination, so it cannot prove arrival anywhere. Where the site
+    # really exposes it (a selected "Archived" tab) the facet keeps
+    # discriminating, and the proof below demands it in full.
+    if _is_home_path(path) and (
+            goal_is_personal(target, scope)
+            or not (wanted - host_tokens - _goal_facet_tokens())):
+        return False
+    if isinstance(body_text, list):
+        blocks = [normalize(str(block)) for block in body_text[:400]]
+    else:
+        blocks = [normalize(line) for line in str(body_text or "").splitlines()]
+    blocks = [block for block in blocks if block]
+    # A state facet STOPS the pilot for two reasons only: a control leads to it
+    # (one step is still pending), or the page declares a different one (wrong
+    # section). Outside those two cases the site expresses it through the data
+    # rather than through words, and demanding it makes arrival impossible to
+    # prove: measured 2026-08-07 on Booking's trips, where the tabs on offer
+    # are "Past" and "Cancelled" while the UPCOMING ones are the default
+    # section, unnamed — only dates. The pilot reached it, failed to notice,
+    # and carried on until the step budget ran out.
+    wanted_facets = wanted & _goal_facet_tokens()
+    if wanted_facets and not (wanted_facets & set(facets_offered)):
+        declared = (_goal_facet_tokens()
+                    & set(goal_tokens(" ".join(blocks)[:200_000])))
+        if not (declared - wanted_facets):
+            wanted -= wanted_facets
+    # Il goal deve essere attestato da una regione locale della pagina. Un menu
+    # "Fatture" e un anno comparso molto piu' sotto non sono un risultato.
+    for index in range(len(blocks)):
+        region = " ".join(blocks[index:index + 3])[:4000]
+        if wanted.issubset(set(goal_tokens(region))):
+            return True
+    # Prova composita: route/titolo attestano la sezione, il contenuto visibile
+    # non-interattivo attesta gli altri vincoli (anno, stato, nome documento).
+    # La sola presenza nel body non basta, perche' includerebbe menu e dati non
+    # correlati della dashboard.
+    scope_tokens = set(goal_tokens(scope_text))
+    content_tokens = set(goal_tokens(" ".join(blocks)[:200_000]))
+    if (wanted & scope_tokens
+            and wanted.issubset(scope_tokens | content_tokens)):
+        return True
+    return False
+
+
+def choose_reveal_candidate(target: str, candidates: list[dict],
+                            primitive: str) -> dict:
+    """Trova un controllo visibile collegato a un target DOM nascosto.
+
+    Sono accettate solo relazioni esplicite browser-owned: l'id del target o
+    di un suo antenato deve comparire in ``aria-controls``, ``popoverTarget``,
+    ``commandfor`` o in un fragment locale del controllo. Nessuna euristica su
+    classi CSS, domini o parole come "menu".
+    """
+    hidden_ranked = []
+    for candidate in candidates:
+        if (candidate.get("visible") is not False
+                and candidate.get("in_viewport") is not False
+                and candidate.get("topmost") is not False):
+            continue
+        probe = dict(candidate)
+        probe.update({"visible": True, "in_viewport": True, "topmost": True})
+        score = candidate_score(target, probe, primitive)
+        if score > 0:
+            hidden_ranked.append((score, candidate))
+    hidden_ranked.sort(key=lambda item: item[0], reverse=True)
+    if not hidden_ranked or hidden_ranked[0][0] < 0.55:
+        return {"ok": False, "error_class": "selector_missing",
+                "hidden_target": False}
+    top_score = hidden_ranked[0][0]
+    related_ids = set()
+    for score, candidate in hidden_ranked:
+        if top_score - score >= 0.12:
+            break
+        if candidate.get("dom_id"):
+            related_ids.add(str(candidate["dom_id"]))
+        related_ids.update(str(x) for x in (candidate.get("ancestor_ids") or [])
+                           if x)
+    controls = []
+    for candidate in candidates:
+        if (candidate.get("visible") is False
+                or candidate.get("in_viewport") is False
+                or candidate.get("topmost") is False
+                or candidate.get("disabled")):
+            continue
+        targets = {str(x) for x in (candidate.get("control_targets") or []) if x}
+        overlap = targets & related_ids
+        if overlap:
+            controls.append((len(overlap),
+                             candidate.get("aria_expanded") == "false",
+                             candidate))
+    controls.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    if not controls:
+        return {"ok": False, "error_class": "selector_hidden",
+                "hidden_target": True, "hidden_target_score": top_score}
+    best = controls[0]
+    if len(controls) > 1 and best[:2] == controls[1][:2]:
+        return {"ok": False, "error_class": "selector_ambiguous",
+                "hidden_target": True, "hidden_target_score": top_score}
+    return {"ok": True, "candidate": best[2], "confidence": 0.9,
+            "hidden_target_score": top_score}
+
+
+def page_mentions_target(target: str, body_text: str) -> bool:
+    body_n = normalize((body_text or "")[:200_000])
+    variants = _target_variants(target)
+    if not variants or not body_n:
+        return False
+    return any(re.search(rf"(?:^|\s){re.escape(variant)}(?:\s|$)", body_n)
+               for variant in variants)
+
+
+def is_reveal_control(candidate: dict) -> bool:
+    tag = str(candidate.get("tag") or "").lower()
+    role = str(candidate.get("role") or "").lower()
+    typ = str(candidate.get("type") or "").lower()
+    if ((tag != "button" and role != "button") or typ == "submit"
+            or candidate.get("disabled") or candidate.get("visible") is False
+            or candidate.get("in_viewport") is False
+            or candidate.get("topmost") is False):
+        return False
+    name = normalize(str(candidate.get("name") or candidate.get("label") or ""))
+    if not name:
+        return False
+    forms = []
+    if _detlex is not None:
+        try:
+            forms = _detlex.forms("sites.reveal_control")
+        except Exception:
+            forms = []
+    if not forms:
+        forms = ["apri menu", "mostra menu", "open menu", "show menu"]
+    return any(name == normalize(form) for form in forms if normalize(form))
+
+
+def is_sensitive(primitive: str, candidate: dict | None, *,
+                 tainted: bool, value_ref: str | None = None) -> tuple[bool, list[str]]:
+    c = candidate or {}
+    reasons = []
+    if primitive in ("goto", "submit", "search"):
+        reasons.append("navigation_or_submit")
+    if c.get("href") or c.get("form_action"):
+        reasons.append("navigation")
+    if str(c.get("form_method") or "").upper() == "POST":
+        reasons.append("post")
+    if c.get("download"):
+        reasons.append("download")
+    if c.get("secret_input"):
+        reasons.append("sensitive_input")
+    if value_ref and value_ref.startswith("cred:"):
+        reasons.append("credential_use")
+    # Un elemento senza href/form puo' comunque avere listener JavaScript che
+    # inviano dati. Dopo ingestione di contenuto esterno, ogni interazione e'
+    # quindi potenzialmente esfiltrante; solo wait resta non sensibile.
+    if tainted and primitive not in ("wait", "observe"):
+        reasons.append("tainted_turn")
+    return bool(reasons), sorted(set(reasons))
+
+
+def fingerprint_plan(plan: dict) -> str:
+    safe = {k: plan.get(k) for k in (
+        "kind", "primitive", "target", "candidate_sig", "page_sig",
+        "value_ref", "resource_hosts")}
+    return hashlib.sha256(json.dumps(safe, sort_keys=True).encode()).hexdigest()

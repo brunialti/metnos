@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; osservabilit&agrave; operativa</title>
+ <meta name="description" content="Come osservare Metnos dalla pagina Settings della chat e con il rendiconto HTML statico: dati, aggiornamento, accesso e confini di riservatezza.">
+ <meta name="keywords" content="Metnos, osservabilit&agrave;, Settings, amministrazione, dashboard, turni, servizi, dispositivi">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/observability">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/observability">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/observability">
+ <meta property="og:title" content="Metnos &mdash; osservabilit&agrave; operativa">
+ <meta property="og:description" content="Le viste amministrative della chat e il rendiconto HTML statico, con i rispettivi confini.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — osservabilità operativa",
+ "description": "Viste amministrative della chat, rendiconto statico, dati, aggiornamento e confini di accesso.",
+ "url": "https://metnos.com/it/architecture/observability.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/observability.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/observability.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">osservabilit&agrave;</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Osservabilit&agrave; operativa</div>
+ <div class="meta">Vedere lo stato del sistema senza confondere una vista con una fonte di autorit&agrave;.</div>
+</div>
+
+<p class="lead">Metnos offre due strumenti distinti. La pagina
+<strong>Settings</strong> della chat &egrave; l'interfaccia amministrativa
+corrente, aggiornata a ogni richiesta. <code>runtime/observability.py</code>
+produce invece un file HTML statico per una diagnosi locale. Il file non
+alimenta Settings, non si aggiorna da solo e non &egrave; una pagina servita dalla
+chat.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Un esempio in linguaggio naturale</a></li>
+ <li><a href="#cap2">Le due superfici</a></li>
+ <li><a href="#cap3">Settings nella chat</a></li>
+ <li><a href="#cap4">Il rendiconto HTML statico</a></li>
+ <li><a href="#cap5">Dati raccolti dal rendiconto</a></li>
+ <li><a href="#cap6">Accesso, utenti e riservatezza</a></li>
+ <li><a href="#cap7">Generazione e durata</a></li>
+ <li><a href="#cap8">Verifiche e fonti canoniche</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Un esempio in linguaggio naturale</h1>
+
+<p>Chiedi a Metnos con una richiesta come quella di questo esempio:</p>
+
+<pre>Mostrami dove posso controllare gli ultimi turni e lo stato dei servizi.</pre>
+
+<p>La risposta utile deve indicare anzitutto il percorso visibile nella chat:
+<strong>Settings &gt; Attivit&agrave; &gt; Turni</strong> per le richieste recenti e
+<strong>Settings &gt; Sistema &gt; Servizi</strong> per i servizi configurati. Se
+la domanda arriva da Telegram, il percorso va aperto nella chat web di Metnos:
+Telegram non incorpora le pagine amministrative.</p>
+
+<p>Solo dopo questa istruzione pratica occorre spiegare API, registri o file.
+Il rendiconto statico &egrave; adatto a una diagnosi tecnica esplicitamente richiesta,
+non &egrave; il percorso ordinario per chi usa la chat.</p>
+
+<h1 id="cap2">2. Le due superfici</h1>
+
+<table>
+<tr><th>Superficie</th><th>Aggiornamento</th><th>Accesso</th><th>Scopo</th></tr>
+<tr><td><strong>Settings</strong> (<code>/admin</code>)</td><td>I dati vengono riletti quando si apre o si aggiorna la pagina.</td><td>Richiede il ruolo amministratore applicato dal middleware HTTP.</td><td>Consultazione e controlli amministrativi dell'installazione in esercizio.</td></tr>
+<tr><td><strong>Rendiconto statico</strong> (<code>runtime.observability</code>)</td><td>Fotografia dell'istante in cui viene eseguito il comando.</td><td>File locale; la protezione dipende dai permessi del file e della macchina.</td><td>Diagnosi fuori linea di sei sorgenti storiche.</td></tr>
+</table>
+
+<p>Le due superfici non vanno sommate in una descrizione unica. Settings usa
+rotte e modelli propri; il generatore statico &egrave; richiamato soltanto dalla sua
+CLI e non ha chiamanti nel server HTTP.</p>
+
+<h1 id="cap3">3. Settings nella chat</h1>
+
+<p>La pagina iniziale di Settings riassume versione e tempo di attivit&agrave;,
+turni delle ultime 24 ore, proposte, executor, scheduler, firme Safety e utenti.
+Le pagine di dettaglio separano le diverse domande operative:</p>
+
+<table>
+<tr><th>Percorso nella chat</th><th>Informazioni principali</th></tr>
+<tr><td>Settings &gt; Attivit&agrave; &gt; Turni</td><td>Identificativo, orario, canale, attore, passi, esito, durata e richiesta.</td></tr>
+<tr><td>Settings &gt; Attivit&agrave; &gt; Scheduler</td><td>Esecuzioni delle attivit&agrave;, esito e durata.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Servizi</td><td>Servizi presenti nel registro canonico, stato e controlli ammessi.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Modelli</td><td>Configurazione effettiva e oscurata di LLM, embedding e VLM: LLM e VLM sono modificabili e ripristinabili; l&rsquo;embedding è consultabile.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Dispositivi</td><td>Dispositivi associati, presenza e revoca.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Utenti</td><td>Utenti, ruoli, canali e preferenze amministrabili.</td></tr>
+</table>
+
+<p>Il registro in <code>runtime/ui_surfaces.py</code> &egrave; la descrizione
+canonica delle pagine visibili e del loro percorso. Tutor usa lo stesso
+registro: una modifica strutturale della UI richiede l'aggiornamento del
+registro, della guida di navigazione e dell'indice di Tutor.</p>
+
+<h1 id="cap4">4. Il rendiconto HTML statico</h1>
+
+<p><code>render_dashboard(out_path)</code> interroga le sorgenti locali e
+compone un unico documento con CSS incorporato, senza JavaScript e senza
+WebSocket. Le sezioni appaiono in questo ordine: test, Mnestoma, associazioni,
+turni recenti, decisioni del Vaglio e scheduler.</p>
+
+<p>Ogni raccoglitore gestisce separatamente una sorgente non disponibile. La
+pagina pu&ograve; quindi essere prodotta anche quando una sezione &egrave; vuota o in
+errore. Questo comportamento rende leggibile una fotografia parziale, ma non
+trasforma l'assenza di dati in prova del buon funzionamento del componente.</p>
+
+<p>Il documento generato usa attualmente etichette italiane e
+<code>lang="it"</code>. Non &egrave; una superficie localizzata della chat e non va
+presentato come tale.</p>
+
+<h1 id="cap5">5. Dati raccolti dal rendiconto</h1>
+
+<table>
+<tr><th>Sorgente</th><th>Proiezione mostrata</th><th>Posizione configurata</th></tr>
+<tr><td><strong>Mnestoma</strong></td><td>Conteggi, archi attivi e proto, eventi recenti.</td><td>Database di Mnestoma, normalmente sotto <code>PATH_WORKSPACE/.mnestoma</code>.</td></tr>
+<tr><td><strong>Associazioni</strong></td><td>Canale, identificativo del mittente, livello, date e autore dell'associazione; conteggio delle revoche.</td><td><code>DB_PAIRINGS</code> sotto <code>PATH_USER_STATE</code>.</td></tr>
+<tr><td><strong>Turni</strong></td><td>Ultimi quindici turni: richiesta, esito, numero di passi e inizio della risposta.</td><td><code>PATH_TURNS</code> sotto <code>PATH_USER_DATA</code>.</td></tr>
+<tr><td><strong>Vaglio</strong></td><td>Ultime venti decisioni: executor, punteggio, esito e motivazione abbreviata.</td><td><code>PATH_USER_DATA/vaglio</code>.</td></tr>
+<tr><td><strong>Scheduler</strong></td><td>Attivit&agrave; abilitate, regola temporale, ultima esecuzione ed esito.</td><td><code>PATH_USER_STATE/scheduler_v2.sqlite</code>.</td></tr>
+<tr><td><strong>Prove registrate</strong></td><td>Moduli, casi abilitati, ultimo stato e moduli pi&ugrave; numerosi.</td><td><code>PATH_RUNTIME/testing/tests.db</code>.</td></tr>
+</table>
+
+<p>I limiti sono applicati dal generatore e non sono parametri della CLI:
+cinque file giornalieri al massimo per i turni, tre file per il Vaglio e
+limiti distinti per righe ed eventi. Per un'analisi completa occorre interrogare
+la sorgente autorizzata, non dedurre il totale dalla pagina.</p>
+
+<h1 id="cap6">6. Accesso, utenti e riservatezza</h1>
+
+<ul>
+<li><strong>Settings &egrave; una vista amministrativa dell'installazione.</strong> Il middleware ammette soltanto il ruolo <code>admin</code>; i riepiloghi possono comprendere pi&ugrave; utenti. Non &egrave; una vista personale del singolo utente.</li>
+<li><strong>Il rendiconto statico &egrave; anch'esso complessivo.</strong> Pu&ograve; contenere richieste, estratti delle risposte, identificativi dei mittenti e metadati delle associazioni appartenenti a utenti diversi.</li>
+<li><strong>L'escape HTML non &egrave; un controllo di accesso.</strong> Il generatore sottopone a escape i testi dinamici prima di inserirli nel documento, ma il contenuto rimane leggibile a chi pu&ograve; aprire il file.</li>
+<li><strong>L'oscuramento a monte non &egrave; una garanzia assoluta.</strong> I registri possono rimuovere credenziali riconosciute, ma il rendiconto va comunque trattato come dato riservato.</li>
+<li><strong>Il file non imposta permessi propri.</strong> Eredita directory, proprietario e <em>umask</em> del processo che lo genera; non va collocato in una directory servita pubblicamente.</li>
+<li><strong>Una fotografia resta sul disco.</strong> Rigenerarla sovrascrive il percorso scelto, ma non elimina copie spostate, backup o file prodotti con un altro <code>--out</code>.</li>
+</ul>
+
+<h1 id="cap7">7. Generazione e durata</h1>
+
+<p>Dalla radice dell'installazione, usando l'ambiente Python di Metnos:</p>
+
+<pre>PYTHONPATH=runtime ./.venv/bin/python -m observability render
+PYTHONPATH=runtime ./.venv/bin/python -m observability render --out /percorso/scelto/dashboard.html</pre>
+
+<p>Il percorso predefinito &egrave;
+<code>PATH_WORKSPACE/dashboard/index.html</code>. Il comando restituisce il
+percorso scritto e termina. Non esiste un aggiornamento periodico incorporato:
+ora di generazione e contenuto restano invariati finch&eacute; il comando non viene
+eseguito di nuovo.</p>
+
+<p>Il file &egrave; un prodotto derivato. Per eliminarlo si pu&ograve; rimuovere il solo
+percorso di uscita dopo aver verificato che non sia usato da altri processi;
+le sorgenti operative non vengono eliminate con esso.</p>
+
+<h1 id="cap8">8. Verifiche e fonti canoniche</h1>
+
+<p>Le prove mirate del generatore statico sono in
+<code>tests/runtime/runtime/test_observability.py</code>. Verificano, fra
+l'altro, che nomi degli executor, richieste e risposte non possano introdurre
+markup attivo nel file. Le prove HTTP ed end-to-end controllano separatamente
+le pagine amministrative: non si usa un conteggio fisso, destinato a diventare
+obsoleto.</p>
+
+<ul>
+<li><code>runtime/http_routes_admin.py</code> &mdash; dati e azioni delle pagine Settings;</li>
+<li><code>runtime/http_auth.py</code> &mdash; confine di autenticazione delle rotte <code>/admin</code>;</li>
+<li><code>runtime/ui_surfaces.py</code> &mdash; registro editoriale delle superfici visibili;</li>
+<li><code>runtime/observability.py</code> &mdash; generatore del rendiconto statico;</li>
+<li><code>runtime/config.py</code> &mdash; percorsi canonici dell'installazione.</li>
+</ul>
+
+</body>
+</html>

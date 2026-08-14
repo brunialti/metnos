@@ -1,0 +1,38 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:3e5ffd403748e919a556cdc9ce02f85837836485a866baef5adf3c5377ccb166",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:caac2ea03fb37e6e9a96b10b817ec3a14d9c10417237466cd856cbb58c9b9edb",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.keys.description": {
+    "it": {
+      "version_hash": "sha256:731c0f936e025bcb31831d3b2df2672f251829f624ec47be81a69b1123f1f84f",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:bf0570576595ff8267d0fa3ba3e7644d01a02b5014e30604f6e06ee2d11d4164",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.all.description": {
+    "it": {
+      "version_hash": "sha256:612123b4d08672c88c4aeab10ffa07b4cd1963c5f36e39eb56f77391bff183b2",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:a355632f414db3ec175234952909b8d2388e5f52dc80f69311aa205185e7725a",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

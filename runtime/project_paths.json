@@ -1,0 +1,8 @@
+{
+  "metnos": {
+    "code_root": "/opt/metnos",
+    "user_data_root": "~/.local/share/metnos",
+    "memory_root": "~/.claude/projects/-opt-myclaw/memory",
+    "description": "Codebase Metnos (assistente personale self-hosted). Process name: myclaw."
+  }
+}

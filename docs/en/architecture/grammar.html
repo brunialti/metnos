@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; planner grammar</title>
+ <meta name="description" content="How Metnos constrains model-generated plans: Framework JSON, admitted executor names, typed arguments, semantic filters, and validation.">
+ <meta name="keywords" content="Metnos, GBNF, grammar, planner, Framework, executor, constrained generation">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/grammar">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/grammar">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/grammar">
+ <meta property="og:title" content="Metnos &mdash; planner grammar">
+ <meta property="og:description" content="The constrained-generation contract that binds a plan to admitted executors.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — planner grammar",
+ "description": "Framework JSON, admitted executor names, typed arguments, semantic filters, and validation.",
+ "url": "https://metnos.com/en/architecture/grammar.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+h3 { color:var(--navy); font-size:12pt; margin-top:18px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/grammar.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/grammar.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">grammar</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">The planner grammar</div>
+ <div class="meta">How probabilistic output is brought back to an executable contract.</div>
+</div>
+
+<p class="lead">The model proposes a plan, but it does not freely choose the
+command shape. Metnos gives it a restricted executor pool and, when the model
+service supports GBNF, constrains decoding to the Framework structure and
+admitted names. Parsing, validation, and Vaglio then inspect the result before
+anything runs.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">An example</a></li>
+ <li><a href="#cap2">The two grammar levels</a></li>
+ <li><a href="#cap3">From executor pool to plan</a></li>
+ <li><a href="#cap4">Guarantees and boundaries</a></li>
+ <li><a href="#cap5">Compatibility constraints</a></li>
+ <li><a href="#cap6">Determinism and cost</a></li>
+ <li><a href="#cap7">Verification</a></li>
+ <li><a href="#cap8">Relationship with model services</a></li>
+ <li><a href="#cap9">Canonical sources</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. An example</h1>
+
+<p>Ask Metnos with a request such as:</p>
+
+<pre>Find the PDFs modified this week in the Projects folder,
+compute each file's SHA-256 digest, and show me the result.</pre>
+
+<p>The planner must not answer with a vague explanation. It must produce a
+structure like this, restricted to names in the pool computed for the turn:</p>
+
+<pre>{
+  "steps": [
+    {"tool": "find_files", "args": {"path": "Projects", "extension": "pdf"}},
+    {"tool": "compute_signatures", "args": {"algorithm": "sha256"}}
+  ]
+}</pre>
+
+<p>This example illustrates shape; it neither authorises paths nor replaces
+argument resolution. Relative dates, references between steps, and filesystem
+scope are resolved and checked by later layers.</p>
+
+<h1 id="cap2">2. The two grammar levels</h1>
+
+<table>
+<tr><th>Level</th><th>Status and role</th></tr>
+<tr><td><code>build_framework_grammar</code></td><td>This is the ordinary path when <code>METNOS_PROPOSER_GRAMMAR=1</code>, which is the default. It constrains Framework shape and the <code>tool</code> field to the effective pool; <code>final_answer</code> is included as a valid terminal.</td></tr>
+<tr><td><code>build_framework_grammar_typed</code></td><td>With <code>METNOS_PROPOSER_GRAMMAR_ARGS=1</code>, it also binds each name to its argument schema. Arguments marked <code>runtime_resolved</code> are excluded because they belong to the runtime. This mode is not the default.</td></tr>
+</table>
+
+<p><code>runtime/tool_grammar.py</code> contains the JSON Schema-to-GBNF
+translator, call validation, and semantic filters reused by the engine. The
+<code>generate_tool_grammar</code> API generates a single
+<code>tool_call</code>; the planner instead uses the Framework grammar, which
+may contain several steps.</p>
+
+<h1 id="cap3">3. From executor pool to plan</h1>
+
+<ol>
+<li>The engine extracts intent, object, and semantic signals from the request.</li>
+<li>Prefiltering reduces the catalog to executors relevant and available to that user.</li>
+<li>Deterministic filters retain required producers, exclude special escape routes that were not requested, and select a provider variant only when the request names that provider.</li>
+<li>The generator builds GBNF from exactly the names that remain.</li>
+<li>The model service decodes a Framework compatible with that grammar.</li>
+<li>The parser reconstructs the plan; validators, argument filling, policy, and Vaglio check what grammar cannot decide.</li>
+</ol>
+
+<p>Natural-language signals—such as undo, recurrence, proximity, skills, and
+provider names—come from the translatable detection lexicon. A new language
+requires lexical data for that language, not conditions hard-coded for
+individual phrases.</p>
+
+<h2>3.1 Discriminated argument unions</h2>
+
+<p>When argument constraints are enabled, every step has its own branch: the
+name <code>compute_signatures</code> can only be followed by arguments derived
+from its schema. Closed enums become GBNF alternatives; strings, numbers,
+booleans, arrays, and nested objects become their corresponding primitives. If
+a schema cannot be typed, that branch uses free JSON arguments and leaves
+validation to the executor.</p>
+
+<h1 id="cap4">4. Guarantees and boundaries</h1>
+
+<table>
+<tr><th>Grammar guarantees</th><th>Grammar does not guarantee</th></tr>
+<tr><td>A JSON structure admitted by the generated profile.</td><td>That the plan truly satisfies the user's request.</td></tr>
+<tr><td>On the ordinary path, executor names that belong to the turn's pool.</td><td>That the user authorised the action or named path.</td></tr>
+<tr><td>In typed mode, name-to-argument-schema correspondence for translatable branches.</td><td>Postconditions, real effects, service availability, or data correctness.</td></tr>
+<tr><td>Output that is easier to parse and reject explicitly.</td><td>Absolute reproducibility of language reasoning or free-form content.</td></tr>
+</table>
+
+<p>Schema translation has a depth limit. Beyond it, or for complex constructs,
+the generator falls back to generic JSON. Post-decoding validation checks the
+top-level shape, name, required arguments, and synthetic terminals; deep
+validation remains the responsibility of the executor and the common
+contract.</p>
+
+<h1 id="cap5">5. Compatibility constraints</h1>
+
+<p>Grammar construction observes several requirements of the current local
+model service:</p>
+
+<ul>
+<li>generated GBNF rule names contain no underscores;</li>
+<li>only primitives reachable from the root rule are emitted;</li>
+<li>a rule is not defined twice when Framework and typed-argument grammars are combined;</li>
+<li>in GBNF mode, the request does not also send the service's native <code>tools</code> field;</li>
+<li>extended model reasoning is disabled for this pass so output stays within its budget and constrained form.</li>
+</ul>
+
+<p>If a service does not accept the <code>grammar</code> parameter, the switch
+to grammar-free mode is logged. The plan must still pass parsing and
+validation, but no longer benefits from the decoding-time constraint.</p>
+
+<h1 id="cap6">6. Determinism and cost</h1>
+
+<p>Given the same ordered pool and schemas, the generated GBNF string is
+deterministic. This makes the model-visible surface comparable and prevents an
+absent name from appearing on the constrained path. It does not make the
+model's whole response deterministic: free text, semantic values, and new
+plans still come from probabilistic inference.</p>
+
+<p>The grammar is built in memory and makes no network call. Its main cost is
+during decoding, when the service removes inadmissible tokens at each step.
+Metnos limits that cost by building grammar for the turn's pool rather than the
+whole catalog, and gives the proposer an output budget derived from request
+complexity.</p>
+
+<h1 id="cap7">7. Verification</h1>
+
+<p>The documentation does not freeze a test count that would quickly become
+obsolete. The main suites are:</p>
+
+<pre>tests/runtime/engine/test_tool_grammar.py
+tests/runtime/engine/test_grammar_args_typed.py
+tests/runtime/engine/test_routing_pool.py
+tests/runtime/engine/test_tool_call_parser.py</pre>
+
+<p>They cover deterministic generation, name-to-argument unions, nested
+schemas, closed enums, intent and provider filters, synthetic terminals,
+duplicate-rule removal, and truncated-output recovery. Engine tests also
+verify that a plan cannot name executors excluded from the pool.</p>
+
+<h1 id="cap8">8. Relationship with model services</h1>
+
+<p>GBNF is the mechanism used by the llama.cpp-compatible local service. Other
+services may offer constrained JSON Schema or native tool calling. The Metnos
+contract does not depend on a provider's commercial name: an adapter is
+suitable only if it states precisely which constraint level it enforces and
+returns data that the common parser and validators can inspect.</p>
+
+<p><a href="virtualization.html">Model virtualization</a> explains how logical
+roles map to configured services. Changing a service must not change the
+executor vocabulary, user authority, or Vaglio rules.</p>
+
+<h1 id="cap9">9. Canonical sources</h1>
+
+<ul>
+<li><code>runtime/engine/grammar_framework.py</code> &mdash; Framework grammar and its typed-argument variant;</li>
+<li><code>runtime/tool_grammar.py</code> &mdash; schema translation, validation, and deterministic filters;</li>
+<li><code>runtime/engine/proposer.py</code> &mdash; mode selection and model invocation;</li>
+<li><code>runtime/llm_provider.py</code> &mdash; grammar transport and model-service response parsing.</li>
+</ul>
+
+</body>
+</html>

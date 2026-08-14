@@ -1,0 +1,65 @@
+role: synt_code_addendum_describe
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+# Stage 5 addendum verbo `describe` (the design guide §6.1: style few_shot).
+# YAML envelope: il body resta prosa narrativa (pseudocodice + invarianti +
+# esempi di codice). Il rendering yaml_raw/json_raw produce un wrapper
+# strutturato senza spezzare gli esempi few_shot.
+section:
+  name: synt_code_addendum_describe
+  header: "Stage 5 addendum verbo `describe`"
+
+body: |
+  REGOLE VERBO `describe` (oltre al generic):
+  
+  DEFINIZIONE: `describe` = pure compute → insight strutturato. NESSUN I/O
+  esterno. Deterministico (stesso input → stesso output). revertible=False.
+  
+  PSEUDOCODICE UNIVERSALE:
+  
+    def invoke(args):
+        entries = args.get("entries", [])
+        style = args.get("style", "default")
+        sample_size = args.get("sample_size", None)
+        data = sample(entries, sample_size, seed=42) if sample_size else entries
+        sampled = sample_size is not None and len(data) < len(entries)
+        try:
+            insights = compute_insights(data, style)            # pure
+            # Sanitizza NaN/Inf prima di json.dumps
+            insights = sanitize_for_json(insights)
+            return {"ok": True, "ok_count": len(insights),
+                    "fail_count": 0, "results": insights,
+                    "sampled": sampled, "sample_n": len(data) if sampled else None,
+                    "failed": []}
+        except Exception as ex:
+            return {"ok": False, "ok_count": 0, "fail_count": 1,
+                    "results": [], "failed": [{"error": str(ex)}]}
+  
+  INVARIANTI:
+  DEVI: PURE COMPUTE — NESSUN read disk / network / shell / db esterno.
+    L'input arriva intero in `args["entries"]`.
+  DEVI: manifest `revertible: False`, nessun reverse_pattern.
+  DEVI: DETERMINISTICO. Stesso input → stesso output. Sampling solo con seed
+    esplicito (default 42 o seed da args).
+  DEVI: NaN/Inf gestiti: convertili in `null` PRIMA di `json.dumps`
+    (`json.dumps(float("nan"))` produce "NaN" non valido in JSON).
+  DEVI: per dataset grandi (>100k), `sample_size` con `sampled:True` +
+    `sample_n` nell'output.
+  NON DEVI: `time.time()` / `datetime.now()` / `random.random()` senza seed.
+  NON DEVI: leggere file/network/db.
+  NON DEVI: scrivere `def reverse(...)`.
+  
+  DOMINIO numeri (describe_numbers):
+  - entry: `{"value": float}` o lista di numeri
+  - insights: `{count, mean, median, stddev, min, max, p25, p75, p99}`
+  DOMINIO entries generic (describe_entries):
+  - aggrega per `style`: by_relevance, by_kind, by_account, by_date, ecc.
+  - insights: `[{group: ..., count: ..., samples: [...]}]`
+  DOMINIO testo:
+  - insights: `{n_chars, n_words, n_lines, top_terms, lang_guess}`.

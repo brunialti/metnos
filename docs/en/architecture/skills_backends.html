@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; skills and execution backends</title>
+ <meta name="description" content="How Metnos separates activatable skills from execution backends, selects a provider, and preserves authority and state.">
+ <meta name="keywords" content="Metnos, skills, backends, services, providers, dormancy, authorization">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/skills_backends">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skills_backends">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skills_backends">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/skills_backends">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/skills_backends.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/skills_backends.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">skills and backends</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Skills and execution backends</div>
+ <div class="meta">What is active, how a provider is selected, and why that choice does not expand authority.</div>
+</div>
+
+<p class="lead">A <em>skill</em> determines whether a group of capabilities is
+available. An execution <em>backend</em> determines how a capability reaches a
+local store or a concrete provider. Planning and authorization keep these two
+planes separate.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">Start with a natural request</a></li>
+ <li><a href="#cap2">The three skill kinds</a></li>
+ <li><a href="#cap3">How a backend is selected</a></li>
+ <li><a href="#cap4">Enablement and dormancy</a></li>
+ <li><a href="#cap5">Authority and isolation</a></li>
+ <li><a href="#cap6">Imported skills and MCP</a></li>
+ <li><a href="#cap7">Current sources</a></li>
+ <li><a href="#cap8">Ready-to-use examples</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Start with a natural request</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “Which skills
+are active, and which are dormant?” Metnos reads the current registry and shows
+each skill's state, prerequisites, and associated executors. You do not need to
+know a command name.</p>
+
+<p>To select a provider for one operation, name it in the request: “Find the
+2025 budget on Google Drive.” If you do not name one, Metnos applies the
+configured order for that data family. The language model is not asked to infer
+a brand from a list.</p>
+
+<table>
+<thead><tr><th>Concept</th><th>Question it answers</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td><strong>Skill</strong></td><td>Is this capability family enabled, and are its prerequisites present?</td><td><code>mail</code>, <code>photos</code>, <code>google-workspace</code></td></tr>
+<tr><td><strong>Execution backend</strong></td><td>Where and through which adapter is the operation executed?</td><td>local files or Google Drive; local calendar or Google Calendar</td></tr>
+<tr><td><strong>Operational service</strong></td><td>Which Metnos process is installed and running?</td><td>HTTP server, Playwright, SearXNG, Photon</td></tr>
+</tbody>
+</table>
+
+<p>The operational services in the last row are the ones shown in web chat at
+<strong>Settings &gt; System &gt; Services</strong>
+(<code>/admin/services</code>). That page controls processes and service units;
+it is not the skill registry and does not select a provider for one request.
+From Telegram, Tutor can give this path, but the page opens in web chat.</p>
+
+<h1 id="cap2">2. The three skill kinds</h1>
+
+<p>The registry uses three stable categories. A category expresses provenance
+and trust regime, not how the planner phrases a request.</p>
+
+<table>
+<thead><tr><th>Kind</th><th>Contents</th><th>Availability</th></tr></thead>
+<tbody>
+<tr><td><code>core</code></td><td>Capabilities with no mandatory external service: local files and processes, time, scheduled work, signatures, credentials, and list operators.</td><td>Core cannot be disabled like an ordinary skill.</td></tr>
+<tr><td><code>first_party</code></td><td>Skills maintained by Metnos, including mail, photos, web, geocoding, calendars, GitHub, Google Workspace, system administration, and SQL stores.</td><td>They ship with the project; they may become dormant when a prerequisite is missing or an administrator disables them.</td></tr>
+<tr><td><code>imported</code></td><td>Skills acquired from an external source and translated into Metnos executors with recorded provenance.</td><td>They pass the signing, adaptation, verification, and isolation rules for imported code.</td></tr>
+</tbody>
+</table>
+
+<p>Project-maintained skills are classified by
+<code>runtime/skills_catalog.py</code>. Bundles also declare language, trust,
+and automatic enablement in the front matter of <code>SKILL.md</code>. The
+generated executor catalog remains the source for current names and counts.</p>
+
+<h1 id="cap3">3. How a backend is selected</h1>
+
+<p>The central resolver owns the choice for families with multiple backends.
+It receives the canonical object, request, and argument schema and returns only
+a value admitted by that executor's contract. The language model does not pick
+from a list of brands.</p>
+
+<table>
+<thead><tr><th>Family</th><th>Current backends</th><th>Behaviour without an explicit provider</th></tr></thead>
+<tbody>
+<tr><td>files and directories</td><td>local, Google Workspace</td><td>local; Google is selected when the request names Drive, Docs, Sheets, or Google Workspace</td></tr>
+<tr><td>events</td><td>Google Workspace, local calendar</td><td>the first available backend in configured order; local remains available for the operations it supports</td></tr>
+<tr><td>contacts</td><td>Google Workspace</td><td>used only when the required credentials are available</td></tr>
+</tbody>
+</table>
+
+<p>Mail applies the same principle through the account resolver: an explicitly
+named account wins; otherwise the configured default account is used. GitHub
+keeps provider-qualified executors, and the engine recruits them semantically
+when the request names GitHub. SQL stores select their backend from the
+individual store's registry. These are different forms of one rule:
+configuration and explicit context own the choice, not a free planner guess.</p>
+
+<p>If the requested backend is unavailable or not admitted by that executor's
+schema, Metnos returns an explicit error. It does not silently replace the
+requested provider with the default.</p>
+
+<h1 id="cap4">4. Enablement and dormancy</h1>
+
+<p>A skill can be enabled yet <strong>dormant</strong>: it remains visible in
+the inventory while its executors are excluded from planner choices. This can
+happen when OAuth credentials, a required index, or a registered store is
+missing.</p>
+
+<ol>
+ <li><code>list_skills</code> reads the registry and loaded catalog; it does not use a model to invent state.</li>
+ <li><code>set_skills</code> enables or disables a known skill, passes through ordinary authorization policy, and takes effect on the next turn.</li>
+ <li>The change invalidates the catalog cache through persistent state; it does not require a server restart.</li>
+ <li>Core cannot be disabled. An unknown name returns an error with the admitted names.</li>
+</ol>
+
+<p>Enablement is installation configuration, not a preference inferred from
+one user's prose. Only an authorized identity may change it; language,
+conversations, and sessions remain isolated per user.</p>
+
+<h1 id="cap5">5. Authority and isolation</h1>
+
+<p>Selecting a backend does not grant permission to use it. Executors that
+reach a provider declare the closed <code>provider:access</code> capability,
+with a constraint on the final selector value where needed. The runtime first
+resolves the effective backend, then evaluates capabilities, credentials,
+network, user role, and consent.</p>
+
+<p>An executor name, a word in the request, or a model-proposed argument is not
+an authority source by itself. The isolation profile derives from the signed
+manifest and receives only the resources required by effective capabilities.
+The skill/backend separation therefore lets an adapter change without bypassing
+policy, signatures, or postconditions.</p>
+
+<h1 id="cap6">6. Imported skills and MCP</h1>
+
+<p>An external skill is not executed directly. The importer analyses its
+commands, maps them to the governed vocabulary, generates or reuses executors
+with a Metnos contract, records provenance, and applies the admission checks.
+The <a href="skill_importer.html">Skill import</a> page describes the process
+and its rejection reasons.</p>
+
+<p>MCP addresses discovery and invocation of tools exposed by a server; it does
+not replace Metnos's authority contract. There is no generic executor that
+freely accepts an MCP <code>server</code>, <code>tool</code>, and arguments. Any
+adapter must remain behind a canonical executor with a declared schema,
+capabilities, and outcome verification.</p>
+
+<h1 id="cap7">7. Current sources</h1>
+
+<table>
+<thead><tr><th>Source</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><code>runtime/skills_catalog.py</code></td><td>classification and prerequisites of project-maintained skills</td></tr>
+<tr><td><code>runtime/skill_registry.py</code></td><td>installed bundles, language, trust, and persistent enablement state</td></tr>
+<tr><td><code>runtime/skill_admin.py</code></td><td>skill inventory and changes from the conversation</td></tr>
+<tr><td><code>runtime/backend_resolver.py</code></td><td>deterministic backend choice for files, directories, events, and contacts</td></tr>
+<tr><td><code>runtime/mail_account_resolver.py</code></td><td>mail account and backend choice</td></tr>
+<tr><td>signed manifests</td><td>admitted arguments, capabilities, placement, isolation, and executor tests</td></tr>
+</tbody>
+</table>
+
+<p>For processes installed and controlled through the interface, see the
+<a href="../interface.html">interface guide</a> and open
+<strong>Settings &gt; System &gt; Services</strong> in web chat.</p>
+
+<h1 id="cap8">8. Ready-to-use examples</h1>
+
+<ul>
+ <li>“Which skills are active, and which are dormant?”</li>
+ <li>“Disable the GitHub skill starting with the next turn.”</li>
+ <li>“Find the 2025 budget on Google Drive.”</li>
+ <li>“Find free time on Friday afternoon in the local calendar.”</li>
+ <li>“Show me the Metnos services and guide me to Settings &gt; System &gt; Services in web chat.”</li>
+</ul>
+
+<p>The first four sentences act on the catalog or a capability. The last asks
+Tutor to explain the operational-process page. This distinction prevents the
+word “service” from being interpreted as a skill, provider, or systemd unit
+without the necessary context.</p>
+
+<hr>
+<p style="text-align:center; color:#64748b; font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>skills and execution backends</em>
+</p>
+</body>
+</html>

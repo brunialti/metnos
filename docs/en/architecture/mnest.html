@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Mnest</title>
+ <meta name="description" content="The current mnest contract: edges between executors, persistence, reinforcement, decay, proto-mnests, and actual integrations.">
+ <meta name="keywords" content="Metnos, mnest, mnestome, executor, graph, operational memory">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/mnest">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnest">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnest">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnest">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/mnest.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/mnest.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Mnest</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Mnest: an operational edge between executors</div>
+ <div class="meta">Data contract, lifecycle, and integration status.</div>
+</div>
+
+<p class="lead">A mnest represents a directed, weighted relation from a source
+executor to a destination executor. Its store, queries, and ager are implemented.
+The current runtime, however, does not automatically call
+<code>record_passing()</code> at the end of turns: a record in the store is data
+inserted by an explicit caller, not proof that the product learns every observed
+passing.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">Scope and current status</a></li>
+ <li><a href="#cap2">What it represents</a></li>
+ <li><a href="#cap3">Evidence boundary</a></li>
+ <li><a href="#cap4">Fields and constraints</a></li>
+ <li><a href="#cap5">Recording</a></li>
+ <li><a href="#cap6">Reinforcement and decay</a></li>
+ <li><a href="#cap7">States</a></li>
+ <li><a href="#cap8">Proto-mnest</a></li>
+ <li><a href="#cap9">Components that read it</a></li>
+ <li><a href="#cap10">Persistence and audit</a></li>
+ <li><a href="#cap11">Example</a></li>
+ <li><a href="#cap12">Operational boundaries</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scope and current status</h1>
+
+<p>The <code>Mnest</code> type and its operations live in
+<code>runtime/mnestoma.py</code>. They store and query links between executor
+names and versions; they are not personal memory and do not imply automatic
+learning.</p>
+
+<table>
+<thead><tr><th>Part</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>SQLite schema and CRUD/query API</td><td>Implemented.</td></tr>
+<tr><td>Reinforcement, decay, and recurring-proto detection</td><td>Implemented.</td></tr>
+<tr><td>Ager in the nightly cycle</td><td>Registered with the scheduler.</td></tr>
+<tr><td>Automatic edge recording from every turn</td><td>Not wired into the ordinary runtime.</td></tr>
+<tr><td>Direct use by the planner or Vaglio</td><td>Not wired.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap2">2. What it represents</h1>
+
+<p>A mnest has a <code>src_executor &rarr; dst_executor</code> direction,
+versions, use count, weight, first and last update times, and state. The structure
+can represent the operational fact that a caller recorded a passing from A to B.</p>
+
+<p>Direction matters: A&rarr;B and B&rarr;A are different records. A new destination
+version also creates a distinct relation. A chain A&rarr;B&rarr;C consists of two
+edges; multi-edge traversal is performed by <code>walk()</code>.</p>
+
+<h1 id="cap3">3. Evidence boundary</h1>
+
+<p>The record does not contain the transferred output and does not verify by itself
+that the transfer occurred. Provenance depends on the caller of
+<code>record_passing()</code>. An optional <code>turn_id</code> in the event can
+lead back to the originating turn, but only if that reference was supplied and the
+corresponding log still exists.</p>
+
+<p>A mnest must therefore not be presented as self-sufficient evidence, a
+biographical memory, or a user preference. It is structured telemetry about a
+relation between capabilities.</p>
+
+<h1 id="cap4">4. Fields and constraints</h1>
+
+<table>
+<thead><tr><th>Field</th><th>Contract</th></tr></thead>
+<tbody>
+<tr><td><code>id</code></td><td><code>mn_</code> prefix followed by a random token.</td></tr>
+<tr><td><code>src_executor</code>, <code>src_version</code></td><td>Source and version declared by the caller.</td></tr>
+<tr><td><code>dst_executor</code>, <code>dst_version</code></td><td>Destination; the version is null for a proto.</td></tr>
+<tr><td><code>weight</code></td><td>Real number constrained from 0 to 1.</td></tr>
+<tr><td><code>uses</code></td><td>Integer counter, at least 1.</td></tr>
+<tr><td><code>ts_first</code>, <code>ts_last</code></td><td>UTC timestamps; the last is not before the first.</td></tr>
+<tr><td><code>decay_lambda</code></td><td>Decay rate.</td></tr>
+<tr><td><code>state</code></td><td><code>active</code>, <code>proto</code>,
+<code>decaying</code>, or <code>superseded</code>.</td></tr>
+<tr><td><code>tags</code></td><td>Optional JSON labels; they do not alter weight.</td></tr>
+<tr><td><code>desired_sig</code></td><td>Optional desired signature used by proto-mnests.</td></tr>
+</tbody>
+</table>
+
+<p>SQLite uniqueness includes source, versions, destination, and state. Because
+SQLite treats multiple <code>NULL</code> values as distinct, the code uses an
+explicit query to reinforce an existing proto.</p>
+
+<h1 id="cap5">5. Recording</h1>
+
+<p><code>record_passing()</code> opens a transaction. If it finds the same
+<code>active</code> edge, it applies accrued decay, adds reinforcement,
+increments <code>uses</code>, and records an event. Otherwise it creates a new
+edge with weight <code>0.30</code> and an initial event.</p>
+
+<p>With <code>dst_exists=False</code>, the same API creates or reinforces a
+proto-mnest. The call is atomic for the searched pair, but a
+<code>Mnestoma</code> object owns a process-local connection and does not declare
+its instance thread-safe.</p>
+
+<h1 id="cap6">6. Reinforcement and decay</h1>
+
+<p>Before each reinforcement, the previous weight is multiplied by
+<code>exp(-lambda &times; days)</code>; <code>0.15</code> is then added and the
+result is clamped to 0&ndash;1. The default lambda is <code>0.018</code> per day.</p>
+
+<p><code>apply_ager()</code> decays <code>active</code> and <code>proto</code>
+edges. An active edge below <code>0.20</code> becomes
+<code>decaying</code>; a proto below <code>0.05</code> is deleted. A
+<code>decaying</code> edge below <code>0.05</code> and inactive for at least 90
+days is merely counted as an archive candidate: the ager does not delete it.</p>
+
+<h1 id="cap7">7. States</h1>
+
+<table>
+<thead><tr><th>State</th><th>Use in current code</th></tr></thead>
+<tbody>
+<tr><td><code>active</code></td><td>Concrete edge available for queries and reinforcement.</td></tr>
+<tr><td><code>proto</code></td><td>Desired destination without a concrete version.</td></tr>
+<tr><td><code>decaying</code></td><td>Edge that fell below the ager's threshold.</td></tr>
+<tr><td><code>superseded</code></td><td>Edge marked as replaced by an explicit caller.</td></tr>
+</tbody>
+</table>
+
+<p><code>transition_state()</code> accepts only these values and records an event.
+A later <code>record_passing()</code> looks for an <code>active</code> edge; it
+does not automatically reactivate a <code>decaying</code> record.</p>
+
+<h1 id="cap8">8. Proto-mnest</h1>
+
+<p>A proto-mnest stores a concrete source and the name of a still-missing
+destination. <code>desired_sig</code> may contain the expected summary, inputs,
+outputs, and errors. By default, <code>recurring_protos()</code> selects records
+with at least three uses and a weight of at least <code>0.30</code>.</p>
+
+<p><code>promote_proto_to_active()</code> sets the destination version, clears
+the desired signature, and records the transition. It does not create, test, or
+activate an executor: those responsibilities belong to <a href="synt.html">Synt</a>
+and its promotion lifecycle.</p>
+
+<h1 id="cap9">9. Components that read it</h1>
+
+<ul>
+ <li><strong>Synt.</strong> Its composer may walk <code>active</code> edges only;
+ diagnostic commands can list recurring protos.</li>
+ <li><strong>Ager.</strong> The <code>nightly_aging</code> job calls
+ <code>apply_ager()</code> together with executor aging.</li>
+ <li><strong>Observability and CLI.</strong> They can display statistics, top
+ edges, protos, and events.</li>
+ <li><strong>Introvertiva.</strong> Its active function finds edges naming
+ executors no longer in the catalog and produces deduplication proposals.</li>
+</ul>
+
+<p>The current planner does not use mnest weights to rank the catalog; the Vaglio
+does not read them. L0 and L1 have separate stores and signals.</p>
+
+<h1 id="cap10">10. Persistence and audit</h1>
+
+<p>The default database is
+<code>&lt;workspace&gt;/.mnestoma/mnest.sqlite</code>, configurable through
+<code>METNOS_WORKSPACE</code> or <code>MNESTOMA_DB_PATH</code>. The
+<code>mnests</code> and <code>events</code> tables hold state and events; the
+<code>v_mnestoma</code> view exposes <code>active</code> and
+<code>proto</code> edges.</p>
+
+<p>The same database contains <code>canonical_query_log</code>, populated by some
+turns as normalization telemetry. That table is not a mnest and does not show that
+the edge graph was updated. The module does not implement monthly snapshots or
+automatic compression.</p>
+
+<h1 id="cap11">11. Example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+&ldquo;Explain whether the mnestome is populated automatically by my turns and
+which components read it today.&rdquo;</p>
+
+<p>A correct answer must distinguish available code from integration: the store,
+composer, ager, and inspection tools exist; automatic edge recording from turns is
+not wired. It must not invent an already-learned personal graph.</p>
+
+<h1 id="cap12">12. Operational boundaries</h1>
+
+<ul>
+ <li>The default database belongs to the installation workspace, not to a user
+ scope derived automatically. It must not be treated as a personal dossier.</li>
+ <li>Tags and desired signatures are caller-supplied data; they may contain
+ heuristic prose and are not independent evidence.</li>
+ <li>Decay changes weight according to job time, but does not reconcile
+ contradictions or assess turn quality.</li>
+ <li>For repeated requests and plans, see <a href="fast_path.html">L0 and L1</a>;
+ they are not derived automatically from mnests.</li>
+</ul>
+
+</body>
+</html>

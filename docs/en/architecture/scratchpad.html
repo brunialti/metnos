@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; scratchpad</title>
+ <meta name="description" content="The Metnos scratchpad module: available API, integration status, temporary SQLite storage, sliced reads, and isolation boundaries.">
+ <meta name="keywords" content="Metnos, scratchpad, observations, SQLite, scratchpad_read, context, user isolation">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/scratchpad">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/scratchpad">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/scratchpad">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/scratchpad">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/scratchpad">
+ <meta property="og:title" content="Metnos &mdash; scratchpad">
+ <meta property="og:description" content="Temporary observation storage: API, current integration, and security boundaries.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — scratchpad",
+ "description": "Available API, integration status, temporary SQLite storage, sliced reads, and isolation boundaries.",
+ "url": "https://metnos.com/en/architecture/scratchpad.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/scratchpad.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/scratchpad.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">scratchpad</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Observation scratchpad</div>
+ <div class="meta">What the module provides and what the runtime actually uses.</div>
+</div>
+
+<p class="lead"><code>runtime/scratchpad.py</code> implements temporary
+storage that can retain a complete observation while showing the model only a
+reference or slice. The API exists, but the current engine does not
+automatically offload large observations to it and does not expose
+<code>scratchpad_read</code> in its ordinary catalog. This distinction matters:
+an available module must not be presented as an active feature.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">Current behaviour</a></li>
+ <li><a href="#cap2">Available API</a></li>
+ <li><a href="#cap3">Storage and lifetime</a></li>
+ <li><a href="#cap4">Synthetic representation</a></li>
+ <li><a href="#cap5">Sliced reads</a></li>
+ <li><a href="#cap6">What integration requires</a></li>
+ <li><a href="#cap7">Required verification</a></li>
+ <li><a href="#cap8">Security boundaries</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Current behaviour</h1>
+
+<p>In the active engine, step results remain in the turn's execution history.
+A later step reuses them through <code>from_step</code> or a
+<code>&#36;{stepN.field}</code> reference; the runtime resolves the actual value
+without asking the model to copy it. Final synthesis projects and limits the
+text fields shown to the model, while full data remain in the step result.</p>
+
+<p>At the beginning of a turn, <code>agent_runtime</code> opens the scratchpad
+database and removes expired rows. On the current path, however, it does not
+call <code>Scratchpad.put</code>. The historical
+<code>scratchpad_threshold</code> parameter does not control engine execution
+either. It is therefore incorrect to say that every observation above 4 KB is
+automatically offloaded to the database.</p>
+
+<h1 id="cap2">2. Available API</h1>
+
+<table>
+<tr><th>Method or value</th><th>Role</th></tr>
+<tr><td><code>Scratchpad.open(path)</code></td><td>Open or create the SQLite database and schema.</td></tr>
+<tr><td><code>put(turn_id, step_num, executor_name, observation, ttl_seconds)</code></td><td>Store an observation and return a synthetic representation.</td></tr>
+<tr><td><code>get(id)</code></td><td>Return the complete row for an identifier.</td></tr>
+<tr><td><code>read(id, mode, n, start, end)</code></td><td>Return all content, its beginning, its end, or a selected interval.</td></tr>
+<tr><td><code>list_for_turn(turn_id)</code></td><td>List metadata and summaries for a turn.</td></tr>
+<tr><td><code>gc(now)</code></td><td>Delete rows whose expiry has passed.</td></tr>
+<tr><td><code>stats()</code></td><td>Count stored rows and bytes.</td></tr>
+<tr><td><code>SCRATCHPAD_READ_TOOL</code></td><td>Describe the possible builtin tool; the constant alone does not make it visible to the current planner.</td></tr>
+</table>
+
+<h1 id="cap3">3. Storage and lifetime</h1>
+
+<p>The default location is <code>PATH_USER_DATA/scratchpad.db</code>. Its table
+stores:</p>
+
+<pre>id · turn_id · step_num · executor_name · content_kind
+content · size_bytes · summary · created_at · expires_at</pre>
+
+<p><code>put</code> defaults to a one-hour lifetime. Deletion is not an
+independent background process: it happens only when a caller runs
+<code>gc</code>. An expired row may therefore remain on disk until the next
+cleanup.</p>
+
+<h1 id="cap4">4. Synthetic representation</h1>
+
+<p>For long text, the module stores the complete content and produces a summary
+from its beginning and end. For binary data, it stores the bytes and reports
+their size and a SHA-256 prefix. For a structured result, it looks for fields
+such as <code>entries</code>, <code>matches</code>, or <code>results</code>
+and reports count and schema without placing the items in the summary.</p>
+
+<p>The synthetic representation can retain useful scalars such as counts,
+truncation state, size, message, and error. The <code>ref_hint</code> field
+explains how to reuse a step result or request a content slice.</p>
+
+<h1 id="cap5">5. Sliced reads</h1>
+
+<table>
+<tr><th>Mode</th><th>Result</th></tr>
+<tr><td><code>full</code></td><td>Complete content.</td></tr>
+<tr><td><code>head</code></td><td>First <code>n</code> characters or bytes; the tool declaration defaults to 2,000.</td></tr>
+<tr><td><code>tail</code></td><td>Last <code>n</code> characters or bytes.</td></tr>
+<tr><td><code>range</code></td><td>Interval from inclusive <code>start</code> to exclusive <code>end</code>.</td></tr>
+</table>
+
+<p>Text is returned as UTF-8 with replacement for invalid bytes. Binary content
+is Base64-encoded. Metadata report full size, returned size, kind, and read
+mode.</p>
+
+<h1 id="cap6">6. What integration requires</h1>
+
+<p>A correct engine integration requires at least:</p>
+
+<ol>
+<li>one decision point comparing observation size with a canonical setting;</li>
+<li>a call to <code>put</code> before building model-visible context;</li>
+<li>exposure of <code>scratchpad_read</code> only when the current user and turn have accessible rows;</li>
+<li>an ownership check on every <code>get</code>, <code>read</code>, and <code>list_for_turn</code> call;</li>
+<li>limits on <code>full</code> reads so a large row cannot simply re-enter the context it was meant to protect;</li>
+<li>cleanup, observability, and resume tests after a suspended dialog.</li>
+</ol>
+
+<h1 id="cap7">7. Required verification</h1>
+
+<p>Automatic engine-to-database integration is not active. Enabling it requires
+dedicated tests for text, binary data, structured results, ranges, expiry,
+concurrency, and turn resume.</p>
+
+<p>The most important test is multi-user isolation: an identifier obtained by
+one user must never read another user's row, even when passed directly to the
+builtin API.</p>
+
+<h1 id="cap8">8. Security boundaries</h1>
+
+<ul>
+<li><strong>The current schema has no owner.</strong> It stores <code>turn_id</code>, but no <code>owner_user_id</code>, actor, or channel. <code>get</code> and <code>read</code> accept only an identifier and perform no authorisation.</li>
+<li><strong>An opaque identifier is not a credential.</strong> Difficulty of guessing it does not replace ownership checks.</li>
+<li><strong>The database is shared by the installation.</strong> It must not be described as per-user isolated until schema and callers enforce that separation.</li>
+<li><strong>The module does not encrypt content.</strong> At-rest protection depends on data-directory permissions and the hosting environment.</li>
+<li><strong>Expiry is logical.</strong> Data are removed only when <code>gc</code> runs.</li>
+</ul>
+
+<p>For these reasons, the module can be studied and tested as a component, but
+must not be connected to a multi-user surface before ownership, authorisation,
+and isolation tests are added.</p>
+
+</body>
+</html>

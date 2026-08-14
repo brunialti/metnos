@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}{{ msg("UI_VIRT_PAGE_TITLE") }} · Metnos{% endblock %}
+{% block head %}
+<style>
+.virt-hero{position:relative;overflow:hidden;display:flex;align-items:flex-start;
+  gap:var(--sp-5);padding:var(--sp-5);margin:0 0 var(--sp-4);
+  border:1px solid var(--border);border-radius:var(--r-3);
+  background:radial-gradient(circle at 94% 8%,rgba(12,114,97,.14),transparent 34%),
+    linear-gradient(135deg,var(--surface),var(--surface-2));box-shadow:var(--shadow-1)}
+.virt-hero-copy{flex:1;min-width:0}.virt-hero .page-sub{margin-bottom:0;max-width:76ch}
+.virt-hero-actions{display:flex;align-items:center;gap:var(--sp-2);flex:none}
+.virt-note{display:flex;gap:.65rem;align-items:flex-start;padding:.7rem .9rem;
+  border:1px solid var(--accent-line);border-radius:var(--r-2);background:var(--accent-soft);
+  color:var(--ink-2);margin:0 0 var(--sp-6)}
+.virt-note-mark{width:8px;height:8px;margin-top:.4rem;border-radius:50%;
+  background:var(--accent);box-shadow:0 0 0 4px rgba(12,114,97,.1);flex:none}
+.virt-family{margin:0 0 var(--sp-7);scroll-margin-top:var(--sp-4)}
+.virt-family-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,390px);
+  align-items:start;gap:var(--sp-4);margin-bottom:var(--sp-4)}
+.virt-family-copy{min-width:0}.virt-family-copy h2{margin:0}
+.virt-family-description{margin:.35rem 0 0!important;color:var(--ink-2)!important;max-width:68ch}
+.virt-info-tip{display:inline-flex;align-items:center;justify-content:center;
+  width:1.1rem;height:1.1rem;margin-left:.32rem;vertical-align:.1em;
+  border:1px solid var(--border-strong);border-radius:50%;color:var(--muted);
+  font-family:var(--font-ui);font-size:.66em;line-height:1;cursor:help}
+.virt-info-tip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.virt-family-actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
+  margin-top:var(--sp-3)}.virt-family-actions form{margin:0}
+.virt-file{font-size:var(--fs-1);border:1px solid var(--border);border-radius:var(--r-2);
+  background:var(--surface);padding:.75rem .85rem;box-shadow:var(--shadow-1)}
+.virt-file-line{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;
+  gap:.3rem .55rem}.virt-file-line+.virt-file-line{margin-top:.32rem}
+.virt-file-label{color:var(--muted);white-space:nowrap}.virt-file code{overflow-wrap:anywhere}
+.virt-status,.virt-origin,.virt-visibility,.virt-source{display:inline-flex;align-items:center;
+  width:max-content;max-width:100%;border:1px solid var(--border);border-radius:var(--r-pill);
+  font-size:var(--fs-0);line-height:1.55;padding:0 .5rem;background:var(--surface-2);
+  color:var(--ink-2)}
+.virt-status.invalid{border-color:var(--err-line);background:var(--err-soft);color:var(--err-fg)}
+.virt-status.configured{border-color:var(--ok-line);background:var(--ok-soft);color:var(--ok-fg)}
+.virt-error{margin-top:.55rem;padding-top:.5rem;border-top:1px solid var(--err-line);
+  color:var(--err-fg);overflow-wrap:anywhere}
+.virt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));
+  align-items:start;gap:var(--sp-4)}
+.virt-card{border:1px solid var(--border);border-radius:var(--r-2);background:var(--surface);
+  box-shadow:var(--shadow-1);min-width:0;overflow:hidden}
+.virt-card-head{display:flex;align-items:center;gap:.55rem;padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--border);background:var(--surface-2)}
+.virt-card h3{font-family:var(--font-mono);font-size:var(--fs-3);margin:0;flex:1}
+.virt-role-desc{margin:0;padding:var(--sp-3) var(--sp-4);color:var(--ink-2);
+  font-size:var(--fs-1);line-height:1.5;border-bottom:1px solid var(--border)}
+.virt-role-desc:last-child{border-bottom:0}
+.virt-card-body{padding:var(--sp-4)}
+.virt-block+.virt-block{margin-top:var(--sp-4);padding-top:var(--sp-4);
+  border-top:1px solid var(--border)}
+.virt-block-title{font-size:var(--fs-0);font-weight:650;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 var(--sp-2)}
+.virt-binding{display:grid;gap:.55rem}.virt-binding-item{min-width:0}
+.virt-binding-name{display:block;color:var(--muted);font-size:var(--fs-0);margin-bottom:.1rem}
+.virt-binding-value{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;min-width:0}
+.virt-binding-value code{overflow-wrap:anywhere;word-break:break-word}
+.virt-policy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:var(--sp-2)}
+.virt-policy-item{display:flex;flex-direction:column;min-width:0;min-height:78px;
+  padding:.6rem .7rem;border:1px solid var(--border);border-radius:var(--r-2);
+  background:linear-gradient(145deg,var(--surface-2),var(--surface))}
+.virt-policy-name{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--muted);
+  overflow-wrap:anywhere}.virt-policy-value{font-family:var(--font-mono);font-weight:650;
+  font-size:var(--fs-4);line-height:1.25;margin:.28rem 0;overflow-wrap:anywhere}
+.virt-policy-item .virt-source{margin-top:auto;border:none;background:transparent;
+  padding:0;color:var(--muted);white-space:normal}
+.virt-edit-input{display:block;width:100%;min-width:0;font-family:var(--font-mono)!important;
+  font-size:var(--fs-1)!important}.virt-policy-item .virt-edit-input{margin:.28rem 0;
+  font-size:var(--fs-3)!important;font-weight:600}.virt-binding-value .virt-edit-input{flex:1 1 220px}
+.virt-edit-bar{position:sticky;bottom:var(--sp-3);z-index:20;display:flex;
+  justify-content:flex-end;align-items:center;gap:var(--sp-2);margin-top:var(--sp-4);
+  padding:.65rem .75rem;border:1px solid var(--accent-line);border-radius:var(--r-2);
+  background:color-mix(in srgb,var(--surface) 94%,var(--accent-soft));box-shadow:var(--shadow-2)}
+.virt-flash{margin:-.25rem 0 var(--sp-4)}
+.virt-fields{margin:0;display:grid;grid-template-columns:minmax(110px,.72fr) minmax(0,1.28fr);
+  column-gap:.8rem;border-top:1px solid var(--border)}
+.virt-fields dt,.virt-fields dd{margin:0;padding:.45rem 0;border-bottom:1px solid var(--border);
+  min-width:0}.virt-fields dt{color:var(--muted);font-size:var(--fs-1);overflow-wrap:anywhere}
+.virt-fields dd{font-family:var(--font-mono);font-size:var(--fs-1);overflow-wrap:anywhere}
+.virt-value-meta{display:flex;align-items:center;gap:.35rem;flex-wrap:wrap}
+.virt-visibility,.virt-source{font-family:var(--font-ui);font-size:.65rem;color:var(--muted)}
+.virt-empty{color:var(--muted);font-style:italic}
+@media(min-width:1280px){.virt-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.virt-hero{display:block;padding:var(--sp-4)}
+  .virt-hero-actions{margin-top:var(--sp-3)}.virt-family-head{display:block}
+  .virt-file{margin-top:var(--sp-3)}.virt-grid{grid-template-columns:1fr}
+  .virt-fields{grid-template-columns:1fr}.virt-fields dt{border-bottom:0;padding-bottom:.05rem}
+  .virt-fields dd{padding-top:.05rem}.virt-policy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:390px){.virt-policy-grid{grid-template-columns:1fr}}
+</style>
+{% endblock %}
+{% block body %}
+<section class="virt-hero">
+  <div class="virt-hero-copy">
+    <p class="eyebrow">{{ msg("UI_VIRT_EYEBROW") }}</p>
+    <h1>{{ msg("UI_VIRT_TITLE") }}</h1>
+    <p class="page-sub">{{ msg("UI_VIRT_LEAD") }}</p>
+  </div>
+  <div class="virt-hero-actions">
+    <a class="btn" href="/admin/virt">{{ msg("UI_VIRT_RELOAD") }}</a>
+  </div>
+</section>
+
+{% if notice == 'saved' %}
+<div class="callout ok virt-flash" role="status">{{ msg("UI_VIRT_SAVED") }}</div>
+{% elif notice == 'reset' %}
+<div class="callout ok virt-flash" role="status">{{ msg("UI_VIRT_RESET_DONE") }}</div>
+{% elif edit_error_key %}
+<div class="callout err virt-flash" role="alert">{{ msg(edit_error_key) }}</div>
+{% endif %}
+
+<div class="virt-note" role="note">
+  <span class="virt-note-mark" aria-hidden="true"></span>
+  <span>{{ msg("UI_VIRT_REDACTION_NOTE") }}</span>
+</div>
+
+{% for family in snapshot.families %}
+<section class="virt-family" aria-labelledby="virt-{{ family.key }}">
+  <div class="virt-family-head">
+    <div class="virt-family-copy">
+      <h2 id="virt-{{ family.key }}">{{ msg(family.title_key) }}{% if family.tip_key %}<span class="virt-info-tip" tabindex="0" role="img" title="{{ msg(family.tip_key) }}" aria-label="{{ msg(family.tip_key) }}">i</span>{% endif %}</h2>
+      <p class="virt-family-description">{{ msg(family.description_key) }}</p>
+      {% if family.ui_editable %}
+      <div class="virt-family-actions">
+        {% if edit_family == family.key %}
+        <button class="btn primary" type="submit" form="virt-edit-{{ family.key }}">{{ msg("UI_VIRT_SAVE") }}</button>
+        <a class="btn" href="/admin/virt#virt-{{ family.key }}">{{ msg("UI_VIRT_CANCEL") }}</a>
+        {% else %}
+        <a class="btn" href="/admin/virt?edit={{ family.key }}#virt-{{ family.key }}">{{ msg("UI_VIRT_EDIT") }}</a>
+        {% endif %}
+        <form method="post" action="/admin/virt/{{ family.key }}/reset" class="virt-reset-form"
+              data-confirm="{{ msg('UI_VIRT_RESET_CONFIRM') }}">
+          <input type="hidden" name="revision" value="{{ family.config.revision }}">
+          <button class="btn bad" type="submit">{{ msg("UI_VIRT_RESET") }}</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    <div class="virt-file">
+      <div class="virt-file-line">
+        <span class="virt-file-label">{{ msg("UI_VIRT_CONFIG_FILE") }}</span>
+        <code>{{ family.config.path }}</code>
+      </div>
+      <div class="virt-file-line">
+        <span class="virt-file-label">{{ msg("UI_VIRT_STATUS") }}</span>
+        <span class="virt-status {{ family.config.status }}">
+          {{ msg("UI_VIRT_STATUS_" ~ family.config.status|upper) }}
+        </span>
+      </div>
+      {% if family.config.env_override %}
+      <div class="virt-file-line">
+        <span class="virt-file-label">{{ msg("UI_VIRT_ENV_OVERRIDE") }}</span>
+        <code>{{ family.config.env_var }}</code>
+      </div>
+      {% endif %}
+      {% if family.config.error_key or family.config.error %}
+      <div class="virt-error"><strong>{{ msg("UI_VIRT_ERROR") }}</strong>
+        {% if family.config.error_key %}{{ msg(family.config.error_key) }}{% endif %}
+        {% if family.config.error %}<code>{{ family.config.error }}</code>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if family.roles %}
+  {% if edit_family == family.key %}
+  <form id="virt-edit-{{ family.key }}" method="post" action="/admin/virt/{{ family.key }}/save">
+    <input type="hidden" name="revision" value="{{ family.config.revision }}">
+  {% endif %}
+  <div class="virt-grid">
+    {% for role in family.roles %}
+    <article class="virt-card">
+      <div class="virt-card-head">
+        <h3>{{ role.name }}</h3>
+        <span class="virt-origin">{{ msg("UI_VIRT_ORIGIN_" ~ role.origin|upper) }}</span>
+      </div>
+      {% if role.description_key %}<p class="virt-role-desc">{{ msg(role.description_key) }}</p>{% endif %}
+      {% if role.fields %}<div class="virt-card-body">
+      {% if role.binding_fields %}
+      <section class="virt-block">
+        <h4 class="virt-block-title">{{ msg("UI_VIRT_BINDING") }}</h4>
+        <div class="virt-binding">
+        {% for field in role.binding_fields %}
+          <div class="virt-binding-item">
+            <span class="virt-binding-name"><code>{{ field.name }}</code></span>
+            <span class="virt-binding-value">
+              {% if edit_family == family.key and field.editable %}
+                {% if field.value_type == 'boolean' %}
+                <select class="virt-edit-input" name="field_{{ field.edit_key }}" aria-label="{{ field.name }}">
+                  <option value="true"{% if field.edit_value == 'true' %} selected{% endif %}>true</option>
+                  <option value="false"{% if field.edit_value == 'false' %} selected{% endif %}>false</option>
+                </select>
+                {% elif field.value_type == 'integer' %}
+                <input class="virt-edit-input" type="number" step="1" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+                {% elif field.value_type == 'number' %}
+                <input class="virt-edit-input" type="number" step="any" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+                {% elif field.value_type == 'textarea' %}
+                <textarea class="virt-edit-input" rows="3" name="field_{{ field.edit_key }}" aria-label="{{ field.name }}">{{ field.edit_value }}</textarea>
+                {% else %}
+                <input class="virt-edit-input" type="text" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+                {% endif %}
+              {% else %}<code>{{ field.value }}</code>{% endif %}
+              {% if field.visibility != 'visible' %}<span class="virt-visibility">{{ msg("UI_VIRT_VALUE_" ~ field.visibility|upper) }}</span>{% endif %}
+              {% if field.source %}<span class="virt-source">{{ msg("UI_VIRT_ORIGIN_" ~ field.source|upper) }}</span>{% endif %}
+            </span>
+          </div>
+        {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      {% if role.policy_fields %}
+      <section class="virt-block">
+        <h4 class="virt-block-title">{{ msg("UI_VIRT_GENERATION_POLICY") }}</h4>
+        <div class="virt-policy-grid">
+        {% for field in role.policy_fields %}
+          <div class="virt-policy-item">
+            <span class="virt-policy-name">{{ field.name }}</span>
+            {% if edit_family == family.key and field.editable %}
+              {% if field.value_type == 'boolean' %}
+              <select class="virt-edit-input" name="field_{{ field.edit_key }}" aria-label="{{ field.name }}">
+                <option value="true"{% if field.edit_value == 'true' %} selected{% endif %}>true</option>
+                <option value="false"{% if field.edit_value == 'false' %} selected{% endif %}>false</option>
+              </select>
+              {% elif field.value_type == 'integer' %}
+              <input class="virt-edit-input" type="number" step="1" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+              {% else %}
+              <input class="virt-edit-input" type="number" step="any" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+              {% endif %}
+            {% else %}<span class="virt-policy-value">{{ field.value }}</span>{% endif %}
+            {% if field.source %}<span class="virt-source">{{ msg("UI_VIRT_ORIGIN_" ~ field.source|upper) }}</span>{% endif %}
+          </div>
+        {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      {% if role.parameter_fields %}
+      <section class="virt-block">
+        <h4 class="virt-block-title">{{ msg("UI_VIRT_PARAMETERS") }}</h4>
+        <dl class="virt-fields">
+          {% for field in role.parameter_fields %}
+          <dt><code>{{ field.name }}</code></dt>
+          <dd><span class="virt-value-meta">
+            {% if edit_family == family.key and field.editable %}
+              {% if field.value_type == 'boolean' %}
+              <select class="virt-edit-input" name="field_{{ field.edit_key }}" aria-label="{{ field.name }}">
+                <option value="true"{% if field.edit_value == 'true' %} selected{% endif %}>true</option>
+                <option value="false"{% if field.edit_value == 'false' %} selected{% endif %}>false</option>
+              </select>
+              {% elif field.value_type == 'integer' %}
+              <input class="virt-edit-input" type="number" step="1" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+              {% elif field.value_type == 'number' %}
+              <input class="virt-edit-input" type="number" step="any" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+              {% elif field.value_type == 'textarea' %}
+              <textarea class="virt-edit-input" rows="3" name="field_{{ field.edit_key }}" aria-label="{{ field.name }}">{{ field.edit_value }}</textarea>
+              {% else %}
+              <input class="virt-edit-input" type="text" name="field_{{ field.edit_key }}" value="{{ field.edit_value }}" aria-label="{{ field.name }}">
+              {% endif %}
+            {% else %}<span>{{ field.value }}</span>{% endif %}
+            {% if field.visibility != 'visible' %}<span class="virt-visibility">{{ msg("UI_VIRT_VALUE_" ~ field.visibility|upper) }}</span>{% endif %}
+            {% if field.source %}<span class="virt-source">{{ msg("UI_VIRT_ORIGIN_" ~ field.source|upper) }}</span>{% endif %}
+          </span></dd>
+          {% endfor %}
+        </dl>
+      </section>
+      {% endif %}
+      </div>
+      {% else %}
+      <p class="virt-empty">{{ msg("UI_VIRT_NO_FIELDS") }}</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% if edit_family == family.key %}
+    <div class="virt-edit-bar">
+      <a class="btn" href="/admin/virt#virt-{{ family.key }}">{{ msg("UI_VIRT_CANCEL") }}</a>
+      <button class="btn primary" type="submit">{{ msg("UI_VIRT_SAVE") }}</button>
+    </div>
+  </form>
+  {% endif %}
+  {% else %}
+  <p class="virt-empty">{{ msg("UI_VIRT_NO_ROLES") }}</p>
+  {% endif %}
+</section>
+{% endfor %}
+<script>
+document.querySelectorAll(".virt-reset-form").forEach((form) => {
+  form.addEventListener("submit", (event) => {
+    if (!window.confirm(form.dataset.confirm || "")) event.preventDefault();
+  });
+});
+</script>
+{% endblock %}

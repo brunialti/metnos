@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Vaglio e guardia delle azioni</title>
+ <meta name="description" content="Come Metnos controlla un'azione prima dell'esecuzione: guardia deterministica, API di giudizio graduato, log e limiti delle garanzie.">
+ <meta name="keywords" content="Metnos, vaglio, guardia, sicurezza, executor, policy">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/vaglio">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/vaglio">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/vaglio">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/vaglio">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/vaglio.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/vaglio.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">Vaglio</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Vaglio e guardia delle azioni</div>
+ <div class="meta">Controlli prima dell'esecuzione, giudizio facoltativo e confini verificabili.</div>
+</div>
+
+<p class="lead">Il percorso di produzione applica una guardia deterministica subito
+prima di invocare un executor. La guardia blocca classi chiuse di accessi e comandi
+pericolosi. Il modulo espone anche un giudice graduato, ma questa seconda fase non
+fa parte del percorso ordinario del motore corrente: documentare le due cose come se
+fossero entrambe sempre attive sarebbe inesatto.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Responsabilit&agrave; e confini</a></li>
+ <li><a href="#cap2">Il verdetto dell'API completa</a></li>
+ <li><a href="#cap3">La guardia deterministica</a></li>
+ <li><a href="#cap4">Il giudice graduato</a></li>
+ <li><a href="#cap5">Giudice LLM facoltativo</a></li>
+ <li><a href="#cap6">Log e dati registrati</a></li>
+ <li><a href="#cap7">Integrazione nel runtime corrente</a></li>
+ <li><a href="#cap8">Esempio in linguaggio naturale</a></li>
+ <li><a href="#cap9">Limiti delle garanzie</a></li>
+ <li><a href="#cap10">Configurazione e riferimenti</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Responsabilit&agrave; e confini</h1>
+
+<p>Il Vaglio controlla una singola azione gi&agrave; scelta dal motore. Non seleziona
+l'executor, non interpreta da solo la richiesta, non concede permessi e non sostituisce
+la <a href="policy.html">policy</a>, il consenso umano, la sandbox o i controlli
+dell'executor.</p>
+
+<p>La separazione principale &egrave; fra:</p>
+
+<ul>
+ <li><strong>guardia binaria</strong>: regole locali e deterministiche su executor e
+ argomenti; una corrispondenza vietata ferma il passo;</li>
+ <li><strong>giudice graduato</strong>: API separata che assegna un punteggio e pu&ograve;
+ negare sotto soglia; &egrave; disponibile nel modulo, ma il motore di produzione
+ collega oggi soltanto la guardia pre-esecuzione.</li>
+</ul>
+
+<h1 id="cap2">2. Il verdetto dell'API completa</h1>
+
+<p>La funzione <code>judge(intent, executor_name, args, context)</code> restituisce
+un <code>Verdict</code> con questi campi:</p>
+
+<table>
+<thead><tr><th>Campo</th><th>Significato</th></tr></thead>
+<tbody>
+<tr><td><code>approved</code></td><td>Indica se l'azione supera l'intera chiamata.</td></tr>
+<tr><td><code>reason</code></td><td>Motivo leggibile prodotto dalla guardia o dal giudice.</td></tr>
+<tr><td><code>ts</code></td><td>Istante Unix della decisione.</td></tr>
+<tr><td><code>judge_kind</code></td><td><code>rule-based-v1</code>,
+<code>llm-v1</code> oppure <code>safe-verb-shortcut</code>.</td></tr>
+<tr><td><code>score</code></td><td>Punteggio fra 0 e 1; vale 0 per un blocco della guardia.</td></tr>
+<tr><td><code>blocked_by</code></td><td><code>guard</code>, <code>judge</code> o
+nessun valore quando la chiamata approva.</td></tr>
+</tbody>
+</table>
+
+<p>Questo contratto descrive l'API completa del modulo. Non implica che ogni
+call site usi entrambe le fasi.</p>
+
+<h1 id="cap3">3. La guardia deterministica</h1>
+
+<p><code>guard_check(executor_name, args, context)</code> esamina ricorsivamente gli
+argomenti che possono rappresentare un bersaglio d'accesso. Le stringhe poste in
+campi di contenuto, come corpo, testo, commento o messaggio, non vengono trattate
+come percorsi: citare un percorso protetto in un documento non equivale ad
+accedervi.</p>
+
+<p>La guardia applica tre famiglie di controlli:</p>
+
+<ol>
+ <li><strong>Percorsi sempre proibiti.</strong> Comprendono, fra gli altri,
+ <code>~/.ssh</code>, credenziali cloud, <code>/etc/passwd</code>,
+ <code>/etc/shadow</code>, <code>/root</code>, <code>/boot</code> e dispositivi a
+ blocchi.</li>
+ <li><strong>Alberi di sistema protetti dalle mutazioni.</strong> Per executor il
+ cui verbo modifica lo stato, la policy della piattaforma impedisce scritture,
+ spostamenti o cancellazioni negli alberi riservati al sistema operativo. Una
+ lettura lecita resta distinta da una mutazione.</li>
+ <li><strong>Comandi shell quasi irreversibili.</strong> Quando la capability
+ esegue shell, pattern chiusi bloccano operazioni come formattazione di filesystem,
+ scrittura diretta su dispositivi e cancellazione ricorsiva della radice.</li>
+</ol>
+
+<p>La prima violazione restituisce <code>(False, motivo)</code>. In assenza di
+corrispondenze la guardia restituisce <code>(True, None)</code>; non certifica per
+questo che l'azione sia innocua in ogni suo possibile effetto.</p>
+
+<h1 id="cap4">4. Il giudice graduato</h1>
+
+<p>Se un chiamante usa <code>judge()</code>, la guardia viene eseguita per prima.
+Dopo il suo esito positivo, i verbi presenti nel vocabolario
+<code>SAFE_VERBS</code> seguono uno short circuit e ricevono un verdetto approvato
+con <code>judge_kind=safe-verb-shortcut</code>.</p>
+
+<p>Per gli altri verbi, il backend predefinito <code>rule-based-v1</code> parte da
+un punteggio base, aggiunge segnali di corrispondenza fra intento ed executor e
+riduce il valore per indicatori come path traversal o nomi di argomento anomali.
+Il confronto finale usa <code>METNOS_JUDGE_THRESHOLD</code>, il cui valore
+predefinito &egrave; <code>0.30</code>.</p>
+
+<p>Questo punteggio &egrave; un'euristica locale. Non dimostra l'allineamento ai fini
+dell'utente e non deve essere descritto come una verifica semantica generale.</p>
+
+<h1 id="cap5">5. Giudice LLM facoltativo</h1>
+
+<p>Impostando <code>METNOS_JUDGE_KIND=llm-v1</code>, un chiamante di
+<code>judge()</code> usa il ruolo LLM <code>middle</code>. Il prompt segue la lingua
+del turno e riceve l'intento, il nome dell'executor, le sole chiavi degli argomenti
+e alcuni campi di contesto; i valori degli argomenti non vengono inviati.</p>
+
+<p>Se router, chiamata o parsing falliscono, il modulo restituisce un punteggio di
+ripiego pari a <code>0.5</code>. Con la soglia predefinita questo degrado tende ad
+approvare. &Egrave; quindi un comportamento di disponibilit&agrave; esplicito, non un fail
+closed e non una garanzia di sicurezza.</p>
+
+<h1 id="cap6">6. Log e dati registrati</h1>
+
+<p><code>judge()</code> scrive record JSONL mensili nella directory utente
+<code>vaglio/</code>. Il record include verdetto, intento, executor, nomi delle
+chiavi degli argomenti e nomi delle chiavi di contesto; non include i valori degli
+argomenti. Un errore di scrittura del log non modifica il verdetto.</p>
+
+<p>Il log rende ispezionabile una decisione prodotta dall'API. Non ricostruisce da
+solo l'intero turno e non trasforma il motivo di un modello in una prova.</p>
+
+<h1 id="cap7">7. Integrazione nel runtime corrente</h1>
+
+<p>Il motore condiviso riceve <code>guard_check</code> come
+<code>vaglio_guard</code>. La invoca immediatamente prima dell'executor e anche nel
+preflight delle ondate parallele. Un blocco produce un risultato con classe
+<code>vaglio_guard</code> e interrompe il piano prima dell'effetto.</p>
+
+<p>Il motore dispone di un hook separato per un giudice, ma il dispatcher corrente
+non gli passa <code>judge()</code>. Pertanto, nel percorso ordinario:</p>
+
+<table>
+<thead><tr><th>Componente</th><th>Stato nel percorso di produzione</th></tr></thead>
+<tbody>
+<tr><td>Guardia deterministica pre-esecuzione</td><td>Collegata e attiva.</td></tr>
+<tr><td>Giudice graduato rule-based o LLM</td><td>Disponibile come API, non collegato al dispatcher ordinario.</td></tr>
+<tr><td>Policy e approvazione umana</td><td>Flussi separati, applicati dove previsto dal contratto della capability.</td></tr>
+<tr><td>Controllo cross-user del modulo</td><td>Helper disponibile; non &egrave; la prova che ogni invio lo richiami.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap8">8. Esempio in linguaggio naturale</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Leggi <code>/etc/hosts</code> e mostrami le righe non commentate.&raquo;</p>
+
+<p>La lettura di un file di configurazione non viene confusa con una modifica
+dell'albero di sistema. Se invece chiedi &laquo;Sostituisci
+<code>/etc/hosts</code> con questo contenuto&raquo;, la guardia riconosce il verbo
+mutante e il percorso protetto e ferma il passo prima dell'invocazione.</p>
+
+<p>La risposta visibile deve descrivere l'operazione bloccata e il motivo utile
+all'utente nella lingua del turno. Il testo interno della guardia resta un dato
+tecnico e non autorizza il renderer a inventare eccezioni.</p>
+
+<h1 id="cap9">9. Limiti delle garanzie</h1>
+
+<ul>
+ <li>Le regole coprono pattern e alberi dichiarati; non sono una prova formale
+ degli effetti di ogni programma.</li>
+ <li>Il motore tratta un'eccezione inattesa della guardia come fail open e la
+ registra. Sandbox, policy ed executor devono quindi restare controlli
+ indipendenti.</li>
+ <li>Il giudice LLM produce una valutazione probabilistica e una motivazione, non
+ un'evidenza verificabile.</li>
+ <li>Il Vaglio non legge una biografia dell'utente e non deduce autorizzazioni da
+ abitudini, ricorrenze o silenzio.</li>
+ <li>Una decisione di approvazione non sostituisce il consenso richiesto da una
+ capability critica.</li>
+</ul>
+
+<h1 id="cap10">10. Configurazione e riferimenti</h1>
+
+<table>
+<thead><tr><th>Impostazione</th><th>Valore predefinito</th><th>Effetto</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_JUDGE_KIND</code></td><td><code>rule-based-v1</code></td><td>Backend usato dai chiamanti di <code>judge()</code>.</td></tr>
+<tr><td><code>METNOS_JUDGE_THRESHOLD</code></td><td><code>0.30</code></td><td>Soglia del giudice graduato.</td></tr>
+</tbody>
+</table>
+
+<ul>
+ <li><code>runtime/vaglio.py</code>: guardia, giudici, verdetto e log.</li>
+ <li><code>runtime/platform_policy.py</code>: alberi protetti per piattaforma.</li>
+ <li><code>runtime/engine/executor.py</code>: guardia pre-invocazione.</li>
+ <li><code>runtime/agent_runtime.py</code>: collegamento del dispatcher corrente.</li>
+ <li><a href="policy.html">Policy</a> e
+ <a href="approval_ux.html">flusso di approvazione</a>: autorizzazione e consenso.</li>
+</ul>
+
+</body>
+</html>

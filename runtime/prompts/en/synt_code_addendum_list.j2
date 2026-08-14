@@ -1,0 +1,76 @@
+{# ---
+role: synt_code_addendum_list
+tier: wise
+lang: en
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 6293faa3
+--- #}
+VERB RULE `list` (besides the generic):
+
+DEFINITION: `list` = enumerates the IMMEDIATE content of a container
+(`recursive=False` default). Differs from `find` (which is search).
+Read-only. Output `entries` with standard schema.
+
+UNIVERSAL PSEUDOCODE:
+
+  def invoke(args):
+      container = args.get("path") or args.get("folder") or args.get("account")
+      recursive = args.get("recursive", False)
+      sort_by = args.get("sort", "name")
+      max_entries = args.get("max_entries", 1000)
+      items = list(iter_immediate(container, recursive))
+      items.sort(key=key_fn(sort_by))
+      out = [to_entry(it) for it in items if allowed(it)][:max_entries]
+      truncated = len(items) > max_entries
+
+INVARIANTS:
+MUST: `recursive=False` by default. For traversal use `find`.
+MUST: STABLE sorting (default `name` case-insensitive). Override via
+  `args.get("sort", ...)` in `{"name","mtime","size"}`.
+MUST: cap `max_entries` (default 1000) with `truncated:True` + visibility.
+MUST: entries schema IDENTICAL to `find` (cross-executor consistency):
+  - FS: `{path, name, kind, mime, size, mtime_epoch, type}`
+  - IMAP messages: `{account, folder, uid, message_id, from, subject, date, body_preview, has_attachment}`
+  - IMAP folders: `{account, full_name, last_segment, attributes}`
+MUST: silently skip protected paths/system files.
+MUST: output `entries` (NOT `results`).
+MUST NOT: descend into subdirectories without explicit `recursive=True`.
+
+FS DOMAIN (list_dirs):
+- iter_immediate: `pathlib.Path(container).iterdir()` (NOT rglob).
+
+IMAP messages DOMAIN (list_messages):
+- iter_immediate: `M.uid("SEARCH", None, ...)` with optional time_window +
+  fetch envelope with `parse_envelope`.
+- IMAP WARNINGS: `M.select(_q(folder))` FIRST; `data` is list (data[0]).
+- helper `_q` as in other IMAP verbs:
+
+      def _q(name):
+          if " " in name or any(ord(c) > 127 for c in name):
+              return f'"{name}"'
+          return name
+
+IMAP folders DOMAIN (list_folders):
+- iter_immediate: `M.list()` parsing — handle BOTH quoted AND unquoted names:
+
+      typ, data = M.list()
+      for raw in data or []:
+          line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+          # quoted:   '(\HasNoChildren) "." "INBOX.Spam"'
+          # unquoted:  '(\HasNoChildren \Junk) "/" Spam'
+          parts = line.split('"')
+          if len(parts) >= 5:
+              flags, delim, full = parts[0], parts[1], parts[3]
+          elif len(parts) == 3:
+              flags, delim, full = parts[0], parts[1], parts[2].strip()
+          else:
+              continue
+          last = full.split(delim)[-1] if delim else full
+          # extract IMAP attributes from flags (e.g. \Junk, \Trash, \Sent)
+          attrs = re.findall(r"\\\\[A-Za-z]+", flags)
+
+- to_entry: `{account, full_name, last_segment, delimiter, attributes}`.
+────────────────────────────────────────────

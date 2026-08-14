@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ msg("UI_BUILDS_PAGE_TITLE") }}{% endblock %}
+{% block body %}
+<h1>{{ msg("UI_BUILDS_TITLE", count=rows|length) }}</h1>
+<p class="page-sub">{{ msg("UI_BUILDS_LEAD") }}
+<code>systemd-run --user</code>. {{ msg("UI_BUILDS_ROW_NOTE") }}</p>
+<p class="muted">{{ msg("UI_BUILDS_STATES") }}
+<code>running</code> = {{ msg("UI_BUILDS_STATE_RUNNING_DESC") }} ·
+<code>done</code> = {{ msg("UI_BUILDS_STATE_DONE_DESC") }} ·
+<code>error</code> = {{ msg("UI_BUILDS_STATE_ERROR_DESC") }} ·
+<code>aborted</code> = {{ msg("UI_BUILDS_STATE_ABORTED_DESC") }} ·
+<code>interrupted</code> = {{ msg("UI_BUILDS_STATE_INTERRUPTED_DESC") }}.</p>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>{{ msg("UI_BUILDS_COL_DIGEST") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_DIRECTORY") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_INDEX") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_STATUS") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_PROGRESS") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_ETA") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_UPDATED") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_ACTIVE_UNIT") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_ERRORS") }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="muted"><code>{{ r.digest }}</code></td>
+      <td class="muted">{{ r.base_path }}</td>
+      <td><code>{{ r.idx }}</code></td>
+      <td>
+        {% if r.state == "done" %}<span class="chip ok">{{ msg("UI_BUILDS_STATE_DONE") }}</span>
+        {% elif r.state == "error" %}<span class="chip bad">{{ msg("UI_BUILDS_STATE_ERROR") }}</span>
+        {% elif r.state == "aborted" %}<span class="chip bad">{{ msg("UI_BUILDS_STATE_ABORTED") }}</span>
+        {% elif r.state == "running" %}<span class="chip warn">{{ msg("UI_BUILDS_STATE_RUNNING") }}</span>
+        {% elif r.state == "interrupted" %}<span class="chip">{{ msg("UI_BUILDS_STATE_INTERRUPTED") }}</span>
+        {% else %}<span class="chip">{{ msg("UI_BUILDS_STATE_UNKNOWN", state=r.state) }}</span>{% endif %}
+      </td>
+      <td>
+        {% if r.n_total %}
+          <div class="prog" aria-hidden="true"><div style="width:{{ r.pct }}%"></div></div>
+          {{ r.n_done }}/{{ r.n_total }} ({{ r.pct }}%)
+        {% else %}-{% endif %}
+      </td>
+      <td class="muted">
+        {% if r.eta_s and r.state == "running" %}{{ (r.eta_s|int // 60) }}m{% else %}-{% endif %}
+      </td>
+      <td class="muted">
+        {% if r.last_update_age_s is not none %}{{ msg("UI_BUILDS_SECONDS_AGO", seconds=r.last_update_age_s|int) }}
+        {% else %}-{% endif %}
+      </td>
+      <td>
+        {% if r.unit_active %}<span class="chip ok">{{ msg("UI_BUILDS_YES") }}</span>
+        {% else %}<span class="chip">{{ msg("UI_BUILDS_NO") }}</span>{% endif %}
+      </td>
+      <td>{{ r.errors }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="muted">{{ msg("UI_BUILDS_EMPTY") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<style>
+  .prog{width:120px;height:6px;border-radius:3px;background:var(--surface-3);
+        overflow:hidden;margin:.25rem 0 .2rem}
+  .prog div{height:100%;background:var(--accent);border-radius:3px;
+        transition:width var(--t-2) var(--ease)}
+</style>
+{% endblock %}

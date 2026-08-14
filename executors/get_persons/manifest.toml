@@ -1,0 +1,82 @@
+# Manifest dell'executor `get_persons` — Metnos v1.1
+# Naming compositivo: azione_oggetto. PR2 persons registry.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "get_persons"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = ["elenca persone", "lista persone", "registro persone",
+                "persone enrollate", "chi è enrollato", "enrolled",
+                "quante foto", "list persons", "who is registered",
+                "registered persons", "person info", "registry"]
+revertible  = false
+platforms   = ["linux"]
+
+[placement]
+scope = "server"
+device_ok = false
+
+[description]
+it = "SCOPO: legge il registro biometrico persone. PATTERN: get_persons(name=\"nome\"); senza arg elenca tutti. NON: profili -> read_persons; foto -> find_persons_indices; enrollment -> set_persons. OUT: {ok,entries,n_entries,status?}."
+en = "SCOPO: reads the biometric persons registry. PATTERN: get_persons(name=\"name\"); no args lists everyone. NON: profiles -> read_persons; photos -> find_persons_indices; enrollment -> set_persons. OUT: {ok,entries,n_entries,status?}."
+
+[code]
+files  = ["get_persons.py"]
+digest = "sha256:4a7f9589ffd51d4b1c779ca52517cc806632f3f04160c529984da59edf534ead"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.name]
+type        = "string"
+
+[args.properties.name.description]
+it = "Nome della persona da cercare (opzionale). Se omesso o null, ritorna l'elenco completo. Se passato e introvabile, ritorna lista vuota + status='unknown_name'."
+en = "Name of the person to look up (optional). If omitted or null, returns the full list. If passed and not found, returns empty list + status='unknown_name'."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{slug, name, n_examples, created_at, updated_at, examples?}>,
+  n_entries?: int,
+  ambiguous?: bool,
+  status?: 'unknown_name',
+  final_message_hint?: str,
+  error?: str,
+  error_class?: 'invalid_input' | 'resource_unavailable',
+  error_code?: str,
+  detail?: str
+}
+"""
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = "name", cell_max = 160 },
+  { key = "slug", source = "slug", cell_max = 100 },
+  { key = "n_examples", source = "n_examples", cell_max = 16 },
+  { key = "updated_at", source = "updated_at", cell_max = 32 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
+[[capabilities]]
+name = "metnos:read"
+hint = ["persons_registry:local"]
+
+[[tests]]
+name   = "rejects_non_string_name"
+input  = { name = 42 }
+expect = { ok = false, field_eq = { error_code = "name_not_string" } }
+
+[[tests]]
+name   = "rejects_non_object_args"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }

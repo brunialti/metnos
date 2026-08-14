@@ -1,0 +1,74 @@
+{# ---
+role: synt_code_addendum_write
+tier: wise
+lang: en
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 9b1b83e5
+--- #}
+VERB RULES `write` (besides generic):
+
+DEFINITION: `write` = produces/overwrites a file/value. Destructive if
+overwriting existing content. Reversible via `restore_blob_backup`.
+
+UNIVERSAL PSEUDOCODE:
+
+  def invoke(args):
+      entries, results, failed = args.get("entries", []), [], []
+      overwrite = args.get("overwrite", False)
+      parents = args.get("parents", True)
+      encoding = args.get("encoding", "utf-8")
+      for i, e in enumerate(entries):
+          try:
+              dst, content = e["path"], e["content"]
+              existed = dst_exists(dst)
+              if existed and not overwrite:
+                  failed.append({"index": i, "path": dst,
+                                 "error": "exists, use overwrite=True"}); continue
+              if parents: ensure_parent_dirs(dst)
+              prev_blob = snapshot(dst) if (revertible and existed) else None
+              n = atomic_write(dst, content, encoding)   # tmp + os.replace
+              results.append({"path": dst, "bytes_written": n,
+                              "prev_blob_sha256": prev_blob})
+          except Exception as ex:
+              failed.append({"index": i, "error": str(ex)})
+
+INVARIANTS:
+MUST: pre-flight `Path(dst).exists()` with `overwrite` gate.
+MUST: ATOMIC writing: write to `<dst>.<random>.tmp` then
+  `os.replace(tmp, dst)`. A crash halfway MUST NOT leave the final file
+  truncated.
+MUST: `parents=True` (default) → `parent.mkdir(parents=True, exist_ok=True)`.
+MUST: if `revertible=True` AND dst exists AND is about to be overwritten,
+  snapshot the content pre-overwrite. Path convention:
+
+      import os, hashlib
+      _HISTORY = os.path.expanduser(os.environ.get(
+          "METNOS_HISTORY_DIR", "~/.local/share/metnos/_history"))
+      _TURN_DIR = os.path.join(_HISTORY, os.environ.get("METNOS_TURN_ID", "default"), "blob")
+      os.makedirs(_TURN_DIR, exist_ok=True)
+      prev_bytes = Path(dst).read_bytes()
+      prev_sha = hashlib.sha256(prev_bytes).hexdigest()
+      prev_blob_path = os.path.join(_TURN_DIR, prev_sha + ".bin")
+      with open(prev_blob_path, "wb") as fh: fh.write(prev_bytes)
+
+  Include `prev_blob_path` (absolute) and `prev_blob_sha256` in results.
+MUST: explicit encoding (default utf-8). For bytes, `args.get("binary", False)`.
+MUST: refuse `is_protected_path()` UNLESS `allow_system=True`.
+MUST NOT: `open(dst, "w")` directly on the final path (not atomic).
+MUST NOT: write without explicit encoding (would depend on the OS locale).
+MUST NOT: declare revertible=True without emitting prev_blob_sha256 at
+  the first overwrite (undo won't know how to restore).
+
+FILESYSTEM DOMAIN (write_files):
+- entry: `{"path": str, "content": str|bytes, "encoding": str?}`
+- atomic_write: use `tempfile.NamedTemporaryFile(dir=parent, delete=False)` then
+  `os.replace(tmp.name, dst)`.
+- mode: `"w"` textual (encoding) or `"wb"` binary (no encoding).
+- results: `{"path": str, "bytes_written": int, "prev_blob_path": str|null, "prev_blob_sha256": str|null}`.
+
+KV/store DOMAIN (set_*):
+- entry: `{"key": ..., "value": ...}`; use structured store (sqlite/json).
+- atomicity: BEGIN TRANSACTION → write → COMMIT (DB), or tmp+rename for JSON.

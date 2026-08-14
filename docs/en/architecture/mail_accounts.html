@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mail accounts in Metnos — IMAP and SMTP, including non-Google</title>
+<meta name="description" content="How to configure and use IMAP and SMTP email accounts in Metnos, including non-Google providers, encrypted credentials, and multiple accounts.">
+<link rel="canonical" href="https://metnos.com/en/architecture/mail_accounts">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mail_accounts">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mail_accounts">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mail_accounts">
+<style>:root{--n:#1A477A;--b:#2B6CB0;--g:#548235;--br:#A0522D;--bg:#FAFBFC;--t:#1a1a1a;--bd:#d0d7de;--c:#f6f8fa}*{box-sizing:border-box}body{font-family:'Segoe UI',Calibri,sans-serif;color:var(--t);background:var(--bg);max-width:900px;margin:auto;padding:40px 30px;line-height:1.65;font-size:11pt}a{color:var(--n)}h1{color:var(--n);font-size:23pt;border-bottom:3px solid var(--n);padding-bottom:10px}h2{color:var(--b);font-size:15pt;margin-top:32px;border-bottom:1px solid var(--bd);padding-bottom:5px}.lead{font-size:12.5pt;color:var(--n);border-left:4px solid var(--g);padding-left:15px}.note{border-left:4px solid var(--br);background:#fff7ed;padding:12px 16px}.ok{border-left:4px solid var(--g);background:#f0fdf4;padding:12px 16px}code{background:var(--c);padding:1px 5px;border-radius:3px}table{width:100%;border-collapse:collapse;background:white}th{background:var(--n);color:white;text-align:left}th,td{padding:8px 10px;border-bottom:1px solid var(--bd);vertical-align:top}</style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<nav><a href="index.html">&larr; Architecture guide</a> &middot; <a href="/it/architecture/mail_accounts.html" hreflang="it">IT</a></nav>
+<h1>IMAP and SMTP mail accounts</h1>
+<p class="lead">Metnos can use mailboxes from non-Google providers. Standard
+mail uses IMAP for reading and SMTP for sending; Google Workspace remains a
+separate backend for Gmail-specific functions.</p>
+
+<h2>Account identity</h2>
+<p>Each account has a stable name, such as <code>work</code>. Its encrypted
+vault binding is <code>smtp_work</code>; mail executors receive
+<code>account="work"</code>. <code>account="all"</code> reads all configured
+accounts and aggregates the results; an explicit list of names is also valid.</p>
+
+<h2>Preferred configuration</h2>
+<p><strong>Ask Metnos with a request like this example:</strong> “Explain how
+to configure a non-Google mail account named work with IMAP and SMTP, without
+putting the password in the message.”</p>
+<p>The encrypted <code>smtp_&lt;name&gt;</code> record contains:</p>
+<table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>user</code>, <code>password</code></td><td>Mailbox credentials.</td></tr>
+<tr><td><code>imap_host</code>, <code>imap_port</code></td><td>Read server; typical port 993.</td></tr>
+<tr><td><code>smtp_host</code>, <code>smtp_port</code></td><td>Send server; typical SMTPS port 465. It may be omitted for a read-only account.</td></tr>
+<tr><td><code>verify_tls</code></td><td>TLS verification, enabled by default; disabling it requires an explicit administrative decision.</td></tr>
+</tbody></table>
+<p>Contract example, with secret values replaced by placeholders:</p>
+<pre><code>set_credentials(
+  binding="smtp_work",
+  fields={
+    "user": "person@example.test",
+    "password": "&lt;password&gt;",
+    "imap_host": "imap.example.test",
+    "imap_port": 993,
+    "smtp_host": "smtp.example.test",
+    "smtp_port": 465,
+    "verify_tls": true
+  }
+)</code></pre>
+<p>During an interactive installation, the <em>Sensitive data</em> phase can
+create one or more accounts. After installation, the same structure can be
+stored with <code>set_credentials</code>; values enter the local encrypted
+vault, while responses and telemetry expose metadata only.</p>
+
+<h2>Compatibility with earlier configurations</h2>
+<p>A mode-<code>0600</code> file at
+<code>~/.config/metnos/mail/&lt;name&gt;.env</code> remains accepted with fields
+<code>HOST_IMAP</code>, <code>PORT_IMAP</code>, <code>HOST_SMTP</code>,
+<code>PORT_SMTP</code>, <code>USER</code>, <code>PASS</code>, and
+<code>VERIFY_TLS</code>. The encrypted vault takes precedence; the file is a
+compatibility and migration path.</p>
+
+<h2>Boundaries</h2>
+<p class="ok"><code>read_messages</code> reads IMAP;
+<code>send_messages</code> sends SMTP; <code>move_messages</code> manages IMAP
+folders. Gmail labels, Gmail threads, and other provider-specific features
+remain in the Google Workspace backend.</p>
+<p>Moving a message to Trash never expunges an entire folder. Metnos uses the
+server's atomic <code>MOVE</code> operation when available; otherwise it proceeds
+only when it can copy, mark, and expunge exactly the selected UIDs. If the
+server cannot provide those guarantees, the operation fails without changing
+the mailbox. UIDs remain bound to their source account and folder: results from
+different accounts are never forwarded to one ambiguous move. When IMAP UIDs
+are supplied directly instead of coming from a preceding read step, both the
+account and source folder must be explicit. Metnos rejects an unbound UID
+before contacting the backend; it never guesses the default mailbox. This
+requirement does not apply to Gmail message IDs, whose provider supplies their
+own identity scope.</p>
+<p class="note">Passwords must not be placed in documentation, manifests, or
+logs. When supplied through a chat credential flow, they are extracted before
+the planner, encrypted, and replaced by a redaction marker.</p>
+</body>
+</html>

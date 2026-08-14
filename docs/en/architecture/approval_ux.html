@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; approval flow</title>
+ <meta name="description" content="How Metnos suspends an action, presents a localized proposal, and applies a decision bound to its user and turn.">
+ <meta name="keywords" content="Metnos, approval, consent, Telegram, web chat, i18n, security">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/approval_ux">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/approval_ux">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/approval_ux">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/approval_ux">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/approval_ux.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/approval_ux.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">approval</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Approval flow</div>
+ <div class="meta">How a proposal is shown, decided, and executed without losing identity, language, or state.</div>
+</div>
+
+<p class="lead">When policy requires a human decision, Metnos does not execute the
+step. It records a pending proposal, presents it on the user's channel, and resumes
+only after a valid decision. Text, labels, and buttons follow that individual user's
+language.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">When a decision is requested</a></li>
+ <li><a href="#cap2">The current flow</a></li>
+ <li><a href="#cap3">Web chat and Telegram</a></li>
+ <li><a href="#cap4">Language and per-user isolation</a></li>
+ <li><a href="#cap5">Natural-language example</a></li>
+ <li><a href="#cap6">Security invariants</a></li>
+ <li><a href="#cap7">Current boundaries and references</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. When a decision is requested</h1>
+
+<p>The <a href="vaglio.html">vaglio</a> and <a href="policy.html">policy</a>
+evaluate the step prepared by the planner. The outcome may allow execution, deny it,
+or produce an <code>approval_required</code> proposal. Only the third case opens a
+consent dialog.</p>
+
+<p>Proposal shape depends on the capability and channel. There is no public contract
+that always requires three lines or always requires two buttons. The stable contract
+is semantic: before deciding, the person must be able to identify the action, its
+target, and its relevant consequences.</p>
+
+<h1 id="cap2">2. The current flow</h1>
+
+<ol>
+ <li>The runtime prepares the executor and arguments without running the action.</li>
+ <li>Policy produces a typed proposal and the channel stores it in
+ <code>cap_pending</code>, bound to the sender and <code>turn_id</code>.</li>
+ <li>The UI shows the proposal text and available choices.</li>
+ <li>A textual answer or valid callback consumes that same proposal.</li>
+ <li>State is removed before execution, so a double click or repeated answer cannot
+ execute the step twice.</li>
+ <li>Rejection, expiry, or a stale identifier executes nothing.</li>
+</ol>
+
+<p>For flows that use the atomic <code>approval_registry</code>, the token is also
+single-use, expires after ten minutes by default, and is bound to channel and sender.
+The registry applies its transition inside a SQLite transaction.</p>
+
+<h1 id="cap3">3. Web chat and Telegram</h1>
+
+<table>
+<thead><tr><th>Channel</th><th>Presentation</th><th>Decision</th></tr></thead>
+<tbody>
+<tr><td>Web chat</td><td>The proposal appears in the conversation; structured dialogs
+may open as an embedded form.</td><td>The answer or form is resolved in the same
+conversation and user scope.</td></tr>
+<tr><td>Telegram</td><td>When the proposal type supports them, the message includes
+localized <em>Approve</em> and <em>Reject</em> buttons. Dialogs that cannot be
+represented as buttons remain textual.</td><td>The
+<code>cap:&lt;turn_id&gt;:yes|no</code> callback must match the proposal that is still
+pending. A textual yes/no answer uses the same state.</td></tr>
+</tbody>
+</table>
+
+<p>Transferring a conversation between devices does not transfer identity to another
+user: conversation, active session, and pending state remain in their owner's scope.</p>
+
+<h1 id="cap4">4. Language and per-user isolation</h1>
+
+<p>User-facing labels are i18n catalog keys, not prose owned by the renderer. The
+<code>lang</code> preference is resolved from the channel-to-user binding and applied
+only to that turn through a local context. The same context is propagated to workers
+that run the planner and Tutor.</p>
+
+<p>Two users may therefore use different languages in the same process without
+changing <code>METNOS_LANG</code>. When a language is added, the preferences page
+derives its list from the i18n catalog; a key not yet translated follows the normal
+user language &rarr; English &rarr; Italian fallback chain.</p>
+
+<h1 id="cap5">5. Natural-language example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “Send the report to
+management@example.org and show me what will be sent before proceeding.”</p>
+
+<p>Metnos prepares the step and, when policy requires confirmation, displays a
+localized proposal. One possible presentation is:</p>
+
+<pre><code>Send the monthly report to management@example.org
+The operation cannot be undone after delivery
+[Approve] [Reject]</code></pre>
+
+<p>The example illustrates the required information, not a fixed layout. Telegram
+may use buttons; web chat may use a conversational reply or an embedded form.</p>
+
+<h1 id="cap6">6. Security invariants</h1>
+
+<table>
+<thead><tr><th>Invariant</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td>Decider = requester</td><td>Forwarding a message or knowing a token does not
+transfer authority to another person.</td></tr>
+<tr><td>Current identifier</td><td>A button belonging to an earlier turn is rejected.</td></tr>
+<tr><td>Consume before execution</td><td>Double clicks and retries do not duplicate the action.</td></tr>
+<tr><td>Expiry</td><td>An old proposal must be generated again.</td></tr>
+<tr><td>Per-user isolation</td><td>State, language, conversation, and decision are not
+shared between users.</td></tr>
+<tr><td>No implicit delegation</td><td>Approving one step does not automatically create a
+general or permanent grant.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap7">7. Current boundaries and references</h1>
+
+<p>A persistent grant must be represented explicitly by policy, have a recognizable
+scope, and provide a revocation path. Metnos does not infer one from approval
+frequency, wording, or user silence.</p>
+
+<ul>
+ <li><code>runtime/channels/inline_ui.py</code>: Telegram buttons and callbacks.</li>
+ <li><code>runtime/channels/daemon.py</code>: pending state, consumption, and dispatch.</li>
+ <li><code>runtime/http_routes_agent.py</code>: equivalent web-chat path.</li>
+ <li><code>runtime/approval_registry.py</code>: atomic tokens with TTL and decider verification.</li>
+ <li><code>runtime/i18n.py</code>: catalog and per-request language context.</li>
+ <li><code>tests/runtime/channels/test_telegram_authorization_buttons.py</code> and
+ <code>tests/runtime/safety/test_approval_registry_atomic.py</code>: primary regression tests.</li>
+</ul>
+
+<p>For the user-facing route through pages and channels, see the
+<a href="../interface.html">interface guide</a>.</p>
+
+</body>
+</html>

@@ -1,0 +1,129 @@
+{# ---
+role: synt_signature
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 0f7cfe41
+--- #}
+YOU are phase 2 (SIGNATURE) of synt-multistage.
+
+MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown
+fences, NO comments. The response MUST start with `{` and end with
+`}`. Nothing at all before the first `{`, nothing at all after the last `}`.
+
+Previous decisions (constraints, DO NOT discuss):
+  name: {{ name }}
+  action: {{ action }}
+  object: {{ object }}
+  qualifier: {{ qualifier }}
+  revertible: {{ revertible }}
+  critical: {{ critical }}
+  target_kind: {{ target_kind }}
+
+Original user request:
+  {{ user_request }}
+
+STYLE RULES for args description fields (the design guide §6 + §7.12):
+- PRESCRIPTIVE: MUST / MUST NOT / OK pattern. No "if possible".
+- COMPACT: 1-3 lines per arg, max 25 words/sentence.
+- INLINE EXAMPLE: backtick `top=5`, NOT "Example: top=5".
+- IT/EN PARALLEL (not identical-translated).
+- NO REPETITIONS between top-level description and args.
+
+STRICT RULES:
+1. For executors receiving a list from a previous step
+   (entries, items, results, ...): DO NOT expose `entries: array` in the
+   schema visible to the LLM. Use ONLY `from_step: integer required`
+   (the runtime expands the list from the scratchpad before dispatch).
+2. For args that are NOT lists (path, content, dst_template):
+   normal schema (string/number/boolean).
+3. If the executor operates on a variable volume (mail in a time window,
+   search results, paginated fetch, files in a recursive dir), add
+   **pagination / internal cap** args so that the loop stays INSIDE the executor:
+     - a semantic window (e.g., `time_window: today|yesterday|last-Nd`) or
+       an explicit {since, before} pair;
+     - an upper cap (`max_total`, `max_results`, `max_bytes`);
+     - optional `page_size` for the internal batch.
+   DO NOT delegate the loop to the planner (it costs ReAct steps, it does not scale).
+4. capabilities ONLY from this set: 'fs:read', 'fs:write', 'net:read',
+   'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
+   'code:exec'. Never 'fs:write' unless strictly necessary.
+5. reverse_pattern:
+   - if revertible=true → MUST be one of: 'swap_src_dst',
+     'delete_created_dirs', 'delete_created_paths', 'restore_blob_backup'.
+   - if revertible=false → MUST be null.
+
+OUTPUT EXAMPLE (for name=move_files, receives list from previous step):
+{
+  "args_required": ["from_step", "dst_template"],
+  "args_properties": {
+    "from_step": {
+      "type": "integer",
+      "description": "Step number of the previous step that produced the list of files to move.",
+      "minimum": 1
+    },
+    "dst_template": {
+      "type": "string",
+      "description": "Destination path template, supports {name}, {date_year}, etc."
+    }
+  },
+  "capabilities": [{"name": "fs:write", "hint": ["~/**", "/tmp/**"]}],
+  "reverse_pattern": "swap_src_dst"
+}
+
+OUTPUT EXAMPLE (for name=get_urls, DOES NOT receive list from previous step):
+{
+  "args_required": ["urls"],
+  "args_properties": {
+    "urls": {
+      "type": "array",
+      "description": "List of HTTP/HTTPS URLs to download (vectorized: even 1 URL).",
+      "items": {"type": "string"}
+    },
+    "max_bytes": {
+      "type": "integer",
+      "description": "Total size cap to avoid blow-up. Default 5 MB.",
+      "default": 5242880
+    }
+  },
+  "capabilities": [{"name": "net:read", "hint": ["*"]}],
+  "reverse_pattern": null
+}
+
+OUTPUT EXAMPLE (for name=find_<obj>_empty, ADR 0127, qualifier `_empty`
+with canonical unit-aware `size`. Cross-domain pattern: the same shape
+applies to find_events_empty/find_files_empty/find_dirs_empty/
+find_messages_empty):
+{
+  "args_required": [],
+  "args_properties": {
+    "size": {
+      "type": "string",
+      "description": "Unit-aware threshold (e.g. '1hour', '10KB', '100chars', '90' bare=domain default unit). Per-domain default (e.g. '1hour' for events).",
+      "default": "1hour"
+    },
+    "time_windows": {
+      "type": "array",
+      "description": "Only for temporal domains (events/messages): §2.1 list of windows.",
+      "items": {"type": "string"},
+      "default": ["next-week"]
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Only for filesystem domains (files/dirs): root of search.",
+      "default": "/"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Upper cap §2.7. 0 = no cap. Default 10.",
+      "default": 10
+    }
+  },
+  "capabilities": [{"name": "fs:read", "hint": ["~/**"]}],
+  "reverse_pattern": null
+}
+
+NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else.

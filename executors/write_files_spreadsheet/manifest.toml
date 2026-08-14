@@ -1,0 +1,189 @@
+# Manifest dell'executor `write_files_spreadsheet` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_qualifier.
+# Dispatcher canonical spreadsheet write/append: default LOCALE, Google opt-in.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "write_files_spreadsheet"
+version     = "0.4.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "spreadsheet", "foglio elettronico", "foglio di calcolo", "xlsx",
+    "aggiorna celle", "modifica celle", "scrivi nel foglio", "write sheet",
+    "update sheet", "append rows", "aggiungi righe", "modifica foglio esistente"
+]
+revertible  = true
+# §2.3 multistage: file NUOVO → `delete_created_paths`; file PREESISTENTE
+# (overwrite/append locale) → `restore_blob_backup` dai bytes previ (il backend
+# locale salva il blob prima di modificare). Backend Google: niente blob locale
+# → l'undo riporta onestamente nulla-ribaltato (§2.8), non e' un errore.
+reverse_pattern = ["restore_blob_backup", "delete_created_paths"]
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: scrive un foglio locale, creandolo se manca. PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); da step usa from_step+columns. NON: testo -> write_files; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,updated_cells,created,mode,data_rows}]."
+en = "SCOPO: writes a local sheet, creating it if missing. PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); from a step use from_step+columns. NON: text -> write_files; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,updated_cells,created,mode,data_rows}]."
+
+[code]
+files  = ["write_files_spreadsheet.py"]
+digest = "sha256:d66077763e6c22860a416820412c347a5e737a427100320432f314b88e361594"
+
+[args]
+type     = "object"
+required = []
+# Una fonte dati fra: matrice diretta `values`, oppure `entries` (da `from_step`)
+# + `columns`. from_step soddisfa il vincolo (risolto a entries dal runtime).
+requires_one_of = [["values", "entries", "from_step"]]
+
+[args.properties.entries]
+type    = "array"
+items   = { type = "object" }
+runtime_resolved = true
+source_cardinality = "complete"
+
+[args.properties.entries.description]
+it = "Lista di record (dict) da un passo precedente, popolata via `from_step`. Mappata a righe secondo `columns`. Non passare a mano: usa from_step=N."
+en = "List of records (dict) from a previous step, populated via `from_step`. Mapped to rows per `columns`. Do not pass by hand: use from_step=N."
+
+[args.properties.columns]
+type    = "array"
+items   = { type = "string" }
+default = []
+
+[args.properties.columns.description]
+it = "Intestazioni ordinate. Il runtime le collega semanticamente ai campi; se il collegamento non è univoco usa column_specs. Vuoto = automatico."
+en = "Ordered headers. The runtime maps them semantically to fields; use column_specs when that mapping is not unique. Empty means automatic."
+
+[args.properties.column_specs]
+type    = "array"
+items   = { type = "object" }
+default = []
+
+[args.properties.column_specs.description]
+it = "Mappa non ambigua, indipendente dalla lingua: [{header='Nome file', source='path', transform='basename'}]. transform: identity, basename o dirname."
+en = "Unambiguous language-independent mapping: [{header='File name', source='path', transform='basename'}]. transform: identity, basename, or dirname."
+
+[args.properties.spreadsheet_id]
+type    = "string"
+default = ""
+# FIX D'ISTANZA (2/6, da generalizzare nel verb-contract write=upsert): il
+# planner LLM, vedendo `spreadsheet_id`, lo CHIEDE sempre (get_inputs) anche
+# quando il foglio e' da creare → blocca "metti/salva in uno spreadsheet". Lo
+# marchiamo runtime_resolved: NON esposto all'LLM (no domanda), ma resta
+# iniettabile da from_step (catena create→write) o estratto dall'args_extractor
+# (path esplicito nella query). Assente → backend upsert auto-crea. Costo:
+# il caso google_workspace (id Drive obbligatorio) deve arrivare da from_step.
+runtime_resolved = true
+
+[args.properties.spreadsheet_id.description]
+it = "Locale: path .xlsx/.csv opzionale; se omesso usa un nome automatico, se manca crea il file. Google: ID Drive esistente. Match esatto, niente wildcard."
+en = "Local: optional .xlsx/.csv path; omitted means an automatic name, a missing path creates the file. Google: existing Drive ID. Exact match, no wildcards."
+
+[args.properties.values]
+type    = "array"
+items   = { type = "array" }
+
+[args.properties.values.description]
+it = "Matrice [riga][colonna]. Header nella prima riga oppure in columns: viene anteposto solo se manca. Da uno step usa from_step+columns."
+en = "Row-by-column matrix. Put the header in row one or columns: it is prepended only when missing. From a step use from_step+columns."
+
+[args.properties.mode]
+type    = "string"
+enum    = ["overwrite", "append"]
+default = "overwrite"
+
+[args.properties.mode.description]
+it = "MATCH ESATTO: 'overwrite' (default, riscrive il foglio) o 'append' (aggiunge in coda alle righe esistenti)."
+en = "EXACT MATCH: 'overwrite' (default, rewrites the sheet) or 'append' (adds after existing rows)."
+
+[args.properties.sheet_name]
+type    = "string"
+default = ""
+
+[args.properties.sheet_name.description]
+it = "LOCAL: nome del foglio target (default: primo foglio). google_workspace: usa invece `range`."
+en = "LOCAL: target sheet name (default: first sheet). google_workspace: use `range` instead."
+
+[args.properties.range]
+type    = "string"
+default = ""
+
+[args.properties.range.description]
+it = "Solo google_workspace: range A1 (es. 'Sheet1!A1:C3'). Ignorato dal backend locale (usa `sheet_name`)."
+en = "google_workspace only: A1 range (e.g. 'Sheet1!A1:C3'). Ignored by the local backend (use `sheet_name`)."
+
+[args.properties.client]
+type    = "string"
+enum    = ["local", "google_workspace"]
+default = "local"
+
+[args.properties.client.description]
+it = "Backend: 'local' (default, file .xlsx/.csv) o 'google_workspace' (Google Sheets online, richiede OAuth + range)."
+en = "Backend: 'local' (default, .xlsx/.csv file) or 'google_workspace' (online Google Sheets, requires OAuth + range)."
+
+[args.properties.path]
+type = "string"
+
+[args.properties.path.description]
+it = "Nome o percorso del foglio di destinazione. Su 'google_workspace' un valore senza '/' e' il NOME del foglio su Drive; con '/' e' un percorso locale. Esempio: \"spese-2026\". In alternativa a 'spreadsheet_id'."
+en = "Name or path of the destination sheet. On 'google_workspace' a value without '/' is the sheet NAME on Drive; with '/' it is a local path. Example: \"spese-2026\". Alternative to 'spreadsheet_id'."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  n_written: int,
+  updated_cells: int,
+  updated_rows: int,
+  data_rows?: int,
+  spreadsheet_id: str,
+  mode: 'overwrite'|'append',
+  final_message_hint?: str,
+  results: Array<{ok, spreadsheet_id, updated_cells, updated_rows, data_rows?, mode}>,
+  used: int,
+  files_source: 'local' | 'google_workspace',
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:write"
+hint = ["spreadsheet:local"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name   = "values_only_auto_name_upsert_creates"
+input  = { values = [["x", "y"]] }
+expect = { ok = true }
+
+[[tests]]
+name   = "entries_columns_builds_sheet"
+input  = { entries = [{ path = "/a.jpg", description = "x" }], columns = ["path", "descrizione"] }
+expect = { ok = true }
+
+[[tests]]
+name   = "missing_data_source_fails"
+input  = { spreadsheet_id = "/tmp/metnos_x.xlsx" }
+expect = { ok = false }
+
+[[tests]]
+name   = "invalid_mode_fails"
+input  = { spreadsheet_id = "/tmp/metnos_x.xlsx", values = [["x"]], mode = "merge" }
+expect = { ok = false, error_contains = "mode" }
+
+[[tests]]
+name   = "nonexistent_local_path_upsert_creates"
+input  = { spreadsheet_id = "/tmp/metnos_upsert_test.xlsx", values = [["x"]] }
+expect = { ok = true }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { spreadsheet_id = "1abc", values = [["x"]], client = "dropbox" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

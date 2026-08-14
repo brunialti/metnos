@@ -1,0 +1,35 @@
+[Unit]
+Description=Metnos Telegram channel daemon (poll, run_turn, send)
+Documentation=file:///opt/metnos/docs/it/architecture/agent_runtime.html
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/metnos/runtime
+ExecStart=/usr/bin/python3 -m channels.daemon
+Restart=always
+RestartSec=5s
+TimeoutStopSec=10s
+
+# Hardening (user unit, no root)
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=%h/.local/state/metnos %h/.local/share/metnos
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallArchitectures=native
+
+# Output -> journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=metnos-telegram
+
+[Install]
+WantedBy=default.target

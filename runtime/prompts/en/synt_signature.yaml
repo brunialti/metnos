@@ -1,0 +1,102 @@
+role: synt_signature
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: synt_signature
+  header: "Stage 2 SIGNATURE of synt-multistage"
+  preamble: |
+    MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown
+    fences, NO comments. The response MUST start with `{` and end with
+    `}`. Nothing at all before the first `{`, nothing at all after the last `}`.
+
+context:
+  decisions_locked:
+    name: "{{ name }}"
+    action: "{{ action }}"
+    object: "{{ object }}"
+    qualifier: "{{ qualifier }}"
+    revertible: "{{ revertible }}"
+    critical: "{{ critical }}"
+    target_kind: "{{ target_kind }}"
+  user_request: "{{ user_request }}"
+
+rules:
+  - name: from_step_for_list_consumers
+    body: |
+      For executors receiving a list from a previous step
+      (entries, items, results, ...): DO NOT expose `entries: array` in the
+      schema visible to the LLM. Use ONLY `from_step: integer required`
+      (the runtime expands the list from the scratchpad before dispatch).
+  - name: scalar_args
+    body: "For args that are NOT lists (path, content, dst_template): normal schema (string/number/boolean)."
+  - name: internal_paging_cap
+    body: |
+      If the executor operates on a variable volume (mail in a time window,
+      search results, paginated fetch, files in a recursive dir), add
+      **pagination / internal cap** args so that the loop stays INSIDE the executor:
+        - a semantic window (e.g., `time_window: today|yesterday|last-Nd`) or
+          an explicit {since, before} pair;
+        - an upper cap (`max_total`, `max_results`, `max_bytes`);
+        - optional `page_size` for the internal batch.
+      DO NOT delegate the loop to the planner (it costs ReAct steps, it does not scale).
+  - name: capabilities_set
+    body: |
+      capabilities ONLY from this set: 'fs:read', 'fs:write', 'net:read',
+      'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
+      'code:exec'. Never 'fs:write' unless strictly necessary.
+  - name: reverse_pattern_match
+    body: |
+      reverse_pattern:
+        - if revertible=true → MUST be one of: 'swap_src_dst',
+          'delete_created_dirs', 'delete_created_paths', 'restore_blob_backup'.
+        - if revertible=false → MUST be null.
+
+output_schema:
+  type: object
+  required: [args_required, args_properties, capabilities, reverse_pattern]
+  properties:
+    args_required: {type: array, items: {type: string}}
+    args_properties: {type: object}
+    capabilities: {type: array}
+    reverse_pattern:
+      type: string
+      enum: [swap_src_dst, delete_created_dirs, delete_created_paths, restore_blob_backup]
+      nullable: true
+
+examples:
+  - name_for: "move_files (receives list from previous step)"
+    output:
+      args_required: [from_step, dst_template]
+      args_properties:
+        from_step: {type: integer, description: "Step number of the previous step that produced the list of files to move.", minimum: 1}
+        dst_template: {type: string, description: "Destination path template, supports {name}, {date_year}, etc."}
+      capabilities: [{name: "fs:write", hint: ["~/**", "/tmp/**"]}]
+      reverse_pattern: swap_src_dst
+  - name_for: "get_urls (DOES NOT receive list from previous step)"
+    output:
+      args_required: [urls]
+      args_properties:
+        urls: {type: array, description: "List of HTTP/HTTPS URLs to download (vectorized: even 1 URL).", items: {type: string}}
+        max_bytes: {type: integer, description: "Total size cap to avoid blow-up. Default 5 MB.", default: 5242880}
+      capabilities: [{name: "net:read", hint: ["*"]}]
+      reverse_pattern: null
+  - name_for: "find_<obj>_empty (ADR 0127, qualifier _empty with canonical unit-aware size)"
+    note: "Cross-domain pattern"
+    output:
+      args_required: []
+      args_properties:
+        size: {type: string, description: "Unit-aware threshold (e.g. '1hour', '10KB', '100chars').", default: "1hour"}
+        time_windows: {type: array, items: {type: string}, default: ["next-week"]}
+        base_path: {type: string, default: "/"}
+        max_results: {type: integer, description: "Upper cap §2.7. 0 = no cap. Default 10.", default: 10}
+      capabilities: [{name: "fs:read", hint: ["~/**"]}]
+      reverse_pattern: null
+
+footer:
+  instruction: "NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else."

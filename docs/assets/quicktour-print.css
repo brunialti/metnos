@@ -1,0 +1,841 @@
+/*
+ * Metnos Quick Tour — print master
+ *
+ * The IT and EN HTML files remain the editable content masters.  This shared
+ * stylesheet is the typesetting layer used by scripts/build_quick_tour_pdf.py.
+ * It deliberately contains no language-specific prose.
+ */
+
+@font-face {
+  font-family: "Metnos Serif";
+  src: local("Nimbus Roman");
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Metnos Serif";
+  src: local("Nimbus Roman Bold");
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "Metnos Serif";
+  src: local("Nimbus Roman Italic");
+  font-style: italic;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Metnos Sans";
+  src: local("Nimbus Sans");
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Metnos Sans";
+  src: local("Nimbus Sans Bold");
+  font-style: normal;
+  font-weight: 700;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 19mm 18mm 22mm 21mm;
+
+  @top-left {
+    content: "METNOS";
+    color: #a0522d;
+    font: 700 7pt/1 "Metnos Sans", sans-serif;
+    letter-spacing: 0.18em;
+  }
+
+  @top-right {
+    content: "";
+    color: #777168;
+    font: 400 6.5pt/1 "Metnos Sans", sans-serif;
+    letter-spacing: 0.13em;
+  }
+
+  @bottom-left {
+    content: "mētis + noûs";
+    color: #8a8378;
+    font: italic 7pt/1 "Metnos Serif", serif;
+  }
+
+  @bottom-right {
+    content: counter(page) " / " counter(pages);
+    color: #615c55;
+    font: 400 7pt/1 "Metnos Sans", sans-serif;
+    letter-spacing: 0.08em;
+  }
+}
+
+@page cover {
+  margin: 0;
+
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+
+@page frontmatter {
+  @top-left { content: none; }
+  @top-right { content: none; }
+}
+
+@page colophon {
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-left { content: none; }
+  @bottom-right { content: none; }
+}
+
+html,
+body {
+  background: #ffffff !important;
+}
+
+html {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+body {
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: #272522 !important;
+  font-family: "Metnos Serif", "Nimbus Roman", Georgia, serif !important;
+  font-size: 9.6pt !important;
+  font-weight: 400;
+  line-height: 1.46 !important;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+  hyphens: auto;
+}
+
+.lang-switch,
+.back {
+  display: none !important;
+}
+
+/* Diagrammi (Fig. 1 e simili): in stampa i box sono a fondo BIANCO — line-art a
+   filetto, nessuna tinta. Gli accenti restano nel tratto e nel testo. */
+.flow .bx,
+.flow .bc,
+.flow rect[class] {
+  fill: #ffffff !important;
+}
+
+/* Chat-specimen: monocromo in stampa (bolle bianche a filetto; utente vs bot per
+   allineamento e bordo). Il colore delle bolle vive solo a schermo. */
+body .qt-rx-bar {
+  background: none !important;
+  color: #2b2724 !important;
+  border-bottom: 0.25mm solid #cdd5df !important;
+}
+body .qt-rx-thread { background: none !important; }
+body .qt-rx-user .qt-rx-bubble {
+  background: none !important;
+  color: #263029 !important;
+  border: 0.25mm solid #b6bfc9 !important;
+}
+body .qt-rx-bot .qt-rx-bubble {
+  background: none !important;
+  border: 0.25mm solid #d4c8b7 !important;
+}
+
+/* Chip, strisce e mini-flow (pag. 7 e simili): fondo bianco, filetto al posto
+   della tinta; frecce in bronzo; bottoni a contorno. */
+.agent-difference div,
+.concept-flow span {
+  background: none !important;
+  border: 0.2mm solid #d6cab8 !important;
+}
+.axis-strip {
+  background: none !important;
+  border: 0 !important;
+  border-top: 0.3mm solid #d6cab8 !important;
+  border-bottom: 0.3mm solid #d6cab8 !important;
+  border-radius: 0 !important;
+}
+.concept-flow b { color: #a0522d !important; }
+.approval-card .btn {
+  background: none !important;
+  color: #52683f !important;
+  border: 0.25mm solid #86a065 !important;
+}
+
+/* Full-bleed cover. The illustration is the supplied Metnos cover artwork. */
+.print-cover {
+  page: cover;
+  break-after: page;
+  position: relative;
+  display: block !important;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+  background-color: #fffdf9;
+  background-image: url("metnos-quicktour-cover.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  color: #292522;
+}
+
+.print-cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 4mm solid rgba(255, 253, 249, 0.18);
+  pointer-events: none;
+}
+
+.print-cover__art {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 210mm;
+  height: 297mm;
+  object-fit: cover;
+}
+
+.print-cover__title {
+  position: absolute;
+  z-index: 1;
+  top: 22mm;
+  right: 16mm;
+  width: 94mm;
+  text-align: right;
+}
+
+.print-cover__eyebrow {
+  margin-bottom: 3.5mm;
+  color: #a0522d;
+  font: 700 8pt/1.2 "Metnos Sans", sans-serif;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.print-cover h1 {
+  margin: 0 !important;
+  color: #25211f !important;
+  font: 400 46pt/0.88 "Metnos Serif", serif !important;
+  letter-spacing: -0.035em !important;
+}
+
+.print-cover__deck {
+  margin: 5mm 0 0 auto !important;
+  max-width: 78mm;
+  color: #514a45 !important;
+  font: italic 14pt/1.2 "Metnos Serif", serif !important;
+  text-align: right !important;
+}
+
+.print-cover__credit {
+  position: absolute;
+  z-index: 1;
+  left: 17mm;
+  bottom: 13mm;
+  color: #766b64;
+  font: 400 7.5pt/1.35 "Metnos Sans", sans-serif;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+/* Half-title / editorial statement. */
+.hero {
+  page: frontmatter;
+  break-after: page;
+  display: flex;
+  min-height: 238mm;
+  margin: 0 !important;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero .eyebrow,
+.group-title,
+.concept-kicker {
+  color: #9b4c2c !important;
+  font-family: "Metnos Sans", "Nimbus Sans", sans-serif !important;
+  font-size: 7.4pt !important;
+  font-weight: 700;
+  letter-spacing: 0.22em !important;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 2mm 0 0 !important;
+  color: #26221f !important;
+  font-family: "Metnos Serif", serif !important;
+  font-size: 41pt !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.03em !important;
+  line-height: 0.95 !important;
+}
+
+.hero .subtitle {
+  max-width: 145mm !important;
+  margin: 9mm 0 0 !important;
+  color: #48423d !important;
+  font-family: "Metnos Serif", serif !important;
+  font-size: 15pt !important;
+  line-height: 1.32 !important;
+}
+
+.hero .kleos {
+  margin-top: 7mm !important;
+  color: #a0522d !important;
+  font: italic 9.2pt/1.4 "Metnos Serif", serif !important;
+}
+
+.facts {
+  margin: 17mm 0 5mm !important;
+  border-color: #d9ccba !important;
+}
+
+.facts .f {
+  padding: 4mm 2mm !important;
+  border-color: #d9ccba !important;
+}
+
+.facts .v {
+  font: 400 13pt/1.1 "Metnos Serif", serif !important;
+}
+
+.facts .k,
+.meta {
+  font-family: "Metnos Sans", "Nimbus Sans", sans-serif !important;
+}
+
+.facts .k {
+  font-size: 5.8pt !important;
+  line-height: 1.28;
+  letter-spacing: 0.08em !important;
+}
+
+.hero .meta {
+  margin: 2mm 0 0 !important;
+  font-size: 6.8pt !important;
+  line-height: 1.5 !important;
+}
+
+/* Contents and chapter openings. */
+nav.toc {
+  page: frontmatter;
+  break-after: page;
+  min-height: 235mm;
+  margin: 0 !important;
+  padding-top: 9mm;
+}
+
+.toc ol {
+  margin-top: 8mm !important;
+}
+
+.toc ol li {
+  display: flex;
+  align-items: baseline;
+  min-height: 12mm;
+  margin: 0 !important;
+  padding: 3mm 0 !important;
+  border-color: #d8cdbd !important;
+}
+
+.toc .tn {
+  min-width: 12mm;
+  color: #a0522d !important;
+  font: 700 7pt/1 "Metnos Sans", sans-serif !important;
+  letter-spacing: 0.08em !important;
+}
+
+.toc ol a {
+  font-size: 11.2pt;
+  line-height: 1.22;
+}
+
+section.cap {
+  break-before: page;
+  margin: 0 !important;
+}
+
+section h2 {
+  margin: 0 0 8mm !important;
+  padding: 0 0 3mm;
+  border-bottom: 0.35mm solid #a0522d !important;
+  color: #282421 !important;
+  font-family: "Metnos Serif", serif !important;
+  font-size: 21pt !important;
+  font-style: normal !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.015em !important;
+  line-height: 1.06 !important;
+  break-after: avoid;
+}
+
+section h2::before {
+  content: none !important;
+}
+
+h3 {
+  margin: 6mm 0 2mm !important;
+  color: #2b2724 !important;
+  font-family: "Metnos Serif", serif !important;
+  font-size: 13.2pt !important;
+  line-height: 1.15 !important;
+  break-after: avoid;
+}
+
+p {
+  margin: 0 0 3.1mm !important;
+  text-align: justify;
+  widows: 3;
+  orphans: 3;
+}
+
+p.lead {
+  margin-bottom: 6mm !important;
+  color: #4b4540 !important;
+  font-size: 12.3pt !important;
+  line-height: 1.42 !important;
+}
+
+p.lead::first-letter {
+  float: left;
+  margin: 0.5mm 1.5mm 0 0;
+  color: #a0522d;
+  font: 400 34pt/0.76 "Metnos Serif", serif;
+}
+
+a,
+a:visited {
+  color: inherit !important;
+  border: 0 !important;
+  text-decoration: none !important;
+}
+
+ul,
+ol {
+  margin: 3mm 0 4mm !important;
+  padding-left: 6mm !important;
+}
+
+li {
+  margin-bottom: 1.6mm !important;
+  widows: 2;
+  orphans: 2;
+}
+
+code,
+pre,
+.pipe,
+.qt-rx-mono {
+  font-family: "Nimbus Mono PS", "DejaVu Sans Mono", monospace !important;
+}
+
+code {
+  font-size: 8pt !important;
+}
+
+/* Editorial components: keep the visual language, reduce web chrome. */
+.scene {
+  break-before: auto;
+  break-inside: avoid;
+  margin: 0 0 7mm 8mm !important;
+  padding: 0 0 0 9mm !important;
+  border-left: 0.5mm solid #d9c5b5 !important;
+}
+
+.scene::before {
+  top: 0 !important;
+  left: -8mm !important;
+  width: 13mm !important;
+  height: 13mm !important;
+  color: #a0522d !important;
+  background: none !important;
+  border: 0.4mm solid #a0522d !important;
+  border-radius: 50% !important;
+  font: 700 7.4pt/12.2mm "Metnos Sans", sans-serif !important;
+  text-align: center;
+}
+
+.scene h3 {
+  margin-top: 0 !important;
+  font-size: 17pt !important;
+}
+
+.q,
+.reply,
+.truth,
+.callout,
+.approval-card,
+.pipe,
+pre,
+.can-cant .card,
+.concept-card,
+.axis-strip {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  break-inside: avoid;
+}
+
+pre {
+  color: #2b2724 !important;
+  border: 0.25mm solid #d3c7b6 !important;
+}
+
+.q {
+  position: relative;
+  margin: 5mm 0 !important;
+  padding: 0.5mm 0 0.5mm 12mm !important;
+  border: 0 !important;
+  border-left: 0.4mm solid #c39a63 !important;
+  background: none !important;
+  color: #3b453f !important;
+  font: italic 12pt/1.44 "Metnos Serif", serif !important;
+  text-align: left !important;
+}
+.q::before {
+  content: "\201C";
+  position: absolute;
+  top: 1mm;
+  left: 4mm;
+  color: #bd9057;
+  font: 400 24pt/1 "Metnos Serif", serif;
+}
+
+.pipe {
+  position: relative;
+  margin: 5mm 0 4mm !important;
+  padding: 5mm 3mm 2.5mm 6mm !important;
+  border: 0 !important;
+  border-left: 0.5mm solid #a0522d !important;
+  background: none !important;
+  font-size: 7.5pt !important;
+  line-height: 1.72 !important;
+  letter-spacing: 0.004em;
+  overflow-wrap: anywhere;
+}
+.pipe::before {
+  content: "";
+  position: absolute;
+  top: 0.3mm;
+  left: 6mm;
+  color: #9b4c2c;
+  font: 700 5.4pt/1 "Metnos Sans", sans-serif;
+  letter-spacing: 0.22em;
+}
+
+.reply,
+.truth,
+.callout,
+.approval-card {
+  margin: 3.5mm 0 !important;
+  padding: 2mm 0 2mm 6mm !important;
+  border: 0 !important;
+  border-left: 0.4mm solid #cbbfad !important;
+  background: none !important;
+  font-size: 8.8pt !important;
+  line-height: 1.44 !important;
+}
+.approval-card {
+  padding: 3.5mm 4mm !important;
+  border: 0.25mm solid #d3c7b6 !important;
+  background: none !important;
+}
+
+.reply::before,
+.truth::before {
+  font-family: "Metnos Sans", sans-serif !important;
+  font-size: 6.4pt !important;
+  letter-spacing: 0.14em !important;
+}
+
+.truth {
+  border-left: 0.7mm solid #a0522d !important;
+}
+
+.meta {
+  margin: 3mm 0 !important;
+  color: #746e67 !important;
+  font-size: 6.9pt !important;
+  letter-spacing: 0.015em !important;
+  line-height: 1.45 !important;
+}
+
+.concept-grid,
+.can-cant,
+.agent-difference,
+.axis-options {
+  gap: 4mm !important;
+}
+
+.concept-grid {
+  left: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 6mm 0 !important;
+  transform: none !important;
+}
+
+.concept-card,
+.can-cant .card {
+  padding: 4mm !important;
+  border: 0.25mm solid #d9cdbd !important;
+  background: none !important;
+}
+
+.concept-card h3 {
+  font-size: 12.5pt !important;
+}
+
+.concept-card p,
+.concept-card li,
+.can-cant li {
+  font-size: 8.4pt !important;
+  line-height: 1.38 !important;
+}
+
+.axis-strip {
+  left: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 5mm 0 !important;
+  padding: 4mm !important;
+  transform: none !important;
+}
+
+.axis-options span,
+.agent-difference div {
+  padding: 2.5mm !important;
+  font-size: 7.4pt !important;
+}
+
+/* Tables retain hierarchy and are allowed to continue across pages. */
+.table-scroll {
+  width: 100% !important;
+  overflow: visible !important;
+}
+
+.table-scroll table,
+table {
+  min-width: 0 !important;
+  width: 100% !important;
+  margin: 4mm 0 !important;
+  border-collapse: collapse !important;
+  font-size: 7.5pt !important;
+  line-height: 1.3 !important;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tr {
+  break-inside: avoid;
+}
+
+th {
+  padding: 2.2mm 2mm !important;
+  border-top: 0.45mm solid #a0522d !important;
+  border-bottom: 0.25mm solid #a0522d !important;
+  color: #7a3d24 !important;
+  background: none !important;
+  font: 700 6.6pt/1.25 "Metnos Sans", sans-serif !important;
+  letter-spacing: 0.035em !important;
+  text-transform: uppercase;
+}
+
+td {
+  padding: 2.2mm 2mm !important;
+  border-bottom: 0.2mm solid #ded5c9 !important;
+  vertical-align: top;
+}
+
+/* Figures remain vector in the generated PDF. */
+figure {
+  max-width: 100%;
+  margin: 5mm 0 !important;
+  break-inside: avoid;
+}
+
+figure svg {
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: 198mm !important;
+  margin: 0 auto;
+}
+
+figcaption,
+.fig-note {
+  margin-top: 2.5mm !important;
+  color: #6f6861 !important;
+  font: 400 6.9pt/1.36 "Metnos Sans", sans-serif !important;
+  text-align: left !important;
+}
+
+pre {
+  margin: 4mm 0 !important;
+  padding: 4mm !important;
+  border: 0.25mm solid #d8cec1 !important;
+  background: none !important;
+  font-size: 7.4pt !important;
+  line-height: 1.45 !important;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere;
+}
+
+.steps li {
+  padding: 2.5mm 0 2.5mm 12mm !important;
+}
+
+.steps li::before {
+  font-family: "Metnos Sans", sans-serif !important;
+  font-size: 7pt !important;
+}
+
+.steps code,
+.steps .res {
+  font-size: 7.5pt !important;
+}
+
+/* The chat specimen has a denser, print-native treatment. */
+body .qt-rx-chat {
+  margin: 5mm 0 !important;
+  border: 0.25mm solid #cdd5df !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  break-inside: avoid;
+}
+
+body .qt-rx-thread {
+  gap: 1.2mm !important;
+  padding: 2.2mm !important;
+}
+
+body .qt-rx-bar {
+  padding: 2.5mm 3.5mm !important;
+}
+
+body .qt-rx-bubble {
+  max-width: 86% !important;
+  padding: 1.4mm 2.2mm !important;
+  border-radius: 2.5mm !important;
+  font-size: 6.8pt !important;
+  line-height: 1.23 !important;
+}
+
+body .qt-rx-chip,
+body .qt-rx-route,
+body .qt-rx-sticky,
+body .qt-rx-destnow,
+body .qt-rx-dest,
+body .qt-rx-bar b {
+  font-size: 6.5pt !important;
+}
+
+body .qt-rx-mono {
+  padding: 1mm 1.5mm !important;
+  font-size: 5.9pt !important;
+}
+
+.approval-card .btn {
+  padding: 1.5mm 3mm !important;
+  font: 700 7pt/1 "Metnos Sans", sans-serif !important;
+}
+
+dl.gloss dt {
+  margin-top: 3mm !important;
+  break-after: avoid;
+}
+
+dl.gloss dd {
+  margin: 0 0 1.8mm 6mm !important;
+}
+
+.toc-item {
+  gap: 4mm !important;
+  padding: 3mm 0 !important;
+}
+
+.further-reading {
+  break-inside: avoid;
+}
+
+.source-note {
+  break-inside: avoid;
+}
+
+.source-note + .source-note {
+  break-before: avoid;
+}
+
+td:first-child {
+  hyphens: none;
+}
+
+.toc-item .t {
+  font-size: 9.5pt !important;
+}
+
+.toc-item .d,
+.toc-item .time {
+  font-size: 7.3pt !important;
+}
+
+/* Il rimando alla versione PDF non ha senso dentro il PDF stesso. */
+.pdf-dl {
+  display: none !important;
+}
+
+/* Rimandi ad altri documenti del sito: su carta il link non si clicca,
+   quindi l'URL dichiarato in data-url viene composto sotto il titolo. */
+a[data-url]::after {
+  content: attr(data-url);
+  display: block;
+  margin-top: 0.7mm;
+  color: #877d70;
+  font: 400 6.8pt/1.3 "Nimbus Mono PS", "DejaVu Sans Mono", monospace;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+footer {
+  break-before: auto;
+  break-inside: avoid;
+  min-height: 115mm;
+  display: block;
+  margin: 15mm 0 0 !important;
+  padding: 48mm 26mm 0 !important;
+  border-top: 0 !important;
+  color: #5f5852 !important;
+  font: 400 9pt/1.55 "Metnos Sans", sans-serif !important;
+  text-align: center;
+  hyphens: none;
+  white-space: nowrap;
+}
+
+/* Prevent lonely headings and accidental blank trailing fragments. */
+h1,
+h2,
+h3,
+.group-title,
+figcaption {
+  break-after: avoid;
+}
+
+img,
+svg,
+.approval-card,
+.callout,
+.reply,
+.truth {
+  max-width: 100%;
+}

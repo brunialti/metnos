@@ -1,0 +1,187 @@
+# Manifest dell'executor `create_files_spreadsheet` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_qualifier.
+# Dispatcher canonical spreadsheet: default LOCALE (.xlsx), Google opt-in.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name             = "create_files_spreadsheet"
+version          = "0.4.1"
+platforms        = ["linux", "windows"]
+author           = "Roberto Brunialti"
+affinity         = [
+    "spreadsheet", "foglio elettronico", "foglio di calcolo", "xlsx", "csv",
+    "crea foglio", "nuovo foglio", "create sheet", "new spreadsheet",
+    "metti in uno spreadsheet", "metti in un foglio", "metti in tabella",
+    "salva in uno spreadsheet", "esporta in spreadsheet", "tabella nuova"
+]
+revertible       = true
+reverse_pattern  = ["delete_created_paths", "delete_files_by_id"]
+lifecycle        = "active"
+
+[description]
+it = "SCOPO: crea e popola un nuovo .xlsx locale. PATTERN: create_files_spreadsheet(title=\"foto\", values=[[\"a\",\"b\"]]); da step usa from_step+columns. NON: foglio esistente -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,title,rows,data_rows}]; id=path allegabile."
+en = "SCOPO: creates and populates a new local .xlsx. PATTERN: create_files_spreadsheet(title=\"photos\", values=[[\"a\",\"b\"]]); from a step use from_step+columns. NON: existing sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,title,rows,data_rows}]; id=attachable path."
+
+[code]
+files  = ["create_files_spreadsheet.py"]
+digest = "sha256:c0087c29c441fa2443ee905bc5040535cbbac81b525906ebe3ab7b163b6e8647"
+
+[args]
+type     = "object"
+required = []
+from_step_alternatives = ["values", "entries"]
+# title NON obbligatorio: senza, l'executor auto-genera il nome col timestamp.
+# Riduce la frizione che spingeva il planner verso write (che chiede values,
+# forniti dalla query) invece di create (che chiedeva un title da inventare).
+requires_one_of = [["values", "entries", "from_step", "title", "path"]]
+
+[args.properties.entries]
+type    = "array"
+items   = { type = "object" }
+runtime_resolved = true
+source_cardinality = "complete"
+
+[args.properties.entries.description]
+it = "Lista di record (dict) da un passo precedente, popolata via `from_step`. Mappata a righe secondo `columns`. Non passare a mano: usa from_step=N."
+en = "List of records (dict) from a previous step, populated via `from_step`. Mapped to rows per `columns`. Do not pass by hand: use from_step=N."
+
+[args.properties.columns]
+type    = "array"
+items   = { type = "string" }
+default = []
+
+[args.properties.columns.description]
+it = "Intestazioni ordinate. Il runtime le collega semanticamente ai campi; se il collegamento non è univoco usa column_specs. Vuoto = automatico."
+en = "Ordered headers. The runtime maps them semantically to fields; use column_specs when that mapping is not unique. Empty means automatic."
+
+[args.properties.column_specs]
+type    = "array"
+items   = { type = "object" }
+default = []
+
+[args.properties.column_specs.description]
+it = "Mappa non ambigua, indipendente dalla lingua: [{header='Nome file', source='path', transform='basename'}]. transform: identity, basename o dirname."
+en = "Unambiguous language-independent mapping: [{header='File name', source='path', transform='basename'}]. transform: identity, basename, or dirname."
+
+[args.properties.title]
+type    = "string"
+default = ""
+
+[args.properties.title.description]
+it = "Titolo del foglio = nome del file (es. 'foto montagna' -> 'foto montagna.xlsx'). OPZIONALE: se assente, nome auto col timestamp."
+en = "Sheet title = file name (e.g. 'mountain photos' -> 'mountain photos.xlsx'). OPTIONAL: if absent, auto name with timestamp."
+
+[args.properties.values]
+type    = "array"
+default = []
+
+[args.properties.values.description]
+it = "Matrice [riga][colonna]. Header nella prima riga oppure in columns: viene anteposto solo se manca. Assente = foglio vuoto."
+en = "Row-by-column matrix. Put the header in row one or columns: it is prepended only when missing. Absent means an empty sheet."
+
+[args.properties.sheet_name]
+type    = "string"
+default = ""
+
+[args.properties.sheet_name.description]
+it = "Nome della prima tab (es. 'Dati'). Se vuoto: 'Sheet1'."
+en = "Name of the first tab (e.g. 'Data'). If empty: 'Sheet1'."
+
+[args.properties.path]
+type    = "string"
+default = ""
+
+[args.properties.path.description]
+it = "Path esplicito del file (override del default ~/.local/share/metnos/spreadsheets/<title>.xlsx). Estensione .csv = formato CSV."
+en = "Explicit file path (overrides default ~/.local/share/metnos/spreadsheets/<title>.xlsx). .csv extension = CSV format."
+
+[args.properties.client]
+type    = "string"
+enum    = ["local", "google_workspace"]
+default = "local"
+
+[args.properties.client.description]
+it = "Backend: 'local' (default, file .xlsx/.csv allegabile) o 'google_workspace' (Google Sheets online, richiede OAuth)."
+en = "Backend: 'local' (default, attachable .xlsx/.csv file) or 'google_workspace' (online Google Sheets, requires OAuth)."
+
+[placement]
+scope = "any"
+device_ok = true
+min_sandbox = "appcontainer"
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  n_created: int,
+  spreadsheet_id: str,   // LOCAL: file path; google_workspace: Drive id
+  path?: str,            // LOCAL only
+  web_view_url?: str,    // google_workspace only
+  title: str,
+  rows?: int,
+  data_rows?: int,
+  final_message_hint?: str,
+  results: Array<{ok, spreadsheet_id, path?, title, rows?, data_rows?, kind: 'spreadsheet'}>,
+  used: int,
+  files_source: 'local' | 'google_workspace',
+  _undo?: {reverse_pattern, paths|ids, scope?},
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:create"
+hint = ["spreadsheet:local"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/**", "/tmp/**"]
+when = { arg = "client", values = ["local"] }
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name     = "values_only_auto_title_succeeds"
+setup    = "rm -f /tmp/metnos_test_sheet_values.xlsx"
+input    = { path = "/tmp/metnos_test_sheet_values.xlsx", values = [["a", "b"], [1, 2]] }
+expect   = { ok = true }
+teardown = "rm -f /tmp/metnos_test_sheet_values.xlsx"
+
+[[tests]]
+name     = "title_only_empty_sheet_succeeds"
+setup    = "rm -f /tmp/metnos_test_sheet_empty.xlsx"
+input    = { title = "metnos_test_empty", path = "/tmp/metnos_test_sheet_empty.xlsx" }
+expect   = { ok = true }
+teardown = "rm -f /tmp/metnos_test_sheet_empty.xlsx"
+
+[[tests]]
+name     = "entries_columns_succeeds"
+setup    = "rm -f /tmp/metnos_test_sheet_entries.xlsx"
+input    = { path = "/tmp/metnos_test_sheet_entries.xlsx", entries = [{ path = "/a.jpg", description = "x" }], columns = ["path", "descrizione"] }
+expect   = { ok = true }
+teardown = "rm -f /tmp/metnos_test_sheet_entries.xlsx"
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { title = "Test", client = "dropbox" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
+
+[[tests]]
+name     = "happy_path_local_with_values"
+setup    = "rm -f /tmp/metnos_test_sheet_happy.xlsx"
+input    = { title = "metnos_test_sheet", path = "/tmp/metnos_test_sheet_happy.xlsx", values = [["a", "b"], [1, 2]] }
+expect   = { ok = true }
+teardown = "rm -f /tmp/metnos_test_sheet_happy.xlsx"
+
+[[tests]]
+name     = "existing_destination_fails_closed"
+setup    = "printf original > /tmp/metnos_test_sheet_exists.xlsx"
+input    = { path = "/tmp/metnos_test_sheet_exists.xlsx", values = [["new"]] }
+expect   = { ok = false, field_eq = { error_code = "ERR_DST_EXISTS" } }
+teardown = "rm -f /tmp/metnos_test_sheet_exists.xlsx"

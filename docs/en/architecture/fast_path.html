@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; fastpaths and autopaths</title>
+ <meta name="description" content="How Metnos safely reuses solved plans: L0 cache, L1 autopaths, validity signatures, feedback, and exclusion rules.">
+ <meta name="keywords" content="fast-path, fastpath, autopath, cache, validity, routing, metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/fast_path">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/fast_path">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/fast_path">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/fast_path">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/fast_path">
+ <meta property="og:title" content="Metnos &mdash; fastpaths and autopaths">
+ <meta property="og:description" content="L0 cache and L1 autopaths: plan reuse, validity, and safety boundaries.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — fastpaths and autopaths",
+ "description": "L0 cache and L1 autopaths reuse solved plans only while signatures, arguments, and context remain valid.",
+ "url": "https://metnos.com/en/architecture/fast_path.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Metnos component: fastpath and autopath plan caches"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); margin: 18px 0; }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/fast_path.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/fast_path.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">fastpaths and autopaths</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">fastpaths and autopaths &mdash; safe reuse of solved plans</div>
+ <div class="meta">
+ Architecture guide
+ </div>
+</div>
+
+<div class="toc">
+<h2>Table of contents</h2>
+<ol>
+ <li><a href="#cap1">The idea, in two lines</a></li>
+ <li><a href="#cap2">Why a fast-path is necessary</a></li>
+ <li><a href="#cap3">The two layers and their boundary</a></li>
+ <li><a href="#cap4">L0 &mdash; runtime-produced cache (<code>fastpath.py</code>)</a></li>
+ <li><a href="#cap5">L1 &mdash; reuse across a request family (<code>autopath.py</code>)</a></li>
+ <li><a href="#cap6">Validity, aging, and usage transfer</a></li>
+ <li><a href="#cap7">The arguments extractor</a></li>
+ <li><a href="#cap8">Configuration</a></li>
+ <li><a href="#cap9">Promotion to a synthesised executor</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. The idea, in two lines</h1>
+
+<p>
+<strong>Ask Metnos with a request like this example:</strong>
+&ldquo;Find the PDF files modified today.&rdquo; If you repeat the request, Metnos
+may reuse the plan that already succeeded; you do not select or enable the
+fastpath manually.
+</p>
+
+<p class="lead">
+Before calling the planner, Metnos tries to recognise the request. If a
+reusable plan exists and is still valid, it runs that sequence of executors.
+If the context or catalogue has changed, it treats the entry as invalid and
+returns to normal planning.
+</p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-fp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="158" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="89" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">request</text>
+<text x="89" y="112" text-anchor="middle" fill="#475569" font-size="9.5">user query</text>
+<rect x="186" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="265" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L0 fastpath</text>
+<text x="265" y="112" text-anchor="middle" fill="#475569" font-size="9.5">exact or equivalent query</text>
+<rect x="362" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="441" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L1 autopath</text>
+<text x="441" y="112" text-anchor="middle" fill="#475569" font-size="9.5">cluster + champion plan</text>
+<rect x="538" y="70" width="158" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
+<text x="617" y="94" text-anchor="middle" fill="#fff" font-weight="700">engine</text>
+<text x="617" y="112" text-anchor="middle" fill="#bbb" font-size="9.5">LLM planner</text>
+<line x1="168" y1="98" x2="184" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
+<line x1="344" y1="98" x2="360" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
+<line x1="520" y1="98" x2="536" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
+
+</svg>
+<figcaption>Figure 1 &mdash; Metnos tries L0 and L1 in that order. If neither yields a valid plan, the request proceeds to the planning engine.</figcaption>
+</figure>
+
+
+<h1 id="cap2">2. Why a fast-path is necessary</h1>
+
+<p>
+Planning is needed when a request is new or requires a new composition of
+capabilities. Repeating it when the system already holds a valid plan adds work
+and variability without improving the result. For example, a request already
+solved with <code>get_urls</code> and <code>describe_entries</code> can reuse
+that sequence, provided its arguments are derived from the current request.
+</p>
+
+<p>
+What remains is to recognise a known request &mdash; and to judge when one
+that is merely similar sits close enough to be handled the same way. Two reuse
+layers handle this distinction. They recognise different degrees of
+similarity, but share one purpose: run a known plan without asking the planner
+to build it again.
+</p>
+
+<h1 id="cap3">3. The two layers and their boundary</h1>
+
+<p>
+The two layers differ in how much of the path they recognise. L0 recognises all
+of it, arguments included: the same request as before, with the same concrete
+values. L1 recognises the path alone &mdash; the skeleton of the solution,
+stripped of its arguments &mdash; and so it holds for a whole family of related
+requests.
+</p>
+
+<table>
+<thead><tr><th>Layer</th><th>What it recognises</th><th>How</th></tr></thead>
+<tbody>
+<tr><td><strong>L0</strong></td><td><strong>An already solved request.</strong> Exact matching may retain a request-specific plan; semantic matching is limited to plans that are safe to generalise.</td><td>Deterministic fingerprint (0a), then similarity through the configured embedder (0b)</td></tr>
+<tr><td><strong>L1</strong></td><td><strong>A family of requests.</strong> Reuses a general plan associated with a complete intent and semantic cluster.</td><td>Intent, semantic cluster, and deterministic champion ordering</td></tr>
+</tbody>
+</table>
+
+<p>
+The order is fixed: L0 first; if it finds nothing, L1. If both miss, the request
+reaches the planner (the engine), as always.
+</p>
+
+<p>
+The planner does not disappear: L0 and L1 are controlled shortcuts. A new or
+ambiguous request, a turn with attachments, or a request without a valid match
+continues through the normal engine.
+</p>
+
+<h1 id="cap4">4. L0 &mdash; runtime-produced cache (<code>fastpath.py</code>)</h1>
+
+<p>
+The first layer lives in <code>runtime/engine/fastpath.py</code> and keeps the
+plans it has already run in a SQLite database (<code>fastpaths.sqlite</code>).
+The entries appear on their own: whenever a turn succeeds &mdash; a fresh plan
+from the engine, the reuse of an L1, a promotion from cosine 0b &mdash; Metnos
+notes down the canonical query, its hash, the embedding produced by the
+configured model, the whole plan (the skeleton, or <em>framework</em>) and the
+intent: the verb and the object of the
+request. No approval involved: the chains are built from executors already
+vetted and tested.
+</p>
+
+<h2>Two ways to find a match</h2>
+
+<p>
+The search runs in two phases:
+</p>
+
+<ul>
+<li><strong>0a &mdash; hash match.</strong> The query, reduced to a normal form,
+becomes a fingerprint (a deterministic <em>hash</em>) and is looked up for an
+exact match, with no language model and no new embedding. It is the only route
+allowed for plans tied to a <em>single</em> request: the ones with literal
+arguments lifted from the question &mdash; a proper name used as a search key,
+say &mdash; which, replayed on a similar but different request, would return the
+wrong data.</li>
+
+<li><strong>0b &mdash; semantic cosine.</strong> If the fingerprint finds
+nothing, the query becomes a vector and is compared, by cosine, against
+the entries above the configured threshold. This is what brings the variants of
+one request under the same answer (&ldquo;what time is it?&rdquo; and &ldquo;tell
+me the time&rdquo;). Cosine serves only the <em>general</em> plans, the ones not
+tied to a single request: that way one question's arguments don't stray onto
+another that is close in meaning but distinct.</li>
+</ul>
+
+<p>
+An L0 entry removed because it aged, became invalid, or received negative
+feedback can be recreated by the next successful turn. Removing it does not
+remove the underlying capability.
+</p>
+
+<h2>Safety valves</h2>
+
+<ul>
+<li><strong>Negative rating:</strong> a user &ldquo;&#10007;&rdquo; deletes the
+fastpath for that query &mdash; which comes back if the request returns and
+succeeds (the last word always wins).</li>
+<li><strong>Administration:</strong> in the web chat, open
+<strong>Settings &gt; Memory &gt; Praxis</strong> to inspect L0 shortcuts and
+delete one. If you ask for directions from Telegram, this path still refers
+to the web chat; the page does not open inside Telegram.</li>
+<li><strong>Tools that cannot be stored:</strong> <code>undo_last_turn</code>,
+<code>get_inputs</code>, <code>get_approval</code>, and authenticated browsing
+tools produce no fastpath, because their meaning or session identifier depends
+on the current turn.</li>
+<li><strong>Absolute dates:</strong> a plan with explicit ISO dates (say
+<code>since_iso=&quot;2026-06-11&quot;</code>) is not recorded: replaying it on
+another day would open a time window already frozen in the past. Relative dates
+(<code>time_window=&quot;today&quot;</code>) are kept, because each replay works
+them out afresh.</li>
+</ul>
+
+
+<h1 id="cap5">5. L1 &mdash; reuse across a request family (<code>autopath.py</code>)</h1>
+
+<p>
+The second layer lives in <code>runtime/engine/autopath.py</code>. It does not
+look for the same wording. It finds a semantic family, checks that the intent
+object matches, and reuses only plans without literal arguments tied to the
+original request. Variable arguments are derived again from the current
+request before execution.
+</p>
+
+<p>
+An autopath can arise in two ways. Positive feedback promotes a successful
+plan once it reaches the configured threshold, which is one confirmation by
+default. Alternatively, two successful runs of the same intent can seed a
+<em>shadow</em> autopath when the latest plan contains at least four steps. A
+shadow is usable but remains distinct from a confirmed plan; the first
+positive rating confirms it. This second path reduces the cost of recurring
+requests without presenting a non-human signal as human approval.
+</p>
+
+<h2>Feedback and plan selection</h2>
+
+<ul>
+<li><strong>Anti-autopath:</strong> after a repeated negative rating (three
+failures or more), Metnos records an <em>anti-autopath</em> that bans that plan,
+for that group, for thirty days. The same symmetry holds: a positive rating
+lifts the ban.</li>
+<li><strong>User-requested repeat:</strong> the repeat verdict excludes the
+plan for one hour, allowing recovery to seek a different one.</li>
+<li><strong>Several available plans:</strong> ordering is deterministic: first
+the composite score, then positive confirmations, uses, and finally the
+identifier.</li>
+</ul>
+
+<p>
+The boundary is deliberate: L0 favours repetition of the same request; L1
+generalises to an intent group and may derive either from explicit feedback or
+from the shadow seeding described above. L0 comes first in the cascade, but
+both layers must pass the same validity, argument-grounding, and safety checks
+before execution.
+</p>
+
+
+<h1 id="cap6">6. Validity, aging, and usage transfer</h1>
+
+<h2>Operational-world signature</h2>
+
+<p>
+Every stored plan carries two signatures: one for the executors it uses and
+one for the candidate family available for that intent. The signature also
+incorporates the version of routing and presentation rules. Metnos recomputes
+them before reuse: a changed or removed executor, a new competing capability,
+or a routing change turns the entry into a miss. The system replans instead of
+executing a decision made in a different operational context.
+</p>
+
+<p>
+These signatures are user-agnostic and contain no profiles, affinities, or
+personal preferences. L1 therefore remains a shared cache of plan decisions
+with deterministic keys. Effects authorised for the user and final
+presentation &mdash; language, tone, length, and format &mdash; are applied
+outside the plan key.
+</p>
+
+<p>
+The candidate family comes from the canonical vocabulary, including the
+relationships between specialised content and filesystem carriers. For
+example, a new <code>files</code> capability may change a plan operating on
+<code>images</code> or <code>texts</code>. Query words and manifest affinities
+do not enter the signature: invalidation follows catalogue semantics without
+making L1 specific to a user or to one phrasing.
+</p>
+
+<p>
+L0 fastpaths are retained or retired by fixed rules, with no model in the
+loop. Each night the <code>task_state_reaper</code> process applies three aging
+rules and four retirement conditions.
+</p>
+
+<h2>Aging</h2>
+
+<table>
+<thead><tr><th>Rule</th><th>Criterion</th><th>Default</th><th>Env</th></tr></thead>
+<tbody>
+<tr><td>Never reused</td><td>Created more than N days ago but never served a second time</td><td>14 days</td><td><code>METNOS_FASTPATH_GRACE_DAYS</code></td></tr>
+<tr><td>Stale</td><td>Last use more than N days ago</td><td>30 days</td><td><code>METNOS_FASTPATH_STALE_DAYS</code></td></tr>
+<tr><td>LRU cap</td><td>Total entries above the cap; least recently used are pruned</td><td>500</td><td><code>METNOS_FASTPATH_MAX</code></td></tr>
+</tbody>
+</table>
+
+<h2>Retirement (only with a complete catalogue)</h2>
+
+<table>
+<thead><tr><th>Code</th><th>Cause</th><th>Transfers usage</th></tr></thead>
+<tbody>
+<tr><td><strong>C1</strong></td><td>A tool in the plan no longer exists in the catalogue (retired, renamed, archived). Replay would fail.</td><td>No</td></tr>
+<tr><td><strong>C2 provenance</strong></td><td>The fastpath was promoted to a synthetic executor (see &sect;9) and that executor is now in the catalogue.</td><td>Yes</td></tr>
+<tr><td><strong>C2 name</strong></td><td>An executor named <code>{verb}_{object}</code> matching the intent exists, but no tool in the plan belongs to that family. The fastpath would shadow the executor.</td><td>Yes</td></tr>
+<tr><td><strong>C2 pre-filter</strong></td><td>For multi-step plans: the deterministic routing pre-filter on the canonical query shows that a single executor now covers the intent (even under a different name).</td><td>Yes</td></tr>
+</tbody>
+</table>
+
+<h2>Usage-count transfer</h2>
+
+<p>
+When a fastpath is retired because an executor superseded it (the C2
+conditions), its usage count (<code>n_uses</code>) passes to that executor
+through the lifecycle statistics store. Previously observed usage is therefore
+not reset.
+</p>
+
+<p>
+Pruning removes a stored route, not its executors. If the same request returns
+and succeeds, L0 can record the updated plan again.
+</p>
+
+
+<h1 id="cap7">7. The arguments extractor</h1>
+
+<p>
+Recognising the request is half the work. The other half is drawing out its
+concrete values: which paths, which URLs, which date, which threshold. A
+rule-based extractor (<code>args_extractor.py</code>) handles this, again with
+no model:
+</p>
+
+<ul>
+<li><strong>Closed rules.</strong> Regular expressions for the known types: URL
+(<code>https://...</code>), path (<code>~/...</code> or <code>/...</code>, with
+the &ldquo;home&rdquo; shortcut becoming <code>~/</code>), email, numbers, file
+extensions (&ldquo;PDF file&rdquo; &rarr; <code>*.pdf</code>), dates (today,
+yesterday, tomorrow, the day after &mdash; in Italian and English &mdash;
+turned into ISO format), and time windows (&ldquo;this week&rdquo;, &ldquo;last
+24 hours&rdquo;, &ldquo;last 7 days&rdquo;).</li>
+<li><strong>Arguments that depend on the request.</strong> Some values &mdash;
+the mail account, the time window &mdash; change with the question: at execution
+(and at recording) they are worked out afresh on the current query, not
+inherited from the stored plan.</li>
+</ul>
+
+
+<h1 id="cap8">8. Configuration</h1>
+
+<p>
+Fastpath and autopath thresholds are read from the Metnos process environment;
+when a variable is absent, the module default applies. The former
+<code>[fast_path]</code> and <code>[multi_tool_fast_path]</code> sections in
+<code>~/.config/metnos/runtime.toml</code> have been retired and are ignored.
+The Praxis page can inspect and flush the caches, but it does not edit these
+thresholds. A persistent override therefore belongs in the service
+configuration; constants read at import time require a process restart.
+</p>
+
+<h2>Layer 0 (fastpath)</h2>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_FASTPATH</code></td><td>1</td><td>Enables L0; setting it to 0 disables the layer</td></tr>
+<tr><td><code>METNOS_CLUSTER_COSINE_HIGH</code></td><td>0.90</td><td>Base semantic threshold; L0 matching uses this value plus 0.02</td></tr>
+<tr><td><code>METNOS_FASTPATH_STALE_DAYS</code></td><td>30</td><td>Calendar days after which an unused entry is pruned</td></tr>
+<tr><td><code>METNOS_FASTPATH_GRACE_DAYS</code></td><td>14</td><td>Grace days for never-reused entries</td></tr>
+<tr><td><code>METNOS_FASTPATH_MAX</code></td><td>500</td><td>Maximum rows (LRU cap)</td></tr>
+</tbody>
+</table>
+
+<h2>Layer 1 (autopath)</h2>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_AUTOPATH</code></td><td>1</td><td>Enables L1; setting it to 0 disables the layer</td></tr>
+<tr><td><code>METNOS_AUTOPATH_MIN_OBS</code></td><td>1</td><td>Minimum positive observations to promote an autopath</td></tr>
+<tr><td><code>METNOS_AUTOPATH_FLOOR</code></td><td>0.87</td><td>Minimum similarity on the exact-intent fallback</td></tr>
+<tr><td><code>METNOS_AUTOPATH_TTL_ANTI</code></td><td>2592000 (30 d)</td><td>Anti-autopath duration in seconds</td></tr>
+<tr><td><code>METNOS_AUTOPATH_TTL_REPEAT</code></td><td>3600 (1 h)</td><td>Temporary exclusion after a repeat request</td></tr>
+<tr><td><code>METNOS_AUTOPATH_KEEP_OBS</code></td><td>5000</td><td>Maximum recent observations without a verdict to retain</td></tr>
+<tr><td><code>METNOS_AUTOPATH_STALE_DAYS</code></td><td>90</td><td>Inactivity period before an active autopath is removed</td></tr>
+<tr><td><code>METNOS_AUTOPATH_DEMOTED_TTL_DAYS</code></td><td>30</td><td>Retention period for a demoted autopath</td></tr>
+<tr><td><code>METNOS_SEED_STEPS</code></td><td>4</td><td>Minimum step count for shadow seeding</td></tr>
+<tr><td><code>METNOS_SEED_REPEAT</code></td><td>2</td><td>Successful observations of the same intent required for shadow seeding</td></tr>
+</tbody>
+</table>
+
+<h2>Promotion to executor</h2>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>METNOS_FP_PROMOTE_MIN_CLUSTER</code></td><td>3</td><td>Minimum distinct fastpaths in the group</td></tr>
+<tr><td><code>METNOS_FP_PROMOTE_MIN_USES</code></td><td>15</td><td>Minimum cumulative usage</td></tr>
+<tr><td><code>METNOS_FP_PROMOTE_MIN_AGE_DAYS</code></td><td>30</td><td>Minimum group age</td></tr>
+<tr><td><code>METNOS_FP_PROMOTE_MAX_PER_NIGHT</code></td><td>3</td><td>Maximum new proposals per night</td></tr>
+<tr><td><code>METNOS_FASTPATH_AUTOPROMOTE</code></td><td>off</td><td>Enables Mode 2 auto-promotion (no human approval)</td></tr>
+<tr><td><code>METNOS_FP_AUTOPROMOTE_MIN_CLUSTER</code></td><td>5</td><td>Minimum distinct fastpaths for auto-promotion</td></tr>
+<tr><td><code>METNOS_FP_AUTOPROMOTE_MIN_USES</code></td><td>50</td><td>Minimum cumulative uses for auto-promotion</td></tr>
+<tr><td><code>METNOS_FP_AUTOPROMOTE_MIN_NIGHTS</code></td><td>3</td><td>Nights on which the same proposal must have been observed</td></tr>
+</tbody>
+</table>
+
+
+<h1 id="cap9">9. Promotion to a synthesised executor</h1>
+
+<p>
+When several recurring L0 fastpaths share the same plan structure (the skeleton
+hash) and the same intent, each night the <code>task_fastpath_promotion</code>
+process weighs them as candidates to become a synthetic executor in their own
+right. What it weighs is the group, never the single instance: at least three
+distinct fastpaths, fifteen uses in all, and thirty days of age. And only
+multi-step shapes are promoted: single-step ones already have an executor, and
+there the fastpath only saves the LLM call, not the plan.
+</p>
+
+<p>
+<strong>Why from L0 and not from L1.</strong> The analysis looks at the L0
+fastpaths, not the L1 autopaths, because evidence of concrete requests lives in
+L0: how many <em>distinct</em> requests recur, how often, and for how long (the
+three numbers above). L1 is already general and arises from user feedback or
+shadow seeding, but it does not retain that count of distinct requests.
+Generalisation therefore happens here by grouping L0 fastpaths with the same
+plan shape and intent.
+</p>
+
+<h2>Two modes of promotion</h2>
+
+<ul>
+<li><strong>Mode 1 (default, active).</strong> The candidate becomes a proposal
+awaiting a person's approval in <strong>Settings &gt; Lifecycle &gt;
+Changes</strong> in the web chat. If the intent family is absent from the
+catalogue, approval queues the full synthesis: five stages, birth test,
+signing, and installation. If the plan already composes an executor from that
+family, a person must first choose a qualifier; approval alone does not start
+synthesis. Telegram can explain the procedure, but the path always leads to
+the web chat.</li>
+<li><strong>Mode 2 (optional, off).</strong> Past a much higher threshold,
+Metnos may automatically synthesise only a candidate whose family is still
+free. It requires at least five fastpaths, fifty uses, thirty days, and three
+nightly observations of the same proposal; a previous human decision blocks
+automation. The candidate still traverses the complete synthesis pipeline.
+Only one attempt is allowed per night, whether it succeeds or fails.</li>
+</ul>
+
+<h2>Where an executor comes from</h2>
+
+<p>
+For candidates whose family is free, Metnos records the source fastpath
+identifiers and fingerprints in the <code>promotions</code> table. Once the new
+executor enters the catalogue, the nightly process uses that link to retire
+exactly the entries that produced it. Composition candidates do not receive
+this automatic provenance because their final name depends on the
+human-selected qualifier; their L0 entries remain manageable under
+<strong>Settings &gt; Memory &gt; Praxis</strong>.
+</p>
+
+
+<p style="margin-top:40px;color:#64748b;font-size:10pt;">
+&copy; 2026 the owner &middot;
+<a href="../../en/" style="color:#64748b;">Metnos documentation</a>
+</p>
+
+</body>
+</html>

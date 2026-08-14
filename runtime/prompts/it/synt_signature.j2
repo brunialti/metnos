@@ -1,0 +1,129 @@
+{# ---
+role: synt_signature
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: d771bb61
+--- #}
+SEI la fase 2 (SIGNATURE) di synt-multistage.
+
+OUTPUT OBBLIGATORIO: un solo oggetto JSON. NIENTE prosa, NIENTE markdown
+fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con
+`}`. Niente nulla prima del primo `{`, niente nulla dopo l'ultimo `}`.
+
+Decisioni precedenti (vincoli, NON discutere):
+  name: {{ name }}
+  action: {{ action }}
+  object: {{ object }}
+  qualifier: {{ qualifier }}
+  revertible: {{ revertible }}
+  critical: {{ critical }}
+  target_kind: {{ target_kind }}
+
+User request originale:
+  {{ user_request }}
+
+REGOLE STILE description campi args (the design guide §6 + §7.12):
+- PRESCRITTIVO: DEVI / NON DEVI / OK pattern. Niente "se possibile".
+- COMPATTO: 1-3 righe per arg, max 25 parole/frase.
+- INLINE EXAMPLE: backtick `top=5`, NON "Esempio: top=5".
+- IT/EN PARALLELI (non identical-translated).
+- NIENTE RIPETIZIONI fra description di top-level e args.
+
+REGOLE STRINGENTI:
+1. Per gli executor che ricevono una lista da uno step precedente
+   (entries, items, results, ...): NON esporre `entries: array` nello
+   schema visibile al LLM. Usa SOLO `from_step: integer required`
+   (il runtime espande la lista dallo scratchpad prima del dispatch).
+2. Per gli args che NON sono liste (path, content, dst_template):
+   schema normale (string/number/boolean).
+3. Se l'executor opera su un volume variabile (mail in finestra temporale,
+   risultati di ricerca, fetch paginato, file in dir ricorsiva), aggiungi
+   args di **paginazione / cap interno** cosi' il loop sta DENTRO l'executor:
+     - una window semantica (es. `time_window: today|yesterday|last-Nd`) o
+       coppia esplicita {since, before};
+     - un cap superiore (`max_total`, `max_results`, `max_bytes`);
+     - opzionale `page_size` per il batch interno.
+   NON delegare il loop al pianificatore (costa step ReAct, non scala).
+4. capabilities SOLO da questo set: 'fs:read', 'fs:write', 'net:read',
+   'net:write', 'mail:read', 'mail:send', 'channel:read', 'channel:write',
+   'code:exec'. Mai 'fs:write' se non strettamente necessaria.
+5. reverse_pattern:
+   - se revertible=true → DEVE essere uno fra: 'swap_src_dst',
+     'delete_created_dirs', 'delete_created_paths', 'restore_blob_backup'.
+   - se revertible=false → DEVE essere null.
+
+ESEMPIO OUTPUT (per name=move_files, riceve lista da step precedente):
+{
+  "args_required": ["from_step", "dst_template"],
+  "args_properties": {
+    "from_step": {
+      "type": "integer",
+      "description": "Numero dello step precedente che ha prodotto la lista di file da spostare.",
+      "minimum": 1
+    },
+    "dst_template": {
+      "type": "string",
+      "description": "Template path destinazione, supporta {name}, {date_year}, ecc."
+    }
+  },
+  "capabilities": [{"name": "fs:write", "hint": ["~/**", "/tmp/**"]}],
+  "reverse_pattern": "swap_src_dst"
+}
+
+ESEMPIO OUTPUT (per name=get_urls, NON riceve lista da step precedente):
+{
+  "args_required": ["urls"],
+  "args_properties": {
+    "urls": {
+      "type": "array",
+      "description": "Lista di URL HTTP/HTTPS da scaricare (vettoriale: anche 1 URL).",
+      "items": {"type": "string"}
+    },
+    "max_bytes": {
+      "type": "integer",
+      "description": "Cap dimensione totale per evitare blow-up. Default 5 MB.",
+      "default": 5242880
+    }
+  },
+  "capabilities": [{"name": "net:read", "hint": ["*"]}],
+  "reverse_pattern": null
+}
+
+ESEMPIO OUTPUT (per name=find_<obj>_empty, ADR 0127, qualifier `_empty`
+con arg canonical `size` unit-aware. Pattern cross-domain: lo stesso
+shape vale per find_events_empty/find_files_empty/find_dirs_empty/
+find_messages_empty):
+{
+  "args_required": [],
+  "args_properties": {
+    "size": {
+      "type": "string",
+      "description": "Soglia unit-aware (es. '1hour', '10KB', '100chars', '90' bare=unita' default del dominio). Default per-dominio (es. '1hour' per events).",
+      "default": "1hour"
+    },
+    "time_windows": {
+      "type": "array",
+      "description": "Solo per dominii temporali (events/messages): lista §2.1 di finestre.",
+      "items": {"type": "string"},
+      "default": ["next-week"]
+    },
+    "base_path": {
+      "type": "string",
+      "description": "Solo per dominii filesystem (files/dirs): root del search.",
+      "default": "/"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "Cap superiore §2.7. 0 = no cap. Default 10.",
+      "default": 10
+    }
+  },
+  "capabilities": [{"name": "fs:read", "hint": ["~/**"]}],
+  "reverse_pattern": null
+}
+
+ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro.

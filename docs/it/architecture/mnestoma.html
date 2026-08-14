@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Mnestoma</title>
+ <meta name="description" content="L'archivio SQLite del mnestoma: schema, query, manutenzione, osservabilità e stato reale dell'integrazione in Metnos.">
+ <meta name="keywords" content="Metnos, mnestoma, mnest, SQLite, grafo, ager">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/mnestoma">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnestome">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/mnestoma.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/mnestome.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">Mnestoma</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Mnestoma: archivio degli archi operativi</div>
+ <div class="meta">Schema SQLite, query, manutenzione e integrazioni effettive.</div>
+</div>
+
+<p class="lead">Il mnestoma &egrave; l'archivio locale che pu&ograve; rappresentare un
+grafo di <a href="mnest.html">mnest</a> fra executor. Il codice implementa
+persistenza, navigazione, decadimento e strumenti di ispezione. Non &egrave; oggi
+un grafo che il runtime popola automaticamente da ogni turno, e non &egrave; una
+memoria personale dell'utente.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Scopo e stato</a></li>
+ <li><a href="#cap2">Modello del grafo</a></li>
+ <li><a href="#cap3">Che cosa non contiene</a></li>
+ <li><a href="#cap4">Schema del database</a></li>
+ <li><a href="#cap5">Scrittura e interrogazione</a></li>
+ <li><a href="#cap6">Ager notturno</a></li>
+ <li><a href="#cap7">Archiviazione e conservazione</a></li>
+ <li><a href="#cap8">Nomi nelle due lingue</a></li>
+ <li><a href="#cap9">Avvio e alimentazione</a></li>
+ <li><a href="#cap10">Ispezione e osservabilit&agrave;</a></li>
+ <li><a href="#cap11">Confini operativi</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scopo e stato</h1>
+
+<p><code>Mnestoma</code> apre un database SQLite con WAL e foreign key attive.
+L'API permette di registrare archi, cambiarne lo stato, percorrerli, cercare i
+proto ricorrenti e leggere statistiche ed eventi.</p>
+
+<p>Il runtime dei turni alimenta nello stesso file la tabella distinta
+<code>canonical_query_log</code> quando riceve una canonical query utile. Non
+chiama invece <code>record_passing()</code> per gli archi. Le due forme di
+telemetria non vanno confuse.</p>
+
+<span id="cap-brodo"></span>
+<h1 id="cap2">2. Modello del grafo</h1>
+
+<p>Nel modello logico, i nodi sono nomi/versioni di executor e gli archi sono
+mnest diretti e pesati. Un arco <code>proto</code> termina su un nome desiderato
+senza versione. La query <code>walk(start, max_depth)</code> esegue una ricerca
+in ampiezza, evita i proto per impostazione predefinita e ordina i percorsi per
+peso medio decrescente.</p>
+
+<p>Questa struttura pu&ograve; essere usata dal composer di Synt per trovare una catena
+di executor gi&agrave; esistenti. Non genera L0 o L1, non modifica il ranking ordinario
+del pianificatore e non sostituisce il catalogo firmato.</p>
+
+<h1 id="cap3">3. Che cosa non contiene</h1>
+
+<table>
+<thead><tr><th>Non &egrave;</th><th>Motivo</th></tr></thead>
+<tbody>
+<tr><td>Storia completa dei turni</td><td>I turni hanno log separati; un evento pu&ograve; conservare soltanto il loro identificatore.</td></tr>
+<tr><td>Profilo dell'utente</td><td>Lo schema descrive executor, archi e telemetria tecnica, non preferenze o fatti personali.</td></tr>
+<tr><td>Cache dei piani</td><td>L0 e L1 usano archivi, chiavi e regole di validit&agrave; propri.</td></tr>
+<tr><td>Prova degli effetti</td><td>La presenza di un arco dipende dal chiamante che lo ha scritto.</td></tr>
+<tr><td>Sistema automatico di sintesi</td><td>I proto sono segnali; Synt, test e promoter hanno responsabilit&agrave; separate.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap4">4. Schema del database</h1>
+
+<table>
+<thead><tr><th>Oggetto</th><th>Contenuto</th></tr></thead>
+<tbody>
+<tr><td><code>executors</code></td><td>Nome, versione, stato, istante di caricamento e hash del manifest. L'API corrente non la popola automaticamente.</td></tr>
+<tr><td><code>mnests</code></td><td>Archi, pesi, usi, timestamp, stati, tag e firma desiderata.</td></tr>
+<tr><td><code>events</code></td><td>Rinforzi, decadimenti e cambi di stato, con <code>turn_id</code> facoltativo.</td></tr>
+<tr><td><code>v_mnestoma</code></td><td>Vista degli archi <code>active</code> e <code>proto</code>.</td></tr>
+<tr><td><code>canonical_query_log</code></td><td>Canonical query, tool, forma e valori osservati degli argomenti, contatori ed esito. &Egrave; telemetria separata dal grafo.</td></tr>
+</tbody>
+</table>
+
+<p>All'apertura, migrazioni idempotenti aggiungono
+<code>events.turn_id</code> e <code>canonical_query_log.args_observed</code> ai
+database precedenti.</p>
+
+<h1 id="cap5">5. Scrittura e interrogazione</h1>
+
+<p>Le principali operazioni pubbliche sono:</p>
+
+<ul>
+ <li><code>record_passing()</code>: crea o rinforza un mnest o proto;</li>
+ <li><code>transition_state()</code> e
+ <code>promote_proto_to_active()</code>: cambiano stato con evento;</li>
+ <li><code>top_k_outgoing()</code>, <code>top_k_incoming()</code>,
+ <code>walk()</code> e <code>by_tag()</code>: interrogano il grafo;</li>
+ <li><code>recurring_protos()</code>, <code>decaying()</code> e
+ <code>top_active()</code>: selezionano insiemi operativi;</li>
+ <li><code>events_for()</code>, <code>audit_recent()</code> e
+ <code>stats()</code>: supportano ispezione e tracciabilit&agrave;;</li>
+ <li><code>record_canonical_query()</code>: aggiorna la telemetria separata delle
+ query normalizzate.</li>
+</ul>
+
+<h1 id="cap6">6. Ager notturno</h1>
+
+<p>Lo scheduler installa il processo <code>nightly_aging</code> alle 03:30. Il processo
+esegue in sequenza l'ager degli executor e <code>Mnestoma.apply_ager()</code>.
+Quest'ultimo:</p>
+
+<ol>
+ <li>decade gli archi <code>active</code> e <code>proto</code> in base al tempo;</li>
+ <li>sposta gli <code>active</code> sotto soglia a <code>decaying</code>;</li>
+ <li>conta i <code>decaying</code> candidati all'archiviazione;</li>
+ <li>elimina i proto sotto soglia;</li>
+ <li>conta i proto che hanno raggiunto le soglie di ricorrenza.</li>
+</ol>
+
+<p>Il processo &egrave; idempotente rispetto allo stesso istante logico soltanto se non
+viene ripetuto con timestamp crescente: ogni esecuzione aggiorna
+<code>ts_last</code> e scrive eventi per i record decaduti.</p>
+
+<h1 id="cap7">7. Archiviazione e conservazione</h1>
+
+<p>L'ager non archivia automaticamente gli archi <code>decaying</code>: restituisce
+un conteggio <code>proposed_archive</code>. Non esiste nel modulo una routine che
+crei snapshot mensili, comprima copie annuali o includa il database in un backup.
+Queste operazioni richiedono una politica esterna esplicita.</p>
+
+<p>La sola cancellazione automatica del grafo eseguita dall'ager riguarda i
+proto-mnest con peso inferiore a <code>0.05</code>. Anche in questo caso gli eventi
+associati vengono rimossi dalla foreign key con <code>ON DELETE CASCADE</code>.</p>
+
+<h1 id="cap8">8. Nomi nelle due lingue</h1>
+
+<p>La documentazione italiana usa <em>mnestoma</em>; quella inglese usa
+<em>mnestome</em>. Il nome del modulo Python, della classe e della directory
+SQLite resta <code>mnestoma</code> in entrambe le lingue. <em>Mnest</em> &egrave; il
+nome tecnico del singolo arco e non viene tradotto.</p>
+
+<h1 id="cap9">9. Avvio e alimentazione</h1>
+
+<p>Alla prima apertura il database viene creato con schema vuoto. Non viene
+installato un seed nascosto di archi e non esiste uno stato <code>seed</code>
+ammesso dalla classe <code>Mnest</code>. Gli archi compaiono soltanto attraverso
+chiamate esplicite all'API o dati gi&agrave; presenti nel database configurato.</p>
+
+<p>I turni possono invece aggiungere record a <code>canonical_query_log</code>.
+Questa attivit&agrave; non deve essere mostrata come nascita di mnest, cluster o
+percorsi L0/L1.</p>
+
+<h1 id="cap10">10. Ispezione e osservabilit&agrave;</h1>
+
+<p>Il comando <code>python3 -m mnestoma</code> offre sottocomandi per statistiche,
+ager, relazioni principali in ingresso e in uscita, prototipi, percorsi, sommario e tracciabilit&agrave;. Il renderer
+<code>python3 -m observability render</code> pu&ograve; includere conteggi, archi attivi,
+proto ed eventi recenti in un HTML statico.</p>
+
+<p>Questi strumenti leggono il contenuto dell'archivio; non dimostrano che il
+contenuto sia completo. Un mnestoma vuoto &egrave; un esito legittimo
+dell'integrazione corrente.</p>
+
+<h1 id="cap11">11. Confini operativi</h1>
+
+<ul>
+ <li>Il percorso predefinito &egrave;
+ <code>&lt;workspace&gt;/.mnestoma/mnest.sqlite</code>: l'ambito &egrave; il workspace
+ configurato, non un utente ricavato dal turno.</li>
+ <li>Non inserire fatti personali, credenziali o contenuti dei documenti in tag e
+ firme desiderate.</li>
+ <li>Prima di usare il grafo per decisioni per utente servono ownership esplicita,
+ autorizzazione e filtraggio; lo schema corrente non li rappresenta.</li>
+ <li>Il composer pu&ograve; soltanto proporre catene presenti: catalogo, firme, policy,
+ argomenti e guardie restano vincoli indipendenti.</li>
+ <li>Il codice sorgente &egrave; la fonte del contratto operativo:
+ <code>runtime/mnestoma.py</code>, <code>runtime/synt.py</code>,
+ <code>runtime/jobs/maintenance_tasks.py</code> e
+ <code>runtime/observability.py</code>.</li>
+</ul>
+
+</body>
+</html>

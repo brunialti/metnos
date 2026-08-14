@@ -1,0 +1,25 @@
+[Unit]
+Description=Metnos SearXNG search sidecar (local, self-hosted web search)
+After=network.target
+Before=metnos-stack-ready.service
+PartOf=metnos.target
+
+[Service]
+Type=simple
+ExecStart=@SEARXNG_VENV@/bin/python -m searx.webapp
+WorkingDirectory=@SEARXNG_SRC@
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+# Private tempdir → SearXNG keeps its sqlite caches (sxng_cache_*.db, derived
+# from tempfile.gettempdir()) under our own data dir instead of the shared
+# /tmp, where a fixed filename collides with any other SearXNG on the box.
+Environment=TMPDIR=@SEARXNG_CACHE@
+# Dedicated, isolated settings file (own secret_key, json format enabled for
+# the Metnos /search?format=json query path, rate-limiter + redis OFF for a
+# single-user self-hosted instance). Pinning the path also prevents the
+# sidecar from picking up a system-wide /etc/searxng/settings.yml.
+Environment=SEARXNG_SETTINGS_PATH=@SEARXNG_SETTINGS@
+
+[Install]
+WantedBy=metnos.target

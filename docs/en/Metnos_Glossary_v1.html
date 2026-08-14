@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Metnos — Glossary</title>
+<meta name="description" content="Glossary of current Metnos terms: runtime, executors, skills, services, memory, safety, users and channels.">
+<meta name="robots" content="index, follow">
+
+<link rel="canonical" href="https://metnos.com/en/Metnos_Glossary_v1">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Glossario_v1">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Glossary_v1">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://metnos.com/en/Metnos_Glossary_v1">
+<meta property="og:title" content="Glossary — Metnos">
+<meta property="og:description" content="Current terms from Metnos architecture and use, with links to the relevant documentation.">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="it_IT">
+<meta property="og:site_name" content="Metnos">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Glossary — Metnos">
+<meta name="twitter:description" content="The vocabulary of Metnos architecture, explained in context.">
+
+<style>
+:root {
+  --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+  --bronze: #A0522D; --plum: #6B21A8;
+  --bg: #FAFBFC; --text: #1a1a1a;
+  --border: #d0d7de; --code-bg: #f6f8fa;
+  --muted: #64748B;
+  --accent: #A0522D;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Segoe UI', Calibri, -apple-system, sans-serif;
+  font-size: 11pt; line-height: 1.65; color: var(--text);
+  background: var(--bg); max-width: 880px; margin: 0 auto;
+  padding: 40px 30px 80px;
+}
+h1 { color: var(--navy); font-size: 24pt; border-bottom: 3px solid var(--navy); padding-bottom: 10px; margin-top: 0; }
+h2 { color: var(--navy); font-size: 32pt; margin-top: 50px; margin-bottom: 12px; font-weight: 400; border: none; display:inline-block; padding: 4px 18px; border-left: 4px solid var(--accent); letter-spacing: 4px; }
+h2:first-of-type { margin-top: 30px; }
+p { margin: 10px 0; }
+a { color: var(--navy); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code { font-family: Consolas, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 10pt; }
+
+.lead {
+  font-size: 12pt; color: var(--navy);
+  border-left: 4px solid var(--sage); padding-left: 14px; margin: 22px 0;
+}
+
+.alpha-nav {
+  background: white; border: 1px solid var(--border); border-radius: 6px;
+  padding: 14px 18px; margin: 24px 0;
+  display: flex; flex-wrap: wrap; gap: 4px;
+  font-family: Consolas, monospace; font-size: 10.5pt;
+  position: sticky; top: 12px; z-index: 5;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+}
+.alpha-nav .ac-label { color: var(--muted); margin-right: 8px; font-family: 'Segoe UI'; font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }
+.alpha-nav a {
+  display: inline-block; width: 26px; height: 26px; text-align: center;
+  line-height: 26px; border-radius: 4px; color: var(--navy);
+  font-weight: 600; text-decoration: none; transition: background .12s;
+}
+.alpha-nav a:hover { background: var(--code-bg); text-decoration: none; }
+
+.entry {
+  margin: 18px 0; padding: 14px 20px; background: white;
+  border: 1px solid var(--border); border-radius: 6px;
+  border-left: 3px solid var(--accent);
+  page-break-inside: avoid;
+}
+.entry h3 {
+  margin: 0 0 6px 0; font-size: 13pt; color: var(--navy);
+  font-weight: 700;
+}
+.entry h3 .tag {
+  display: inline-block; font-size: 9pt; padding: 1px 8px;
+  border-radius: 10px; background: var(--code-bg); color: var(--muted);
+  font-weight: 500; margin-left: 10px; letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+.entry h3 .tag.ext { background: #F4E4D8; color: var(--bronze); }
+.entry h3 .tag.sibling { background: #FDF3DC; color: #92400E; }
+.entry h3 .tag.concept { background: #E5EBDA; color: var(--sage); }
+.entry h3 .tag.type { background: #EDE4F7; color: var(--plum); }
+.entry h3 .tag.person { background: #DBEAFE; color: #1E40AF; }
+.entry p { margin: 6px 0; color: #333; }
+.entry .xref {
+  font-size: 10pt; color: var(--muted); margin-top: 8px;
+  font-style: italic; line-height: 1.6;
+}
+.entry .xref strong { color: var(--navy); font-style: normal; letter-spacing: 0.5px; font-size: 9pt; text-transform: uppercase; }
+.entry .xref a { color: var(--accent); font-style: normal; }
+.entry .xref .it-note { font-size: 9pt; color: var(--muted); font-style: italic; }
+
+.letter-head {
+  margin-top: 44px; margin-bottom: 6px;
+  font-size: 28pt; color: var(--accent);
+  font-weight: 300; letter-spacing: 6px;
+  padding-left: 8px; border-left: none;
+}
+
+.nav {
+  background: #fff; border-bottom: 1px solid var(--border);
+  padding: 10px 0; font-size: 14px; margin: -40px -30px 24px -30px;
+}
+.nav-inner { max-width: 880px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; }
+.nav a { color: var(--navy); font-weight: 500; text-decoration: none; }
+
+.lang-switch {
+  position: fixed; top: 16px; right: 20px; z-index: 9999;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt; letter-spacing: 2px;
+  background: #FAFBFC; border: 1px solid var(--border);
+  border-radius: 14px; padding: 4px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.lang-switch a { color: var(--muted); border: none; padding: 0 4px; text-decoration: none; }
+.lang-switch a.active { color: #1a1a1a; font-weight: 700; }
+.lang-switch .sep { color: var(--border); }
+
+footer {
+  margin-top: 70px; padding-top: 20px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 9.5pt; text-align: center;
+}
+
+@media (max-width: 640px) {
+  .alpha-nav { position: static; }
+  .alpha-nav a { width: 24px; height: 24px; line-height: 24px; font-size: 10pt; }
+}
+@media print {
+  body { max-width: none; padding: 0; }
+  .alpha-nav, .lang-switch { display: none; }
+  .entry { break-inside: avoid; }
+}
+</style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/Metnos_Glossario_v1.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/Metnos_Glossary_v1.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div class="nav">
+  <div class="nav-inner">
+    <a href="index.html">← Documentation index</a>
+    <span style="color:#8e8e93;">docs &rsaquo; <strong style="color:#1a1a1a;">glossary</strong></span>
+  </div>
+</div>
+
+<h1>Glossary</h1>
+
+<p class="lead">
+A term appears in this glossary when it is used across more than one
+document of the project and is not immediately obvious. The criterion is
+pragmatic: if a reader without context could stumble on the name, there is
+an entry here. Definitions are short. Links point to the canonical source
+&mdash; the document where the concept is defined in its complete form.
+Each link points to the page that explains the concept in context.
+</p>
+
+<div class="alpha-nav">
+  <span class="ac-label">Alphabet</span>
+  <a href="#L-A">A</a>
+  <a href="#L-B">B</a>
+  <a href="#L-C">C</a>
+  <a href="#L-D">D</a>
+  <a href="#L-E">E</a>
+  <a href="#L-F">F</a>
+  <a href="#L-G">G</a>
+  <a href="#L-H">H</a>
+  <a href="#L-I">I</a>
+  <a href="#L-L">L</a>
+  <a href="#L-M">M</a>
+  <a href="#L-P">P</a>
+  <a href="#L-R">R</a>
+  <a href="#L-S">S</a>
+  <a href="#L-T">T</a>
+  <a href="#L-U">U</a>
+  <a href="#L-V">V</a>
+  <a href="#L-W">W</a>
+</div>
+
+<!-- ======================== A ======================== -->
+<div class="letter-head" id="L-A">A</div>
+
+<div class="entry" id="agent-runtime">
+<h3>agent runtime <span class="tag concept">component</span></h3>
+<p>The core that coordinates a turn. It receives a request already associated
+with a user, language, channel and conversation; selects an execution path,
+validates every tool call, applies policy and the Vaglio, then stores the
+outcome in the <a href="#turn-log">turn record</a>. Channels handle the
+interface; the runtime governs the work.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html">agent_runtime.html</a></p>
+</div>
+
+<div class="entry" id="anthropomorphism">
+<h3>anthropomorphism <span class="tag concept">caution</span></h3>
+<p>The tendency to attribute intentions, emotions or consciousness to a
+technical system. In this documentation words such as <em>memory</em>,
+<em>judge</em> and <em>Vaglio</em> name precise functions, not mental states:
+Metnos processes requests, calls tools and records outcomes.</p>
+<p class="xref"><strong>Further reading:</strong> <a href="Metnos_Dialogue_v1.html">Dialogue on ends and limits</a></p>
+</div>
+
+<div class="entry" id="approval-request">
+<h3>approval <span class="tag concept">mechanism</span></h3>
+<p>An explicit user decision required before an action exceeds already
+granted authority. The card describes the action, destination, effects and
+expiry; consent applies only to that user and that specific operation. An
+expired or rejected request, or changed arguments, requires fresh approval.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/approval_ux.html">Approval experience</a> &middot; <a href="architecture/agent_runtime.html#cap9">runtime §9</a></p>
+</div>
+
+<div class="entry" id="audit-log">
+<h3>audit log <span class="tag concept">component</span></h3>
+<p>An append-only record of events that must be reconstructable: turns,
+Vaglio decisions, skill imports, scheduled operations and other sensitive
+actions. Records retain the logical user identity and the identifiers needed
+to reach the source; they are not a transcript of the model's private
+reasoning.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/observability.html">Observability</a> &middot; <a href="architecture/agent_runtime.html#cap11">runtime §11</a></p>
+</div>
+
+<div class="entry" id="autonomy">
+<h3>autonomy (levels of) <span class="tag concept">concept</span></h3>
+<p>The amount of authority granted to a user for a given operation. The user
+profile distinguishes read-only, restricted and full access; policy then
+combines that profile with executor capabilities and the current context to
+allow, deny or request approval. Authority never transfers between users or
+devices.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/policy.html">Policy</a> &middot; <a href="architecture/pairing.html">Users, devices and sessions</a></p>
+</div>
+
+<div class="entry" id="autopath">
+<h3>autopath (L1) <span class="tag concept">component</span></h3>
+<p>The second of the two levels through which Metnos learns to answer without
+calling the model. Where the <a href="#fastpath">fastpath</a> (L0) remembers a
+single question word for word, the <em>autopath</em> remembers the <em>shape</em>
+of a successful plan &mdash; the sequence of steps, stripped of its particulars
+&mdash; and reuses it across a whole family of related requests. It grows from
+repeated successes on that kind of question; it is readable, reversible data, not
+a trained model. Not to be confused with a <a href="#skill">skill</a>, which is a
+set of tools, not a plan.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/index.html#s9">Architecture Intro §9 &mdash; The memory that speeds things up</a></p>
+</div>
+
+<!-- ======================== B ======================== -->
+<div class="letter-head" id="L-B">B</div>
+
+<div class="entry" id="bother-budget">
+<h3>disturbance cost <span class="tag concept">criterion</span></h3>
+<p>The attention cost that a proposal or notification imposes on its user.
+It contributes to the evaluation of proactive initiatives alongside utility,
+urgency and alignment with the telos; it grants no authority and never
+replaces consent.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/telos.html">Telos</a></p>
+</div>
+
+<div class="entry" id="builtin">
+<h3>builtin (builtin executor) <span class="tag concept">component</span></h3>
+<p>An <a href="#executor">executor</a> supplied directly by the runtime and
+signed as part of a release. It supports functions that need access to the
+service loop, clock or shared persistent state. It is not generated by
+<a href="#synt">synt</a> and may be active or disabled through configuration.
+The scheduler is one example.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html#cap2">executor &sect;2</a> and <a href="/en/architecture/executor.html#cap6">&sect;6</a></p>
+</div>
+
+<!-- ======================== C ======================== -->
+<div class="letter-head" id="L-C">C</div>
+
+<div class="entry" id="cascade">
+<h3>cascade (synthesis cascade) <span class="tag concept">process</span></h3>
+<p>The sequence through which <a href="#synt">synt</a> approaches an operational need. During a turn it can <em>compose</em> a chain of existing executors or prepare, through the governed path, a candidate for a missing capability. In nightly homeostasis the active producer proposes deduplication only and does not generate generalisations or specialisations. The cascade neither authorises new code by itself nor promises that every request can be executed.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/synt.html#cap3">synt &sect;3</a></p>
+</div>
+
+<div class="entry" id="channel">
+<h3>Channel <span class="tag concept">component</span></h3>
+<p>The adapter that turns an external interface into Metnos requests and
+replies. The available channels are web chat and Telegram. Both share the
+same runtime, identities and policies, while presenting streaming,
+attachments, buttons, dialogs and location requests in forms suited to the
+medium.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/channel.html">channel.html</a></p>
+</div>
+
+<div class="entry" id="contradiction">
+<h3>contradiction / discrepancy / divergence <span class="tag concept">distinction</span></h3>
+<p>Three degrees of "mis-alignment" of an action with respect to the
+Constitution and the telos, which the project distinguishes rigorously
+because only one of the three blocks.</p>
+<ul style="margin-top:4px;">
+<li><strong>Contradiction</strong>: violation of a Constitutional article.
+Hard block; the <a href="#vaglio">Vaglio</a> does not proceed beyond the
+guard. The only case in which the action does not happen.</li>
+<li><strong>Discrepancy</strong>: an action that does not help the telos
+but does not deny them either. It contributes to a low score; in proactive
+mode it is rejected to the digest, in reactive mode it passes.</li>
+<li><strong>Divergence</strong>: an action that pushes toward one telos in
+partial tension with another. This is teleology's natural domain: it is
+weighed, it is decided.</li>
+</ul>
+<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/vaglio.html#cap3">vaglio §3</a> <span class="it-note">(in Italian)</span> &middot; <a href="Metnos_Dialogue_v1.html#giornata4">Dialogue &mdash; Fourth Giornata</a></p>
+</div>
+
+<div class="entry" id="constitution">
+<h3>Constitution (the 4 Laws) <span class="tag concept">foundation</span></h3>
+<p>The non-negotiable constraints applied by the <a href="#vaglio">Vaglio</a>:
+authority perimeter, protection from harmful effects, obedience within that
+perimeter and traceability. These are operational guards, not model
+preferences: a violation blocks the action. <a href="#telos">Telos</a>
+express the user's positive direction instead.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html">Vaglio</a> &middot; <a href="architecture/policy.html">Policy</a></p>
+</div>
+
+<!-- ======================== D ======================== -->
+<div class="letter-head" id="L-D">D</div>
+
+<div class="entry" id="discrepancy">
+<h3>discrepancy / divergence</h3>
+<p>See <a href="#contradiction">contradiction / discrepancy / divergence</a>.</p>
+</div>
+
+<!-- ======================== E ======================== -->
+<div class="letter-head" id="L-E">E</div>
+
+<div class="entry" id="executor">
+<h3>executor <span class="tag concept">component</span></h3>
+<p>A function Metnos can run as a step of its own reasoning. It is
+executable code, not a biological analogy. An executor is signed Python
+code with a manifest, a sandbox profile, and
+an error contract. It can be part of the initial seed or born by
+<em>synthesis</em> from the <em>synt</em> with human approval.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/executor.html">Executors</a> &middot; <a href="architecture/executor_catalog.html">Executor catalogue</a></p>
+</div>
+
+<div class="entry" id="remote-executor">
+<h3>remote executor <span class="tag concept">component</span></h3>
+<p>A Metnos executor run not on the server, but on a paired device: for example
+a Windows PC or a Linux laptop on the same network. It is not a second Metnos:
+the server keeps executor selection, policy, Vaglio, payload signing and audit;
+the device, through <code>metnos-client</code>, verifies the signature, executes
+inside the containment available for its operating system and returns the result.
+Remote execution is allowed only for signed executors declared compatible by
+their manifest.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/remote_executors.html">architecture/remote_executors.html</a> &middot; <a href="/en/architecture/pairing.html#cap6">pairing, ch. 6</a> &middot; <a href="/en/architecture/sandbox.html#cap10">sandbox, ch. 10</a></p>
+</div>
+
+<div class="entry" id="turn-log">
+<h3>turn record (TurnLog) <span class="tag type">data</span></h3>
+<p>The persistent record of a request: it identifies the user, conversation,
+channel, timing, selected path, executor calls, results and final outcome. It
+supports conversation recovery and links an observation back to its source;
+it does not claim to preserve or verify a model's private reasoning.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap11">runtime §11</a> &middot; <a href="architecture/observability.html">Observability</a></p>
+</div>
+
+<!-- ======================== F ======================== -->
+<div class="letter-head" id="L-F">F</div>
+
+<div class="entry" id="fastpath">
+<h3>fastpath (L0) <span class="tag concept">component</span></h3>
+<p>The first of the two memory levels with which Metnos avoids thinking the same
+thought twice. It is the fast lane: when an <em>identical</em> question has
+already been solved once, the next time the answer is replayed outright, without
+consulting the model &mdash; same outcome, latency and cost cut to a minimum. It
+keeps the concrete particulars of the request. The level above it is the
+<a href="#autopath">autopath</a> (L1), which generalises the plan to a whole
+family of requests.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/index.html#s9">Architecture Intro §9 &mdash; The memory that speeds things up</a></p>
+</div>
+
+<!-- ======================== G ======================== -->
+<div class="letter-head" id="L-G">G</div>
+
+<div class="entry" id="gateway">
+<h3>HTTP service <span class="tag concept">component</span></h3>
+<p>The service exposing the web chat, agent-channel API and administration
+pages. It authenticates users, maintains conversations and sessions, and
+hands each turn to the runtime. Telegram reaches the same core through its
+channel daemon.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/http_api.html">HTTP API</a> &middot; <a href="architecture/channel.html">Channels</a></p>
+</div>
+
+<div class="entry" id="giudice">
+<h3>teleological judge <span class="tag concept">component</span></h3>
+<p>The second stage of the <a href="#vaglio">Vaglio</a>. It produces a
+graded alignment score against the telos. The default path uses
+deterministic local rules; a judge based on a separate model is optional and
+configurable.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html#cap5">vaglio §5</a></p>
+</div>
+
+<div class="entry" id="guardia">
+<h3>constitutional guard <span class="tag concept">component</span></h3>
+<p>The first stage of the <a href="#vaglio">Vaglio</a>. A deterministic
+check that the action does not <em>contradict</em> a Constitutional
+article. Binary output: it blocks or it lets through. Not an LLM:
+executable rules.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/vaglio.html#cap4">vaglio §4</a> <span class="it-note">(in Italian)</span></p>
+</div>
+
+<!-- ======================== H ======================== -->
+<div class="letter-head" id="L-H">H</div>
+
+<div class="entry" id="hybris">
+<h3>hybris <span class="tag concept">metaphor</span></h3>
+<p>A Greek term (ὕβρις), in myth the insolence of one who overreaches the
+measure allotted to them, provoking the punishment of the gods. In the
+project it is the metaphor that frames the risk of an agent that knows and
+acts: turning usefulness into arrogance, overstepping its own limits,
+eventually contending with the Laws the creator has laid down. The
+<a href="#vaglio">Vaglio</a> is the structure that answers this risk.
+Introduced in the prologue of the
+<a href="Metnos_Dialogue_v1.html#giornata1">Dialogue &mdash; First Giornata</a>.</p>
+</div>
+
+<!-- ======================== I ======================== -->
+<div class="letter-head" id="L-I">I</div>
+
+<div class="entry" id="identity">
+<h3>identity of the speaker <span class="tag concept">concept</span></h3>
+<p>The stable user identity to which Metnos associates authorisations,
+preferences, language, sessions and data. Senders from different channels
+are associated with this identity through authentication or pairing. Data
+and actions remain isolated per user even when several people share one
+installation.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/pairing.html">Users, devices and sessions</a> &middot; <a href="architecture/channel.html">Channels</a></p>
+</div>
+
+<div class="entry" id="i18n">
+<h3>internationalisation (i18n) <span class="tag concept">mechanism</span></h3>
+<p>The rules and catalogues that keep the interface, dialogs, service
+messages and prompts in the language resolved for the user and turn. UI text
+comes from the i18n catalogue; a new language joins the inventory through its
+own records and prompts, without language-specific branches in code. One
+user's language never changes another's.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/multilang.html">Languages and translation</a></p>
+</div>
+
+<!-- ======================== L ======================== -->
+<div class="letter-head" id="L-L">L</div>
+
+<div class="entry" id="laws">
+<h3>Laws (the 4)</h3>
+<p>See <a href="#constitution">Constitution</a>.</p>
+</div>
+
+<div class="entry" id="llm">
+<h3>LLM (language model) <span class="tag concept">technical</span></h3>
+<p>Large Language Model. In the project it is never a specific provider:
+Metnos <em>uses</em> LLMs but does not contain them. Access always goes
+through the <a href="#llm-abstraction">LLM abstraction</a> which makes
+the system <em>provider-agnostic</em>. A recurring theme of the design is
+<em>knowing when to trust the LLM</em>: that is why the
+<a href="#vaglio">Vaglio</a> exists, to counter the
+<a href="#self-enhancement">self-enhancement bias</a>.</p>
+</div>
+
+<div class="entry" id="llm-abstraction">
+<h3>LLM abstraction (provider-agnostic interface) <span class="tag concept">pattern</span></h3>
+<p>Every use of a language model passes through a common interface rather
+than a provider-specific client. The same principle applies to embeddings
+and other AI services. The separation has three purposes.</p>
+<ul style="margin-top:4px;">
+<li><strong>Freedom of choice</strong>: swapping one model for another &mdash;
+from a commercial frontier to a local model, or back &mdash; is a
+configuration line, not a code change.</li>
+<li><strong>Longevity</strong>: providers change names, prices, terms.
+Metnos's code should not age with them.</li>
+<li><strong>Cost control</strong>: the tier appropriate to each role is
+selected explicitly through configuration.</li>
+</ul>
+<p>Model roles, routing and available providers are resolved by the runtime
+from current settings.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap4">runtime §4</a> &middot; <a href="architecture/index.html#s8">Architecture guide §8</a></p>
+</div>
+
+<!-- ======================== M ======================== -->
+<div class="letter-head" id="L-M">M</div>
+
+<div class="entry" id="memory">
+<h3>memory <span class="tag concept">concept</span></h3>
+<p>In Metnos this word does not name a single store. It is useful to
+distinguish:</p>
+<ul style="margin-top:4px;">
+<li><strong>conversation</strong>: turns and chat context, separated by user
+and conversation;</li>
+<li><strong>plans</strong>: fastpath L0 and autopath L1, which reuse verified
+execution structures;</li>
+<li><strong>operational relations</strong>: mnests and the mnestome, when
+explicitly recorded by the runtime;</li>
+<li><strong>user preferences and knowledge</strong>: per-user, deletable data
+applied without contaminating the shared plan cache.</li>
+</ul>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html">Runtime</a> &middot; <a href="architecture/fast_path.html">Plan reuse</a> &middot; <a href="architecture/mnestome.html">Mnestome</a></p>
+</div>
+
+<div class="entry" id="mnest">
+<h3>mnest <span class="tag concept">memory</span></h3>
+<p>A trace of co-activation between two <a href="#executor">executors</a>:
+"the output of A was passed to B in this turn". Reinforced by use,
+weakened by disuse. A record is evidence only of the recorded passage; the
+origin turn identifier is also required to reach the source. Automatic
+recording from every ordinary turn is not currently connected.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/mnest.html">Mnest</a> &middot; <a href="architecture/index.html#cap9">Architecture guide, ch. 9</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
+</div>
+
+<div class="entry" id="mnestome">
+<h3>mnestome <span class="tag concept">memory</span></h3>
+<p>The emergent graph of all <a href="#mnest">mnests</a>: the set of
+co-occurrences between executors that have actually taken place. Not
+designed at a desk &mdash; it emerges from use. It is Metnos's
+relational memory, distinct from the LLM's contextual memory and from
+the episodic memory of conversations. The Italian form is
+<em>mnestoma</em> (Latin -ma suffix); the English form uses the
+biological -ome suffix, as in <em>microbiome</em>.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/mnestome.html">Mnestome</a> &middot; <a href="architecture/index.html#cap9">Architecture guide, ch. 9</a></p>
+</div>
+
+<div class="entry" id="metnos">
+<h3>Metnos <span class="tag concept">project</span></h3>
+<p>A self-hosted, governed personal agent available through web chat and
+Telegram. It understands natural-language requests, builds a plan and
+performs operations through executors subject to contracts, policies and
+approval. Identity, preferences, sessions and data are isolated per user.
+<strong>Etymology.</strong>
+The name is Greek and is a compound: <em>m&ecirc;tis</em>
+(&mu;&#8134;&tau;&iota;&sigmaf;), the practical wisdom that adapts to the
+situation &mdash; the cunning of Odysseus, also the goddess who is mother
+of Athena &mdash;, and <em>no&ucirc;s</em> (&nu;&omicron;&#8166;&sigmaf;),
+the intellect that reasons. The two Greek words for mind, joined into one.
+The system joins them in fact too: the LLM is the <em>no&ucirc;s</em>,
+the vaglio and the <a href="#mnestome">mnestome</a> are the
+<em>m&ecirc;tis</em>.</p>
+<p class="xref"><strong>Start here:</strong> <a href="Metnos_QuickTour.html">Quick tour</a> &middot; <a href="architecture/index.html">Architecture guide</a></p>
+</div>
+
+<div class="entry" id="manifest">
+<h3>manifest <span class="tag concept">contract</span></h3>
+<p>An executor's declarative contract: canonical name, description,
+arguments, result, capabilities, placement, limits and requirements. The
+loader validates it before exposing the executor to the planner. Tutor also
+uses manifests to explain what the system can do.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/executor.html">Executors</a> &middot; <a href="architecture/tutor.html">Tutor</a></p>
+</div>
+
+<!-- ======================== P ======================== -->
+<div class="letter-head" id="L-P">P</div>
+
+<div class="entry" id="pairing">
+<h3>pairing <span class="tag concept">mechanism</span></h3>
+<p>The recognition of a new sender on a multi-user channel (typically
+Telegram): the user receives a signed code out-of-band, presents it to
+Metnos, and the sender↔identity binding is recorded. Revocable at any
+time.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/pairing.html">pairing.html</a></p>
+</div>
+
+<div class="entry" id="path">
+<h3>path <span class="tag concept">concept</span></h3>
+<p>An internal Metnos term: a <strong>set of executors that, starting from a
+user request (query), produce an output or an action</strong> &mdash; the route
+from the question to the result, run as a sequence of the right tools. It comes
+in two stored forms, so the assistant need not rebuild them every time: the
+<a href="#fastpath">fastpath</a> (L0), the path for the same request already
+solved, and the <a href="#autopath">autopath</a> (L1), the path generalised to
+a group of related requests.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/fast_path.html">fast_path.html</a></p>
+</div>
+
+<div class="entry" id="policy">
+<h3>Policy <span class="tag concept">component</span></h3>
+<p>The operational authority over reactive actions: it checks forbidden
+paths, the per-sender never-list, rate limits, budget, the green zone
+per autonomy, and (check 0) the
+<a href="#guardia">constitutional Guard</a>. It emits a verdict: allow,
+deny, approve_required.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/policy.html">policy.html</a> <span class="it-note">(in Italian)</span></p>
+</div>
+
+<div class="entry" id="precautionary-asymmetry">
+<h3>precautionary asymmetry <span class="tag concept">principle</span></h3>
+<p>The principle that, in cases of irreducible conflict between Metnos's
+<em>freedom</em> and the <em>robustness</em> of its effects, robustness
+wins. The reason is economic, not ideological: a restriction of freedom
+is recoverable in linear time (Roberto approves, the threshold updates),
+whereas many losses of robustness are not recoverable at all.
+<a href="#reflection">Reversibility</a> shifts the balance by making
+near-recoverable what would otherwise not be. Not to be confused with
+paternalism, which pushes robustness past this threshold.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/index.html#cap5">Architecture, ch. 5</a></p>
+</div>
+
+<div class="entry" id="proto-mnest">
+<h3>proto-mnest <span class="tag concept">memory</span></h3>
+<p>An incomplete <a href="#mnest">mnest</a>: the trace of an attempt in
+which Metnos wanted to pass the output of one
+<a href="#executor">executor</a> to another that <em>does not yet exist</em>.
+It is an unsatisfied desire that lingers in the
+<a href="#mnestome">mnestome</a>; if it recurs, it becomes the signal
+from which the <em>synt</em> proposes the synthesis of a new executor to
+the user.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/mnest.html#cap8">Mnest, ch. 8</a> &middot; <a href="architecture/index.html#cap10">Architecture guide, ch. 10</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
+</div>
+
+<!-- ======================== R ======================== -->
+<div class="letter-head" id="L-R">R</div>
+
+<div class="entry" id="reflection">
+<h3>nightly analysis <span class="tag concept">process</span></h3>
+<p>A set of scheduled activities that inspect operational data and produce
+proposals, maintenance or indexes. Each activity runs as a fresh turn for the
+same user and inherits no authority from another user. A proposal does not
+become an action merely because a model produced it.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap11_2">Scheduled activities</a> &middot; <a href="architecture/praxis_engine.html">Praxis engine</a></p>
+</div>
+
+<!-- ======================== S ======================== -->
+<div class="letter-head" id="L-S">S</div>
+
+<div class="entry" id="sandbox">
+<h3>sandbox <span class="tag concept">component</span></h3>
+<p>The container in which every tool with effects on the filesystem or on
+the system runs. Bubblewrap (bwrap) profiles that define what the tool can
+read, write, execute. Forbidden paths are explicit: a tool does not even
+see <code>.audit/</code>.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/sandbox.html">sandbox.html</a></p>
+</div>
+
+<div class="entry" id="scheduler">
+<h3>scheduler <span class="tag concept">component</span></h3>
+<p>A builtin that runs an executor or a saved request at a defined cadence.
+Tasks may be listed, changed, paused or cancelled and remain owned by the user
+who created them. Each run is a fresh turn with current policy and
+credentials; a scheduled task is not a lasting grant of authority.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html#cap6">executor &sect;6</a></p>
+</div>
+
+<div class="entry" id="active-session">
+<h3>active session <span class="tag concept">user state</span></h3>
+<p>The web-chat session that currently owns continuity for a user. If Metnos
+finds an open session on another device, it offers three choices: continue
+that session on the current device, make the current session active and close
+the previous one, or cancel. Detection and transfer are independent for each
+user.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/pairing.html">Users, devices and sessions</a> &middot; <a href="architecture/channel.html">Web chat</a></p>
+</div>
+
+<div class="entry" id="service">
+<h3>service <span class="tag concept">setting</span></h3>
+<p>A configurable integration or subsystem shown in the web chat under
+<strong>Settings &gt; System &gt; Services</strong>. That page is the source for
+the visible list; Tutor can explain its structure and path, while current
+status is read live from the system.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/tutor.html">Tutor and Settings surfaces</a> &middot; <a href="architecture/skills_backends.html">Skills and backends</a></p>
+</div>
+
+<div class="entry" id="self-enhancement">
+<h3>self-enhancement bias <span class="tag concept">phenomenon</span></h3>
+<p>The documented tendency of an LLM to evaluate favourably its own
+outputs or familiar styles (Zheng et al. 2023). It is the structural
+reason why the <a href="#vaglio">Vaglio</a> exists: if the LLM that
+evaluates is the same (or receives the context of) the one that proposed,
+it cheers for itself. The solution: separate context, separate prompt,
+ideally a separate provider.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html#cap6">vaglio §6</a> &middot; <a href="Metnos_Dialogue_v1.html#giornata3">Dialogue &mdash; Third Giornata</a></p>
+</div>
+
+<div class="entry" id="skill">
+<h3>skill <span class="tag concept">concept</span></h3>
+<p>A <em>set</em> of related <a href="#executor">executors</a>, gathered into a
+single capability: the mail skill, for instance, brings together reading,
+sending and moving messages. It is the unit by which a capability is enabled,
+trusted, or kept dormant. Three tiers: <strong>core</strong> (part of Metnos's
+heart), <strong>first-party</strong> (curated by the project) and
+<strong>imported</strong> (brought in from third parties). A skill is an axis
+<em>orthogonal</em> to the backend: the skill decides <em>whether</em> a
+capability is active, the backend decides <em>how</em> it reaches a concrete
+provider &mdash; always chosen by configuration, never by the model. Not to be
+confused with an <a href="#autopath">autopath</a>: that is a learned plan, this
+is a kit of tools.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/index.html#s3">Architecture Intro §3 &mdash; skill &harr; backend</a></p>
+</div>
+
+<div class="entry" id="synt">
+<h3>synt <span class="tag concept">process</span></h3>
+<p>The process that composes existing executors or prepares a proposal for a
+new executor when a capability is missing. Its cascade moves from less costly
+strategies to more demanding ones; code and manifests must pass admission
+checks and the required human gate.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/synt.html">Synt</a> &middot; <a href="architecture/skill_importer.html">Skill import</a></p>
+</div>
+
+<!-- ======================== T ======================== -->
+<div class="letter-head" id="L-T">T</div>
+
+<div class="entry" id="telos">
+<h3>telos <span class="tag concept">foundation</span></h3>
+<p>An "ultimate end" (τέλος, Greek): something one tends toward, not an
+objective to attain. The user writes 3-7 telos in <code>TELOS.md</code>
+(the sixth file of the workspace); every proactive proposal from Metnos is
+evaluated against them by an independent LLM within the
+<a href="#vaglio">Vaglio</a>. The telos are positive (vs
+<a href="#constitution">the Laws</a>, which are negative), oriented
+toward <em>utility</em> (vs the safety of the Laws), written by the user
+(vs the Laws co-written with Metnos). <strong>The Constitution does not
+judge; teleology does.</strong></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/telos.html">telos.html</a> &middot; <a href="Metnos_Dialogue_v1.html">Dialogue on ends and limits</a></p>
+</div>
+
+<div class="entry" id="tool">
+<h3>tool <span class="tag concept">component</span></h3>
+<p>A function Metnos can call during a turn: search, file reading, hashing,
+mail, web access, georeferencing and so on. Every tool exposed to the model
+has a validated schema; in the runtime the governed executable unit is the
+<a href="#executor">executor</a>.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/executor_catalog.html">Executor catalogue</a> &middot; <a href="Metnos_Extended_Perspectives_v1.html#cap2">Available capabilities</a></p>
+</div>
+
+<div class="entry" id="tutor">
+<h3>Tutor <span class="tag concept">component</span></h3>
+<p>The mode in which Metnos answers questions about its own use without
+performing the requested operation. It retrieves admitted sources from
+documentation, manifests and publishable registries, filters them for the
+audience, and states when an answer is undocumented. For practical operations
+it gives a natural-language request first; for an interface page it first
+gives the path through the web chat.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/tutor.html">Tutor</a></p>
+</div>
+
+<div class="entry" id="trace">
+<h3>trace</h3>
+<p>An informal abbreviation for the <a href="#turn-log">turn record</a> or,
+when stated explicitly, an audit record.</p>
+</div>
+
+<!-- ======================== U ======================== -->
+<div class="letter-head" id="L-U">U</div>
+
+<div class="entry" id="untrusted">
+<h3>&lt;untrusted&gt; <span class="tag concept">pattern</span></h3>
+<p>A marker that wraps any content coming from outside Metnos (output of
+web_fetch, email text, attachments). The prompt instructs the LLM to
+treat whatever is inside <code>&lt;untrusted&gt;&hellip;&lt;/untrusted&gt;</code>
+as <em>data</em>, not as <em>instruction</em>. The main mitigation
+against indirect prompt injection. Used consistently everywhere.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap10">runtime §10</a> &middot; <a href="architecture/policy.html">Policy</a></p>
+</div>
+
+<!-- ======================== V ======================== -->
+<div class="letter-head" id="L-V">V</div>
+
+<div class="entry" id="vaglio">
+<h3>Vaglio <span class="tag concept">component</span></h3>
+<p>The independent evaluation component. In Italian <em>vagliare</em>
+means to separate with a sieve: a mechanical, non-anthropomorphic gesture.
+Two stages: <a href="#guardia">constitutional Guard</a> (binary,
+deterministic: block or silence) and <a href="#giudice">teleological
+Judge</a> (graded, independent LLM). The design's cardinal sentence:
+<em>"The Constitution does not judge; teleology does."</em> The Vaglio
+is the structure that makes it operational.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html">vaglio.html</a> &middot; <a href="Metnos_Dialogue_v1.html#giornata3">Dialogue &mdash; Giornate III-IV</a></p>
+</div>
+
+<!-- ======================== W ======================== -->
+<div class="letter-head" id="L-W">W</div>
+
+<div class="entry" id="workspace">
+<h3>workspace <span class="tag concept">component</span></h3>
+<p>The local data area used by subsystems that share operational state, such
+as telos, the mnestome and the scheduler. Installation data may live in more
+than one physical directory; access, views and operations remain bound to the
+current user's identity.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/index.html#s9">Memory</a> &middot; <a href="architecture/pairing.html">Per-user isolation</a></p>
+</div>
+
+<footer>
+Metnos &mdash; <em>Glossary of architecture and use</em><br>
+Entries describe the current product and link to the relevant documentation.
+</footer>
+
+</body>
+</html>

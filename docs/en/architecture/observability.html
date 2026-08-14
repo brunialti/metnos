@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; operational observability</title>
+ <meta name="description" content="How to observe Metnos through chat Settings and the static HTML snapshot: data, refresh behaviour, access, and confidentiality boundaries.">
+ <meta name="keywords" content="Metnos, observability, Settings, administration, dashboard, turns, services, devices">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/observability">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/observability">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/observability">
+ <meta property="og:title" content="Metnos &mdash; operational observability">
+ <meta property="og:description" content="Chat administration views and the separate static HTML snapshot, with their respective boundaries.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — operational observability",
+ "description": "Chat administration views, the static snapshot, data, refresh behaviour, and access boundaries.",
+ "url": "https://metnos.com/en/architecture/observability.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/observability.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/observability.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">observability</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Operational observability</div>
+ <div class="meta">Seeing system state without mistaking a view for a source of authority.</div>
+</div>
+
+<p class="lead">Metnos provides two separate facilities. The chat's
+<strong>Settings</strong> page is the current administration interface and
+refreshes its data on each request. <code>runtime/observability.py</code>
+instead produces a static HTML file for local diagnosis. That file does not
+feed Settings, does not refresh itself, and is not served as a chat page.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">A natural-language example</a></li>
+ <li><a href="#cap2">The two surfaces</a></li>
+ <li><a href="#cap3">Settings in the chat</a></li>
+ <li><a href="#cap4">The static HTML snapshot</a></li>
+ <li><a href="#cap5">Data collected by the snapshot</a></li>
+ <li><a href="#cap6">Access, users, and confidentiality</a></li>
+ <li><a href="#cap7">Generation and lifetime</a></li>
+ <li><a href="#cap8">Verification and canonical sources</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. A natural-language example</h1>
+
+<p>Ask Metnos with a request such as:</p>
+
+<pre>Show me where I can check the latest turns and service status.</pre>
+
+<p>A useful answer should first give the visible route in the chat:
+<strong>Settings &gt; Activity &gt; Turns</strong> for recent requests and
+<strong>Settings &gt; System &gt; Services</strong> for configured services. If
+the question came from Telegram, this route must be opened in the Metnos web
+chat: Telegram does not embed administration pages.</p>
+
+<p>Only after this practical instruction should the answer explain APIs,
+records, or files. The static snapshot is appropriate for an explicitly
+requested technical diagnosis; it is not the ordinary route for chat users.</p>
+
+<h1 id="cap2">2. The two surfaces</h1>
+
+<table>
+<tr><th>Surface</th><th>Refresh behaviour</th><th>Access</th><th>Purpose</th></tr>
+<tr><td><strong>Settings</strong> (<code>/admin</code>)</td><td>Data is read again when the page is opened or refreshed.</td><td>Requires the administrator role enforced by HTTP middleware.</td><td>Inspection and administrative controls for the running installation.</td></tr>
+<tr><td><strong>Static snapshot</strong> (<code>runtime.observability</code>)</td><td>Captures the instant when the command runs.</td><td>Local file; protection depends on filesystem and machine permissions.</td><td>Offline diagnosis across six historical data sources.</td></tr>
+</table>
+
+<p>The two surfaces must not be merged into a single description. Settings
+uses its own routes and view models; only the command-line interface calls the
+static generator, and the HTTP server has no caller for it.</p>
+
+<h1 id="cap3">3. Settings in the chat</h1>
+
+<p>The Settings landing page summarises version and uptime, turns over the
+last 24 hours, proposals, executors, scheduler activity, Safety signatures,
+and users. Detail pages keep different operational questions separate:</p>
+
+<table>
+<tr><th>Route in the chat</th><th>Main information</th></tr>
+<tr><td>Settings &gt; Activity &gt; Turns</td><td>Identifier, time, channel, actor, steps, outcome, duration, and request.</td></tr>
+<tr><td>Settings &gt; Activity &gt; Scheduler</td><td>Task runs, outcome, and duration.</td></tr>
+<tr><td>Settings &gt; System &gt; Services</td><td>Services in the canonical registry, status, and admitted controls.</td></tr>
+<tr><td>Settings &gt; System &gt; Models</td><td>Effective redacted LLM, embedding, and VLM configuration: LLM and VLM can be edited and restored; embedding is view-only.</td></tr>
+<tr><td>Settings &gt; System &gt; Devices</td><td>Paired devices, presence, and revocation.</td></tr>
+<tr><td>Settings &gt; System &gt; Users</td><td>Users, roles, channels, and administrable preferences.</td></tr>
+</table>
+
+<p><code>runtime/ui_surfaces.py</code> is the canonical editorial description
+of visible pages and their navigation routes. Tutor consumes the same
+registry: a structural UI change requires a registry update, a navigation
+guide update, and a rebuilt Tutor index.</p>
+
+<h1 id="cap4">4. The static HTML snapshot</h1>
+
+<p><code>render_dashboard(out_path)</code> queries local sources and composes
+one document with embedded CSS, no JavaScript, and no WebSocket. Sections are
+ordered as follows: tests, Mnestoma, pairings, recent turns, Vaglio decisions,
+and scheduler.</p>
+
+<p>Each collector handles an unavailable source separately. The page can
+therefore be produced when one section is empty or reports an error. This
+makes a partial snapshot readable; it does not make missing data evidence that
+the corresponding component is healthy.</p>
+
+<p>The generated document currently uses Italian labels and
+<code>lang="it"</code>. It is not a localised chat surface and must not be
+presented as one.</p>
+
+<h1 id="cap5">5. Data collected by the snapshot</h1>
+
+<table>
+<tr><th>Source</th><th>Displayed projection</th><th>Configured location</th></tr>
+<tr><td><strong>Mnestoma</strong></td><td>Counts, active and proto edges, recent events.</td><td>Mnestoma's database, normally below <code>PATH_WORKSPACE/.mnestoma</code>.</td></tr>
+<tr><td><strong>Pairings</strong></td><td>Channel, sender identifier, level, timestamps, pairing author, and revoked count.</td><td><code>DB_PAIRINGS</code> below <code>PATH_USER_STATE</code>.</td></tr>
+<tr><td><strong>Turns</strong></td><td>Latest fifteen turns: request, outcome, step count, and beginning of the answer.</td><td><code>PATH_TURNS</code> below <code>PATH_USER_DATA</code>.</td></tr>
+<tr><td><strong>Vaglio</strong></td><td>Latest twenty decisions: executor, score, outcome, and abbreviated reason.</td><td><code>PATH_USER_DATA/vaglio</code>.</td></tr>
+<tr><td><strong>Scheduler</strong></td><td>Enabled tasks, schedule, latest run, and outcome.</td><td><code>PATH_USER_STATE/scheduler_v2.sqlite</code>.</td></tr>
+<tr><td><strong>Registered tests</strong></td><td>Modules, enabled cases, latest status, and largest modules.</td><td><code>PATH_RUNTIME/testing/tests.db</code>.</td></tr>
+</table>
+
+<p>Limits are fixed by the generator rather than exposed as CLI options: at
+most five daily turn files, three Vaglio files, and distinct row or event
+limits. A complete analysis must query the authorised source instead of
+inferring totals from this page.</p>
+
+<h1 id="cap6">6. Access, users, and confidentiality</h1>
+
+<ul>
+<li><strong>Settings is an installation-wide administration view.</strong> Middleware admits only the <code>admin</code> role; summaries may cover several users. It is not an individual user's personal view.</li>
+<li><strong>The static snapshot is installation-wide too.</strong> It may contain requests, answer excerpts, sender identifiers, and pairing metadata belonging to different users.</li>
+<li><strong>HTML escaping is not access control.</strong> The generator escapes dynamic text before inserting it into the document, but anyone who can open the file can still read its content.</li>
+<li><strong>Upstream redaction is not an absolute guarantee.</strong> Records may remove recognised credentials, but the snapshot must still be treated as confidential data.</li>
+<li><strong>The file sets no permissions of its own.</strong> It inherits its directory, owner, and process <em>umask</em>; it must not be placed in a publicly served directory.</li>
+<li><strong>A snapshot remains on disk.</strong> Regenerating overwrites the chosen path, but does not remove moved copies, backups, or files created with another <code>--out</code>.</li>
+</ul>
+
+<h1 id="cap7">7. Generation and lifetime</h1>
+
+<p>From the installation root, using the Metnos Python environment:</p>
+
+<pre>PYTHONPATH=runtime ./.venv/bin/python -m observability render
+PYTHONPATH=runtime ./.venv/bin/python -m observability render --out /chosen/path/dashboard.html</pre>
+
+<p>The default destination is
+<code>PATH_WORKSPACE/dashboard/index.html</code>. The command reports the
+written path and exits. There is no built-in periodic refresh: generation time
+and content remain unchanged until the command runs again.</p>
+
+<p>The file is derived output. It can be removed by deleting only the selected
+output path after confirming that no process uses it; removing it does not
+delete any operational source.</p>
+
+<h1 id="cap8">8. Verification and canonical sources</h1>
+
+<p>Focused tests for the static generator live in
+<code>tests/runtime/runtime/test_observability.py</code>. They verify, among
+other things, that executor names, requests, and responses cannot introduce
+active markup into the file. HTTP and end-to-end tests cover administration
+pages separately; this guide does not freeze a test count that would become
+stale.</p>
+
+<ul>
+<li><code>runtime/http_routes_admin.py</code> &mdash; Settings data and actions;</li>
+<li><code>runtime/http_auth.py</code> &mdash; authentication boundary for <code>/admin</code> routes;</li>
+<li><code>runtime/ui_surfaces.py</code> &mdash; editorial registry of visible surfaces;</li>
+<li><code>runtime/observability.py</code> &mdash; static snapshot generator;</li>
+<li><code>runtime/config.py</code> &mdash; canonical installation paths.</li>
+</ul>
+
+</body>
+</html>

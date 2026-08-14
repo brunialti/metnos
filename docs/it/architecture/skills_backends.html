@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; skill e servizi di esecuzione</title>
+ <meta name="description" content="Come Metnos separa le skill attivabili dai servizi che eseguono una capacit&agrave;, sceglie il fornitore e conserva autorit&agrave; e stato.">
+ <meta name="keywords" content="Metnos, skill, backend, servizi, provider, dormienza, autorizzazione">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/skills_backends">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/skills_backends">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/skills_backends">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/skills_backends">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/skills_backends.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/skills_backends.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">skill e servizi</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Skill e servizi di esecuzione</div>
+ <div class="meta">Che cosa &egrave; attivo, come viene scelto un fornitore e perch&eacute; questa scelta non amplia i permessi.</div>
+</div>
+
+<p class="lead">Una <em>skill</em> stabilisce se un gruppo di capacit&agrave; &egrave;
+disponibile. Un servizio di esecuzione, chiamato <code>backend</code> nel codice,
+stabilisce come una capacit&agrave; raggiunge un archivio locale o un fornitore
+concreto. I due piani restano separati dal pianificatore e dall'autorizzazione.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Cominciare da una richiesta naturale</a></li>
+ <li><a href="#cap2">I tre tipi di skill</a></li>
+ <li><a href="#cap3">Come viene scelto il servizio</a></li>
+ <li><a href="#cap4">Abilitazione e dormienza</a></li>
+ <li><a href="#cap5">Autorit&agrave; e isolamento</a></li>
+ <li><a href="#cap6">Skill importate e MCP</a></li>
+ <li><a href="#cap7">Fonti correnti</a></li>
+ <li><a href="#cap8">Esempi pronti da usare</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Cominciare da una richiesta naturale</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Quali skill sono attive e quali sono dormienti?&raquo; Metnos legge il registro
+corrente e mostra, per ciascuna skill, stato, prerequisiti ed executor associati.
+Non occorre conoscere il nome di un comando.</p>
+
+<p>Per scegliere un fornitore in una singola operazione, nominalo nella frase:
+&laquo;Cerca su Google Drive il bilancio 2025&raquo;. Se non lo nomini, Metnos applica
+l'ordine configurato per quella famiglia di dati. La scelta non viene lasciata
+all'intuizione del modello linguistico.</p>
+
+<table>
+<thead><tr><th>Concetto</th><th>Domanda a cui risponde</th><th>Esempio</th></tr></thead>
+<tbody>
+<tr><td><strong>Skill</strong></td><td>Questa famiglia di capacit&agrave; &egrave; abilitata e dispone dei suoi prerequisiti?</td><td><code>mail</code>, <code>photos</code>, <code>google-workspace</code></td></tr>
+<tr><td><strong>Servizio di esecuzione</strong><br><code>backend</code></td><td>Dove e con quale adattatore viene eseguita l'operazione?</td><td>file locali o Google Drive; calendario locale o Google Calendar</td></tr>
+<tr><td><strong>Servizio operativo</strong></td><td>Quale processo di Metnos &egrave; installato e in esecuzione?</td><td>server HTTP, Playwright, SearXNG, Photon</td></tr>
+</tbody>
+</table>
+
+<p>I servizi operativi dell'ultima riga sono quelli mostrati nella chat web in
+<strong>Settings &gt; Sistema &gt; Servizi</strong> (<code>/admin/services</code>).
+Quella pagina controlla processi e unit&agrave; di servizio; non &egrave; il registro delle
+skill e non sceglie il fornitore di una singola richiesta. Da Telegram il Tutor
+pu&ograve; indicare questo percorso, ma la pagina si apre nella chat web.</p>
+
+<h1 id="cap2">2. I tre tipi di skill</h1>
+
+<p>Il registro usa tre categorie stabili. La categoria esprime provenienza e
+regime di fiducia, non il modo in cui il pianificatore formula una richiesta.</p>
+
+<table>
+<thead><tr><th>Categoria</th><th>Contenuto</th><th>Disponibilit&agrave;</th></tr></thead>
+<tbody>
+<tr><td><code>core</code></td><td>Capacit&agrave; senza un servizio esterno obbligatorio: file e processi locali, tempo, attivit&agrave; pianificate, firme, credenziali e operatori sulle liste.</td><td>Il nucleo non pu&ograve; essere disabilitato come una skill ordinaria.</td></tr>
+<tr><td><code>first_party</code></td><td>Skill mantenute da Metnos, comprese posta, foto, web, georiferimento, calendari, GitHub, Google Workspace, amministrazione del sistema e archivi SQL.</td><td>Sono incluse nel progetto; possono diventare dormienti se manca un prerequisito o se l'amministratore le disabilita.</td></tr>
+<tr><td><code>imported</code></td><td>Skill acquisite da una sorgente esterna e trasformate in executor Metnos con provenienza registrata.</td><td>Passano firma, adattamento, verifica e isolamento previsti per il codice importato.</td></tr>
+</tbody>
+</table>
+
+<p>Le skill mantenute dal progetto sono classificate dal registro
+<code>runtime/skills_catalog.py</code>; i pacchetti dichiarano inoltre lingua,
+fiducia e abilitazione automatica nel frontespizio di <code>SKILL.md</code>.
+Il catalogo generato degli executor resta la fonte per nomi e quantità correnti.</p>
+
+<h1 id="cap3">3. Come viene scelto il servizio</h1>
+
+<p>Il risolutore centrale possiede la scelta per le famiglie con pi&ugrave; servizi.
+Riceve il nome canonico dell'oggetto, la richiesta e lo schema degli argomenti;
+restituisce soltanto un valore ammesso dal contratto dell'executor. Il modello
+linguistico non sceglie da un elenco di marche.</p>
+
+<table>
+<thead><tr><th>Famiglia</th><th>Servizi correnti</th><th>Comportamento senza indicazione esplicita</th></tr></thead>
+<tbody>
+<tr><td>file e cartelle</td><td>locale, Google Workspace</td><td>locale; Google viene scelto quando la richiesta nomina Drive, Docs, Sheets o Google Workspace</td></tr>
+<tr><td>eventi</td><td>Google Workspace, calendario locale</td><td>primo servizio disponibile nell'ordine configurato; quello locale resta disponibile per le operazioni che supporta</td></tr>
+<tr><td>contatti</td><td>Google Workspace</td><td>il servizio viene usato soltanto se sono disponibili le credenziali richieste</td></tr>
+</tbody>
+</table>
+
+<p>La posta applica lo stesso principio attraverso il risolutore degli account:
+l'account indicato esplicitamente prevale, altrimenti vale l'account predefinito
+configurato. GitHub conserva executor qualificati dal fornitore; il motore li
+recluta semanticamente quando la richiesta nomina GitHub. Gli archivi SQL
+scelgono invece il servizio dal registro dello specifico archivio. Sono forme
+diverse di una regola unica: la configurazione e il contesto esplicito possiedono
+la scelta, non un'ipotesi libera del pianificatore.</p>
+
+<p>Se il servizio richiesto non &egrave; disponibile o non &egrave; ammesso dallo schema di
+quell'executor, Metnos restituisce un errore esplicito. Non sostituisce in
+silenzio il fornitore richiesto con quello predefinito.</p>
+
+<h1 id="cap4">4. Abilitazione e dormienza</h1>
+
+<p>Una skill pu&ograve; essere abilitata ma <strong>dormiente</strong>: rimane visibile
+nell'inventario, mentre i suoi executor non entrano fra le scelte del
+pianificatore. Accade, per esempio, quando mancano credenziali OAuth, un indice
+necessario o un archivio registrato.</p>
+
+<ol>
+ <li><code>list_skills</code> legge il registro e il catalogo caricato; non usa un modello per inventariare lo stato.</li>
+ <li><code>set_skills</code> abilita o disabilita una skill nota, passa dalle normali regole di autorizzazione e ha effetto dal turno successivo.</li>
+ <li>La modifica invalida la memoria del catalogo mediante lo stato persistente; non richiede il riavvio del server.</li>
+ <li>Il nucleo non &egrave; disattivabile. Un nome sconosciuto produce un errore con l'elenco dei nomi ammessi.</li>
+</ol>
+
+<p>L'abilitazione &egrave; configurazione dell'installazione, non una preferenza
+dedotta dalla prosa di un singolo utente. Soltanto un'identit&agrave; autorizzata pu&ograve;
+modificarla; lingua, conversazioni e sessioni restano invece isolate per utente.</p>
+
+<h1 id="cap5">5. Autorit&agrave; e isolamento</h1>
+
+<p>Scegliere un servizio non concede il permesso di usarlo. Gli executor che
+raggiungono un fornitore dichiarano la capacit&agrave; chiusa
+<code>provider:access</code>, con un vincolo sul valore finale del selettore
+quando necessario. Il motore calcola prima il servizio effettivo e poi valuta
+capacit&agrave;, credenziali, rete, ruolo dell'utente e consenso.</p>
+
+<p>Il nome dell'executor, una parola nella richiesta o un argomento proposto dal
+modello non sono da soli fonti di autorit&agrave;. Il profilo di isolamento deriva dal
+manifesto firmato e riceve soltanto le risorse richieste dalle capacit&agrave;
+effettive. La separazione fra skill e servizio serve quindi a cambiare
+l'adattatore senza aggirare regole, firme o postcondizioni.</p>
+
+<h1 id="cap6">6. Skill importate e MCP</h1>
+
+<p>Una skill esterna non viene eseguita direttamente. L'importatore ne analizza
+i comandi, li associa al vocabolario governato, genera o riusa executor con un
+contratto Metnos, registra la provenienza e applica le verifiche di ammissione.
+La pagina <a href="skill_importer.html">Importazione delle skill</a> descrive
+il processo e i suoi rifiuti.</p>
+
+<p>MCP risolve la scoperta e l'invocazione di strumenti esposti da un server;
+non sostituisce il contratto di autorit&agrave; di Metnos. Non &egrave; disponibile un
+executor generico che accetti liberamente <code>server</code>, <code>tool</code>
+e argomenti MCP. Un eventuale adattatore deve restare dietro un executor
+canonico, con schema, capacit&agrave; e verifica dell'esito dichiarati.</p>
+
+<h1 id="cap7">7. Fonti correnti</h1>
+
+<table>
+<thead><tr><th>Fonte</th><th>Responsabilit&agrave;</th></tr></thead>
+<tbody>
+<tr><td><code>runtime/skills_catalog.py</code></td><td>classificazione delle skill mantenute dal progetto e relativi prerequisiti</td></tr>
+<tr><td><code>runtime/skill_registry.py</code></td><td>pacchetti installati, lingua, fiducia e stato persistente di abilitazione</td></tr>
+<tr><td><code>runtime/skill_admin.py</code></td><td>inventario e modifica delle skill dalla conversazione</td></tr>
+<tr><td><code>runtime/backend_resolver.py</code></td><td>scelta deterministica dei servizi per file, cartelle, eventi e contatti</td></tr>
+<tr><td><code>runtime/mail_account_resolver.py</code></td><td>scelta dell'account e del servizio di posta</td></tr>
+<tr><td>manifesti firmati</td><td>argomenti ammessi, capacit&agrave;, collocazione, isolamento e prove dell'executor</td></tr>
+</tbody>
+</table>
+
+<p>Per i processi installati e controllabili dall'interfaccia, consulta la
+<a href="../interface.html">guida all'interfaccia</a> e apri
+<strong>Settings &gt; Sistema &gt; Servizi</strong> nella chat web.</p>
+
+<h1 id="cap8">8. Esempi pronti da usare</h1>
+
+<ul>
+ <li>&laquo;Quali skill sono attive e quali sono dormienti?&raquo;</li>
+ <li>&laquo;Disattiva la skill GitHub dal prossimo turno.&raquo;</li>
+ <li>&laquo;Cerca su Google Drive il bilancio 2025.&raquo;</li>
+ <li>&laquo;Nel calendario locale trova gli spazi liberi di venerd&igrave; pomeriggio.&raquo;</li>
+ <li>&laquo;Mostrami i servizi di Metnos e guidami fino a Settings &gt; Sistema &gt; Servizi nella chat web.&raquo;</li>
+</ul>
+
+<p>Le prime quattro frasi agiscono sul catalogo o su una capacit&agrave;. L'ultima
+chiede invece al Tutor di spiegare la pagina dei processi operativi. Questa
+distinzione evita che la parola &laquo;servizio&raquo; venga interpretata come skill,
+fornitore o unit&agrave; systemd senza il contesto necessario.</p>
+
+<hr>
+<p style="text-align:center; color:#64748b; font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>skill e servizi di esecuzione</em>
+</p>
+</body>
+</html>
