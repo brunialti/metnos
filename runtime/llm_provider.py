@@ -87,6 +87,26 @@ class ProviderError(Exception):
     pass
 
 
+def metnos_llamacpp_slot_id(value=None) -> int:
+    """Risolvi lo slot llama.cpp riservato a Metnos.
+
+    Un solo punto di configurazione evita che alcuni consumer tornino al
+    selettore automatico del server e contaminino la cache dello slot Giorgio.
+    """
+    raw = os.environ.get("METNOS_LLM_SLOT_ID", "1") if value is None else value
+    try:
+        slot = int(raw)
+    except (TypeError, ValueError) as exc:
+        from messages import get as _msg
+        raise ValueError(_msg(
+            "ERR_ARG_NOT_NONNEGATIVE_INT", arg="METNOS_LLM_SLOT_ID")) from exc
+    if slot < 0:
+        from messages import get as _msg
+        raise ValueError(_msg(
+            "ERR_ARG_NOT_NONNEGATIVE_INT", arg="METNOS_LLM_SLOT_ID"))
+    return slot
+
+
 def _request_timeout(value, default: float) -> float:
     """Normalize an optional caller budget without changing legacy defaults."""
 
@@ -1113,6 +1133,7 @@ def make_provider_from_spec(spec):
         return LlamaCppProvider(
             model=spec.get("model") or "local",
             endpoint=endpoint or "http://127.0.0.1:8080",
+            id_slot=metnos_llamacpp_slot_id(spec.get("id_slot")),
         )
     elif p == "anthropic":
         model = spec.get("model")

@@ -39,7 +39,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from llm_provider import LlamaCppProvider, make_provider_from_spec
+from llm_provider import (
+    LlamaCppProvider,
+    make_provider_from_spec,
+    metnos_llamacpp_slot_id,
+)
 from llm_router import resolved_tier_spec, tier_endpoint as _tier_endpoint
 
 
@@ -302,12 +306,10 @@ def call_llm(
     # backend without changing Tutor or executor callers.  Slot affinity is a
     # llama.cpp transport concern and remains confined to this gateway.
     if provider_name == "llamacpp":
-        _slot_env = os.environ.get("METNOS_LLM_SLOT_ID", "1").strip()
-        _slot = int(_slot_env) if _slot_env.isdigit() else None
         provider = LlamaCppProvider(
             model=spec.get("model") or "local",
             endpoint=endpoint,
-            id_slot=_slot,
+            id_slot=metnos_llamacpp_slot_id(spec.get("id_slot")),
         )
     else:
         provider = make_provider_from_spec(spec)
