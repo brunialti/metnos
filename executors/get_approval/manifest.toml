@@ -172,7 +172,10 @@ expect = { ok = false, error_contains = "tool" }
 
 [[tests]]
 name   = "happy_path_approval"
-env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_approval_happy" }
+# Come per `get_inputs`, il gate e' scoped al proprietario: senza
+# `METNOS_OWNER_USER_ID` non c'e' un pending da isolare e l'executor
+# rifiuta. Il test lo dichiara, o misura il rifiuto invece del gate.
+env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_approval_happy", METNOS_OWNER_USER_ID = "manifest-get-approval-owner" }
 setup  = "rm -rf /tmp/metnos_test_get_approval_happy"
 input  = { prompt = "Approvi la risposta alla issue #47?", on_approve = { tool = "write_entries", args = { store = "github_issue_qa", entries = [{ repo = "o/r", issue_number = 47, status = "approved" }] } } }
 expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 1 } }
