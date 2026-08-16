@@ -2085,6 +2085,13 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
             if objs and all(have[o] >= need[o] for o in objs):
                 dropped.discard(wv)
     return dropped
+                # Un passo di scrittura che non e' un create non porta un
+                # payload iniziale da valutare: senza questo valore di
+                # partenza il ramo sotto legge una variabile non assegnata,
+                # l'eccezione finisce nel `noop` della guardia e la guardia
+                # smette di guardare — in silenzio, su ogni piano con un
+                # writer non-create.
+                payload = False
 
 
 def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> None:
