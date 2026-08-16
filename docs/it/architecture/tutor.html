@@ -280,10 +280,16 @@ costruisce un candidato completo, ne verifica schema, vettori e firma e lo
 sostituisce atomicamente al catalogo corrente. I vettori delle unit&agrave; immutate
 possono essere riutilizzati, ma nessun catalogo parziale viene ammesso.</p>
 
-<p>Se non esiste una fonte sufficiente, il Tutor dichiara una lacuna. Se invece
-falliscono il catalogo, il modello di rappresentazione o la composizione, segnala l'indisponibilit&agrave;
-tecnica. In entrambi i casi una domanda informativa non viene trasformata per
-errore in un'azione.</p>
+<p>Se il recupero non trova <em>alcuna</em> fonte ammissibile, il Tutor non
+risponde e lascia la richiesta al normale motore. In quel caso l'unica cosa
+stabilita &egrave; che un classificatore ha letto la domanda come esplicativa, e
+chiudere il turno su quella sola lettura nasconderebbe dietro una supposizione
+ci&ograve; che il motore sa fare. Se invece le fonti ci sono e non bastano a
+comporre una risposta, il Tutor dichiara una lacuna: &egrave; un buco del corpus,
+non una domanda letta male. Se falliscono il catalogo, il modello di
+rappresentazione o la composizione, segnala l'indisponibilit&agrave; tecnica. In
+nessuno di questi casi una domanda informativa viene trasformata per errore in
+un'azione.</p>
 
 <h1 id="riferimenti">8. Riferimenti tecnici</h1>
 

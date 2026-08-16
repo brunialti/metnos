@@ -271,10 +271,15 @@ complete candidate, verifies its schema, vectors, and signature, and atomically
 replaces the current catalog. Vectors for unchanged units may be reused, but a
 partial catalog is never admitted.</p>
 
-<p>If no source is sufficient, Tutor reports a knowledge gap. If the catalog,
-representation, or composition subsystem fails instead, it reports technical
-unavailability. In either case, an informational question is not accidentally
-turned into an action.</p>
+<p>If retrieval finds <em>no</em> admissible source at all, Tutor does not
+answer and leaves the request to the ordinary engine. The only thing
+established in that case is that a classifier read the question as
+explanatory, and closing the turn on that reading alone would hide what the
+engine can do behind a guess. If sources are present but insufficient to
+compose an answer, Tutor reports a knowledge gap: that is a hole in the
+corpus, not a misread question. If the catalog, representation, or composition
+subsystem fails, it reports technical unavailability. In none of these cases
+is an informational question accidentally turned into an action.</p>
 
 <h1 id="references">8. Technical references</h1>
 

@@ -1064,16 +1064,19 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             evidence=_evidence(retrieval_trace, catalog_version),
         )
     if context is None:
-        text = _with_pending_note(_msg("MSG_TUTOR_LACUNA"), request)
-        return TutorAnswer(
-            esito="lacuna",
-            answer_md=text,
-            score_band="low",
-            elapsed_ms=int((time.monotonic() - started) * 1000),
-            detection=detection_label,
-            gap_reason="no_source",
-            evidence=_evidence(retrieval_trace, catalog_version),
-        )
+        # No admissible source at all.  The only thing established here is
+        # that a closed classifier read the request as explanatory; nothing
+        # was retrieved that could corroborate it.  Ending the turn on that
+        # alone hides the ordinary runtime behind a guess: measured on the
+        # turn history, 13 of 167 Tutor turns closed exactly this way, and
+        # the engine never got to try — «dov'e' il Duomo di Milano» among
+        # them, which the engine answers correctly.
+        #
+        # A documentation gap stays a declared outcome where it is EARNED:
+        # the composer branch below has sources in hand and still cannot
+        # answer, and that is a gap in the corpus, not a misread request.
+        log.info("Tutor declined reason=no_source (falling back to runtime)")
+        return None
     hits = context.hits
     primary = hits[0]
     repair_pass = 0

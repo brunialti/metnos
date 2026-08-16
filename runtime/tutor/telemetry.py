@@ -1,7 +1,16 @@
-"""TurnLog records with a query-minimized Tutor-specific extension.
+"""TurnLog records with a Tutor-specific extension.
 
-The final answer is intentionally retained as conversation history; the raw
-query is represented only by its normalized hash in the Tutor extension.
+The turn record carries the request in the same form the ordinary engine
+records it, plus the normalized hash the F4 ledger keys on.
+
+Why the request is written here (16/8/2026).  It used to be represented only
+by its hash, and the practical effect was that the Tutor's admissions could
+not be audited: the turn history showed 167 Tutor turns, 13 of which closed
+with no source at all, and nobody could see WHICH requests those were.  The
+Tutor is an early exit placed before the engine, so an admission it should not
+have made is a silent diversion; a store that already holds every engine
+request of the same user, in the same file, gains no protection by hiding this
+one.  Deletion of an owner removes both, as before.
 """
 
 from __future__ import annotations
@@ -36,8 +45,9 @@ def _prepare(request: TutorRequest, answer: TutorAnswer):
     payload = {
         "ts_start": now - (max(answer.elapsed_ms, 0) / 1000.0),
         "ts_end": now,
-        # Deliberately no raw query in Tutor telemetry.
-        "user_query": "",
+        # Same field, same form as an engine turn: without it a Tutor
+        # admission is not auditable after the fact.
+        "user_query": request.query_redacted,
         "turn_id": turn_id,
         "mode": "tutor",
         "candidates": [],

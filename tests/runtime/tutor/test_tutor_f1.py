@@ -1571,6 +1571,26 @@ def test_composer_insufficient_is_a_lacuna_not_unavailable(monkeypatch):
     assert answer.source_ids == ("card:github-capabilities:it",)
 
 
+def test_no_source_leaves_the_turn_to_the_runtime(monkeypatch):
+    """Zero fonti non e' una lacuna: e' l'assenza di una prova di competenza.
+
+    Il Tutor sta PRIMA del motore: se chiude il turno, il motore non prova
+    nemmeno. Con zero fonti ammissibili l'unica cosa stabilita e' che un
+    classificatore ha letto la richiesta come esplicativa — e su «dov'e' il
+    Duomo di Milano» quella lettura e' sbagliata, mentre il motore risponde.
+    Misurato sullo storico: 13 turni su 167 chiusi cosi'.
+
+    Il confine con la lacuna VERA (test qui sopra) e' la prova: il compositore
+    ha le fonti in mano e non riesce a rispondere, e quello e' un buco del
+    corpus, non una richiesta letta male.
+    """
+    _route(monkeypatch, None)
+    monkeypatch.setattr("tutor.service._msg", lambda key: key)
+    answer = answer_request(TutorRequest(
+        "dov'e' il Duomo di Milano", "it", _principal()))
+    assert answer is None
+
+
 def test_same_conversation_probe_is_one_ranking_with_companion(monkeypatch):
     cards = load_published()
     unit = _knowledge_unit(text="Il catalogo viene verificato all'avvio.")
@@ -1810,7 +1830,18 @@ def test_catalog_failure_is_unavailable_only_after_semantic_explain(
 
 
 
-def test_tutor_telemetry_is_minimized(tmp_path, monkeypatch):
+def test_tutor_telemetry_records_the_request(tmp_path, monkeypatch):
+    """La richiesta si legge nel turno come in un turno del motore.
+
+    Il Tutor e' un'uscita anticipata PRIMA del motore: un'ammissione che non
+    doveva avvenire e' un dirottamento silenzioso. Finche' il turno portava
+    solo l'impronta della richiesta, quel dirottamento non era verificabile a
+    posteriori — 167 turni Tutor nello storico, 13 chiusi senza alcuna fonte, e
+    nessun modo di sapere QUALI richieste fossero. Lo stesso archivio contiene
+    gia' in chiaro ogni richiesta del motore per lo stesso utente.
+
+    L'impronta resta: e' la chiave del registro F4, non un sostituto.
+    """
     import json
     import config
     from tutor.telemetry import record
@@ -1824,8 +1855,7 @@ def test_tutor_telemetry_is_minimized(tmp_path, monkeypatch):
     row = json.loads(next(tmp_path.glob("*.jsonl")).read_text().splitlines()[0])
     assert stored.turn_id == row["turn_id"]
     assert row["mode"] == "tutor"
-    assert row["user_query"] == ""
-    assert query not in json.dumps(row, ensure_ascii=False)
+    assert row["user_query"] == query
     assert row["tutor_query_hash"].startswith("sha256:")
     assert row["tutor_source_ids"] == [
         "card:attivita-programmate:it"]
