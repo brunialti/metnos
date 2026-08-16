@@ -357,6 +357,43 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
          "salva le preferenze", "elimina l'utente"),
         ("create a guest", "edit and save the user", "issue a channel token or disconnect it",
          "save preferences", "delete the user"),
+        procedure_it=(
+            "Nella chat web apri Settings > Sistema > Utenti.",
+            "Nel riquadro in cima compila nome (solo lettere minuscole, cifre e "
+            "trattino basso, obbligatorio), nome visualizzato, email, ruolo "
+            "(guest per un ospite, host per un secondo proprietario) e "
+            "autonomia (read_only guarda soltanto, restricted chiede conferma "
+            "per le operazioni che modificano, full procede da solo).",
+            "Premi crea: la persona compare nell'elenco ma non ha ancora "
+            "alcun canale collegato, quindi non puo' ancora entrare.",
+            "Apri il suo nome nell'elenco ed emetti dal dettaglio un token di "
+            "collegamento per il canale che usera'. Vale un'ora ed e' monouso.",
+            "Per la chat web consegna alla persona l'indirizzo completo "
+            "generato; per Telegram consegna il token, che la persona invia al "
+            "bot come /start seguito dal token.",
+            "Trasferisci indirizzo o token solo per una via fidata: chi li ha "
+            "entra come quella persona. Se scadono prima dell'uso, torna sul "
+            "dettaglio e generane altri.",
+        ),
+        procedure_en=(
+            "In the web chat open Settings > System > Users.",
+            "In the box at the top fill in name (lowercase letters, digits and "
+            "underscore only, required), display name, email, role (guest for "
+            "a guest, host for a second owner) and autonomy (read_only only "
+            "looks, restricted asks for confirmation on operations that change "
+            "something, full goes ahead alone).",
+            "Press create: the person appears in the list but has no channel "
+            "connected yet, so they cannot get in.",
+            "Open their name in the list and issue, from the detail page, a "
+            "connection token for the channel they will use. It is valid for "
+            "one hour and single-use.",
+            "For the web chat hand the person the complete address that was "
+            "generated; for Telegram hand them the token, which the person "
+            "sends to the bot as /start followed by the token.",
+            "Pass the address or the token only through a trusted way: whoever "
+            "holds them gets in as that person. If they expire before use, go "
+            "back to the detail page and generate new ones.",
+        ),
         structure_sha="453642d23605",
     ),
     UiSurfaceSpec(
