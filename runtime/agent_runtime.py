@@ -245,6 +245,14 @@ def _is_meta_step(s) -> bool:
     return False
 
 
+# Error classes for which the ENGINE already stated why the action did not
+# run.  The generic §4.3 message ("rephrase your request") is then a net loss
+# of information: it asks the user to retry when the problem is not how the
+# request was written but that no installed tool can perform it.  Closed
+# registry, never per-tool.
+_AUTHORITATIVE_UNFULFILLED_CLASSES = frozenset({"capability_missing"})
+
+
 def _detect_unfulfilled_mutating_intent(log) -> str:
     """Detection §4.3 + §2.8 (25/5/2026): intent utente mutating ma
     nessuno step l'ha eseguito con successo → l'azione e' pendente,
@@ -3894,6 +3902,12 @@ class TurnLog:
     # non chiama mai un tool col verbo richiesto (es. utente «cancella X»
     # ma PLANNER fa solo read/list).
     intent_verb: str = ""
+    # Error class declared by the engine for this turn (`DispatchResult`).
+    # `write()` needs it: an outcome the engine already explained (for
+    # instance `capability_missing`) is AUTHORITATIVE and must not be
+    # rewritten with a generic message.  Without this field the engine's
+    # explanation was lost on the way to the user (§2.8).
+    error_class: str = ""
     # Conversation linking (8/5/2026): persisted nel JSONL per permettere
     # al chat HTTP di ricaricare la storia della conversazione dopo un tab
     # close. Sender HTTP setta dal body POST `conversation_id`. Telegram lo
@@ -4953,6 +4967,12 @@ class TurnLog:
                             break
                 if _mut_hint:
                     self.final_message = _mut_hint
+                elif self.error_class in _AUTHORITATIVE_UNFULFILLED_CLASSES:
+                    # The engine already explained WHY the action did not
+                    # happen (no tool can perform it).  Replacing that with
+                    # the generic "rephrase" message drops the information
+                    # and asks for a retry that cannot succeed.
+                    pass
                 else:
                     try:
                         self.final_message = msg(
@@ -6541,6 +6561,9 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
         if isinstance(hint, str) and hint:
             log.final_message = hint
     log.intent_verb = _engine_v2_res.get("verb", "") or ""
+    # The engine's error class travels with the turn: `write()` uses it to
+    # avoid overwriting a specific explanation with a generic message.
+    log.error_class = str(_engine_v2_res.get("error_class") or "")
     _apply_device_tag(log)   # ADR 0034: tag 📍 + campo dal device REALE degli step
     log.ts_end = time.time()
     log.write()
