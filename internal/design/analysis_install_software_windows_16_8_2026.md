@@ -14,6 +14,9 @@ Windows. Soluzione robusta, general purpose.
 > device, sul server solo se amministratore. Le §4-§6 restano come
 > ricognizione delle alternative: leggerle sapendo quale è stata scelta.
 >
+> Le istruzioni implementative, scritte per essere eseguite da un modello
+> di classe inferiore, stanno in `spec_install_packages.md`.
+>
 > Documento fermato allo studio di fattibilità su richiesta di Roberto.
 > Tutti i numeri e i comportamenti citati come «verificato» sono stati
 > misurati il 16/8 sulla macchina reale `pcroberto` o letti nel codice, non
