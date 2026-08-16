@@ -59,9 +59,9 @@ class _FastpathDbCase(unittest.TestCase):
     def tearDown(self):
         eng_fastpath._db_path = self._orig
 
-    def _record(self, query, fw, run):
+    def _record(self, query, fw, run, intent=None):
         eng_dispatch._maybe_record_fastpath(
-            query, Intent(verb="delete", object="persons"), fw, run)
+            query, intent or Intent(verb="delete", object="persons"), fw, run)
 
 
 # ── Criterio efficacia in _maybe_record_fastpath ──────────────────────────
@@ -109,10 +109,18 @@ class TestEfficacyGate(_FastpathDbCase):
 
     def test_mutant_uncountable_output_not_blocked(self):
         """Mutante senza counter contabile → non giudicabile → registra
-        (conservativo: mai bloccare senza evidenza)."""
+        (conservativo: mai bloccare senza evidenza).
+
+        L'intent va dichiarato COERENTE con la query e col piano: qui si
+        misura il criterio di EFFICACIA, non la copertura dell'azione
+        richiesta. Con l'intent segnaposto `delete/persons` il piano
+        `set_credentials` risultava scoperto e il turno veniva scartato dal
+        gate a monte, mascherando il criterio sotto misura.
+        """
         fw = _fw("set_credentials")
         run = _run([("set_credentials", {"ok": True})])
-        self._record("imposta la credenziale", fw, run)
+        self._record("imposta la credenziale", fw, run,
+                     intent=Intent(verb="set", object="credentials"))
         self.assertEqual(len(eng_fastpath.list_all()), 1)
 
     def test_skipped_conditional_mutant_not_blocked(self):
