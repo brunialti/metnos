@@ -1,18 +1,57 @@
 #!/usr/bin/env python3
-"""Esegue test_runner su tutti i manifest in <install_root>/executors/."""
+"""Esegue test_runner su tutti i manifest in <install_root>/executors/.
+
+La suite gira UNA ALLA VOLTA per macchina. I born-test isolano dati, stato e
+configurazione dell'utente (sotto), ma i loro `setup`/`teardown` usano percorsi
+assoluti fissi sotto `/tmp` — e devono, perche' la politica dello spazio di
+lavoro ammette proprio quelli. Due esecuzioni contemporanee si cancellano a
+vicenda le cartelle di prova a meta' test, e l'esito che ne esce e' rosso su un
+executor a caso: misurato il 16/8/2026 su `find_files_hash` in una passata e su
+`write_files` in un'altra, entrambe innocenti. Un lucchetto esclusivo lo rende
+impossibile invece che confuso.
+"""
+import fcntl
 import subprocess
 import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXECUTORS_DIR = REPO_ROOT / "executors"
 TEST_RUNNER = REPO_ROOT / "runtime" / "test_runner.py"
+LOCK_PATH = Path(tempfile.gettempdir()) / "metnos-manifest-suite.lock"
+
+
+def _acquire_suite_lock():
+    """Attende il proprio turno, dicendo che lo sta facendo."""
+    handle = open(LOCK_PATH, "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except BlockingIOError:
+        pass
+    print("suite dei manifest gia' in corso: attendo il mio turno "
+          f"({LOCK_PATH})", file=sys.stderr, flush=True)
+    started = time.monotonic()
+    fcntl.flock(handle, fcntl.LOCK_EX)
+    print(f"turno acquisito dopo {time.monotonic() - started:.0f}s",
+          file=sys.stderr, flush=True)
+    return handle
 
 
 def main():
+    lock = _acquire_suite_lock()
+    try:
+        return _run()
+    finally:
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        lock.close()
+
+
+def _run():
     manifests = sorted(EXECUTORS_DIR.glob("*/manifest.toml"))
     total_pass = total_fail = 0
     failed_executors: list[tuple[str, int]] = []
