@@ -39,6 +39,15 @@ l'esistenza di liste di termini in una o più lingue cablate nel testo.
 Detto in una riga: **il meccanismo i18n esiste, funziona, ed è aggirato in
 tre modi diversi.**
 
+Le tre componenti hanno tre trattamenti distinti, e ognuna ha la sua sezione
+con problema e soluzione:
+
+| Componente | Problema | Soluzione | Dove |
+|---|---|---|---|
+| Regex di lingua nel codice (116) | scritte a mano, invisibili al processo i18n | template con slot a cardinalità libera, regex GENERATA | §5, spec §2-§5 |
+| Il dizionario stesso (93 concetti) | `register()` sa contare fino a due; l'unione nasconde i buchi; 25 concetti si accodano in eterno | firma a dizionario di lingue, unione osservabile, due esiti distinti | **§8**, spec parte B |
+| Liste di parole cablate (24, 286 termini) | cinque forme diverse, una sola ricetta non basta | nel lessico ciò che cambia con la lingua, e solo quello | **§9**, spec parte C |
+
 ---
 
 ## 2. I tre modi in cui l'i18n viene aggirato
@@ -230,10 +239,131 @@ aggiunge una lingua domani.
    nuova regex letterale nel percorso della richiesta contiene parole di
    lingua. Senza, questo documento andrà riscritto fra sei mesi con numeri
    più grandi.
+7. **I tre difetti del dizionario** (§8): firma di `register()`, unione
+   osservabile, coda che converge. Il punto 1 va fatto PRIMA delle
+   migrazioni, o si convertono 93 concetti due volte.
+8. **Le 24 liste cablate** (§9), per forma: prima A e B (meccaniche), poi
+   C (fast_path, che cambia fonte ma non semantica), poi D ed E.
 
 ---
 
-## 8. Decisioni aperte, per Roberto
+## 8. Il dizionario multilingua stesso — problema e soluzione
+
+Le regex sono il sintomo più visibile, ma il dizionario che dovrebbe
+risolverle ha tre difetti propri. Vanno trattati, altrimenti il refactor
+delle regex sposta il debito senza estinguerlo.
+
+### 8.1 `register()` sa contare fino a due
+
+```python
+def register(concept: str, kind: str, *, it, en, match_mode="substring")
+```
+
+Due parametri fissi. **Non esiste modo di seedare un concetto in tre lingue,
+nemmeno volendo.** `SEED_LANGS = ("it", "en")` è coerente con la firma, e
+tutto il resto del modulo (fallback, unione, copertura) è invece già
+locale-driven. È l'unico punto dove le due lingue sono cablate nella
+struttura, non nei dati.
+
+**Soluzione**: la firma diventa `register(concept, kind, *, forms, match_mode)`
+dove `forms` è `dict[str, payload]` — `{"it": [...], "en": [...], "de": [...]}`.
+`SEED_LANGS` smette di essere una costante e diventa **derivata**: le lingue
+seedate sono le chiavi che il seed ha effettivamente scritto. Le 93
+registrazioni esistenti si convertono meccanicamente
+(`it=X, en=Y` → `forms={"it": X, "en": Y}`), e questo è l'unico motivo per cui
+il cambio è a basso rischio: è una trasformazione sintattica verificabile.
+
+### 8.2 L'unione fra lingue nasconde i buchi
+
+`_union_langs()` unisce sempre `{lingua corrente} ∪ {it, en}`. Per un'istanza
+in tedesco, un concetto senza forme tedesche continua a matchare le forme
+italiane e inglesi.
+
+Questo è **voluto** e va tenuto: copre i comandi-prestito («undo», «ok») che
+un tedesco scrive davvero. Ma ha una conseguenza non tratta: **il degrado non
+si vede**. Il sistema sembra funzionare, risponde a un sottoinsieme di frasi
+che nessun tedesco scriverebbe, e l'utente conclude che Metnos «a volte non
+capisce». Un fallimento intermittente è più difficile da diagnosticare di uno
+totale.
+
+**Soluzione**: non togliere l'unione — renderla **osservabile**. Ogni match
+che è avvenuto SOLO grazie a una lingua di prestito è un dato: se
+`geo.self_proximity` in un'istanza tedesca matcha sempre e solo via `it`,
+quel concetto è di fatto non tradotto anche se la riga esiste. Un contatore
+per `(concetto, lingua_che_ha_matchato)` trasforma un'impressione in una
+misura, ed è lo stesso schema già usato per gli spari delle guardie
+(`engine/guard_stats.py`): contatore persistente, riepilogo notturno,
+verdetto umano.
+
+### 8.3 La copertura si accoda in eterno per 25 concetti
+
+`_startup_coverage_check()` è turnkey: se la lingua d'istanza non copre tutti
+i concetti, avvisa e chiama `enqueue_language()`. Ma il daemon **salta i
+`kind="regex"`**. Quindi in un'istanza tedesca:
+
+1. il boot accoda 93 concetti;
+2. il daemon ne traduce 68 e ne salta 25;
+3. il boot successivo riavvisa, riaccoda gli stessi 25;
+4. per sempre.
+
+Un meccanismo che non converge e lo dice ogni volta con lo stesso testo è
+indistinguibile, per chi legge i log, da un meccanismo rotto.
+
+**Soluzione**: due esiti distinti, come per il Tutor.
+- **Pendente** = tradurremo, il daemon ci arriva.
+- **Non traducibile automaticamente** = richiede una persona, e va in una
+  coda di lavoro umano visibile in `/admin`, non nel log di boot.
+
+Dopo il refactor a template (§5.a) i concetti in questa seconda categoria
+scendono da 25 a pochissimi, ma la distinzione serve comunque: è ciò che
+impedisce a un buco permanente di travestirsi da coda.
+
+---
+
+## 9. Le liste di parole cablate — problema e soluzione
+
+Le 24 liste nel percorso della richiesta (286 termini) **non hanno tutte la
+stessa forma**, e questo è il motivo per cui non basta dire «spostatele nel
+lessico». Cinque forme, cinque destinazioni diverse.
+
+| # | Forma nel codice | Esempio | Destinazione |
+|---|---|---|---|
+| A | Elenco piatto, match per sottostringa/parola | `prefilter.py` EXIF (26 termini) | `kind="phrases"` |
+| B | Elenco i cui gruppi hanno **comportamento diverso** | `target_device.py`: adjunct si strippa, nominal no | `kind="mapping"` |
+| C | Elenco che diventa un **indice a lookup esatto** | `fast_path.py`: `_PATTERN_INDEX[norm]` | `phrases` + indice costruito da `forms()` |
+| D | Frammento di regex **interpolato** in un pattern più grande | `target_device.py::_PREP_NOMINAL` dentro una regex | slot di un `template` (§5.b) |
+| E | Elenco **accoppiato a struttura** (nomi di tool, precursori) | `prefilter.py::_QUERY_DEPENDENT_PRECURSORS` | le parole al lessico, la struttura resta nel codice |
+
+La forma C merita una nota, perché è quella che si sbaglia: `fast_path` non
+fa un match, fa un `dict[norm]`. Migrarlo a `match()` ne cambierebbe la
+semantica — da uguaglianza esatta a contenimento — e il modulo è
+deliberatamente esatto («niente regex, niente fuzzy») per non rubare query al
+planner. La migrazione corretta lascia il lookup esatto e sostituisce solo la
+**fonte** dei termini: `forms(concept)` invece della tupla letterale, con
+l'indice ricostruito quando il lessico cambia.
+
+La forma E è quella che si sbaglia nell'altro senso: `_QUERY_DEPENDENT_PRECURSORS`
+associa `find_places → get_location` quando la query è location-relativa. Il
+nome dei due tool **non è lingua** e non va nel lessico; i 33 marcatori sì.
+Spostare tutto significherebbe mettere nel dizionario multilingua dei nomi di
+executor, che non si traducono.
+
+**Soluzione generale**: un unico principio, applicato per forma —
+*nel lessico va ciò che cambia con la lingua, e SOLO quello.* Il resto
+(struttura, nomi di tool, comportamento di strip, tipo di match) resta dove
+sta e legge le parole dal lessico.
+
+**Un corollario che vale la pena scrivere**: due delle 24 liste sono la stessa
+lista (§3, la prossimità in tre posti). Applicando il principio, `prefilter`,
+la guardia `ensure_proximity_center` e l'affinity di `find_places` leggerebbero
+tutti e tre da `geo.self_proximity`. L'affinity è il caso limite — vive in un
+manifest firmato e la si cambia solo con una misura (regola di Roberto) — e
+per ora resta duplicata: va segnata come debito residuo, non risolta di
+soppiatto.
+
+---
+
+## 10. Decisioni aperte, per Roberto
 
 1. **Fin dove arrivare.** Le 116 regex e le 24 liste sono ~4-5 giorni di
    lavoro con test. I punti 1-2 di §7 (i più rischiosi) sono ~1 giorno e
