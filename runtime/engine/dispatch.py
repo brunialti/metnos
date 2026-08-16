@@ -1117,6 +1117,133 @@ def _enrich_move_source_dir(framework: Framework, query: str,
         return framework
 
 
+# Argument that carries the centre of a geographic search.  It is a manifest
+# contract, not a tool name: any executor declaring it takes part in the guard
+# below, and `find_places` is only its first consumer.
+_GEO_CENTER_ARG = "near"
+# The single authority on where the asking user is.  The guard never reads a
+# position itself: it wires the plan to this producer, so freshness, source
+# ranking and the "I do not know where you are" outcome stay in one place.
+_GEO_CENTER_PRODUCER = "get_location"
+# Field of the producer's result that carries {lat, lon, ...}.
+_GEO_CENTER_FIELD = "location"
+
+
+def _declares_geo_center(tool: str, catalog: Optional[list]) -> bool:
+    """True when the tool's manifest declares the geographic-centre argument."""
+    for entry in (catalog or ()):
+        if _entry_name(entry) != tool:
+            continue
+        props = _entry_schema(entry).get("properties")
+        return isinstance(props, dict) and _GEO_CENTER_ARG in props
+    return False
+
+
+def _geo_center_is_usable(value) -> bool:
+    """True when the planned centre will still be a centre at run time.
+
+    A value the runtime cannot resolve is not a centre, it is a hole that the
+    executor silently drops.  Turn 7e0f69a1 planned — and cached —
+    `near={"lat": "${RUNTIME:lat}", "lon": "${RUNTIME:lon}"}`, placeholders
+    with no resolver: the argument was discarded before the call and the
+    search ran with no centre at all.  A step reference stays usable, because
+    the producer materialises it.
+    """
+    if value in (None, "", {}, []):
+        return False
+    # `0` is the project-wide unset placeholder (§2.4): a centre at (0, 0) is
+    # the example being copied verbatim, not a point in the Gulf of Guinea.
+    coords = value if isinstance(value, dict) else None
+    if isinstance(coords, dict) and isinstance(coords.get("location"), dict):
+        coords = coords["location"]
+    if isinstance(coords, dict):
+        try:
+            if (float(coords.get("lat", 1)) == 0.0
+                    and float(coords.get("lon", 1)) == 0.0):
+                return False
+        except (TypeError, ValueError):
+            pass
+
+    def _texts(node):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            for item in node.values():
+                yield from _texts(item)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                yield from _texts(item)
+
+    usable = True
+    for text in _texts(value):
+        if "${step" in text or "{{step" in text:
+            return True
+        if "${" in text or "{{" in text:
+            usable = False
+    return usable
+
+
+def _ensure_proximity_center(framework: Framework, query: str,
+                             catalog: Optional[list]) -> Framework:
+    """§7.9: a search "near where I am" needs a centre, or it ranks by fame.
+
+    Turn 7e0f69a1 ("where is the nearest pharmacy to where I am") planned
+    `find_places(queries=["farmacia"])` with no centre: the provider answered
+    with namesakes in Padova, Cagliari, Lucca and Bergamo while the asker was
+    in Rome.  The machine did know where it stood — `get_location` reads the
+    installation position — but nothing in the plan asked it.
+
+    The guard inserts that producer and wires the centre to it.  It fires only
+    when the request carries a proximity form referred to the asker
+    (`geo.self_proximity`, multilingual lexicon) and the step declares the
+    centre argument without a value: a request that names its own place
+    ("pharmacy in Padova") keeps it, and an explicit centre is never
+    overwritten.  Idempotent, so re-running the pipeline is a no-op.
+    """
+    try:
+        if not (query and _dl_match("geo.self_proximity", query)):
+            return framework
+        names = catalog_names(catalog)
+        if _GEO_CENTER_PRODUCER not in names:
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        if not steps:
+            return framework
+        from .types import StepSpec
+        for consumer in list(steps):
+            tool = getattr(consumer, "tool", "") or ""
+            if not _declares_geo_center(tool, catalog):
+                continue
+            args = getattr(consumer, "args", None)
+            args = args if isinstance(args, dict) else {}
+            if _geo_center_is_usable(args.get(_GEO_CENTER_ARG)):
+                continue
+            # Identity, not equality: two structurally identical steps are
+            # distinct positions in the plan and `index()` would return the
+            # first one for both.
+            steps = list(getattr(framework, "steps", None) or [])
+            pos = next((i for i, s in enumerate(steps) if s is consumer), -1)
+            if pos < 0:
+                continue
+            producer_1b = next(
+                (i + 1 for i, s in enumerate(steps[:pos])
+                 if (getattr(s, "tool", "") or "") == _GEO_CENTER_PRODUCER),
+                0)
+            if not producer_1b:
+                insert_steps(framework, pos,
+                             [StepSpec(tool=_GEO_CENTER_PRODUCER, args={})])
+                producer_1b = pos + 1
+            consumer.args = dict(args)
+            consumer.args[_GEO_CENTER_ARG] = (
+                "${step%d.%s}" % (producer_1b, _GEO_CENTER_FIELD))
+            log.info("[proximity §7.9] %s: search centre taken from the "
+                     "actor position (step %d)", tool, producer_1b)
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("ensure_proximity_center noop (best-effort): %r", ex)
+        return framework
+
+
 # Fratelli-FILESYSTEM (§2.2): `files` e `dirs` sono facce dello stesso dominio
 # — «elenca i FILE della cartella X» si serve con list_dirs (container enum).
 # Un intent-object `files` NON delegittima uno step `dirs` (e viceversa):
@@ -5794,6 +5921,12 @@ GUARD_PIPELINE: tuple = (
           scope="per-clause", writes=frozenset({"args.include_health"}),
           reads=frozenset({"query"}),
           rationale="§7.9 (turn b66ec6f3): query hardware/status (lessici status/section_focus+machine) con get_processes senza include_health → forzato true. Additivo: aggiunge dati, il focus per-sezione seleziona",
+          adr="0177"),
+    Guard("ensure_proximity_center",
+          lambda fw, i, q, c: _ensure_proximity_center(fw, q, c),
+          scope="cross-clause", writes=frozenset({"args.near", "step"}),
+          reads=frozenset({"query", "catalog", "step.tool", "args.near"}),
+          rationale="§7.9 (turn 7e0f69a1): «the nearest pharmacy to where I am» without a centre makes the provider rank by fame — namesakes across the whole country. Concept geo.self_proximity plus a declared and empty `near` argument insert get_location and wire the centre to it. A request naming its own place does not match, and an explicit centre is never overwritten",
           adr="0177"),
     Guard("route_folder_size",
           lambda fw, i, q, c: _route_folder_size(fw, q, c),

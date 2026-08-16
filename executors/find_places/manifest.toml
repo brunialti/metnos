@@ -22,12 +22,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: cerca luoghi reali per query testuale o coordinate. PATTERN: find_places(queries=[\"...\"], near={lat:0,lon:0}). NON: leggere file (-> read_files); ottenere dati per ID noti (-> get_places). OUT: entries=[{lat,lon,address,slug,distance_km}]."
-en = "SCOPO: find real-world places by text query or coordinates. PATTERN: find_places(queries=[\"...\"], near={lat:0,lon:0}). NON: read files (-> read_files); get data by known IDs (-> get_places). OUT: entries=[{lat,lon,address,slug,distance_km}]."
+it = "SCOPO: cerca luoghi reali per query testuale. PATTERN: find_places(queries=[\"...\"]). NON: leggere file (-> read_files); ottenere dati per ID noti (-> get_places); inventare le coordinate di `near`. OUT: entries=[{lat,lon,address,slug,distance_km}]."
+en = "SCOPO: find real-world places by text query. PATTERN: find_places(queries=[\"...\"]). NON: read files (-> read_files); get data by known IDs (-> get_places); invent the coordinates of `near`. OUT: entries=[{lat,lon,address,slug,distance_km}]."
 
 [code]
 files  = ["find_places.py"]
-digest = "sha256:0ea5a5a6e7abb8130aac7784407f48285dfcc14aa03b203d46ad50c70fa8202c"
+digest = "sha256:64500a8d1bd385d2f36a0738430c9f7c9c10eedaf85d122fa3c3c6034ff43547"
 
 [args]
 type     = "object"
@@ -53,8 +53,8 @@ en = "Maximum number of matches per query. Default 5, range 1..50."
 type        = "object"
 
 [args.properties.near.description]
-it = "Coordinate di centro per bias geografico. Forma: {lat: number, lon: number}. Puoi anche passare DIRETTAMENTE l'output di get_location (viene auto-estratto da .location.lat/lon). Quando presente, i risultati includono distance_km e sono ordinati per distanza."
-en = "Center coordinates for geographic bias. Format: {lat: number, lon: number}. You can also pass the output of get_location DIRECTLY (it is auto-extracted from .location.lat/lon). When present, results include distance_km and are ordered by distance."
+it = "Centro della ricerca. Omettilo se non hai coordinate VERE: per «vicino a me» il runtime aggiunge il centro da solo. Forma: {lat: number, lon: number}, oppure il nome di una zona (\"Padova\"), oppure DIRETTAMENTE l'output di get_location. Zeri = nessun centro. Con il centro i risultati portano distance_km e sono ordinati per distanza."
+en = "Centre of the search. Omit it when you have no REAL coordinates: for \"near me\" the runtime adds the centre by itself. Format: {lat: number, lon: number}, or the name of an area (\"Padova\"), or DIRECTLY the output of get_location. Zeros mean no centre. With a centre the results carry distance_km and are ordered by distance."
 
 [args.properties.radius_km]
 type        = "number"

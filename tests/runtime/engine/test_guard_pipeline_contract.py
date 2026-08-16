@@ -79,6 +79,7 @@ EXPECTED_PIPELINE = (
     ("scope_sink_provider_to_clause", False),
     # query hardware/status: get_processes DEVE avere include_health (10/7).
     ("ensure_health_arg", False),
+    ("ensure_proximity_center", False),
     # size-misroute (turn 5cdf80d0): «peso cartella» = file ricorsivi. PRIMA di
     # degenerate (list-intent-only, nessun conflitto) — routing.
     ("route_folder_size", False),

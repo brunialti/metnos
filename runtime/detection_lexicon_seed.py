@@ -256,6 +256,37 @@ def register_all() -> None:
           "folder size", "directory size", "disk usage", "size of the folder",
           "size of folder", "size of the directory", "space used"])
 
+    # ── GEO: proximity referred to THE ASKER (dispatch guard
+    # `ensure_proximity_center`) ───────────────────────────────────────
+    # "the pharmacy nearest to where I am" states two things: what to look
+    # for, and that the centre of the search is whoever is asking.  Without
+    # the second one the provider ranks by prominence and returns namesakes
+    # scattered across the country ("Farmacia" in Correzzola, Villasimius,
+    # Forte dei Marmi for someone in Rome).
+    #
+    # `phrases`, not `regex`: the translation daemon localizes phrase lists
+    # for any new language and deliberately refuses to synthesize regexes, so
+    # a regex here would be a permanently two-locale rule.  The inflections
+    # are therefore data, like every other phrase lexicon.
+    #
+    # The guard reads this concept ONLY on a step that declares a `near`
+    # argument and has none, so a form such as "where I am" cannot be
+    # mistaken for a filesystem question.  "in Padova" carries no proximity
+    # form, keeps its named centre and is left alone.
+    R("geo.self_proximity", "phrases", match_mode="substring",
+      it=["vicino a me", "vicina a me", "vicini a me", "vicine a me",
+          "qui vicino", "qua vicino", "qui intorno", "qua intorno",
+          "intorno a me", "attorno a me", "nelle vicinanze", "nei paraggi",
+          "nei dintorni", "in zona", "in questa zona", "qui in zona",
+          "da queste parti", "dove sono", "dove mi trovo", "dove siamo",
+          "dove ci troviamo", "piu vicino", "più vicino", "piu vicina",
+          "più vicina", "piu vicini", "più vicini", "piu vicine",
+          "più vicine"],
+      en=["near me", "near us", "near here", "close to me", "close to us",
+          "close by", "nearby", "around me", "around us", "around here",
+          "where i am", "where we are", "in the area", "in my area",
+          "nearest", "closest"])
+
     # ── MOVE «i file DA/IN una cartella» (dispatch._enrich_move_source_dir) ──
     # «sposta i file da X a Y»: X è un CONTENITORE, i file vanno enumerati
     # (find_files→move), non passati come singola dir-entry (che il safety-net
