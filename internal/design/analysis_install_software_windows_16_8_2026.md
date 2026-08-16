@@ -4,6 +4,16 @@
 **Richiesta**: capability di executor remoto per installare software su
 Windows. Soluzione robusta, general purpose.
 
+> **AGGIORNAMENTO 16/8, sera — le decisioni sono state prese.** Le quattro
+> domande aperte del §10 hanno risposta e stanno a verbale in **ADR 0209**:
+> nuovo verbo `install` nel vocabolario chiuso + `install_packages` con
+> direzione `uninstall`; `find_packages` esteso a «è installato?» su Linux e
+> Windows; si parte direttamente dal componente elevato (Via B, la Fase 1
+> per-utente è saltata); l'installazione NON è annullabile e un undo chiede
+> conferma esplicita via form; un utente installa liberamente sui PROPRI
+> device, sul server solo se amministratore. Le §4-§6 restano come
+> ricognizione delle alternative: leggerle sapendo quale è stata scelta.
+>
 > Documento fermato allo studio di fattibilità su richiesta di Roberto.
 > Tutti i numeri e i comportamenti citati come «verificato» sono stati
 > misurati il 16/8 sulla macchina reale `pcroberto` o letti nel codice, non

@@ -9,7 +9,7 @@
 - **Host**: `.33` (Strix Halo 96GB unified). Servizi: `metnos-http.service` (SYSTEM, porta 8770) + telegram-daemon (unit USER) + llama-server `:8080`.
 - **LLM**: `fast` (`micro|procedural|fidelity`), `middle`, `wise`, `creative` e `frontier` sono contratti logici risolti centralmente da `runtime/llm_router.py`; ogni consumer sceglie un workload registrato in `runtime/llm_workloads.py`. Provider, modello, endpoint, temperatura, thinking e reasoning budget appartengono al router; al consumer restano tetto di output, deadline, grammatica e schema dei tool. I tre livelli fast, `middle` e `wise` condividono oggi Qwen 3.6 35B-A3B Q4_K_M/MTP `:8080` e la stessa policy deterministica, ma i livelli fast hanno default e override indipendenti in `[fast.level.<nome>]`; `creative` eredita il binding di `wise` finché non materializzato e usa `temperature=0.35`, mentre `middle` e `wise` restano a `0`. Frontier = Anthropic Opus opt-in. SoT: `runtime/llm_router.py::{DEFAULT_TIERS,DEFAULT_FAST_LEVELS}`, registro workload e ADR 0207; MAI nomi modello o override di policy nei consumer.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0208` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **ADR registry**: `0001-0209` (skipped: `0055`/`0115`/`0116`/`0121`).
 
 ## 3. Synth pipeline (6 stadi)
 
