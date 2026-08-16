@@ -1307,10 +1307,27 @@ def _align_framework_action_pairs(framework: Framework, intent, query: str,
                 # Gli argomenti del verbo sbagliato non valgono per quello
                 # giusto: si conformano allo schema del nuovo strumento invece
                 # di sopravvivergli addosso.
+                previous_args = getattr(step, "args", None) or {}
                 step.args = _candidate_args(
-                    candidate, getattr(step, "args", None) or {}, framework,
+                    candidate, previous_args, framework,
                     query, [query], exclude_step=step)
                 _wire_upstream_producer(framework, step, candidate)
+                # A rewrite that leaves the step unable to run is not an
+                # alignment. Measured on «dov'e' il Duomo di Milano»: the
+                # intent read {get, places}, so the correct find_places became
+                # get_places, which accepts only coordinates — the name in the
+                # request had nowhere to go and the turn died on a missing
+                # argument. The oracle is the Validator's own, so this guard
+                # cannot produce a step the Validator would then reject.
+                from .validator import args_contract_error
+                contract_error = args_contract_error(
+                    step.args, _entry_schema(candidate))
+                if contract_error:
+                    step.args = previous_args
+                    log.info("[action_pair] %s NON riscritto in %s: il nuovo "
+                             "contratto resta insoddisfatto (%s)",
+                             tool, target, contract_error)
+                    continue
                 log.info("[action_pair] %s → %s (coppia %s+%s scoperta)",
                          tool, target, verb, obj)
                 step.tool = target

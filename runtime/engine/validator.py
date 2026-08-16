@@ -96,7 +96,8 @@ class Validator:
                     step_idx=i, code="invalid_args", detail=err))
         return ValidationResult(ok=not errors, errors=errors)
 
-    def _check_args(self, args: dict, schema: dict) -> Optional[str]:
+    @staticmethod
+    def _check_args(args: dict, schema: dict) -> Optional[str]:
         """Lightweight: required + requires_one_of + type check sui top-level."""
         props = schema.get("properties") or {}
         required = schema.get("required") or []
@@ -195,3 +196,16 @@ class Validator:
                     f"ricevuto {type(v).__name__}"
                 )
         return None
+
+
+def args_contract_error(args: dict, schema: dict) -> Optional[str]:
+    """Why `args` do not satisfy `schema`, or None when they do.
+
+    The same oracle the Validator applies to a finished plan, exposed so a
+    guard that rewrites a step can ask the question BEFORE committing the
+    rewrite.  Without it a guard can hand the executor a step the validator
+    would have rejected: measured on "where is the Duomo di Milano", where the
+    producer was realigned to a sibling that only accepts coordinates, and the
+    turn died on a missing argument instead of searching by name.
+    """
+    return Validator._check_args(args or {}, schema or {})

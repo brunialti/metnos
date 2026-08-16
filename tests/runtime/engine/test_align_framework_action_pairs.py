@@ -85,3 +85,50 @@ def test_consumer_clause_does_not_rewrite_a_producer():
                       {"verb": "write", "object": "files"}])
     out = _align(fw, intent, "elenca i file e mettili in un foglio", _CATALOG)
     assert _tools(out) == ["list_dirs", "write_files", "final_answer"]
+
+
+# ── Il contratto del nuovo strumento decide se la riscrittura e' lecita ────
+#
+# Turno «dov'e' il Duomo di Milano» (16/8/2026): l'intent leggeva {get,
+# places} e la guardia trasformava il CORRETTO find_places in get_places, che
+# accetta solo coordinate. Il nome nella richiesta non aveva dove andare e il
+# turno moriva su «Manca un argomento obbligatorio», invece di cercare per
+# nome. Una riscrittura che lascia il passo ineseguibile non e' un
+# allineamento: l'oracolo e' quello del Validator, cosi' la guardia non puo'
+# produrre un passo che il Validator poi rifiuterebbe.
+
+_CATALOG_TIPIZZATO = [
+    {"name": "find_places",
+     "args_schema": {"type": "object", "required": ["queries"],
+                     "properties": {"queries": {"type": "array"},
+                                    "near": {"type": "object"}}}},
+    {"name": "get_places",
+     "args_schema": {"type": "object",
+                     "requires_one_of": [["coords", "entries", "from_step"]],
+                     "properties": {"coords": {"type": "array"},
+                                    "entries": {"type": "array"},
+                                    "from_step": {"type": "integer"}}}},
+    {"name": "get_location", "args_schema": {"type": "object"}},
+]
+
+
+def test_rewrite_refused_when_the_new_contract_stays_unsatisfied():
+    """find_places da solo con una query testuale: get_places non ha da dove
+    prendere le coordinate, quindi il passo NON si riscrive."""
+    fw = _Fw("find_places", "final_answer")
+    fw.steps[0].args = {"queries": ["Duomo di Milano"]}
+    intent = _Intent([{"verb": "get", "object": "places"}])
+    out = _align(fw, intent, "dov'e' il Duomo di Milano", _CATALOG_TIPIZZATO)
+    assert _tools(out) == ["find_places", "final_answer"]
+    assert out.steps[0].args == {"queries": ["Duomo di Milano"]}
+
+
+def test_rewrite_kept_when_an_upstream_producer_satisfies_it():
+    """Caso storico «dimmi la via piu' vicina»: con get_location a monte il
+    contratto di get_places e' soddisfatto da from_step e la riscrittura resta."""
+    fw = _Fw("get_location", "find_places", "final_answer")
+    fw.steps[1].args = {"queries": ["via"]}
+    intent = _Intent([{"verb": "get", "object": "places"}])
+    out = _align(fw, intent, "dimmi la via piu' vicina", _CATALOG_TIPIZZATO)
+    assert _tools(out) == ["get_location", "get_places", "final_answer"]
+    assert out.steps[1].args.get("from_step") == 1
