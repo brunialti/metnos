@@ -63,6 +63,14 @@ def _run():
             or (Path.home() / ".local" / "share" / "metnos")
         )
         env.update({
+            # Gli `error_contains` dei born-test sono scritti nella lingua
+            # predefinita dell'istanza: la lingua e' quindi un ingresso
+            # immutabile della suite quanto le stringhe d'errore, non una
+            # condizione dell'ambiente. Senza questo, una lingua lasciata
+            # dietro da un test raccolto prima faceva rispondere gli executor
+            # in inglese e la suite bocciava una trentina di executor
+            # innocenti (misurato il 16/8/2026).
+            "METNOS_LANG": "it",
             "METNOS_USER_DATA": str(root / "data"),
             "METNOS_USER_STATE": str(root / "state"),
             # La configurazione dell'utente era l'unica radice mutabile
