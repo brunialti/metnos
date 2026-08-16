@@ -5,6 +5,17 @@
 processo i18n per qualunque lingua corrente di Metnos. Verificare anche
 l'esistenza di liste di termini in una o più lingue cablate nel testo.
 
+> **AGGIORNAMENTO 16/8, sera — decisione presa.** La regex si GENERA da un
+> elenco di parole, prima dell'uso o al boot, e si prende da un dizionario di
+> regex compilate — che in gran parte esiste gia' (`_regex_cache`). Il
+> vincolo aggiunto da Roberto: l'elenco dei termini e' di **lunghezza
+> imprecisata**, perche' in una lingua piu' termini italiani possono cadere
+> in uno solo; il template deve trattarlo come tale, e la scrittura
+> dell'elenco va curata molto. Il refactor e' **completo e one-off, ma non
+> ora**. Le istruzioni implementative stanno in
+> `spec_regex_generate_dal_lessico.md`, scritte per essere eseguite da un
+> modello di classe inferiore.
+>
 > Tutti i numeri vengono da una scansione AST di `runtime/`, `executors/`,
 > `scripts/` e `install/` eseguita il 16/8 (script in
 > `scratchpad/sweep2.py`), non da impressioni.
