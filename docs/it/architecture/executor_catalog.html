@@ -11,7 +11,7 @@
 <body><nav><a href="index.html">&larr; Guida all'architettura</a> &middot; <a href="/en/architecture/executor_catalog.html" hreflang="en">EN</a></nav>
 <h1>Catalogo degli executor distribuiti per dominio</h1>
 <p class="lead">Questo catalogo censisce gli executor basati su file presenti in <code>executors/</code>. Il dominio deriva dall'oggetto canonico del nome; non è una classificazione editoriale mantenuta a mano.</p>
-<div class="status">Documento generato in modo deterministico da 83 manifest firmati in <code>executors/</code>. Non comprende gli executor interni al processo, quelli installati da skill o quelli sintetizzati nella directory dati della singola istanza. Il catalogo completo in esercizio è visibile nella chat web in Settings → Ciclo di vita → Executor.</div>
+<div class="status">Documento generato in modo deterministico da 84 manifest firmati in <code>executors/</code>. Non comprende gli executor interni al processo, quelli installati da skill o quelli sintetizzati nella directory dati della singola istanza. Il catalogo completo in esercizio è visibile nella chat web in Settings → Ciclo di vita → Executor.</div>
 <p>Un executor può implementare una procedura diretta oppure essere un <a href="intelligent_executors.html">executor intelligente a mandato ristretto</a>; il contratto pubblico e la collocazione nel dominio non cambiano.</p>
 <h2 id="domain-files">Dominio: <code>files</code> (20)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Percorso</th></tr></thead><tbody>
@@ -43,9 +43,10 @@
 <tr><td><code>find_dirs</code></td><td>trova directory e calcola metadati aggregati con visita ricorsiva parallela.</td><td>standard; any; linux, windows</td><td><code>executors/find_dirs/</code></td></tr>
 <tr><td><code>list_dirs</code></td><td>elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo.</td><td>standard; any; linux, windows</td><td><code>executors/list_dirs/</code></td></tr>
 </tbody></table>
-<h2 id="domain-packages">Dominio: <code>packages</code> (1)</h2>
+<h2 id="domain-packages">Dominio: <code>packages</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Percorso</th></tr></thead><tbody>
 <tr><td><code>find_packages</code></td><td>dice se dei programmi sono installati qui, e in che versione.</td><td>standard; any; linux, windows</td><td><code>executors/find_packages/</code></td></tr>
+<tr><td><code>install_packages</code></td><td>installa un programma sulla macchina.</td><td>critico; any; windows, linux</td><td><code>executors/install_packages/</code></td></tr>
 </tbody></table>
 <h2 id="domain-messages">Dominio: <code>messages</code> (4)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Percorso</th></tr></thead><tbody>

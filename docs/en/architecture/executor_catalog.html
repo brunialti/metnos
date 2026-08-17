@@ -11,7 +11,7 @@
 <body><nav><a href="index.html">&larr; Architecture guide</a> &middot; <a href="/it/architecture/executor_catalog.html" hreflang="it">IT</a></nav>
 <h1>Distributed executor catalog by domain</h1>
 <p class="lead">This catalog inventories the file-based executors under <code>executors/</code>. A domain is derived from the canonical object in the name; it is not a manually maintained editorial classification.</p>
-<div class="status">This document is deterministically generated from 83 signed manifests under <code>executors/</code>. It excludes in-process executors, skill-installed executors, and executors synthesized in an instance's data directory. The complete live catalog is available in the web chat under Settings → Lifecycle → Executors.</div>
+<div class="status">This document is deterministically generated from 84 signed manifests under <code>executors/</code>. It excludes in-process executors, skill-installed executors, and executors synthesized in an instance's data directory. The complete live catalog is available in the web chat under Settings → Lifecycle → Executors.</div>
 <p>An executor may implement a direct procedure or be a <a href="intelligent_executors.html">narrow-mandate intelligent executor</a>; its public contract and domain placement do not change.</p>
 <h2 id="domain-files">Domain: <code>files</code> (20)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
@@ -43,9 +43,10 @@
 <tr><td><code>find_dirs</code></td><td>find directories and compute aggregate metadata with a parallel recursive walk.</td><td>standard; any; linux, windows</td><td><code>executors/find_dirs/</code></td></tr>
 <tr><td><code>list_dirs</code></td><td>lists directories and files; recursive mode walks subdirectories in parallel.</td><td>standard; any; linux, windows</td><td><code>executors/list_dirs/</code></td></tr>
 </tbody></table>
-<h2 id="domain-packages">Domain: <code>packages</code> (1)</h2>
+<h2 id="domain-packages">Domain: <code>packages</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
 <tr><td><code>find_packages</code></td><td>tells whether programs are installed here, and at which version.</td><td>standard; any; linux, windows</td><td><code>executors/find_packages/</code></td></tr>
+<tr><td><code>install_packages</code></td><td>installs a program on the machine.</td><td>critical; any; windows, linux</td><td><code>executors/install_packages/</code></td></tr>
 </tbody></table>
 <h2 id="domain-messages">Domain: <code>messages</code> (4)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>

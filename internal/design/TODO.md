@@ -386,6 +386,29 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   d'azione assorbita da `conversation`; risposte RAG con fonte verificabile;
   comportamento onesto quando indice, LLM o stato live non sono disponibili.
 
+### DEV-001 - «metnos» come nome di macchina: a volte il server, a volte il PC
+
+- Priorita': da assegnare. Segnalata da Roberto il 17/8/2026.
+- Sintomo: «temperatura cpu metnos» ha risposto per **PC-ROBERTO** (turno
+  `1a07c3b8`), mentre «temperatura cpu server metnos» ha risposto per il
+  server (`bb35aae2`). La stessa domanda, con e senza la parola «server»,
+  finisce su due macchine diverse.
+- Che cosa NON e': non e' il difetto della direzione install/uninstall
+  (chiuso il 17/8 con `install_direction_resolver`), e non e' il caso
+  «c'e' outlook su pc-roberto» (instradamento a `get_processes`, aperto
+  sotto). Qui lo strumento e' quello giusto e sbaglia la MACCHINA.
+- Ipotesi da verificare, non ancora misurate: (a) «metnos» e' insieme il
+  nome del prodotto e il nome del server, e la risoluzione del device per
+  nome puo' non distinguerli; (b) la destinazione appiccicosa di un turno
+  precedente sopravvive alla domanda nuova; (c) senza un nome esplicito la
+  scelta ricade su un device invece che sul server.
+- Primo passo: misurare su una serie di richieste con e senza il nome della
+  macchina, leggendo `target_device` dal registro dei turni. Il difetto e'
+  riproducibile, quindi la misura si fa prima di toccare qualunque cosa.
+- Done-gate: una richiesta che non nomina nessuna macchina risponde sempre
+  per la stessa, e quale sia e' scritto nella risposta; una richiesta che ne
+  nomina una risponde per quella.
+
 ### JOB-001 - Motore generico per lavori lunghi, persistenti e paralleli
 
 - Priorita': da assegnare.
