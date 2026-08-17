@@ -35,6 +35,8 @@ mod setup;
 #[cfg(windows)]
 mod win_pipe;
 #[cfg(windows)]
+mod win_serve;
+#[cfg(windows)]
 mod win_setup;
 
 use std::process::ExitCode;
@@ -169,8 +171,13 @@ fn disinstalla() -> ExitCode {
 
 #[cfg(windows)]
 fn servi() -> ExitCode {
-    eprintln!("Il ciclo del servizio non e' ancora implementato (ADR 0210).");
-    ExitCode::from(2)
+    match win_serve::run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("Il servizio si e' fermato: {e}");
+            ExitCode::from(3)
+        }
+    }
 }
 
 // ── Fuori Windows: l'aiutante non ha senso, e lo dice ────────────────

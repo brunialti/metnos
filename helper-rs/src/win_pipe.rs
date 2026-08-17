@@ -37,7 +37,7 @@ use windows_sys::Win32::Security::{
 };
 // `PIPE_ACCESS_DUPLEX` vive fra gli attributi di file, non fra le costanti
 // delle pipe: e' un flag di apertura, e Windows lo classifica li'.
-use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
+use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile, PIPE_ACCESS_DUPLEX};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, GetNamedPipeClientProcessId, PIPE_READMODE_BYTE,
     PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
@@ -55,7 +55,75 @@ const SECURITY_DESCRIPTOR_REVISION: u32 = 1;
 const FILE_FLAG_FIRST_PIPE_INSTANCE: u32 = 0x0008_0000;
 
 /// Handle con chiusura garantita.
-struct Handle(HANDLE);
+pub struct Handle(HANDLE);
+
+impl Handle {
+    /// Legge dalla pipe.
+    ///
+    /// `ReadFile`/`WriteFile` invece di trasformare l'handle in un `File`:
+    /// un `File` lo chiuderebbe alla Drop, e la chiusura appartiene gia' a
+    /// questo tipo. Due proprietari dello stesso handle sono una chiusura
+    /// doppia, che su Windows puo' colpire un handle nel frattempo riusato
+    /// da qualcun altro.
+    pub fn reader(&self) -> PipeIo<'_> {
+        PipeIo(self)
+    }
+
+    pub fn writer(&self) -> PipeIo<'_> {
+        PipeIo(self)
+    }
+}
+
+/// Lettura e scrittura su una pipe che resta di chi l'ha creata.
+pub struct PipeIo<'a>(&'a Handle);
+
+impl std::io::Read for PipeIo<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut letti: u32 = 0;
+        let ok = unsafe {
+            ReadFile(
+                self.0 .0,
+                buf.as_mut_ptr(),
+                buf.len() as u32,
+                &mut letti,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            let err = std::io::Error::last_os_error();
+            // 109 = la pipe e' stata chiusa dall'altro capo: e' la fine dei
+            // dati, non un guasto.
+            if err.raw_os_error() == Some(109) {
+                return Ok(0);
+            }
+            return Err(err);
+        }
+        Ok(letti as usize)
+    }
+}
+
+impl std::io::Write for PipeIo<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut scritti: u32 = 0;
+        let ok = unsafe {
+            WriteFile(
+                self.0 .0,
+                buf.as_ptr(),
+                buf.len() as u32,
+                &mut scritti,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(scritti as usize)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 
 impl Drop for Handle {
     fn drop(&mut self) {

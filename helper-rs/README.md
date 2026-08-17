@@ -12,7 +12,7 @@ privilegi di sistema.
 |  | client | aiutante |
 |---|---|---|
 | librerie collegate | 210 | **52** |
-| binario Windows | megabyte | **238 KB** |
+| binario Windows | megabyte | **516 KB** |
 | parla con la rete | si' | **no** |
 | esegue codice ricevuto | si' (executor firmati) | **no** |
 
@@ -97,11 +97,16 @@ si reinstalla, cosi' il passaggio e' un atto esplicito.
   ANNULLA: un componente privilegiato presente e invisibile e' peggio di uno
   assente, perche' il proprietario non saprebbe che c'e' ne' come toglierlo.
 
-**Da costruire**:
+- `win_serve.rs` — il ciclo del servizio. Volutamente noioso: una richiesta per
+  connessione, nessuna coda, nessuna concorrenza. Due richieste che si
+  sovrappongono su un componente che modifica il sistema sono due modi di
+  lasciarlo a meta', e il guadagno sarebbe nullo perche' un'installazione dura
+  secondi. Il ciclo non decide niente: legge, passa a `service::handle`,
+  risponde.
 
-1. il ciclo del servizio che serve la pipe;
-2. il lato client: aprire la pipe verificando di parlare con l'aiutante VERO
-   prima di scrivere (l'altra meta' di D2), e firmare le richieste.
+**Da costruire**: il lato client — aprire la pipe verificando di parlare con
+l'aiutante VERO prima di scrivere (l'altra meta' di D2), e firmare le
+richieste.
 
 ## Come si prova
 
