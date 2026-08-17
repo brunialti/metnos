@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "write_files_spreadsheet"
-version     = "0.4.0"
+version     = "0.4.1"
 author      = "Roberto Brunialti"
 affinity    = [
     "spreadsheet", "foglio elettronico", "foglio di calcolo", "xlsx",
@@ -63,6 +63,16 @@ default = []
 [args.properties.column_specs.description]
 it = "Mappa non ambigua, indipendente dalla lingua: [{header='Nome file', source='path', transform='basename'}]. transform: identity, basename o dirname."
 en = "Unambiguous language-independent mapping: [{header='File name', source='path', transform='basename'}]. transform: identity, basename, or dirname."
+
+[args.properties.field_roles]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "entry_field_roles"
+
+[args.properties.field_roles.description]
+it = "Metadati tipizzati dei campi prodotti dallo step sorgente. Iniettati automaticamente dal runtime; non passarli manualmente."
+en = "Typed metadata for fields produced by the source step. Injected automatically by runtime; do not pass it manually."
 
 [args.properties.spreadsheet_id]
 type    = "string"

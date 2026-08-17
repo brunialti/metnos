@@ -14,6 +14,8 @@ Two inputs are supported:
 * legacy ``columns`` are resolved through exact keys and a small semantic
   vocabulary.  Ordinals select repeated concepts (for example the first and
   second path); a filename may be derived from the corresponding path.
+* optional producer ``field_roles`` disambiguate fields without relying on
+  their names or dictionary position; display labels remain localized text.
 
 There is deliberately no positional whole-record fallback.  An unresolved
 header is an error, because an incomplete sheet is safer than a plausible but
@@ -38,6 +40,11 @@ _CONCEPT_ALIASES: dict[str, frozenset[str]] = {
     "path": frozenset({
         "path", "paths", "percorso", "percorsi", "filepath", "filepaths",
         "file_path", "file_paths", "image_path", "local_path",
+    }),
+    "directory": frozenset({
+        "directory", "directories", "folder", "folders", "cartella",
+        "cartelle", "directorio", "directorios", "carpeta", "carpetas",
+        "ordner",
     }),
     "name": frozenset({
         "name", "names", "nome", "nomi", "filename", "filenames",
@@ -70,8 +77,14 @@ _CONCEPT_ALIASES: dict[str, frozenset[str]] = {
         "domain", "domains", "dominio", "domini",
     }),
     "origin": frozenset({
-        "origin", "origins", "origine", "origini", "source", "sources",
-        "sorgente", "sorgenti",
+        "origin", "origins", "original", "originals", "origine", "origini",
+        "originale", "originali", "source", "sources", "sorgente",
+        "sorgenti",
+    }),
+    "duplicate": frozenset({
+        "duplicate", "duplicates", "duplicato", "duplicati", "copia",
+        "copie", "copy", "copies", "duplicado", "duplicados", "duplikat",
+        "duplikate",
     }),
     "url": frozenset({
         "url", "urls", "link", "links", "web_url", "web_view_url",
@@ -114,7 +127,7 @@ class ColumnProjection:
 def _normalize(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or "").casefold())
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    return "_".join(re.findall(r"[a-z0-9]+", text))
+    return "_".join(re.findall(r"[^\W_]+", text, re.UNICODE))
 
 
 def _tokens(value: Any) -> tuple[str, ...]:
@@ -174,8 +187,32 @@ def _looks_like_hash(value: Any) -> bool:
     )
 
 
-def _field_concept_strength(entries: list[dict], field: str) -> dict[str, int]:
+def _declared_field_roles(field_roles: Iterable[dict] | None
+                          ) -> dict[str, set[str]]:
+    """Normalize producer-declared field semantics, independent of key names."""
+    out: dict[str, set[str]] = {}
+    for item in field_roles or []:
+        if not isinstance(item, dict):
+            continue
+        field = item.get("field")
+        roles = item.get("roles")
+        if not isinstance(field, str) or not field or not isinstance(roles, list):
+            continue
+        normalized = {
+            _normalize(role) for role in roles
+            if isinstance(role, str) and _normalize(role) in _CONCEPT_ALIASES
+        }
+        if normalized:
+            out.setdefault(field, set()).update(normalized)
+    return out
+
+
+def _field_concept_strength(entries: list[dict], field: str,
+                            declared_roles: dict[str, set[str]]
+                            ) -> dict[str, int]:
     strengths = {concept: 3 for concept in _concepts(field)}
+    for concept in declared_roles.get(field, set()):
+        strengths[concept] = 5
     samples = _sample_values(entries, field)
     if samples and sum(_looks_like_path(v) for v in samples) * 2 >= len(samples):
         strengths["path"] = max(strengths.get("path", 0), 1)
@@ -212,12 +249,13 @@ def _choose(candidates: list[tuple[str, int]], ordinal: int | None,
 
 
 def _legacy_projection(entries: list[dict], columns: list[str],
-                       fields: list[str]) -> list[ColumnProjection]:
+                       fields: list[str], field_roles: Iterable[dict] | None
+                       ) -> list[ColumnProjection]:
     normalized_fields = {_normalize(field): field for field in fields}
     populated = {field: bool(_sample_values(entries, field)) for field in fields}
-    strengths = {
-        field: _field_concept_strength(entries, field) for field in fields
-    }
+    declared_roles = _declared_field_roles(field_roles)
+    strengths = {field: _field_concept_strength(
+        entries, field, declared_roles) for field in fields}
     projections: list[ColumnProjection] = []
     unresolved: list[str] = []
     used: set[str] = set()
@@ -234,6 +272,9 @@ def _legacy_projection(entries: list[dict], columns: list[str],
             continue
 
         concepts = _concepts(header)
+        wants_directory = "directory" in concepts
+        if wants_directory:
+            concepts = (concepts - {"directory"}) | {"path"}
         ordinal = _ordinal(header)
         chosen: str | None = None
         transform = "identity"
@@ -283,6 +324,8 @@ def _legacy_projection(entries: list[dict], columns: list[str],
         if chosen is None:
             unresolved.append(header)
             continue
+        if wants_directory:
+            transform = "dirname"
         projections.append(ColumnProjection(header, chosen, transform))
         used.add(chosen)
 
@@ -292,7 +335,8 @@ def _legacy_projection(entries: list[dict], columns: list[str],
 
 
 def compile_projection(entries: list[dict], columns: Iterable[str] | None = None,
-                       column_specs: Iterable[dict] | None = None
+                       column_specs: Iterable[dict] | None = None,
+                       field_roles: Iterable[dict] | None = None
                        ) -> list[ColumnProjection]:
     """Compile a safe column projection for ``entries``.
 
@@ -323,7 +367,7 @@ def compile_projection(entries: list[dict], columns: Iterable[str] | None = None
                if isinstance(column, str) and column.strip()]
     if not headers:
         return [ColumnProjection(field, field) for field in fields]
-    return _legacy_projection(entries, headers, fields)
+    return _legacy_projection(entries, headers, fields, field_roles)
 
 
 def _transform(value: Any, operation: str) -> Any:
@@ -346,10 +390,12 @@ def _cell(value: Any) -> Any:
 
 
 def project_entries(entries: Iterable[dict], columns: Iterable[str] | None = None,
-                    column_specs: Iterable[dict] | None = None) -> list[list]:
+                    column_specs: Iterable[dict] | None = None,
+                    field_roles: Iterable[dict] | None = None) -> list[list]:
     """Return ``[header, *data_rows]`` using a compiled safe projection."""
     records = [entry for entry in (entries or []) if isinstance(entry, dict)]
-    projection = compile_projection(records, columns, column_specs)
+    projection = compile_projection(
+        records, columns, column_specs, field_roles)
     if not projection:
         return []
     rows: list[list] = [[column.header for column in projection]]

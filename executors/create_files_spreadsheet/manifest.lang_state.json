@@ -106,5 +106,29 @@
       "source_lang": null,
       "source_hash": null
     }
+  },
+  "args.field_roles.description": {
+    "it": {
+      "version_hash": "sha256:144468cfe1f6621e98ffad1b9cd59e20ded5fdde68a3cb455f631e7d1158dd0e",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:b12e391baca8a214cbc83ffc72e4d2dcd7890af215b21342abc37ae1bdb5d5f0",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.unique_rows.description": {
+    "it": {
+      "version_hash": "sha256:dae637734ec3738b9a9c211c5a054083d8634a56e6d6a7ed474f7049cc392197",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:5918b89fe6acf0f2ef04cb4d8c72d3ed7852b1f22e68f9d8d2fa55740598d361",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

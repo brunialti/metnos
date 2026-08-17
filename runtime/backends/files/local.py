@@ -2332,13 +2332,15 @@ def _write_xlsx_stdlib(path: Path, rows: list, sheet_name: str) -> None:
         raise
 
 
-def _entries_to_values(entries, columns, column_specs=None) -> list:
+def _entries_to_values(entries, columns, column_specs=None,
+                       field_roles=None) -> list:
     """Costruisce la matrice [header + righe] da una LISTA di entries (dict) e
     una lista di colonne. Il mapping vive nel helper core semanticamente
     tipizzato: chiavi esatte, concetti di campo o ``column_specs`` espliciti.
     Non esiste fallback posizionale, perché potrebbe etichettare dati corretti
     con un significato falso."""
-    return project_entries(entries or [], columns or [], column_specs or [])
+    return project_entries(
+        entries or [], columns or [], column_specs or [], field_roles or [])
 
 
 def _rows_to_values(rows_source, columns) -> list:
@@ -2363,6 +2365,32 @@ def _rows_to_values(rows_source, columns) -> list:
     return rows
 
 
+def _deduplicate_rows(rows: list) -> list:
+    """Preserve the first occurrence of each complete row.
+
+    This is intentionally opt-in at the spreadsheet contract.  Distinct
+    source records can collapse to the same displayed row after a projection
+    such as ``dirname``; comparing the final rows is therefore the only
+    general way to honour ``unique_rows`` without knowing producer fields.
+    """
+    unique: list = []
+    seen: set[str] = set()
+    for row in rows:
+        key = json.dumps(
+            row, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), default=str,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(row)
+    return unique
+
+
+def _maybe_deduplicate_rows(rows: list, args: dict) -> list:
+    return _deduplicate_rows(rows) if args.get("unique_rows") is True else rows
+
+
 def _drop_declared_header(rows: list, columns) -> list:
     """Non ri-appende a un foglio popolato l'header dichiarato/materializzato."""
     cols = [c for c in (columns or []) if isinstance(c, str) and c.strip()]
@@ -2378,7 +2406,8 @@ def _resolve_values(args: dict):
     (pipe §2.10/§4.1). Ritorna list[list] o None se nessuna fonte valida."""
     values = args.get("values")
     if isinstance(values, list) and values:
-        return _rows_to_values(values, args.get("columns"))
+        return _maybe_deduplicate_rows(
+            _rows_to_values(values, args.get("columns")), args)
     entries = args.get("entries")
     if isinstance(entries, list) and entries:
         # §2.8: entries possono essere RECORD (list[dict], da extract/list_*) o
@@ -2387,9 +2416,11 @@ def _resolve_values(args: dict):
         has_dict = any(isinstance(e, dict) for e in entries)
         has_rows = any(isinstance(e, (list, tuple)) for e in entries)
         if has_rows and not has_dict:
-            return _rows_to_values(entries, args.get("columns"))
-        return _entries_to_values(entries, args.get("columns"),
-                                  args.get("column_specs"))
+            return _maybe_deduplicate_rows(
+                _rows_to_values(entries, args.get("columns")), args)
+        return _maybe_deduplicate_rows(_entries_to_values(
+            entries, args.get("columns"), args.get("column_specs"),
+            args.get("field_roles")), args)
     if isinstance(values, list):  # lista vuota esplicita = foglio vuoto
         return []
     return None
@@ -2399,6 +2430,8 @@ def _data_row_count(args: dict, rows: list) -> int:
     """Conteggia i record, non l'eventuale riga d'intestazione."""
     entries = args.get("entries")
     if isinstance(entries, list):
+        if args.get("unique_rows") is True:
+            return max(0, len(rows) - 1)
         return len(entries)
     columns = [str(column).strip() for column in (args.get("columns") or [])
                if isinstance(column, str) and column.strip()]

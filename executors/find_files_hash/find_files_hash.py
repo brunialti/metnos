@@ -657,6 +657,12 @@ def invoke(args):
         "ok_count": len(entries),
         "fail_count": len(failed),
         "entries": entries,
+        # Typed semantics for downstream tabular projection.  Field names are
+        # an executor contract; presentation labels remain user/i18n text.
+        "entry_field_roles": [
+            {"field": "path", "roles": ["path", "duplicate"]},
+            {"field": "duplicate_of", "roles": ["path", "origin"]},
+        ],
         "failed": failed,
         "scanned_files": scanned_files,
         "same_size_candidates": same_size_candidates,
