@@ -569,6 +569,7 @@ def _step_list_payload(step_result: dict):
 from from_step_projection import (  # noqa: E402
     CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
     consumer_match_arg as _consumer_match_arg,
+    has_explicit_from_step_alternative as _has_explicit_from_step_alternative,
     project_from_entries as _project_from_entries,
 )
 
@@ -700,16 +701,9 @@ def _resolve_from_step(args: dict, history: list[StepRun],
     consumer-arg (parità con agent_runtime.resolve_from_step Layer 4)."""
     if "from_step" not in args:
         return args
-    # SAFETY (port da agent_runtime.resolve_from_step, incidente live 16/5/2026):
-    # se l'azione ha già un TARGET ESPLICITO (event_id/paths/ids/…), from_step è
-    # ridondante o contraddittorio. Espandere `entries` accanto sovrascriverebbe
-    # il target → su executor MUTANTI un delete/move troppo largo (allora:
-    # «cancella evento abc-123» espandeva l'intera lista dello step → 15 eventi
-    # reali bruciati). Il target esplicito vince SEMPRE: droppa from_step. §7.3.
-    _ALT_TARGET_KEYS = ("name", "names", "all", "paths", "urls", "ids",
-                        "messages", "patterns", "event_ids", "event_id",
-                        "entries", "to", "to_user")
-    if any(k in args and args[k] not in (None, "", [], {}) for k in _ALT_TARGET_KEYS):
+    # Un target esplicito dichiarato dal manifest prevale sul piping: espandere
+    # anche from_step potrebbe allargare involontariamente un'azione mutante.
+    if _has_explicit_from_step_alternative(args, consumer_schema):
         return {k: v for k, v in args.items() if k != "from_step"}
     n = args.get("from_step")
     # Coercizione stringa numerica (parità col legacy): lo schema-guided emette
@@ -732,7 +726,8 @@ def _resolve_from_step(args: dict, history: list[StepRun],
     out = {k: v for k, v in args.items() if k != "from_step"}
     # Manifest-driven projection shared with the legacy engine: vector payload
     # plus homogeneous scalar context (for example UID + mailbox account).
-    out, _ = _project_from_entries(out, entries, consumer_schema)
+    out, _ = _project_from_entries(
+        out, entries, consumer_schema, source_result=src)
     return out
 
 
@@ -1399,6 +1394,18 @@ ARG_TRANSFORM_PIPELINE: tuple = (
                  "query-det", reads=frozenset({"query", "dl:photo.metadata_fields"}),
                  writes=frozenset({"args.fields"}),
                  rationale="sinonimi NL metadata foto -> enum canonico via detection_lexicon (7/7/2026)"),
+    ArgTransform("unique_rows", "unique_rows_resolver", "resolve_unique_rows",
+                 "query-det", needs_schema=True,
+                 reads=frozenset({"query", "args_schema",
+                                  "dl:tabular.unique_rows_request"}),
+                 writes=frozenset({"args.unique_rows"}),
+                 rationale="vincolo esplicito di unicita' righe -> flag schema, indipendente dal planner"),
+    ArgTransform("filter_field", "filter_field_resolver", "resolve_filter_field",
+                 "query-det", reads=frozenset({"args.entries",
+                                                "args.name_regex"}),
+                 writes=frozenset({"args.name_regex", "args.where_field",
+                                   "args.where_regex"}),
+                 rationale="name_regex su record senza name -> unico campo scalare compatibile, altrimenti fail-closed"),
     # ── execution-only: dipendono da runtime ctx/creds/actor -> NON riapplicabili
     #    al record L0 (resterebbero legati allo stato del turno).
     ArgTransform("backend_arg", "backend_resolver", "resolve_backend_arg",

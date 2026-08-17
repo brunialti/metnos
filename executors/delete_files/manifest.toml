@@ -33,6 +33,7 @@ requires_one_of = [["paths", "file_ids", "file_id", "entries"]]
 [args.properties.paths]
 type        = "array"
 items       = { type = "string" }
+uniqueItems = true
 
 [args.properties.paths.description]
 it = "Lista di path di file da rimuovere. Path assoluti o ~ espandibile. Valori con `*`/`?` = glob, espansi a soli file regolari (es. \"/tmp/logs/*.log\"). Tutti devono essere FILE (non directory) e dentro lo scope fs:write autorizzato. Esempio: [\"/tmp/temp1.txt\", \"~/Downloads/foo.log\"]."
@@ -41,6 +42,7 @@ en = "List of file paths to remove. Absolute paths or ~ expandable. Values with 
 [args.properties.file_ids]
 type = "array"
 items = { type = "string" }
+uniqueItems = true
 
 [args.properties.file_ids.description]
 it = "ID esatti di file Google Drive. Usato con client=`google_workspace`; nessun wildcard."

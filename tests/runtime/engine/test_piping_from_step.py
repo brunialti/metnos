@@ -11,11 +11,7 @@ il runtime estrae i valori e li inietta sotto quell'arg.
 """
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
-
-_RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 
 class TestPipingFromStep(unittest.TestCase):
@@ -88,6 +84,53 @@ class TestPipingFromStep(unittest.TestCase):
         self.assertEqual(new_args.get("entries"),
                          [{"path": "/x"}, {"path": "/y"}])
 
+    def test_manifest_projects_typed_result_metadata_with_entries(self):
+        """Top-level producer metadata follows the payload only by opt-in."""
+        from agent_runtime import resolve_from_step
+        roles = [{"field": "a", "roles": ["path", "origin"]}]
+        history = self._hist("producer", {
+            "ok": True,
+            "entries": [{"a": "/source/file"}],
+            "entry_field_roles": roles,
+        })
+        schema = {
+            "properties": {
+                "entries": {"type": "array"},
+                "field_roles": {
+                    "type": "array",
+                    "from_result_key": "entry_field_roles",
+                },
+            },
+        }
+
+        new_args, errors = resolve_from_step(
+            {"from_step": 1}, history, consumer_schema=schema)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(new_args["entries"], [{"a": "/source/file"}])
+        self.assertEqual(new_args["field_roles"], roles)
+
+    def test_result_metadata_requires_declared_type_and_never_overrides(self):
+        from agent_runtime import resolve_from_step
+        history = self._hist("producer", {
+            "ok": True,
+            "entries": [{"a": 1}],
+            "metadata": {"unsafe": True},
+        })
+        schema = {"properties": {
+            "entries": {"type": "array"},
+            "roles": {"type": "array", "from_result_key": "metadata"},
+        }}
+        new_args, errors = resolve_from_step(
+            {"from_step": 1, "roles": ["explicit"]}, history, schema)
+        self.assertEqual(errors, [])
+        self.assertEqual(new_args["roles"], ["explicit"])
+
+        inferred, errors = resolve_from_step(
+            {"from_step": 1}, history, schema)
+        self.assertEqual(errors, [])
+        self.assertNotIn("roles", inferred)
+
     def test_empty_entries_returns_empty_array(self):
         """entries=[] vuote → arg consumer = []."""
         from agent_runtime import resolve_from_step
@@ -158,10 +201,53 @@ class TestPipingFromStep(unittest.TestCase):
     def test_from_step_invalid_step_index(self):
         """from_step fuori range → errore istruttivo."""
         from agent_runtime import resolve_from_step
+        from i18n import language_context
         history = self._hist("find_urls", {"ok": True, "entries": []})
-        new_args, errors = resolve_from_step({"from_step": 5}, history)
+        with language_context("it"):
+            new_args, errors = resolve_from_step({"from_step": 5}, history)
         self.assertEqual(len(errors), 1)
-        self.assertIn("inesistente", errors[0])
+        self.assertIn("non esiste", errors[0])
+
+    def test_from_step_errors_follow_request_language(self):
+        """Gli errori standard non contengono piu' testo italiano nel codice."""
+        from agent_runtime import resolve_from_step
+        from i18n import language_context
+
+        cases = (
+            ({"from_step": "bad"}, [], "intero", "integer"),
+            ({"from_step": 2}, self._hist("source", {}),
+             "non esiste", "does not exist"),
+            ({"from_step": 1}, self._hist("source", []),
+             "risultato utilizzabile", "usable result"),
+            ({"from_step": 1}, self._hist("source", {"ok": True}),
+             "lista utilizzabile", "usable list"),
+        )
+        for args, history, expected_it, expected_en in cases:
+            with self.subTest(args=args, language="it"):
+                with language_context("it"):
+                    _new_args, errors = resolve_from_step(args, history)
+                self.assertEqual(len(errors), 1)
+                self.assertIn(expected_it, errors[0])
+            with self.subTest(args=args, language="en"):
+                with language_context("en"):
+                    _new_args, errors = resolve_from_step(args, history)
+                self.assertEqual(len(errors), 1)
+                self.assertIn(expected_en, errors[0])
+
+    def test_manifest_declared_target_wins_over_from_step(self):
+        """La precedenza sicura deriva dal manifest, non da nomi nel runtime."""
+        from agent_runtime import resolve_from_step
+        schema = {
+            "properties": {
+                "record_key": {"type": "string"},
+                "from_step": {"type": "integer"},
+            },
+            "from_step_alternatives": ["record_key"],
+        }
+        new_args, errors = resolve_from_step(
+            {"record_key": "r-1", "from_step": 99}, [], schema)
+        self.assertEqual(errors, [])
+        self.assertEqual(new_args, {"record_key": "r-1"})
 
     def test_from_step_string_int_coercion(self):
         """from_step come stringa numerica coercito a int."""

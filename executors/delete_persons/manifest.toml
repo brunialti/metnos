@@ -30,6 +30,9 @@ digest = "sha256:f2ff10499335406fa3c5eb1fe9f2597cbd06b158675f064b0703eca1f8a5d43
 [args]
 type     = "object"
 required = []
+from_step_alternatives = [
+    "names", "name", "entries", "all", "chosen_slug", "chosen_slugs",
+]
 
 [args.properties.names]
 type = "array"

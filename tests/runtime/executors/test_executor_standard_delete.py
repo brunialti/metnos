@@ -54,6 +54,10 @@ def test_manifest_declares_destructive_contract_and_remote_undo() -> None:
     assert capabilities["provider:access"]["when"] == {
         "arg": "client", "values": ["google_workspace"],
     }
+    properties = manifest["args"]["properties"]
+    assert properties["paths"]["uniqueItems"] is True
+    assert properties["file_ids"]["uniqueItems"] is True
+    assert "uniqueItems" not in properties["entries"]
     assert "schema_inline" in manifest["output"]
 
 
@@ -332,6 +336,34 @@ def test_natural_paraphrases_remain_routable() -> None:
     ):
         names = [item.name for item in rank(query, entries, k=8, min_score=1)]
         assert "delete_files" in names, (query, names)
+
+
+def test_runtime_deduplicates_manifest_declared_targets(
+        tmp_path: Path, monkeypatch) -> None:
+    import agent_runtime
+
+    source = tmp_path / "single-target.txt"
+    source.write_text("one", encoding="utf-8")
+    monkeypatch.setenv("METNOS_SANDBOX", "0")
+    monkeypatch.setenv("METNOS_HISTORY_DIR", str(tmp_path / "history"))
+    monkeypatch.setattr(agent_runtime, "_undo_pending", lambda *_a, **_k: None)
+    monkeypatch.setattr(agent_runtime, "_undo_done", lambda *_a, **_k: None)
+    executor = _catalog().executors["delete_files"]
+
+    result = agent_runtime.invoke_executor(
+        executor,
+        {"paths": [str(source), str(source)]},
+        timeout_s=15,
+        turn_id="deduplicate-target",
+        actor="host",
+        channel="test",
+    )
+
+    assert result["ok"] is True, result
+    assert result["ok_count"] == 1
+    assert result["fail_count"] == 0
+    assert len(result["results"]) == 1
+    assert not source.exists()
 
 
 def test_real_bubblewrap_delete_and_undo_roundtrip(

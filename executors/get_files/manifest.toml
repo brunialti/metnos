@@ -29,6 +29,7 @@ digest = "sha256:6311a5d260667f304d1b048128f46e391f6fed2bf3746e37e123aa15dbd05fe
 [args]
 type     = "object"
 required = []
+from_step_alternatives = ["paths"]
 
 [args.properties.from_step]
 type        = "integer"

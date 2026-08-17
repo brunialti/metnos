@@ -369,7 +369,7 @@ class TestExecutorPlaceholders(unittest.TestCase):
 
     def test_dropped_required_verbs(self):
         from engine.dispatch import _dropped_required_verbs
-        from engine.types import Framework, StepSpec
+        from engine.types import Framework, Intent, StepSpec
         Q = ("cerca online le conferenze AMD ROCm, crea un evento per ciascuna "
              "e mandami una mail")
         # collasso a create_events-only → 'find' (producer) E 'send' droppati
@@ -393,11 +393,42 @@ class TestExecutorPlaceholders(unittest.TestCase):
             StepSpec(tool="send_messages", args={}),
             StepSpec(tool="final_answer", args={})])
         self.assertEqual(_dropped_required_verbs(fw_ok, Q), set())
-        # query mono-azione → mai scatta
+        # query mono-azione correttamente coperta → niente drop
         fw_single = Framework(steps=[
             StepSpec(tool="create_events", args={}),
             StepSpec(tool="final_answer", args={})])
         self.assertEqual(_dropped_required_verbs(fw_single, "crea un evento domani"), set())
+
+        # Una mutazione singola non può degradare a un lookup read-only.
+        install_intent = Intent(verb="write", object="packages", actions=[
+            {"verb": "write", "object": "packages"},
+        ])
+        check_only = Framework(steps=[
+            StepSpec(tool="find_packages", args={"package_name": "tool-x"}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        self.assertEqual(
+            _dropped_required_verbs(
+                check_only, "installa tool-x", install_intent),
+            {"write"},
+        )
+        admin_plan = Framework(steps=[
+            StepSpec(tool="admin", args={"intent": "install package tool-x"}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        self.assertEqual(
+            _dropped_required_verbs(
+                admin_plan, "installa tool-x", install_intent), set())
+
+        # Il live extractor usa il campo primario per una singola azione e può
+        # lasciare actions vuoto. Il gate deve leggere entrambe le forme.
+        install_primary_only = Intent(
+            verb="write", object="packages", actions=[])
+        self.assertEqual(
+            _dropped_required_verbs(
+                check_only, "installa tool-x", install_primary_only),
+            {"write"},
+        )
 
     def test_populated_create_satisfies_spurious_same_object_write_action(self):
         """Initial population is part of create, not a second artifact."""
@@ -417,6 +448,29 @@ class TestExecutorPlaceholders(unittest.TestCase):
         ])
         assert _dropped_required_verbs(
             populated, "crea un foglio con colonne e righe", intent) == set()
+
+        # Regressione live 888dd534: il lessico vede ``metti`` come write,
+        # mentre l'intent object-aware vede un unico create(files). Il create
+        # popolato tramite from_step realizza già entrambe le facce del sink.
+        spreadsheet_intent = Intent(verb="find", object="images", actions=[
+            {"verb": "find", "object": "images"},
+            {"verb": "create", "object": "files"},
+        ])
+        spreadsheet = Framework(steps=[
+            StepSpec(tool="find_files_hash", args={"base_path": "/images"}),
+            StepSpec(tool="create_files_spreadsheet", args={
+                "columns": ["Cartella Originale", "Cartella Duplicato"],
+                "from_step": 1,
+            }),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        spreadsheet_query = (
+            "Trova i file immagine duplicati nella cartella Immagini del "
+            "server e metti in uno spreadsheet due colonne con solo il path "
+            "delle cartelle contenenti i file originali e duplicati"
+        )
+        assert _dropped_required_verbs(
+            spreadsheet, spreadsheet_query, spreadsheet_intent) == set()
 
         empty = Framework(steps=[
             StepSpec(tool="create_files_spreadsheet", args={"title": "vuoto"}),

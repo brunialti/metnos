@@ -327,6 +327,40 @@ def normalize_vector_result(result: dict, *,
     return out
 
 
+def normalize_unique_items(args: dict, schema) -> dict:
+    """Elimina duplicati solo dagli array dichiarati insiemi dallo schema.
+
+    ``uniqueItems`` e' l'autorita' JSON Schema: gli array senza quel flag
+    restano identici, perche' ripetizione e ordine possono avere significato.
+    Vince la prima occorrenza: normalizzazione stabile e idempotente.
+    """
+    if not isinstance(args, dict) or not isinstance(schema, dict):
+        return args
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return args
+
+    out = args
+    for name, declaration in properties.items():
+        if not isinstance(declaration, dict) \
+                or declaration.get("uniqueItems") is not True:
+            continue
+        values = args.get(name)
+        if not isinstance(values, list):
+            continue
+        unique = []
+        for value in values:
+            if any(type(value) is type(previous) and value == previous
+                   for previous in unique):
+                continue
+            unique.append(value)
+        if len(unique) != len(values):
+            if out is args:
+                out = dict(args)
+            out[name] = unique
+    return out
+
+
 def catalog_names(catalog: Any) -> set:
     """Set dei nomi executor da un catalog le cui voci possono essere dict O
     oggetti (l'idioma era copiato ~11× in dispatch; 4 copie usavano solo

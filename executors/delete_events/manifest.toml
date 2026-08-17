@@ -30,6 +30,7 @@ digest = "sha256:5e08d8726d53c6e3e280b00afb20d767f08ff0cbbd1c2ecfffda5a768eac8d6
 [args]
 type     = "object"
 required = []
+from_step_alternatives = ["event_id", "event_ids", "entries", "time_window"]
 
 [args.properties.event_id]
 type    = "string"

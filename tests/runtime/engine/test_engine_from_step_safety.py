@@ -9,14 +9,26 @@ executor mutante. Il target esplicito vince, from_step viene droppato.
 """
 from __future__ import annotations
 
-import sys
 import unittest
-from pathlib import Path
-
 
 from engine.executor import _resolve_from_step  # noqa: E402
 from engine.types import StepRun  # noqa: E402
-from from_step_projection import required_source_context_fields  # noqa: E402
+from from_step_projection import (  # noqa: E402
+    from_step_alternatives,
+    has_explicit_from_step_alternative,
+    required_source_context_fields,
+)
+
+
+TARGET_SCHEMA = {
+    "properties": {
+        "event_id": {"type": "string"},
+        "paths": {"type": "array"},
+        "ids": {"type": "array"},
+        "entries": {"type": "array"},
+    },
+    "from_step_alternatives": ["event_id", "paths", "ids", "entries"],
+}
 
 
 def _hist(entries):
@@ -30,17 +42,23 @@ class FromStepSafetyTests(unittest.TestCase):
         self.hist = _hist([{"event_id": f"e{i}"} for i in range(9)])
 
     def test_explicit_event_id_drops_from_step(self):
-        out = _resolve_from_step({"event_id": "abc-123", "from_step": 1}, self.hist)
+        out = _resolve_from_step(
+            {"event_id": "abc-123", "from_step": 1}, self.hist,
+            TARGET_SCHEMA)
         self.assertEqual(out, {"event_id": "abc-123"})
         self.assertNotIn("entries", out)
         self.assertNotIn("from_step", out)
 
     def test_explicit_paths_drops_from_step(self):
-        out = _resolve_from_step({"paths": ["/tmp/x"], "from_step": 1}, self.hist)
+        out = _resolve_from_step(
+            {"paths": ["/tmp/x"], "from_step": 1}, self.hist,
+            TARGET_SCHEMA)
         self.assertEqual(out, {"paths": ["/tmp/x"]})
 
     def test_explicit_ids_list_drops_from_step(self):
-        out = _resolve_from_step({"ids": ["a", "b"], "from_step": 1}, self.hist)
+        out = _resolve_from_step(
+            {"ids": ["a", "b"], "from_step": 1}, self.hist,
+            TARGET_SCHEMA)
         self.assertEqual(out, {"ids": ["a", "b"]})
 
     def test_no_explicit_target_expands_normally(self):
@@ -51,8 +69,55 @@ class FromStepSafetyTests(unittest.TestCase):
 
     def test_empty_target_does_not_block_expansion(self):
         # un target VUOTO ("", [], None) non è un target reale → from_step espande
-        out = _resolve_from_step({"event_id": "", "from_step": 1}, self.hist)
+        out = _resolve_from_step(
+            {"event_id": "", "from_step": 1}, self.hist,
+            TARGET_SCHEMA)
         self.assertIn("entries", out)
+
+    def test_alternatives_are_manifest_driven(self):
+        schema = {
+            "properties": {
+                "items": {"type": "array"},
+                "entries": {"type": "array"},
+                "destination": {"type": "string"},
+            },
+            "requires_one_of": [["items", "entries", "from_step"]],
+        }
+        self.assertEqual(from_step_alternatives(schema), ("items", "entries"))
+        self.assertTrue(has_explicit_from_step_alternative(
+            {"items": ["a"], "from_step": 1}, schema))
+        self.assertFalse(has_explicit_from_step_alternative(
+            {"destination": "/tmp/out", "from_step": 1}, schema))
+
+    def test_manifest_override_excludes_destination_metadata(self):
+        schema = {
+            "properties": {
+                "values": {"type": "array"},
+                "entries": {"type": "array"},
+                "title": {"type": "string"},
+            },
+            "requires_one_of": [
+                ["values", "entries", "from_step", "title"],
+            ],
+            "from_step_alternatives": ["values", "entries"],
+        }
+        self.assertFalse(has_explicit_from_step_alternative(
+            {"title": "output", "from_step": 1}, schema))
+        self.assertTrue(has_explicit_from_step_alternative(
+            {"values": [[1]], "from_step": 1}, schema))
+
+    def test_boolean_alternative_must_be_selected(self):
+        schema = {
+            "properties": {
+                "all": {"type": "boolean"},
+                "from_step": {"type": "integer"},
+            },
+            "from_step_alternatives": ["all"],
+        }
+        self.assertFalse(has_explicit_from_step_alternative(
+            {"all": False, "from_step": 1}, schema))
+        self.assertTrue(has_explicit_from_step_alternative(
+            {"all": True, "from_step": 1}, schema))
 
     def test_string_from_step_coerced(self):
         out = _resolve_from_step({"from_step": "1"}, self.hist)
@@ -79,6 +144,28 @@ class FromStepSafetyTests(unittest.TestCase):
         self.assertEqual(out["message_ids"], ["23", "22"])
         self.assertEqual(out["account"], "metnos_system")
         self.assertEqual(out["src_folder"], "INBOX")
+
+    def test_manifest_projects_top_level_typed_metadata(self):
+        roles = [{"field": "path", "roles": ["path", "duplicate"]}]
+        history = [StepRun(
+            step_idx=1, tool="producer", args={}, ok=True, latency_ms=0,
+            result={
+                "ok": True,
+                "entries": [{"path": "/copy/a"}],
+                "entry_field_roles": roles,
+            })]
+        schema = {"properties": {
+            "entries": {"type": "array"},
+            "field_roles": {
+                "type": "array",
+                "from_result_key": "entry_field_roles",
+            },
+        }}
+
+        out = _resolve_from_step({"from_step": 1}, history, schema)
+
+        self.assertEqual(out["entries"], [{"path": "/copy/a"}])
+        self.assertEqual(out["field_roles"], roles)
 
     def test_heterogeneous_scalar_context_is_never_guessed(self):
         history = _hist([

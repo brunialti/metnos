@@ -88,6 +88,52 @@ def test_normalize_vector_result_preserves_metadata_and_marks_partial():
     assert "partial" not in failed
 
 
+class TestNormalizeUniqueItems(unittest.TestCase):
+    def test_schema_declared_set_is_stably_deduplicated(self):
+        from executor_helpers import normalize_unique_items
+
+        args = {"paths": ["a", "b", "a", "b"], "rows": ["x", "x"]}
+        schema = {"properties": {
+            "paths": {"type": "array", "uniqueItems": True},
+            "rows": {"type": "array"},
+        }}
+        out = normalize_unique_items(args, schema)
+
+        self.assertEqual(out, {"paths": ["a", "b"], "rows": ["x", "x"]})
+        self.assertEqual(args["paths"], ["a", "b", "a", "b"])
+
+    def test_unmarked_arrays_and_invalid_inputs_are_unchanged(self):
+        from executor_helpers import normalize_unique_items
+
+        args = {"values": [1, 1]}
+        self.assertIs(normalize_unique_items(args, {"properties": {
+            "values": {"type": "array"},
+        }}), args)
+        self.assertIs(normalize_unique_items(args, None), args)
+
+    def test_nested_json_values_use_exact_type_aware_equality(self):
+        from executor_helpers import normalize_unique_items
+
+        schema = {"properties": {
+            "items": {"type": "array", "uniqueItems": True},
+        }}
+        out = normalize_unique_items({
+            "items": [1, True, {"id": "a"}, {"id": "a"}],
+        }, schema)
+        self.assertEqual(out["items"], [1, True, {"id": "a"}])
+
+    def test_idempotent(self):
+        from executor_helpers import normalize_unique_items
+
+        schema = {"properties": {
+            "ids": {"type": "array", "uniqueItems": True},
+        }}
+        once = normalize_unique_items({"ids": ["a", "a", "b"]}, schema)
+        twice = normalize_unique_items(once, schema)
+        self.assertIs(twice, once)
+        self.assertEqual(twice, {"ids": ["a", "b"]})
+
+
 def _run_stdio(invoke, stdin_text, **kw):
     """Esegue run_stdio con stdin/stdout finti; ritorna l'output deserializzato.
 

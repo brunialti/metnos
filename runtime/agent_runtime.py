@@ -2493,7 +2493,7 @@ def _lookup_field(obj, dotted):
 
 from from_step_projection import (  # noqa: E402
     CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
-    consumer_match_arg as _consumer_match_arg,
+    has_explicit_from_step_alternative as _has_explicit_from_step_alternative,
     project_from_entries as _project_from_entries,
 )
 
@@ -2595,58 +2595,25 @@ def resolve_from_step(args, history, consumer_schema=None):
     if isinstance(fs, str) and fs.isdigit():
         fs = int(fs)
     if not isinstance(fs, int):
-        errors.append(
-            f"from_step: deve essere un intero, ricevuto {type(fs).__name__} ({fs!r}). "
-            f"Usa il numero dello step precedente che ha prodotto la lista (es. from_step=1)."
-        )
+        errors.append(msg(
+            "ERR_FROM_STEP_TYPE",
+            actual_type=type(fs).__name__, value=repr(fs)))
         return args, errors
-    # Args alternativi che identificano gia' il target senza bisogno di
-    # from_step (10/5/2026 fix bug live: PLANNER spesso passa from_step
-    # SUPERFLUO accanto a un name/names/all/paths/urls esplicito; non ha
-    # senso bloccare l'esecuzione se l'utente ha gia' detto cosa fare).
-    # 15/5/2026 estesa con event_ids/event_id/entries/to/to_user dopo
-    # bug live: "cancella gli eventi con id X, Y, Z" → LLM emette
-    # delete_events(from_step=1, event_ids=[...]) → from_step=1 al primo
-    # step inesistente blocca pur con event_ids espliciti.
-    _ALT_TARGET_KEYS = ("name", "names", "all", "paths", "urls", "ids",
-                          "messages", "patterns",
-                          "event_ids", "event_id", "entries",
-                          "to", "to_user")
-    _has_alt = any(
-        k in args and args[k] not in (None, "", [], {})
-        for k in _ALT_TARGET_KEYS
-    )
-    # SAFETY (17/5/2026): se l'utente ha gia' specificato un target esplicito
-    # (event_id/paths/ids/...), from_step e' ridondante O contraddittorio.
-    # Prima del fix, from_step espandeva SEMPRE prev_list in `entries`,
-    # sovrascrivendo silenziosamente l'event_id esplicito. Bug live 16/5/2026:
-    # "cancella evento abc-123" → PLANNER fa read_events(next-7d) +
-    # delete_events(event_id="abc-123", from_step=1) → runtime ignora
-    # event_id e cancella TUTTI i 9 eventi della lista step1. 15 eventi reali
-    # bruciati in 4 turn di test. Fix §7.3: target esplicito vince SEMPRE
-    # sul from_step (intent utente prevale su pipe pattern del PLANNER).
-    if _has_alt:
+    # Un target esplicito dichiarato dal manifest prevale sul piping: espandere
+    # anche from_step potrebbe allargare involontariamente un'azione mutante.
+    if _has_explicit_from_step_alternative(args, consumer_schema):
         new_args = dict(args)
         new_args.pop("from_step", None)
         return new_args, errors
     if fs < 1 or fs > len(history):
-        if _has_alt:
-            new_args = dict(args)
-            new_args.pop("from_step", None)
-            return new_args, errors
-        errors.append(
-            f"from_step={fs}: step inesistente. Validi: 1..{len(history)}. "
-            f"Indica lo step che nel turno corrente ha gia' prodotto una lista."
-        )
+        errors.append(msg(
+            "ERR_FROM_STEP_RANGE", step=fs, maximum=len(history)))
         return args, errors
     step_obs = history[fs - 1].get("observation", {})
     src_tool = history[fs - 1].get("tool", "?")
     if not isinstance(step_obs, dict):
-        if _has_alt:
-            new_args = dict(args)
-            new_args.pop("from_step", None)
-            return new_args, errors
-        errors.append(f"from_step={fs}: step '{src_tool}' senza observation valida")
+        errors.append(msg(
+            "ERR_FROM_STEP_RESULT_INVALID", step=fs, tool=src_tool))
         return args, errors
     list_field = None
     for k in ("entries", "matches", "items", "results", "files", "paths"):
@@ -2655,15 +2622,8 @@ def resolve_from_step(args, history, consumer_schema=None):
             list_field = k
             break
     if list_field is None:
-        if _has_alt:
-            new_args = dict(args)
-            new_args.pop("from_step", None)
-            return new_args, errors
-        errors.append(
-            f"from_step={fs}: step '{src_tool}' non ha prodotto una lista "
-            f"(cerco entries/matches/items/results/files/paths). "
-            f"Scegli uno step diverso o passa entries inline."
-        )
+        errors.append(msg(
+            "ERR_FROM_STEP_LIST_MISSING", step=fs, tool=src_tool))
         return args, errors
     prev_list = step_obs[list_field]
     new_args = dict(args)
@@ -2671,7 +2631,7 @@ def resolve_from_step(args, history, consumer_schema=None):
     # Proiezione condivisa col motore v3: payload vettoriale e contesto scalare
     # omogeneo sono entrambi dichiarati nel manifest del consumer.
     new_args, consumer_arg = _project_from_entries(
-        new_args, prev_list, consumer_schema)
+        new_args, prev_list, consumer_schema, source_result=step_obs)
     context_errors = new_args.pop(_FROM_STEP_CONTEXT_ERRORS_KEY, None)
     if isinstance(context_errors, list) and context_errors:
         fields = ", ".join(sorted({
@@ -3396,6 +3356,12 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # anche per fast-path, resume ed esecuzione remota: gli args del chiamante
     # non possono impersonare un altro attore o canale.
     args = dict(args or {})
+    # JSON Schema `uniqueItems` dichiara quali liste sono insiemi. Normalizzare
+    # qui copre in un solo punto piani diretti, piping, resume e device remoti;
+    # ogni lista non annotata resta intatta perché i duplicati possono avere
+    # significato (righe, messaggi, valori). Nessuna regola per nome-tool.
+    from executor_helpers import normalize_unique_items
+    args = normalize_unique_items(args, getattr(executor, "args_schema", None))
     if actor is not None or "_actor" in args:
         args["_actor"] = actor or "host"
     if channel is not None or "_channel" in args:

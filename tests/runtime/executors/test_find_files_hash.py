@@ -39,6 +39,10 @@ def test_complete_scan_finds_duplicate_after_old_thousand_file_cap(
     assert out["scanned_files"] == 1007
     assert out["duplicate_groups_count"] == 1
     assert out["redundant_files_count"] == 1
+    assert out["entry_field_roles"] == [
+        {"field": "path", "roles": ["path", "duplicate"]},
+        {"field": "duplicate_of", "roles": ["path", "origin"]},
+    ]
     assert out["entries"][0]["path"].endswith("z-original.bin") or \
         out["entries"][0]["path"].endswith("z-copy.bin")
     presentation = out["authoritative_presentation"]

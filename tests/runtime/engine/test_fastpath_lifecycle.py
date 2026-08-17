@@ -365,6 +365,39 @@ class TestDispatchLoop(_FastpathDbCase):
             self.assertEqual(rows[0]["n_uses"], 1)
             self.assertTrue(rows[0]["last_used"])
 
+    def test_recovery_does_not_reexecute_same_finalized_plan(self):
+        """A differently proposed but equivalent retry is still one execution."""
+        fw = _fw("get_now")
+        fake = _FakeProposer(fw)
+        catalog = [SimpleNamespace(
+            name="get_now",
+            args_schema={"type": "object", "properties": {}})]
+        invocations = []
+
+        def invoke(name, args):
+            invocations.append((name, args))
+            return {"ok": False, "error": "invalid",
+                    "error_class": "wrong_args"}
+
+        fake_recovery = SimpleNamespace(
+            recover=lambda **kw: _fw("get_now"))
+        fake_terminator = SimpleNamespace(
+            explain=lambda **kw: SimpleNamespace(final_text="ko"))
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "0"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.recovery.get_recovery",
+                        return_value=fake_recovery), \
+             mock.patch("engine.terminator.get_terminator",
+                        return_value=fake_terminator), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            result = eng_dispatch.run_turn(
+                query="che ore sono adesso", intent=Intent(), catalog=catalog,
+                invoke_executor_cb=invoke, turn_id="same-recovery")
+
+        self.assertEqual(result.match_source, "terminator")
+        self.assertEqual([name for name, _args in invocations], ["get_now"])
+
     def test_record_failure_logged_at_warning(self):
         # §2.8: il record è best-effort ma il suo fallimento NON è silenzioso
         # — a debug era invisibile in prod (INFO) e ha nascosto la
@@ -621,6 +654,36 @@ class TestL0ErrorSelfHealing(_FastpathDbCase):
                 turn_id="t1")
             self.assertEqual(r.match_source, "fastpath")
             self.assertEqual(fake.calls, 0)
+
+    def test_mutating_intent_rejects_and_deletes_read_only_cached_plan(self):
+        q = "installa tool-x"
+        wrong = _fw(
+            "find_packages",
+            args_map={"find_packages": {"package_name": "tool-x"}})
+        # Forma reale del turn 7e88a050: per una singola azione l'extractor
+        # valorizza il primary intent e lascia ``actions`` vuoto.
+        intent = Intent(verb="write", object="packages", actions=[])
+        catalog = [SimpleNamespace(
+            name="find_packages",
+            args_schema={"type": "object", "properties": {}})]
+        eng_fastpath.record_success(q, wrong, intent=intent, catalog=catalog)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+        invoked = []
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer",
+                        return_value=_FakeProposer(wrong)), \
+             mock.patch.object(eng_dispatch._ap, "lookup", return_value=None), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            result = eng_dispatch.run_turn(
+                query=q, intent=intent, catalog=catalog,
+                invoke_executor_cb=lambda n, a: invoked.append(n) or {
+                    "ok": True}, turn_id="install-read-only")
+
+        self.assertEqual(invoked, [])
+        self.assertEqual(result.error_class, "capability_missing")
+        self.assertEqual(result.match_source, "terminator")
+        self.assertEqual(eng_fastpath.list_all(), [])
 
 
 # ── 1sexies-bis². Anti-doppia-esecuzione sul fall-through (2/7/2026) ────────
