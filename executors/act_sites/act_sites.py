@@ -103,7 +103,8 @@ def invoke(args: dict) -> dict:
         # broker. Legare la lettura al marcatore lasciava senza contenuto
         # proprio i turni piu' comuni.
         arrivo = {}
-        if res.get("ok") and (goal_mode or is_goal_navigation_request(action)):
+        if (res.get("ok") and not res.get("no_match")
+                and (goal_mode or is_goal_navigation_request(action))):
             try:
                 letto = session_client.session_read(
                     session_id=sid, owner=owner, include_screenshot=False,
@@ -127,6 +128,7 @@ def invoke(args: dict) -> dict:
         results.append({
             "session_id": sid, "ok": bool(res.get("ok")),
             "executed": bool(res.get("executed")),
+            **({"no_match": True} if res.get("no_match") else {}),
             "primitive": res.get("primitive"),
             "url": arrivo.get("url") or res.get("url"),
             **({k: v for k, v in arrivo.items() if k != "url"} if arrivo else {}),
@@ -177,6 +179,9 @@ def invoke(args: dict) -> dict:
     if attachments:
         out["attachments"] = attachments
     if ok:
+        if any(r.get("no_match") for r in results):
+            out["final_message_hint"] = _msg("MSG_NO_RESULTS")
+            return out
         # Se la navigazione ha portato del contenuto, il contenuto E' la
         # risposta: «azioni completate: 1» sarebbe una ricevuta al posto di
         # cio' che l'utente aveva chiesto di vedere.

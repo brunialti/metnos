@@ -62,6 +62,24 @@ def test_extract_entries_rejects_malformed_explicit_fields_without_inference(
     assert out["error_class"] == "invalid_args"
 
 
+def test_extract_entries_preserves_selected_collection_scope():
+    import extract_entries as module
+
+    out = module.handle_extract_entries({
+        "entries": [{
+            "city": "Il Cairo",
+            "_source_scope_label": "Luxor and Cairo",
+        }],
+        "fields": ["citta"],
+        "structured_map": {"citta": "city"},
+        "drill_down": False,
+    })
+
+    assert out["ok"] is True
+    assert out["entries"][0]["citta"] == "Il Cairo"
+    assert out["entries"][0]["_source_scope_label"] == "Luxor and Cairo"
+
+
 def test_extract_entries_tool_contract_marks_only_source_as_required():
     from extract_entries import EXTRACT_ENTRIES_TOOL
 
@@ -177,6 +195,65 @@ def test_exhaustive_site_search_is_a_structured_collection_request():
     assert out.steps[5].args["max_per_text"] == 100
     assert out.steps[5].args["max_total"] == 100
     assert out.steps[6].args["data_kind"] == "entries"
+
+
+def test_existing_site_search_goal_is_not_added_twice():
+    """A verb-less planner goal already covers the query search clause."""
+    from engine.dispatch import _ensure_site_session_precursor
+    from engine.types import Framework, Intent, StepSpec
+
+    query = "accedi a example.test e trova le mieprenotazioni"
+    framework = Framework(steps=[
+        StepSpec(tool="open_sites", args={
+            "urls": ["https://example.test"]}),
+        StepSpec(tool="login_sites", args={"from_step": 1}),
+        StepSpec(tool="act_sites", args={
+            "from_step": 2, "action": "le mie prenotazioni"}),
+        StepSpec(tool="read_sites", args={"from_step": 3}),
+    ])
+    intent = Intent(verb="open", object="sites", actions=[
+        {"verb": "open", "object": "sites"},
+        {"verb": "login", "object": "sites"},
+        {"verb": "act", "object": "sites"},
+        {"verb": "read", "object": "sites"},
+    ])
+
+    out = _ensure_site_session_precursor(framework, intent, query, None)
+
+    acts = [step for step in out.steps if step.tool == "act_sites"]
+    assert len(acts) == 1
+    assert acts[0].args == {
+        "from_step": 2, "action": "le mie prenotazioni"}
+    read = next(step for step in out.steps if step.tool == "read_sites")
+    assert read.args["from_step"] == 3
+
+
+def test_distinct_site_search_goal_is_preserved():
+    """Deduplication must not discard a genuinely different search."""
+    from engine.dispatch import _ensure_site_session_precursor
+    from engine.types import Framework, Intent, StepSpec
+
+    query = "accedi a example.test e cerca la fattura 2026"
+    framework = Framework(steps=[
+        StepSpec(tool="open_sites", args={
+            "urls": ["https://example.test"]}),
+        StepSpec(tool="login_sites", args={"from_step": 1}),
+        StepSpec(tool="act_sites", args={
+            "from_step": 2, "action": "le mie prenotazioni"}),
+        StepSpec(tool="read_sites", args={"from_step": 3}),
+    ])
+    intent = Intent(verb="open", object="sites", actions=[
+        {"verb": "open", "object": "sites"},
+        {"verb": "login", "object": "sites"},
+        {"verb": "act", "object": "sites"},
+        {"verb": "read", "object": "sites"},
+    ])
+
+    out = _ensure_site_session_precursor(framework, intent, query, None)
+
+    assert [step.args["action"] for step in out.steps
+            if step.tool == "act_sites"] == [
+        "le mie prenotazioni", "cerca la fattura 2026"]
 
 
 def test_plural_site_search_without_all_is_a_structured_collection(monkeypatch):

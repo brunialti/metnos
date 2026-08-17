@@ -74,6 +74,9 @@ def invoke(args: dict) -> dict:
             "url": scrub_url(res.get("url")), "title": res.get("title", ""),
             "text": res.get("text", ""), "sensitive": sensitive,
         }
+        if res.get("_source_scope_label"):
+            entry["_source_scope_label"] = str(
+                res["_source_scope_label"])
         if include_forms:
             entry["forms"] = res.get("forms") or []
         shot = res.get("screenshot_path")

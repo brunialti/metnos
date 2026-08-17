@@ -128,21 +128,31 @@ def action_verb_tokens() -> frozenset[str]:
 _DOMINIO = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b", re.IGNORECASE)
 
 
-def _request_verb_patterns():
+def _grammatical_verb_patterns():
+    """Verb families that never name what is being looked for.
+
+    Two of them, asked in one place: the verb with which one ASKS ("show me",
+    "tell me") and the verb that only builds the sentence around another one
+    ("which mails HAVE I received"). Measured on 60 real requests, the second
+    family was the largest share of the noise that still reached a goal.
+    """
     if _detlex is None:
         return ()
-    try:
-        return tuple(_detlex.regexes("text.request_verb"))
-    except Exception:
-        return ()
+    patterns = []
+    for concept in ("text.request_verb", "text.auxiliary_verb"):
+        try:
+            patterns.extend(_detlex.regexes(concept))
+        except Exception:
+            continue
+    return tuple(patterns)
 
 
 def normalize_target(text: str) -> str:
     grezzo = _DOMINIO.sub(" ", str(text or ""))
-    # I verbi con cui si chiede escono a RADICE, quindi ogni loro flessione se
-    # ne va con loro: «mostrami», «mostrandomi», «vorrei vedere». Enumerare le
-    # forme sarebbe un elenco che invecchia; la radice e' una regola.
-    for pattern in _request_verb_patterns():
+    # The verbs leave AT THE ROOT, so every inflection leaves with them:
+    # "mostrami", "mostrandomi", "vorrei vedere". Enumerating the forms would
+    # be a list that ages; a root is a rule.
+    for pattern in _grammatical_verb_patterns():
         try:
             grezzo = pattern.sub(" ", grezzo) if hasattr(pattern, "sub") \
                 else re.sub(pattern, " ", grezzo, flags=re.IGNORECASE)
@@ -180,6 +190,20 @@ def _primary_action_clause(action: str) -> str:
     return clauses[0]
 
 
+# Punctuation a NAME on a page does not carry, while an expression, a selector
+# or a snippet does. It is what keeps the vocabulary closed once a text without
+# a verb is admitted as a goal: "le mie prenotazioni" is a name, "alert(1)" and
+# "div[id=x]" are not. Same structural refusal the goal reducer already applies
+# to its own output, so both ends judge a goal by the same standard.
+_CODE_MARKS = frozenset("(){}[]<>;=")
+
+
+def _names_something(text: str) -> bool:
+    """Does this text name a thing one could look for on a page?"""
+    return bool(text) and not any(ch in _CODE_MARKS for ch in str(text)) \
+        and bool(normalize_target(text))
+
+
 def is_goal_navigation_request(action: str) -> bool:
     """Return whether natural language asks to *reach* page content.
 
@@ -188,6 +212,10 @@ def is_goal_navigation_request(action: str) -> bool:
     prenotazioni`` or ``apri il menu account``), whereas an explicit click,
     fill, submit or wait remains an atomic command.  Forms come from the
     detection lexicon through the same closed verb map used by ``parse_action``.
+
+    A text with NO verb at all is a goal too, and the commonest one: by
+    contract ``action`` carries the goal, and the manifest asks the planner to
+    name the thing without the verb ("le mie prenotazioni", not "vai").
     """
     clause = _primary_action_clause(action)
     if re.search(r"https?://[^\s'\"<>]+", clause or "", re.I):
@@ -208,8 +236,10 @@ def is_goal_navigation_request(action: str) -> bool:
         if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
                for form in verbs[kind]):
             return False
-    return any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
-               for form in verbs["goto"])
+    if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
+           for form in verbs["goto"]):
+        return True
+    return _names_something(clause)
 
 
 def parse_action(action: str) -> dict:
@@ -242,7 +272,16 @@ def parse_action(action: str) -> dict:
     elif primitive == "goto" and not url_match:
         primitive = "click"
     if primitive is None:
-        return {"ok": False, "error_class": "unsupported_action"}
+        # A goal that names a thing and carries no verb is still a goal, and it
+        # is the shape the manifest ASKS the planner for ("le mie prenotazioni",
+        # "fatture 2026"). Demanding the verb back here made the manifest's own
+        # canonical example die with `unsupported_action` while every layer
+        # above treats the verb with which one asks as noise (real turn
+        # 0cde68a46a7a426d, 7/8). The vocabulary stays closed on the other
+        # side: what does not NAME anything is still refused.
+        if not _names_something(action):
+            return {"ok": False, "error_class": "unsupported_action"}
+        primitive = "search"
     target = norm
     if primitive == "goto":
         if url_match:
@@ -483,6 +522,8 @@ def _goal_noise() -> set[str]:
     # — holds once for every consumer instead of being redone by hand in each.
     return (set(_concept_forms("sites.goal_noise"))
             | set(_concept_forms("sites.goal_noise_articulated_preposition"))
+            | set(_concept_forms("text.relation_connector"))
+            | set(_concept_forms("text.interrogative"))
             | set(_concept_forms("sites.goal_scope_quantifier"))
             | set(_concept_forms("sites.personal_goal_marker"))
             | set(action_verb_tokens()))
@@ -627,7 +668,10 @@ def goal_tokens(target: str, *, navigation: bool = False) -> tuple[str, ...]:
     noise = _goal_noise()
     out = []
     for token in _canonical_goal_text(target).split():
-        if token in noise or len(token) < 2:
+        # A single character is too short to name anything — unless it is a
+        # digit, which the request stated on purpose: "the last 7 days", "the
+        # 3 senders". Dropping it lost a quantity the user had written.
+        if token in noise or (len(token) < 2 and not token.isdigit()):
             continue
         if navigation and token.isdigit():
             continue  # date/importi sono filtri differiti, non nomi di menu
@@ -966,6 +1010,172 @@ def goal_candidate_is_exact(target: str, candidate: dict) -> bool:
         candidate.get("name") or candidate.get("label") or ""),
         navigation=True))
     return bool(wanted) and present == wanted
+
+
+def choose_goal_drilldown_candidate(
+        target: str, candidates: list[dict], *,
+        collection_tokens: set[str] | frozenset[str] = frozenset(),
+        excluded: set[str] | None = None) -> dict:
+    """Probe an apparent target for one unambiguous navigable child.
+
+    A collection control commonly names only the container (for example
+    "bookings"), while a result names the requested record (for example a
+    place).  The former tokens are observed from the page and removed here;
+    no site, label or language is hardcoded.
+    """
+    wanted_ordered = goal_tokens(target, navigation=True)
+    wanted = set(wanted_ordered)
+    specific_ordered = tuple(
+        token for token in wanted_ordered if token not in collection_tokens)
+    specific = set(specific_ordered)
+    if not specific:
+        return {"ok": False, "error_class": "selector_missing"}
+    specific_target = " ".join(specific_ordered)
+
+    name_matches: list[tuple[int, dict]] = []
+    context_matches: list[dict] = []
+    eligible = prefer_verifiable_goal_candidates(
+        goal_navigation_candidates(candidates, excluded=excluded))
+    for candidate in eligible:
+        if str(candidate.get("form_method") or "").upper() == "POST":
+            continue
+        if active_goal_control_label(candidate):
+            continue
+        name_tokens = set(goal_tokens(str(
+            candidate.get("name") or candidate.get("label") or ""),
+            navigation=True))
+        context_tokens = set(goal_tokens(str(
+            candidate.get("context_name") or ""), navigation=True))
+        if specific.issubset(name_tokens):
+            # When both a compact record link and a whole-card link contain
+            # the requested value, the compact label is the more precise
+            # statement of intent.  Compare token surplus instead of DOM
+            # shape, site markup or language.  Equal surplus remains
+            # ambiguous and therefore fail-closed.
+            name_matches.append((len(name_tokens - specific), candidate))
+        elif specific.issubset(name_tokens | context_tokens):
+            context_matches.append(candidate)
+    ranked = []
+    if name_matches:
+        minimum_surplus = min(surplus for surplus, _ in name_matches)
+        ranked = [
+            (candidate_score(specific_target, candidate, "click"), candidate)
+            for surplus, candidate in name_matches
+            if surplus == minimum_surplus
+        ]
+    else:
+        ranked = [
+            (0.72 if _is_semantic_control(candidate) else 0.56, candidate)
+            for candidate in context_matches
+        ]
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    if not ranked:
+        return {"ok": False, "error_class": "selector_missing"}
+
+    top_score = ranked[0][0]
+    top = [candidate for score, candidate in ranked
+           if top_score - score < 0.12]
+    if len(top) > 1:
+        identities = {goal_candidate_key(candidate) for candidate in top}
+        destinations = {_safe_navigation_identity(candidate)
+                        for candidate in top}
+        if len(identities) != 1 and not (
+                len(destinations) == 1 and None not in destinations):
+            return {"ok": False, "error_class": "selector_ambiguous",
+                    "ranked": ranked[:24]}
+    selected = min(top, key=lambda candidate: (
+        not _is_semantic_control(candidate),
+        str(candidate.get("id") or "")))
+    return {"ok": True, "candidate": selected,
+            "confidence": top_score, "ranked": ranked[:24]}
+
+
+def collection_control_tokens(target: str,
+                              candidates: list[dict]) -> frozenset[str]:
+    """Tokens del fine nominati da un controllo di ricerca della collezione.
+
+    Le forme del controllo provengono dal lessico traducibile. Questo separa
+    il contenitore osservato dal record richiesto senza conoscere sito,
+    lingua o tipo di dato: «trova una prenotazione» porta il token della
+    collezione, mentre «Luxor» resta il discriminante del record.
+    """
+    wanted = set(goal_tokens(target, navigation=True))
+    # A page may label the entry point with the noun (``Search``) or with the
+    # action it performs (``Find a booking``).  Both vocabularies are owned by
+    # the translated lexicon; neither the site nor the record type lives here.
+    forms = (_concept_forms("sites.search_entry_target")
+             + _concept_forms("sites.search_action_verb"))
+    if not wanted or not forms:
+        return frozenset()
+    observed: set[str] = set()
+    for candidate in goal_navigation_candidates(candidates):
+        name = normalize(str(
+            candidate.get("name") or candidate.get("label") or ""))
+        if not name or not any(_contains_phrase(name, form)
+                               for form in forms):
+            continue
+        observed |= wanted & set(goal_tokens(name, navigation=True))
+    return frozenset(observed)
+
+
+def collection_facet_key(candidate: dict) -> str:
+    """Return the language-neutral identity of one collection-state facet."""
+    name = str(candidate.get("name") or candidate.get("label") or "")
+    states = set(goal_tokens(name, navigation=True)) & _goal_facet_tokens()
+    if len(states) != 1:
+        return ""
+    return "collection-facet:" + next(iter(states))
+
+
+def active_collection_facet_keys(candidates: list[dict]) -> frozenset[str]:
+    """Facets whose selected state is attested by browser-owned attributes."""
+    keys = {
+        collection_facet_key(candidate)
+        for candidate in candidates
+        if active_goal_control_label(candidate)
+    }
+    keys.discard("")
+    return frozenset(keys)
+
+
+def choose_collection_facet_candidate(
+        candidates: list[dict], *, excluded: set[str] | None = None) -> dict:
+    """Choose the next unvisited read-only collection facet in DOM order.
+
+    Facets are explored, not ranked: when a record is absent from the current
+    collection view, every visible state partition is an equivalent place to
+    continue looking.  The identities come from the translated state lexicon;
+    there are no site names, labels or language branches here.
+    """
+    excluded = excluded or set()
+    groups: dict[str, list[dict]] = {}
+    for candidate in goal_navigation_candidates(candidates):
+        key = collection_facet_key(candidate)
+        if (not key or key in excluded or active_goal_control_label(candidate)
+                or not _is_semantic_control(candidate)
+                or str(candidate.get("form_method") or "").upper() == "POST"):
+            continue
+        groups.setdefault(key, []).append(candidate)
+    if not groups:
+        return {"ok": False, "error_class": "selector_missing"}
+
+    # Dict insertion order is DOM order.  Multiple wrappers for the same
+    # facet are acceptable only when the existing generic resolver can reduce
+    # them to one verifiable control; genuinely different destinations remain
+    # ambiguous and therefore fail closed.
+    key, group = next(iter(groups.items()))
+    preferred = prefer_verifiable_goal_candidates(group)
+    if len(preferred) != 1:
+        identities = {goal_candidate_key(item) for item in preferred}
+        if len(identities) == 1:
+            preferred = [min(preferred, key=lambda item: str(
+                item.get("id") or ""))]
+        else:
+            return {"ok": False, "error_class": "selector_ambiguous",
+                    "ranked": [(0.9, item) for item in preferred[:24]]}
+    return {"ok": True, "candidate": preferred[0], "confidence": 0.9,
+            "facet_key": key,
+            "ranked": [(0.9, preferred[0])]}
 
 
 def choose_goal_continuation_candidate(

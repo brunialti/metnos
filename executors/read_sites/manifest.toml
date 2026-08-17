@@ -19,7 +19,7 @@ en = "SCOPO: reads text + REDACTED screenshot of an open web session (post-login
 
 [code]
 files  = ["read_sites.py"]
-digest = "sha256:2d4b8ce6fe6a2dadabd4810357663c407cd92c25ea749eddb27ef903e032b387"
+digest = "sha256:0daf5ecdab19ee0cfecb36e4558602a2eb63032f0eb9fb97491ca33eabdccef5"
 
 [args]
 type     = "object"

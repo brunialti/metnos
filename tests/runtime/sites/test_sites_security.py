@@ -218,6 +218,17 @@ def test_action_enumeration_never_reads_text_input_value():
     assert ".value" not in sb._ENUMERATE_FORMS_JS
 
 
+def test_action_name_is_identical_during_selection_and_execution():
+    from playwright_sidecar import session_broker as sb
+
+    helper = sb._ACCESSIBLE_ACTION_NAME_JS
+    assert "aria-labelledby" in helper and "img[alt]" in helper
+    for script in (sb._ENUMERATE_ACTION_TARGETS_JS,
+                   sb._ELEMENT_STATE_JS):
+        assert helper in script
+        assert "name: metnosNameOf(el)" in script
+
+
 def test_redaction_covers_otp_inputs():
     from playwright_sidecar import redaction
     assert "one-time-code" in redaction._REDACT_JS
@@ -1585,6 +1596,38 @@ def test_goal_state_alias_matches_record_gender_to_ui_facet():
     assert ar.goal_tokens("Passati") == ("past",)
 
 
+def test_collection_facet_walk_skips_active_and_visited_states():
+    from playwright_sidecar import action_resolver as ar
+
+    def facet(identity, name, *, active=False):
+        return {
+            "id": identity, "tag": "button", "role": "tab",
+            "type": "button", "name": name, "visible": True,
+            "in_viewport": True, "topmost": True, "disabled": False,
+            "aria_selected": "true" if active else "false",
+        }
+
+    current = facet("current", "In programma", active=True)
+    past = facet("past", "Passati")
+    cancelled = facet("cancelled", "Cancellati")
+    candidates = [current, past, cancelled]
+
+    excluded = set(ar.active_collection_facet_keys(candidates))
+    assert excluded == {"collection-facet:future"}
+    first = ar.choose_collection_facet_candidate(
+        candidates, excluded=excluded)
+    assert first["ok"] and first["candidate"] is past
+    assert first["facet_key"] == "collection-facet:past"
+
+    excluded.add(first["facet_key"])
+    second = ar.choose_collection_facet_candidate(
+        candidates, excluded=excluded)
+    assert second["ok"] and second["candidate"] is cancelled
+    excluded.add(second["facet_key"])
+    assert not ar.choose_collection_facet_candidate(
+        candidates, excluded=excluded)["ok"]
+
+
 def test_action_resolver_treats_occluded_target_as_revealable():
     from playwright_sidecar import action_resolver as ar
 
@@ -1670,6 +1713,68 @@ def test_goal_resolution_prefers_semantic_control_over_pointer_wrapper():
             "visible": True, "in_viewport": True, "topmost": True,
         }])
     assert continuation["ok"]
+
+
+def test_collection_record_uses_only_the_specific_goal_part():
+    from playwright_sidecar import action_resolver as ar
+
+    lookup = {
+        "id": "lookup", "tag": "a", "role": "link",
+        "name": "Trova una prenotazione", "href": "https://x.test/lookup",
+        "visible": True, "in_viewport": True, "topmost": True,
+    }
+    record = {
+        "id": "record", "tag": "a", "role": "link",
+        "name": "Luxor and Cairo", "href": "https://x.test/group/4",
+        "visible": True, "in_viewport": True, "topmost": True,
+    }
+    chosen = ar.choose_goal_drilldown_candidate(
+        "trova le prenotazioni riguardanti Luxor", [lookup, record],
+        collection_tokens={"booking"})
+
+    assert chosen["ok"] and chosen["candidate"] is record
+
+
+def test_collection_control_tokens_do_not_consume_record_name():
+    from playwright_sidecar import action_resolver as ar
+
+    lookup = {
+        "id": "lookup", "tag": "a", "role": "link",
+        "name": "Trova una prenotazione", "href": "https://x.test/lookup",
+        "visible": True, "in_viewport": True, "topmost": True,
+    }
+    record = {
+        "id": "record", "tag": "a", "role": "link",
+        "name": "Luxor and Cairo", "href": "https://x.test/group/4",
+        "visible": True, "in_viewport": True, "topmost": True,
+    }
+
+    assert ar.collection_control_tokens(
+        "trova tutte le prenotazioni riguardanti Luxor",
+        [lookup, record]) == {"booking"}
+
+
+def test_collection_drilldown_prefers_compact_record_link():
+    from playwright_sidecar import action_resolver as ar
+
+    link = {
+        "id": "link", "tag": "a", "role": "link",
+        "name": "Luxor and Cairo", "href": "https://x.test/group/4",
+        "visible": True, "in_viewport": True, "topmost": True,
+    }
+    wrapper = {
+        "id": "wrapper", "tag": "a", "role": "link",
+        "name": "Luxor and Cairo 21 dic 2024 26 dic 2024 4 prenotazioni",
+        "href": "https://x.test/group/4/summary",
+        "visible": True, "in_viewport": True,
+        "topmost": True,
+    }
+
+    chosen = ar.choose_goal_drilldown_candidate(
+        "trova tutte le prenotazioni riguardanti Luxor", [wrapper, link],
+        collection_tokens={"booking"})
+
+    assert chosen["ok"] and chosen["candidate"] is link
 
 
 def test_goal_completion_requires_local_coherent_evidence():
@@ -1868,6 +1973,437 @@ def test_collection_goal_progressively_loads_lazy_content(monkeypatch):
     assert page.scrolls == 2
     assert "Record 3" in page.text
     assert flow["collection_scroll_complete"] is True
+
+
+def test_collection_search_scans_records_before_partial_control(monkeypatch):
+    """A generic lookup link must not outrank records already on the page."""
+    import asyncio
+    from playwright_sidecar import session_broker as sb
+
+    partial = {"id": "lookup", "name": "Trova una prenotazione",
+               "label": "", "tag": "a", "role": "link",
+               "href": "https://x.test/lookup", "visible": True,
+               "in_viewport": True, "topmost": True, "disabled": False}
+
+    class Page:
+        url = "https://x.test/mytrips"
+
+    async def no_overlay(*_args, **_kwargs):
+        return False
+
+    async def candidates(_page):
+        return [partial]
+
+    state = {"full_goal": False}
+
+    async def satisfies(_entry, target, _candidates=None):
+        if target == "Trova una prenotazione":
+            return True
+        return state["full_goal"]
+
+    async def expand(_entry, flow):
+        state["full_goal"] = True
+        flow["collection_scroll_complete"] = True
+        return True
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", no_overlay)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", no_overlay)
+    monkeypatch.setattr(sb, "_enumerate_candidates", candidates)
+    monkeypatch.setattr(sb, "_page_satisfies_goal", satisfies)
+    monkeypatch.setattr(sb, "_expand_collection_by_scrolling", expand)
+    monkeypatch.setattr(
+        sb.action_resolver, "choose_goal_candidate",
+        lambda *_a, **_k: {"ok": True, "candidate": partial,
+                           "confidence": 0.6})
+    monkeypatch.setattr(
+        sb.action_resolver, "choose_goal_continuation_candidate",
+        lambda *_a, **_k: {"ok": False,
+                           "error_class": "selector_missing"})
+
+    entry = {"page": Page(), "pending_actions": {},
+             "web_content_ingested": True, "goal_flows": {}}
+    out = asyncio.run(sb._prepare_action(
+        entry, "sid", "trova le prenotazioni riguardanti Luxor", None,
+        allow_model=False))
+
+    assert out["ok"]
+    assert out["plan"]["kind"] == "goal_complete"
+    assert out["plan"]["primitive"] == "observe"
+    assert out["plan"]["candidate"] is None
+
+
+def test_collection_page_evidence_recovers_reduced_plural_goal(monkeypatch):
+    """A reduced goal still scans the collection before its generic control."""
+    import asyncio
+    from playwright_sidecar import session_broker as sb
+
+    partial = {"id": "lookup", "name": "Trova una prenotazione",
+               "label": "", "tag": "a", "role": "link",
+               "href": "https://x.test/lookup", "visible": True,
+               "in_viewport": True, "topmost": True, "disabled": False}
+    record = {"id": "luxor", "name": "Luxor and Cairo", "label": "",
+              "tag": "a", "role": "link",
+              "href": "https://x.test/groups/luxor", "visible": True,
+              "in_viewport": True, "topmost": True, "disabled": False}
+    state = {"record_visible": False}
+
+    class Locator:
+        first = None
+        def __init__(self):
+            self.first = self
+        async def element_handle(self):
+            return object()
+
+    class Page:
+        url = "https://x.test/mytrips"
+        def locator(self, _selector):
+            return Locator()
+
+    async def no_overlay(*_args, **_kwargs):
+        return False
+
+    async def candidates(_page):
+        return [partial, record] if state["record_visible"] else [partial]
+
+    async def satisfies(_entry, target, _candidates=None):
+        return target == "Trova una prenotazione"
+
+    async def expand(_entry, _flow):
+        state["record_visible"] = True
+        return True
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", no_overlay)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", no_overlay)
+    monkeypatch.setattr(sb, "_enumerate_candidates", candidates)
+    monkeypatch.setattr(sb, "_page_satisfies_goal", satisfies)
+    monkeypatch.setattr(sb, "_expand_collection_by_scrolling", expand)
+
+    entry = {"page": Page(), "pending_actions": {},
+             "web_content_ingested": True, "goal_flows": {}}
+    out = asyncio.run(sb._prepare_action(
+        entry, "sid", "cerca prenotazioni per 'Luxor'", None,
+        allow_model=False))
+
+    assert out["ok"]
+    assert out["plan"]["kind"] == "goal_navigation"
+    assert out["plan"]["candidate"] is record
+    flow = next(iter(entry["goal_flows"].values()))
+    assert flow["collection"] is True
+    assert flow["collection_scope_tokens"] == ["booking"]
+
+
+def test_collection_text_match_still_opens_unique_record(monkeypatch):
+    """Seeing the record label is not the same as opening its detail."""
+    import asyncio
+    from playwright_sidecar import session_broker as sb
+
+    partial = {"id": "lookup", "name": "Trova una prenotazione",
+               "label": "", "tag": "a", "role": "link",
+               "href": "https://x.test/lookup", "visible": True,
+               "in_viewport": True, "topmost": True, "disabled": False}
+    record = {"id": "luxor", "name": "Luxor and Cairo", "label": "",
+              "tag": "a", "role": "link",
+              "href": "https://x.test/groups/luxor", "visible": True,
+              "in_viewport": True, "topmost": True, "disabled": False}
+
+    class Locator:
+        first = None
+        def __init__(self):
+            self.first = self
+        async def element_handle(self):
+            return object()
+
+    class Page:
+        url = "https://x.test/mytrips"
+        def locator(self, _selector):
+            return Locator()
+
+    async def no_overlay(*_args, **_kwargs):
+        return False
+
+    async def candidates(_page):
+        return [partial, record]
+
+    async def satisfies(_entry, target, _candidates=None):
+        return target in {
+            "Trova una prenotazione",
+            "tutte prenotazioni riguardanti luxor",
+        }
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", no_overlay)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", no_overlay)
+    monkeypatch.setattr(sb, "_enumerate_candidates", candidates)
+    monkeypatch.setattr(sb, "_page_satisfies_goal", satisfies)
+    monkeypatch.setattr(
+        sb.action_resolver, "choose_goal_candidate",
+        lambda *_a, **_k: {"ok": True, "candidate": record,
+                           "confidence": 0.8})
+
+    entry = {"page": Page(), "pending_actions": {},
+             "web_content_ingested": True, "goal_flows": {}}
+    out = asyncio.run(sb._prepare_action(
+        entry, "sid", "trova tutte le prenotazioni riguardanti luxor", None,
+        allow_model=False))
+
+    assert out["ok"]
+    assert out["plan"]["kind"] == "goal_navigation"
+    assert out["plan"]["candidate"] is record
+
+
+def test_completed_collection_goal_binds_scope_to_following_read(monkeypatch):
+    import asyncio
+    import time
+    from playwright_sidecar import session_broker as sb
+
+    class Locator:
+        async def inner_text(self, **_kwargs):
+            return "Luxor and Cairo\nHotel Cairo"
+
+    class Page:
+        url = "https://x.test/group"
+        async def title(self):
+            return "Trips"
+        def locator(self, _selector):
+            return Locator()
+
+    plan = {
+        "primitive": "observe", "candidate": None,
+        "page_sig": sb._page_signature(Page.url),
+        "created": time.time(), "target": "booking luxor",
+        "value_ref": None, "destination_host": "",
+        "kind": "goal_complete", "goal_flow_key": "flow",
+        "fingerprint": "fp", "sensitivity_reasons": [],
+    }
+    entry = {
+        "page": Page(), "pending_actions": {"token": plan},
+        "approved_actions": set(), "goal_flows": {"flow": {
+            "collection": True,
+            "matched_record_label": "Luxor and Cairo",
+        }},
+    }
+    monkeypatch.setattr(sb.sites_audit, "record", lambda *_a, **_kw: None)
+
+    executed = asyncio.run(sb._execute_plan(entry, "token", plan))
+    read = asyncio.run(sb._read_impl(
+        entry, "sid", False, False, goal=""))
+
+    assert executed["ok"] is True
+    assert "flow" not in entry["goal_flows"]
+    assert read["_source_scope_label"] == "Luxor and Cairo"
+
+
+def test_apparent_goal_probes_one_navigable_detail(monkeypatch):
+    """A page mention is not terminal when it has one coherent drill-down."""
+    import asyncio
+    from playwright_sidecar import session_broker as sb
+
+    detail = {"id": "invoice", "name": "Fattura 2026", "label": "",
+              "tag": "a", "role": "link",
+              "href": "https://x.test/invoices/2026", "visible": True,
+              "in_viewport": True, "topmost": True, "disabled": False}
+
+    class Locator:
+        first = None
+        def __init__(self):
+            self.first = self
+        async def element_handle(self):
+            return object()
+
+    class Page:
+        url = "https://x.test/invoices"
+        def locator(self, _selector):
+            return Locator()
+
+    async def no_overlay(*_args, **_kwargs):
+        return False
+
+    async def candidates(_page):
+        return [detail]
+
+    async def satisfies(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", no_overlay)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", no_overlay)
+    monkeypatch.setattr(sb, "_enumerate_candidates", candidates)
+    monkeypatch.setattr(sb, "_page_satisfies_goal", satisfies)
+
+    entry = {"page": Page(), "pending_actions": {},
+             "web_content_ingested": True, "goal_flows": {}}
+    out = asyncio.run(sb._prepare_action(
+        entry, "sid", "fattura 2026", None, allow_model=False))
+
+    assert out["ok"]
+    assert out["plan"]["kind"] == "goal_navigation"
+    assert out["plan"]["candidate"] is detail
+
+
+def test_apparent_container_retracts_when_drilldown_is_not_unique(monkeypatch):
+    """Several children mean the current container is the terminal level."""
+    import asyncio
+    from playwright_sidecar import session_broker as sb
+
+    records = [
+        {"id": name, "name": f"{name} 1 prenotazione", "label": "",
+         "tag": "a", "role": "link", "href": f"https://x.test/{name}",
+         "visible": True, "in_viewport": True, "topmost": True,
+         "disabled": False}
+        for name in ("Rimini", "Palermo")
+    ]
+
+    class Page:
+        url = "https://x.test/mytrips"
+
+    async def no_overlay(*_args, **_kwargs):
+        return False
+
+    async def candidates(_page):
+        return records
+
+    async def satisfies(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", no_overlay)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", no_overlay)
+    monkeypatch.setattr(sb, "_enumerate_candidates", candidates)
+    monkeypatch.setattr(sb, "_page_satisfies_goal", satisfies)
+
+    entry = {"page": Page(), "pending_actions": {},
+             "web_content_ingested": True, "goal_flows": {}}
+    out = asyncio.run(sb._prepare_action(
+        entry, "sid", "prenotazioni", None, allow_model=False))
+
+    assert out["ok"]
+    assert out["plan"]["kind"] == "goal_complete"
+    assert out["plan"]["candidate"] is None
+
+
+def test_collection_search_opens_unvisited_state_before_empty_result(
+        monkeypatch):
+    """A complete current view is followed by its visible state partitions."""
+    import asyncio
+    import hashlib
+    from playwright_sidecar import action_resolver as ar
+    from playwright_sidecar import session_broker as sb
+
+    partial = {"id": "lookup", "name": "Trova una prenotazione",
+               "label": "", "tag": "a", "role": "link",
+               "href": "https://x.test/lookup", "visible": True,
+               "in_viewport": True, "topmost": True, "disabled": False}
+    current = {"id": "current", "name": "In programma", "label": "",
+               "tag": "button", "role": "tab", "type": "button",
+               "visible": True, "in_viewport": True, "topmost": True,
+               "disabled": False, "aria_selected": "true"}
+    past = {"id": "past", "name": "Passati", "label": "",
+            "tag": "button", "role": "tab", "type": "button",
+            "visible": True, "in_viewport": True, "topmost": True,
+            "disabled": False, "aria_selected": "false"}
+    cancelled = {"id": "cancelled", "name": "Cancellati", "label": "",
+                 "tag": "button", "role": "tab", "type": "button",
+                 "visible": True, "in_viewport": True, "topmost": True,
+                 "disabled": False, "aria_selected": "false"}
+
+    class Locator:
+        first = None
+        def __init__(self, body=False):
+            self.first = self
+            self.body = body
+        async def element_handle(self):
+            return object()
+        async def inner_text(self, **_kw):
+            return "Prenotazioni correnti" if self.body else ""
+
+    class Page:
+        url = "https://x.test/mytrips"
+        async def evaluate(self, _script, _arg=None):
+            return []
+        def locator(self, selector):
+            return Locator(body=selector == "body")
+
+    async def no_overlay(*_args, **_kwargs):
+        return False
+
+    async def candidates(_page):
+        return [partial, current, past, cancelled]
+
+    async def satisfies(_entry, target, _candidates=None):
+        return target == "Trova una prenotazione"
+
+    async def expand(_entry, flow):
+        flow["collection_scroll_complete"] = True
+        return False
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", no_overlay)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", no_overlay)
+    monkeypatch.setattr(sb, "_enumerate_candidates", candidates)
+    monkeypatch.setattr(sb, "_page_satisfies_goal", satisfies)
+    monkeypatch.setattr(sb, "_expand_collection_by_scrolling", expand)
+    monkeypatch.setattr(
+        sb.action_resolver, "choose_goal_candidate",
+        lambda *_a, **_k: {"ok": True, "candidate": partial,
+                           "confidence": 0.6})
+
+    action = "trova le prenotazioni riguardanti Luxor"
+    entry = {"page": Page(), "pending_actions": {},
+             "web_content_ingested": True, "goal_flows": {}}
+    out = asyncio.run(sb._prepare_action(
+        entry, "sid", action, None, allow_model=False))
+
+    assert out["ok"]
+    assert out["plan"]["kind"] == "goal_continuation"
+    assert out["plan"]["candidate"] is past
+    assert out["plan"]["collection_facet_key"] == "collection-facet:past"
+    flow_key = hashlib.sha256(ar.normalize(action).encode()).hexdigest()
+    assert entry["goal_flows"][flow_key]["collection_facets_visited"] == {
+        "collection-facet:future"}
+
+
+def test_collection_search_reports_empty_after_complete_scan(monkeypatch):
+    """No full match after a bounded scan is a result, not a random click."""
+    import asyncio
+    from playwright_sidecar import session_broker as sb
+
+    partial = {"id": "lookup", "name": "Trova una prenotazione",
+               "label": "", "tag": "a", "role": "link",
+               "href": "https://x.test/lookup", "visible": True,
+               "in_viewport": True, "topmost": True, "disabled": False}
+
+    class Page:
+        url = "https://x.test/mytrips"
+
+    async def no_overlay(*_args, **_kwargs):
+        return False
+
+    async def candidates(_page):
+        return [partial]
+
+    async def satisfies(_entry, target, _candidates=None):
+        return target == "Trova una prenotazione"
+
+    async def expand(_entry, flow):
+        flow["collection_scroll_complete"] = True
+        return False
+
+    monkeypatch.setattr(sb, "_dismiss_privacy_obstruction", no_overlay)
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", no_overlay)
+    monkeypatch.setattr(sb, "_enumerate_candidates", candidates)
+    monkeypatch.setattr(sb, "_page_satisfies_goal", satisfies)
+    monkeypatch.setattr(sb, "_expand_collection_by_scrolling", expand)
+    monkeypatch.setattr(
+        sb.action_resolver, "choose_goal_candidate",
+        lambda *_a, **_k: {"ok": True, "candidate": partial,
+                           "confidence": 0.6})
+
+    entry = {"page": Page(), "pending_actions": {},
+             "web_content_ingested": True, "goal_flows": {}}
+    out = asyncio.run(sb._prepare_action(
+        entry, "sid", "trova le prenotazioni riguardanti Luxor", None,
+        allow_model=False))
+
+    assert out["ok"]
+    assert out["plan"]["kind"] == "goal_no_match"
+    assert out["plan"]["primitive"] == "observe"
+    assert out["plan"]["candidate"] is None
 
 
 def test_goal_at_step_limit_can_still_complete_by_observation():
@@ -2201,6 +2737,35 @@ def test_act_sites_preserves_typed_navigation_failure(monkeypatch):
     assert out["results"][0]["reason_code"] == "navigation_failed"
     assert out["results"][0]["reason_detail"] == "browser_error_page"
     assert "<missing:" not in out["error"]
+
+
+def test_act_sites_renders_collection_no_match_without_second_read(monkeypatch):
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[3] / "executors/act_sites/act_sites.py"
+    spec = importlib.util.spec_from_file_location("_act_sites_no_match", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+
+    monkeypatch.setattr(
+        module.session_client, "session_act",
+        lambda **_kw: {"ok": True, "executed": False,
+                       "primitive": "observe", "no_match": True})
+    monkeypatch.setattr(
+        module.session_client, "session_read",
+        lambda **_kw: (_ for _ in ()).throw(
+            AssertionError("a complete empty scan must not be read again")))
+
+    out = module.invoke({
+        "session_ids": ["s1"],
+        "action": "trova le prenotazioni riguardanti Luxor",
+    })
+
+    assert out["ok"] is True
+    assert out["results"][0]["no_match"] is True
+    assert out["metadata"]["executed"] == 0
+    assert out["final_message_hint"]
 
 
 def test_target_change_reobserves_and_emits_fresh_gate(monkeypatch):
