@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::{Refusal, Request};
 
 /// Cio' che si e' deciso al momento del consenso, e che non cambia dopo.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pairing {
     /// Il SID del proprietario, in forma testuale.
     pub owner_sid: String,

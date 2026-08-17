@@ -35,7 +35,7 @@ accettata ignorandolo (c'e' un test che lo prova).
 
 ## Stato (17 agosto 2026)
 
-**Fatto e provato** — 56 test, compila per Windows:
+**Fatto e provato** — 69 test, compila per Windows:
 
 - `protocol.rs` — vocabolario chiuso, validazione della forma, costruzione
   della riga di comando, corpo canonico della firma. Logica pura: si prova su
@@ -62,11 +62,38 @@ accettata ignorandolo (c'e' un test che lo prova).
   PRIMA di agire, esegui, registra. La sequenza sta in un posto solo, cosi'
   non esiste un secondo percorso che salti un controllo.
 
+- `setup.rs` — installarsi e togliersi. Il consenso si chiede UNA volta e il
+  testo dice le quattro cose che servono a decidere: che cosa si concede, a
+  chi, per quanto, e come si toglie. L'aiutante compare fra i programmi
+  installati con il suo modo di disinstallarsi: se servisse Metnos per
+  toglierlo, il proprietario dipenderebbe da noi per riprendersi un privilegio
+  che ha concesso lui.
+
+## Come si installera'
+
+Un comando, una volta sola:
+
+```
+metnos-helper.exe install --owner-sid <SID> --public-key <chiave>
+```
+
+Windows mostra la richiesta di amministratore quando parte; da quel momento
+l'aiutante resta e le installazioni successive non chiedono piu' niente.
+
+Per toglierlo: **Impostazioni > App**, come qualunque altro programma.
+
+Due cose che NON succedono, per scelta: l'aiutante non si installa insieme al
+client ne' durante un'installazione di pacchetto (sarebbe far entrare il
+componente piu' privilegiato come effetto collaterale), e un aiutante gia'
+appaiato non cambia proprietario rilanciando l'installatore — si disinstalla e
+si reinstalla, cosi' il passaggio e' un atto esplicito.
+
 **Da costruire**:
 
-1. l'installatore del servizio, col consenso una volta sola (D4);
-2. la rimozione dalla lista dei programmi installati, senza la collaborazione
-   di Metnos (D6);
+1. il collegamento fra i pezzi e Windows: copiare l'eseguibile, registrare il
+   servizio, scrivere le voci fra i programmi installati (la logica c'e', le
+   chiamate al sistema no);
+2. il ciclo del servizio che serve la pipe;
 3. il lato client: aprire la pipe verificando di parlare con l'aiutante VERO
    prima di scrivere (l'altra meta' di D2), e firmare le richieste.
 

@@ -24,6 +24,7 @@ mod journal;
 mod pairing;
 mod protocol;
 mod service;
+mod setup;
 #[cfg(windows)]
 mod win_pipe;
 
