@@ -106,3 +106,13 @@ default lì e tutti i caller ne ereditano.
   Metnos in queue. La frequenza con cui questo succede oggi è bassa
   (4 batch Metnos in 3 ore notturne osservate). Se diventa visibile,
   si valuta backend separato.
+
+## Chiusura implementativa 14/8/2026
+
+I due consumer parlano oggi direttamente al medesimo llama-server. Il client
+condiviso di Giorgio2 ha `id_slot=0`, quindi voce, observer e servizi ereditano
+lo slot 0. Tutti i provider llama.cpp costruiti dal router Metnos ricevono lo
+slot configurato da `METNOS_LLM_SLOT_ID` (default 1). L'override per chiamata
+resta possibile, ma nessun percorso di produzione usa più la selezione
+automatica. Gli slot separano la cache KV; la capacità di calcolo GPU resta
+condivisa.

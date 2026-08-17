@@ -64,6 +64,43 @@ Metnos. L'ordine e' intenzionale: prima si stabilizza il contratto, poi si
 ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 "codice scritto" non e' una misura di completamento.
 
+### WIN-001 - Installazione software sui dispositivi Windows
+
+- Priorita': alta (P1).
+- Stato (17/8/2026): **progettazione chiusa, implementazione aperta**.
+  Decisioni ratificate in ADR 0209 (dominio `packages`, verbo `install`,
+  disinstallazione al posto dell'undo, regola dei permessi) e ADR 0210
+  (l'aiutante elevato su Windows: canale, vocabolario chiuso, consenso,
+  rimozione). Analisi di fattibilita' in
+  `analysis_install_software_windows_16_8_2026.md`; istruzioni implementative
+  in `spec_install_packages.md`, in quattro parti (vocabolario,
+  `find_packages` esteso a Windows, `install_packages`, aiutante elevato).
+  L'executor copre Linux **e** Windows, non e' un pezzo Windows con Linux
+  aggiunto dopo.
+- Permessi (ADR 0209 D4, emendato 17/8): nessuno installa su un dispositivo
+  che non possiede, **l'amministratore compreso**; sul server, solo un
+  amministratore. La prima regola e' gia' strutturale (filtro proprietario
+  prima del placement, nessun ramo per l'amministratore); la seconda va
+  costruita al choke-point di invocazione.
+- Obiettivo: aggiungere un executor remoto tipizzato che installi o aggiorni un
+  pacchetto su un dispositivo Windows posseduto, usando un gestore di pacchetti
+  disponibile sul dispositivo e verificando identita', editore, fonte e
+  versione prima di modificare il sistema.
+- Confine di sicurezza: non introdurre una shell remota generica, comandi liberi
+  o argomenti eseguibili. Dispositivo, pacchetto e versione devono essere
+  espliciti; ambiguita', fonte non attendibile, richiesta di privilegi non
+  autorizzata o gestore incompatibile devono fallire senza modifiche.
+- Contratto: operazione idempotente, consenso esplicito prima dell'elevazione,
+  stato e avanzamento osservabili, risultato verificato dall'inventario software
+  del dispositivo e messaggi localizzati. Il rollback va dichiarato disponibile
+  soltanto quando il gestore scelto lo supporta e la prova lo conferma.
+- Generalita': rilevamento delle capacita' dal client e dai manifest firmati;
+  nessun nome di pacchetto, lingua, percorso o host codificato nel runtime.
+- Done-gate: test isolati per installazione, aggiornamento, gia' installato,
+  pacchetto ambiguo o assente, firma/editore errati, privilegi negati,
+  interruzione e postcondizione; quindi una prova reale controllata su Windows,
+  senza perdita di configurazione e con audit completo.
+
 ### EXE-001 - Adozione dello standard executor
 
 - Stato: fondazione approvata; migrazione incrementale aperta.
@@ -348,6 +385,35 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   quattro classi; nessun executor d'azione su query colloquiali; nessuna query
   d'azione assorbita da `conversation`; risposte RAG con fonte verificabile;
   comportamento onesto quando indice, LLM o stato live non sono disponibili.
+
+### JOB-001 - Motore generico per lavori lunghi, persistenti e paralleli
+
+- Priorita': da assegnare.
+- Stato: mandato scritto, nessuna progettazione. Ha una roadmap propria:
+  **`internal/roadmap/RM-0004-motore-workload-durevoli.md`**, che riporta il
+  mandato integrale (365 righe) e va letta prima di qualunque valutazione,
+  perche' fissa anche i confini di cio' che NON va costruito.
+- Obiettivo: eseguire carichi lunghi o molto grandi **senza perdere il lavoro
+  gia' svolto e senza duplicare gli effetti** dopo errori, interruzioni o
+  riavvii. L'utente formula soltanto il risultato voluto; il sistema ne
+  ricava un lavoro durevole, e resta osservabile (piano, limiti, modello,
+  avanzamento, errori, artefatti).
+- Confine: deve appartenere all'architettura esistente — richieste in
+  linguaggio naturale, piani tipizzati, executor ammessi, autorita' minima,
+  audit, postcondizioni osservabili, modelli per tier. **Non** un secondo
+  agente separato, non un flusso cablato per un caso solo, non un accesso
+  shell generale, non una via che aggiri scheduler, policy ed executor.
+- Perche' e' una voce distinta e non un duplicato: ADR 0196 (politica
+  centrale di esecuzione) e ADR 0204-0205 (ricorsione parallela
+  deterministica) governano il parallelismo **dentro** una invocazione, che
+  vive quanto il turno. Qui serve durevolezza **attraverso** i riavvii, che
+  nessuno dei due copre. Verificato prima di aprire la voce.
+- Primo passo: analisi che dica cosa dei meccanismi esistenti (scheduler v2,
+  `executor_scheduler`, spool dei risultati remoti, journal di undo) fornisce
+  gia' la semantica richiesta, e cosa manca davvero.
+- Done-gate: un lavoro interrotto a meta' e ripreso non ripete un effetto
+  gia' prodotto, e non dichiara completamento finche' ogni unita' d'ingresso
+  non e' contabilizzata.
 
 ### I18N-DEDUP-001 - Controllo duplicati di chiavi e stringhe i18n
 

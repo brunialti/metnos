@@ -215,20 +215,47 @@ name = "system:admin"
 hint = ["winget", "apt"]
 ```
 
-## 6.4 La regola dei permessi (ADR 0209 D4)
+## 6.4 La regola dei permessi (ADR 0209 D4 + emendamento 17/8)
 
-> Un utente installa liberamente sui PROPRI device; sul server solo se
-> amministratore.
+> Un utente installa SOLTANTO sui PROPRI device — **l'amministratore
+> compreso**. Sul server, solo se amministratore.
 
 DEVI: applicarla dove vive l'autorità — il choke-point di invocazione e il
 gate di consenso — **non dentro l'executor**.
 NON DEVI: mettere un `if ruolo == "admin"` nel codice dell'executor. Un
 executor che decide chi può chiamarlo è un executor che si può aggirare
 chiamandolo diversamente.
+NON DEVI: aggiungere un ramo che allarghi il perimetro device a chi è
+amministratore. Essere amministratore dell'istanza non è autorità sulla
+macchina personale di un'altra persona.
 
 La proprietà del device si legge da `devices.py` (campo owner); il ruolo
-dell'attore da `users`. Il rifiuto è un errore onesto con il motivo, non un
+dell'attore da `users`. Il rifiuto è un errore esplicito con il motivo, non un
 silenzio.
+
+### 6.4.1 Regola uno (device altrui): già strutturale — non indebolirla
+
+Verificato, non assunto: la lista dei device candidati è già filtrata per
+proprietario prima del placement (`agent_runtime` → `devices.owner_id_for_actor`),
+senza alcun ramo per l'amministratore, e una richiesta che nomina un device
+fuori da quella lista solleva `PlacementError` invece di ricadere sul server.
+
+DEVI: lasciare `install_packages` dentro quel percorso, come ogni executor
+`scope="device"`.
+DEVI: aggiungere un test che lo dimostri — un amministratore che nomina il
+device di un altro utente riceve un rifiuto, non un'installazione.
+NON DEVI: introdurre una via di risoluzione del device che salti il filtro.
+
+### 6.4.2 Regola due (il server): da costruire
+
+Il controllo «sul server solo amministratore» **non esiste oggi**. Va aggiunto
+al choke-point di invocazione, non nell'executor: quando il placement risolve
+`placement.SERVER` e il verbo è `install`, l'attore deve avere ruolo `admin`.
+
+DEVI: rifiutare con la ragione (`capability_missing` non è la classe giusta:
+qui lo strumento c'è, manca l'autorità — errore esplicito con il motivo).
+DEVI: coprirlo con un test per ciascun esito (utente → rifiuto,
+amministratore → passa).
 
 ## 6.5 L'undo (ADR 0209 D3)
 

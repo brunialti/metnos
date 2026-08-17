@@ -6,10 +6,20 @@
 
 ## S. Stato corrente (5/8/2026)
 
+- **Analisi richiesta/intent in corso (8/8)**: prima di riprendere prove di
+  normalizzazione o intent extraction leggere
+  `internal/design/handover_request_analysis_8_8_2026.md` e
+  `internal/tools/request_analysis_lab/README.md`; contengono il checkpoint
+  corrente, i blocker e le varianti da non rieseguire. È lavoro shadow, non
+  ancora runtime.
 - **Host**: `.33` (Strix Halo 96GB unified). Servizi: `metnos-http.service` (SYSTEM, porta 8770) + telegram-daemon (unit USER) + llama-server `:8080`.
 - **LLM**: `fast` (`micro|procedural|fidelity`), `middle`, `wise`, `creative` e `frontier` sono contratti logici risolti centralmente da `runtime/llm_router.py`; ogni consumer sceglie un workload registrato in `runtime/llm_workloads.py`. Provider, modello, endpoint, temperatura, thinking e reasoning budget appartengono al router; al consumer restano tetto di output, deadline, grammatica e schema dei tool. I tre livelli fast, `middle` e `wise` condividono oggi Qwen 3.6 35B-A3B Q4_K_M/MTP `:8080` e la stessa policy deterministica, ma i livelli fast hanno default e override indipendenti in `[fast.level.<nome>]`; `creative` eredita il binding di `wise` finché non materializzato e usa `temperature=0.35`, mentre `middle` e `wise` restano a `0`. Frontier = Anthropic Opus opt-in. SoT: `runtime/llm_router.py::{DEFAULT_TIERS,DEFAULT_FAST_LEVELS}`, registro workload e ADR 0207; MAI nomi modello o override di policy nei consumer.
+- **Slot LLM condivisi** (14/8, ADR 0120): Giorgio2 usa sempre lo slot 0
+  (voce, observer e servizi); Metnos usa lo slot configurato da
+  `METNOS_LLM_SLOT_ID`, default 1. L'affinità è applicata nei due client
+  centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0209` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **ADR registry**: `0001-0210` (skipped: `0055`/`0115`/`0116`/`0121`).
 
 ## 3. Synth pipeline (6 stadi)
 
@@ -98,3 +108,12 @@ Il nucleo dei manifest generati e' centralizzato in `generated_executor_contract
 ## 14. HTTP API
 
 Server `runtime.metnos_http_server` porta **8770** (8765=pairing). aiohttp bare: ROUTES tuple list, `_error()`, `auth_middleware`; ruoli anonymous/user/admin (admin key `~/.config/metnos/admin.key`, 0600). Endpoint `/agent/{health,turn,devices/me,session/*}` + `/.well-known/metnos.json` + `/admin/{,changes,executors,executors/stats,runs,safety,turns,caches/*/flush}`. Negotiation HTML (htmx+Jinja2+uPlot) vs JSON; ETag su collezioni admin; SSE sui turni e sugli eventi di revoca sessione. Sessione, conversazione e storage browser (`conv`, token, command buffer, history v3) sono owner-scoped e indipendenti per utente; solo l'host importa le chiavi legacy single-user. ADR 0078+0201.
+
+## Preferenze di comunicazione di Roberto (12 agosto 2026)
+
+- Ogni comunicazione diretta a Roberto deve usare parole semplici, spiegate
+  “per dummies”, anche quando il lavoro interno è tecnico.
+- Non mostrare stdout, log grezzi o dettagli operativi dei comandi: riferire
+  soltanto risultato, rischio e prossima decisione in forma breve.
+- Quando serve una scelta, presentarla con alternative concrete e comprensibili;
+  non trattare un assenso generico come approvazione di opzioni non capite.

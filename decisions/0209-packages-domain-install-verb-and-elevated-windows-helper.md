@@ -125,7 +125,8 @@ undo that silently uninstalls would be a false claim of reversibility.
 Two rules, and they are about identity, not about packages:
 
 - **On a user's own devices**: that user may install any package. The device
-  belongs to them; the blast radius is theirs.
+  belongs to them; the blast radius is theirs. **Only** on their own devices —
+  see the amendment below.
 - **On the server**: only an administrator of the instance. The server hosts
   every user's data and every service; an installation there is an
   instance-wide act.
@@ -133,6 +134,31 @@ Two rules, and they are about identity, not about packages:
 The rule is enforced where authority already lives — the invocation
 choke-point and the consent gate — not inside the executor, which must not be
 the place where permission is decided.
+
+#### Amendment (2026-08-17, Roberto) — administrator does not reach other people's machines
+
+The original wording said what a user may do on their own devices and what
+the server requires. It did not say what an administrator may do on **someone
+else's** device, and silence there reads, by the usual convention, as «an
+administrator may do anything». That is not the rule.
+
+- **Nobody installs on a device they do not own — the administrator
+  included.** Being an administrator of the instance is authority over the
+  *instance*, not over the personal machine of another person. A package
+  installed on someone's PC changes their machine, and the administrator role
+  was never a grant of that.
+- **On the server, only an administrator**, unchanged.
+
+The two rules are the same principle read twice: authority follows what the
+act actually touches. The server is shared, so it takes the shared role; a
+personal device is not shared, so no role reaches it from outside.
+
+Verified rather than assumed: the device candidate list is already filtered by
+owner before placement (`agent_runtime` → `devices.owner_id_for_actor`), with
+no administrator branch, and a request naming a device outside that list
+raises `PlacementError` instead of falling back to the server. Rule one is
+therefore structural today, and the implementation must not weaken it. Rule
+two — the server — has no check yet and must be built (spec §6.4).
 
 ### D5 — Elevation: the helper, directly
 
