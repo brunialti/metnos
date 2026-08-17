@@ -18,9 +18,12 @@
 //! Cio' che tocca Windows (la pipe con ACL, la verifica del chiamante) vive
 //! separato e riceve da qui soltanto valori gia' verificati.
 
+mod audit;
 mod channel;
 mod journal;
+mod pairing;
 mod protocol;
+mod service;
 #[cfg(windows)]
 mod win_pipe;
 
