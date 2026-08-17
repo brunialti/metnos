@@ -1,0 +1,15 @@
+{
+  "suite_version": "metnos.v24.1-offline-stability/1.0",
+  "rounds": 20,
+  "records_per_round": 109,
+  "unique_output_hashes": 1,
+  "output_sha256": "83275fa19a32da2ddcb198d16f239947db66b78ee85ad12de9b9ffc73618dfda",
+  "latency_ms": {
+    "median": 2.49981,
+    "mean": 2.75984351559633,
+    "p95": 4.024065,
+    "p99": 4.997347,
+    "max": 9.156456
+  },
+  "measurement_note": "CPU wall time for V24.1 validation plus shadow projection on already extracted V23lite frames; excludes LLM and transport."
+}

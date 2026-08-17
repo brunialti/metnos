@@ -1,0 +1,194 @@
+{
+  "probe_exact": 4,
+  "probe_valid": 6,
+  "records": [
+    {
+      "case_id": "bp-002",
+      "elapsed_ms": 9138,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "raw_model_output_b64": "eyJkZWNpc2lvbiI6Im9wZXJhdGlvbl9ncmFwaCIsInN0ZXBzIjpbeyJyb3V0ZSI6InJlYWQvbWVzc2FnZXMifSx7InJvdXRlIjoiZmluZC9maWxlcyIsImZyb20iOlswXX0seyJyb3V0ZSI6ImdldC9sb2NhdGlvbiIsImZyb20iOlswXX1dfQ==",
+      "request_sha256": "5e382de5391c6626eed16511da00c9696ec4199992fcceedf5249dbfe2b9db87",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-004",
+      "elapsed_ms": 8901,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "raw_model_output_b64": "eyJkZWNpc2lvbiI6InN5c3RlbV9jb250cm9sOnVuZG9fbGFzdF90dXJuIiwic3RlcHMiOm51bGx9",
+      "request_sha256": "3191a1e339fdfaf90edae55590bde220360cda4ab195193f1cd0bd2117545a24",
+      "semantic": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-006",
+      "elapsed_ms": 9727,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw_model_output_b64": "ewogICJkZWNpc2lvbiI6ICJvcGVyYXRpb25fZ3JhcGgiLAogICJzdGVwcyI6IFsKICAgIHsKICAgICAgInJvdXRlIjogImZpbmQvZmlsZXMiCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L2lucHV0cyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImRlbGV0ZS9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "83fdc801bcc508dc0af18aa1d7a5fc210413dd2321f37f49858e2396a79d5342",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "get/inputs"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "delete/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 8972,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "raw_model_output_b64": "eyJkZWNpc2lvbiI6InVucmVwcmVzZW50YWJsZTpvdXRzaWRlX3JlZ2lzdHJ5Iiwic3RlcHMiOm51bGx9",
+      "request_sha256": "b54173bab2a510bea8236976415676b6727316d9e82dcdb196e5b871ffd9d10a",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-010",
+      "elapsed_ms": 9744,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "raw_model_output_b64": "ewogICJkZWNpc2lvbiI6ICJ1bnJlcHJlc2VudGFibGU6bWl4ZWRfcm9vdF9raW5kcyIsCiAgInN0ZXBzIjogbnVsbAp9",
+      "request_sha256": "8ba9646cd5c75b38fe6233a8243c85034458ffc8d2bbcf427e48b2c3b77c2d98",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-014",
+      "elapsed_ms": 47232,
+      "error": "JSONDecodeError",
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "raw_model_output_b64": null,
+      "request_sha256": "08477564f855f2d7dbdf8eb817aabf53c0b37f8d9703bf96d51eaba1ca98b16f",
+      "semantic": null,
+      "status": "technical_invalid"
+    },
+    {
+      "case_id": "bp-020",
+      "elapsed_ms": 9221,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "raw_model_output_b64": "ewogICJkZWNpc2lvbiI6ICJ1bnJlcHJlc2VudGFibGU6bWl4ZWRfcm9vdF9raW5kcyIsCiAgInN0ZXBzIjogbnVsbAp9",
+      "request_sha256": "c1606b453095e1467ae0a9f1b85b70d1ecbb17cdbdafbffe87ed7ad08599bb37",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "status": "valid"
+    }
+  ],
+  "state": "stopped_after_probe"
+}

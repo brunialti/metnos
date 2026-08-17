@@ -1,0 +1,110 @@
+{
+  "count": 6,
+  "exact": 4,
+  "format": "metnos.root-features-probe/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 4583,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "0df3ee4a3738fd016988c01e3da3a0a6eadf284da6fbded003f1dbb43591812e",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-002",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 788,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:unsupported_dependency",
+      "features": {
+        "conditional_branch": true,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "11192546505651b6318d400be34f6a5ca1c1418cce7ab34f2237a6eb6f1782b1",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-004",
+      "decision": "system_control:undo_last_turn",
+      "elapsed_ms": 4563,
+      "error": null,
+      "exact": true,
+      "expected": "system_control:undo_last_turn",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": false,
+        "registry_coverage": "missing",
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "3dceedc13f04da3ff3d8de8239c78cee6e0f6328bcc02c498ea164aef238e932",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-006",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 4634,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": true,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "44937d0b4c5594c92f905f94cfacf99d803f56fed80522b8ef240c0e250ed131",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-007",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 4633,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:outside_registry",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "4da0f7936f323a170f4f530be8e03efdf50f5f2239819984750da7568b63a5d9",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-020",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 4685,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "7f2e10af54b389e7ffa60d06aa121be6df288b92a04d8268ecb9b7b7b6932f11",
+      "root_exact": true
+    }
+  ],
+  "root_exact": 4
+}

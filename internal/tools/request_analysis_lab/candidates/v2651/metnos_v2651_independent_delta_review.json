@@ -1,0 +1,179 @@
+{
+  "version": "metnos.v26.5.1-independent-delta-review/1.0",
+  "date": "2026-08-09",
+  "verdict": "STATIC_BLOCK",
+  "live_authorized": false,
+  "scope": {
+    "network_calls": 0,
+    "model_calls": 0,
+    "live_outputs_read": 0,
+    "freeze_created": false,
+    "gate_created": false,
+    "candidate_artifacts_modified": false,
+    "review_files_and_documentation_only": true
+  },
+  "target_hashes": {
+    "manifest": "3f9c7f7de58bdc01d65a2ffa3048c1635b2afbad6d42e775e7e6615b2f8d0f8b",
+    "preimport_verifier": "ba19c51e44014b0443914497915e1d531fe8e101a0180ba54fb583d895a703e4",
+    "preimport_result": "119c9219d32fef1a9fbf48f667255033311397b23b3ba7127d6f4804502d5a52",
+    "candidate_core": "e212b78554dbf2d33fc5d966a7074655a9b0de0eab41c1d8f6cc15789cb5d227",
+    "candidate_core_result": "d1476a1660ed81dd52cf3ef7b24ab9a679d107d62b54e2bb083d123efd696746",
+    "compact_adapter": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+    "compact_schema": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+    "compact_prompt": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+    "frozen_registry": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+    "self_contained_validator": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656",
+    "validator_selftest_result": "1b2021d9f50efa6e7867fe872c5eb4a378e9f714ba9a3d74f52ae35de0fcbda3",
+    "mutation_matrix": "69103b64374527feb0d40bc709043066e030fa81101651f724e52e79d5a9c1cc",
+    "mutation_fixture": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+    "mutation_suite": "c5f0d940d3feac82162d408e10663cbc8fa2b6db20450cc29c32b4554cddf4cb",
+    "mutation_result": "3306d299b18726da1b903643d9c85763c05ec57680259c2ab05ddf0aa8bdb68f",
+    "query_only_corpus": "237aae0006fd6926fc20e5f31aa50a4aa0bd8a2d10e7162a9ebe8424c6558149",
+    "contamination_audit_result": "50e1c5931fe60bfb1007bf5624b1f836214c43fab98194350b66921549487c92"
+  },
+  "exact_replays": {
+    "preimport": {
+      "artifacts": 34,
+      "tests": 38,
+      "passed": 38,
+      "failed": 0,
+      "stdout_sha256": "119c9219d32fef1a9fbf48f667255033311397b23b3ba7127d6f4804502d5a52"
+    },
+    "validator": {
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "stdout_sha256": "1b2021d9f50efa6e7867fe872c5eb4a378e9f714ba9a3d74f52ae35de0fcbda3"
+    },
+    "candidate_core": {
+      "tests": 96,
+      "passed": 96,
+      "failed": 0,
+      "positive_controls": 6,
+      "native_negative_cases": 16,
+      "historical_cases": 68,
+      "stdout_sha256": "d1476a1660ed81dd52cf3ef7b24ab9a679d107d62b54e2bb083d123efd696746"
+    },
+    "mutation_suite": {
+      "tests": 106,
+      "passed": 106,
+      "failed": 0,
+      "retained": 56,
+      "obsolete": 3,
+      "replacement": 9,
+      "native_negative_cases": 16,
+      "positive_controls": 6,
+      "stdout_sha256": "3306d299b18726da1b903643d9c85763c05ec57680259c2ab05ddf0aa8bdb68f"
+    },
+    "contamination_audit": {
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "datasets": {
+        "full109": 109,
+        "question-controls34": 34,
+        "adversarial70": 70
+      },
+      "surface_or_mixed_lines": 0,
+      "whole_query_overlaps": 0,
+      "ngram_overlaps_ge_3": 0,
+      "stdout_sha256": "50e1c5931fe60bfb1007bf5624b1f836214c43fab98194350b66921549487c92"
+    }
+  },
+  "mechanical_derivation": {
+    "schema_generated_sha256": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+    "prompt_generated_sha256": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+    "validator_generated_sha256": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656",
+    "matrix_generated_sha256": "69103b64374527feb0d40bc709043066e030fa81101651f724e52e79d5a9c1cc",
+    "fixture_generated_sha256": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+    "corpus_generated_sha256": "237aae0006fd6926fc20e5f31aa50a4aa0bd8a2d10e7162a9ebe8424c6558149",
+    "auditor_generated_sha256": "a1e7f7babc6dcce1f4e1de0040c41b5ed212db0054a0f3e5d8f46511b12c4b1d",
+    "all_equal_archived_bytes": true
+  },
+  "checks": [
+    {
+      "id": "manifest_current_bytes_and_34_artifacts",
+      "result": "PASS",
+      "evidence": "All 34 current manifest entries exist, are repository-relative, unique and match their declared hashes; fresh verifier result is 38/38."
+    },
+    {
+      "id": "hash_before_candidate_module_execution",
+      "result": "PASS_CURRENT_BYTES",
+      "evidence": "CandidateCore.load verifies all current manifest artifact hashes before compiling adapter and validator, and _artifact_bytes rechecks each consumed artifact."
+    },
+    {
+      "id": "source_only_repository_pyc",
+      "result": "PASS_WITH_HYGIENE_NOTE",
+      "evidence": "Audit-hook observation found zero repository .pyc reads; -B replays changed no candidate bytes. Nine pre-existing ignored cache files were observed and remained byte-invariant."
+    },
+    {
+      "id": "original_request_and_uax29_alignment",
+      "result": "PASS",
+      "evidence": "Original request round-tripped exactly and segment spans aligned on combining marks, CJK, Thai, Arabic, emoji ZWJ, apostrophe/hyphen and CRLF probes."
+    },
+    {
+      "id": "schema_adapter_validator_pipeline",
+      "result": "PASS",
+      "evidence": "Six compact positives traverse schema, canonical adapter and frozen-registry validator; fan-out multi-action, multi-domain, result reuse, typed ambiguity and mixed coverage are accepted."
+    },
+    {
+      "id": "transport_absence",
+      "result": "PASS",
+      "evidence": "Runtime source AST has no socket/http/urllib/requests/subprocess import or completion endpoint; all fresh results report zero network and model calls."
+    },
+    {
+      "id": "frozen_vs_synthetic_registry",
+      "result": "PASS",
+      "evidence": "Candidate core and validator load only frozen registry SHA 448c058d...; historical and synthetic sources are non-importable evidence, and no synthetic registry is installed by the core."
+    },
+    {
+      "id": "four_canonical_audit_sources",
+      "result": "PASS_CURRENT_MANIFEST",
+      "evidence": "All four source files are manifest-bound as audit_source/import_allowed=false; regenerating the ordered 109+34+70 query-only corpus reproduces SHA 237aae00...."
+    },
+    {
+      "id": "mutation_census_and_fail_closed_semantics",
+      "result": "PASS",
+      "evidence": "106/106 exact replay: 56 historical mutations retained, 3 ID-only mutations obsolete, 9 compact replacements, 16 native negatives and 6 positives."
+    },
+    {
+      "id": "manifest_report_circularity",
+      "result": "EXPECTED_EXTERNAL_TRUST_ROOT",
+      "evidence": "The manifest cannot self-pin or include this later review without changing its own hash. A separate wrapper/freeze must pin manifest, core, verifier and review before executing the core."
+    },
+    {
+      "id": "manifest_role_policy_enforced_at_execution",
+      "result": "BLOCK",
+      "evidence": "An in-memory mutation changed the adapter to historical_source_only/import_allowed=false. Both verified_manifest and the 38-check verifier accepted it, then _source_module executed the adapter. A non-boolean truthy import_allowed value was also accepted."
+    },
+    {
+      "id": "low_level_segment_api_boundary",
+      "result": "WARNING",
+      "evidence": "evaluate_segments accepts id-only segment records without an original request. A future wrapper must keep this method internal and use request-bound segments or evaluate(original_request, frame)."
+    }
+  ],
+  "blockers": [
+    {
+      "id": "B1_manifest_import_policy_not_enforced",
+      "severity": "blocking_before_wrapper_freeze_or_live",
+      "cause": "The core validates role/import_allowed only for its own manifest entry; _source_module executes hard-coded adapter and validator paths without checking their policy. The verifier accepts import_allowed=false for any role and accepts non-boolean truthy values on importable roles.",
+      "causal_probe": {
+        "path": "/tmp/metnos_v2651_independent_policy_probe.py",
+        "sha256": "7022be4546e4b6f086cd8fa99d57c86c5626e91007d3ab3c35993bc241cad86a",
+        "stdout_sha256": "84ea1712b90360b1ac5dbb20e545352fc54b8ccec4cbc86f33b24bb045cd5111",
+        "network_calls": 0,
+        "model_calls": 0
+      }
+    }
+  ],
+  "v26_5_2_required_changes": [
+    "Require import_allowed to be an exact boolean for every manifest entry.",
+    "Before compiling a module, require the exact role/import policy expected by that consumer; adapter and validator must be runtime_input with import_allowed=true.",
+    "Use separate data and executable accessors so non-importable entries can never reach compile/exec.",
+    "Make the pre-import verifier enforce the same per-path consumer policy and add mutations for false, missing, string-valued and role-swapped import policy.",
+    "Keep manifest self-authentication outside the candidate: a separate source-only wrapper/freeze must pin manifest, core, verifier, this review and environment before core execution.",
+    "Keep evaluate_segments internal to tests; the future transport wrapper must bind validation to the exact original request and core-generated segments.",
+    "Run the corrected replay with bytecode disabled or an external cache and preserve zero repository .pyc reads."
+  ],
+  "next_step": "Create V26.5.2 with the policy fix, rerun all offline evidence, then obtain a new independent static review. Do not freeze, gate, network or infer from V26.5.1."
+}

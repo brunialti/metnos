@@ -1,0 +1,545 @@
+{
+ "all_green": true,
+ "by_group": {
+  "atom_budget": {
+   "passed": 7,
+   "total": 7
+  },
+  "best_effort_diagnosis": {
+   "passed": 3,
+   "total": 3
+  },
+  "contamination": {
+   "passed": 3,
+   "total": 3
+  },
+  "coverage_shapes": {
+   "passed": 6,
+   "total": 6
+  },
+  "expander_totality": {
+   "passed": 5,
+   "total": 5
+  },
+  "fail_closed": {
+   "passed": 3,
+   "total": 3
+  },
+  "fingerprint_privacy": {
+   "passed": 6,
+   "total": 6
+  },
+  "materialisation": {
+   "passed": 4,
+   "total": 4
+  },
+  "mutation_suite": {
+   "passed": 6,
+   "total": 6
+  },
+  "no_emitted_identity": {
+   "passed": 5,
+   "total": 5
+  },
+  "no_fatal_invariant_outside_the_schema": {
+   "passed": 4,
+   "total": 4
+  },
+  "regression_of_the_v26564_failures": {
+   "passed": 4,
+   "total": 4
+  },
+  "representability": {
+   "passed": 2,
+   "total": 2
+  },
+  "structural_closure": {
+   "passed": 5,
+   "total": 5
+  },
+  "typed_ambiguity_identity": {
+   "passed": 5,
+   "total": 5
+  },
+  "unicode_metamorphic": {
+   "passed": 3,
+   "total": 3
+  }
+ },
+ "contamination_audit": {
+  "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "prompt_sha256": "803721b9bff01159de0ce163aa03161c3128eccfff232b97faea7d812c7731db",
+  "prompt_token_count": 1348,
+  "queries_audited": 34,
+  "schema_sha256": "1298980da17735484ca6f73ca35e912231e6fb703b99dfbd62a929fcfd86c4a4",
+  "shared_3gram_queries": 0,
+  "shared_4gram_queries": 0,
+  "verbatim_query_matches": 0
+ },
+ "inference": false,
+ "live_runs": 0,
+ "measures": {
+  "atoms_over_budget": 24,
+  "fuzz_evaluated": 781,
+  "fuzz_frames": 2343,
+  "fuzz_semantic_unmeasured": 0,
+  "random_frames_generated": 1500,
+  "random_schema_valid": 1500,
+  "random_valid": 38,
+  "random_validator_codes": {
+   "clause_source_order": 507,
+   "closed_proposition_unknown": 347,
+   "dependency_order": 839,
+   "dependency_output_count": 531,
+   "dependency_output_slot": 331,
+   "output_unconsumed": 474,
+   "proof_family": 1460,
+   "proof_predicate": 402,
+   "proof_span": 467,
+   "queryable_unknown": 373,
+   "reference_type": 1070,
+   "role_speech": 980
+  },
+  "semantic_codes_recovered": [
+   "output_unconsumed",
+   "proof_limit"
+  ],
+  "semantic_mutation_survivors": 100,
+  "semantic_mutations": 2064,
+  "sweep_faithfulness_compared": 1500
+ },
+ "model_calls": 0,
+ "network_calls": 0,
+ "passed": 71,
+ "results": [
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "schema is a valid 2020-12 schema",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "materialised schema equals the generated schema",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "materialised prompt equals the generated prompt",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "registry hash is pinned",
+   "passed": true
+  },
+  {
+   "detail": "34/34",
+   "group": "representability",
+   "label": "34/34 gold cases are representable and validate",
+   "passed": true
+  },
+  {
+   "detail": "34/34",
+   "group": "representability",
+   "label": "34/34 expanded frames carry exactly the gold semantics",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "regression_of_the_v26564_failures",
+   "label": "two clauses on one identical span are accepted",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "regression_of_the_v26564_failures",
+   "label": "the colliding-span frame is reported as span-colliding",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "regression_of_the_v26564_failures",
+   "label": "the dependency case validates with a full-clause span",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": [\"proof_span\"]}",
+   "group": "regression_of_the_v26564_failures",
+   "label": "a narrower clause span no longer breaks the dependency",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "a second projection in one clause is SCHEMA-INVALID",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "a clause with dependencies and no projection is SCHEMA-INVALID",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "a supported frame with no projected clause is SCHEMA-INVALID",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [\"/\"], \"expansion\": [\"edge_source_ordinal_not_backward\", \"edge_source_ordinal_out_of_range\"], \"validator\": [\"dependency_order\", \"output_unconsumed\"]}",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "an out-of-bound edge ordinal is SCHEMA-INVALID and still measured",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "expander_totality",
+   "label": "no exception over 2343 type substitutions",
+   "passed": true
+  },
+  {
+   "detail": "9/9",
+   "group": "expander_totality",
+   "label": "every scalar-container input of the review is measured on 3 stages",
+   "passed": true
+  },
+  {
+   "detail": "781 evaluated",
+   "group": "expander_totality",
+   "label": "a third of the fuzz corpus reached the pipeline too",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "expander_totality",
+   "label": "no marker planted in any position reaches a fingerprint",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "expander_totality",
+   "label": "an unmeasurable semantic stage always says so",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": true, \"expansion\": true, \"validator\": true}",
+   "group": "best_effort_diagnosis",
+   "label": "a schema failure still runs expansion and validation",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "best_effort_diagnosis",
+   "label": "the schema stage reported at least one code",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "best_effort_diagnosis",
+   "label": "the validator stage was measured despite the schema failure",
+   "passed": true
+  },
+  {
+   "detail": "[]",
+   "group": "atom_budget",
+   "label": "a frame above the frozen atom budget is schema-valid",
+   "passed": true
+  },
+  {
+   "detail": "24 atoms, bound 16",
+   "group": "atom_budget",
+   "label": "the derived atom count exceeds the frozen bound",
+   "passed": true
+  },
+  {
+   "detail": "[\"derived_atom_count_over_frozen_bound\"]",
+   "group": "atom_budget",
+   "label": "the expansion names the atom budget explicitly",
+   "passed": true
+  },
+  {
+   "detail": "[\"schema\"]",
+   "group": "atom_budget",
+   "label": "the frozen validator censors itself on this frame",
+   "passed": true
+  },
+  {
+   "detail": "[\"output_unconsumed\", \"proof_limit\"]",
+   "group": "atom_budget",
+   "label": "the semantic surface is measured anyway",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "atom_budget",
+   "label": "a within-budget frame is not reported as over budget",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "atom_budget",
+   "label": "the semantic sweep agrees with the validator on a clean frame",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "typed_ambiguity_identity",
+   "label": "a typed-ambiguity frame validates with derived alternative ids",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "typed_ambiguity_identity",
+   "label": "alternative ids are derived from position",
+   "passed": true
+  },
+  {
+   "detail": "2/2",
+   "group": "typed_ambiguity_identity",
+   "label": "an out-of-registry clause validates at every index",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "typed_ambiguity_identity",
+   "label": "a per-alternative clause array is SCHEMA-INVALID",
+   "passed": true
+  },
+  {
+   "detail": "[\"clauses_disagree_on_reading_count\"]",
+   "group": "typed_ambiguity_identity",
+   "label": "reading arrays of different length are reported, never dropped",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "coverage_shapes",
+   "label": "a multi-clause multi-domain frame validates",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "coverage_shapes",
+   "label": "multi-domain fingerprint records two relations",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "coverage_shapes",
+   "label": "a mixed representable/out-of-registry frame validates",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "coverage_shapes",
+   "label": "the unsupported branch validates",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "coverage_shapes",
+   "label": "an inter-clause edge across two clauses validates",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "coverage_shapes",
+   "label": "the inter-clause edge is counted in the fingerprint",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for clause_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for atom_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for alternative_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for output_index",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the prompt forbids numeric labels",
+   "passed": true
+  },
+  {
+   "detail": "1 distinct",
+   "group": "unicode_metamorphic",
+   "label": "the same structure over 9 scripts yields one fingerprint",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "unicode_metamorphic",
+   "label": "the same structure over 9 scripts is uniformly valid",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "unicode_metamorphic",
+   "label": "segmentation is script independent for the probe set",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contamination",
+   "label": "no control query appears verbatim in the prompt or schema",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contamination",
+   "label": "no 4-token n-gram is shared with any control query",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contamination",
+   "label": "no 3-token n-gram is shared with any control query",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fingerprint_privacy",
+   "label": "no fingerprint of a valid frame leaves the closed vocabulary",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fingerprint_privacy",
+   "label": "a schema-invalid frame is really schema-invalid",
+   "passed": true
+  },
+  {
+   "detail": "{\"status\": null, \"well_formed\": true, \"clause_count\": 1, \"projected_clause_count\": 1, \"unsupported_clause_count\": 0, \"alternative_count\": 0, \"reading_count\": 0, \"atom_count\": 2, \"dependency_count\": 1,",
+   "group": "fingerprint_privacy",
+   "label": "no model-controlled string reaches the fingerprint",
+   "passed": true
+  },
+  {
+   "detail": "11",
+   "group": "fingerprint_privacy",
+   "label": "out-of-vocabulary material is counted instead",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fingerprint_privacy",
+   "label": "the fingerprint still describes the structure",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fingerprint_privacy",
+   "label": "the fingerprint carries no source span",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fail_closed",
+   "label": "a mutated registry is refused",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fail_closed",
+   "label": "a non-bytes registry is refused",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fail_closed",
+   "label": "a drifted validator pin is refused",
+   "passed": true
+  },
+  {
+   "detail": "12/12",
+   "group": "mutation_suite",
+   "label": "all 12 semantic mutations are rejected",
+   "passed": true
+  },
+  {
+   "detail": "12/12",
+   "group": "mutation_suite",
+   "label": "every mutation was measured on all three stages",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "mutation_suite",
+   "label": "the clean dependency frame still validates",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "mutation_suite",
+   "label": "no projection-semantic mutation survives with the gold semantics",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "mutation_suite",
+   "label": "the semantic mutation sweep raised nothing",
+   "passed": true
+  },
+  {
+   "detail": "2064",
+   "group": "mutation_suite",
+   "label": "the semantic mutation sweep is not empty",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "structural_closure",
+   "label": "no structurally closed code fires on 1500 random schema-valid frames",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "structural_closure",
+   "label": "the random sweep raised nothing",
+   "passed": true
+  },
+  {
+   "detail": "38/1500 valid",
+   "group": "structural_closure",
+   "label": "the random sweep produced both valid and invalid frames",
+   "passed": true
+  },
+  {
+   "detail": "0",
+   "group": "structural_closure",
+   "label": "the expander never invalidates a frame the validator accepts",
+   "passed": true
+  },
+  {
+   "detail": "1500 compared; ",
+   "group": "structural_closure",
+   "label": "the semantic sweep reproduces the frozen validator exactly",
+   "passed": true
+  }
+ ],
+ "seed": 20260809,
+ "total": 71,
+ "version": "metnos.v26.5.6.6-offline-selftest/1.0"
+}

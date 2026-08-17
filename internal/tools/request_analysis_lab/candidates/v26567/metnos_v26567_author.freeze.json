@@ -1,0 +1,210 @@
+{
+ "artifact_pins": {
+  "clause_owned_prompt": {
+   "path": "internal/tools/request_analysis_lab/candidates/v26566/metnos_v26566_clause_owned.prompt.txt",
+   "sha256": "803721b9bff01159de0ce163aa03161c3128eccfff232b97faea7d812c7731db",
+   "size": 9336
+  },
+  "clause_owned_schema": {
+   "path": "internal/tools/request_analysis_lab/candidates/v26566/metnos_v26566_clause_owned.schema.json",
+   "sha256": "72b2739d676d0c35c21d8a9add383a58f90b30d291c499532f680d5e902ce0b9",
+   "size": 11771
+  },
+  "expander_v26566": {
+   "path": "internal/tools/request_analysis_lab/candidates/v26566/metnos_v26566_expander.py",
+   "sha256": "4bcbc3c3563ee51e6ce5f038f8b3f13f3eb3b1ac16261fcc640011774f672701",
+   "size": 19179
+  },
+  "injected_validator": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2653/metnos_v2653_injected_validator.py",
+   "sha256": "66760987f5d2335c79114632affa5c04ffecd9ffe5f8e1a7adec7bc50b4b793d",
+   "size": 31627
+  },
+  "oracle_audit_json": {
+   "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_oracle_audit_v1.json",
+   "sha256": "b8443ad2e27a2d773b971147c1b3d37ee19beb1091b1d357c0a84e6aa0c98a77",
+   "size": 2805
+  },
+  "oracle_audit_md": {
+   "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_oracle_audit_v1.md",
+   "sha256": "538f24876768eb0e8612f3bb440c5f38a51a222122d5b34080e5a5c19ef9799a",
+   "size": 11615
+  },
+  "oracle_freeze": {
+   "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_oracle_audit_v1.freeze.json",
+   "sha256": "f2f5d6046a7fb0b6fead8f5ab27c35c230aebd928411d5d5a962bce90209a70f",
+   "size": 1268
+  },
+  "oracle_overlay": {
+   "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_typed_oracle_v1.overlay.json",
+   "sha256": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af",
+   "size": 25627
+  },
+  "oracle_schema": {
+   "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_typed_oracle_v1.schema.json",
+   "sha256": "4929fbc4ac524491f452d11d0f2d4d032887dd423c7487233c3d89065f4e17f2",
+   "size": 9073
+  },
+  "phase1_evaluator": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_phase1_evaluator.py",
+   "sha256": "fdee11190fe913f26069ff7627a62d7b143b28c911c2ea22a6afee91632126c7",
+   "size": 12154
+  },
+  "phase1_fixture": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_phase1_controls_frozen.json",
+   "sha256": "1dfbc5d2a7a83308a0f414d1b2c0b395f096d034471930fbaa886627aa79d954",
+   "size": 41888
+  },
+  "pipeline_v26566": {
+   "path": "internal/tools/request_analysis_lab/candidates/v26566/metnos_v26566_offline_pipeline.py",
+   "sha256": "9d1a2be5c16d7ae634a2a1d4b1acd38d757a0a1973412bb771667bea1dd8ea42",
+   "size": 12101
+  },
+  "python_dependency_tree": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_python_dependency_tree.json",
+   "sha256": "248b6a6877ad98d361890b50eb91664e3fec477ab6a8376f5dd48c0cb3e9b156",
+   "size": 28187
+  },
+  "registry_projection_v26566": {
+   "path": "internal/tools/request_analysis_lab/candidates/v26566/metnos_v26566_registry_projection.py",
+   "sha256": "7b1af2e41fba32d2129327f0423d10ad19135d17569dba54f8a01f445ef10f7d",
+   "size": 22319
+  },
+  "runtime_controls34": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_runtime_controls34.json",
+   "sha256": "23e6e39df4d697a36c81fd911a0f3aa17e3ccaeeb126fcb2bcd2bcd5b3a191e1",
+   "size": 8955
+  },
+  "source_controls34": {
+   "path": "internal/tools/request_analysis_lab/question_focus_controls_v1.json",
+   "sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+   "size": 8296
+  },
+  "typed_registry": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_registry.json",
+   "sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+   "size": 9456
+  },
+  "v26566_freeze": {
+   "path": "internal/tools/request_analysis_lab/candidates/v26566/metnos_v26566_author.freeze.json",
+   "sha256": "a2d88bc18eddf4e766b42a2c5cba41e1fe2e3d37a5038ae89f4eb3eb4c1f1f3e",
+   "size": 5020
+  },
+  "v26566_selftest_result": {
+   "path": "internal/tools/request_analysis_lab/candidates/v26566/metnos_v26566_author_selftest_result.json",
+   "sha256": "b41989edfb2ef37722b6affdd730841da625fb67d37031b9c24ba13cb590a9e9",
+   "size": 13634
+  }
+ },
+ "author_inference_allowed": false,
+ "author_model_calls": 0,
+ "author_network_calls": 0,
+ "author_pre_gate_sha256": "de5b931c02d4842982bdf01a14fb04343884adbab4d77b4801a03e490ada3e5c",
+ "configured_cases": 34,
+ "contract": {
+  "bundle": "internal/tools/request_analysis_lab/candidates/v26566",
+  "bundle_freeze_sha256": "a2d88bc18eddf4e766b42a2c5cba41e1fe2e3d37a5038ae89f4eb3eb4c1f1f3e",
+  "independent_static_review": "not performed; skipped by the user on 9 August",
+  "json_schema_name": "phase1_typed_relational_v26566_clause_owned",
+  "response_format": "json_schema strict",
+  "schema_derived_from_registry_must_equal_materialised": true
+ },
+ "external_gate_required": true,
+ "external_gate_status": "absent",
+ "frozen_at": "2026-08-10",
+ "independent_infrastructure_review": "pending",
+ "inherited_unchanged_from_v26564": {
+  "note": "transport, gate machinery, output anchoring, canonical size budget and CLI failure contract are the STATIC PASS bytes of V26.5.6.4, edited only where the request contract touches them",
+  "predecessor_runner_sha256": "6fb5785d32b73f9d7dad4e917b211fdcdc12d9ca05088cc6d8ed9c4b167b146a"
+ },
+ "model_batch_max_serialized_bytes": 7609728,
+ "not_inherited": {
+  "v2655_sealed_worker": "deliberately not used: it executes the V26.5 compact adapter and pins its manifest inside its own frozen bytes; this runner never executes model-derived data, and every compile/exec site loads SHA-pinned repository bytes"
+ },
+ "offline_evaluator_sha256": "6c6a71ce6fad44ae1d1a4e6e397016787c46ab68efeec45663a746765ec18dcc",
+ "postbatch_evidence_identities": [
+  "oracle_audit_json",
+  "oracle_audit_md",
+  "oracle_freeze",
+  "oracle_overlay",
+  "oracle_schema",
+  "phase1_evaluator",
+  "phase1_fixture",
+  "source_controls34"
+ ],
+ "preflight_gate_required": true,
+ "preflight_gate_status": "absent",
+ "python_executable": "/usr/bin/python3",
+ "python_executable_link_target": "python3.12",
+ "python_executable_sha256": "1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+ "python_executable_size": 8020928,
+ "python_flags": [
+  "-I",
+  "-B"
+ ],
+ "python_version": "3.12.3",
+ "record_contract": {
+  "expanded_frame_free_form_strings": 0,
+  "expanded_frame_persisted_when": "schema_ok",
+  "query_material_included": false,
+  "raw_model_content_persisted": false,
+  "response_body_digest_persisted": false,
+  "schema_error_paths_sanitised_against_contract_keys": true,
+  "structural_fingerprint_on_every_record": true,
+  "three_stages_on_every_attempted_record": true
+ },
+ "request_body_probe_sha256": "ac0a1c362a2f7ce8e90364bdddd7fda2d15da1f78b3fcc0aecd15dca86cca9b1",
+ "runner_sha256": "4af76aaa874c46c890ac248b896a20d443f5cd260fb8e73e431b380e5ae57c23",
+ "runtime_artifact_identities": [
+  "clause_owned_prompt",
+  "clause_owned_schema",
+  "expander_v26566",
+  "injected_validator",
+  "pipeline_v26566",
+  "python_dependency_tree",
+  "registry_projection_v26566",
+  "runtime_controls34",
+  "typed_registry",
+  "v26566_freeze",
+  "v26566_selftest_result"
+ ],
+ "scope": {
+  "authorizes_live": false,
+  "authorizes_runtime_cutover": false,
+  "authorizes_transport": false,
+  "certifies_general_109": false,
+  "offline_evaluator_in_bundle": true,
+  "what": "K1/34 live runner re-pinned to the V26.5.6.6 clause-owned contract"
+ },
+ "selftest": {
+  "gold_side_reads": 0,
+  "inherited_from": "v26563",
+  "inherited_v26563_passed": 66,
+  "model_calls": 0,
+  "network_calls": 0,
+  "new_passed": 24,
+  "status": "PASS",
+  "total_asserted_tests": 90,
+  "why_not_v26564": "the V26.5.6.4 suite asserts author-time absence of both operational gates; its own K1/34 live run created and consumed them, so that suite can no longer pass in place"
+ },
+ "selftest_result_sha256": "9c9775e09c491f243545dd7b4c66c100853ff84bdf1e555d2186a399997e4c2f",
+ "selftest_sha256": "7cb62ef5acc73a1bb10a35e8a5de25dbdd70388c984a3b92a586986cf24a8ed6",
+ "status": "PRE_INFRA_REVIEW",
+ "transport_contract": {
+  "calls_per_case": 1,
+  "endpoint": "literal loopback HTTP with explicit port only",
+  "environment_proxies": false,
+  "opens_counted": true,
+  "output_mode": "exclusive create, no clobber",
+  "output_parent": "openat O_NOFOLLOW dirfd held until link and fsync",
+  "redirects": false,
+  "retries": 0
+ },
+ "trust_roots_not_frozen": {
+  "interpreter_environment": "system /usr/bin/python3.12, pinned by sha256",
+  "kernel_and_filesystem": "not in scope",
+  "third_party_packages": "regex and jsonschema, pinned by dependency tree"
+ },
+ "unicode_version": "15.0.0",
+ "version": "metnos.v26.5.6.7-author-freeze/1.0"
+}

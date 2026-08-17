@@ -1,0 +1,300 @@
+{
+  "gate": {
+    "grammatical_person": "first",
+    "interpretation": "supported",
+    "relation": "spatial.located_at",
+    "role": "request",
+    "speech_act": "open_question",
+    "subject_ref": "current_actor",
+    "time_scope": "current"
+  },
+  "records": [
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.it.reflexive",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.it.nominal",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.en.copular",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.fr.inversion",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.es.prodrop",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.de.copular",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.tr.fused",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.ja.case_marked",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 1,
+      "expected": true,
+      "first_attempt_validator_valid": false,
+      "id": "pos.zh.wh_in_situ",
+      "ok": true,
+      "predicted": true
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.identity.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.identity.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.identity.fr",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.identity.es",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.identity.de",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.third_person.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.third_person.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.third_person.es",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.people_here.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.people_here.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.place_identity.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.file_location.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.file_location.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.process_host.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.nearby_operand.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.nearby_operand.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.polar.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.historical.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.share.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.quote.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.condition.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.relative_clause.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.workflow_position.it",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.document_position.en",
+      "ok": true,
+      "predicted": false
+    },
+    {
+      "active_heads": 0,
+      "expected": false,
+      "first_attempt_validator_valid": false,
+      "id": "neg.progress.it",
+      "ok": true,
+      "predicted": false
+    }
+  ],
+  "required_evidence": [
+    "focus",
+    "subject",
+    "time"
+  ],
+  "source_sha256": "2beb387e83d9dcc18ee412425bb54126fc7e24d09452743277b509ea5c80038e",
+  "status": "posthoc_diagnostic_not_acceptance_evidence",
+  "summary": {
+    "exact": 34,
+    "negative_leakage": 0,
+    "positive_hits": 9,
+    "positive_total": 9,
+    "records": 34,
+    "validator_valid": 0
+  }
+}

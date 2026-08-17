@@ -1,0 +1,14 @@
+{
+  "accepted_http_posts": 316,
+  "algorithm": "sha256",
+  "authorization_sha256": "0fcdc801aa8c53b9e1ec1eaab0f01bcb4593967940a5b967f05ee5333b808f0d",
+  "batch_file": "sealed_batch_run2.json",
+  "batch_sha256": "59fd26bbd71fada2aa116b1deced629993900d6ba02b69c1b4752602658e2d1c",
+  "consumption_marker_sha256": "1cc389ffc3d3ac76daf9b748db3766791e00bce7829bccc2823abcc9cf1a54b0",
+  "freeze_format": "metnos.intent-live-batch-seal/0.3-run2",
+  "journal_sha256": "a11be083b34f2fcf574636b7354009da3ccf6b28a18637453c0f4adb6cee1a32",
+  "record_count": 316,
+  "run_id": "intent-shadow-v0.3-run2",
+  "state": "complete",
+  "stopped_reason": null
+}

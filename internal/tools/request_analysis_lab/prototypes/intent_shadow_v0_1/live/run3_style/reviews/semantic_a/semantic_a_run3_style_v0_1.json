@@ -1,0 +1,266 @@
+{
+  "audit": {
+    "audit_id": "prompt_style_v0_1-run3-semantic-a",
+    "audit_type": "independent_semantic_and_fairness",
+    "auditor": "semantic_a",
+    "completed_date": "2026-08-13",
+    "independence": {
+      "other_auditor_reports_accessed": false,
+      "other_auditor_reports_copied": false,
+      "result": "PASS"
+    },
+    "scope": "prompt_style_v0_1 four-arm RUN3 final frozen bytes",
+    "verdict": "SEMANTIC_READY"
+  },
+  "caveats": [
+    {
+      "classification": "non_blocking_attribution_boundary",
+      "text": "A_SYSTEM_CURRENT versus S0_CURRENT, S1_METNOS_SHORT, or S2_PROCEDURAL is a full-stack system comparison and must not be described as a prompt-style-only causal effect. Only comparisons among S0_CURRENT, S1_METNOS_SHORT, and S2_PROCEDURAL support attribution to the candidate prompt presentation."
+    },
+    {
+      "classification": "non_blocking_contrast_bundle",
+      "text": "S0_CURRENT versus S1_METNOS_SHORT or S2_PROCEDURAL bundles compactness, canonical rule reordering, removal of redundant positive examples, and removal of the recency mini-check. S1_METNOS_SHORT versus S2_PROCEDURAL is the narrower contrast because the six rule sentences, their order, root templates, and registry data are identical and only the prescriptive versus numbered-procedural framing differs."
+    }
+  ],
+  "checklist": [
+    {
+      "check": "A_SYSTEM_CURRENT requests are exactly RUN2 arm A requests for all 158 cases.",
+      "evidence": "The final request-identity test and verifier compare canonical request bytes for every sealed panel case.",
+      "id": 1,
+      "result": "PASS"
+    },
+    {
+      "check": "S0_CURRENT requests are exactly RUN2 arm B requests for all 158 cases.",
+      "evidence": "The final request-identity test and verifier compare canonical request bytes for every sealed panel case.",
+      "id": 2,
+      "result": "PASS"
+    },
+    {
+      "check": "The current-system adapter replays every saved RUN2-A model content to the complete saved extraction without exclusions.",
+      "evidence": "Fresh-process replay is exact for 158 of 158 RUN2-A records at the selected global hash seed.",
+      "id": 3,
+      "result": "PASS"
+    },
+    {
+      "check": "The candidate adapter replays every saved RUN2-B model content to the complete saved extraction without exclusions.",
+      "evidence": "Fresh-process replay is exact for 158 of 158 RUN2-B records at the selected global hash seed.",
+      "id": 4,
+      "result": "PASS"
+    },
+    {
+      "check": "Both RUN2 anchors use zero tolerance for raw model content, complete extraction, and aggregate panel metrics.",
+      "evidence": "The evaluator checks per-case raw hashes and full extraction objects plus canonical-120, typed-4, and legacy-34 aggregates for the corresponding A or B authority.",
+      "id": 5,
+      "result": "PASS"
+    },
+    {
+      "check": "Any drift in either anchor prevents an attributable pairwise result.",
+      "evidence": "The evaluator passes attribution only when both anchors are exact; mutation tests force non_attributable_anchor_drift and disable both directional passes after one drift.",
+      "id": 6,
+      "result": "PASS"
+    },
+    {
+      "check": "The manifest contains exactly four arms times 158 cases, with no duplicate arm-case identity.",
+      "evidence": "The final manifest contains 632 records and exactly 158 records for each arm.",
+      "id": 7,
+      "result": "PASS"
+    },
+    {
+      "check": "The arm schedule is the deterministic four-way cycle ABCD, BCDA, CDAB, DABC.",
+      "evidence": "Sequence counts are 40, 40, 39, and 39 respectively and are closed by protocol validation.",
+      "id": 8,
+      "result": "PASS"
+    },
+    {
+      "check": "Every arm independently contains canonical-120, typed-controls-4, and legacy-34 panels.",
+      "evidence": "Per-arm counts are exactly 120, 4, and 34; cross-panel compensation is forbidden.",
+      "id": 9,
+      "result": "PASS"
+    },
+    {
+      "check": "Arm position is balanced to the unavoidable 39 or 40 appearances per position.",
+      "evidence": "Every arm has two positions with 40 appearances and two with 39.",
+      "id": 10,
+      "result": "PASS"
+    },
+    {
+      "check": "Execution is serial and has no paired-request optimization, retry, repair, or critic.",
+      "evidence": "The protocol freezes serial execution, one model response, retry_count zero, byte-preserving extraction, repair false, and critic false.",
+      "id": 11,
+      "result": "PASS"
+    },
+    {
+      "check": "The baseline authorities and candidate contract inputs are frozen and verified before execution.",
+      "evidence": "RUN2 batch/evaluation, control snapshot, prompt package, schema, registry, compiler, validator, adapters, backend identity, model profile, limits, and local sources are hash-bound.",
+      "id": 12,
+      "result": "PASS"
+    },
+    {
+      "check": "S0_CURRENT, S1_METNOS_SHORT, and S2_PROCEDURAL requests differ only in system-prompt content.",
+      "evidence": "For all 158 cases, replacing each style arm's system content with S0 content makes the complete canonical request identical.",
+      "id": 13,
+      "result": "PASS"
+    },
+    {
+      "check": "The S0 authority inventory maps every authoritative S0 statement exactly once.",
+      "evidence": "Inventory validation covers instruction positions 2 through 16 and the final five mini-check lines with unique positions.",
+      "id": 14,
+      "result": "PASS"
+    },
+    {
+      "check": "Each of the six canonical authority rules occurs exactly once in S1 and exactly once in S2.",
+      "evidence": "ROOT, OPERATIONS, EDGES, PORTS, BARRIER, and OUTPUT constraints are rendered once in canonical order in each arm.",
+      "id": 15,
+      "result": "PASS"
+    },
+    {
+      "check": "S1 and S2 introduce no semantic rule, route policy, reason precedence, or coverage-before-root rule.",
+      "evidence": "The inventory contract declares zero new rules and source/artifact scans find none of the excluded policy markers.",
+      "id": 16,
+      "result": "PASS"
+    },
+    {
+      "check": "Root templates and registry authority data are identical across all three candidate style arms.",
+      "evidence": "The three root templates occur once per arm and S1/S2 share the exact S0 registry-data bytes.",
+      "id": 17,
+      "result": "PASS"
+    },
+    {
+      "check": "The short and procedural prompts are measurably shorter and remain linear.",
+      "evidence": "S0 is 22868 UTF-8 bytes, 114 lines, and 3167 whitespace tokens; S1 is 22301, 105, and 3110; S2 is 22323, 105, and 3122.",
+      "id": 18,
+      "result": "PASS"
+    },
+    {
+      "check": "S1 and S2 preserve the same rule sentences and order while differing only in framing.",
+      "evidence": "S1 uses a CONSTRAINTS heading and labels; S2 uses a PROCEDURE heading and numeric arrows, with identical constraint text and shared tail.",
+      "id": 19,
+      "result": "PASS"
+    },
+    {
+      "check": "Removed long examples and the final mini-check do not remove independent authority.",
+      "evidence": "Their semantics are covered by the strict schema and mapped canonical rules; S1/S2 contain no negative JSON example or from-at-zero priming.",
+      "id": 20,
+      "result": "PASS"
+    },
+    {
+      "check": "The internationalization path is shared, BCP47 handling is unchanged, and Unicode confusables remain rejected.",
+      "evidence": "All style arms use the same normalized language header; modern, private-use, and grandfathered valid tags pass while malformed and non-ASCII confusable tags fail before send.",
+      "id": 21,
+      "result": "PASS"
+    },
+    {
+      "check": "The final prompts and logic contain no benchmark query, case ID, language branch, or case-specific route hardcoding.",
+      "evidence": "Query/hash scans and a synthetic renamed-registry test pass; the manifest contains no gold or expected-result fields.",
+      "id": 22,
+      "result": "PASS"
+    },
+    {
+      "check": "The unchanged symmetric v0.3 metric evaluates each arm and exposes all six pairwise comparisons.",
+      "evidence": "The evaluator imports the RUN2 semantic row and aggregate functions and reports three system-versus-style plus three style-only pairs.",
+      "id": 23,
+      "result": "PASS"
+    },
+    {
+      "check": "Headline threshold and safety gating are symmetric in both directions for every pair.",
+      "evidence": "Both directional deltas, safety regressions, and pass flags are emitted; mirrored and right-side safety-regression tests pass.",
+      "id": 24,
+      "result": "PASS"
+    },
+    {
+      "check": "No combined score, global winner, or panel compensation can override pairwise safety.",
+      "evidence": "combined_score is null, protocol mutation is rejected, and typed and legacy panels remain separately reported.",
+      "id": 25,
+      "result": "PASS"
+    },
+    {
+      "check": "Gold remains inaccessible until a complete 632-record batch, seal validation, and exact replay.",
+      "evidence": "The pre-gold gate validates all journal, HTTP, model-content, extraction, request, marker, checkpoint, and seal bindings before loading the oracle.",
+      "id": 26,
+      "result": "PASS"
+    },
+    {
+      "check": "The Python hash seed is a global environment reconstruction, not semantic or benchmark tuning.",
+      "evidence": "A predeclared 0-through-255 fresh-process matrix uses all 158 RUN2-A and all 158 RUN2-B extractions, selects the smallest whole-anchor-exact seed, opens no gold, and permits no case, query, language, or arm-specific runtime branch.",
+      "id": 27,
+      "result": "PASS"
+    },
+    {
+      "check": "Final frozen artifacts, tests, preflight, and no-execution state are internally consistent.",
+      "evidence": "Build checks and verifier report zero errors; 34 of 34 offline tests pass under PYTHONHASHSEED=0; no authorization, live run artifact, network call, inference, or GPU use exists at audit completion.",
+      "id": 28,
+      "result": "PASS"
+    }
+  ],
+  "final_state": {
+    "authorization_present": false,
+    "gpu_touched": false,
+    "inference_executed": false,
+    "live_run_artifacts_present": false,
+    "network_touched": false,
+    "protocol_status": "disarmed_prepared_no_inference"
+  },
+  "frozen_inputs": {
+    "matrix": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/live/run3_style/run2_anchor_hash_seed_matrix_v0_1.json",
+      "sha256": "d776d3261f9e01b955be386a0a9329d446119fb217495749766319925fcdfac9"
+    },
+    "prompt_style": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/prompt_style_v0_1/prompt_style_v0_1.freeze.json",
+      "sha256": "4bc9b7322f3c78111a0d86abee56d64c650d5b75cc4bad59b65cb0bb08f9e065"
+    },
+    "run3_protocol": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/live/run3_style/protocol_run3_style.freeze.json",
+      "sha256": "2dec09e3edce00b13e833c908df389a4425ff1c00db345ff26a014e41212dcad"
+    }
+  },
+  "prompt_hashes": {
+    "S0_CURRENT": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+    "S1_METNOS_SHORT": "557910d65e8064a7280834a70d1e7666688cdb3ddf7d7abdd41a248f6025ead3",
+    "S2_PROCEDURAL": "e36a499a2668055f7a73023df1c639e6b5f4baba5c39c590726194f04c050dfa"
+  },
+  "report_format": "metnos.intent-prompt-style-independent-semantic-review/0.1",
+  "seed_provenance": {
+    "all_seed_semantic_status_exact": {
+      "A": 158,
+      "B": 158
+    },
+    "exact_seed_count": 158,
+    "fresh_confirmation_count": 2,
+    "fresh_confirmations": {
+      "A_full_extraction_exact": 158,
+      "A_request_exact": 158,
+      "B_full_extraction_exact": 158,
+      "B_request_exact": 158
+    },
+    "global_for_all_four_arms": true,
+    "gold_or_oracle_opened": false,
+    "live_seed_sweep": false,
+    "network_touched": false,
+    "nonexact_seed_count": 98,
+    "only_nonexact_difference": {
+      "json_pointer": "/adapter_metadata/implicit_actions_ignored",
+      "type": "boolean_diagnostic"
+    },
+    "preliminary_case_probe": {
+      "included_in_freeze": false,
+      "materialized": false,
+      "used_for_range_or_selection": false
+    },
+    "seed_range": {
+      "end": 255,
+      "inclusive": true,
+      "start": 0
+    },
+    "selected_seed": 0,
+    "selection_rule": "minimum seed with complete extraction equality for all RUN2-A and RUN2-B records",
+    "set_before_interpreter_start": true
+  },
+  "summary": {
+    "checks_failed": 0,
+    "checks_passed": 28,
+    "checks_total": 28,
+    "semantic_policy_added": false,
+    "verdict": "SEMANTIC_READY"
+  }
+}

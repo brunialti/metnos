@@ -1,0 +1,625 @@
+{
+  "$defs": {
+    "atoms": {
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/projection_atom"
+          },
+          {
+            "$ref": "#/$defs/dependency_atom"
+          }
+        ]
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "type": "array"
+    },
+    "dependency_atom": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "items": {
+            "$ref": "#/$defs/dependency_binding"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "type": "array"
+        },
+        "atom_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "atom_kind": {
+          "const": "dependency"
+        },
+        "clause_end_segment_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "clause_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "clause_start_segment_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "relation": {
+          "enum": [
+            "spatial.located_at",
+            "identity.same_as",
+            "filesystem.located_at",
+            "runtime.host_of",
+            "spatial.near",
+            "acl.share",
+            "communication.send",
+            "movement.destination",
+            "workflow.position",
+            "document.position"
+          ],
+          "type": "string"
+        },
+        "relation_proof": {
+          "$ref": "#/$defs/proof"
+        }
+      },
+      "required": [
+        "atom_id",
+        "atom_kind",
+        "clause_id",
+        "clause_start_segment_id",
+        "clause_end_segment_id",
+        "relation",
+        "relation_proof",
+        "arguments"
+      ],
+      "type": "object"
+    },
+    "dependency_binding": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bound"
+            },
+            "proof": {
+              "$ref": "#/$defs/proof"
+            },
+            "ref": {
+              "enum": [
+                "actor.current",
+                "actor.quoted",
+                "artifact.explicit",
+                "context.current_place",
+                "context.current_spatial",
+                "files.current_position",
+                "files.explicit",
+                "person.explicit",
+                "place.explicit",
+                "principal.explicit",
+                "process.explicit",
+                "time.current",
+                "time.historical_explicit",
+                "time.quoted_context"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ref",
+            "proof"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "output"
+            },
+            "proof": {
+              "$ref": "#/$defs/proof"
+            }
+          },
+          "required": [
+            "kind",
+            "proof"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "atom_id": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "from_atom_output"
+            },
+            "output_index": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "proof": {
+              "$ref": "#/$defs/proof"
+            }
+          },
+          "required": [
+            "kind",
+            "atom_id",
+            "output_index",
+            "proof"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "projection_atom": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "items": {
+            "$ref": "#/$defs/projection_binding"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "type": "array"
+        },
+        "atom_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "atom_kind": {
+          "const": "projection"
+        },
+        "clause_end_segment_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "clause_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "clause_role": {
+          "enum": [
+            "main_request",
+            "main_assertion",
+            "quoted_content",
+            "condition_content",
+            "relative_modifier"
+          ],
+          "type": "string"
+        },
+        "clause_role_proof": {
+          "$ref": "#/$defs/proof"
+        },
+        "clause_start_segment_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "relation": {
+          "enum": [
+            "spatial.located_at",
+            "identity.same_as",
+            "filesystem.located_at",
+            "runtime.host_of",
+            "spatial.near",
+            "acl.share",
+            "communication.send",
+            "movement.destination",
+            "workflow.position",
+            "document.position"
+          ],
+          "type": "string"
+        },
+        "relation_proof": {
+          "$ref": "#/$defs/proof"
+        },
+        "speech_act": {
+          "enum": [
+            "open_question",
+            "polar_question",
+            "imperative",
+            "assertion",
+            "none"
+          ],
+          "type": "string"
+        },
+        "speech_act_proof": {
+          "$ref": "#/$defs/proof"
+        }
+      },
+      "required": [
+        "atom_id",
+        "atom_kind",
+        "clause_id",
+        "clause_start_segment_id",
+        "clause_end_segment_id",
+        "relation",
+        "relation_proof",
+        "arguments",
+        "clause_role",
+        "clause_role_proof",
+        "speech_act",
+        "speech_act_proof"
+      ],
+      "type": "object"
+    },
+    "projection_binding": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "bound"
+            },
+            "proof": {
+              "$ref": "#/$defs/proof"
+            },
+            "ref": {
+              "enum": [
+                "actor.current",
+                "actor.quoted",
+                "artifact.explicit",
+                "context.current_place",
+                "context.current_spatial",
+                "files.current_position",
+                "files.explicit",
+                "person.explicit",
+                "place.explicit",
+                "principal.explicit",
+                "process.explicit",
+                "time.current",
+                "time.historical_explicit",
+                "time.quoted_context"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "ref",
+            "proof"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "unknown"
+            },
+            "proof": {
+              "$ref": "#/$defs/proof"
+            }
+          },
+          "required": [
+            "kind",
+            "proof"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "atom_id": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "from_atom_output"
+            },
+            "output_index": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "proof": {
+              "$ref": "#/$defs/proof"
+            }
+          },
+          "required": [
+            "kind",
+            "atom_id",
+            "output_index",
+            "proof"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "proof": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "discourse_structure"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "clause_boundary"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "end_segment_id": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "kind": {
+              "const": "explicit_segment"
+            },
+            "start_segment_id": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "start_segment_id",
+            "end_segment_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "predicate_morphology"
+            },
+            "predicate_segment_id": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "predicate_segment_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "clause_construction"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "relation_composition"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "discourse_context"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "interrogative_construction"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "tense_morphology"
+            },
+            "predicate_segment_id": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "predicate_segment_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "utterance_context"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "quotation_context"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "unsupported_clause": {
+      "additionalProperties": false,
+      "properties": {
+        "clause_end_segment_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "clause_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "clause_role": {
+          "enum": [
+            "main_request",
+            "main_assertion",
+            "quoted_content",
+            "condition_content",
+            "relative_modifier"
+          ],
+          "type": "string"
+        },
+        "clause_role_proof": {
+          "$ref": "#/$defs/proof"
+        },
+        "clause_start_segment_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason": {
+          "const": "out_of_registry"
+        }
+      },
+      "required": [
+        "clause_id",
+        "clause_start_segment_id",
+        "clause_end_segment_id",
+        "clause_role",
+        "clause_role_proof",
+        "reason"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "atoms": {
+          "$ref": "#/$defs/atoms"
+        },
+        "status": {
+          "const": "supported"
+        },
+        "unsupported_clauses": {
+          "items": {
+            "$ref": "#/$defs/unsupported_clause"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "atoms"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "alternatives": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "alternative_id": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "atoms": {
+                "$ref": "#/$defs/atoms"
+              }
+            },
+            "required": [
+              "alternative_id",
+              "atoms"
+            ],
+            "type": "object"
+          },
+          "maxItems": 4,
+          "minItems": 2,
+          "type": "array"
+        },
+        "status": {
+          "const": "typed_ambiguity"
+        },
+        "unsupported_clauses": {
+          "items": {
+            "$ref": "#/$defs/unsupported_clause"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "alternatives"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "clauses": {
+          "items": {
+            "$ref": "#/$defs/unsupported_clause"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "type": "array"
+        },
+        "status": {
+          "const": "unsupported"
+        }
+      },
+      "required": [
+        "status",
+        "clauses"
+      ],
+      "type": "object"
+    }
+  ],
+  "type": "object"
+}

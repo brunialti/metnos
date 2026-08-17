@@ -1,0 +1,4035 @@
+{
+  "freeze": {
+    "base_bench_sha256": "db2abaf6aaba2ad77205dda3fda96cdfab272a17079e57b0e472201395a4a329",
+    "base_v25_sha256": "d252ee2fa9dc70be8c34a001aab0eedd78ca2d73e127f81cb28ada3db7b36ba0",
+    "candidate_v251_sha256": "5457bd02aac5c2fa5699c002522ccc5bffc393e56a8435004c1ee1948bd5505f",
+    "fixture_sha256": "90f6010619290bdb6662f1a62f3ef77e6589b0dbe020699bcd54f00dfa236994",
+    "freeze_version": "metnos.v25.1-requested-result-active-first/1.0",
+    "network_calls_by_preparer": 0,
+    "prompt_sha256": "d45acca1f003b8c38a55cf7d66d4d0b784a608aa0fcbff1e30f009e585ec1bb2",
+    "runner_sha256": "b818afdba9789d32206ce631bd3d261a44f0a5bc752f05b85ade21a8615d4055",
+    "schema_sha256": "f64eca91c70659cb1a26025592ca8c44b0fc3d116b48325726f1eef7b55dfd8e",
+    "v241_rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82"
+  },
+  "records": [
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": true,
+        "id": "location.it.where",
+        "language": "it",
+        "query": "dove mi trovo",
+        "track": "location"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 3,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "trovare",
+                  "predicate_anchor_token_id": 3,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 1,
+                    "kind": "question_slot",
+                    "start_token_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "find",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4177.196454998921,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 3,\n      \"role\": \"request\",\n      \"lemma\": \"trovare\",\n      \"semantic_gloss_en\": \"find\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 1,\n        \"end_token_id\": 1\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 3,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 3,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "trovare",
+              "predicate_anchor_token_id": 3,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 1,
+                "kind": "question_slot",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "find",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "dove mi trovo",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "dove",
+          "mi",
+          "trovo"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "trovare",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 3,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 1,
+                "kind": "catalog_query",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "find",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": true,
+        "id": "location.it.position",
+        "language": "it",
+        "query": "dimmi la mia posizione",
+        "track": "location"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "dire",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 4,
+                    "kind": "question_slot",
+                    "start_token_id": 4
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "tell",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4165.895494996221,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"dire\",\n      \"semantic_gloss_en\": \"tell\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 4,\n        \"end_token_id\": 4\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "dire",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 4,
+                "kind": "question_slot",
+                "start_token_id": 4
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "tell",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "dimmi la mia posizione",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "dimmi",
+          "la",
+          "mia",
+          "posizione"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "dire",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 4,
+                "kind": "catalog_query",
+                "start_token_id": 4
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "tell",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": true,
+        "id": "location.en",
+        "language": "en",
+        "query": "where am I",
+        "track": "location"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "am",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 3,
+                    "kind": "question_slot",
+                    "start_token_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "be",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4180.533837003168,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"am\",\n      \"semantic_gloss_en\": \"be\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 1,\n        \"end_token_id\": 3\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "am",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 3,
+                "kind": "question_slot",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "where am I",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "where",
+          "am",
+          "I"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "am",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 3,
+                "kind": "catalog_query",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": true,
+        "id": "location.fr",
+        "language": "fr",
+        "query": "où suis-je",
+        "track": "location"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "être",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 2,
+                    "kind": "question_slot",
+                    "start_token_id": 1
+                  },
+                  "resource_scope": "whole_domain",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "be",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4014.2074350005714,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"lemma\": \"être\",\n      \"semantic_gloss_en\": \"be\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"whole_domain\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 1,\n        \"end_token_id\": 2\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "être",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 2,
+                "kind": "question_slot",
+                "start_token_id": 1
+              },
+              "resource_scope": "whole_domain",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "où suis-je",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "où",
+          "suis-je"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "être",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 2,
+                "kind": "catalog_query",
+                "start_token_id": 1
+              },
+              "resource_scope": "whole_domain",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": true,
+        "id": "location.es",
+        "language": "es",
+        "query": "dónde estoy",
+        "track": "location"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "estar",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 2,
+                    "kind": "question_slot",
+                    "start_token_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "be",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4035.8727169950726,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"lemma\": \"estar\",\n      \"semantic_gloss_en\": \"be\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 1,\n        \"end_token_id\": 2\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "estar",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 2,
+                "kind": "question_slot",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "dónde estoy",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "dónde",
+          "estoy"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "estar",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 2,
+                "kind": "catalog_query",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": true,
+        "id": "location.de",
+        "language": "de",
+        "query": "wo bin ich",
+        "track": "location"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "wo",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 3,
+                    "kind": "question_slot",
+                    "start_token_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "where",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4121.999670998775,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"wo\",\n      \"semantic_gloss_en\": \"where\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 1,\n        \"end_token_id\": 3\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "wo",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 3,
+                "kind": "question_slot",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "where",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "wo bin ich",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "wo",
+          "bin",
+          "ich"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "wo",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 3,
+                "kind": "catalog_query",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "where",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": true,
+        "id": "location.pt_holdout",
+        "language": "pt",
+        "query": "onde estou",
+        "track": "location_holdout"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "estar",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 1,
+                    "kind": "question_slot",
+                    "start_token_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "be",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 3960.5271610053023,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"lemma\": \"estar\",\n      \"semantic_gloss_en\": \"be\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 1,\n        \"end_token_id\": 1\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "estar",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 1,
+                "kind": "question_slot",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "onde estou",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "onde",
+          "estou"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "estar",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 1,
+                "kind": "catalog_query",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "read/persons",
+        "expected_argument": false,
+        "expected_question": false,
+        "id": "control.identity.it",
+        "language": "it",
+        "query": "chi sono io",
+        "track": "control"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "persons",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "read",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "essere",
+                  "predicate_anchor_token_id": 2,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 3,
+                    "kind": "explicit_entity",
+                    "object": "persons",
+                    "start_token_id": 3
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "read",
+                  "semantic_gloss_en": "be",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4243.563607989927,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"lemma\": \"essere\",\n      \"semantic_gloss_en\": \"be\",\n      \"semantic_action\": \"read\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 3,\n        \"object\": \"persons\"\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 2,\n      \"role\": \"request\",\n      \"verb\": \"read\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"persons\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "persons",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "read",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "essere",
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "requested_result": {
+                "end_token_id": 3,
+                "kind": "explicit_entity",
+                "object": "persons",
+                "start_token_id": 3
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "read",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "read/persons",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "read/persons",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "read/persons",
+              "rules": []
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "chi sono io",
+        "signature": "read/persons",
+        "status": "projected",
+        "tokens": [
+          "chi",
+          "sono",
+          "io"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "essere",
+              "patient": {
+                "end_token_id": 3,
+                "kind": "explicit",
+                "object": "persons",
+                "start_token_id": 3
+              },
+              "predicate_anchor_token_id": 2,
+              "predicate_id": 1,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "read",
+                "kind": "candidate",
+                "object": "persons",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "read",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "read/persons",
+        "expected_argument": false,
+        "expected_question": false,
+        "id": "control.identity.en",
+        "language": "en",
+        "query": "who am I",
+        "track": "control"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "persons",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "read",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "am",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 3,
+                    "kind": "question_slot",
+                    "start_token_id": 3
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "read",
+                  "semantic_gloss_en": "be",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4193.4783320029965,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"am\",\n      \"semantic_gloss_en\": \"be\",\n      \"semantic_action\": \"read\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 3\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"read\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"persons\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [
+                {
+                  "code": "question_route",
+                  "message": "current-location binding requires get/places",
+                  "path": "predicates/0",
+                  "retryable": true
+                }
+              ],
+              "valid": false
+            }
+          },
+          {
+            "attempt": 2,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "persons",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "read",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "am",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 3,
+                    "kind": "explicit_entity",
+                    "object": "persons",
+                    "start_token_id": 3
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "read",
+                  "semantic_gloss_en": "be",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 3894.5299219922163,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"am\",\n      \"semantic_gloss_en\": \"be\",\n      \"semantic_action\": \"read\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 3,\n        \"object\": \"persons\"\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"read\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"persons\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "persons",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "read",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "am",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "end_token_id": 3,
+                "kind": "explicit_entity",
+                "object": "persons",
+                "start_token_id": 3
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "read",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "read/persons",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "read/persons",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "read/persons",
+              "rules": []
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "who am I",
+        "signature": "read/persons",
+        "status": "projected",
+        "tokens": [
+          "who",
+          "am",
+          "I"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "am",
+              "patient": {
+                "end_token_id": 3,
+                "kind": "explicit",
+                "object": "persons",
+                "start_token_id": 3
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "read",
+                "kind": "candidate",
+                "object": "persons",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "read",
+              "semantic_gloss_en": "be",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "read/persons",
+        "expected_argument": false,
+        "expected_question": false,
+        "id": "control.person.it",
+        "language": "it",
+        "query": "dimmi tutto su ospite alfa",
+        "track": "control"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "persons",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "read",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "dire",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 5,
+                    "kind": "explicit_entity",
+                    "object": "persons",
+                    "start_token_id": 4
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "read",
+                  "semantic_gloss_en": "tell",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 3888.0039070063503,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"dire\",\n      \"semantic_gloss_en\": \"tell\",\n      \"semantic_action\": \"read\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 4,\n        \"end_token_id\": 5,\n        \"object\": \"persons\"\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"read\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"persons\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "persons",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "read",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "dire",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "end_token_id": 5,
+                "kind": "explicit_entity",
+                "object": "persons",
+                "start_token_id": 4
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "read",
+              "semantic_gloss_en": "tell",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "read/persons",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "read/persons",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "read/persons",
+              "rules": []
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "dimmi tutto su ospite alfa",
+        "signature": "read/persons",
+        "status": "projected",
+        "tokens": [
+          "dimmi",
+          "tutto",
+          "su",
+          "ospite",
+          "alfa"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "dire",
+              "patient": {
+                "end_token_id": 5,
+                "kind": "explicit",
+                "object": "persons",
+                "start_token_id": 4
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "read",
+                "kind": "candidate",
+                "object": "persons",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "read",
+              "semantic_gloss_en": "tell",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": false,
+        "id": "control.place.it",
+        "language": "it",
+        "query": "dammi le coordinate di Parigi",
+        "track": "control"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "dare",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 5,
+                    "kind": "explicit_entity",
+                    "object": "places",
+                    "start_token_id": 5
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "give",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4535.914189997129,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"dare\",\n      \"semantic_gloss_en\": \"give\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 5,\n        \"end_token_id\": 5,\n        \"object\": \"places\"\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "dare",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "end_token_id": 5,
+                "kind": "explicit_entity",
+                "object": "places",
+                "start_token_id": 5
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "give",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": []
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "dammi le coordinate di Parigi",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "dammi",
+          "le",
+          "coordinate",
+          "di",
+          "Parigi"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "dare",
+              "patient": {
+                "end_token_id": 5,
+                "kind": "explicit",
+                "object": "places",
+                "start_token_id": 5
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "give",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "get/places",
+        "expected_argument": false,
+        "expected_question": false,
+        "id": "control.place.en",
+        "language": "en",
+        "query": "where is the Eiffel Tower",
+        "track": "control"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "places",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "where",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "answer_object": "places",
+                    "binding_id": "runtime.current_location",
+                    "end_token_id": 5,
+                    "kind": "question_slot",
+                    "start_token_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "where",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4203.880785993533,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"where\",\n      \"semantic_gloss_en\": \"where\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"question_slot\",\n        \"binding_id\": \"runtime.current_location\",\n        \"answer_object\": \"places\",\n        \"start_token_id\": 1,\n        \"end_token_id\": 5\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"places\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "places",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "where",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "answer_object": "places",
+                "binding_id": "runtime.current_location",
+                "end_token_id": 5,
+                "kind": "question_slot",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "where",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "get/places",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "get/places",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "get/places",
+              "rules": [
+                {
+                  "after": "get/places",
+                  "before": "get/places",
+                  "evidence": [
+                    "question.binding_id",
+                    "question.span",
+                    "catalog.query_binding"
+                  ],
+                  "rule_id": "v241.question.runtime.current_location"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "where is the Eiffel Tower",
+        "signature": "get/places",
+        "status": "projected",
+        "tokens": [
+          "where",
+          "is",
+          "the",
+          "Eiffel",
+          "Tower"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "question"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "where",
+              "patient": {
+                "basis": "predicate_semantics",
+                "kind": "implicit",
+                "object": "places"
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "binding_id": "runtime.current_location",
+                "end_token_id": 5,
+                "kind": "catalog_query",
+                "start_token_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "places",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "where",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 1,
+        "question_binding_ok": false,
+        "route_ok": true,
+        "strict_ok": false
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": [
+          "create/events",
+          "get/files"
+        ],
+        "expected_argument": true,
+        "expected_question": false,
+        "id": "attachment.compact.it",
+        "language": "it",
+        "query": "crea un evento promemoria domani e allega la foto logo.png",
+        "track": "attachment"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "events",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "create",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 1,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 7,
+                  "predicate_id": 2,
+                  "role": "request",
+                  "verb": "write",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "creare",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 4,
+                    "kind": "explicit_entity",
+                    "object": "events",
+                    "start_token_id": 3
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "create",
+                  "semantic_gloss_en": "create",
+                  "sink": {
+                    "end_token_id": 4,
+                    "kind": "primary_output",
+                    "object": "events",
+                    "start_token_id": 3
+                  },
+                  "source_predicate_id": 0
+                },
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "allegare",
+                  "predicate_anchor_token_id": 7,
+                  "predicate_id": 2,
+                  "requested_result": {
+                    "binding_id": "calendar_event_attachment",
+                    "end_token_id": 10,
+                    "kind": "support_argument",
+                    "object": "files",
+                    "start_token_id": 9,
+                    "target_predicate_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "write",
+                  "semantic_gloss_en": "attach",
+                  "sink": {
+                    "end_token_id": 10,
+                    "kind": "secondary_persistence",
+                    "object": "files",
+                    "start_token_id": 9
+                  },
+                  "source_predicate_id": 1
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 7323.8202890061075,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"creare\",\n      \"semantic_gloss_en\": \"create\",\n      \"semantic_action\": \"create\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 4,\n        \"object\": \"events\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 4,\n        \"object\": \"events\"\n      }\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 7,\n      \"role\": \"request\",\n      \"lemma\": \"allegare\",\n      \"semantic_gloss_en\": \"attach\",\n      \"semantic_action\": \"write\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 1,\n      \"sink\": {\n        \"kind\": \"secondary_persistence\",\n        \"start_token_id\": 9,\n        \"end_token_id\": 10,\n        \"object\": \"files\"\n      },\n      \"requested_result\": {\n        \"kind\": \"support_argument\",\n        \"binding_id\": \"calendar_event_attachment\",\n        \"target_predicate_id\": 1,\n        \"object\": \"files\",\n        \"start_token_id\": 9,\n        \"end_token_id\": 10\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"create\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"events\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 7,\n      \"role\": \"request\",\n      \"verb\": \"write\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 1\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [
+                {
+                  "code": "argument_route",
+                  "message": "existing file support requires get/files",
+                  "path": "predicates/1",
+                  "retryable": true
+                },
+                {
+                  "code": "argument_sink",
+                  "message": "existing support file is not a new output sink",
+                  "path": "semantic_heads/1/sink",
+                  "retryable": true
+                }
+              ],
+              "valid": false
+            }
+          },
+          {
+            "attempt": 2,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "events",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "create",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 1,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 7,
+                  "predicate_id": 2,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "creare",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 4,
+                    "kind": "explicit_entity",
+                    "object": "events",
+                    "start_token_id": 3
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "create",
+                  "semantic_gloss_en": "create",
+                  "sink": {
+                    "end_token_id": 4,
+                    "kind": "primary_output",
+                    "object": "events",
+                    "start_token_id": 3
+                  },
+                  "source_predicate_id": 0
+                },
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "allegare",
+                  "predicate_anchor_token_id": 7,
+                  "predicate_id": 2,
+                  "requested_result": {
+                    "binding_id": "calendar_event_attachment",
+                    "end_token_id": 10,
+                    "kind": "support_argument",
+                    "object": "files",
+                    "start_token_id": 9,
+                    "target_predicate_id": 1
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "attach",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 1
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 6853.698512000847,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"creare\",\n      \"semantic_gloss_en\": \"create\",\n      \"semantic_action\": \"create\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 4,\n        \"object\": \"events\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 4,\n        \"object\": \"events\"\n      }\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 7,\n      \"role\": \"request\",\n      \"lemma\": \"allegare\",\n      \"semantic_gloss_en\": \"attach\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 1,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"support_argument\",\n        \"binding_id\": \"calendar_event_attachment\",\n        \"target_predicate_id\": 1,\n        \"object\": \"files\",\n        \"start_token_id\": 9,\n        \"end_token_id\": 10\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"create\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"events\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 7,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 1\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "events",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "create",
+              "verb_resolution": "direct"
+            },
+            {
+              "input_from_predicate_id": 1,
+              "object": "files",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 7,
+              "predicate_id": 2,
+              "role": "request",
+              "verb": "get",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "creare",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "end_token_id": 4,
+                "kind": "explicit_entity",
+                "object": "events",
+                "start_token_id": 3
+              },
+              "resource_scope": "new_resource",
+              "role": "request",
+              "semantic_action": "create",
+              "semantic_gloss_en": "create",
+              "sink": {
+                "end_token_id": 4,
+                "kind": "primary_output",
+                "object": "events",
+                "start_token_id": 3
+              },
+              "source_predicate_id": 0
+            },
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "allegare",
+              "predicate_anchor_token_id": 7,
+              "predicate_id": 2,
+              "requested_result": {
+                "binding_id": "calendar_event_attachment",
+                "end_token_id": 10,
+                "kind": "support_argument",
+                "object": "files",
+                "start_token_id": 9,
+                "target_predicate_id": 1
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "get",
+              "semantic_gloss_en": "attach",
+              "sink": {
+                "kind": "none"
+              },
+              "source_predicate_id": 1
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": [
+            "create/events",
+            "get/files"
+          ],
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "create/events",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate",
+                "sink"
+              ],
+              "predicate_id": 1,
+              "projected": "create/events",
+              "rules": []
+            },
+            {
+              "candidate": "get/files",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate",
+                "source"
+              ],
+              "predicate_id": 2,
+              "projected": "get/files",
+              "rules": [
+                {
+                  "after": "get/files",
+                  "before": "get/files",
+                  "evidence": [
+                    "argument_relation.binding_id",
+                    "argument_relation.target_predicate_id",
+                    "argument_relation.span",
+                    "catalog.argument_binding"
+                  ],
+                  "rule_id": "v241.argument.calendar_event_attachment"
+                }
+              ]
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "crea un evento promemoria domani e allega la foto logo.png",
+        "signature": [
+          "create/events",
+          "get/files"
+        ],
+        "status": "projected",
+        "tokens": [
+          "crea",
+          "un",
+          "evento",
+          "promemoria",
+          "domani",
+          "e",
+          "allega",
+          "la",
+          "foto",
+          "logo.png"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "sink"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "creare",
+              "patient": {
+                "end_token_id": 4,
+                "kind": "explicit",
+                "object": "events",
+                "start_token_id": 3
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "new_resource",
+              "role": "request",
+              "route": {
+                "action": "create",
+                "kind": "candidate",
+                "object": "events",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "create",
+              "semantic_gloss_en": "create",
+              "sink": {
+                "destination_role": "artifact_domain",
+                "end_token_id": 4,
+                "kind": "primary_output",
+                "object": "events",
+                "start_token_id": 3
+              }
+            },
+            {
+              "argument_relations": [
+                {
+                  "binding_id": "calendar_event_attachment",
+                  "end_token_id": 10,
+                  "kind": "support_argument",
+                  "start_token_id": 9,
+                  "support_object": "files",
+                  "target_predicate_id": 1
+                }
+              ],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "source",
+                "argument_relation"
+              ],
+              "input_from_predicate_id": 1,
+              "lemma": "allegare",
+              "patient": {
+                "end_token_id": 10,
+                "kind": "explicit",
+                "object": "files",
+                "start_token_id": 9
+              },
+              "predicate_anchor_token_id": 7,
+              "predicate_id": 2,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "get",
+                "kind": "candidate",
+                "object": "files",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "get",
+              "semantic_gloss_en": "attach",
+              "sink": {
+                "kind": "none"
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 1,
+        "argument_binding_ok": true,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": false,
+      "case": {
+        "expected": [
+          "read/urls",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "get/files"
+        ],
+        "expected_argument": true,
+        "expected_question": false,
+        "id": "attachment.full.it",
+        "language": "it",
+        "query": "scarica il pdf da https://x.com/a.pdf, salvalo in /tmp, mandalo via mail a roberto, crea un evento promemoria domani e allega la foto logo.png",
+        "track": "attachment"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "urls",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "read",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 1,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 6,
+                  "predicate_id": 2,
+                  "role": "request",
+                  "verb": "write",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 2,
+                  "object": "messages",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 9,
+                  "predicate_id": 3,
+                  "role": "request",
+                  "verb": "send",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "events",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 14,
+                  "predicate_id": 4,
+                  "role": "request",
+                  "verb": "create",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 4,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 20,
+                  "predicate_id": 5,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "end_token_id": 5,
+                    "kind": "source_container",
+                    "object": "urls",
+                    "start_token_id": 5
+                  },
+                  "lemma": "scarica",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 5,
+                    "kind": "explicit_entity",
+                    "object": "urls",
+                    "start_token_id": 5
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "read",
+                  "semantic_gloss_en": "download",
+                  "sink": {
+                    "end_token_id": 8,
+                    "kind": "primary_output",
+                    "object": "files",
+                    "start_token_id": 7
+                  },
+                  "source_predicate_id": 0
+                },
+                {
+                  "carrier": {
+                    "end_token_id": 8,
+                    "kind": "source_container",
+                    "object": "files",
+                    "start_token_id": 7
+                  },
+                  "lemma": "salva",
+                  "predicate_anchor_token_id": 6,
+                  "predicate_id": 2,
+                  "requested_result": {
+                    "end_token_id": 8,
+                    "kind": "explicit_entity",
+                    "object": "files",
+                    "start_token_id": 7
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "write",
+                  "semantic_gloss_en": "save",
+                  "sink": {
+                    "end_token_id": 8,
+                    "kind": "primary_output",
+                    "object": "files",
+                    "start_token_id": 7
+                  },
+                  "source_predicate_id": 1
+                },
+                {
+                  "carrier": {
+                    "end_token_id": 11,
+                    "kind": "transport_channel",
+                    "object": "messages",
+                    "start_token_id": 11
+                  },
+                  "lemma": "manda",
+                  "predicate_anchor_token_id": 9,
+                  "predicate_id": 3,
+                  "requested_result": {
+                    "kind": "none"
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "send",
+                  "semantic_gloss_en": "send",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 2
+                },
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "crea",
+                  "predicate_anchor_token_id": 14,
+                  "predicate_id": 4,
+                  "requested_result": {
+                    "end_token_id": 16,
+                    "kind": "explicit_entity",
+                    "object": "events",
+                    "start_token_id": 16
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "create",
+                  "semantic_gloss_en": "create",
+                  "sink": {
+                    "end_token_id": 16,
+                    "kind": "primary_output",
+                    "object": "events",
+                    "start_token_id": 16
+                  },
+                  "source_predicate_id": 0
+                },
+                {
+                  "carrier": {
+                    "end_token_id": 23,
+                    "kind": "source_container",
+                    "object": "files",
+                    "start_token_id": 22
+                  },
+                  "lemma": "allega",
+                  "predicate_anchor_token_id": 20,
+                  "predicate_id": 5,
+                  "requested_result": {
+                    "binding_id": "calendar_event_attachment",
+                    "end_token_id": 23,
+                    "kind": "support_argument",
+                    "object": "files",
+                    "start_token_id": 22,
+                    "target_predicate_id": 4
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "attach",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 4
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 16041.532244998962,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"scarica\",\n      \"semantic_gloss_en\": \"download\",\n      \"semantic_action\": \"read\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"source_container\",\n        \"start_token_id\": 5,\n        \"end_token_id\": 5,\n        \"object\": \"urls\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 7,\n        \"end_token_id\": 8,\n        \"object\": \"files\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 5,\n        \"end_token_id\": 5,\n        \"object\": \"urls\"\n      }\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 6,\n      \"role\": \"request\",\n      \"lemma\": \"salva\",\n      \"semantic_gloss_en\": \"save\",\n      \"semantic_action\": \"write\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"source_container\",\n        \"start_token_id\": 7,\n        \"end_token_id\": 8,\n        \"object\": \"files\"\n      },\n      \"source_predicate_id\": 1,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 7,\n        \"end_token_id\": 8,\n        \"object\": \"files\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 7,\n        \"end_token_id\": 8,\n        \"object\": \"files\"\n      }\n    },\n    {\n      \"predicate_id\": 3,\n      \"predicate_anchor_token_id\": 9,\n      \"role\": \"request\",\n      \"lemma\": \"manda\",\n      \"semantic_gloss_en\": \"send\",\n      \"semantic_action\": \"send\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"transport_channel\",\n        \"start_token_id\": 11,\n        \"end_token_id\": 11,\n        \"object\": \"messages\"\n      },\n      \"source_predicate_id\": 2,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"none\"\n      }\n    },\n    {\n      \"predicate_id\": 4,\n      \"predicate_anchor_token_id\": 14,\n      \"role\": \"request\",\n      \"lemma\": \"crea\",\n      \"semantic_gloss_en\": \"create\",\n      \"semantic_action\": \"create\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 16,\n        \"end_token_id\": 16,\n        \"object\": \"events\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 16,\n        \"end_token_id\": 16,\n        \"object\": \"events\"\n      }\n    },\n    {\n      \"predicate_id\": 5,\n      \"predicate_anchor_token_id\": 20,\n      \"role\": \"request\",\n      \"lemma\": \"allega\",\n      \"semantic_gloss_en\": \"attach\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"source_container\",\n        \"start_token_id\": 22,\n        \"end_token_id\": 23,\n        \"object\": \"files\"\n      },\n      \"source_predicate_id\": 4,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"support_argument\",\n        \"binding_id\": \"calendar_event_attachment\",\n        \"target_predicate_id\": 4,\n        \"object\": \"files\",\n        \"start_token_id\": 22,\n        \"end_token_id\": 23\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"read\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"urls\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 6,\n      \"role\": \"request\",\n      \"verb\": \"write\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 1\n    },\n    {\n      \"predicate_id\": 3,\n      \"predicate_anchor_token_id\": 9,\n      \"role\": \"request\",\n      \"verb\": \"send\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"messages\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 2\n    },\n    {\n      \"predicate_id\": 4,\n      \"predicate_anchor_token_id\": 14,\n      \"role\": \"request\",\n      \"verb\": \"create\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"events\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    },\n    {\n      \"predicate_id\": 5,\n      \"predicate_anchor_token_id\": 20,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 4\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [
+                {
+                  "code": "base_v24",
+                  "message": "semantic_3_patient_source_alignment",
+                  "path": "",
+                  "retryable": true
+                }
+              ],
+              "valid": false
+            }
+          },
+          {
+            "attempt": 2,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "urls",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "read",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 1,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 6,
+                  "predicate_id": 2,
+                  "role": "request",
+                  "verb": "write",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 2,
+                  "object": "messages",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 9,
+                  "predicate_id": 3,
+                  "role": "request",
+                  "verb": "send",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "events",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 14,
+                  "predicate_id": 4,
+                  "role": "request",
+                  "verb": "create",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 4,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 20,
+                  "predicate_id": 5,
+                  "role": "request",
+                  "verb": "get",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "end_token_id": 5,
+                    "kind": "source_container",
+                    "object": "urls",
+                    "start_token_id": 5
+                  },
+                  "lemma": "scarica",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 5,
+                    "kind": "explicit_entity",
+                    "object": "urls",
+                    "start_token_id": 5
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "read",
+                  "semantic_gloss_en": "download",
+                  "sink": {
+                    "end_token_id": 8,
+                    "kind": "primary_output",
+                    "object": "files",
+                    "start_token_id": 6
+                  },
+                  "source_predicate_id": 0
+                },
+                {
+                  "carrier": {
+                    "end_token_id": 6,
+                    "kind": "source_container",
+                    "object": "files",
+                    "start_token_id": 6
+                  },
+                  "lemma": "salva",
+                  "predicate_anchor_token_id": 6,
+                  "predicate_id": 2,
+                  "requested_result": {
+                    "end_token_id": 6,
+                    "kind": "explicit_entity",
+                    "object": "files",
+                    "start_token_id": 6
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "write",
+                  "semantic_gloss_en": "save",
+                  "sink": {
+                    "end_token_id": 8,
+                    "kind": "primary_output",
+                    "object": "files",
+                    "start_token_id": 8
+                  },
+                  "source_predicate_id": 1
+                },
+                {
+                  "carrier": {
+                    "end_token_id": 11,
+                    "kind": "transport_channel",
+                    "object": "messages",
+                    "start_token_id": 11
+                  },
+                  "lemma": "manda",
+                  "predicate_anchor_token_id": 9,
+                  "predicate_id": 3,
+                  "requested_result": {
+                    "kind": "none"
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "send",
+                  "semantic_gloss_en": "send",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 2
+                },
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "crea",
+                  "predicate_anchor_token_id": 14,
+                  "predicate_id": 4,
+                  "requested_result": {
+                    "end_token_id": 16,
+                    "kind": "explicit_entity",
+                    "object": "events",
+                    "start_token_id": 16
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "create",
+                  "semantic_gloss_en": "create",
+                  "sink": {
+                    "end_token_id": 16,
+                    "kind": "primary_output",
+                    "object": "events",
+                    "start_token_id": 16
+                  },
+                  "source_predicate_id": 0
+                },
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "allega",
+                  "predicate_anchor_token_id": 20,
+                  "predicate_id": 5,
+                  "requested_result": {
+                    "binding_id": "calendar_event_attachment",
+                    "end_token_id": 23,
+                    "kind": "support_argument",
+                    "object": "files",
+                    "start_token_id": 23,
+                    "target_predicate_id": 4
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "get",
+                  "semantic_gloss_en": "attach",
+                  "sink": {
+                    "kind": "none"
+                  },
+                  "source_predicate_id": 4
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 15869.96326300141,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"scarica\",\n      \"semantic_gloss_en\": \"download\",\n      \"semantic_action\": \"read\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"source_container\",\n        \"start_token_id\": 5,\n        \"end_token_id\": 5,\n        \"object\": \"urls\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 6,\n        \"end_token_id\": 8,\n        \"object\": \"files\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 5,\n        \"end_token_id\": 5,\n        \"object\": \"urls\"\n      }\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 6,\n      \"role\": \"request\",\n      \"lemma\": \"salva\",\n      \"semantic_gloss_en\": \"save\",\n      \"semantic_action\": \"write\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"source_container\",\n        \"start_token_id\": 6,\n        \"end_token_id\": 6,\n        \"object\": \"files\"\n      },\n      \"source_predicate_id\": 1,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 8,\n        \"end_token_id\": 8,\n        \"object\": \"files\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 6,\n        \"end_token_id\": 6,\n        \"object\": \"files\"\n      }\n    },\n    {\n      \"predicate_id\": 3,\n      \"predicate_anchor_token_id\": 9,\n      \"role\": \"request\",\n      \"lemma\": \"manda\",\n      \"semantic_gloss_en\": \"send\",\n      \"semantic_action\": \"send\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"transport_channel\",\n        \"start_token_id\": 11,\n        \"end_token_id\": 11,\n        \"object\": \"messages\"\n      },\n      \"source_predicate_id\": 2,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"none\"\n      }\n    },\n    {\n      \"predicate_id\": 4,\n      \"predicate_anchor_token_id\": 14,\n      \"role\": \"request\",\n      \"lemma\": \"crea\",\n      \"semantic_gloss_en\": \"create\",\n      \"semantic_action\": \"create\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 16,\n        \"end_token_id\": 16,\n        \"object\": \"events\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 16,\n        \"end_token_id\": 16,\n        \"object\": \"events\"\n      }\n    },\n    {\n      \"predicate_id\": 5,\n      \"predicate_anchor_token_id\": 20,\n      \"role\": \"request\",\n      \"lemma\": \"allega\",\n      \"semantic_gloss_en\": \"attach\",\n      \"semantic_action\": \"get\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 4,\n      \"sink\": {\n        \"kind\": \"none\"\n      },\n      \"requested_result\": {\n        \"kind\": \"support_argument\",\n        \"binding_id\": \"calendar_event_attachment\",\n        \"target_predicate_id\": 4,\n        \"object\": \"files\",\n        \"start_token_id\": 23,\n        \"end_token_id\": 23\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"read\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"urls\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 6,\n      \"role\": \"request\",\n      \"verb\": \"write\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 1\n    },\n    {\n      \"predicate_id\": 3,\n      \"predicate_anchor_token_id\": 9,\n      \"role\": \"request\",\n      \"verb\": \"send\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"messages\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 2\n    },\n    {\n      \"predicate_id\": 4,\n      \"predicate_anchor_token_id\": 14,\n      \"role\": \"request\",\n      \"verb\": \"create\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"events\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    },\n    {\n      \"predicate_id\": 5,\n      \"predicate_anchor_token_id\": 20,\n      \"role\": \"request\",\n      \"verb\": \"get\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 4\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [
+                {
+                  "code": "base_v24",
+                  "message": "semantic_3_patient_source_alignment",
+                  "path": "",
+                  "retryable": true
+                }
+              ],
+              "valid": false
+            }
+          }
+        ],
+        "query": "scarica il pdf da https://x.com/a.pdf, salvalo in /tmp, mandalo via mail a roberto, crea un evento promemoria domani e allega la foto logo.png",
+        "reason": "invalid_after_retry",
+        "signature": null,
+        "status": "fail_closed",
+        "tokens": [
+          "scarica",
+          "il",
+          "pdf",
+          "da",
+          "https://x.com/a.pdf,",
+          "salvalo",
+          "in",
+          "/tmp,",
+          "mandalo",
+          "via",
+          "mail",
+          "a",
+          "roberto,",
+          "crea",
+          "un",
+          "evento",
+          "promemoria",
+          "domani",
+          "e",
+          "allega",
+          "la",
+          "foto",
+          "logo.png"
+        ]
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": false,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": false,
+        "strict_ok": false
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": "write/files",
+        "expected_argument": false,
+        "expected_question": false,
+        "id": "control.write_file.it",
+        "language": "it",
+        "query": "scrivi il file report.txt",
+        "track": "negative_write"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "write",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "scrivere",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 4,
+                    "kind": "explicit_entity",
+                    "object": "files",
+                    "start_token_id": 4
+                  },
+                  "resource_scope": "single_known",
+                  "role": "request",
+                  "semantic_action": "write",
+                  "semantic_gloss_en": "write",
+                  "sink": {
+                    "end_token_id": 4,
+                    "kind": "primary_output",
+                    "object": "files",
+                    "start_token_id": 4
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 4321.97258999804,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"scrivere\",\n      \"semantic_gloss_en\": \"write\",\n      \"semantic_action\": \"write\",\n      \"resource_scope\": \"single_known\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 4,\n        \"end_token_id\": 4,\n        \"object\": \"files\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 4,\n        \"end_token_id\": 4,\n        \"object\": \"files\"\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"write\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "files",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "write",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "scrivere",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "end_token_id": 4,
+                "kind": "explicit_entity",
+                "object": "files",
+                "start_token_id": 4
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "semantic_action": "write",
+              "semantic_gloss_en": "write",
+              "sink": {
+                "end_token_id": 4,
+                "kind": "primary_output",
+                "object": "files",
+                "start_token_id": 4
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": "write/files",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "write/files",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate",
+                "sink"
+              ],
+              "predicate_id": 1,
+              "projected": "write/files",
+              "rules": []
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "scrivi il file report.txt",
+        "signature": "write/files",
+        "status": "projected",
+        "tokens": [
+          "scrivi",
+          "il",
+          "file",
+          "report.txt"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "sink"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "scrivere",
+              "patient": {
+                "end_token_id": 4,
+                "kind": "explicit",
+                "object": "files",
+                "start_token_id": 4
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "single_known",
+              "role": "request",
+              "route": {
+                "action": "write",
+                "kind": "candidate",
+                "object": "files",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "write",
+              "semantic_gloss_en": "write",
+              "sink": {
+                "destination_role": "artifact_domain",
+                "end_token_id": 4,
+                "kind": "primary_output",
+                "object": "files",
+                "start_token_id": 4
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    },
+    {
+      "adjudicated_route_ok": true,
+      "case": {
+        "expected": [
+          "create/events",
+          "write/files"
+        ],
+        "expected_argument": false,
+        "expected_question": false,
+        "id": "control.event_then_write.it",
+        "language": "it",
+        "query": "crea un evento domani e scrivi un file di riepilogo",
+        "track": "negative_write"
+      },
+      "result": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "frame": {
+              "predicates": [
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "events",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "role": "request",
+                  "verb": "create",
+                  "verb_resolution": "direct"
+                },
+                {
+                  "input_from_predicate_id": 0,
+                  "object": "files",
+                  "object_qualifier": "none",
+                  "predicate_anchor_token_id": 6,
+                  "predicate_id": 2,
+                  "role": "request",
+                  "verb": "write",
+                  "verb_resolution": "direct"
+                }
+              ],
+              "semantic_heads": [
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "creare",
+                  "predicate_anchor_token_id": 1,
+                  "predicate_id": 1,
+                  "requested_result": {
+                    "end_token_id": 3,
+                    "kind": "explicit_entity",
+                    "object": "events",
+                    "start_token_id": 3
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "create",
+                  "semantic_gloss_en": "create",
+                  "sink": {
+                    "end_token_id": 3,
+                    "kind": "primary_output",
+                    "object": "events",
+                    "start_token_id": 3
+                  },
+                  "source_predicate_id": 0
+                },
+                {
+                  "carrier": {
+                    "kind": "none"
+                  },
+                  "lemma": "scrivere",
+                  "predicate_anchor_token_id": 6,
+                  "predicate_id": 2,
+                  "requested_result": {
+                    "end_token_id": 10,
+                    "kind": "explicit_entity",
+                    "object": "files",
+                    "start_token_id": 8
+                  },
+                  "resource_scope": "new_resource",
+                  "role": "request",
+                  "semantic_action": "write",
+                  "semantic_gloss_en": "write",
+                  "sink": {
+                    "end_token_id": 10,
+                    "kind": "primary_output",
+                    "object": "files",
+                    "start_token_id": 8
+                  },
+                  "source_predicate_id": 0
+                }
+              ]
+            },
+            "transport": {
+              "latency_ms": 6938.241587005905,
+              "raw": "{\n  \"semantic_heads\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"lemma\": \"creare\",\n      \"semantic_gloss_en\": \"create\",\n      \"semantic_action\": \"create\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 3,\n        \"object\": \"events\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 3,\n        \"end_token_id\": 3,\n        \"object\": \"events\"\n      }\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 6,\n      \"role\": \"request\",\n      \"lemma\": \"scrivere\",\n      \"semantic_gloss_en\": \"write\",\n      \"semantic_action\": \"write\",\n      \"resource_scope\": \"new_resource\",\n      \"carrier\": {\n        \"kind\": \"none\"\n      },\n      \"source_predicate_id\": 0,\n      \"sink\": {\n        \"kind\": \"primary_output\",\n        \"start_token_id\": 8,\n        \"end_token_id\": 10,\n        \"object\": \"files\"\n      },\n      \"requested_result\": {\n        \"kind\": \"explicit_entity\",\n        \"start_token_id\": 8,\n        \"end_token_id\": 10,\n        \"object\": \"files\"\n      }\n    }\n  ],\n  \"predicates\": [\n    {\n      \"predicate_id\": 1,\n      \"predicate_anchor_token_id\": 1,\n      \"role\": \"request\",\n      \"verb\": \"create\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"events\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    },\n    {\n      \"predicate_id\": 2,\n      \"predicate_anchor_token_id\": 6,\n      \"role\": \"request\",\n      \"verb\": \"write\",\n      \"verb_resolution\": \"direct\",\n      \"object\": \"files\",\n      \"object_qualifier\": \"none\",\n      \"input_from_predicate_id\": 0\n    }\n  ]\n}",
+              "transport_error": ""
+            },
+            "validation": {
+              "base_normalizations": [],
+              "errors": [],
+              "valid": true
+            }
+          }
+        ],
+        "frame": {
+          "predicates": [
+            {
+              "input_from_predicate_id": 0,
+              "object": "events",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "role": "request",
+              "verb": "create",
+              "verb_resolution": "direct"
+            },
+            {
+              "input_from_predicate_id": 0,
+              "object": "files",
+              "object_qualifier": "none",
+              "predicate_anchor_token_id": 6,
+              "predicate_id": 2,
+              "role": "request",
+              "verb": "write",
+              "verb_resolution": "direct"
+            }
+          ],
+          "semantic_heads": [
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "creare",
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "requested_result": {
+                "end_token_id": 3,
+                "kind": "explicit_entity",
+                "object": "events",
+                "start_token_id": 3
+              },
+              "resource_scope": "new_resource",
+              "role": "request",
+              "semantic_action": "create",
+              "semantic_gloss_en": "create",
+              "sink": {
+                "end_token_id": 3,
+                "kind": "primary_output",
+                "object": "events",
+                "start_token_id": 3
+              },
+              "source_predicate_id": 0
+            },
+            {
+              "carrier": {
+                "kind": "none"
+              },
+              "lemma": "scrivere",
+              "predicate_anchor_token_id": 6,
+              "predicate_id": 2,
+              "requested_result": {
+                "end_token_id": 10,
+                "kind": "explicit_entity",
+                "object": "files",
+                "start_token_id": 8
+              },
+              "resource_scope": "new_resource",
+              "role": "request",
+              "semantic_action": "write",
+              "semantic_gloss_en": "write",
+              "sink": {
+                "end_token_id": 10,
+                "kind": "primary_output",
+                "object": "files",
+                "start_token_id": 8
+              },
+              "source_predicate_id": 0
+            }
+          ]
+        },
+        "projection": {
+          "reason": "",
+          "signature": [
+            "create/events",
+            "write/files"
+          ],
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "create/events",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate",
+                "sink"
+              ],
+              "predicate_id": 1,
+              "projected": "create/events",
+              "rules": []
+            },
+            {
+              "candidate": "write/files",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate",
+                "sink"
+              ],
+              "predicate_id": 2,
+              "projected": "write/files",
+              "rules": []
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          },
+          "validation_v241": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "query": "crea un evento domani e scrivi un file di riepilogo",
+        "signature": [
+          "create/events",
+          "write/files"
+        ],
+        "status": "projected",
+        "tokens": [
+          "crea",
+          "un",
+          "evento",
+          "domani",
+          "e",
+          "scrivi",
+          "un",
+          "file",
+          "di",
+          "riepilogo"
+        ],
+        "v241_frame": {
+          "nodes": [
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "sink"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "creare",
+              "patient": {
+                "end_token_id": 3,
+                "kind": "explicit",
+                "object": "events",
+                "start_token_id": 3
+              },
+              "predicate_anchor_token_id": 1,
+              "predicate_id": 1,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "new_resource",
+              "role": "request",
+              "route": {
+                "action": "create",
+                "kind": "candidate",
+                "object": "events",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "create",
+              "semantic_gloss_en": "create",
+              "sink": {
+                "destination_role": "artifact_domain",
+                "end_token_id": 3,
+                "kind": "primary_output",
+                "object": "events",
+                "start_token_id": 3
+              }
+            },
+            {
+              "argument_relations": [],
+              "attribute_claims": [],
+              "carrier": {
+                "kind": "none"
+              },
+              "evidence_refs": [
+                "predicate",
+                "patient",
+                "sink"
+              ],
+              "input_from_predicate_id": 0,
+              "lemma": "scrivere",
+              "patient": {
+                "end_token_id": 10,
+                "kind": "explicit",
+                "object": "files",
+                "start_token_id": 8
+              },
+              "predicate_anchor_token_id": 6,
+              "predicate_id": 2,
+              "question_binding": {
+                "kind": "none"
+              },
+              "resource_scope": "new_resource",
+              "role": "request",
+              "route": {
+                "action": "write",
+                "kind": "candidate",
+                "object": "files",
+                "qualifier": "none",
+                "resolution": "direct"
+              },
+              "semantic_action": "write",
+              "semantic_gloss_en": "write",
+              "sink": {
+                "destination_role": "artifact_domain",
+                "end_token_id": 10,
+                "kind": "primary_output",
+                "object": "files",
+                "start_token_id": 8
+              }
+            }
+          ],
+          "schema_version": "metnos.request-analysis/2.4.1"
+        },
+        "v241_validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "score": {
+        "argument_binding_count": 0,
+        "argument_binding_ok": true,
+        "question_binding_count": 0,
+        "question_binding_ok": true,
+        "route_ok": true,
+        "strict_ok": true
+      }
+    }
+  ],
+  "suite_version": "metnos.v25.1-requested-result/1.0",
+  "summary": {
+    "argument_binding_gate": 15,
+    "question_binding_gate": 15,
+    "records": 16,
+    "retries": 3,
+    "route_exact_adjudicated": 15,
+    "route_exact_original": 15,
+    "strict": 14,
+    "valid": 15
+  }
+}

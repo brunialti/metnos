@@ -15,6 +15,6 @@ Restituisci SOLO un oggetto JSON {"seen_source_indexes":[...],"records":[...]}. 
 In ogni riga copia l'intero source_index esatto come primo valore. Usa "" quando un altro campo non può essere inferito.
 Estrai tutti i record rilevanti, fino a {{ max_per_text }} per fonte. Quando nessuna fonte contiene un record, records deve essere [] ma seen_source_indexes deve comunque contenere tutti gli indici esaminati.
 {% if instruction %}COSA estrarre: {{ instruction }}
-{% endif %}{% if datetime_fields %}Normalizza i campi DATA/ORA ({{ datetime_fields }}) in ISO 8601 solo quando tutti i componenti sono espliciti; altrimenti conserva il letterale osservato.
-{% endif %}{% if date_only_fields %}Normalizza i campi DATA ({{ date_only_fields }}) in YYYY-MM-DD solo quando giorno, mese e anno sono espliciti; altrimenti conserva il letterale osservato.
+{% endif %}{% if datetime_fields %}Normalizza i campi DATA/ORA ({{ datetime_fields }}) solo in formato ISO 8601 quando tutti i componenti sono espliciti; altrimenti conserva il letterale osservato.
+{% endif %}{% if date_only_fields %}Normalizza i campi DATA ({{ date_only_fields }}) in formato YYYY-MM-DD quando giorno, mese e anno sono espliciti. Quando il testo mostra giorno e mese ma NON l'anno, usa l'anno corrente ({{ current_year }}) e aggiungi un prefisso asterisco: "*{{ current_year }}-MM-DD". Lascia "" solo quando non è possibile derivare alcuna data.
 {% endif %}Non lasciare record vuoti quando almeno una fonte menziona una persona, organizzazione, data, importo o impegno. Restituisci SOLO l'oggetto JSON, senza testo descrittivo, markdown o <think>.

@@ -1,0 +1,1379 @@
+{
+  "format": "metnos.intent-holdout-neutral-glossary/0.3",
+  "source_registry_sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+  "operations": {
+    "change/files": {
+      "authorable": true,
+      "author_gloss": "converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).",
+      "source_scopes": [
+        {
+          "executor": "change_files_format",
+          "language": "en",
+          "text": "converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "change/pulls": {
+      "authorable": true,
+      "author_gloss": "opera su una pull request (es. merge).",
+      "source_scopes": [
+        {
+          "executor": "change_pulls_github",
+          "language": "und",
+          "text": "opera su una pull request (es. merge)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compress/files": {
+      "authorable": true,
+      "author_gloss": "compress files into a new zip/tar/gz archive.",
+      "source_scopes": [
+        {
+          "executor": "compress_files",
+          "language": "en",
+          "text": "compress files into a new zip/tar/gz archive."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/entries": {
+      "authorable": true,
+      "author_gloss": "compute an aggregated value (max/min/avg/sum/count) on entries.",
+      "source_scopes": [
+        {
+          "executor": "compute_entries",
+          "language": "en",
+          "text": "compute an aggregated value (max/min/avg/sum/count) on entries."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/files": {
+      "authorable": true,
+      "author_gloss": "computes source-code LOC statistics, walking directory trees in parallel.",
+      "source_scopes": [
+        {
+          "executor": "compute_files_loc",
+          "language": "en",
+          "text": "computes source-code LOC statistics, walking directory trees in parallel."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/signatures": {
+      "authorable": true,
+      "author_gloss": "compute or classify a signature; it can idempotently apply the safety seed.",
+      "source_scopes": [
+        {
+          "executor": "compute_signatures",
+          "language": "en",
+          "text": "compute or classify a signature; it can idempotently apply the safety seed."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "consult/frontier": {
+      "authorable": true,
+      "author_gloss": "consult an expert oracle for deep analysis.",
+      "source_scopes": [
+        {
+          "executor": "consult_frontier",
+          "language": "en",
+          "text": "consult an expert oracle for deep analysis."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/calendars": {
+      "authorable": true,
+      "author_gloss": "create a NEW Google calendar container (not an event).",
+      "source_scopes": [
+        {
+          "executor": "create_calendars",
+          "language": "en",
+          "text": "create a NEW Google calendar container (not an event)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/dirs": {
+      "authorable": true,
+      "author_gloss": "create directories (batch, even empty).",
+      "source_scopes": [
+        {
+          "executor": "create_dirs",
+          "language": "en",
+          "text": "create directories (batch, even empty)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/events": {
+      "authorable": true,
+      "author_gloss": "create calendar appointments.",
+      "source_scopes": [
+        {
+          "executor": "create_events",
+          "language": "en",
+          "text": "create calendar appointments."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/files": {
+      "authorable": true,
+      "author_gloss": "creates a new Google Doc. creates and populates a new local .xlsx.",
+      "source_scopes": [
+        {
+          "executor": "create_files_doc",
+          "language": "en",
+          "text": "creates a new Google Doc."
+        },
+        {
+          "executor": "create_files_spreadsheet",
+          "language": "en",
+          "text": "creates and populates a new local .xlsx."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/images": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/issues": {
+      "authorable": true,
+      "author_gloss": "crea una nuova issue su un repo GitHub.",
+      "source_scopes": [
+        {
+          "executor": "create_issues_github",
+          "language": "und",
+          "text": "crea una nuova issue su un repo GitHub."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/tasks": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [
+        {
+          "executor": "create_tasks_github",
+          "language": "und",
+          "text": "avvia un workflow GitHub Actions."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/calendars": {
+      "authorable": true,
+      "author_gloss": "delete Google calendar containers (DESTRUCTIVE: also removes the events inside); accepts the NAME.",
+      "source_scopes": [
+        {
+          "executor": "delete_calendars",
+          "language": "en",
+          "text": "delete Google calendar containers (DESTRUCTIVE: also removes the events inside); accepts the NAME."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/credentials": {
+      "authorable": true,
+      "author_gloss": "delete credentials from storage (purge or bindings).",
+      "source_scopes": [
+        {
+          "executor": "delete_credentials",
+          "language": "en",
+          "text": "delete credentials from storage (purge or bindings)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/dirs": {
+      "authorable": true,
+      "author_gloss": "delete directories (empty or forced).",
+      "source_scopes": [
+        {
+          "executor": "delete_dirs",
+          "language": "en",
+          "text": "delete directories (empty or forced)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/events": {
+      "authorable": true,
+      "author_gloss": "delete calendar events, by ids or time window.",
+      "source_scopes": [
+        {
+          "executor": "delete_events",
+          "language": "en",
+          "text": "delete calendar events, by ids or time window."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/files": {
+      "authorable": true,
+      "author_gloss": "delete files after a verified backup.",
+      "source_scopes": [
+        {
+          "executor": "delete_files",
+          "language": "en",
+          "text": "delete files after a verified backup."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/images": {
+      "authorable": true,
+      "author_gloss": "delete the persistent unified image index.",
+      "source_scopes": [
+        {
+          "executor": "delete_images_indices",
+          "language": "en",
+          "text": "delete the persistent unified image index."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/issues": {
+      "authorable": true,
+      "author_gloss": "chiude/elimina una issue.",
+      "source_scopes": [
+        {
+          "executor": "delete_issues_github",
+          "language": "und",
+          "text": "chiude/elimina una issue."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/messages": {
+      "authorable": true,
+      "author_gloss": "elimina un commento su issue/PR.",
+      "source_scopes": [
+        {
+          "executor": "delete_messages_github",
+          "language": "und",
+          "text": "elimina un commento su issue/PR."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/persons": {
+      "authorable": true,
+      "author_gloss": "deletes persons/enrollment from the biometric registry (purge or by name/slug).",
+      "source_scopes": [
+        {
+          "executor": "delete_persons",
+          "language": "en",
+          "text": "deletes persons/enrollment from the biometric registry (purge or by name/slug)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/tasks": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "describe/numbers": {
+      "authorable": true,
+      "author_gloss": "calculates descriptive statistics on a list of numbers.",
+      "source_scopes": [
+        {
+          "executor": "describe_numbers",
+          "language": "en",
+          "text": "calculates descriptive statistics on a list of numbers."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/entries": {
+      "authorable": true,
+      "author_gloss": "filter entries by criteria.",
+      "source_scopes": [
+        {
+          "executor": "filter_entries",
+          "language": "en",
+          "text": "filter entries by criteria."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/lists": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/texts": {
+      "authorable": true,
+      "author_gloss": "filter text lines by pattern.",
+      "source_scopes": [
+        {
+          "executor": "filter_texts_lines",
+          "language": "en",
+          "text": "filter text lines by pattern."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/contacts": {
+      "authorable": true,
+      "author_gloss": "search contacts in an external address book by name/email/phone.",
+      "source_scopes": [
+        {
+          "executor": "find_contacts",
+          "language": "en",
+          "text": "search contacts in an external address book by name/email/phone."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/credentials": {
+      "authorable": true,
+      "author_gloss": "lists configured accounts and services (mail, api, cloud): metadata-only credentials.",
+      "source_scopes": [
+        {
+          "executor": "find_credentials",
+          "language": "en",
+          "text": "lists configured accounts and services (mail, api, cloud): metadata-only credentials."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/dirs": {
+      "authorable": true,
+      "author_gloss": "find directories and compute aggregate metadata with a parallel recursive walk.",
+      "source_scopes": [
+        {
+          "executor": "find_dirs",
+          "language": "en",
+          "text": "find directories and compute aggregate metadata with a parallel recursive walk."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/events": {
+      "authorable": true,
+      "author_gloss": "find free slots in the calendar.",
+      "source_scopes": [
+        {
+          "executor": "find_events_empty",
+          "language": "en",
+          "text": "find free slots in the calendar."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/files": {
+      "authorable": true,
+      "author_gloss": "search files by pattern with a parallel recursive walk.",
+      "source_scopes": [
+        {
+          "executor": "find_files",
+          "language": "en",
+          "text": "search files by pattern with a parallel recursive walk."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/images": {
+      "authorable": true,
+      "author_gloss": "search indexed photos by content, person or face. finds web images from text or an image. Uses deterministic signals; local semantic ranking runs only without lexical signals.",
+      "source_scopes": [
+        {
+          "executor": "find_images_indices",
+          "language": "en",
+          "text": "search indexed photos by content, person or face."
+        },
+        {
+          "executor": "find_images_web",
+          "language": "en",
+          "text": "finds web images from text or an image. Uses deterministic signals; local semantic ranking runs only without lexical signals."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/issues": {
+      "authorable": true,
+      "author_gloss": "elenca le issue (segnalazioni/bug/ticket) di un repo GitHub.",
+      "source_scopes": [
+        {
+          "executor": "find_issues_github",
+          "language": "und",
+          "text": "elenca le issue (segnalazioni/bug/ticket) di un repo GitHub."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/packages": {
+      "authorable": true,
+      "author_gloss": "finds an executable command in the system PATH.",
+      "source_scopes": [
+        {
+          "executor": "find_packages",
+          "language": "en",
+          "text": "finds an executable command in the system PATH."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/persons": {
+      "authorable": true,
+      "author_gloss": "search photos of a registered person.",
+      "source_scopes": [
+        {
+          "executor": "find_persons_indices",
+          "language": "en",
+          "text": "search photos of a registered person."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/places": {
+      "authorable": true,
+      "author_gloss": "find real-world places by text query or coordinates.",
+      "source_scopes": [
+        {
+          "executor": "find_places",
+          "language": "en",
+          "text": "find real-world places by text query or coordinates."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/pulls": {
+      "authorable": true,
+      "author_gloss": "elenca le pull request (richieste di merge) di un repo GitHub.",
+      "source_scopes": [
+        {
+          "executor": "find_pulls_github",
+          "language": "und",
+          "text": "elenca le pull request (richieste di merge) di un repo GitHub."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/urls": {
+      "authorable": true,
+      "author_gloss": "find and discover URLs and documents on the web.",
+      "source_scopes": [
+        {
+          "executor": "find_urls",
+          "language": "en",
+          "text": "find and discover URLs and documents on the web."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/files": {
+      "authorable": true,
+      "author_gloss": "gets size, dates, and EXIF for KNOWN files.",
+      "source_scopes": [
+        {
+          "executor": "get_files",
+          "language": "en",
+          "text": "gets size, dates, and EXIF for KNOWN files."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/images": {
+      "authorable": true,
+      "author_gloss": "gets unified image-index status for one corpus or all corpora.",
+      "source_scopes": [
+        {
+          "executor": "get_images_indices",
+          "language": "en",
+          "text": "gets unified image-index status for one corpus or all corpora."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/inputs": {
+      "authorable": true,
+      "author_gloss": "gets structured inputs (dialog/form).",
+      "source_scopes": [
+        {
+          "executor": "get_inputs",
+          "language": "en",
+          "text": "gets structured inputs (dialog/form)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/location": {
+      "authorable": true,
+      "author_gloss": "tells where the current actor is.",
+      "source_scopes": [
+        {
+          "executor": "get_location",
+          "language": "en",
+          "text": "tells where the current actor is."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/now": {
+      "authorable": true,
+      "author_gloss": "gets the current date and time in the configured timezone or an explicit IANA zone.",
+      "source_scopes": [
+        {
+          "executor": "get_now",
+          "language": "en",
+          "text": "gets the current date and time in the configured timezone or an explicit IANA zone."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/persons": {
+      "authorable": true,
+      "author_gloss": "reads the biometric persons registry.",
+      "source_scopes": [
+        {
+          "executor": "get_persons",
+          "language": "en",
+          "text": "reads the biometric persons registry."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/places": {
+      "authorable": true,
+      "author_gloss": "gets place name from GPS coordinates.",
+      "source_scopes": [
+        {
+          "executor": "get_places",
+          "language": "en",
+          "text": "gets place name from GPS coordinates."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/processes": {
+      "authorable": true,
+      "author_gloss": "reads processes and system health.",
+      "source_scopes": [
+        {
+          "executor": "get_processes",
+          "language": "en",
+          "text": "reads processes and system health."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/proposals": {
+      "authorable": true,
+      "author_gloss": "reads introvertive proposals, including historical categories.",
+      "source_scopes": [
+        {
+          "executor": "get_proposals",
+          "language": "en",
+          "text": "reads introvertive proposals, including historical categories."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/signatures": {
+      "authorable": true,
+      "author_gloss": "query safety-signature lists and status.",
+      "source_scopes": [
+        {
+          "executor": "get_signatures",
+          "language": "en",
+          "text": "query safety-signature lists and status."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/urls": {
+      "authorable": true,
+      "author_gloss": "gets data from HTTP/HTTPS URLs.",
+      "source_scopes": [
+        {
+          "executor": "get_urls",
+          "language": "en",
+          "text": "gets data from HTTP/HTTPS URLs."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "group/entries": {
+      "authorable": true,
+      "author_gloss": "merges and deduplicates entries from multiple lists.",
+      "source_scopes": [
+        {
+          "executor": "group_entries",
+          "language": "en",
+          "text": "merges and deduplicates entries from multiple lists."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/dirs": {
+      "authorable": true,
+      "author_gloss": "lists directories and files; recursive mode walks subdirectories in parallel.",
+      "source_scopes": [
+        {
+          "executor": "list_dirs",
+          "language": "en",
+          "text": "lists directories and files; recursive mode walks subdirectories in parallel."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/skills": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/tasks": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "login/session": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "move/files": {
+      "authorable": true,
+      "author_gloss": "move or rename files in batch.",
+      "source_scopes": [
+        {
+          "executor": "move_files",
+          "language": "en",
+          "text": "move or rename files in batch."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "move/messages": {
+      "authorable": true,
+      "author_gloss": "move messages between folders or labels.",
+      "source_scopes": [
+        {
+          "executor": "move_messages",
+          "language": "en",
+          "text": "move messages between folders or labels."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/contacts": {
+      "authorable": true,
+      "author_gloss": "read one contact from external address book.",
+      "source_scopes": [
+        {
+          "executor": "read_contacts",
+          "language": "en",
+          "text": "read one contact from external address book."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/events": {
+      "authorable": true,
+      "author_gloss": "reads calendar events.",
+      "source_scopes": [
+        {
+          "executor": "read_events",
+          "language": "en",
+          "text": "reads calendar events."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/files": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [
+        {
+          "executor": "read_files",
+          "language": "en",
+          "text": "reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures."
+        },
+        {
+          "executor": "read_files_doc",
+          "language": "en",
+          "text": "reads text from Google Doc."
+        },
+        {
+          "executor": "read_files_ocr",
+          "language": "en",
+          "text": "extracts text from images and scanned PDFs: local OCR first, bounded VLM only if insufficient."
+        },
+        {
+          "executor": "read_files_spreadsheet",
+          "language": "en",
+          "text": "reads a spreadsheet rows (local .xlsx/.csv or Google Sheet)."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/issues": {
+      "authorable": true,
+      "author_gloss": "legge UNA issue (contenuto + commenti) per numero.",
+      "source_scopes": [
+        {
+          "executor": "read_issues_github",
+          "language": "und",
+          "text": "legge UNA issue (contenuto + commenti) per numero."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/messages": {
+      "authorable": true,
+      "author_gloss": "reads IMAP messages combining time and text filters.",
+      "source_scopes": [
+        {
+          "executor": "read_messages",
+          "language": "en",
+          "text": "reads IMAP messages combining time and text filters."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/persons": {
+      "authorable": true,
+      "author_gloss": "reads local identity profiles.",
+      "source_scopes": [
+        {
+          "executor": "read_persons",
+          "language": "en",
+          "text": "reads local identity profiles."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/pulls": {
+      "authorable": true,
+      "author_gloss": "legge UNA pull request (contenuto + diff) per numero.",
+      "source_scopes": [
+        {
+          "executor": "read_pulls_github",
+          "language": "und",
+          "text": "legge UNA pull request (contenuto + diff) per numero."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/tasks": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [
+        {
+          "executor": "read_tasks_github",
+          "language": "und",
+          "text": "elenca le run dei workflow GitHub Actions di un repo."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/urls": {
+      "authorable": true,
+      "author_gloss": "reads web pages and extracts main text; PDF URLs extracted as text automatically. reads PDF documents from URLs and extracts text and metadata.",
+      "source_scopes": [
+        {
+          "executor": "read_urls_html",
+          "language": "en",
+          "text": "reads web pages and extracts main text; PDF URLs extracted as text automatically."
+        },
+        {
+          "executor": "read_urls_pdf",
+          "language": "en",
+          "text": "reads PDF documents from URLs and extracts text and metadata."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "reply/messages": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "send/messages": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [
+        {
+          "executor": "send_messages",
+          "language": "en",
+          "text": "send email/Telegram and reply in-thread on Gmail."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/credentials": {
+      "authorable": true,
+      "author_gloss": "encrypts credentials; defines the mandate.",
+      "source_scopes": [
+        {
+          "executor": "set_credentials",
+          "language": "en",
+          "text": "encrypts credentials; defines the mandate."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/issues": {
+      "authorable": true,
+      "author_gloss": "modifica stato/label/assegnatari di una issue.",
+      "source_scopes": [
+        {
+          "executor": "set_issues_github",
+          "language": "und",
+          "text": "modifica stato/label/assegnatari di una issue."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/messages": {
+      "authorable": true,
+      "author_gloss": "add or remove labels on identified Gmail messages.",
+      "source_scopes": [
+        {
+          "executor": "set_messages",
+          "language": "en",
+          "text": "add or remove labels on identified Gmail messages."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/persons": {
+      "authorable": true,
+      "author_gloss": "enroll a person in the named registry.",
+      "source_scopes": [
+        {
+          "executor": "set_persons",
+          "language": "en",
+          "text": "enroll a person in the named registry."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/pulls": {
+      "authorable": true,
+      "author_gloss": "aggiorna stato/titolo/reviewer di una pull request.",
+      "source_scopes": [
+        {
+          "executor": "set_pulls_github",
+          "language": "und",
+          "text": "aggiorna stato/titolo/reviewer di una pull request."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/signatures": {
+      "authorable": true,
+      "author_gloss": "sets or removes signatures from user curation.",
+      "source_scopes": [
+        {
+          "executor": "set_signatures",
+          "language": "en",
+          "text": "sets or removes signatures from user curation."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/skills": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/tasks": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "share/files": {
+      "authorable": true,
+      "author_gloss": "grants access permissions to Drive files without duplicating them.",
+      "source_scopes": [
+        {
+          "executor": "share_files",
+          "language": "en",
+          "text": "grants access permissions to Drive files without duplicating them."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "sort/entries": {
+      "authorable": true,
+      "author_gloss": "sorts entries in memory.",
+      "source_scopes": [
+        {
+          "executor": "sort_entries",
+          "language": "en",
+          "text": "sorts entries in memory."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "write/files": {
+      "authorable": false,
+      "author_gloss": null,
+      "source_scopes": [
+        {
+          "executor": "write_files_doc",
+          "language": "en",
+          "text": "append text to an existing Google Doc (.doc)."
+        },
+        {
+          "executor": "write_files_spreadsheet",
+          "language": "en",
+          "text": "writes a local sheet, creating it if missing."
+        }
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    }
+  },
+  "outside_families": {
+    "physical_world_action": "perform an indispensable physical-world action absent from the digital capability set",
+    "financial_transaction": "perform an indispensable purchase, payment, transfer, or financial transaction",
+    "expert_judgement": "provide an indispensable medical, legal, ethical, or subjective expert judgment",
+    "unregistered_device_control": "control a device or vehicle absent from the capability set",
+    "unregistered_external_service": "book, order, or modify an account through an unregistered service",
+    "unsupported_content_transformation": "perform a content transformation absent from the exact capability set",
+    "unsupported_entity_creation": "create an entity for which no creation capability exists"
+  },
+  "system_controls": {
+    "undo_last_turn": {
+      "author_gloss": "undo the immediately previous assistant turn."
+    }
+  },
+  "barriers": {
+    "get/approval": {
+      "author_gloss": "request approval for the owned digital actions."
+    }
+  },
+  "languages": [
+    "en-GB",
+    "it-IT",
+    "es-MX",
+    "de-DE",
+    "tr-TR",
+    "sr-Cyrl-RS",
+    "ar-EG",
+    "hi-IN",
+    "ja-JP",
+    "zh-Hant-TW"
+  ],
+  "same_neutral_projection_for_every_language": true
+}

@@ -1,0 +1,333 @@
+{
+  "count": 7,
+  "exact": 5,
+  "format": "metnos.linear-plan-probe/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "elapsed_ms": 8996,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw": "{\n  \"steps\": [\n    {\n      \"needs_approval\": false,\n      \"route\": \"find/files\",\n      \"uses_previous\": false\n    }\n  ]\n}",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "valid": true
+    },
+    {
+      "case_id": "bp-003",
+      "elapsed_ms": 9262,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw": "{\n  \"steps\": [\n    {\n      \"needs_approval\": false,\n      \"route\": \"find/contacts\",\n      \"uses_previous\": false\n    },\n    {\n      \"needs_approval\": false,\n      \"route\": \"get/now\",\n      \"uses_previous\": false\n    }\n  ]\n}",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "valid": true
+    },
+    {
+      "case_id": "bp-005",
+      "elapsed_ms": 9390,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw": "{\n  \"steps\": [\n    {\n      \"needs_approval\": false,\n      \"route\": \"find/files\",\n      \"uses_previous\": false\n    },\n    {\n      \"needs_approval\": false,\n      \"route\": \"compress/files\",\n      \"uses_previous\": true\n    }\n  ]\n}",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "valid": true
+    },
+    {
+      "case_id": "bp-006",
+      "elapsed_ms": 1009,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw": "{\n  \"steps\": [\n    {\n      \"needs_approval\": false,\n      \"route\": \"find/files\",\"uses_previous\": false\n    },\n    {\n      \"needs_approval\": true,\n      \"route\": \"delete/files\",\n      \"uses_previous\": true\n    }\n  ]\n}",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "valid": true
+    },
+    {
+      "case_id": "bp-013",
+      "elapsed_ms": 9501,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw": "{\n  \"steps\": [\n    {\n      \"needs_approval\": true,\n      \"route\": \"find/places\",\n      \"uses_previous\": false\n    },\n    {\n      \"needs_approval\": false,\n      \"route\": \"get/processes\",\n      \"uses_previous\": false\n    }\n  ]\n}",
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "find/places"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "valid": true
+    },
+    {
+      "case_id": "bp-015",
+      "elapsed_ms": 9535,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw": "{\n  \"steps\": [\n    {\n      \"needs_approval\": false,\n      \"route\": \"find/urls\",\n      \"uses_previous\": false\n    },\n    {\n      \"needs_approval\": false,\n      \"route\": \"read/urls\",\n      \"uses_previous\": true\n    }\n  ]\n}",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "valid": true
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 9829,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw": "{\n  \"steps\": [\n    {\n      \"needs_approval\": true,\n      \"route\": \"get/inputs\",\n      \"uses_previous\": false\n    },\n    {\n      \"needs_approval\": true,\n      \"route\": \"get/inputs\",\n      \"uses_previous\": true\n    }\n  ]\n}",
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "get/inputs"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "get/inputs"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "valid": true
+    }
+  ],
+  "valid": 7
+}

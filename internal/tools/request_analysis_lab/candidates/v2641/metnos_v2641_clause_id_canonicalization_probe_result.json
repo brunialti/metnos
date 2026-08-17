@@ -1,0 +1,71 @@
+{
+  "candidate_outputs_read": 0,
+  "fixtures_sha256": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+  "live_frames_available": false,
+  "network_calls": 0,
+  "runner_sha256": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+  "scope_limit": "synthetic structural proof only; the redacted K1 artifact does not persist decoded frames, so it cannot provide a post-hoc live accuracy claim",
+  "summary": {
+    "failed": 0,
+    "passed": 8,
+    "tests": 8
+  },
+  "tests": [
+    {
+      "after_codes": [],
+      "before_codes": ["clause_ids"],
+      "id": "direct_arbitrary_id",
+      "idempotent": true,
+      "meaning_except_ids_unchanged": true,
+      "pass": true
+    },
+    {
+      "after_codes": [],
+      "before_codes": ["clause_ids"],
+      "id": "dependency_shared_arbitrary_id",
+      "idempotent": true,
+      "meaning_except_ids_unchanged": true,
+      "pass": true
+    },
+    {
+      "after_codes": [],
+      "before_codes": ["atom_clause_order", "clause_ids", "clause_source_order"],
+      "id": "two_domains_nonconsecutive_ids",
+      "idempotent": true,
+      "meaning_except_ids_unchanged": true,
+      "pass": true
+    },
+    {
+      "after_codes": [],
+      "before_codes": ["clause_ids", "clause_source_order"],
+      "id": "mixed_supported_unsupported_ids",
+      "idempotent": true,
+      "meaning_except_ids_unchanged": true,
+      "pass": true
+    },
+    {
+      "after_codes": [],
+      "before_codes": ["clause_ids"],
+      "id": "ambiguity_alternative_ids",
+      "idempotent": true,
+      "meaning_except_ids_unchanged": true,
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "reject_two_projection_anchors_same_id",
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "reject_dependency_without_projection",
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "reject_inconsistent_span_for_shared_id",
+      "pass": true
+    }
+  ],
+  "version": "metnos.v26.4.1-clause-id-canonicalization-probe/0.1"
+}

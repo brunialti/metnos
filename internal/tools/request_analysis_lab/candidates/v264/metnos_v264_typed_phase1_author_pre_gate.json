@@ -1,0 +1,10 @@
+{
+  "independent_final_review": "pending_on_byte_stable_bundle",
+  "inference_allowed": false,
+  "lock_version": "metnos.v26.4-author-pre-gate/1.0",
+  "network_calls_before_freeze": 0,
+  "oracle_freeze_sha256": "f2f5d6046a7fb0b6fead8f5ab27c35c230aebd928411d5d5a962bce90209a70f",
+  "required_external_gate_path": "/tmp/metnos_v264_typed_phase1_external_gate.lock.json",
+  "status": "blocked_pending_independent_review_and_external_lock",
+  "version": "metnos.v26.4-typed-relational-phase1/1.0"
+}

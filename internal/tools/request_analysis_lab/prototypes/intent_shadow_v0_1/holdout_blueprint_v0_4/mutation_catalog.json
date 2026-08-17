@@ -1,0 +1,101 @@
+{
+  "format": "metnos.intent-holdout-mutations/0.4",
+  "synthetic_only": true,
+  "mutations": [
+    {
+      "id": "M01",
+      "expected_code": "HASH_BINDING",
+      "description": "source_or_case_hash_stale_or_swapped"
+    },
+    {
+      "id": "M02",
+      "expected_code": "CLOSED_SCHEMA",
+      "description": "missing_extra_wrong_type_or_version"
+    },
+    {
+      "id": "M03",
+      "expected_code": "CAPABILITY_SCOPE",
+      "description": "unknown_route_port_control_or_outside_family"
+    },
+    {
+      "id": "M04",
+      "expected_code": "SUBTYPE_MISMATCH",
+      "description": "subtype_or_surface_contract_changed"
+    },
+    {
+      "id": "M05",
+      "expected_code": "CELL_MISMATCH",
+      "description": "obligation_cardinality_or_kind_changed"
+    },
+    {
+      "id": "M06",
+      "expected_code": "RELATION_MISMATCH",
+      "description": "dependency_order_branch_or_approval_changed"
+    },
+    {
+      "id": "M07",
+      "expected_code": "GOLD_MISMATCH",
+      "description": "expected_safety_confidence_or_root_changed"
+    },
+    {
+      "id": "M08",
+      "expected_code": "PROJECTION_MISMATCH",
+      "description": "projection_not_exactly_reconstructed"
+    },
+    {
+      "id": "M09",
+      "expected_code": "PROJECTION_LEAK",
+      "description": "technical_or_gold_content_exposed"
+    },
+    {
+      "id": "M10",
+      "expected_code": "BUNDLE_MISMATCH",
+      "description": "author_bundle_not_exactly_reconstructed"
+    },
+    {
+      "id": "M11",
+      "expected_code": "FINGERPRINT_COLLISION",
+      "description": "semantic_collision_or_cosmetic_novelty"
+    },
+    {
+      "id": "M12",
+      "expected_code": "POOL_IDENTITY",
+      "description": "duplicate_or_cross_pool_reviewer"
+    },
+    {
+      "id": "M13",
+      "expected_code": "RECONSTRUCTION_MISMATCH",
+      "description": "post_query_obligations_or_expected_differ"
+    },
+    {
+      "id": "M14",
+      "expected_code": "LIFECYCLE_VIOLATION",
+      "description": "forbidden_read_network_gpu_extra_query_or_edit"
+    },
+    {
+      "id": "M15",
+      "expected_code": "ISOLATION_REUSE",
+      "description": "context_or_reviewer_reused"
+    },
+    {
+      "id": "M16",
+      "expected_code": "ENVELOPE_MISMATCH",
+      "description": "byte_hash_or_rubric_lifecycle_binding_changed"
+    },
+    {
+      "id": "M17",
+      "expected_code": "PREMATURE_ARTIFACT",
+      "description": "query_gold_run_or_cache_present"
+    },
+    {
+      "id": "M18",
+      "expected_code": "BUILD_DRIFT",
+      "description": "closure_or_generated_artifact_changed"
+    },
+    {
+      "id": "M19",
+      "expected_code": "ASSIGNMENT_MISMATCH",
+      "description": "proposal_id_language_cell_or_subtype_differs_from_frozen_slot"
+    }
+  ]
+}

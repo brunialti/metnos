@@ -1,0 +1,44 @@
+{
+  "authorization": {
+    "authorized_case_count": 34,
+    "authorized_endpoint": "http://127.0.0.1:8080",
+    "authorized_output_path": "/tmp/metnos_v2641_typed_phase1_controls_k1.json",
+    "authorized_repetitions": 1,
+    "candidate_outputs_read_before_lock": 0,
+    "inference_attempt_limit": 34,
+    "network_calls_before_lock": 1,
+    "retries": 0,
+    "runtime_cutover_authorized": false,
+    "transport_preflight_calls_before_lock": 1
+  },
+  "dependencies": {
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_external_gate_authorization_review.md": "135f153c02cadac69d9d0303622599c55e677832e2bcd2ac23acd5fdf50eea84",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_graph_invariant_review_preoutput.md": "001f834d67f0937173123c0fab7398957d6aefd0ea3f35d62f6219382dd21b41",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_independent_graph_final_review.addendum.md": "53254dca278c2d2da7f4ac2958502866b3758dd332f672643950c87ccffe1c4d",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_independent_graph_final_review.json": "ccbc518837af72a60e67da5e2ae445bffd17f64ff1dfba727d54fadcd2c8ac62",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_independent_graph_final_review.md": "9e77d7261a144615d2329febefcfbab1d2b05c174e2c43819d149bf8d6dca35a",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_typed_phase1.freeze.json": "83d3b4441d83d8f90e5eb591f9eeaf052885150e6806cd3ceefd046d948ccde6",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_independent_infra_review.md": "598dac69fe53e5b1dd1884b400a6d48de35f586db1b4a6394b49a9392c195bfa",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_transport_preflight_authorization_review.json": "0709b7997577ad2b61c18eb87f114a0ff3fa679ecb07a314af2bc9d378f003ac",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_transport_preflight_gate_verification_result.json": "343f28aca35e4ffb3d1dc1f574a015dac580c49a33db9ad4060b750b6321e42b",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_phase1.freeze.json": "6f98647d6a9ea3b46ec521dca50e9f5bb00352d9b9360047219bd81976cd6eff",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_phase1_runner.py": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+    "/tmp/metnos_phase1_oracle_audit_v1.freeze.json": "f2f5d6046a7fb0b6fead8f5ab27c35c230aebd928411d5d5a962bce90209a70f",
+    "/tmp/metnos_phase1_oracle_audit_v1.json": "b8443ad2e27a2d773b971147c1b3d37ee19beb1091b1d357c0a84e6aa0c98a77",
+    "/tmp/metnos_phase1_oracle_audit_v1.md": "538f24876768eb0e8612f3bb440c5f38a51a222122d5b34080e5a5c19ef9799a",
+    "/tmp/metnos_phase1_typed_oracle_v1.overlay.json": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af",
+    "/tmp/metnos_phase1_typed_oracle_v1.schema.json": "4929fbc4ac524491f452d11d0f2d4d032887dd423c7487233c3d89065f4e17f2",
+    "/tmp/metnos_v2641_transport_preflight_result.json": "e91716319960b2f29c86667f3e6fd3a0e38c04bd2a0bf22717085ff741ec69c9"
+  },
+  "preflight": {
+    "authorizes_inference": false,
+    "completed_at_unix_ns": 1786215906878368642,
+    "http_status": 200,
+    "latency_ms": 10.30464300129097,
+    "method": "GET",
+    "request_body_bytes": 0,
+    "status": "PASS"
+  },
+  "status": "AUTHORIZE_ONE_NATIVE_K1_34_AFTER_INLINE_PREFLIGHT",
+  "version": "metnos.v26.4.1-live-k1-authorization-review/1.0"
+}

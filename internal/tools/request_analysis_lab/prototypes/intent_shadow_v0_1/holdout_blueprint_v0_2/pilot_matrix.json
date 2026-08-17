@@ -1,0 +1,127 @@
+{
+  "format": "metnos.intent-holdout-pilot-matrix/0.2",
+  "cases": 20,
+  "query_per_context": 1,
+  "slots": [
+    {
+      "proposal_id": "bp-001",
+      "language_tag": "en-GB",
+      "cell": "G1_SINGLE",
+      "subtype": "known_single"
+    },
+    {
+      "proposal_id": "bp-002",
+      "language_tag": "en-GB",
+      "cell": "S3_CONDITIONAL_BRANCH",
+      "subtype": "two_branches"
+    },
+    {
+      "proposal_id": "bp-003",
+      "language_tag": "it-IT",
+      "cell": "G2_COMPOUND_INDEPENDENT",
+      "subtype": "independent"
+    },
+    {
+      "proposal_id": "bp-004",
+      "language_tag": "it-IT",
+      "cell": "S4_UNDO",
+      "subtype": "undo_only"
+    },
+    {
+      "proposal_id": "bp-005",
+      "language_tag": "es-MX",
+      "cell": "G3_COMPOUND_DEPENDENT",
+      "subtype": "producer_consumer"
+    },
+    {
+      "proposal_id": "bp-006",
+      "language_tag": "es-MX",
+      "cell": "S1_APPROVAL",
+      "subtype": "outer_plus_approved"
+    },
+    {
+      "proposal_id": "bp-007",
+      "language_tag": "de-DE",
+      "cell": "G4_COVERAGE_BOUNDARY",
+      "subtype": "mixed"
+    },
+    {
+      "proposal_id": "bp-008",
+      "language_tag": "de-DE",
+      "cell": "S2_NEGATION",
+      "subtype": "positive_plus_negated"
+    },
+    {
+      "proposal_id": "bp-009",
+      "language_tag": "tr-TR",
+      "cell": "G5_LINGUISTIC_VARIATION",
+      "subtype": "indirect"
+    },
+    {
+      "proposal_id": "bp-010",
+      "language_tag": "tr-TR",
+      "cell": "S5_MIXED_CONTROL",
+      "subtype": "undo_plus_operation"
+    },
+    {
+      "proposal_id": "bp-011",
+      "language_tag": "sr-Cyrl-RS",
+      "cell": "G1_SINGLE",
+      "subtype": "known_single"
+    },
+    {
+      "proposal_id": "bp-012",
+      "language_tag": "sr-Cyrl-RS",
+      "cell": "S6_FALSE_ACTION_TRAP",
+      "subtype": "outside_only"
+    },
+    {
+      "proposal_id": "bp-013",
+      "language_tag": "ar-EG",
+      "cell": "G2_COMPOUND_INDEPENDENT",
+      "subtype": "independent"
+    },
+    {
+      "proposal_id": "bp-014",
+      "language_tag": "ar-EG",
+      "cell": "S3_CONDITIONAL_BRANCH",
+      "subtype": "two_branches"
+    },
+    {
+      "proposal_id": "bp-015",
+      "language_tag": "hi-IN",
+      "cell": "G3_COMPOUND_DEPENDENT",
+      "subtype": "producer_consumer"
+    },
+    {
+      "proposal_id": "bp-016",
+      "language_tag": "hi-IN",
+      "cell": "S2_NEGATION",
+      "subtype": "positive_plus_negated"
+    },
+    {
+      "proposal_id": "bp-017",
+      "language_tag": "ja-JP",
+      "cell": "G4_COVERAGE_BOUNDARY",
+      "subtype": "outside_only"
+    },
+    {
+      "proposal_id": "bp-018",
+      "language_tag": "ja-JP",
+      "cell": "S1_APPROVAL",
+      "subtype": "all_approved"
+    },
+    {
+      "proposal_id": "bp-019",
+      "language_tag": "zh-Hant-TW",
+      "cell": "G5_LINGUISTIC_VARIATION",
+      "subtype": "long_distance"
+    },
+    {
+      "proposal_id": "bp-020",
+      "language_tag": "zh-Hant-TW",
+      "cell": "S5_MIXED_CONTROL",
+      "subtype": "undo_plus_operation"
+    }
+  ]
+}

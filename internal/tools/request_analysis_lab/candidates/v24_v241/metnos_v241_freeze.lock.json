@@ -1,0 +1,17 @@
+{
+  "base_projector_sha256": "7ab109898feddf5fc8c32c1b921f0220ab097b7e72a742d99879f32af1430e64",
+  "base_rules_sha256": "e41561e12c835b15bce40e25eb2eb28ead3b27228c8bd05867dc1f9d7b6c8357",
+  "base_schema_sha256": "0d08b7205632efef8a7f9dadc0c63fe81b42e72daf03b062d7663eb5f98b7e24",
+  "created_at": "2026-08-08T16:20:06.328316+00:00",
+  "cross_validation_started": true,
+  "cross_validation_started_at": "2026-08-08T16:20:09.311738+00:00",
+  "freeze_version": "metnos.v24.1-offline-freeze/1.0",
+  "projector_sha256": "964ab447f730a0a145178d23c05404e876e06be0b56688d9372dc5e890c8d68e",
+  "rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82",
+  "schema_sha256": "82b24c50dfcf10eed7736231c7640e75f773025864dd933889a474d531b375b4",
+  "v21_adversarial_sha256": "49ce8e7c698af56d3972ad1b8e8278565e5223a53a4cef884a2b40bb832c8dfe",
+  "v23_full_dataset_sha256": "23261f777059586b72d4858c6e60d46fb2e2e15df5bcb5725ebafcb1ad981929",
+  "v23lite_dataset_sha256": "860ed8b6ba5646fd5a5d2d96bf3a9fa09d7f2ffc9dff6560a9fc54eafc7367fa",
+  "v24_on_v23lite_baseline_sha256": "2757d52eb324f89e6946a95792df0604b8436c098d91bfd8d6f58a00ff07f669",
+  "v24_results_baseline_sha256": "6c0a3ed9959ac3c6523037d2aaac4c42c5b780b70d69aa21e49e834384ca956f"
+}

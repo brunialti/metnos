@@ -1,0 +1,72 @@
+{
+  "format": "metnos.intent-holdout-review-rubrics/0.1",
+  "outcomes": [
+    "pass",
+    "fail"
+  ],
+  "uncertain_is_fail": true,
+  "native_review": [
+    {
+      "id": "N01",
+      "rule": "The query is grammatical in the assigned regional language."
+    },
+    {
+      "id": "N02",
+      "rule": "The query is natural rather than translationese or a technical paraphrase."
+    },
+    {
+      "id": "N03",
+      "rule": "The complete intent is unambiguous enough for one canonical judgment."
+    },
+    {
+      "id": "N04",
+      "rule": "No wording is induced by labels, route identifiers, or supplied examples."
+    }
+  ],
+  "semantic_review": [
+    {
+      "id": "S01",
+      "rule": "Every semantic obligation is explicit or unavoidably entailed."
+    },
+    {
+      "id": "S02",
+      "rule": "No extra positive, negated, outside, control, branch, or approval obligation appears."
+    },
+    {
+      "id": "S03",
+      "rule": "Capability scope and outside classification follow the frozen glossary exactly."
+    },
+    {
+      "id": "S04",
+      "rule": "Dependencies, mention order, branch ownership, and approval ownership match exactly."
+    }
+  ],
+  "cross_language_review": [
+    {
+      "id": "X01",
+      "rule": "No pair shares structure plus capability family, scenario/object, roles, and a distinctive detail."
+    },
+    {
+      "id": "X02",
+      "rule": "Language, names, numbers, or punctuation alone do not establish novelty."
+    },
+    {
+      "id": "X03",
+      "rule": "No positional row-locking or repeated scenario matrix is present."
+    }
+  ],
+  "isolation_review": [
+    {
+      "id": "I01",
+      "rule": "One fresh context produced exactly one query in one language."
+    },
+    {
+      "id": "I02",
+      "rule": "The delivered input bundle hash matches and contains no forbidden artifact."
+    },
+    {
+      "id": "I03",
+      "rule": "The context was not reused after output or exposed to another query or review."
+    }
+  ]
+}

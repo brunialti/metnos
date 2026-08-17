@@ -1,0 +1,785 @@
+{
+  "call_count": 36,
+  "case_count": 20,
+  "format": "metnos.intent-kiss-pipeline/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1013,
+      "gate_request_sha256": "a7b99aac2bd627296ef5d4a33e2a81a3607d80b493251d04f73f8589890f382c",
+      "main_elapsed_ms": 9176,
+      "main_request_sha256": "bcd7ef044eea20f4c2cc6310dff89ff349b65c33295dd93b1ee859054701d6cd",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0KICBdCn0=",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-002",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "gate": {
+        "alternative_action_paths": true,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 809,
+      "gate_request_sha256": "24b79e37d6b159277331ed3098cbcba906ffd7b2324af105c53451cba88cf03c",
+      "main_elapsed_ms": 0,
+      "main_request_sha256": null,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-003",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1032,
+      "gate_request_sha256": "fe8ee01782d3e27f59ef72f4de036892b09a8a69beb8bf7fd8a0cd5d37451103",
+      "main_elapsed_ms": 9254,
+      "main_request_sha256": "9b67df8670f30d399b349d3c87e0e401cb56d594ce76738b4f2771fb501b0b21",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9jb250YWN0cyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJnZXQvbm93IgogICAgfQogIF0KfQ==",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-004",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": false,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 847,
+      "gate_request_sha256": "ae6db6053ce1a87e9e52508e16298ccd250bf2af708fef50e00590ee4a511b8a",
+      "main_elapsed_ms": 394,
+      "main_request_sha256": "5ce26ef686ddea64ba605e87ce51149806631a1090d22fe995ba700eb2b7a93a",
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoibm9fYWN0aW9uYWJsZV9pbnRlbnQifQ==",
+      "semantic": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-005",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1146,
+      "gate_request_sha256": "1107017611a7dc0e80c32ac7e2d611285de1013e5d066ecd8e6b66aa39287d34",
+      "main_elapsed_ms": 9496,
+      "main_request_sha256": "f98deb0bb1d7abd7b5d6594ffd268ad9287dc5c5f5554e474b85981bf80c4f0d",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJjb21wcmVzcy9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-006",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "all_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 9143,
+      "gate_request_sha256": "33eea8b71daf9a222e4a05ffc35f5f9b065a4472f6544bd5ead963815e264c8b",
+      "main_elapsed_ms": 1823,
+      "main_request_sha256": "f329b47473bbb9bdd7af77bae57b106905b22bdd789f50868b8657acf37629c9",
+      "raw_model_output_b64": "ewogICJzdGVwcyI6IFsKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogZmFsc2UsCiAgICAgICJyb3V0ZSI6ICJmaW5kL2ZpbGVzIgogICAgfSwKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogImRlbGV0ZS9maWxlcyIsCiAgICAgICJmcm9tIjogWzBdCiAgICB9CiAgXQp9",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-007",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1337,
+      "gate_request_sha256": "0e3969142518f51d5a4e9381365222d0e9a7070b13a67889e1b87bdd4dcf0546",
+      "main_elapsed_ms": 10957,
+      "main_request_sha256": "e4f7c7fbb68e9d1366903cd6482fae1169cbcc2b7d0e1265f7c2abe41341dec9",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-008",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 790,
+      "gate_request_sha256": "0e9a4c007685599dfa40f8a58866b8659b8136d0970b42e869697ad1c562f73b",
+      "main_elapsed_ms": 541,
+      "main_request_sha256": "b3d626e01e23078138fb35e4e4ecc0357b865feebad8c27b7bdcd5a8bacbfb30",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAicmVhZC9tZXNzYWdlcyIKICAgIH0KICBdCn0=",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-009",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1056,
+      "gate_request_sha256": "54db63988f7f052f3dd33ee83ff4901a2e90611cc074ae7d20636381edc6961c",
+      "main_elapsed_ms": 9165,
+      "main_request_sha256": "1e37153374063f4bf4002c9b01a5495b55bc5909a47957144dacc1ce64562810",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfQogIF0KfQ==",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-010",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 823,
+      "gate_request_sha256": "9e808817cc219b877cecf0a9e24c1ea155464a16a9b258fb2998f87a7d07b52d",
+      "main_elapsed_ms": 0,
+      "main_request_sha256": null,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-011",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 994,
+      "gate_request_sha256": "35036c7071ba498da7d4001e4b9309e2b415c9dcb76167c8fad6010df9179c7c",
+      "main_elapsed_ms": 9281,
+      "main_request_sha256": "e5411ba8ac9e76bffc4612e801c21ba1dbd4fee63bedcbe9f3886ac28e3fccf1",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-012",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 811,
+      "gate_request_sha256": "1eae424f24943cf43a3e7f3557866393b0ebc813f8983515955de2bddd57042c",
+      "main_elapsed_ms": 331,
+      "main_request_sha256": "97ae2d58a072f17608921fd93dd3a8e1f66fd4c8d5463cde016e7c2062063c9b",
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoibWlzc2luZ19yZXF1aXJlZF9pbmZvcm1hdGlvbiJ9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-013",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1036,
+      "gate_request_sha256": "72ddad990e64084b3a493525137d0ad7aff1e98a55c21f1227494ea1f3fbc5d0",
+      "main_elapsed_ms": 1332,
+      "main_request_sha256": "28d259733bed09e883fa0d6460c850515b9cfbdf93211873cc1da3e7eac9ce9a",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImZpbmQvcGxhY2VzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMAogICAgICBdCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-014",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "gate": {
+        "alternative_action_paths": true,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 802,
+      "gate_request_sha256": "3c32459a56da35b20dcb657f27168eab5ee243d885b498ec78a22000e8f3b17c",
+      "main_elapsed_ms": 0,
+      "main_request_sha256": null,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-015",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1059,
+      "gate_request_sha256": "8d4117e8bb45fdf67f37d3e9550cc3294dd55714af470fbcce23699ca84d3af4",
+      "main_elapsed_ms": 9569,
+      "main_request_sha256": "955f6f673b1aa3c0a3742eacab7b888cb099b909744c9461c1df18481fb9f44a",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC91cmxzIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogInJlYWQvdXJscyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-016",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 783,
+      "gate_request_sha256": "7da57bd724a59010710052b0dc38169b909c2ff27c7e060073e63ce33000243f",
+      "main_elapsed_ms": 553,
+      "main_request_sha256": "26d81cc9c8508344bede774309c8c76c399fe1f045228cd9767826160c74ee4c",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9pbWFnZXMiCiAgICB9CiAgXQp9",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-017",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1028,
+      "gate_request_sha256": "9499b8da2d5a3ae34e4df40d3645842d43a1e5254572770a617d162d9bbb1932",
+      "main_elapsed_ms": 9076,
+      "main_request_sha256": "cb46f16a6c8838985b0c679e6c56861662a05dccdd64a882ac2175e96043db9f",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "all_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 834,
+      "gate_request_sha256": "1aeadc33ceb530443bbc8b5e5ceee5e009ad9d01c9f204f99c48a8bde7baf916",
+      "main_elapsed_ms": 10007,
+      "main_request_sha256": "9c96d5d538e4ebb56cc81f81559e60ac2fc3f2d757dd43f596af3cd3c843bdf4",
+      "raw_model_output_b64": "ewogICJzdGVwcyI6IFsKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogImdldC9ub3ciCiAgICB9LAogICAgewogICAgICAibmVlZHNfYXBwcm92YWwiOiB0cnVlLAogICAgICAicm91dGUiOiAicmVhZC9pc3N1ZXMiLAogICAgICAiZnJvbSI6IFswXQogICAgfSwKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogInNldC9pc3N1ZXMiLAogICAgICAiZnJvbSI6IFsxXQogICAgfQogIF0KfQ==",
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "get/now"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 1
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "set/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-019",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1069,
+      "gate_request_sha256": "1fd0a0ac8343bfe3e7685cd4ae9cb857dbffecc79e8251516b6d85d1c9fa9d1c",
+      "main_elapsed_ms": 9258,
+      "main_request_sha256": "88799abca484db9c0b057a2dc6f6d6e4e6957bab2d218df68639bf9349ebe632",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2ZpbGVzIgogICAgfQogIF0KfQ==",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-020",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 768,
+      "gate_request_sha256": "a338b447b6a89d42f284381ccf18fbee592ea51c3abdded05d8d3dd22dc96aa9",
+      "main_elapsed_ms": 0,
+      "main_request_sha256": null,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "status": "valid"
+    }
+  ],
+  "retry_count": 0,
+  "state": "complete",
+  "summary": {
+    "document_invalid": 0,
+    "exact": 16,
+    "technical_invalid": 0,
+    "valid": 20
+  }
+}

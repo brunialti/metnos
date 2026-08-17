@@ -1,0 +1,49 @@
+{
+  "scope_version": "metnos.intent-holdout-capability-scope/3.0",
+  "source_registry_path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+  "source_registry_sha256": "f7595b77d5bb3e1d87de688a219ba3809c997def153236f17e4e62453dd0fa94",
+  "known_action_types_exact": [
+    "change/files", "change/pulls", "compress/files", "compute/entries", "compute/files", "compute/signatures", "consult/frontier",
+    "create/calendars", "create/dirs", "create/events", "create/files", "create/images", "create/issues", "create/tasks",
+    "delete/calendars", "delete/credentials", "delete/dirs", "delete/events", "delete/files", "delete/images", "delete/issues", "delete/messages", "delete/persons", "delete/tasks",
+    "describe/numbers", "filter/entries", "filter/lists", "filter/texts",
+    "find/contacts", "find/credentials", "find/dirs", "find/events", "find/files", "find/images", "find/issues", "find/packages", "find/persons", "find/places", "find/pulls", "find/urls",
+    "get/files", "get/images", "get/inputs", "get/location", "get/now", "get/persons", "get/places", "get/processes", "get/proposals", "get/signatures", "get/urls",
+    "group/entries", "list/dirs", "list/skills", "list/tasks", "login/session",
+    "move/files", "move/messages", "read/contacts", "read/events", "read/files", "read/issues", "read/messages", "read/persons", "read/pulls", "read/tasks", "read/urls",
+    "reply/messages", "send/messages", "set/credentials", "set/issues", "set/messages", "set/persons", "set/pulls", "set/signatures", "set/skills", "set/tasks",
+    "share/files", "sort/entries", "write/files"
+  ],
+  "known_system_control_exact": ["undo_last_turn"],
+  "known_barrier_exact": ["get/approval"],
+  "plain_language_notes": [
+    "The slash names define scope for the author; never copy slash names into a query.",
+    "set/messages includes changing a message state such as read/unread, importance or another ordinary message property.",
+    "set/persons updates an existing person/contact; there is no create/persons or create/contacts action.",
+    "write/files creates or writes file content; it does not silently authorize arbitrary judgement, translation or summarisation.",
+    "compute/filter/group/sort/describe apply only when the requested transformation is directly supported by those ordinary meanings and does not require an unreviewed expert judgement.",
+    "Approval is a control barrier around the operation that needs approval. Undo of the immediately previous assistant turn is an exclusive system control.",
+    "If unsure whether an action type is known, do not place it in a known-only slot; choose a clearer action from this exact list."
+  ],
+  "outside_action_families": [
+    "physical-world action with no listed digital action",
+    "purchase, payment, transfer or financial transaction",
+    "medical, legal, ethical or subjective expert judgement",
+    "control of an appliance, vehicle or other unlisted device",
+    "booking, ordering or account action through an unlisted external service",
+    "translation, summarisation or creative transformation not unambiguously covered by an exact known action type",
+    "creation of a person/contact, which is not in the exact action list"
+  ],
+  "forbidden_recycled_motifs": [
+    "photo of a scale model sent to an architect while not deleting it",
+    "issue or report number 38 whose priority label must not change",
+    "course message whose date is copied into a calendar event",
+    "named spreadsheet located only by its title",
+    "restaurant table booking for a group",
+    "renaming a contract or notice and deciding legal validity",
+    "digital recipe/manual/instruction followed by the directly related physical act",
+    "contact remembered from an event and then having one field updated",
+    "same-position data pipeline repeated across languages"
+  ]
+}
+

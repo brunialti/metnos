@@ -1,0 +1,875 @@
+{
+  "format": "metnos.intent-holdout-capability-glossary/0.1",
+  "source_registry": {
+    "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+    "sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+    "payload_sha256": "7a4f2916af8963d8d16fb79cb355d23e9739163f2241a84fa28bc6c070ed4a0a"
+  },
+  "source_projection": {
+    "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_2/intent_ir_registry_projection_v0_2.json",
+    "sha256": "64e887728f5c14b05243fa5032471d146d9a0dfa2889c8784e651044b7860316"
+  },
+  "operations": {
+    "change/files": {
+      "author_gloss": "converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).",
+      "excludes": "extract text (-> read_files); decompress archives (-> compress_files).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "change/pulls": {
+      "author_gloss": "opera su una pull request (es. merge).",
+      "excludes": "usare per issue; omettere number.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compress/files": {
+      "author_gloss": "compress files into a new zip/tar/gz archive.",
+      "excludes": "directories, existing destinations, or decompression (unsupported).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/entries": {
+      "author_gloss": "compute an aggregated value (max/min/avg/sum/count) on entries.",
+      "excludes": "sort the list (-> sort_entries); filter by criteria (-> filter_entries).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/files": {
+      "author_gloss": "computes source-code LOC statistics, walking directory trees in parallel.",
+      "excludes": "convert formats (change_files_format) or create archives (compress_files).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/signatures": {
+      "author_gloss": "compute or classify a signature; it can idempotently apply the safety seed.",
+      "excludes": "query lists (-> get_signatures); modify user curation (-> set_signatures).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "consult/frontier": {
+      "author_gloss": "consult an expert oracle for deep analysis.",
+      "excludes": "local summaries (-> describe_entries).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/calendars": {
+      "author_gloss": "create a NEW Google calendar container (not an event).",
+      "excludes": "event/appointment -> create_events; does not list calendars; delete -> delete_calendars.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/dirs": {
+      "author_gloss": "create directories (batch, even empty).",
+      "excludes": "delete (-> delete_dirs); search (-> find_dirs); list (-> list_dirs).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/events": {
+      "author_gloss": "create calendar appointments.",
+      "excludes": "from web/text FIRST extract_entries; relative dates FIRST get_now; read -> read_events.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/files": {
+      "author_gloss": "creates a new Google Doc.",
+      "excludes": "writing to existing doc (-> write_files_doc); creating sheets (-> create_files_spreadsheet).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/images": {
+      "author_gloss": "index photos in `base_path` (incremental or rebuild).",
+      "excludes": "idx='scene' (deprecated); `find_files` (filesystem, no index).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/issues": {
+      "author_gloss": "crea una nuova issue su un repo GitHub.",
+      "excludes": "omettere repo o title.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/tasks": {
+      "author_gloss": "avvia un workflow GitHub Actions.",
+      "excludes": "omettere repo o workflow.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/calendars": {
+      "author_gloss": "delete Google calendar containers (DESTRUCTIVE: also removes the events inside); accepts the NAME.",
+      "excludes": "deleting an EVENT -> delete_events; create -> create_calendars.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/credentials": {
+      "author_gloss": "delete credentials from storage (purge or bindings).",
+      "excludes": "read (-> find_credentials) or save (-> set_credentials); do not use bindings with all=true.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/dirs": {
+      "author_gloss": "delete directories (empty or forced).",
+      "excludes": "create (-> create_dirs); list (-> list_dirs); find (-> find_dirs).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/events": {
+      "author_gloss": "delete calendar events, by ids or time window.",
+      "excludes": "read_events first when time_window is enough; create -> create_events.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/files": {
+      "author_gloss": "delete files after a verified backup.",
+      "excludes": "directories (-> delete_dirs), symlinks, or moves (-> move_files).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/images": {
+      "author_gloss": "delete the persistent unified image index.",
+      "excludes": "delete actual photos (-> delete_files); rebuild (-> create_images_indices).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/issues": {
+      "author_gloss": "chiude/elimina una issue.",
+      "excludes": "omettere number.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/messages": {
+      "author_gloss": "elimina un commento su issue/PR.",
+      "excludes": "omettere comment_id.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/persons": {
+      "author_gloss": "deletes persons/enrollment from the biometric registry (purge or by name/slug).",
+      "excludes": "credentials/tokens (-> delete_credentials); photos on filesystem (-> delete_files).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/tasks": {
+      "author_gloss": "Cancella/ferma un TASK RICORRENTE / PROMEMORIA / TIMER schedulato.",
+      "excludes": "",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "describe/numbers": {
+      "author_gloss": "calculates descriptive statistics on a list of numbers.",
+      "excludes": "aggregate record fields (-> compute_entries); text or images.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/entries": {
+      "author_gloss": "filter entries by criteria.",
+      "excludes": "search disk (-> find); enumerate (-> list).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/lists": {
+      "author_gloss": "ops between TWO lists (A=from_step, B=with_step) on on_keys; delta = monitor dedup.",
+      "excludes": "single-list -> filter_entries; scalars -> compute_entries.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/texts": {
+      "author_gloss": "filter text lines by pattern.",
+      "excludes": "read files (-> read_files); search directories (-> find).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/contacts": {
+      "author_gloss": "search contacts in an external address book by name/email/phone.",
+      "excludes": "read one contact (-> read_contacts); identity profiles (-> read_persons).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/credentials": {
+      "author_gloss": "lists configured accounts and services (mail, api, cloud): metadata-only credentials.",
+      "excludes": "reading account mail (-> read_messages); secret values (-> set_credentials).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/dirs": {
+      "author_gloss": "find directories and compute aggregate metadata with a parallel recursive walk.",
+      "excludes": "list files (-> find_files); directory contents (-> list_dirs).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/events": {
+      "author_gloss": "find free slots in the calendar.",
+      "excludes": "read events (-> read_events); create events (-> create_events).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/files": {
+      "author_gloss": "search files by pattern with a parallel recursive walk.",
+      "excludes": "list_dirs+filter_entries; get_files (ID lookup); exact duplicate search (-> find_files_hash).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/images": {
+      "author_gloss": "search indexed photos by content, person or face.",
+      "excludes": "EXIF of known paths -> get_files; files of a folder by path -> find_files.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/issues": {
+      "author_gloss": "elenca le issue (segnalazioni/bug/ticket) di un repo GitHub.",
+      "excludes": "usare per pull request (-> find_pulls_github); omettere repo.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/packages": {
+      "author_gloss": "finds an executable command in the system PATH.",
+      "excludes": "querying a package-manager database; reading files (-> read_files).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/persons": {
+      "author_gloss": "search photos of a registered person.",
+      "excludes": "enroll (-> set_persons); direct lookup (-> get_persons).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/places": {
+      "author_gloss": "find real-world places by text query or coordinates.",
+      "excludes": "read files (-> read_files); get data by known IDs (-> get_places).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/pulls": {
+      "author_gloss": "elenca le pull request (richieste di merge) di un repo GitHub.",
+      "excludes": "usare per issue (-> find_issues_github); omettere repo.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/urls": {
+      "author_gloss": "find and discover URLs and documents on the web.",
+      "excludes": "get/read on known URLs.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/files": {
+      "author_gloss": "gets size, dates, and EXIF for KNOWN files.",
+      "excludes": "search by subject -> find_images_indices; by pattern -> find_files.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/images": {
+      "author_gloss": "gets unified image-index status for one corpus or all corpora.",
+      "excludes": "build indexes (-> create_images_indices); search photos (-> find_images_indices).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/inputs": {
+      "author_gloss": "gets structured inputs (dialog/form).",
+      "excludes": "deriving observable data (-> find_*/read_*); executing commands (-> admin).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/location": {
+      "author_gloss": "tells where the current actor is.",
+      "excludes": "geocode a place name -> find_places; look for nearby places -> get_places; read the history.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/now": {
+      "author_gloss": "gets the current date and time in the configured timezone or an explicit IANA zone.",
+      "excludes": "read calendar events or infer a timezone from a place.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/persons": {
+      "author_gloss": "reads the biometric persons registry.",
+      "excludes": "profiles -> read_persons; photos -> find_persons_indices; enrollment -> set_persons.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/places": {
+      "author_gloss": "gets place name from GPS coordinates.",
+      "excludes": "text search (-> find_places).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/processes": {
+      "author_gloss": "reads processes and system health.",
+      "excludes": "scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/proposals": {
+      "author_gloss": "reads introvertive proposals, including historical categories.",
+      "excludes": "search data (-> find); filter entries already read (-> filter).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/signatures": {
+      "author_gloss": "query safety-signature lists and status.",
+      "excludes": "compute signatures (-> compute_signatures); modify curation (-> set_signatures).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/urls": {
+      "author_gloss": "gets data from HTTP/HTTPS URLs.",
+      "excludes": "find URLs (-> find_urls); read HTML (-> read_urls_html).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "group/entries": {
+      "author_gloss": "merges and deduplicates entries from multiple lists.",
+      "excludes": "group by value or aggregate (-> compute_entries); filter (-> filter_entries).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/dirs": {
+      "author_gloss": "lists directories and files; recursive mode walks subdirectories in parallel.",
+      "excludes": "create (create_dirs), delete (delete_dirs), search patterns (find_dirs).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/skills": {
+      "author_gloss": "Elenca le SKILL di Metnos (gruppi di capacità attivabili: foto, mail, web, geo, calendario, github, frontier + core) con stato ATTIVA/DISATTIVA/DORMIENTE e prerequisiti.",
+      "excludes": "",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/tasks": {
+      "author_gloss": "Elenca i TASK RICORRENTI / PROMEMORIA / TIMER schedulati (NON processi di sistema, NON eventi calendar).",
+      "excludes": "",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "login/session": {
+      "author_gloss": "Esegue il login al form web di un dominio gia' registrato (credentials.store(domain, payload)) e salva il cookie session in '~/.config/metnos/cookies/<domain>.txt' (formato Mozilla, mode 0600).",
+      "excludes": "",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "move/files": {
+      "author_gloss": "move or rename files in batch.",
+      "excludes": "convert formats (-> change_files_format); compress (-> compress_files).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "move/messages": {
+      "author_gloss": "move messages between folders or labels.",
+      "excludes": "change labels only (-> set_messages) or delete.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/contacts": {
+      "author_gloss": "read one contact from external address book.",
+      "excludes": "confuse with read_persons (system users).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/events": {
+      "author_gloss": "reads calendar events.",
+      "excludes": "read mail or create events (-> read_messages, create_events).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/files": {
+      "author_gloss": "reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures.",
+      "excludes": "one sheet -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/issues": {
+      "author_gloss": "legge UNA issue (contenuto + commenti) per numero.",
+      "excludes": "usare per elencare (-> find_issues_github); omettere number.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/messages": {
+      "author_gloss": "reads IMAP messages combining time and text filters.",
+      "excludes": "sending (-> send_messages) or moving messages (-> move_messages).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/persons": {
+      "author_gloss": "reads local identity profiles.",
+      "excludes": "biometric registry -> get_persons; photos -> find_persons_indices; changes or credentials.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/pulls": {
+      "author_gloss": "legge UNA pull request (contenuto + diff) per numero.",
+      "excludes": "usare per elencare (-> find_pulls_github); omettere number.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/tasks": {
+      "author_gloss": "elenca le run dei workflow GitHub Actions di un repo.",
+      "excludes": "omettere repo.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/urls": {
+      "author_gloss": "reads web pages and extracts main text; PDF URLs extracted as text automatically.",
+      "excludes": "PDF-only lists (-> read_urls_pdf); URL discovery (-> find_urls).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "reply/messages": {
+      "author_gloss": "Risponde in-thread a uno o piu' messaggi (Gmail).",
+      "excludes": "",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "send/messages": {
+      "author_gloss": "send email/Telegram and reply in-thread on Gmail.",
+      "excludes": "read -> read_messages; labels -> set_messages.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/credentials": {
+      "author_gloss": "encrypts credentials; defines the mandate.",
+      "excludes": "read credentials (-> find_credentials); expose secrets.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/issues": {
+      "author_gloss": "modifica stato/label/assegnatari di una issue.",
+      "excludes": "omettere number.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/messages": {
+      "author_gloss": "add or remove labels on identified Gmail messages.",
+      "excludes": "list labels without a target; move folders -> move_messages.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/persons": {
+      "author_gloss": "enroll a person in the named registry.",
+      "excludes": "search photos (-> find_persons_indices); auto-identify (-> get_persons).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/pulls": {
+      "author_gloss": "aggiorna stato/titolo/reviewer di una pull request.",
+      "excludes": "usare per issue; omettere number.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/signatures": {
+      "author_gloss": "sets or removes signatures from user curation.",
+      "excludes": "compute -> compute_signatures; read -> get_signatures.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/skills": {
+      "author_gloss": "Abilita o disabilita una SKILL (gruppo di capacità) per nome.",
+      "excludes": "",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/tasks": {
+      "author_gloss": "Cambia lo stato di un task ricorrente esistente.",
+      "excludes": "",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "share/files": {
+      "author_gloss": "grants access permissions to Drive files without duplicating them.",
+      "excludes": "sending copies (send_messages) or overwriting (write_files).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "sort/entries": {
+      "author_gloss": "sorts entries in memory.",
+      "excludes": "persistent order; aggregates -> compute_entries; filters -> filter_entries.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "write/files": {
+      "author_gloss": "persist records/text to local files (vectorial §2.1).",
+      "excludes": "without from_step nor content.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    }
+  },
+  "barriers": {
+    "get/approval": {
+      "author_gloss": "human consent (Approve/Reject), then runs the executor.",
+      "excludes": "free values -> get_inputs; action without consent -> call the executor."
+    }
+  },
+  "system_controls": {
+    "undo_last_turn": {
+      "author_gloss": "cancel all reversible operations of the last user turn.",
+      "excludes": "irreversible operations (skipped); consecutive calls (idempotent)."
+    }
+  },
+  "unrepresentable_reasons": {
+    "ambiguous_intent": "More than one incompatible analysis remains.",
+    "missing_required_information": "The requested intent lacks information needed to form a typed structure.",
+    "mixed_root_kinds": "System control and ordinary operation cannot share the exclusive root.",
+    "no_actionable_intent": "The utterance contains no independently actionable request.",
+    "outside_registry": "The meaning is understood but has no reviewed registry entry.",
+    "unsupported_dependency": "The requested data or control dependency is outside version 0.1."
+  },
+  "outside_families": [
+    "physical_world_action",
+    "financial_transaction",
+    "expert_judgement",
+    "unregistered_device_control",
+    "unregistered_external_service",
+    "unsupported_content_transformation",
+    "unsupported_entity_creation"
+  ],
+  "scenario_taxonomy": [
+    "personal_organization",
+    "workplace_collaboration",
+    "education",
+    "community_activity",
+    "arts_and_culture",
+    "software_development",
+    "digital_media",
+    "travel_and_places",
+    "household_administration",
+    "public_service",
+    "research",
+    "small_organization"
+  ],
+  "argument_roles": [
+    "actor",
+    "target",
+    "source",
+    "destination",
+    "recipient",
+    "approver",
+    "container",
+    "criterion",
+    "producer_output",
+    "branch_condition"
+  ],
+  "projection_policy": {
+    "single_neutral_path": true,
+    "route_ids_visible_to_query_author": false,
+    "examples_visible_to_query_author": false,
+    "names_numbers_or_decorations_prescribed": false
+  }
+}

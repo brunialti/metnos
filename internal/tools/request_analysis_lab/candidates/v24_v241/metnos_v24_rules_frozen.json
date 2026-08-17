@@ -1,0 +1,171 @@
+{
+  "contract_version": "metnos.catalog-projection/2.4-shadow",
+  "freeze_protocol": {
+    "mutable_before_lock": true,
+    "cross_validation_requires_lock_sha256": true,
+    "post_lock_rule_changes_forbidden": true
+  },
+  "review_state": "prototype_frozen_not_production_reviewed",
+  "runtime_gate": {
+    "required_review_state": "production_reviewed",
+    "fail_closed_when_unreviewed": true,
+    "research_mode_may_use_frozen_prototype": true
+  },
+  "sources": {
+    "catalog_migration": "/tmp/metnos_catalog_structured_intent_contract_migration.json",
+    "catalog_validation": "/tmp/metnos_catalog_structured_intent_contract_validation.json",
+    "note": "This overlay is a language-neutral shadow contract. It is not a runtime manifest and does not upgrade any suggested migration field to production-reviewed."
+  },
+  "carrier_value_types": {
+    "source_container": {
+      "dirs": ["filesystem_path", "opaque_identifier"],
+      "files": ["filesystem_path", "opaque_identifier"],
+      "messages": ["message_store", "opaque_identifier"],
+      "urls": ["uri", "opaque_identifier"]
+    },
+    "transport_channel": {
+      "urls": ["uri"],
+      "messages": ["message_channel", "opaque_identifier"],
+      "files": ["filesystem_path", "opaque_identifier"]
+    },
+    "representation": {
+      "images": ["raster_image", "opaque_identifier"],
+      "files": ["document", "opaque_identifier"],
+      "texts": ["text_representation", "opaque_identifier"]
+    }
+  },
+  "default_carrier_value_type": {
+    "source_container": "opaque_identifier",
+    "transport_channel": "opaque_identifier",
+    "representation": "opaque_identifier"
+  },
+  "domain_semantics": {
+    "dirs": {
+      "source_container_authority": "locator",
+      "transport_authority": "context",
+      "representation_authority": "context"
+    },
+    "files": {
+      "source_container_authority": "context",
+      "transport_authority": "context",
+      "representation_authority": "context"
+    },
+    "messages": {
+      "source_container_authority": "source_owner",
+      "transport_authority": "destination_channel",
+      "representation_authority": "context"
+    },
+    "urls": {
+      "source_container_authority": "source_owner",
+      "transport_authority": "source_owner",
+      "representation_authority": "context"
+    },
+    "images": {
+      "source_container_authority": "context",
+      "transport_authority": "context",
+      "representation_authority": "source_owner"
+    }
+  },
+  "carrier_projection": {
+    "source_owner_actions": ["read", "find", "get", "list", "open"],
+    "locator_content_actions": ["list"],
+    "locator_overrides_only_patient_kinds": ["none", "implicit"],
+    "destination_channel_actions": ["send"]
+  },
+  "route_rules": [
+    {
+      "rule_id": "catalog.open_files_is_content_read",
+      "match": {
+        "candidate_actions": ["open"],
+        "candidate_objects": ["files"]
+      },
+      "project": {
+        "action": "read"
+      },
+      "evidence_basis": ["candidate_route", "catalog_route_alias"],
+      "manifest_basis": "No canonical open/files executor exists; read_files is the catalog target shape for file content access."
+    },
+    {
+      "rule_id": "catalog.process_collection_is_snapshot",
+      "match": {
+        "candidate_objects": ["processes"],
+        "resource_scopes": ["collection_by_criterion", "whole_domain"]
+      },
+      "project": {
+        "action": "get"
+      },
+      "evidence_basis": ["candidate_route", "resource_scope", "catalog_route_capability"],
+      "manifest_basis": "get_processes owns collection snapshots; existence checks on a single process retain find."
+    },
+    {
+      "rule_id": "catalog.directory_metadata_uses_find",
+      "match": {
+        "candidate_actions": ["get"],
+        "candidate_objects": ["dirs"],
+        "resource_scopes": ["single_known"]
+      },
+      "project": {
+        "action": "find"
+      },
+      "evidence_basis": ["candidate_route", "resource_scope", "catalog_route_capability"],
+      "manifest_basis": "The catalog has find_dirs/list_dirs but no canonical get_dirs route."
+    },
+    {
+      "rule_id": "catalog.send_creates_message_envelope",
+      "match": {
+        "candidate_actions": ["send"]
+      },
+      "project": {
+        "object": "messages",
+        "qualifier": "none"
+      },
+      "evidence_basis": ["candidate_route", "catalog_object_basis"],
+      "manifest_basis": "send_messages has destination_artifact object basis; payload identity is an argument, not the route object."
+    }
+  ],
+  "attribute_bindings": [
+    {
+      "binding_id": "get_files.fields.media_metadata",
+      "claim_key": "media_metadata",
+      "accepted_patient_objects": ["files", "images"],
+      "route": {
+        "action": "get",
+        "object": "files",
+        "qualifier": "none"
+      },
+      "executor": "get_files",
+      "argument": "fields",
+      "intent_role": "content",
+      "evidence_required": true,
+      "review_state": "prototype_frozen_not_production_reviewed"
+    }
+  ],
+  "materialization": {
+    "secondary_only_adds_route": true,
+    "primary_output_never_replaces_primary_route_object": true,
+    "materialization_actions": ["write", "create", "move"],
+    "sinks": {
+      "files": {
+        "route": {"action": "write", "object": "files", "qualifier": "none"},
+        "executor": "write_files",
+        "review_state": "prototype_frozen_not_production_reviewed"
+      },
+      "entries": {
+        "route": {"action": "write", "object": "entries", "qualifier": "none"},
+        "executor": "write_entries",
+        "review_state": "prototype_frozen_not_production_reviewed"
+      }
+    }
+  },
+  "research_route_policy": {
+    "allow_unchanged_candidate_passthrough": true,
+    "corrected_route_must_be_catalog_or_overlay_known": true,
+    "universal_actions": ["classify", "compute", "describe", "extract", "filter", "sort"],
+    "overlay_known_routes": [
+      "read/files", "read/urls", "read/images", "find/files", "find/dirs",
+      "find/messages", "find/urls", "find/processes", "list/files", "list/dirs",
+      "list/messages", "get/files", "get/processes", "send/messages",
+      "write/files", "write/entries"
+    ]
+  }
+}

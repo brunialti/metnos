@@ -1,0 +1,61 @@
+{
+  "measurement": "derived_predicate_mirror_cut",
+  "sample_sha256": "36aba12b9ec0f366569498bba0fa4dd876f4d2354f736058791182ca41e37af4",
+  "criterion": "A route is credited only when the complete usable route is correct under the frozen vocabulary and boundaries. Invalid outputs receive no route credit. Safety regressions are counted separately and never offset.",
+  "scope_limit": "Only cases whose validity or route differs inside a fresh control/candidate pair are adjudicated here. Agreements are not an oracle and remain for sequence step 3.",
+  "c10": {
+    "validity": {
+      "control_valid": 112,
+      "candidate_valid": 109,
+      "healed": [36, 66],
+      "broken": [29, 31, 42, 59, 93],
+      "invalid_in_both_with_changed_output": [18]
+    },
+    "route_adjudication": {
+      "improvements": [],
+      "strict_regressions": [29],
+      "common_failures": [18, 31, 36, 42, 59, 66, 93]
+    },
+    "non_compensable": {
+      "undo_regressions": [66],
+      "consent_regressions": [],
+      "negation_regressions": [],
+      "conditional_branch_regressions": [],
+      "notes": {
+        "18": "Both arms are invalid; the candidate preserves forbid records but fails the anchor invariant, so negation receives no credit.",
+        "59": "Consent and the conditional role remain a common semantic failure; the candidate also changes a valid-but-wrong frame into an invalid one.",
+        "66": "The control is invalid with delete/none; the candidate accepts delete/entries for an undo request."
+      }
+    }
+  },
+  "c11": {
+    "validity": {
+      "control_valid": 112,
+      "candidate_valid": 111,
+      "healed": [36, 66, 72],
+      "broken": [29, 31, 59, 93],
+      "invalid_in_both_with_changed_output": [18]
+    },
+    "route_adjudication": {
+      "improvements": [],
+      "strict_regressions": [29],
+      "common_failures": [18, 31, 36, 59, 66, 72, 93]
+    },
+    "non_compensable": {
+      "undo_regressions": [66],
+      "consent_regressions": [],
+      "negation_regressions": [],
+      "conditional_branch_regressions": [],
+      "notes": {
+        "18": "Both arms are invalid; the candidate preserves forbid records but fails the anchor invariant, so negation receives no credit.",
+        "59": "Consent and the conditional role remain a common semantic failure; the candidate also changes a valid-but-wrong frame into an invalid one.",
+        "66": "The control is invalid with delete/none; the candidate accepts delete/entries for an undo request."
+      }
+    }
+  },
+  "verdict": {
+    "c10": "REJECT",
+    "c11": "REJECT",
+    "reason": "Neither candidate improves an adjudicated route; both introduce the non-compensable undo regression at index 66. c10 also loses 3 valid cases, outside the +/-1 noise band."
+  }
+}

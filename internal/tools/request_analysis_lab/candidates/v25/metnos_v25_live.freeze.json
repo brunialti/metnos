@@ -1,0 +1,10 @@
+{
+  "base_bench_sha256": "db2abaf6aaba2ad77205dda3fda96cdfab272a17079e57b0e472201395a4a329",
+  "fixture_sha256": "90f6010619290bdb6662f1a62f3ef77e6589b0dbe020699bcd54f00dfa236994",
+  "freeze_version": "metnos.v25-live-explicit-bindings/1.0",
+  "network_calls_by_preparer": 0,
+  "prompt_sha256": "2ffa10811b5de6d8ffc3e55d307a7f019754dfd5e95a757d43918bd07b01c60f",
+  "runner_sha256": "d252ee2fa9dc70be8c34a001aab0eedd78ca2d73e127f81cb28ada3db7b36ba0",
+  "schema_sha256": "d0b436d296ed9bf701109c02cd707fd3884316ba01e4eca604760320e1737a08",
+  "v241_rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82"
+}

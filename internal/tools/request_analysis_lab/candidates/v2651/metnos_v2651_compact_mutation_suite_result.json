@@ -1,0 +1,1725 @@
+{
+  "checks": [
+    {
+      "actual": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+      "expected": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+      "id": "preimport_hash:adapter",
+      "pass": true
+    },
+    {
+      "actual": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+      "expected": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+      "id": "preimport_hash:schema",
+      "pass": true
+    },
+    {
+      "actual": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+      "expected": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+      "id": "preimport_hash:registry",
+      "pass": true
+    },
+    {
+      "actual": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656",
+      "expected": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656",
+      "id": "preimport_hash:validator",
+      "pass": true
+    },
+    {
+      "actual": "69103b64374527feb0d40bc709043066e030fa81101651f724e52e79d5a9c1cc",
+      "expected": "69103b64374527feb0d40bc709043066e030fa81101651f724e52e79d5a9c1cc",
+      "id": "preimport_hash:matrix",
+      "pass": true
+    },
+    {
+      "actual": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+      "expected": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+      "id": "preimport_hash:fixture",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "matrix_exactly_68_unique",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "fixture_exactly_68_unique",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "matrix_fixture_same_ids",
+      "pass": true
+    },
+    {
+      "detail": {
+        "obsolete": 3,
+        "replacement": 9,
+        "retained": 56
+      },
+      "id": "classification_counts",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "case_ids_bound_to_matrix",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "dependency_depth",
+            "dependency_type"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "dependency_depth",
+            "dependency_type"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M059_dependency_depth_five",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M001_unknown_top_field",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M002_focus_reintroduced",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M003_grammatical_person_reintroduced",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M004_supported_zero_atoms",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M005_unsupported_with_atom",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M006_ambiguity_one_alternative",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M007_ambiguity_five_alternatives",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "duplicate_alternative"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "duplicate_alternative"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M008_ambiguity_duplicate_semantics",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M009_cross_alternative_atom_ref",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "historical:M011_duplicate_clause_id",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "historical:M012_clause_id_reverse",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "clause_span"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "clause_span"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M013_clause_span_out_of_bounds",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M015_atom_unknown_relation",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "relation_arity"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "relation_arity"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M016_relation_missing_arg",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "relation_arity"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "relation_arity"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M017_relation_extra_arg",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "reference_type"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "reference_type"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M018_swap_arg_order",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M021_bound_unknown_ref",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "reference_type"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "reference_type"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M022_bound_ref_wrong_slot_type",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "dependency_type"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "dependency_type"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M023_derived_into_slot_without_allowlist",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "dependency_type"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "dependency_type"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M024_derived_wrong_output_type",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M025_silent_output_type_rewrite",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M026_bound_with_source_fields",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M027_unknown_with_ref",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M028_from_output_with_bound_ref",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M029_duplicate_supplied_type_disagrees",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "closed_proposition_unknown",
+            "role_speech"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "closed_proposition_unknown",
+            "role_speech"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M030_main_request_assertion",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "queryable_unknown",
+            "role_speech"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "queryable_unknown",
+            "role_speech"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M031_assertion_open_question",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "role_speech"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "role_speech"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M032_quote_imperative",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "role_speech"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "role_speech"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M033_condition_open_question",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "closed_proposition_unknown",
+            "role_speech"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "closed_proposition_unknown",
+            "role_speech"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M034_relative_assertion",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "action_speech"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "action_speech"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M035_action_open_question",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "action_speech"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "action_speech"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M036_action_polar",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "two semantic clauses claim the same source span"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "two semantic clauses claim the same source span"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M037_two_primary_atoms_one_clause",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "queryable_unknown"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "queryable_unknown"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M038_open_question_zero_unknown",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "queryable_unknown"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "queryable_unknown"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M039_open_question_two_unknowns",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "closed_proposition_unknown"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "closed_proposition_unknown"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M040_polar_one_unknown",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "action_unknown",
+            "output_unconsumed"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "action_unknown",
+            "output_unconsumed"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M041_primary_action_unknown",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M044_auxiliary_zero_output",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M045_auxiliary_two_outputs",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "dependency has no projection with the same clause span"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "dependency has no projection with the same clause span"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M046_auxiliary_unconsumed",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M049_source_missing",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M050_self_reference",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M051_future_reference",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M052_two_node_cycle",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "historical:M053_three_node_cycle",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M054_duplicate_atom_id",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M055_atom_array_id_disagree",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M056_source_role_missing",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M057_source_role_bound",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M061_missing_clause_role_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M062_missing_relation_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M063_missing_argument_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M064_tense_proves_relation",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M065_interrogative_proves_recipient",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M066_actor_current_wrong_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M067_explicit_span_zero",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_span"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_span"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M068_explicit_span_reverse",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_span"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_span"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M069_explicit_span_outside_clause",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M070_nonexplicit_fake_span",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M071_from_output_noncomposition_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M073_bound_with_composition_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_span"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_span"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M074_proof_cross_atom",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "historical:M076_supported_none_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "atom_clause_order",
+            "projection_source_order"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "atom_clause_order",
+            "projection_source_order"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:M089_reorder_independent_actions",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "alternative_coverage"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "alternative_coverage"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:X002_alternative_clause_drop",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "historical:X003_supported_unsupported_clause_collision",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "proof_family"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "historical:X009_unsupported_wrong_proof",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "native_case_ids_complete",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "native:N001_source_ordinal_missing",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "native:N002_source_ordinal_zero",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "native:N003_source_ordinal_negative",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "native:N004_source_ordinal_boolean",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "native:N005_source_ordinal_string",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N006_source_ordinal_self",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N007_source_ordinal_future",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "edge does not point to a prior array item"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N008_source_ordinal_out_of_range",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N009_source_zero_outputs",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "source must expose exactly one derivable output"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N010_source_multiple_outputs",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "two semantic clauses claim the same source span"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "two semantic clauses claim the same source span"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N011_supported_unsupported_span_collision",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "unsupported clauses share one span"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "unsupported clauses share one span"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N012_unsupported_span_collision",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "alternatives disagree on common clause order"
+          ],
+          "stage": "adapter"
+        },
+        "expected": {
+          "codes": [
+            "alternatives disagree on common clause order"
+          ],
+          "stage": "adapter"
+        }
+      },
+      "id": "native:N013_alternative_common_coverage_disagrees",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "native:N014_atom_limit",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        },
+        "expected": {
+          "codes": [
+            "schema"
+          ],
+          "stage": "schema"
+        }
+      },
+      "id": "native:N015_clause_limit",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [
+            "clause_limit",
+            "proof_limit"
+          ],
+          "stage": "validator"
+        },
+        "expected": {
+          "codes": [
+            "clause_limit",
+            "proof_limit"
+          ],
+          "stage": "validator"
+        }
+      },
+      "id": "native:N016_proof_and_clause_limits",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "positive_case_ids_complete",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "positive:P01_direct",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "positive:P04_fanout_multi_action",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "positive:P05_multi_domain",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "positive:P06_projection_output_reuse",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "positive:P08_typed_ambiguity",
+      "pass": true
+    },
+    {
+      "detail": {
+        "actual": {
+          "codes": [],
+          "stage": "accepted"
+        },
+        "expected": {
+          "codes": [],
+          "stage": "accepted"
+        }
+      },
+      "id": "positive:P11_mixed_coverage",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "fixture_has_no_raw_queries",
+      "pass": true
+    },
+    {
+      "detail": [],
+      "id": "registry_consistency",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "obsolete_is_only_derived_clause_ids",
+      "pass": true
+    }
+  ],
+  "dynamic_imports_after_hash_verification": 2,
+  "failed": [],
+  "hashes": {
+    "adapter": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+    "fixture": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+    "matrix": "69103b64374527feb0d40bc709043066e030fa81101651f724e52e79d5a9c1cc",
+    "registry": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+    "schema": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+    "validator": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656"
+  },
+  "historical_runner_imports": 0,
+  "model_calls": 0,
+  "network_calls": 0,
+  "summary": {
+    "classifications": {
+      "obsolete": 3,
+      "replacement": 9,
+      "retained": 56
+    },
+    "failed": 0,
+    "historical_mutations": 68,
+    "historical_stages": {
+      "accepted": 3,
+      "adapter": 10,
+      "schema": 24,
+      "validator": 31
+    },
+    "native_negative_cases": 16,
+    "passed": 106,
+    "positive_controls": 6,
+    "tests": 106
+  },
+  "version": "metnos.v26.5.1-compact-mutation-suite/0.1"
+}

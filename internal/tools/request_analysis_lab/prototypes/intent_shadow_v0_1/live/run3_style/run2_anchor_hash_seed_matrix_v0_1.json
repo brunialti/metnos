@@ -1,0 +1,3323 @@
+{
+  "exact_seed_count": 158,
+  "format": "metnos.intent-prompt-style-hash-seed-matrix/0.1",
+  "fresh_process_confirmations": [
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_request_exact": 158,
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_request_exact": 158,
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2769436454374240588,
+      "seed": 0
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_request_exact": 158,
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_request_exact": 158,
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2769436454374240588,
+      "seed": 0
+    }
+  ],
+  "gold_or_oracle_opened": false,
+  "gpu_touched": false,
+  "network_touched": false,
+  "only_permitted_nonexact_diff_path": "/adapter_metadata/implicit_actions_ignored",
+  "only_permitted_nonexact_diff_types": [
+    "bool",
+    "bool"
+  ],
+  "payload_sha256": "454b6f4f269ad08b99039da7adcd978c16e9efdf14e93412357e909c2c627da0",
+  "rows": [
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2769436454374240588,
+      "seed": 0
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4395226170937552269,
+      "seed": 1
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -615727083990038768,
+      "seed": 2
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1542531183361953642,
+      "seed": 3
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3445076039419558358,
+      "seed": 4
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3362070950815505543,
+      "seed": 5
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3748692518939937251,
+      "seed": 6
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3971505543866899904,
+      "seed": 7
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6860146261072282097,
+      "seed": 8
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6082962804043650941,
+      "seed": 9
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5812533331812374089,
+      "seed": 10
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6194545066617284563,
+      "seed": 11
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2988708542351841591,
+      "seed": 12
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4438448016156776804,
+      "seed": 13
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3729803983511914096,
+      "seed": 14
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2321531887523876981,
+      "seed": 15
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1596038789059609941,
+      "seed": 16
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4230770856518387315,
+      "seed": 17
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 852176319464872211,
+      "seed": 18
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -512599718038614123,
+      "seed": 19
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5170971449184715656,
+      "seed": 20
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1901034588336442396,
+      "seed": 21
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1402803787669583235,
+      "seed": 22
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3511571251041452292,
+      "seed": 23
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5010697780322131463,
+      "seed": 24
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4191447500746003489,
+      "seed": 25
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4670031903764146275,
+      "seed": 26
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2138961503958096264,
+      "seed": 27
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6257335655116994388,
+      "seed": 28
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8680583005772576182,
+      "seed": 29
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3966711519288054716,
+      "seed": 30
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4795850412040881697,
+      "seed": 31
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6630135158197252291,
+      "seed": 32
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -658720708984496251,
+      "seed": 33
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5301970073591346267,
+      "seed": 34
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8420320229779791947,
+      "seed": 35
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3442896847632525823,
+      "seed": 36
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6353916960664810795,
+      "seed": 37
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -461294044936763508,
+      "seed": 38
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8142539062198376394,
+      "seed": 39
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4537083014073320738,
+      "seed": 40
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 906879365919922809,
+      "seed": 41
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3475710220934834995,
+      "seed": 42
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3609156865085971505,
+      "seed": 43
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8024273483240385397,
+      "seed": 44
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5132109544926362614,
+      "seed": 45
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2526019777210350422,
+      "seed": 46
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7603697454423542356,
+      "seed": 47
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -33083323693154891,
+      "seed": 48
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5994541416237676127,
+      "seed": 49
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7032188806247892310,
+      "seed": 50
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4577991335166010439,
+      "seed": 51
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1460903623336743630,
+      "seed": 52
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5636847550500346210,
+      "seed": 53
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4855538471535304933,
+      "seed": 54
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6947875100010838389,
+      "seed": 55
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 781055654595913856,
+      "seed": 56
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5641156218424108050,
+      "seed": 57
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1886926147277935697,
+      "seed": 58
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5505090395564554353,
+      "seed": 59
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3992507779579282331,
+      "seed": 60
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2519032303545103371,
+      "seed": 61
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7358258172637355222,
+      "seed": 62
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3920850710103514253,
+      "seed": 63
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4295049659479047286,
+      "seed": 64
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8222630115419831814,
+      "seed": 65
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5465527132023450605,
+      "seed": 66
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4500924218326827750,
+      "seed": 67
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3583219517879095396,
+      "seed": 68
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6932647558625455463,
+      "seed": 69
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -345957286415981881,
+      "seed": 70
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8993556919460183095,
+      "seed": 71
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2327056117783229454,
+      "seed": 72
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2386245872401047797,
+      "seed": 73
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 149214730009616608,
+      "seed": 74
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1151279502147665351,
+      "seed": 75
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 192256485089160620,
+      "seed": 76
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6304992241364846996,
+      "seed": 77
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2748800319234449078,
+      "seed": 78
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7265003079748067530,
+      "seed": 79
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6050922585039868284,
+      "seed": 80
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5815357933773617938,
+      "seed": 81
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2414015484096099620,
+      "seed": 82
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6670967237703443069,
+      "seed": 83
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2593125403739521169,
+      "seed": 84
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3696280083722607956,
+      "seed": 85
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8639137876951336695,
+      "seed": 86
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5773084057725371645,
+      "seed": 87
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8489054857976500108,
+      "seed": 88
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4028775591205051489,
+      "seed": 89
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4635086180986446806,
+      "seed": 90
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5605781708915178097,
+      "seed": 91
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8756945109706735976,
+      "seed": 92
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -151538494607361407,
+      "seed": 93
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5706924989122537328,
+      "seed": 94
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8831247850670005341,
+      "seed": 95
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2321155769442785297,
+      "seed": 96
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6995202059715020602,
+      "seed": 97
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6340142828749806433,
+      "seed": 98
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2672547535608607727,
+      "seed": 99
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5474444926249836379,
+      "seed": 100
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 486230727574050444,
+      "seed": 101
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2218387419432067916,
+      "seed": 102
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3749939192706949633,
+      "seed": 103
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2002501269898403017,
+      "seed": 104
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7960286179578766233,
+      "seed": 105
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3199274055062302574,
+      "seed": 106
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8026116157564526677,
+      "seed": 107
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2805672604569243784,
+      "seed": 108
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -9202083926270337479,
+      "seed": 109
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 9148164656811769288,
+      "seed": 110
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3331491645629417619,
+      "seed": 111
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 31289885010564480,
+      "seed": 112
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7920516392091004037,
+      "seed": 113
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2094076272273742086,
+      "seed": 114
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2318197170780201183,
+      "seed": 115
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4534651416943782777,
+      "seed": 116
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 498955122705344052,
+      "seed": 117
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4678033204572545076,
+      "seed": 118
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4356212354049788304,
+      "seed": 119
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6753966187369288312,
+      "seed": 120
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3910972252911207287,
+      "seed": 121
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5472605429479500763,
+      "seed": 122
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 9094644365751581749,
+      "seed": 123
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4704690653778234352,
+      "seed": 124
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1172529876744138912,
+      "seed": 125
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8222075692078207338,
+      "seed": 126
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6485312768360011803,
+      "seed": 127
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8837685232052242483,
+      "seed": 128
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6428555506139134399,
+      "seed": 129
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7590937615768218900,
+      "seed": 130
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 310275134556872737,
+      "seed": 131
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2324284122641952548,
+      "seed": 132
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4124522444684342819,
+      "seed": 133
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7882944151853910196,
+      "seed": 134
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8877424323002550151,
+      "seed": 135
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7903693085554619853,
+      "seed": 136
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5459079401336079748,
+      "seed": 137
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6710705104340742734,
+      "seed": 138
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3454899844413895063,
+      "seed": 139
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5978876851498032467,
+      "seed": 140
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6355815969457641929,
+      "seed": 141
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2116806487817310466,
+      "seed": 142
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3385804137458279351,
+      "seed": 143
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3392410572128669281,
+      "seed": 144
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6805248127552721836,
+      "seed": 145
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2653073306314260849,
+      "seed": 146
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2209204479975925405,
+      "seed": 147
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3328242373133822926,
+      "seed": 148
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -530800574811672449,
+      "seed": 149
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3884289462737642759,
+      "seed": 150
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4027179103137170822,
+      "seed": 151
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3477298948371508175,
+      "seed": 152
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8857033766452438406,
+      "seed": 153
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1619229608179629094,
+      "seed": 154
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2461302619249670387,
+      "seed": 155
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3619101792652640894,
+      "seed": 156
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6102018727605526153,
+      "seed": 157
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6352309401635530580,
+      "seed": 158
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8712483868090953221,
+      "seed": 159
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 162761100974010890,
+      "seed": 160
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7926974698396889242,
+      "seed": 161
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 9092962944299467272,
+      "seed": 162
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4675852844144241976,
+      "seed": 163
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5792081367313125902,
+      "seed": 164
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1959975425810026629,
+      "seed": 165
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7970686993090556397,
+      "seed": 166
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3329862428014761573,
+      "seed": 167
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7490518390294386321,
+      "seed": 168
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7685818450230999767,
+      "seed": 169
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4174950016128777675,
+      "seed": 170
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2440985114808545725,
+      "seed": 171
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7161140021889965762,
+      "seed": 172
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4868887133479099794,
+      "seed": 173
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2153521169937845886,
+      "seed": 174
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 390210061567345176,
+      "seed": 175
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 570283403024327317,
+      "seed": 176
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8359152290937465137,
+      "seed": 177
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8961818555191344012,
+      "seed": 178
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3832012836617353617,
+      "seed": 179
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8940300829779060970,
+      "seed": 180
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6227624814207836149,
+      "seed": 181
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3851028781563411688,
+      "seed": 182
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2144752734406010871,
+      "seed": 183
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5008278319976066721,
+      "seed": 184
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1269841686024883124,
+      "seed": 185
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 762756864289119666,
+      "seed": 186
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -665069983964440087,
+      "seed": 187
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4129985245371041692,
+      "seed": 188
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3786000045706413921,
+      "seed": 189
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8230712180598774991,
+      "seed": 190
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4236349802309327551,
+      "seed": 191
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3997678816793688603,
+      "seed": 192
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4726768688808727425,
+      "seed": 193
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -9049922502440962595,
+      "seed": 194
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5917168190474286227,
+      "seed": 195
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8242433125438009228,
+      "seed": 196
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7101542191655996488,
+      "seed": 197
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 6522678226236397232,
+      "seed": 198
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1084673733037239715,
+      "seed": 199
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1378545175939217486,
+      "seed": 200
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -9207432855537298083,
+      "seed": 201
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 257660422665681952,
+      "seed": 202
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1265274169285963301,
+      "seed": 203
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7928754275587733153,
+      "seed": 204
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3835623686069442464,
+      "seed": 205
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5756875569227026133,
+      "seed": 206
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7293388442043505893,
+      "seed": 207
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4633559669977048388,
+      "seed": 208
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1272784983467431579,
+      "seed": 209
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3119559854503579364,
+      "seed": 210
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3585453247624127463,
+      "seed": 211
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2770735366481289619,
+      "seed": 212
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 8771538580796767191,
+      "seed": 213
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1768603486645417256,
+      "seed": 214
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 901536529201831229,
+      "seed": 215
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2979180514593629664,
+      "seed": 216
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4822564830496814351,
+      "seed": 217
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2967800072033199399,
+      "seed": 218
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2387304497475591005,
+      "seed": 219
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5756243871553170293,
+      "seed": 220
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2428392339627186544,
+      "seed": 221
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -625018175992888387,
+      "seed": 222
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4729654754524452958,
+      "seed": 223
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 5737121165176487561,
+      "seed": 224
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6279506607692274381,
+      "seed": 225
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4478369996216808058,
+      "seed": 226
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5784843412963659623,
+      "seed": 227
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 4257910492725399674,
+      "seed": 228
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -262765456333828875,
+      "seed": 229
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -9064087105955890855,
+      "seed": 230
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4240271752761921337,
+      "seed": 231
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7767506231209971237,
+      "seed": 232
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2314531749128861804,
+      "seed": 233
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -9201851850313500241,
+      "seed": 234
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -5994489537218293006,
+      "seed": 235
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1984675437624279788,
+      "seed": 236
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2364788758305025018,
+      "seed": 237
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3619210136081737493,
+      "seed": 238
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6491864995069327814,
+      "seed": 239
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 13235264120820753,
+      "seed": 240
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1624717872499824428,
+      "seed": 241
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -2936514156473864498,
+      "seed": 242
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 3479438136470943610,
+      "seed": 243
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1062483529334724155,
+      "seed": 244
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 1935801863511387321,
+      "seed": 245
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -8535880720124470961,
+      "seed": 246
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 2439157973986480651,
+      "seed": 247
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -3497996287559504013,
+      "seed": 248
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7196481037750120901,
+      "seed": 249
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -7895111955573662210,
+      "seed": 250
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -6173957268970881276,
+      "seed": 251
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 591849388377732499,
+      "seed": 252
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -4321646433605812245,
+      "seed": 253
+    },
+    {
+      "A_boolean_flip_count": 1,
+      "A_full_extraction_exact": 157,
+      "A_mismatch_diff_paths": [
+        "/adapter_metadata/implicit_actions_ignored"
+      ],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": -1605609250268687804,
+      "seed": 254
+    },
+    {
+      "A_boolean_flip_count": 0,
+      "A_full_extraction_exact": 158,
+      "A_mismatch_diff_paths": [],
+      "A_semantic_status_exact": 158,
+      "B_boolean_flip_count": 0,
+      "B_full_extraction_exact": 158,
+      "B_mismatch_diff_paths": [],
+      "B_semantic_status_exact": 158,
+      "hash_sentinel": 7541720818185262158,
+      "seed": 255
+    }
+  ],
+  "seed_range": {
+    "end": 255,
+    "inclusive": true,
+    "start": 0
+  },
+  "selected_seed": 0,
+  "selection_rule": "smallest_seed_with_both_full_extraction_exact_counts_158",
+  "selection_scope": "all_158_RUN2_A_and_all_158_RUN2_B_full_extractions",
+  "semantic_status_invariance_required": true,
+  "status": "whole_anchor_exact_seed_found"
+}

@@ -1,0 +1,231 @@
+{
+  "inventory_format": "metnos.intent-prompt-authority-inventory/0.1",
+  "current_prompt_version": "metnos.intent-ir-prompt-overlay/0.3",
+  "current_prompt_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+  "current_prompt_bytes": 22868,
+  "current_prompt_lines": 114,
+  "registry_data_sha256": "5ddedd2625b31b3a2dbee516ba5f1e396d32b841084536760fab2ae5a548d4c7",
+  "root_templates": [
+    "- {\"kind\":\"operation_graph\",\"steps\":[{\"route\":\"<registry-route>\"}]}",
+    "- {\"kind\":\"system_control\",\"control\":\"<registry-control>\"}",
+    "- {\"kind\":\"unrepresentable\",\"reason\":\"<registry-reason>\"}"
+  ],
+  "rules": [
+    {
+      "rule_id": "root",
+      "label": "ROOT",
+      "constraint": "Select exactly one root that matches the request before writing details; emit one JSON object with kind first."
+    },
+    {
+      "rule_id": "operations",
+      "label": "OPERATIONS",
+      "constraint": "Emit only operations required by the request; never enumerate the registry or alternatives."
+    },
+    {
+      "rule_id": "edges",
+      "label": "EDGES",
+      "constraint": "Omit from unless an operation has a real data dependency; every index identifies a strictly previous operation visible on the same path; operation ordinal 0 omits from; never reference the current or a later ordinal."
+    },
+    {
+      "rule_id": "ports",
+      "label": "PORTS",
+      "constraint": "Emit no ports, input, or output; the compiler derives unique registry ports."
+    },
+    {
+      "rule_id": "barrier",
+      "label": "BARRIER",
+      "constraint": "Put every operation that requires approval in the barrier body; emit no outcomes or continuations; the body means approved and the compiler creates an empty rejection."
+    },
+    {
+      "rule_id": "output",
+      "label": "OUTPUT",
+      "constraint": "Emit no explanations or extra keys; emit no path, ordinal, or free inputs."
+    }
+  ],
+  "current_statements": [
+    {
+      "line_number": 2,
+      "text": "CHOOSE ROOT FIRST: select exactly one root that matches the request, then emit it as one JSON object with kind first.",
+      "rule_ids": [
+        "root"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 3,
+      "text": "EQUIVALENT ROOT TEMPLATES:",
+      "rule_ids": [
+        "root"
+      ],
+      "role": "heading"
+    },
+    {
+      "line_number": 4,
+      "text": "- {\"kind\":\"operation_graph\",\"steps\":[{\"route\":\"<registry-route>\"}]}",
+      "rule_ids": [
+        "root"
+      ],
+      "role": "minimal_template"
+    },
+    {
+      "line_number": 5,
+      "text": "- {\"kind\":\"system_control\",\"control\":\"<registry-control>\"}",
+      "rule_ids": [
+        "root"
+      ],
+      "role": "minimal_template"
+    },
+    {
+      "line_number": 6,
+      "text": "- {\"kind\":\"unrepresentable\",\"reason\":\"<registry-reason>\"}",
+      "rule_ids": [
+        "root"
+      ],
+      "role": "minimal_template"
+    },
+    {
+      "line_number": 7,
+      "text": "FORBIDDEN: explanations, extra keys, ports, path, ordinal, outcome, continuation, or free inputs.",
+      "rule_ids": [
+        "output",
+        "ports",
+        "barrier"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 8,
+      "text": "OPERATIONS: emit only operations required by the request; never enumerate the registry or alternatives.",
+      "rule_ids": [
+        "operations"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 9,
+      "text": "OPERATION ORDINAL 0 MUST OMIT FROM: it has no previous operation.",
+      "rule_ids": [
+        "edges"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 10,
+      "text": "FROM: omit from unless an operation has a real data dependency; each index must identify a strictly previous operation visible on the same path.",
+      "rule_ids": [
+        "edges"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 11,
+      "text": "A STEP MUST NEVER REFERENCE ITS OWN ORDINAL OR A LATER ORDINAL.",
+      "rule_ids": [
+        "edges"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 12,
+      "text": "VALID COMPLETE GRAPH: {\"kind\":\"operation_graph\",\"steps\":[{\"route\":\"<source-route>\"},{\"route\":\"<consumer-route>\",\"from\":[0]}]}",
+      "rule_ids": [
+        "operations",
+        "edges"
+      ],
+      "role": "long_example"
+    },
+    {
+      "line_number": 13,
+      "text": "FORBIDDEN: input/output; the compiler derives unique registry ports.",
+      "rule_ids": [
+        "ports"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 14,
+      "text": "BARRIER: body contains every operation that requires approval.",
+      "rule_ids": [
+        "barrier"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 15,
+      "text": "FORBIDDEN: outcomes or continuations; body means approved and the compiler creates an empty rejection.",
+      "rule_ids": [
+        "barrier"
+      ],
+      "role": "instruction"
+    },
+    {
+      "line_number": 16,
+      "text": "VALID BARRIER: {\"barrier\":\"<registry-barrier>\",\"body\":[{\"route\":\"<route>\"}]}",
+      "rule_ids": [
+        "barrier"
+      ],
+      "role": "long_example"
+    },
+    {
+      "line_number": -5,
+      "text": "FINAL MINI-CHECK:",
+      "rule_ids": [
+        "root",
+        "operations",
+        "edges",
+        "ports",
+        "barrier",
+        "output"
+      ],
+      "role": "heading"
+    },
+    {
+      "line_number": -4,
+      "text": "- Exactly one root was selected before writing details.",
+      "rule_ids": [
+        "root"
+      ],
+      "role": "summary"
+    },
+    {
+      "line_number": -3,
+      "text": "- An operation graph contains only necessary operations; step 0 omits from.",
+      "rule_ids": [
+        "operations",
+        "edges"
+      ],
+      "role": "summary"
+    },
+    {
+      "line_number": -2,
+      "text": "- Every from denotes a real dependency on a strictly previous visible operation.",
+      "rule_ids": [
+        "edges"
+      ],
+      "role": "summary"
+    },
+    {
+      "line_number": -1,
+      "text": "- No registry enumeration, alternative plan, forbidden field, or explanatory text is present.",
+      "rule_ids": [
+        "operations",
+        "output",
+        "ports",
+        "barrier"
+      ],
+      "role": "summary"
+    }
+  ],
+  "equivalence_contract": {
+    "same_rules_once_in_s1_s2": true,
+    "same_rule_order_in_s1_s2": true,
+    "same_root_templates": true,
+    "same_registry_data_bytes": true,
+    "long_examples_removed_because_they_duplicate_schema_and_mapped_rules": true,
+    "new_semantic_rules": 0
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "inventory_payload_sha256": "916ba5221989501e1dd6eeafb4c0c3e1d2c2644a6a1d388ad3a697d9764564a9"
+  }
+}

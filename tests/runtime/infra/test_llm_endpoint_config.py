@@ -20,6 +20,7 @@ from unittest import mock
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import llm_helpers  # noqa: E402
+import llm_provider  # noqa: E402
 import llm_router  # noqa: E402
 
 
@@ -98,6 +99,7 @@ class TestCallLlmUsesConfiguredEndpoint(unittest.TestCase):
         class FakeProvider:
             def __init__(self, *, model, endpoint, id_slot=None):
                 captured["endpoint"] = endpoint
+                captured["id_slot"] = id_slot
 
             def chat(self, *a, **k):
                 return mock.Mock(text="ok", in_tokens=1, out_tokens=1)
@@ -108,6 +110,23 @@ class TestCallLlmUsesConfiguredEndpoint(unittest.TestCase):
             text, _ = llm_helpers.call_llm("q", "P", tier="fast")
         self.assertEqual(text, "ok")
         self.assertEqual(captured["endpoint"], "http://127.0.0.1:9123")
+        self.assertEqual(captured["id_slot"], 1)
+
+    def test_metnos_slot_env_is_central_and_validated(self):
+        with mock.patch.dict("os.environ", {"METNOS_LLM_SLOT_ID": "3"}):
+            provider = llm_provider.make_provider_from_spec({
+                "provider": "llamacpp",
+                "model": "local",
+                "endpoint": "http://127.0.0.1:8080",
+            })
+        self.assertEqual(provider.id_slot, 3)
+
+        with mock.patch.dict("os.environ", {"METNOS_LLM_SLOT_ID": "auto"}):
+            with self.assertRaises(ValueError):
+                llm_provider.make_provider_from_spec({
+                    "provider": "llamacpp",
+                    "model": "local",
+                })
 
     def test_proc_path_props_and_template_hit_configured_endpoint(self):
         urls = []

@@ -1,0 +1,30 @@
+{
+  "versione": "sentinelle_mappatura_SIGILLATA/1.0",
+  "avvertenza": "SIGILLATO: Claude non deve aprire questo file prima di avere consegnato la propria adjudicazione indipendente sull'estratto cieco.",
+  "permutazione_fissa": {
+    "metodo": "assegnazione deterministica fissata una sola volta, senza Math.random o altra casualità",
+    "mappatura": {
+      "braccio_1": "c11",
+      "braccio_2": "A+riparo_ruolo (controllo; replica proveniente da prova_specchi_riparo_c10.json)",
+      "braccio_3": "c10"
+    }
+  },
+  "repliche_controllo": {
+    "verifica": "Le due repliche fresche di A+riparo_ruolo contenute nei file c10 e c11 sono identiche su valid, reason e frame per tutti i 120 indici.",
+    "scelta": "Nell'estratto è usata soltanto la replica del file prova_specchi_riparo_c10.json."
+  },
+  "avvertenze_normalizzazione": [
+    "I tre bracci non avevano lo stesso schema esposto al modello: c10 tagliava input_from_predicate_id, predicate_id e predicate_anchor_token_id; c11 tagliava anche role.",
+    "uscita_specchi.py ripristina deterministicamente prima della validazione ogni specchio tagliato copiandolo dal semantic_head corrispondente; per questo i frame raccolti hanno già una proiezione canonica comune con gli stessi nomi di campo nei predicates.",
+    "L'estratto conserva integralmente quella proiezione comune e omette metadati di configurazione, elenco dei tagli e conteggi dei campi, che avrebbero rivelato l'identità del braccio.",
+    "La presenza dei campi ripristinati nell'estratto non prova che siano stati emessi dal modello: per c10 e c11 sono valori derivati deterministicamente secondo la configurazione sopra."
+  ],
+  "integrita_al_momento_del_sigillo": {
+    "sentinelle_semantiche_file_sha256": "3b781c30137229a27440c2236cdf87ae06a2cf29ca473057fd39cd94903d7a2a",
+    "sentinelle_semantiche_payload_sha256": "6f2f3a35f5734160610141c7e35c4bcdb5b3352a4ad3bd065f89a6e997532309",
+    "sentinelle_estratto_cieco_file_sha256": "c6b1020abaef3be47409c97ede4514bdfb387427570d3003b54ea9437b988c30",
+    "adjudicazione_colonna_codex_file_sha256": "ccd58c38cd4f0ca5ad6e5ac307cb216832f014f55473b1856cac8949f812b9b2",
+    "prova_specchi_riparo_c10_file_sha256": "25781e2bb38e1f2ca3930ede8b08da8d9968afaa55447e61b1dec409f062d07a",
+    "prova_specchi_riparo_c11_file_sha256": "4d0b3aac836fce1a4f2b2eee6d89395c1b3757470716383b8fe4136adc1ba87f"
+  }
+}

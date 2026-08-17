@@ -1,0 +1,129 @@
+{
+ "artifacts": {
+  "metnos_v26565_author_pre_gate.json": {
+   "bytes": 674,
+   "sha256": "d9bc4f13915e9e83e9f2b11267adc02f880ab255fc0d2983802fe1ac7dbe3add"
+  },
+  "metnos_v26565_author_selftest_result.json": {
+   "bytes": 7885,
+   "sha256": "51b53bc338daea8187f281a61c0ee83046b70f9e6175f013a992c40fb24bcb12"
+  },
+  "metnos_v26565_clause_owned.prompt.txt": {
+   "bytes": 8775,
+   "sha256": "0c798be9821a484e718b4c6a5ed8ebc623dee16c08fe8713d1723d22bada5cba"
+  },
+  "metnos_v26565_clause_owned.schema.json": {
+   "bytes": 10470,
+   "sha256": "3cd2655474d30868090010feb6a21dc08ecfe03f059b99cf3bd85fde85f32b49"
+  },
+  "metnos_v26565_contamination_audit.json": {
+   "bytes": 697,
+   "sha256": "b9ee5a25435fe9859ba7bdd333ab57b09f109ef6dea500b7b7922b7b42f5bea6"
+  },
+  "metnos_v26565_expander.py": {
+   "bytes": 13692,
+   "sha256": "693803b3863358aa652eb2e8dd7a849981842ffd6bc8b707d3195a3f74a21577"
+  },
+  "metnos_v26565_offline_pipeline.py": {
+   "bytes": 5096,
+   "sha256": "2acd745373e8f518391d1b47099e73dd48f01ad6a4678a8c021e80e8bb5e4cd1"
+  },
+  "metnos_v26565_offline_selftest.py": {
+   "bytes": 33312,
+   "sha256": "8a68394942e1e24eac3f98397330b209ef3cdd31abbbfc631dd7c57f2eb51f35"
+  },
+  "metnos_v26565_registry_projection.py": {
+   "bytes": 18674,
+   "sha256": "acdfe3e347f314037a733b784fa3978d4c96ced7f794b0d2868a17f4360eb939"
+  }
+ },
+ "frozen_at": "2026-08-09",
+ "inference": false,
+ "limits": {
+  "authorizes_runtime_cutover": false,
+  "authorizes_transport": false,
+  "certifies_general_109": false,
+  "registry_relations": 10
+ },
+ "live_runs": 0,
+ "model_calls": 0,
+ "network_calls": 0,
+ "reused_frozen_dependencies": {
+  "injected_validator": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2653/metnos_v2653_injected_validator.py",
+   "sha256": "66760987f5d2335c79114632affa5c04ffecd9ffe5f8e1a7adec7bc50b4b793d"
+  },
+  "oracle_overlay": {
+   "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_typed_oracle_v1.overlay.json",
+   "sha256": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af"
+  },
+  "phase1_fixture": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_phase1_controls_frozen.json",
+   "sha256": "1dfbc5d2a7a83308a0f414d1b2c0b395f096d034471930fbaa886627aa79d954"
+  },
+  "runtime_controls34": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_runtime_controls34.json",
+   "sha256": "23e6e39df4d697a36c81fd911a0f3aa17e3ccaeeb126fcb2bcd2bcd5b3a191e1"
+  },
+  "typed_registry": {
+   "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_registry.json",
+   "sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f"
+  }
+ },
+ "selftest": {
+  "all_green": true,
+  "by_group": {
+   "best_effort_diagnosis": {
+    "passed": 3,
+    "total": 3
+   },
+   "contamination": {
+    "passed": 2,
+    "total": 2
+   },
+   "coverage_shapes": {
+    "passed": 5,
+    "total": 5
+   },
+   "fail_closed": {
+    "passed": 3,
+    "total": 3
+   },
+   "fingerprint_privacy": {
+    "passed": 3,
+    "total": 3
+   },
+   "materialisation": {
+    "passed": 4,
+    "total": 4
+   },
+   "mutation_suite": {
+    "passed": 3,
+    "total": 3
+   },
+   "no_emitted_identity": {
+    "passed": 5,
+    "total": 5
+   },
+   "no_fatal_invariant_outside_the_schema": {
+    "passed": 5,
+    "total": 5
+   },
+   "regression_of_the_v26564_failures": {
+    "passed": 4,
+    "total": 4
+   },
+   "representability": {
+    "passed": 2,
+    "total": 2
+   },
+   "unicode_metamorphic": {
+    "passed": 3,
+    "total": 3
+   }
+  },
+  "passed": 42,
+  "total": 42
+ },
+ "version": "metnos.v26.5.6.5-author-freeze/1.0"
+}

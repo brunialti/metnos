@@ -1,0 +1,19 @@
+{
+  "authority": "independent_v2641_transport_preflight_review",
+  "authorized_attempts": 1,
+  "authorized_endpoint": "http://127.0.0.1:8080",
+  "authorized_method": "GET",
+  "authorized_output_path": "/tmp/metnos_v2641_transport_preflight_result.json",
+  "authorized_url": "http://127.0.0.1:8080/v1/models",
+  "freeze_sha256": "6f98647d6a9ea3b46ec521dca50e9f5bb00352d9b9360047219bd81976cd6eff",
+  "independent_review_path": "/opt/metnos/internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_transport_preflight_authorization_review.json",
+  "independent_review_sha256": "0709b7997577ad2b61c18eb87f114a0ff3fa679ecb07a314af2bc9d378f003ac",
+  "inference_calls": 0,
+  "lock_version": "metnos.v26.4.1-transport-preflight-lock/1.0",
+  "network_calls_before_lock": 0,
+  "request_body_allowed": false,
+  "runner_sha256": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+  "status": "authorized_one_inference_free_transport_preflight",
+  "verifier_path": "/opt/metnos/internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_transport_preflight_gate_verifier.py",
+  "verifier_sha256": "c53aafeec37cfcc02b7804654ecdc89dcd8ee34c0b701565b152d21a663fce8d"
+}

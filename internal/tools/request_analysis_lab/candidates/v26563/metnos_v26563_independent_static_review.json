@@ -1,0 +1,101 @@
+{
+  "version": "metnos.v26.5.6.3-independent-infrastructure-review/1.0",
+  "review_date": "2026-08-09",
+  "verdict": "STATIC_BLOCK",
+  "live_authorization": false,
+  "preflight_authorization": false,
+  "network_calls": 0,
+  "server_calls": 0,
+  "model_calls": 0,
+  "gate_created": false,
+  "preflight_created": false,
+  "frozen_candidate_artifacts_modified": false,
+  "candidate_identity": {
+    "runner_sha256": "8571df498a58a9de9cc6703845a156e4d7a0dd679107f753a090f2cb9e509465",
+    "offline_evaluator_sha256": "5046d26effe17e2b39a8fac41c1efa4850f8b69784a499fc6ff32d72506df3ac",
+    "selftest_sha256": "865d05ca73fa2fdbcb41aac3f7b31805ee3de140ff9e0e0fb40055199a3055c0",
+    "freeze_sha256": "f3a655d1786b651da509c91a4cf0f9679f6e192885d744ffb100486c6bd224cc",
+    "author_pre_gate_sha256": "66e53e250bb64d005287ef29d79cd4330208680c4c7ad2da8e7874f52a4f40fa",
+    "author_selftest_result_sha256": "1496cb597700ee8e6a9c7dfcde7e9ec79da857d96595302f4ad3b4c8fbae9afe"
+  },
+  "fresh_replays": {
+    "selftest": "66/66 PASS",
+    "verify_freeze": "PASS",
+    "fake_complete_batch_get": 1,
+    "fake_complete_batch_post": 34,
+    "fake_complete_batch_opens": 35,
+    "real_network_calls": 0,
+    "real_model_calls": 0
+  },
+  "semantic_parent_identity": {
+    "checked": 8,
+    "byte_identical": 8,
+    "identities": [
+      "facade_v2655",
+      "worker_v2654",
+      "worker_manifest_v2654",
+      "compact_adapter",
+      "injected_validator",
+      "typed_registry",
+      "compact_schema",
+      "compact_prompt"
+    ]
+  },
+  "freeze_dependency_audit": {
+    "artifact_pins": 20,
+    "artifact_pin_failures": 0,
+    "jsonschema_tree_files": 38,
+    "regex_tree_files": 11,
+    "loaded_nonstdlib_modules": 51,
+    "candidate_bytecode_entries": 0
+  },
+  "passed_corrections": {
+    "predecessor_eight_bypasses_rejected_before_gold": 8,
+    "request_post_bytes_sha_reconstructed_exactly": "34/34",
+    "response_body_fields_absent_from_genuine_batch": true,
+    "added_record_response_body_rejected_before_gold": true,
+    "added_preflight_response_body_rejected_before_gold": true,
+    "transport_latency_must_not_exceed_total": true,
+    "transport_plus_facade_must_not_exceed_total": true,
+    "summary_latencies_recomputed": true,
+    "canonical_ipv4_ipv6_loopback": true,
+    "userinfo_path_query_fragment_rejected": true,
+    "gate_absence_split_inherited": true,
+    "execution_context_and_dependency_tree_inherited": true
+  },
+  "endpoint_boundary": {
+    "ipv4_port_1": "ACCEPT",
+    "ipv4_port_65535": "ACCEPT",
+    "ipv6_port_1": "ACCEPT",
+    "ipv6_port_65535": "ACCEPT",
+    "port_over_65535": "REJECT",
+    "ipv4_port_0": "ACCEPT_AND_PHASE1_EVALUATED_WITH_FAKE_TRANSPORT",
+    "ipv6_port_0": "ACCEPT_AND_PHASE1_EVALUATED_WITH_FAKE_TRANSPORT",
+    "classification": "OPERATIONAL_BOUNDARY_DEFECT_NOT_REAL_TRANSPORT_FAIL_OPEN"
+  },
+  "blockers": [
+    {
+      "id": "NESTED_JSON_EXACT_TYPE_CLOSURE_INCOMPLETE",
+      "classification": "FAIL_OPEN_PRE_GOLD_BLOCKER",
+      "cause": "Nested interpreter-context and validation maps are compared with Python equality, which treats integer 1/0 as equal to JSON true/false.",
+      "mutations_that_reached_first_gold_and_phase1_evaluated": [
+        "inline_transport_preflight.interpreter_context.isolated=1",
+        "inline_transport_preflight.interpreter_context.dont_write_bytecode=1",
+        "evaluated_valid result.validation.attempted=1",
+        "model_content_json_invalid result.validation.attempted=0"
+      ],
+      "additional_domain_gap": "All four preflight timestamps can be shifted to negative integers while preserving duration and still reach gold.",
+      "first_gold_identity_opened": "source_controls34",
+      "observed_terminal_status": "PHASE1_EVALUATED",
+      "minimal_fix": "Validate every nested envelope and exact scalar type before equality, use identity checks for booleans, require nonnegative time_ns values, and apply the same exact-type discipline to future gate envelopes."
+    },
+    {
+      "id": "NONAUTHORITATIVE_HASH_OBSERVATIONS_UNLABELLED",
+      "classification": "CLAIM_CONTRACT_BLOCKER",
+      "cause": "raw_frame_sha256 and model_content bytes/SHA cannot be reconstructed from the persisted batch; arbitrary well-formed replacements reach gold, although Phase-1 decisions ignore them.",
+      "decision_effect": "NONE_IN_PINNED_PHASE1_EVALUATOR",
+      "minimal_fix": "Remove the fields, or place them in a closed observation_only envelope with authoritative=false and prohibit their use by gates, metrics and verdicts."
+    }
+  ],
+  "next_step": "Create a byte-distinct successor closing nested exact types, timestamp and port boundaries, and observation-only labeling/removal; then repeat independent offline review. Do not create either V26.5.6.3 gate."
+}

@@ -1,0 +1,244 @@
+{
+  "version": "metnos.v26.5.2-independent-static-review/1.0",
+  "review_date": "2026-08-09",
+  "reviewer": "independent_codex_subagent_v264_graph_invariants",
+  "scope": "offline_static_and_replay_only",
+  "verdict": "STATIC_BLOCK",
+  "live_authorization": false,
+  "candidate_artifacts_modified": false,
+  "network_calls": 0,
+  "model_calls": 0,
+  "freeze_created": false,
+  "gate_created": false,
+  "candidate_identity": {
+    "manifest_sha256": "c0761aef08a120843a33dfc86756eed3caf823f0b1ffd26d7a0bcc140b31d56a",
+    "candidate_core_sha256": "e62a1c3b24314736d8c5e8fcc0a52501bfe385bf2a8c17b65f423dabbf3a1ec3",
+    "candidate_core_result_sha256": "5cbcf034f43a0dca9807d1071e9d94d95555d40f9d2d8102e84940fd290eb9bc",
+    "preimport_verifier_sha256": "3453a1eb3e8c81c454e31e723d7c900cc3aaf27859a448942858190b134d9cef",
+    "preimport_verifier_result_sha256": "057d9579b6552015981f1ac67d2b324f94897e5865bcda7e73653e705a4bbcc6",
+    "readme_before_review_sha256": "1bbc2b365291b8dfcf01c3dc3081b6d221975b1918152475d12549d01f8e6ad9"
+  },
+  "inherited_artifact_identity": {
+    "adapter_sha256": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+    "schema_sha256": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+    "prompt_sha256": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+    "registry_sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+    "validator_sha256": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656",
+    "fixture_sha256": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e"
+  },
+  "fresh_replays": [
+    {
+      "id": "preimport_verifier",
+      "command": "env PYTHONDONTWRITEBYTECODE=1 python3 -B internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_preimport_verifier.py",
+      "tests": 43,
+      "passed": 43,
+      "failed": 0,
+      "artifacts": 38,
+      "stdout_sha256": "057d9579b6552015981f1ac67d2b324f94897e5865bcda7e73653e705a4bbcc6",
+      "byte_identical_to_archived_result": true
+    },
+    {
+      "id": "candidate_core",
+      "command": "env PYTHONDONTWRITEBYTECODE=1 python3 -B internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_candidate_core.py --self-test",
+      "tests": 114,
+      "passed": 114,
+      "failed": 0,
+      "breakdown": {
+        "policy_mutations": 14,
+        "accessor_mutations": 4,
+        "positive_controls": 6,
+        "native_negative_cases": 16,
+        "historical_cases": 68
+      },
+      "stdout_sha256": "5cbcf034f43a0dca9807d1071e9d94d95555d40f9d2d8102e84940fd290eb9bc",
+      "byte_identical_to_archived_result": true
+    },
+    {
+      "id": "compact_mutation_suite",
+      "command": "env PYTHONDONTWRITEBYTECODE=1 python3 -B internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_compact_mutation_suite.py",
+      "tests": 106,
+      "passed": 106,
+      "failed": 0,
+      "positive_controls": 6,
+      "native_negative_cases": 16,
+      "historical_mutations": 68,
+      "stdout_sha256": "3306d299b18726da1b903643d9c85763c05ec57680259c2ab05ddf0aa8bdb68f",
+      "byte_identical_to_archived_result": true
+    },
+    {
+      "id": "contamination_audit",
+      "command": "env PYTHONDONTWRITEBYTECODE=1 python3 -B internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_contamination_audit.py",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "queries": 213,
+      "surface_or_mixed_lines": 0,
+      "whole_query_overlaps": 0,
+      "ngram_overlaps_ge_3": 0,
+      "stdout_sha256": "50e1c5931fe60bfb1007bf5624b1f836214c43fab98194350b66921549487c92",
+      "byte_identical_to_archived_result": true
+    }
+  ],
+  "independent_adversarial_probe": {
+    "temporary_path": "/tmp/metnos_v2652_independent_adversarial_probe.py",
+    "script_sha256": "ff0495a343b14062cdf95705ef1c63933d87ddea3de8e6273cea52a6cd2ad361",
+    "stdout_sha256": "c6f250cf9dbbdb17e11734dbfdcf72afa90154a9ac62c783545959bda1432323",
+    "source_executions_used_for_falsification": 2,
+    "network_calls": 0,
+    "model_calls": 0,
+    "candidate_files_written": 0,
+    "observations": {
+      "manifest_38_artifacts_43_of_43": true,
+      "required_policy_maps_equal_9_of_9": true,
+      "exact_bool_missing_string_false_role_swap_rejected": true,
+      "postverification_evidence_promotion_executes": true,
+      "absolute_nonmanifest_source_executes": true,
+      "postverification_schema_promotion_reaches_compile": true,
+      "only_declared_artifact_compile_exec_site": "candidate_core.py:186",
+      "evaluate_segments_public_and_accepts_id_only": true,
+      "current_sources_have_no_transport_import": true,
+      "repository_pyc_reads": 0,
+      "network_events": 0,
+      "unicode_samples_original_request_intact": 7,
+      "unicode_samples_source_aligned": 7,
+      "constructed_transport_source_evades_byte_markers": true
+    }
+  },
+  "requirements": [
+    {
+      "id": "manifest_38_43_hash_before_exec",
+      "result": "PASS_WITH_EXTERNAL_ROOT_CONDITION",
+      "evidence": "The verifier reports 43/43 over 38 artifacts. CandidateCore.load calls verified_manifest before loading adapter or validator, and hashes every declared artifact. The already-imported core and the manifest itself still require a future external pin."
+    },
+    {
+      "id": "candidate_core_114_114",
+      "result": "PASS",
+      "evidence": "Fresh stdout is byte-identical to the archived result: 114/114."
+    },
+    {
+      "id": "required_policies_9_9",
+      "result": "PASS",
+      "evidence": "Core and verifier maps contain the same nine exact path to role/import_allowed pairs, and the current manifest matches all nine."
+    },
+    {
+      "id": "exact_bool_and_declared_policy_mutations",
+      "result": "PASS",
+      "evidence": "Exact false, missing field, string true, and role swap mutations are rejected by both core manifest parsing and verifier; all 14 archived policy mutations pass."
+    },
+    {
+      "id": "direct_accessor_fail_closed",
+      "result": "FAIL",
+      "blocker": "B1",
+      "evidence": "The accessor accepts caller-owned entry maps and caller-owned expected_role. A post-verification evidence promotion executes, a forged absolute path outside the manifest executes, and a promoted schema reaches compile."
+    },
+    {
+      "id": "single_compile_exec_path",
+      "result": "PASS_STRUCTURAL_FAIL_AUTHORITY",
+      "evidence": "AST review finds one artifact source execution statement at candidate_core.py:186. There is no alternate artifact loader, but B1 lets unverified identities reach that one path."
+    },
+    {
+      "id": "schema_and_data_non_executable",
+      "result": "FAIL",
+      "blocker": "B1",
+      "evidence": "Current manifest policy marks schema, registry, prompt and fixture non-executable, but the executable accessor does not bind its entries argument to verified_manifest and accepts post-verification promotion."
+    },
+    {
+      "id": "manifest_self_pin_external",
+      "result": "EXPECTED_EXTERNAL_TRUST_ROOT",
+      "evidence": "The manifest and review cannot self-pin without circularity. No autonomous authority is claimed; a future separate wrapper/freeze must pin manifest, core, verifier and review before import."
+    },
+    {
+      "id": "evaluate_segments_not_exposed",
+      "result": "FAIL",
+      "blocker": "B2",
+      "evidence": "CandidateCore.evaluate_segments is a public method at lines 309-340 and accepts a positive compact frame with a list containing only segment ids, without original_request or source spans."
+    },
+    {
+      "id": "schema_adapter_validator_chain",
+      "result": "PASS_FOR_NORMAL_ENTRYPOINT",
+      "evidence": "evaluate validates compact schema, expands through the compact adapter, then validates the expanded frame. The six positive controls cover direct, fan-out multi-action, multi-domain, output reuse, typed ambiguity and mixed coverage."
+    },
+    {
+      "id": "replay_106_and_audit_15",
+      "result": "PASS",
+      "evidence": "Fresh 106/106 mutation and 15/15 contamination results are byte-identical to their archived JSON results."
+    },
+    {
+      "id": "original_request_and_uax29",
+      "result": "PASS_SCOPED",
+      "evidence": "The request builder retains the exact original string and every emitted span round-trips to its source substring for seven independent multilingual/Unicode samples. regex 2026.3.32 and Unicode 15.0.0 are pinned. This is a source-alignment check, not a complete UAX #29 conformance corpus."
+    },
+    {
+      "id": "no_repository_pyc_reads",
+      "result": "PASS",
+      "evidence": "Fresh runs used PYTHONDONTWRITEBYTECODE=1 and -B. The independent audit hook observed zero reads of repository .pyc paths. Pre-existing repository pyc files were neither used nor modified by this review."
+    },
+    {
+      "id": "no_transport_or_inference",
+      "result": "PASS_CURRENT_BYTES",
+      "evidence": "Static import review of core, adapter, validator and verifier finds no transport modules; the audit hook observed zero network events. No endpoint or model was invoked."
+    },
+    {
+      "id": "verifier_self_entry",
+      "result": "PASS_WITH_EXTERNAL_ROOT_CONDITION",
+      "evidence": "The verifier has a manifest entry, an exact audit_tool/true REQUIRED_POLICIES entry, and a matching SHA. Synchronized replacement of verifier plus manifest remains detectable only by the future external root."
+    },
+    {
+      "id": "constructed_marker_safety",
+      "result": "WARN_FAIL_OPEN_HEURISTIC",
+      "evidence": "The constructed constants evaluate to /tmp/, urllib, http.client, socket and requests and avoid falsely matching the verifier's own bytes. However byte substring scanning accepts an unevaluated source such as __import__(\"so\"+\"cket\"); therefore this check is not a general proof of transport absence. Current frozen bytes contain no such transport path."
+    }
+  ],
+  "blockers": [
+    {
+      "id": "B1_unbound_executable_accessor",
+      "severity": "BLOCKER",
+      "cause": "_artifact_bytes and _source_module trust an arbitrary mutable entries mapping and a caller-selected expected_role instead of re-entering through verified_manifest and an immutable per-path policy.",
+      "code_locations": [
+        "internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_candidate_core.py:158",
+        "internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_candidate_core.py:176",
+        "internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_candidate_core.py:186",
+        "internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_candidate_core.py:210"
+      ],
+      "causal_reproductions": [
+        "Deep-copy verified entries, change metnos_v2651_validator_generator.py from evidence/false to runtime_input/true, and call _source_module: source executes.",
+        "Create a one-entry forged map for an absolute /tmp Python path with its real SHA and runtime_input/true, then call _source_module: source executes although it was never in the verified manifest.",
+        "Deep-copy verified entries, promote the compact schema to runtime_input/true, and instrument compile: the compile canary is reached."
+      ],
+      "impact": "Declared import policy, repository-relative path policy, manifest membership and the data/code boundary are not fail-closed at the sole compile/exec sink."
+    },
+    {
+      "id": "B2_public_ungrounded_evaluation_entrypoint",
+      "severity": "BLOCKER",
+      "cause": "CandidateCore publicly exposes evaluate_segments(compact_frame, segments).",
+      "code_locations": [
+        "internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_candidate_core.py:309",
+        "internal/tools/request_analysis_lab/candidates/v2652/metnos_v2652_candidate_core.py:342"
+      ],
+      "causal_reproduction": "Pass the first positive compact frame and a list of objects containing only consecutive id fields. The method returns stage=accepted without any original request, text, or source offsets.",
+      "impact": "A caller can bypass the public original-request segmentation boundary, so grounding is not enforced by the exposed API."
+    }
+  ],
+  "advisories": [
+    {
+      "id": "A1_transport_marker_is_not_a_parser",
+      "severity": "HIGH_DESIGN_WARNING",
+      "detail": "The verifier's constructed byte markers are correct for its current self-entry, but concatenated names, aliases, dynamic import helpers or encoded strings evade substring matching. Treat current no-transport as an exact-byte static finding, not as a reusable fail-closed verifier guarantee."
+    },
+    {
+      "id": "A2_uax_scope",
+      "severity": "LIMITATION",
+      "detail": "The review verifies original-string preservation and source-span alignment on multilingual edge samples; it does not substitute for the complete Unicode WordBreakTest corpus."
+    }
+  ],
+  "required_v2653_changes": [
+    "No read or executable accessor may accept caller-supplied entries or manifest maps.",
+    "Every read and every source execution must re-enter through verified_manifest, bind to REQUIRED_POLICIES for the exact path, reject absolute/aliased/non-manifest paths, and re-hash immediately before use.",
+    "Keep verified manifest records immutable and do not expose a mutable entries map on CandidateCore.",
+    "Use fixed executable identities for core, adapter and validator; schema, registry, prompt, fixture and evidence must never be promotable to code by a caller argument.",
+    "Remove the public evaluate_segments API. The only public semantic evaluation path must accept original_request and derive real segments internally; tests must use a synthetic original request with real segmentation.",
+    "Add mutations for forged map, absolute path, path alias, post-verification evidence promotion, post-verification schema promotion, mutable core.entries, and id-only evaluation.",
+    "Do not use byte markers as the sole transport prohibition in a future wrapper; combine exact external pinning with a parsed import/call allowlist and process-level network denial."
+  ],
+  "next_step": "Create and independently review V26.5.3 offline. Do not design or authorize a transport wrapper, freeze, gate, network call or model run from this V26.5.2 result."
+}

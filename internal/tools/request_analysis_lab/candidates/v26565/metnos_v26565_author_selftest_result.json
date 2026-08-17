@@ -1,0 +1,322 @@
+{
+ "all_green": true,
+ "by_group": {
+  "best_effort_diagnosis": {
+   "passed": 3,
+   "total": 3
+  },
+  "contamination": {
+   "passed": 2,
+   "total": 2
+  },
+  "coverage_shapes": {
+   "passed": 5,
+   "total": 5
+  },
+  "fail_closed": {
+   "passed": 3,
+   "total": 3
+  },
+  "fingerprint_privacy": {
+   "passed": 3,
+   "total": 3
+  },
+  "materialisation": {
+   "passed": 4,
+   "total": 4
+  },
+  "mutation_suite": {
+   "passed": 3,
+   "total": 3
+  },
+  "no_emitted_identity": {
+   "passed": 5,
+   "total": 5
+  },
+  "no_fatal_invariant_outside_the_schema": {
+   "passed": 5,
+   "total": 5
+  },
+  "regression_of_the_v26564_failures": {
+   "passed": 4,
+   "total": 4
+  },
+  "representability": {
+   "passed": 2,
+   "total": 2
+  },
+  "unicode_metamorphic": {
+   "passed": 3,
+   "total": 3
+  }
+ },
+ "contamination_audit": {
+  "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "prompt_sha256": "0c798be9821a484e718b4c6a5ed8ebc623dee16c08fe8713d1723d22bada5cba",
+  "prompt_token_count": 1256,
+  "queries_audited": 34,
+  "shared_4gram_queries": 0,
+  "verbatim_query_matches": 0
+ },
+ "inference": false,
+ "live_runs": 0,
+ "model_calls": 0,
+ "network_calls": 0,
+ "passed": 42,
+ "results": [
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "schema is a valid 2020-12 schema",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "materialised schema equals the generated schema",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "materialised prompt equals the generated prompt",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "registry hash is pinned",
+   "passed": true
+  },
+  {
+   "detail": "34/34",
+   "group": "representability",
+   "label": "34/34 gold cases are representable and validate",
+   "passed": true
+  },
+  {
+   "detail": "34/34",
+   "group": "representability",
+   "label": "34/34 expanded frames carry exactly the gold semantics",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "regression_of_the_v26564_failures",
+   "label": "two clauses on one identical span are accepted",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "regression_of_the_v26564_failures",
+   "label": "the colliding-span frame is reported as span-colliding",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "regression_of_the_v26564_failures",
+   "label": "the dependency case validates with a full-clause span",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": [\"proof_span\"]}",
+   "group": "regression_of_the_v26564_failures",
+   "label": "a narrower clause span no longer breaks the dependency",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "a second projection in one clause is SCHEMA-INVALID",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "a clause with dependencies and no projection is SCHEMA-INVALID",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "a supported frame with no projected clause is SCHEMA-INVALID",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "the expander is total over every probe frame",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [\"edge_source_ordinal_not_backward\", \"edge_source_ordinal_out_of_range\"], \"validator\": [\"dependency_order\", \"output_unconsumed\"]}",
+   "group": "no_fatal_invariant_outside_the_schema",
+   "label": "an unresolvable edge is reported, not fatal",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": true, \"expansion\": true, \"validator\": true}",
+   "group": "best_effort_diagnosis",
+   "label": "a schema failure still runs expansion and validation",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "best_effort_diagnosis",
+   "label": "the schema stage reported at least one code",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "best_effort_diagnosis",
+   "label": "the validator stage was measured despite the schema failure",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "coverage_shapes",
+   "label": "a multi-clause multi-domain frame validates",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "coverage_shapes",
+   "label": "multi-domain fingerprint records two relations",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "coverage_shapes",
+   "label": "a mixed representable/out-of-registry frame validates",
+   "passed": true
+  },
+  {
+   "detail": "{\"schema\": [], \"expansion\": [], \"validator\": []}",
+   "group": "coverage_shapes",
+   "label": "a typed-ambiguity frame validates with derived alternative ids",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "coverage_shapes",
+   "label": "alternative ids are derived from position",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for clause_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for atom_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for alternative_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the response schema never asks for output_index",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "no_emitted_identity",
+   "label": "the prompt forbids numeric labels",
+   "passed": true
+  },
+  {
+   "detail": "1 distinct",
+   "group": "unicode_metamorphic",
+   "label": "the same structure over 9 scripts yields one fingerprint",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "unicode_metamorphic",
+   "label": "the same structure over 9 scripts is uniformly valid",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "unicode_metamorphic",
+   "label": "segmentation is script independent for the probe set",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contamination",
+   "label": "no control query appears verbatim in the prompt",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contamination",
+   "label": "no 4-token n-gram is shared with any control query",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fingerprint_privacy",
+   "label": "no fingerprint contains request or segment text",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fingerprint_privacy",
+   "label": "every fingerprint string is a closed technical denotation",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fingerprint_privacy",
+   "label": "the fingerprint carries no source span",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fail_closed",
+   "label": "a mutated registry is refused",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fail_closed",
+   "label": "a non-bytes registry is refused",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "fail_closed",
+   "label": "a drifted validator pin is refused",
+   "passed": true
+  },
+  {
+   "detail": "12/12",
+   "group": "mutation_suite",
+   "label": "all 12 semantic mutations are rejected",
+   "passed": true
+  },
+  {
+   "detail": "12/12",
+   "group": "mutation_suite",
+   "label": "every mutation was measured on all three stages",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "mutation_suite",
+   "label": "the clean dependency frame still validates",
+   "passed": true
+  }
+ ],
+ "total": 42,
+ "version": "metnos.v26.5.6.5-offline-selftest/1.0"
+}

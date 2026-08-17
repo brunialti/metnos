@@ -1,0 +1,151 @@
+{
+  "candidate_outputs_read": 0,
+  "generator_sha256": "36be7908f73fbfa4776c15ef1f7c24baceef032021ef878fea37a0b3f9e0a842",
+  "i18n_evidence": {
+    "new_enum_literals": [
+      "from_prior_atom"
+    ],
+    "new_property_names": [
+      "source_ordinal"
+    ],
+    "removed_enum_literals": [
+      "from_atom_output"
+    ],
+    "source_language_lexicon_added": false
+  },
+  "network_calls": 0,
+  "parent_schema_sha256": "06452e75f0a1ec7a42c9bf87dfae3da4e1528fc07b02d9276272a1e9ff0c7fec",
+  "schema_sha256": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+  "summary": {
+    "audit_checks": 6,
+    "failed": 0,
+    "negative_schema_mutations": 5,
+    "passed": 30,
+    "positive_schema_frames": 19,
+    "schema_bytes": 13751,
+    "tests": 30
+  },
+  "tests": [
+    {
+      "id": "P01_direct_current_location",
+      "pass": true
+    },
+    {
+      "id": "P02_polar_complete_proposition",
+      "pass": true
+    },
+    {
+      "id": "P03_queryable_imperative_dependency",
+      "pass": true
+    },
+    {
+      "id": "P04_dependency_fanout",
+      "pass": true
+    },
+    {
+      "id": "P05_two_independent_domains",
+      "pass": true
+    },
+    {
+      "id": "P06_direct_output_also_consumed",
+      "pass": true
+    },
+    {
+      "id": "P07_embedded_plus_main",
+      "pass": true
+    },
+    {
+      "id": "P08_ambiguity_preserves_unaffected_action",
+      "pass": true
+    },
+    {
+      "id": "P09_depth_exactly_four_synthetic_registry",
+      "pass": true
+    },
+    {
+      "id": "P10_diamond_dag_synthetic_registry",
+      "pass": true
+    },
+    {
+      "id": "P11_mixed_supported_unsupported",
+      "pass": true
+    },
+    {
+      "id": "P12_scoped_unknown_unconsumed",
+      "pass": true
+    },
+    {
+      "id": "M014_nested_span_overlap",
+      "pass": true
+    },
+    {
+      "id": "M042_queryable_imperative_one_unknown",
+      "pass": true
+    },
+    {
+      "id": "M043_embedded_unconsumed_unknown_oracle_corrected",
+      "pass": true
+    },
+    {
+      "id": "M047_fanout_second_consumer",
+      "pass": true
+    },
+    {
+      "id": "M048_global_two_unknown_rejection_guard",
+      "pass": true
+    },
+    {
+      "id": "X001_dependency_semantics_make_alternatives_distinct",
+      "pass": true
+    },
+    {
+      "id": "X008_whole_unsupported_valid",
+      "pass": true
+    },
+    {
+      "id": "reject_atom_id",
+      "pass": true
+    },
+    {
+      "id": "reject_clause_id",
+      "pass": true
+    },
+    {
+      "id": "reject_output_index",
+      "pass": true
+    },
+    {
+      "id": "reject_old_edge_kind",
+      "pass": true
+    },
+    {
+      "id": "require_source_ordinal",
+      "pass": true
+    },
+    {
+      "id": "schema_draft_valid",
+      "pass": true
+    },
+    {
+      "id": "no_removed_identifiers",
+      "pass": true
+    },
+    {
+      "id": "only_new_property_is_source_ordinal",
+      "pass": true
+    },
+    {
+      "id": "technical_literals_inherited_exactly",
+      "pass": true
+    },
+    {
+      "id": "no_natural_language_schema_fields",
+      "pass": true
+    },
+    {
+      "id": "existing_probe_still_green",
+      "pass": true
+    }
+  ],
+  "version": "metnos.v26.5-compact-schema-audit/0.1"
+}

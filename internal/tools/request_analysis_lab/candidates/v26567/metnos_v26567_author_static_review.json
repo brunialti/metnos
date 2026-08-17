@@ -1,0 +1,92 @@
+{
+ "authorizes_live": false,
+ "authorizes_transport": false,
+ "confirmed": [
+  {
+   "claim": "the evaluator accepts the bundle's own fake batch",
+   "evidence": "batch 116601 bytes, 34 records",
+   "id": "A0"
+  },
+  {
+   "claim": "expansion_clean_cases is tied to its evidence",
+   "evidence": "forging it on an invalid record is rejected",
+   "id": "B1"
+  },
+  {
+   "claim": "codes that nothing can re-derive are declared, not implied",
+   "evidence": "every record without an expansion carries semantic_codes_reproducible=false",
+   "id": "C2"
+  },
+  {
+   "claim": "the reproducibility declaration cannot be forged",
+   "evidence": "flipping it is rejected before gold",
+   "id": "C3"
+  },
+  {
+   "claim": "the recovered semantic codes are reproducible",
+   "evidence": "erasing them on a censored record is rejected",
+   "id": "C1"
+  },
+  {
+   "claim": "fingerprint and expansion are cross-checked",
+   "evidence": "an inconsistent pair is rejected",
+   "id": "D1"
+  },
+  {
+   "claim": "no smuggling shape reaches a persisted field",
+   "evidence": "5 shapes: fingerprint, schema paths and all code lists stay inside the closed vocabulary",
+   "id": "E1"
+  },
+  {
+   "claim": "an out-of-range span is caught",
+   "evidence": "schema_ok=True, validator=['clause_span', 'proof_family']",
+   "id": "F1"
+  },
+  {
+   "claim": "no transport is reachable without a gate",
+   "evidence": "preflight and live both refuse with the gates absent",
+   "id": "G1"
+  },
+  {
+   "claim": "bundle and pinned bytes are intact",
+   "evidence": "19 pins verified",
+   "id": "H1"
+  }
+ ],
+ "date": "2026-08-10",
+ "findings_before_corrections": [
+  {
+   "closed_by": "exact recomputation when an expansion is persisted, plus an explicit per-record semantic_codes_reproducible declaration that the evaluator enforces",
+   "id": "C1",
+   "title": "recovered semantic codes were not recomputed"
+  },
+  {
+   "closed_by": "the evaluator re-derives from the expansion everything the expansion determines and compares it with the fingerprint",
+   "id": "D1",
+   "title": "the fingerprint was never cross-checked against the expansion"
+  }
+ ],
+ "gate_consumed": false,
+ "gate_created": false,
+ "independence_note": "written by the author of the bundle at the explicit request of the user on 10 August; it is NOT a STATIC PASS independent review and must not be cited as one in any gate or artifact",
+ "independent": false,
+ "live_runs": 0,
+ "model_calls": 0,
+ "network_calls": 0,
+ "not_verified": [
+  "independence: hypotheses the author did not think of remain untested; the two previous independent reviews each found defects the author had missed",
+  "semantic accuracy of the model: no live, no model call",
+  "the general 109 suite: the registry is Phase-1 with 10 relations",
+  "the V26.5.6.6 contract: its independent review was skipped by the user on 9 August"
+ ],
+ "probe": {
+  "path": "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_author_static_review_probe.py",
+  "sha256": "0dee5e809f3471d1133d00f647006f9b59527468b234acebe15f34cb5462f5c3"
+ },
+ "probes": 10,
+ "residual_findings": [],
+ "reviewer": "author",
+ "trust_boundary": "a record that claims success carries re-derivable evidence; a record that declares a failure carries observations and says so; no unreproducible record can be credited by the scorer",
+ "verdict_after_corrections": "PASS",
+ "version": "metnos.v26.5.6.7-author-static-review/1.0"
+}

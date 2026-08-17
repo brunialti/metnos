@@ -1,0 +1,374 @@
+{
+  "candidate_outputs_read": 0,
+  "failed": [],
+  "network_calls": 0,
+  "runner_sha256": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+  "summary": {
+    "failed": 0,
+    "passed": 72,
+    "tests": 72
+  },
+  "tests": [
+    {
+      "detail": "",
+      "id": "semantic_parent_hash:metnos_v2641_typed_registry.json",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_parent_hash:metnos_v2641_typed_phase1.schema.json",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_parent_hash:metnos_v2641_typed_phase1.prompt.txt",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_parent_hash:metnos_v2641_typed_phase1_controls_frozen.json",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_parent_hash:metnos_v264_typed_phase1.freeze.json",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "schema_generated_bytes_unchanged",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "prompt_generated_bytes_unchanged",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_source_bundle_unchanged:segmenter_source_sha256",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_source_bundle_unchanged:schema_prompt_bundle_sha256",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_source_bundle_unchanged:validator_bundle_sha256",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_source_bundle_unchanged:classifier_bundle_sha256",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_source_bundle_unchanged:evaluator_bundle_sha256",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_source_bundle_unchanged:request_body_probe_sha256",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "semantic_source_bundle_unchanged:registry_canonical_sha256",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "eperm_no_body",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "eperm_classified_transport",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "eperm_exception_preserved",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "eperm_errno_preserved",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "eperm_counters",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "http_error_classified",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "http_body_hash_complete",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "http_body_redacted",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "http_counters",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "query_echo_redacted",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "regular_non2xx",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "oversized_bounded",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "oversized_hash_not_misrepresented",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "response_read_error_distinct",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "api_json_error",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "api_shape_error",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "model_json_error",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "decode_success",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "transport_failfast_one_attempt",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "transport_not_evaluated_no_accuracy",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "transport_truthful_counters",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "schema_invalid_continues_all_cases",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "schema_invalid_is_model_evaluated",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "model_content_json_invalid_continues",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "model_content_invalid_exact_counters",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "no_model_calls_claim",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "partial_accuracy_evaluation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "inline_smoke_failure_blocks_all_posts",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "inline_smoke_request_not_inference",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "new_external_gate_contract_valid",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "old_external_gate_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_runner_hash_mutation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_output_mutation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_endpoint_mutation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_inference_before_lock_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_preflight_count_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_inline_preflight_required",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_extra_key_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_smoke_hash_mutation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "external_stale_smoke_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_gate_contract_valid",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_post_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_body_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_attempt_mutation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_inference_mutation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_url_mutation_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_extra_key_rejected",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_one_get",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_no_body_no_completion",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_pass_not_authority",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_counter_not_chat",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "preflight_eperm_diagnostic",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "atomic_output_first_publish",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "atomic_output_no_clobber",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "failed_k1_hash_chain",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "failed_k1_confirmed_eperm",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "failed_k1_latency_signature",
+      "pass": true
+    },
+    {
+      "detail": "",
+      "id": "failed_k1_not_model",
+      "pass": true
+    }
+  ],
+  "version": "metnos.v26.4.1-independent-infra-mutation-probe/1.0"
+}

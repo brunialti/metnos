@@ -1,0 +1,26 @@
+{
+  "format": "metnos.intent-holdout-rubrics/0.3",
+  "uncertain_is_fail": true,
+  "native": [
+    "grammatical regional language",
+    "natural non-translationese wording",
+    "one unambiguous complete intent"
+  ],
+  "semantic": [
+    "all and only obligations present",
+    "scope exact",
+    "relations exact",
+    "expected and safety exact"
+  ],
+  "cross_language": [
+    "no translation or template matrix",
+    "no novelty by names numbers language or punctuation",
+    "no row locking"
+  ],
+  "isolation": [
+    "globally unique context and reviewer",
+    "exact input bundle",
+    "one query per author",
+    "zero forbidden read network GPU or postseal edit"
+  ]
+}

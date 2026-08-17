@@ -1,0 +1,69 @@
+{
+  "overlay_version": "metnos.request-analysis-gold-overlay/1.1",
+  "status": "adjudicated_for_shadow_evaluation",
+  "scope": {
+    "dataset": "v23lite-full-109",
+    "dataset_sha256": "860ed8b6ba5646fd5a5d2d96bf3a9fa09d7f2ffc9dff6560a9fc54eafc7367fa",
+    "dataset_hash_algorithm": "sha256(sorted shard basename + NUL + bytes + NUL)",
+    "source_shard": {
+      "path": "/tmp/metnos_v23lite_full_compound_001_012.json",
+      "sha256": "6363db284990c2dc6d130cceadc9cac875e9fd36ce5134457d1fdd72fdf823e7"
+    },
+    "evaluation_only": true,
+    "runtime_visible": false,
+    "prompt_visible": false,
+    "projector_visible": false
+  },
+  "policy": {
+    "retain_original_metric": true,
+    "report_adjudicated_metric_separately": true,
+    "never_use_overlay_to_select_or_rewrite_a_route": true,
+    "reject_if_dataset_or_query_hash_differs": true
+  },
+  "adjudications": [
+    {
+      "case_id": "v23lite.full.012",
+      "case_index_1based": 12,
+      "query_sha256_utf8": "a049f499f6d470e5c621a1924001d7cda7d3839da149437e5acba71f603621b0",
+      "status": "adjudicated_for_shadow_evaluation",
+      "original_expected": [
+        "read/messages",
+        "extract/entries",
+        "create/files"
+      ],
+      "adjudicated_expected": [
+        "read/messages",
+        "extract/entries",
+        "create/files_spreadsheet"
+      ],
+      "technical_basis": {
+        "catalog_executor": "create_files_spreadsheet",
+        "catalog_route": "create/files_spreadsheet",
+        "catalog_snapshot": {
+          "path": "tests/benchmarks/catalog_snapshot.json",
+          "sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "evidence": "The catalog has an executable create_files_spreadsheet contract whose result is a spreadsheet artifact."
+        },
+        "fixture_contract": {
+          "path": "tests/benchmarks/intent_compound_bench.py",
+          "sha256": "85ef748c5384e72bfeacf018b9e7fdb3f6c74fcc5d64abe518303d4e96657cd0",
+          "evidence": "The maintained benchmark contract states that the generic create/files route does not exist and spreadsheet creation uses create/files_spreadsheet."
+        },
+        "independent_extract_create_contract": {
+          "path": "tests/benchmarks/compound_extract_create_bench.py",
+          "sha256": "9298b00451119d1bf954597446f9a86d47089a4fbff66b963c37bc209b51247a",
+          "evidence": "Independently maintained extract-to-spreadsheet cases require create_files_spreadsheet."
+        },
+        "catalog_argument_roles": [
+          "content",
+          "destination_locator",
+          "format"
+        ],
+        "same_fixture_consistency_case_index_1based": 20,
+        "same_fixture_consistency_query_sha256_utf8": "36597b056ac335914490a0336d3f126546276ce8b937c6bb2e1d69ff5481c462"
+      },
+      "reason": "The output artifact is explicitly a spreadsheet and the catalog exposes the qualified route; the generic files expectation is inconsistent with the same fixture's qualified spreadsheet case.",
+      "prohibited_use": "This adjudication is never an analyzer hint, prompt example, projector rule, manifest fallback, or runtime authority."
+    }
+  ]
+}

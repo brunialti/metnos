@@ -1,0 +1,11 @@
+{
+  "accepted_http_posts": 316,
+  "authorization_sha256": "fbcae2b0ff80a5aa3d04e2aacaa34127f468b483a54e8ad57ee98b1d69c5117b",
+  "journal_sha256": "79ba162e28c0e146d0e4954eaeaa8467780f227549726ff338f5ca97aa68f516",
+  "last_request_ordinal": 316,
+  "manifest_payload_sha256": "cdfc0d8b78d7a69aa9569387b14d2c77d21519f710169637f39aa056d32bb688",
+  "record_count": 316,
+  "run_id": "intent-shadow-v0.2-run1",
+  "runner_version": "metnos.intent-live-runner/0.2-run1",
+  "state": "in_progress"
+}

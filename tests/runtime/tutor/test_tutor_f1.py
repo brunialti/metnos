@@ -2037,6 +2037,35 @@ def test_http_boundary_returns_tutor_without_blocking_event_loop(monkeypatch):
     assert "Fermati se" in result.answer_md
 
 
+def test_http_tutor_elapsed_reaches_preprocessed_turn(monkeypatch):
+    import http_routes_agent
+    from tutor.models import TutorAnswer
+
+    async def tutor(*_args, **_kwargs):
+        return TutorAnswer(
+            esito="fondata",
+            answer_md="Risposta Tutor.",
+            turn_id="0123456789abcdef",
+            elapsed_ms=10964,
+        )
+
+    monkeypatch.setattr(http_routes_agent, "_apply_tutor_http", tutor)
+    data = asyncio.run(http_routes_agent._resolve_open_http_turn(
+        {"role": "admin"},
+        query="Come funziona?",
+        safe_original_query="Come funziona?",
+        sensitive_fields=0,
+        actor="host",
+        user_id="u1",
+        conversation_id="c1",
+        sender_id="http:u1:c1",
+        reference_images=[],
+    ))
+
+    assert data["immediate_source"] == "tutor"
+    assert data["immediate_elapsed_ms"] == 10964
+
+
 def test_tutor_boundary_sensitive_direct_call_falls_through(monkeypatch):
     from contextlib import nullcontext
 
@@ -2220,6 +2249,7 @@ def test_turn_submit_returns_202_while_deferred_tutor_is_running(monkeypatch):
             immediate_msg="Risposta Tutor.",
             immediate_source="tutor",
             immediate_turn_id=kwargs["turn_id_hint"],
+            immediate_elapsed_ms=10964,
             actor=kwargs["actor"],
             user_id=kwargs["user_id"],
             conversation_id=kwargs["conversation_id"],
@@ -2254,6 +2284,7 @@ def test_turn_submit_returns_202_while_deferred_tutor_is_running(monkeypatch):
         assert after["events"][-1]["event_type"] == "final"
         assert after["events"][-1]["payload"]["final_message"] == (
             "Risposta Tutor.")
+        assert after["events"][-1]["payload"]["total_ms"] == 10964
 
     asyncio.run(scenario())
     assert pool.releases == [(reservation, True)]

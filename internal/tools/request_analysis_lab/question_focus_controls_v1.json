@@ -1,0 +1,256 @@
+{
+  "suite_version": "metnos.question-focus-negative-controls/1.0",
+  "created_at": "2026-08-08",
+  "purpose": "Frozen semantic controls for current-actor location binding. No case is derived from candidate output.",
+  "contract": {
+    "positive_tuple": {
+      "speech_act": "open_question",
+      "relation": "located_at",
+      "focus_role": "location",
+      "entity_ref": "current_actor",
+      "time_ref": "current"
+    },
+    "binding_id": "runtime.current_location",
+    "rule": "The binding is expected if and only if the complete positive tuple holds. Using current location as an operand or precursor is not a positive."
+  },
+  "cases": [
+    {
+      "id": "pos.it.reflexive",
+      "lang": "it",
+      "query": "dove mi trovo",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.it.nominal",
+      "lang": "it",
+      "query": "qual è la mia posizione attuale",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.en.copular",
+      "lang": "en",
+      "query": "where am I",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.fr.inversion",
+      "lang": "fr",
+      "query": "où suis-je",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.es.prodrop",
+      "lang": "es",
+      "query": "dónde estoy",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.de.copular",
+      "lang": "de",
+      "query": "wo bin ich",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.tr.fused",
+      "lang": "tr",
+      "query": "neredeyim",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.ja.case_marked",
+      "lang": "ja",
+      "query": "私はどこにいますか",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "pos.zh.wh_in_situ",
+      "lang": "zh",
+      "query": "我在哪里",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "current"],
+      "expect_binding": true
+    },
+    {
+      "id": "neg.identity.it",
+      "lang": "it",
+      "query": "chi sono",
+      "tuple": ["open_question", "identity", "identity", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.identity.en",
+      "lang": "en",
+      "query": "who am I",
+      "tuple": ["open_question", "identity", "identity", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.identity.fr",
+      "lang": "fr",
+      "query": "qui suis-je",
+      "tuple": ["open_question", "identity", "identity", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.identity.es",
+      "lang": "es",
+      "query": "quién soy",
+      "tuple": ["open_question", "identity", "identity", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.identity.de",
+      "lang": "de",
+      "query": "wer bin ich",
+      "tuple": ["open_question", "identity", "identity", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.third_person.it",
+      "lang": "it",
+      "query": "dov'è Lucia",
+      "tuple": ["open_question", "located_at", "location", "explicit_person", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.third_person.en",
+      "lang": "en",
+      "query": "where is Lucia",
+      "tuple": ["open_question", "located_at", "location", "explicit_person", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.third_person.es",
+      "lang": "es",
+      "query": "dónde está Lucia",
+      "tuple": ["open_question", "located_at", "location", "explicit_person", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.people_here.it",
+      "lang": "it",
+      "query": "chi c'è qui",
+      "tuple": ["open_question", "located_at", "entity", "unknown_person", "current_context"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.people_here.en",
+      "lang": "en",
+      "query": "who is here",
+      "tuple": ["open_question", "located_at", "entity", "unknown_person", "current_context"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.place_identity.it",
+      "lang": "it",
+      "query": "che posto è questo",
+      "tuple": ["open_question", "identity", "place_identity", "deictic_place", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.file_location.it",
+      "lang": "it",
+      "query": "dove si trova report.pdf",
+      "tuple": ["open_question", "filesystem_location", "location", "explicit_file", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.file_location.en",
+      "lang": "en",
+      "query": "where is report.pdf",
+      "tuple": ["open_question", "filesystem_location", "location", "explicit_file", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.process_host.en",
+      "lang": "en",
+      "query": "where is nginx running",
+      "tuple": ["open_question", "runtime_host", "host", "explicit_process", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.nearby_operand.it",
+      "lang": "it",
+      "query": "trova ristoranti vicino a me",
+      "tuple": ["imperative", "proximity_search", "entities", "restaurants", "current_actor_location_operand"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.nearby_operand.en",
+      "lang": "en",
+      "query": "find restaurants near me",
+      "tuple": ["imperative", "proximity_search", "entities", "restaurants", "current_actor_location_operand"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.polar.it",
+      "lang": "it",
+      "query": "sono a Roma",
+      "tuple": ["polar_question", "located_at", "truth_value", "current_actor", "explicit_place"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.historical.en",
+      "lang": "en",
+      "query": "where was I yesterday",
+      "tuple": ["open_question", "located_at", "location", "current_actor", "historical"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.share.it",
+      "lang": "it",
+      "query": "condividi la mia posizione con Lucia",
+      "tuple": ["imperative", "share", "delivery_result", "current_actor_location_operand", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.quote.en",
+      "lang": "en",
+      "query": "the document says \"where am I\"",
+      "tuple": ["quote", "located_at", "none", "quoted_actor", "quoted_time"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.condition.it",
+      "lang": "it",
+      "query": "se non sai dove mi trovo chiedimelo",
+      "tuple": ["condition", "located_at", "none", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.relative_clause.it",
+      "lang": "it",
+      "query": "sposta i file dove sono ora",
+      "tuple": ["imperative", "move", "destination", "explicit_files", "relative_clause"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.workflow_position.it",
+      "lang": "it",
+      "query": "nel processo di installazione dove mi trovo",
+      "tuple": ["open_question", "workflow_state", "progress", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.document_position.en",
+      "lang": "en",
+      "query": "where am I in the document",
+      "tuple": ["open_question", "document_position", "progress", "current_actor", "current"],
+      "expect_binding": false
+    },
+    {
+      "id": "neg.progress.it",
+      "lang": "it",
+      "query": "a che punto sono",
+      "tuple": ["open_question", "workflow_state", "progress", "current_actor", "current"],
+      "expect_binding": false
+    }
+  ]
+}

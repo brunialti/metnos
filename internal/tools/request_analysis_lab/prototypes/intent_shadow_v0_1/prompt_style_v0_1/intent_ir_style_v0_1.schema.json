@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:metnos:intent-ir:model-document:0.2",
+  "title": "Metnos intent IR 0.2",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "operation_graph"
+        },
+        "steps": {
+          "$ref": "#/$defs/nonempty_steps"
+        }
+      },
+      "required": [
+        "kind",
+        "steps"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "system_control"
+        },
+        "control": {
+          "type": "string",
+          "enum": [
+            "undo_last_turn"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "control"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "unrepresentable"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "ambiguous_intent",
+            "missing_required_information",
+            "mixed_root_kinds",
+            "no_actionable_intent",
+            "outside_registry",
+            "unsupported_dependency"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "reason"
+      ]
+    }
+  ],
+  "$defs": {
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "route": {
+              "type": "string",
+              "enum": [
+                "change/files",
+                "change/pulls",
+                "compress/files",
+                "compute/entries",
+                "compute/files",
+                "compute/signatures",
+                "consult/frontier",
+                "create/calendars",
+                "create/dirs",
+                "create/events",
+                "create/files",
+                "create/images",
+                "create/issues",
+                "create/tasks",
+                "delete/calendars",
+                "delete/credentials",
+                "delete/dirs",
+                "delete/events",
+                "delete/files",
+                "delete/images",
+                "delete/issues",
+                "delete/messages",
+                "delete/persons",
+                "delete/tasks",
+                "describe/numbers",
+                "filter/entries",
+                "filter/lists",
+                "filter/texts",
+                "find/contacts",
+                "find/credentials",
+                "find/dirs",
+                "find/events",
+                "find/files",
+                "find/images",
+                "find/issues",
+                "find/packages",
+                "find/persons",
+                "find/places",
+                "find/pulls",
+                "find/urls",
+                "get/files",
+                "get/images",
+                "get/inputs",
+                "get/location",
+                "get/now",
+                "get/persons",
+                "get/places",
+                "get/processes",
+                "get/proposals",
+                "get/signatures",
+                "get/urls",
+                "group/entries",
+                "list/dirs",
+                "list/skills",
+                "list/tasks",
+                "login/session",
+                "move/files",
+                "move/messages",
+                "read/contacts",
+                "read/events",
+                "read/files",
+                "read/issues",
+                "read/messages",
+                "read/persons",
+                "read/pulls",
+                "read/tasks",
+                "read/urls",
+                "reply/messages",
+                "send/messages",
+                "set/credentials",
+                "set/issues",
+                "set/messages",
+                "set/persons",
+                "set/pulls",
+                "set/signatures",
+                "set/skills",
+                "set/tasks",
+                "share/files",
+                "sort/entries",
+                "write/files"
+              ]
+            },
+            "from": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "required": [
+            "route"
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "barrier": {
+              "const": "get/approval"
+            },
+            "body": {
+              "$ref": "#/$defs/nonempty_steps"
+            }
+          },
+          "required": [
+            "barrier",
+            "body"
+          ]
+        }
+      ]
+    },
+    "nonempty_steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  }
+}

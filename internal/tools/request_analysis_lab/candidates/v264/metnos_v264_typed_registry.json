@@ -1,0 +1,200 @@
+{
+  "version": "metnos.v26.4-typed-registry/1.0",
+  "limits": {
+    "max_alternatives": 4,
+    "max_atoms_per_analysis": 16,
+    "max_clauses_per_analysis": 8,
+    "max_dependency_depth": 4,
+    "max_proofs_per_analysis": 96,
+    "max_total_proofs": 384,
+    "max_unsupported_clauses": 8
+  },
+  "clause_roles": {
+    "main_request": {
+      "description": "The current speaker asks for an answer, result, or effect.",
+      "speech_acts": ["open_question", "polar_question", "imperative"]
+    },
+    "main_assertion": {
+      "description": "The current speaker presents a proposition without requesting its truth value.",
+      "speech_acts": ["assertion"]
+    },
+    "quoted_content": {
+      "description": "The relation belongs to quoted or mentioned content rather than the current request.",
+      "speech_acts": ["none"]
+    },
+    "condition_content": {
+      "description": "The relation is inside a condition that controls another request.",
+      "speech_acts": ["none"]
+    },
+    "relative_modifier": {
+      "description": "The relation modifies an argument of another clause and is not independently requested.",
+      "speech_acts": ["none"]
+    }
+  },
+  "speech_acts": {
+    "open_question": "One ordered relation argument is the requested unknown value.",
+    "polar_question": "The requested result is the truth value of a complete proposition.",
+    "imperative": "The requested result is an effect or operation outcome.",
+    "assertion": "A proposition is presented without requesting a result.",
+    "none": "Scope suppresses an independent speech act for this relation atom."
+  },
+  "proof_families": {
+    "clause_role": ["discourse_structure", "clause_boundary"],
+    "speech_act": ["explicit_segment", "predicate_morphology", "clause_construction", "discourse_structure"],
+    "relation": ["explicit_segment", "predicate_morphology", "clause_construction"],
+    "dependency_relation": ["relation_composition"],
+    "argument": ["explicit_segment", "predicate_morphology", "discourse_context"],
+    "unknown_argument": ["explicit_segment", "predicate_morphology", "interrogative_construction"],
+    "time": ["explicit_segment", "tense_morphology", "utterance_context", "discourse_context"],
+    "from_atom_output": ["relation_composition"],
+    "dependency_output": ["relation_composition"],
+    "quotation": ["quotation_context", "explicit_segment"]
+  },
+  "reference_registry": {
+    "actor.current": {
+      "value_type": "actor",
+      "proof_families": ["explicit_segment", "predicate_morphology"]
+    },
+    "actor.quoted": {
+      "value_type": "actor",
+      "proof_families": ["quotation_context", "explicit_segment"]
+    },
+    "artifact.explicit": {
+      "value_type": "filesystem.artifact"
+    },
+    "context.current_place": {
+      "value_type": "spatial.context"
+    },
+    "context.current_spatial": {
+      "value_type": "spatial.position",
+      "proof_families": ["explicit_segment", "discourse_context"]
+    },
+    "files.current_position": {
+      "value_type": "destination"
+    },
+    "files.explicit": {
+      "value_type": "movable.set"
+    },
+    "person.explicit": {
+      "value_type": "person"
+    },
+    "place.explicit": {
+      "value_type": "spatial.position"
+    },
+    "principal.explicit": {
+      "value_type": "principal"
+    },
+    "process.explicit": {
+      "value_type": "runtime.process"
+    },
+    "time.current": {
+      "value_type": "temporal.reference",
+      "proof_families": ["explicit_segment", "tense_morphology", "utterance_context"]
+    },
+    "time.historical_explicit": {
+      "value_type": "temporal.reference",
+      "proof_families": ["explicit_segment", "tense_morphology"]
+    },
+    "time.quoted_context": {
+      "value_type": "temporal.reference"
+    }
+  },
+  "relations": {
+    "spatial.located_at": {
+      "kind": "queryable_relation",
+      "description": "Physical or geographic placement in the world.",
+      "dependency_output": {"slot_index": 2, "value_type": "spatial.position"},
+      "slots": [
+        {"role": "entity", "value_type": "entity", "accepted_reference_types": ["entity", "actor", "person"], "accepted_outputs": [{"value_type": "spatial.position", "coercion": "spatial_position_as_entity"}]},
+        {"role": "position", "value_type": "spatial.position", "accepted_reference_types": ["spatial.position"]},
+        {"role": "time", "value_type": "temporal.reference", "accepted_reference_types": ["temporal.reference"]}
+      ]
+    },
+    "identity.same_as": {
+      "kind": "queryable_relation",
+      "description": "Identity, class, or name of an entity.",
+      "dependency_output": {"slot_index": 2, "value_type": "identity.value"},
+      "slots": [
+        {"role": "entity", "value_type": "entity", "accepted_reference_types": ["entity", "actor", "spatial.context"]},
+        {"role": "identity", "value_type": "identity.value", "accepted_reference_types": ["identity.value", "place.identity"]}
+      ]
+    },
+    "filesystem.located_at": {
+      "kind": "queryable_relation",
+      "description": "Storage containment or path of a digital filesystem artifact.",
+      "dependency_output": {"slot_index": 2, "value_type": "filesystem.path"},
+      "slots": [
+        {"role": "artifact", "value_type": "filesystem.artifact", "accepted_reference_types": ["filesystem.artifact"]},
+        {"role": "path", "value_type": "filesystem.path", "accepted_reference_types": ["filesystem.path"]},
+        {"role": "time", "value_type": "temporal.reference", "accepted_reference_types": ["temporal.reference"]}
+      ]
+    },
+    "runtime.host_of": {
+      "kind": "queryable_relation",
+      "description": "Machine or runtime environment hosting a process.",
+      "dependency_output": {"slot_index": 2, "value_type": "runtime.host"},
+      "slots": [
+        {"role": "process", "value_type": "runtime.process", "accepted_reference_types": ["runtime.process"]},
+        {"role": "host", "value_type": "runtime.host", "accepted_reference_types": ["runtime.host"]},
+        {"role": "time", "value_type": "temporal.reference", "accepted_reference_types": ["temporal.reference"]}
+      ]
+    },
+    "spatial.near": {
+      "kind": "queryable_relation",
+      "description": "Entities selected by spatial proximity to an anchor position.",
+      "dependency_output": {"slot_index": 1, "value_type": "place.set"},
+      "slots": [
+        {"role": "candidate", "value_type": "place.set", "accepted_reference_types": ["place.set"]},
+        {"role": "anchor", "value_type": "spatial.position", "accepted_reference_types": ["spatial.position"], "accepted_outputs": [{"value_type": "spatial.position", "coercion": "identity"}]},
+        {"role": "time", "value_type": "temporal.reference", "accepted_reference_types": ["temporal.reference"]}
+      ]
+    },
+    "acl.share": {
+      "kind": "action_relation",
+      "description": "Continuing permission or access granted on a resource.",
+      "dependency_output": null,
+      "slots": [
+        {"role": "resource", "value_type": "shareable.resource", "accepted_reference_types": ["shareable.resource"], "accepted_outputs": [{"value_type": "spatial.position", "coercion": "spatial_position_as_shareable_resource"}]},
+        {"role": "recipient", "value_type": "principal", "accepted_reference_types": ["principal"]}
+      ]
+    },
+    "communication.send": {
+      "kind": "action_relation",
+      "description": "One-time outbound delivery of content to a recipient.",
+      "dependency_output": null,
+      "slots": [
+        {"role": "content", "value_type": "message.content", "accepted_reference_types": ["message.content"], "accepted_outputs": [{"value_type": "spatial.position", "coercion": "spatial_position_as_message_content"}]},
+        {"role": "recipient", "value_type": "principal", "accepted_reference_types": ["principal"]}
+      ]
+    },
+    "movement.destination": {
+      "kind": "action_relation",
+      "description": "Target destination of movement for a movable entity set.",
+      "dependency_output": null,
+      "slots": [
+        {"role": "entity", "value_type": "movable.set", "accepted_reference_types": ["movable.set"]},
+        {"role": "destination", "value_type": "destination", "accepted_reference_types": ["destination"], "accepted_outputs": [{"value_type": "spatial.position", "coercion": "spatial_position_as_destination"}]}
+      ]
+    },
+    "workflow.position": {
+      "kind": "queryable_relation",
+      "description": "State or progress of an actor within a workflow.",
+      "dependency_output": {"slot_index": 2, "value_type": "workflow.state"},
+      "slots": [
+        {"role": "actor", "value_type": "actor", "accepted_reference_types": ["actor"]},
+        {"role": "state", "value_type": "workflow.state", "accepted_reference_types": ["workflow.state"]},
+        {"role": "time", "value_type": "temporal.reference", "accepted_reference_types": ["temporal.reference"]}
+      ]
+    },
+    "document.position": {
+      "kind": "queryable_relation",
+      "description": "Position of an actor within a document.",
+      "dependency_output": {"slot_index": 2, "value_type": "document.position"},
+      "slots": [
+        {"role": "actor", "value_type": "actor", "accepted_reference_types": ["actor"]},
+        {"role": "position", "value_type": "document.position", "accepted_reference_types": ["document.position"]},
+        {"role": "time", "value_type": "temporal.reference", "accepted_reference_types": ["temporal.reference"]}
+      ]
+    }
+  }
+}

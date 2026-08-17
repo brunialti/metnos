@@ -1,0 +1,156 @@
+{
+  "candidate_outputs_read": 0,
+  "errors": [],
+  "mutations": [
+    {
+      "id": "gate_status",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "freeze_hash",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "registry_hash",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "review_md_hash",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "review_json_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "review_addendum_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "review_addendum_archive_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "oracle_freeze_hash",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "oracle_report_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "oracle_review_hash",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "oracle_audit_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "oracle_schema_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "oracle_overlay_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "contamination_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "probe_result_hash",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "verifier_hash",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "case_count",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "repetitions",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "output_path",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    },
+    {
+      "id": "author_gate_substitution",
+      "independent_error_count": 4,
+      "pass": true,
+      "runner_error_count": 2
+    },
+    {
+      "id": "missing_field",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "extra_field",
+      "independent_error_count": 1,
+      "pass": true,
+      "runner_error_count": 0
+    },
+    {
+      "id": "output_preexisting",
+      "independent_error_count": 2,
+      "pass": true,
+      "runner_error_count": 1
+    }
+  ],
+  "network_calls": 0,
+  "summary": {
+    "artifact_count": 18,
+    "authorized_case_count": 34,
+    "authorized_output_path": "/tmp/metnos_v264_typed_phase1_controls_k1.json",
+    "authorized_repetitions": 1,
+    "mutation_failed": 0,
+    "mutation_passed": 23,
+    "mutations": 23
+  },
+  "valid": true,
+  "version": "metnos.v26.4-external-gate-verifier/1.0"
+}

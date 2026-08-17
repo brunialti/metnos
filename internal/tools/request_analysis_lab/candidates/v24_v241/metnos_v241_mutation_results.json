@@ -1,0 +1,125 @@
+{
+  "suite_version": "metnos.v24.1-mutations/1.0",
+  "summary": {
+    "by_kind": {
+      "inference_guard": {
+        "passed": 1,
+        "tests": 1
+      },
+      "projection": {
+        "passed": 6,
+        "tests": 6
+      },
+      "runtime_gate": {
+        "passed": 1,
+        "tests": 1
+      },
+      "validator": {
+        "passed": 2,
+        "tests": 2
+      }
+    },
+    "failed": 0,
+    "passed": 10,
+    "tests": 10
+  },
+  "tests": [
+    {
+      "actual": [
+        "extract/entries",
+        "write/entries"
+      ],
+      "expected": [
+        "extract/entries",
+        "write/entries"
+      ],
+      "id": "sink.ephemeral_extract_becomes_secondary",
+      "kind": "projection",
+      "pass": true,
+      "status": "projected"
+    },
+    {
+      "actual": "compress/files",
+      "expected": "compress/files",
+      "id": "sink.persistent_compress_remains_primary",
+      "kind": "projection",
+      "pass": true,
+      "status": "projected"
+    },
+    {
+      "actual": "read/files",
+      "expected": "read/files",
+      "id": "sink.read_file_destination_remains_owned",
+      "kind": "projection",
+      "pass": true,
+      "status": "projected"
+    },
+    {
+      "actual": "get/places",
+      "expected": "get/places",
+      "id": "question.current_location_projects_places",
+      "kind": "projection",
+      "pass": true,
+      "status": "projected"
+    },
+    {
+      "actual": [
+        "create/events",
+        "get/files"
+      ],
+      "expected": [
+        "create/events",
+        "get/files"
+      ],
+      "id": "argument.explicit_attachment_acquires_file",
+      "kind": "projection",
+      "pass": true,
+      "status": "projected"
+    },
+    {
+      "actual": [
+        "create/events",
+        "get/files"
+      ],
+      "expected": [
+        "create/events",
+        "get/files"
+      ],
+      "id": "argument.legacy_structural_inference",
+      "kind": "projection",
+      "pass": true,
+      "status": "projected"
+    },
+    {
+      "actual": [],
+      "id": "argument.no_source_no_inference",
+      "kind": "inference_guard",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "evidence_coverage_v241"
+      ],
+      "id": "validator.question_evidence_required",
+      "kind": "validator",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "argument_target_edge"
+      ],
+      "id": "validator.argument_forward_target_rejected",
+      "kind": "validator",
+      "pass": true
+    },
+    {
+      "actual": {
+        "reason": "catalog_contract_unreviewed",
+        "status": "fail_closed"
+      },
+      "id": "runtime.unreviewed_v241_fails_closed",
+      "kind": "runtime_gate",
+      "pass": true
+    }
+  ]
+}

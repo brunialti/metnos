@@ -1,0 +1,37 @@
+{
+  "version": "metnos.phase1-oracle-audit/1.0",
+  "status": "frozen_independent_oracle_audit",
+  "date": "2026-08-08",
+  "network_calls": 0,
+  "candidate_outputs_read": 0,
+  "source_controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "artifacts": {
+    "report": {
+      "path": "/tmp/metnos_phase1_oracle_audit_v1.md",
+      "sha256": "538f24876768eb0e8612f3bb440c5f38a51a222122d5b34080e5a5c19ef9799a"
+    },
+    "audit": {
+      "path": "/tmp/metnos_phase1_oracle_audit_v1.json",
+      "sha256": "b8443ad2e27a2d773b971147c1b3d37ee19beb1091b1d357c0a84e6aa0c98a77"
+    },
+    "schema": {
+      "path": "/tmp/metnos_phase1_typed_oracle_v1.schema.json",
+      "sha256": "4929fbc4ac524491f452d11d0f2d4d032887dd423c7487233c3d89065f4e17f2"
+    },
+    "overlay": {
+      "path": "/tmp/metnos_phase1_typed_oracle_v1.overlay.json",
+      "sha256": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af"
+    }
+  },
+  "validation": {
+    "json_schema_draft": "2020-12",
+    "schema_validation": "pass",
+    "case_count": 34,
+    "unique_case_ids": 34,
+    "source_order_match": true,
+    "source_binary_binding_preserved": true,
+    "exact_projection_count": 31,
+    "typed_ambiguity_count": 3,
+    "raw_queries_copied": 0
+  }
+}

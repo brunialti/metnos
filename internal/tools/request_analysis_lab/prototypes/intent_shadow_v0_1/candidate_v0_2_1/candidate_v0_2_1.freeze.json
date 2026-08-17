@@ -1,0 +1,41 @@
+{
+  "freeze_format": "metnos.intent-ir-language-prerequisite-freeze/0.2.1",
+  "status": "offline_language_prerequisite_not_runtime",
+  "base_candidate": {
+    "freeze_sha256": "1004d0afa2a72567f4dbd0a0daad530ab05449d30d4cd4e57ab06c42d28f93b7",
+    "files": {
+      "candidate_v0_2.freeze.json": "1004d0afa2a72567f4dbd0a0daad530ab05449d30d4cd4e57ab06c42d28f93b7",
+      "language_tag.py": "5f197f4bb501bd88d1363a58aae57adf006f66a4c5d5e3452156814f2ecacd14",
+      "projection.py": "b37f89643bc22e6b7c8022c523d2ed5cf38ff12c00060195f069124f099c08cd",
+      "registry_projection.py": "e99c4bba16c9a1756119b98c8638aeb9b9209db24eb304317cd0fd00f15564f4",
+      "structured_client.py": "40ebf22f02086a5cf40fb86eaf41168ff611ce801ecb09593cd5772c46c9ddca"
+    }
+  },
+  "files": {
+    "README.md": "04bb76486bfb652e3113ef631578dbd4de52ec5170bc9360dffe4240d515febf",
+    "__init__.py": "fae04f36bd4bda920b252f4655931af8fb17a9920acc03e33fa7877901b6fb4e",
+    "build_artifacts.py": "3f2280bf503d73a7e926d0b33533a1c5f0f46f8c39737b76e0f163811ffef7e6",
+    "grandfathered_tags.py": "8cf668932bfc1d0f8dd8a4c426f23dba2d14b145bd87ca4323070028a150952a",
+    "language_tag.py": "cf91df72883310954e4a2a8f2282304a84f62ee22318901704f9bfcd9cc92ce6",
+    "self_review.md": "f4cd7457ec54bcea136b82a767bd68bc2264503bdd03eec461f3517a8ef97071",
+    "tests/__init__.py": "e39f3f6d4aaaa1e919fa2d2b4b83f08a08177bb673ea23fb550c7d037786ae32",
+    "tests/test_language_tag.py": "c665cde05fe09f7b2635e8244504cc8497116c26208d4d6d08a6cfacb766020e"
+  },
+  "constraints": {
+    "logical_change": [
+      "complete_grandfathered_bcp47_normalization"
+    ],
+    "grandfathered_record_count": 26,
+    "prompt_changed": false,
+    "schema_changed": false,
+    "compiler_changed": false,
+    "validator_changed": false,
+    "registry_changed": false,
+    "gpu_calls": 0,
+    "network_calls": 0
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "freeze_payload_sha256": "798b6d139e5486c1716d548b431c5dc129f54899edd1474d9328bcbfa6e08304"
+  }
+}

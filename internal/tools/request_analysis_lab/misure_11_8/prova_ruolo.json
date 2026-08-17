@@ -1,0 +1,2212 @@
+{
+ "queries": [
+  "cerca persona in primo piano con pochi capelli e barba",
+  "cerca foto persona in primo piano con pochi capelli e barba",
+  "quali sono le persone enrollate",
+  "chi è enrollato",
+  "cancella l'enrollement di roberto brunialti",
+  "chi è enrollato nel sistema?",
+  "trova foto di persona anziana con barba e senza capelli",
+  "elenca gli enrollati",
+  "chi è enrollato?",
+  "a chi assomiglia la persona in questa foto?",
+  "in quali altre foto compare la persona di questa immagine?",
+  "a chi assomiglia la persona in questa foto",
+  "chi sono io",
+  "cancella l'enrollment di Mario",
+  "cancella l enrollment di MarioNonEsiste",
+  "cancella l'enrollment di TestFake123",
+  "elenca le persone enrollate",
+  "Chi risulta registrato nel riconoscimento persone?",
+  "> Analizza in parallelo le email e gli appuntamenti degli ultimi 60 giorni e riconcilia gli impegni relativi a\n  > Policlinico Gemelli, Morciano, TSA o ecodoppler, visita diabetologica, Standup ed Esercizio. Estrai per ogni impegno\n  > persona, organizzazione, tipo di prestazione o attività, data, ora, luogo, stato, responsabile e origine.\n  >\n  > Normalizza nomi, indirizzi email, date, orari, fusi orari e stati. Elimina logicamente i messaggi duplicati o quasi\n  > duplicati, preservando tutte le origini. Unifica email ed eventi soltanto quando soggetto, data e tipo di impegno\n  > sono compatibili; non fondere appuntamenti distinti.\n  >\n  > Distingui corrispondenze esatte, corrispondenze probabili, elementi presenti soltanto nelle email, elementi presenti\n  > soltanto nel calendario e cancellazioni prive del corrispondente evento. Segnala esplicitamente orari discordanti,\n  > appuntamenti annullati ancora presenti, eventi senza ora, date divergenti e qualsiasi altra contraddizione. Non\n  > inventare una relazione basandoti soltanto su una parola in comune.\n  >\n  > Crea in una nuova sottocartella di Documenti/Verifica Metnos un rapporto ordinato prima per gravità del conflitto e\n  > poi per data e un foglio con: entità, tipo di impegno, data normalizzata, ora normalizzata, valore originale, stato,\n  > domini, origini, responsabile, confidenza e conflitto. Genera anche uno ZIP contenente esclusivamente i nuovi\n  > risultati.\n  >\n  > Esegui le letture e salva gli artefatti su PC-ROBERTO. Non inviare messaggi, non creare, modificare o cancellare\n  > eventi, non modificare le email e non sovrascrivere file esistenti.",
+  "sposta le mail di spam della mailbox knowcastle nella cartella Spam",
+  "sposta le email di spam ricevute della mailbox knowcastle nella cartella Spam",
+  "sposta le email di spam ricevute della mailbox knowcastle nella cartella di posta Spam",
+  "quante email di spam ho ricevuto nella mailbox knowcastle",
+  "elenca i processi che usano piu memoria",
+  "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove non ancora presenti e dimmi quante issue nuove hai inserito.",
+  "undo ultima azione",
+  "trova uno slot libero questa settimana, prenota un appuntamento e mandami una mail di conferma",
+  "trova i file .md nella cartella /opt/metnos/decisions e leggili",
+  "cancella la cartella prova-metnos-77 da google drive",
+  "trova i file .md dentro /opt/metnos/decisions, leggi i primi 2 e dimmi i loro titoli",
+  "chiedimi conferma con get_approval per la issue brunialti/metnos numero 47, e se approvo imposta lo stato a approved con write_issues",
+  "loggati su cloudfare.com, cerca il dominio metnos.com e cerca quanti utenti unici ci sono stati nelle ultime 24 ore",
+  "cancella i file e le directory nella cartella /tmp/mdt",
+  "silvia è un utente",
+  "Leggi i file /opt/metnos/docs/it/architecture/executor.html, /opt/metnos/docs/it/architecture/sandbox.html e /opt/metnos/docs/it/architecture/http_api.html; da ciascuno estrai titolo e tema principale, poi classificali comevruntime, sicurezza o interfaccia e mostrami una tabella.",
+  "cancella su pc-roberto la directory \"C:\\User<REDACTED:cred> Desktop\"",
+  "che preferenze ho?",
+  "leggi il foglio KAKEBO SPESE 2026 su google drive",
+  "cerca tutte fatture anthropic e metti data e importo su spreadsheet",
+  "leggi i file readme su github brunialti/metnos e cerca sul web notizie su python",
+  "Cerca nello store github_issue_qa le entries con campo status uguale a 'approved', poi posta su GitHub il campo accepted_reply come commento della rispettiva issue del repo brunialti/metnos, infine scrivi nello store github_issue_qa quelle entries con campo status uguale a 'posted'",
+  "Elenca posta metnos",
+  "accedi al sito https://the-internet.herokuapp.com/login e dimmi cosa vedi nell'area riservata",
+  "cancella su pc-roberto tutto quello che c'è nella directory C:\\User<REDACTED:cred>",
+  "Elenca le issue aperte di brunialti/metnos su github e salvale nello store github_issue_qa",
+  "carica le foto di /tmp/metnos-e2e-photos su google photos nell'album Test",
+  "Foto del 2005 iacopo e matteo",
+  "che processi girano sul PC-ROBERTO? i primi 5 per memoria",
+  "brunialti/metnos",
+  "cerca tutte le fatture anthropic sulla mail knowcastle e metti data e importo su uno spreadsheet",
+  "accedi al sito telepass.com, clicca sul pulsante accedi  e cerca fatture 2026",
+  "qual è l ip del server",
+  "elenca C:\\Windows\\System32\\drivers\\etc sul PC-ROBERTO",
+  "che task ho programmato",
+  "elenca la cartella /opt/metnos/executors/list_dirs e metti i path in uno spreadsheet",
+  "apri il sito https://example.com e dimmi cosa c'è nella pagina",
+  "cancella i file e le directory nella cartella /tmp/metnos_dirtest",
+  "quanti file .md ci sono in /opt/metnos/decisions",
+  "cancella su pc-roberto i file e le directory nella directory C:\\User<REDACTED:cred>",
+  "usa get_approval con prompt \"Approvi la issue 47?\" e on_approve tool write_issues args entries repo brunialti/metnos number 47 status approved",
+  "quanto spazio disco ha pc-roberto",
+  "lista dei task",
+  "cosa sai fare",
+  "leggi i nuovi issue aperti di brunialti/metnos. per ciascun issue trova simili nel db, classifica e salva bozza, poi notifica",
+  "accedi al sito telepass.com, clicca sul pulsante accedi e cerca fatture 2026, crea uno spreadsheet e metti data e importo per ogni fattura trovata",
+  "Accedi a telepass.com e trova tutte le fatture del 2024. Limitati alla lettura: non scaricare, non modificare e non inviare nulla.",
+  "Annulla l ultima operazione.",
+  "elenca la cartella C:\\Windows\\System32\\drivers\\etc sul PC-ROBERTO e metti i path in uno spreadsheet",
+  "crea una cartella chiamata prova-metnos-77 su google drive",
+  "per la issue brunialti/metnos numero 47 chiedimi conferma di approvazione; se approvo imposta lo stato a approved",
+  "Cancella email metnos",
+  "leggi le mail di oggi",
+  "quali sono le mie impostazioni?",
+  "cerca tutte le fatture anthropic sulla mia email knowcastle e metti data e importo su uno spreadsheet",
+  "elenca i file nella cartella Documenti di pc-roberto",
+  "elenca i file nella cartella Documenti",
+  "leggi le issue aperte su github di brunialti/metnos e salvale nel database locale come pending",
+  "Cerca nello store github_issue_qa le issue con status uguale a 'answered', chiedi la mia approvazione, pubblica il commento su github e aggiorna lo status a 'posted'",
+  "cerca foto con silvia insieme a roberto",
+  "Sul PC-ROBERTO, > Leggi queste pagine web:\n  > https://docs.python.org/3/library/asyncio.html\n  > https://docs.python.org/3/library/concurrent.futures.html\n  > https://docs.python.org/3/library/threading.html\n  > https://docs.python.org/3/library/multiprocessing.html\n  > https://docs.python.org/3/library/urllib.request.html\n  > https://docs.python.org/3/library/html.parser.html\n  > https://docs.python.org/3/library/pathlib.html\n  > https://docs.python.org/3/library/hashlib.html\n  > https://docs.rust-lang.org/book/\n  > https://go.dev/doc/\n  > https://developer.mozilla.org/en-US/docs/Web/HTTP\n  > https://www.sqlite.org/lang.html\n  >\n  > Per ogni pagina rileva URL, dominio, titolo, lingua, eventuale data, lunghezza del testo estratto e stato della\n  > lettura. Elimina logicamente eventuali duplicati, segnala redirect, timeout, pagine illeggibili, contenuto vuoto,\n  > iframe o necessità di rendering JavaScript. Raggruppa i risultati per dominio e crea in una nuova cartella\n  > Documenti/Verifica Metnos Web un rapporto ordinato per dominio e un foglio di calcolo con origine, URL finale,\n  > titolo, lingua, caratteri estratti, stato e confidenza. Non sovrascrivere file esistenti e non eseguire altre",
+  "trova i file .md in /opt/metnos/decisions",
+  "cancella task 40",
+  "leggi le issue aperte su github del repository brunialti/metnos",
+  "Per un test locale, crea un nuovo foglio di calcolo nel percorso esatto /tmp/metnos_audit_sheet_header_live_20260722_1122.xlsx con le colonne voce, stato e importo e due righe di dati: alpha, aperto, 120; beta, chiuso, 75. Non sovrascrivere file esistenti.",
+  "Elenca i corpus che hanno un indice immagini unificato e mostra quante foto contiene ciascuno",
+  "leggi il file README.md dal repo github brunialti/metnos",
+  "che processore ha il server",
+  "quante sottocartelle ci sono in /opt/metnos/runtime",
+  "Cerca nelle mie email i pagamenti Anthropic dell'ultimo anno, estrai data e importo, e crea un foglio.",
+  "Cerca le email da Anthropic degli ultimi 12 mesi, estrai data e importo, e crea un foglio di calcolo.",
+  "che processi girano sul PC-ROBERTO? dammi i primi 5 per memoria",
+  "crea un task che ogni 30 minuti legge le nuove issue aperte di brunialti/metnos, per ognuna cerca nel db le issue simili già risolte, le classifica e analizza col frontier, poi salva nel db la bozza di risposta come 'prepared' e mi avvisa",
+  "quanti file .py ci sono nella cartella runtime?",
+  "set credenziali telepass.com usr: <REDACTED:cred:telepass.com> pwd: <REDACTED:cred>",
+  "leggi le mail di oggi e salvale in un file",
+  "crea un task che legge le nuove issue aperte di brunialti/metnos, per ognuna cerca nel db le issue simili già risolte, le classifica e analizza col frontier, poi salva nel db la bozza di risposta come 'prepared' e mi avvisa",
+  "entra in booking.com usando il mio account booking, trova le mie prenotazioni",
+  "leggi la pagina di booking.com",
+  "togli la preferenza sul tono",
+  "cancella task 46",
+  "leggi i file readme su github e cerca sul web notizie su python",
+  "Quale luogo corrisponde alle coordinate GPS 41.8902, 12.4922?",
+  "cancella i file nella directory /tmp/fin2",
+  "trovami le fotografie di roberto e marco",
+  "Entra nel mio account booking e dimmi le prossime prenotazioni",
+  "trova su google drive il documento KAKEBO SPESE 2026",
+  "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove con status new",
+  "cerca su keep la tabella KAKEBO SPESE 2026 e crea uno spreadsheet con tutti i dati: data, descrizione, importo",
+  "cerca su google drive il file KAKEBO e crea uno spreadsheet coi dati",
+  "elenca tutti i file su github nel repo brunialti/metnos",
+  "Crea un nuovo calendario contenitore Google chiamato Metnos Standard Domain E2E 20260719.",
+  "che giorno è oggi",
+  "cosa c'e' scritto nella pagina di booking.com",
+  "leggi gli eventi di questa settimana, estrai titolo e orario e crea un foglio di calcolo",
+  "scarica un album da google photos, scelgo io",
+  "dove mi trovo adesso?",
+  "che ore sono (2)",
+  "trova foto della zip line",
+  "che ore sono (1)",
+  "trova i file con estensione .log dentro /tmp"
+ ],
+ "results": {
+  "A riferimento": [
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/persons"
+    ],
+    "ms": 11085.012305993587
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3499.452263000421
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3577.1692609996535
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3545.528209011536
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3495.282287010923
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3671.496418013703
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3665.612647018861
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3653.4828420262784
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3624.2784300120547
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 4001.692729012575
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3900.663830980193
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 4217.336115019862
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/persons"
+    ],
+    "ms": 3490.903800993692
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3478.7141290144064
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3622.8304390097037
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3581.990742008202
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3720.1572899939492
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3695.4012350179255
+   },
+   {
+    "valid": false,
+    "reason": "transport_or_json",
+    "routes": [],
+    "ms": 46064.328304026276
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "move/messages"
+    ],
+    "ms": 4272.212067968212
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "move/messages"
+    ],
+    "ms": 4135.647865012288
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "move/messages"
+    ],
+    "ms": 4327.4965200107545
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages"
+    ],
+    "ms": 3997.538130963221
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 3750.3043329925276
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/issues",
+     "write/entries",
+     "describe/entries"
+    ],
+    "ms": 9451.915269019082
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "change/files"
+    ],
+    "ms": 3647.7055810391903
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/events",
+     "create/events",
+     "send/messages"
+    ],
+    "ms": 7822.538011998404
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files",
+     "read/files"
+    ],
+    "ms": 6510.74872299796
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/dirs"
+    ],
+    "ms": 4122.8986020432785
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files",
+     "read/files",
+     "describe/files"
+    ],
+    "ms": 8730.151440016925
+   },
+   {
+    "valid": false,
+    "reason": "predicate_2_nonrequest_executable",
+    "routes": [
+     "get/issues",
+     "set/issues"
+    ],
+    "ms": 6176.765326003078
+   },
+   {
+    "valid": false,
+    "reason": "predicate_2_source_edge",
+    "routes": [
+     "login/urls",
+     "find/urls",
+     "find/persons"
+    ],
+    "ms": 8477.329599030782
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4056.368671997916
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "none/none"
+    ],
+    "ms": 3645.7775750313886
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files",
+     "extract/entries",
+     "classify/entries",
+     "render/entries"
+    ],
+    "ms": 10672.367189021315
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/dirs"
+    ],
+    "ms": 4091.488616017159
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/entries"
+    ],
+    "ms": 3458.749385958072
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 3906.545025005471
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "write/files"
+    ],
+    "ms": 6003.348222002387
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files",
+     "find/urls"
+    ],
+    "ms": 6430.660848971456
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "send/messages",
+     "write/entries"
+    ],
+    "ms": 10442.782269965392
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/messages"
+    ],
+    "ms": 3382.0927630295046
+   },
+   {
+    "valid": false,
+    "reason": "predicate_2_incomplete_request",
+    "routes": [
+     "login/urls",
+     "describe/none"
+    ],
+    "ms": 6011.725617980119
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4075.9202920016833
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/issues",
+     "write/entries"
+    ],
+    "ms": 6647.6491470239125
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "write/files"
+    ],
+    "ms": 4234.1141469660215
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3606.004371016752
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 3785.305965982843
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 3373.2118099578656
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "write/files"
+    ],
+    "ms": 6661.769155994989
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/sites",
+     "act/sites",
+     "find/entries"
+    ],
+    "ms": 8425.515040988103
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 3671.222814009525
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 3911.9692349922843
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/tasks"
+    ],
+    "ms": 3542.988797998987
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/dirs",
+     "write/files"
+    ],
+    "ms": 6463.868455961347
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "open/urls",
+     "describe/urls"
+    ],
+    "ms": 6538.340299972333
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4139.62715602247
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 4716.027392016258
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4041.3010850315914
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/entries",
+     "none/none",
+     "set/entries"
+    ],
+    "ms": 8266.717242018785
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/files"
+    ],
+    "ms": 3608.2277660025284
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/tasks"
+    ],
+    "ms": 3332.998226978816
+   },
+   {
+    "valid": false,
+    "reason": "predicate_1_incomplete_request",
+    "routes": [
+     "describe/none"
+    ],
+    "ms": 3493.8908009789884
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "find/entries",
+     "classify/entries",
+     "write/entries",
+     "send/messages"
+    ],
+    "ms": 14029.897000000346
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/urls",
+     "act/files",
+     "find/entries",
+     "create/files",
+     "write/files"
+    ],
+    "ms": 14782.85426099319
+   },
+   {
+    "valid": false,
+    "reason": "predicate_4_nonrequest_executable",
+    "routes": [
+     "login/urls",
+     "find/entries",
+     "none/none",
+     "read/none",
+     "change/none",
+     "send/none"
+    ],
+    "ms": 15423.647688003257
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/entries"
+    ],
+    "ms": 3510.6595089891925
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/dirs",
+     "write/files"
+    ],
+    "ms": 6615.767641982529
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/dirs"
+    ],
+    "ms": 3924.111315049231
+   },
+   {
+    "valid": false,
+    "reason": "predicate_2_nonrequest_executable",
+    "routes": [
+     "send/messages",
+     "set/entries"
+    ],
+    "ms": 5818.854807992466
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/messages"
+    ],
+    "ms": 3458.63248599926
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/messages"
+    ],
+    "ms": 3570.4682209761813
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/files"
+    ],
+    "ms": 3576.554875005968
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "write/files"
+    ],
+    "ms": 6728.4849710413255
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 3929.6916750026867
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 4028.727989003528
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/entries",
+     "write/entries"
+    ],
+    "ms": 6480.260641023051
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "send/messages",
+     "send/messages",
+     "set/entries"
+    ],
+    "ms": 11722.182862984482
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3603.1328979879618
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/urls",
+     "get/urls",
+     "filter/entries",
+     "classify/entries",
+     "group/entries",
+     "create/dirs",
+     "sort/entries",
+     "create/files",
+     "none/none",
+     "none/none"
+    ],
+    "ms": 27422.075013979338
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 3978.269448969513
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/tasks"
+    ],
+    "ms": 3697.8054610081017
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/entries"
+    ],
+    "ms": 4187.216332997195
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/files",
+     "none/none"
+    ],
+    "ms": 6911.655332020018
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "describe/images"
+    ],
+    "ms": 5895.7909339806065
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 3911.4714579773135
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 4036.88733902527
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/dirs"
+    ],
+    "ms": 4170.039457036182
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "extract/entries",
+     "create/files"
+    ],
+    "ms": 9333.556575002149
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "extract/entries",
+     "create/files"
+    ],
+    "ms": 8930.60369300656
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes",
+     "get/processes"
+    ],
+    "ms": 5992.742987989914
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/tasks",
+     "none/none",
+     "find/entries",
+     "classify/entries",
+     "describe/entries",
+     "write/entries",
+     "send/messages"
+    ],
+    "ms": 18677.91509901872
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 4132.417512999382
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "set/files"
+    ],
+    "ms": 3740.509003982879
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/messages",
+     "write/files"
+    ],
+    "ms": 6257.8727540094405
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/tasks",
+     "none/none",
+     "none/none",
+     "none/none",
+     "none/none",
+     "write/entries",
+     "send/messages"
+    ],
+    "ms": 18623.474752996117
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/urls",
+     "find/entries"
+    ],
+    "ms": 6124.017406022176
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/urls"
+    ],
+    "ms": 3799.708961043507
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "set/entries"
+    ],
+    "ms": 3773.6700649838895
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/tasks"
+    ],
+    "ms": 3568.916473945137
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files",
+     "find/urls"
+    ],
+    "ms": 6542.683370993473
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/places"
+    ],
+    "ms": 3750.05146098556
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 3899.408494005911
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3528.8646339904517
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/sites",
+     "read/events"
+    ],
+    "ms": 5534.27310398547
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 3915.9966349834576
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/issues",
+     "write/entries"
+    ],
+    "ms": 7111.8004829622805
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "create/files"
+    ],
+    "ms": 6776.363630022388
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files",
+     "create/files"
+    ],
+    "ms": 6693.943712976761
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 3929.3902500066906
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/events"
+    ],
+    "ms": 3592.874529014807
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/numbers"
+    ],
+    "ms": 3689.2412310116924
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/urls"
+    ],
+    "ms": 3896.1164299980737
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/events",
+     "extract/entries",
+     "create/files"
+    ],
+    "ms": 8388.267208996695
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 4060.0258840131573
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3682.900767948013
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/numbers"
+    ],
+    "ms": 3745.312952029053
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3587.0961669716053
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/numbers"
+    ],
+    "ms": 3513.227255025413
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 3988.8671610387973
+   }
+  ],
+  "I riparo codice": [
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/persons"
+    ],
+    "ms": 3698.0134369805455
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3521.1920689907856
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3584.5676559838466
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3547.141286020633
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3488.1122430088
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3693.5276760486886
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3673.5071900184266
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3661.7361410171725
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3590.5325280036777
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3964.822540001478
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3880.0133889890276
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 4186.184477992356
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/persons"
+    ],
+    "ms": 3482.215358992107
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3485.25150999194
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3628.2296999706887
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/persons"
+    ],
+    "ms": 3576.3010020018555
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3704.9000520491973
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3699.750339030288
+   },
+   {
+    "valid": false,
+    "reason": "transport_or_json",
+    "routes": [],
+    "ms": 46486.82801995892
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "move/messages"
+    ],
+    "ms": 4291.3623309577815
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "move/messages"
+    ],
+    "ms": 4158.3030599867925
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "move/messages"
+    ],
+    "ms": 4352.274669974577
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages"
+    ],
+    "ms": 3967.288395971991
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 3731.4054609742016
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/issues",
+     "write/entries",
+     "describe/entries"
+    ],
+    "ms": 9443.053586990573
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "change/files"
+    ],
+    "ms": 3627.3412829614244
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/events",
+     "create/events",
+     "send/messages"
+    ],
+    "ms": 7813.1618309998885
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files",
+     "read/files"
+    ],
+    "ms": 6483.269273012411
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/dirs"
+    ],
+    "ms": 4084.576199995354
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files",
+     "read/files",
+     "describe/files"
+    ],
+    "ms": 8639.327951997984
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/issues",
+     "none/none"
+    ],
+    "ms": 6128.289221029263
+   },
+   {
+    "valid": false,
+    "reason": "predicate_2_source_edge",
+    "routes": [
+     "login/urls",
+     "find/urls",
+     "find/persons"
+    ],
+    "ms": 8466.3315420039
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4000.9005090105347
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "none/none"
+    ],
+    "ms": 3626.0289649944752
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files",
+     "extract/entries",
+     "classify/entries",
+     "render/entries"
+    ],
+    "ms": 10688.667885959148
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/dirs"
+    ],
+    "ms": 4068.8836440094747
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/entries"
+    ],
+    "ms": 3429.743757005781
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 3919.796656991821
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "write/files"
+    ],
+    "ms": 6021.67066000402
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files",
+     "find/urls"
+    ],
+    "ms": 6443.395404028706
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "send/messages",
+     "write/entries"
+    ],
+    "ms": 9704.81009996729
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/messages"
+    ],
+    "ms": 3370.306344004348
+   },
+   {
+    "valid": false,
+    "reason": "predicate_2_incomplete_request",
+    "routes": [
+     "login/urls",
+     "describe/none"
+    ],
+    "ms": 6043.237978999969
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4064.5237939897925
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/issues",
+     "write/entries"
+    ],
+    "ms": 6628.439915948547
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "write/files"
+    ],
+    "ms": 4264.107519004028
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3607.855243026279
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 3756.0264660278335
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 3371.3309130398557
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "write/files"
+    ],
+    "ms": 6663.6408810154535
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/sites",
+     "act/sites",
+     "find/entries"
+    ],
+    "ms": 8465.226636035368
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 3667.5995950354263
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 3908.420533000026
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/tasks"
+    ],
+    "ms": 3546.4979290263727
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/dirs",
+     "write/files"
+    ],
+    "ms": 6445.419846044388
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "open/urls",
+     "describe/urls"
+    ],
+    "ms": 6510.026307019871
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4116.754171031062
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 4095.459252013825
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 4006.811656989157
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/entries",
+     "none/none",
+     "set/entries"
+    ],
+    "ms": 8321.658467000816
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/files"
+    ],
+    "ms": 3648.8621460157447
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/tasks"
+    ],
+    "ms": 3368.613437982276
+   },
+   {
+    "valid": false,
+    "reason": "predicate_1_incomplete_request",
+    "routes": [
+     "describe/none"
+    ],
+    "ms": 3512.481788988225
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "find/entries",
+     "classify/entries",
+     "write/entries",
+     "send/messages"
+    ],
+    "ms": 14931.633208994754
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/sites",
+     "act/sites",
+     "find/entries",
+     "create/files",
+     "write/files"
+    ],
+    "ms": 14814.915344992187
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/urls",
+     "find/entries",
+     "none/none",
+     "none/none",
+     "none/none",
+     "none/none"
+    ],
+    "ms": 15715.24088201113
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/entries"
+    ],
+    "ms": 3467.874381050933
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/dirs",
+     "write/files"
+    ],
+    "ms": 6968.851407000329
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/dirs"
+    ],
+    "ms": 3885.2947470149957
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "send/messages",
+     "none/none"
+    ],
+    "ms": 5783.658415020909
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/messages"
+    ],
+    "ms": 3446.861017961055
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/messages"
+    ],
+    "ms": 3524.8573960270733
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/files"
+    ],
+    "ms": 3514.07867501257
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "write/files"
+    ],
+    "ms": 6673.009144025855
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 3875.576286984142
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 4001.2060619774275
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/entries",
+     "write/entries"
+    ],
+    "ms": 6460.03539301455
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "send/messages",
+     "send/messages",
+     "set/entries"
+    ],
+    "ms": 11606.515682011377
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3605.3948829649016
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/urls",
+     "get/urls",
+     "filter/entries",
+     "classify/entries",
+     "group/entries",
+     "create/dirs",
+     "sort/entries",
+     "create/files",
+     "none/none",
+     "none/none"
+    ],
+    "ms": 27199.59892501356
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 3911.185975011904
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/tasks"
+    ],
+    "ms": 3637.12214701809
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/entries"
+    ],
+    "ms": 4136.091800988652
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/files",
+     "none/none"
+    ],
+    "ms": 6871.9286259729415
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "describe/images"
+    ],
+    "ms": 5856.149489991367
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 3872.4876869819127
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes"
+    ],
+    "ms": 3941.401549964212
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/dirs"
+    ],
+    "ms": 4084.4146559829824
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "extract/entries",
+     "create/files"
+    ],
+    "ms": 9279.028694028966
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/messages",
+     "extract/entries",
+     "create/files"
+    ],
+    "ms": 8807.085570995696
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/processes",
+     "get/processes"
+    ],
+    "ms": 5895.389848970808
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/tasks",
+     "none/none",
+     "find/entries",
+     "classify/entries",
+     "describe/entries",
+     "write/entries",
+     "send/messages"
+    ],
+    "ms": 18487.89793299511
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 4067.224318976514
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "set/files"
+    ],
+    "ms": 3652.1734049892984
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/messages",
+     "write/files"
+    ],
+    "ms": 6211.209203989711
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/tasks",
+     "none/none",
+     "none/none",
+     "none/none",
+     "none/none",
+     "write/entries",
+     "send/messages"
+    ],
+    "ms": 18518.904302967712
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/urls",
+     "find/entries"
+    ],
+    "ms": 6130.811711016577
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/urls"
+    ],
+    "ms": 3865.9760520095006
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "set/entries"
+    ],
+    "ms": 3772.3989649675786
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/tasks"
+    ],
+    "ms": 3543.9157329965383
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files",
+     "find/urls"
+    ],
+    "ms": 6511.695162975229
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/places"
+    ],
+    "ms": 3719.890528009273
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "delete/files"
+    ],
+    "ms": 3947.3165459930897
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3588.7008950230666
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "login/sites",
+     "read/events"
+    ],
+    "ms": 5565.025812014937
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 3951.428836036939
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/issues",
+     "write/entries"
+    ],
+    "ms": 7244.746425945777
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/entries",
+     "create/files"
+    ],
+    "ms": 6959.582687995862
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files",
+     "create/files"
+    ],
+    "ms": 6886.448220000602
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "list/files"
+    ],
+    "ms": 3989.808570011519
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "create/events"
+    ],
+    "ms": 3628.0136110144667
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/numbers"
+    ],
+    "ms": 3766.5954860276543
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/urls"
+    ],
+    "ms": 3924.9060429865494
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/events",
+     "extract/entries",
+     "create/files"
+    ],
+    "ms": 8442.992712021805
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "read/files"
+    ],
+    "ms": 4108.002621971536
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/persons"
+    ],
+    "ms": 3695.3361720079556
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/numbers"
+    ],
+    "ms": 3786.847830982879
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/images"
+    ],
+    "ms": 3651.8606239696965
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "get/numbers"
+    ],
+    "ms": 3579.435105959419
+   },
+   {
+    "valid": true,
+    "reason": "",
+    "routes": [
+     "find/files"
+    ],
+    "ms": 4174.602633982431
+   }
+  ]
+ }
+}

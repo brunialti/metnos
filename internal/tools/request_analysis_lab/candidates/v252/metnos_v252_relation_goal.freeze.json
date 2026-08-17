@@ -1,0 +1,11 @@
+{
+  "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "matrix_sha256": "5d0d54605fb960c8a5b451802972d9a92fadc5bb2d124ed4350879b8139aa333",
+  "mutations_sha256": "b018c083883ef92285b0cf1bbebe350536cf776e2286fd4d9267405ceebdb8c7",
+  "network_calls_before_freeze": 0,
+  "prompt_sha256": "db07fa7d2f589f9348b3f63447e5879237b73ed7485c6eb136e154126e1b8e86",
+  "runner_sha256": "283dc78adf60575978e45c574a5b1a901dbb63628269b8a6889122e1a8141ebc",
+  "schema_sha256": "b8a67e83a971742596ce21470dec6ead300d416a43ca6b3703d4ce421b77c99a",
+  "v25_runner_sha256": "d252ee2fa9dc70be8c34a001aab0eedd78ca2d73e127f81cb28ada3db7b36ba0",
+  "version": "metnos.v25.2-desired-observation/1.0"
+}

@@ -1,0 +1,82 @@
+{
+  "checks": [
+    {
+      "detail": null,
+      "id": "validator_hash_preimport",
+      "pass": true
+    },
+    {
+      "detail": [
+        "__future__",
+        "hashlib",
+        "json",
+        "jsonschema",
+        "pathlib",
+        "typing"
+      ],
+      "id": "imports_are_offline_allowlist",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "no_transport_or_temporary_paths",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "mechanical_closure_size",
+      "pass": true
+    },
+    {
+      "detail": [],
+      "id": "registry_consistency",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "draft_2020_12_schema",
+      "pass": true
+    },
+    {
+      "detail": [],
+      "id": "direct_location_valid",
+      "pass": true
+    },
+    {
+      "detail": [],
+      "id": "dependency_consumer_valid",
+      "pass": true
+    },
+    {
+      "detail": [
+        "dependency_order",
+        "output_unconsumed"
+      ],
+      "id": "future_or_self_edge_rejected",
+      "pass": true
+    },
+    {
+      "detail": [
+        "proof_family"
+      ],
+      "id": "wrong_proof_family_rejected",
+      "pass": true
+    },
+    {
+      "detail": [
+        "relation_arity"
+      ],
+      "id": "wrong_arity_rejected",
+      "pass": true
+    }
+  ],
+  "historical_runner_imports": 0,
+  "network_calls": 0,
+  "summary": {
+    "failed": 0,
+    "passed": 11,
+    "tests": 11
+  },
+  "validator_sha256": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656",
+  "version": "metnos.v26.5.1-validator-selftest/0.1"
+}

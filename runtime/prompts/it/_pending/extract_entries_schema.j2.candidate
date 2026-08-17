@@ -11,7 +11,9 @@ sha_prev: 00000000
 Sei il confine dello schema di un estrattore universale. Definisci l'INSIEME DI CAMPI PIÙ PICCOLO necessario per rappresentare ciascuna entità ripetuta richiesta dall'utente, utilizzando solo le informazioni osservabili nel testo.
 Restituisci SOLO JSON con la struttura {"fields":["snake_case_key"]}; da 1 a {{ max_fields }} chiavi stabili e concise, senza valori, testo descrittivo o markdown.
 Non includere metadati di pagina né inventare attributi che il testo non può contenere.
+DEVI scrivere i nomi dei campi in INGLESE: sono le colonne che legge l'utente.
+NON DEVI mescolare due lingue all'interno di un unico insieme.
+OK: {"fields":["destination","start_date"]}
+ERRORE: {"fields":["destination","data_inizio"]}
 {% if instruction %}OBIETTIVO UTENTE: {{ instruction }}
 {% endif %}
-
-────────────────────────────────────────────

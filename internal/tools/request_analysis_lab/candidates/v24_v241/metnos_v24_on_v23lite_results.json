@@ -1,0 +1,3457 @@
+{
+  "summary": {
+    "records": 109,
+    "raw_exact": 98,
+    "v24_exact": 105,
+    "valid": 109,
+    "improvements": 7,
+    "regressions": 0
+  },
+  "records": [
+    {
+      "query": "leggi le mail di oggi e salvale in un file",
+      "expected": [
+        "read/messages",
+        "write/files"
+      ],
+      "raw": [
+        "read/messages",
+        "write/files"
+      ],
+      "v24": [
+        "read/messages",
+        "write/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova i file .log in /tmp e comprimili in un archivio",
+      "expected": [
+        "find/files",
+        "compress/files"
+      ],
+      "raw": [
+        "find/files",
+        "compress/files"
+      ],
+      "v24": [
+        "find/files",
+        "compress/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "compress/files",
+          "projected": "compress/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "scarica il json da https://httpbin.org/uuid e inviamelo via mail",
+      "expected": [
+        "read/urls",
+        "send/messages"
+      ],
+      "raw": [
+        "read/urls",
+        "send/messages"
+      ],
+      "v24": [
+        "read/urls",
+        "send/messages"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/urls",
+          "projected": "read/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "send/messages",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova i processi che consumano piu' memoria e scrivi un report",
+      "expected": [
+        "get/processes",
+        "write/files"
+      ],
+      "raw": [
+        "get/processes",
+        "write/files"
+      ],
+      "v24": [
+        "get/processes",
+        "write/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/processes",
+          "projected": "get/processes",
+          "rules": [
+            {
+              "rule_id": "catalog.process_collection_is_snapshot",
+              "before": {
+                "action": "get",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "get",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "resource_scope",
+                "catalog_route_capability"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le ultime mail e riassumile",
+      "expected": [
+        "read/messages",
+        "describe/messages"
+      ],
+      "raw": [
+        "read/messages",
+        "describe/messages"
+      ],
+      "v24": [
+        "read/messages",
+        "describe/messages"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "describe/messages",
+          "projected": "describe/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cerca le fatture nelle mail e salvale nello store",
+      "expected": [
+        "find/messages",
+        "write/entries"
+      ],
+      "raw": [
+        "find/entries",
+        "write/entries"
+      ],
+      "v24": [
+        "find/messages",
+        "write/entries"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/entries",
+          "projected": "find/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.typed_carrier_authority",
+              "before": {
+                "action": "find",
+                "object": "entries",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "find",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/entries",
+          "projected": "write/entries",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova le foto al mare e classificale per anno",
+      "expected": [
+        "find/images",
+        "classify/images"
+      ],
+      "raw": [
+        "find/images",
+        "classify/images"
+      ],
+      "v24": [
+        "find/images",
+        "classify/images"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/images",
+          "projected": "find/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "classify/images",
+          "projected": "classify/images",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elenca i file in /tmp, filtra quelli piu' grandi di 1MB e cancellali",
+      "expected": [
+        "list/files",
+        "filter/files",
+        "delete/files"
+      ],
+      "raw": [
+        "list/files",
+        "filter/files",
+        "delete/files"
+      ],
+      "v24": [
+        "list/files",
+        "filter/files",
+        "delete/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/files",
+          "projected": "list/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "filter/files",
+          "projected": "filter/files",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "delete/files",
+          "projected": "delete/files",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova i pdf in Documenti, comprimili e mandameli via mail",
+      "expected": [
+        "find/files",
+        "compress/files",
+        "send/messages"
+      ],
+      "raw": [
+        "find/files",
+        "compress/files",
+        "send/messages"
+      ],
+      "v24": [
+        "find/files",
+        "compress/files",
+        "send/messages"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "compress/files",
+          "projected": "compress/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "send/messages",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le mail di oggi e crea gli eventi corrispondenti in calendario",
+      "expected": [
+        "read/messages",
+        "create/events"
+      ],
+      "raw": [
+        "read/messages",
+        "create/events"
+      ],
+      "v24": [
+        "read/messages",
+        "create/events"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "create/events",
+          "projected": "create/events",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "prendi i .txt di /tmp/test, filtra quelli vuoti, comprimi i restanti e cancella gli originali",
+      "expected": [
+        "find/files",
+        "filter/files",
+        "compress/files",
+        "delete/files"
+      ],
+      "raw": [
+        "find/files",
+        "filter/files",
+        "compress/files",
+        "delete/files"
+      ],
+      "v24": [
+        "find/files",
+        "filter/files",
+        "compress/files",
+        "delete/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "filter/files",
+          "projected": "filter/files",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "compress/files",
+          "projected": "compress/files",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 4,
+          "candidate": "delete/files",
+          "projected": "delete/files",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le mail di Anthropic, estrai gli importi e crea un foglio di calcolo",
+      "expected": [
+        "read/messages",
+        "extract/entries",
+        "create/files"
+      ],
+      "raw": [
+        "read/messages",
+        "extract/entries",
+        "create/files_spreadsheet"
+      ],
+      "v24": [
+        "read/messages",
+        "extract/entries",
+        "create/files_spreadsheet"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "extract/entries",
+          "projected": "extract/entries",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "create/files_spreadsheet",
+          "projected": "create/files_spreadsheet",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "find the photos from 2020, compress them and send them to me",
+      "expected": [
+        "find/images",
+        "compress/files",
+        "send/messages"
+      ],
+      "raw": [
+        "find/images",
+        "compress/files",
+        "send/files"
+      ],
+      "v24": [
+        "find/images",
+        "compress/files",
+        "send/messages"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/images",
+          "projected": "find/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "compress/files",
+          "projected": "compress/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "send/files",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "read today's emails and save them to a file",
+      "expected": [
+        "read/messages",
+        "write/files"
+      ],
+      "raw": [
+        "read/messages",
+        "write/files"
+      ],
+      "v24": [
+        "read/messages",
+        "write/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "download the report from https://x.com/r.pdf and email it",
+      "expected": [
+        "read/urls",
+        "send/messages"
+      ],
+      "raw": [
+        "read/files",
+        "send/messages"
+      ],
+      "v24": [
+        "read/urls",
+        "send/messages"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/urls",
+          "rules": [
+            {
+              "rule_id": "catalog.typed_carrier_authority",
+              "before": {
+                "action": "read",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "read",
+                "object": "urls",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "send/messages",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cerca online cos'e' il QUIC e salva il riassunto in un file",
+      "expected": [
+        "find/urls",
+        "write/files"
+      ],
+      "raw": [
+        "find/urls",
+        "write/files"
+      ],
+      "v24": [
+        "find/urls",
+        "write/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/urls",
+          "projected": "find/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova le foto sfocate, spostale in /tmp/blur e mandami l'elenco",
+      "expected": [
+        "find/images",
+        "move/files",
+        "send/messages"
+      ],
+      "raw": [
+        "find/images",
+        "move/files",
+        "send/entries"
+      ],
+      "v24": [
+        "find/images",
+        "move/files",
+        "send/messages"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/images",
+          "projected": "find/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "move/files",
+          "projected": "move/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "send/entries",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "entries",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi i task attivi, filtra quelli scaduti e cancellali",
+      "expected": [
+        "read/tasks",
+        "filter/tasks",
+        "delete/tasks"
+      ],
+      "raw": [
+        "read/tasks",
+        "filter/tasks",
+        "delete/tasks"
+      ],
+      "v24": [
+        "read/tasks",
+        "filter/tasks",
+        "delete/tasks"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/tasks",
+          "projected": "read/tasks",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "filter/tasks",
+          "projected": "filter/tasks",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "delete/tasks",
+          "projected": "delete/tasks",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "scarica il pdf da https://x.com/a.pdf, salvalo in /tmp, mandalo via mail a roberto, crea un evento promemoria domani e allega la foto logo.png",
+      "expected": [
+        "read/urls",
+        "write/files",
+        "send/messages",
+        "create/events",
+        "get/files"
+      ],
+      "raw": [
+        "read/files",
+        "write/files",
+        "send/messages",
+        "create/events",
+        "write/files"
+      ],
+      "v24": [
+        "read/urls",
+        "write/files",
+        "send/messages",
+        "create/events",
+        "write/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/urls",
+          "rules": [
+            {
+              "rule_id": "catalog.typed_carrier_authority",
+              "before": {
+                "action": "read",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "read",
+                "object": "urls",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "send/messages",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 4,
+          "candidate": "create/events",
+          "projected": "create/events",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 5,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le mail di fatturazione, estrai gli importi nello store, crea un foglio riepilogo, trova il contatto del fornitore e fissa un promemoria di pagamento",
+      "expected": [
+        "read/messages",
+        "extract/entries",
+        "write/entries",
+        "create/files_spreadsheet",
+        "find/contacts",
+        "create/events"
+      ],
+      "raw": [
+        "read/messages",
+        "extract/entries",
+        "create/files_spreadsheet",
+        "find/contacts",
+        "create/events"
+      ],
+      "v24": [
+        "read/messages",
+        "extract/entries",
+        "create/files_spreadsheet",
+        "find/contacts",
+        "create/events"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "extract/entries",
+          "projected": "extract/entries",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "create/files_spreadsheet",
+          "projected": "create/files_spreadsheet",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 4,
+          "candidate": "find/contacts",
+          "projected": "find/contacts",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 5,
+          "candidate": "create/events",
+          "projected": "create/events",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova i processi che usano piu' CPU, scrivi un report, mandamelo via mail, cerca online come ridurli, fissa un controllo fra un'ora e dimmi quanta RAM resta",
+      "expected": [
+        "get/processes",
+        "write/files",
+        "send/messages",
+        "find/urls",
+        "create/events",
+        "get/processes"
+      ],
+      "raw": [
+        "get/processes",
+        "write/files",
+        "send/messages",
+        "find/urls",
+        "create/events",
+        "get/processes"
+      ],
+      "v24": [
+        "get/processes",
+        "write/files",
+        "send/messages",
+        "find/urls",
+        "create/events",
+        "get/processes"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/processes",
+          "projected": "get/processes",
+          "rules": [
+            {
+              "rule_id": "catalog.process_collection_is_snapshot",
+              "before": {
+                "action": "get",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "get",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "resource_scope",
+                "catalog_route_capability"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "send/messages",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 4,
+          "candidate": "find/urls",
+          "projected": "find/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 5,
+          "candidate": "create/events",
+          "projected": "create/events",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 6,
+          "candidate": "get/processes",
+          "projected": "get/processes",
+          "rules": [
+            {
+              "rule_id": "catalog.process_collection_is_snapshot",
+              "before": {
+                "action": "get",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "get",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "resource_scope",
+                "catalog_route_capability"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cerca le foto del compleanno, comprimile in un archivio, identifica le persone nelle foto e mandami l'album per mail",
+      "expected": [
+        "find/images",
+        "compress/files",
+        "get/persons",
+        "send/messages"
+      ],
+      "raw": [
+        "find/images",
+        "compress/files",
+        "get/persons",
+        "send/messages"
+      ],
+      "v24": [
+        "find/images",
+        "compress/files",
+        "get/persons",
+        "send/messages"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/images",
+          "projected": "find/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "compress/files",
+          "projected": "compress/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "get/persons",
+          "projected": "get/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 4,
+          "candidate": "send/messages",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cerca online le conferenze AI 2026, estrai nome e data, salvale nello store, mandami l'elenco e programma un task settimanale di aggiornamento",
+      "expected": [
+        "find/urls",
+        "extract/entries",
+        "write/entries",
+        "send/messages",
+        "create/tasks"
+      ],
+      "raw": [
+        "find/events",
+        "extract/entries",
+        "send/entries",
+        "create/tasks"
+      ],
+      "v24": [
+        "find/urls",
+        "extract/entries",
+        "write/entries",
+        "send/messages",
+        "create/tasks"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/events",
+          "projected": "find/urls",
+          "rules": [
+            {
+              "rule_id": "catalog.typed_carrier_authority",
+              "before": {
+                "action": "find",
+                "object": "events",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "find",
+                "object": "urls",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "extract/entries",
+          "projected": "extract/entries",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": null,
+          "projected": "write/entries",
+          "rules": [
+            {
+              "rule_id": "catalog.secondary_persistence",
+              "evidence": [
+                "sink.kind",
+                "sink.object",
+                "sink.span",
+                "catalog.materialization_sink"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "sink"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "send/entries",
+          "projected": "send/messages",
+          "rules": [
+            {
+              "rule_id": "catalog.send_creates_message_envelope",
+              "before": {
+                "action": "send",
+                "object": "entries",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 4,
+          "candidate": "create/tasks",
+          "projected": "create/tasks",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le mail con allegati foto, salva le immagini in /tmp/foto, trova dove sono state scattate e condividile col contatto Lucia",
+      "expected": [
+        "read/messages",
+        "write/files",
+        "get/files",
+        "share/files"
+      ],
+      "raw": [
+        "read/messages",
+        "write/files",
+        "get/files",
+        "share/files"
+      ],
+      "v24": [
+        "read/messages",
+        "write/files",
+        "get/files",
+        "share/files"
+      ],
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 2,
+          "candidate": "write/files",
+          "projected": "write/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 3,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        },
+        {
+          "predicate_id": 4,
+          "candidate": "share/files",
+          "projected": "share/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cancella l'enrollment di ospite alfa",
+      "expected": "delete/persons",
+      "raw": "delete/persons",
+      "v24": "delete/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "delete/persons",
+          "projected": "delete/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cancella la registrazione biometrica di ospite beta",
+      "expected": "delete/persons",
+      "raw": "delete/persons",
+      "v24": "delete/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "delete/persons",
+          "projected": "delete/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elimina l'iscrizione di ospite gamma",
+      "expected": "delete/persons",
+      "raw": "delete/persons",
+      "v24": "delete/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "delete/persons",
+          "projected": "delete/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "rimuovi ospite gamma dal registro volti",
+      "expected": "delete/persons",
+      "raw": "delete/persons",
+      "v24": "delete/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "delete/persons",
+          "projected": "delete/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "aggiungi ospite alfa al registro volti",
+      "expected": "set/persons",
+      "raw": "set/persons",
+      "v24": "set/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "set/persons",
+          "projected": "set/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "chi e' enrollato",
+      "expected": "get/persons",
+      "raw": "get/persons",
+      "v24": "get/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/persons",
+          "projected": "get/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "delete ospite alfa's enrollment",
+      "expected": "delete/persons",
+      "raw": "delete/persons",
+      "v24": "delete/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "delete/persons",
+          "projected": "delete/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "who is enrolled",
+      "expected": "get/persons",
+      "raw": "get/persons",
+      "v24": "get/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/persons",
+          "projected": "get/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dimmi tutto su ospite alfa",
+      "expected": "read/persons",
+      "raw": "read/persons",
+      "v24": "read/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/persons",
+          "projected": "read/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "chi sono io",
+      "expected": "read/persons",
+      "raw": "read/persons",
+      "v24": "read/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/persons",
+          "projected": "read/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elenca le persone registrate",
+      "expected": "get/persons",
+      "raw": "get/persons",
+      "v24": "get/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/persons",
+          "projected": "get/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le mail di oggi",
+      "expected": "read/messages",
+      "raw": "read/messages",
+      "v24": "read/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "sposta in spam le mail di pubblicita",
+      "expected": "move/messages",
+      "raw": "move/messages",
+      "v24": "move/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "move/messages",
+          "projected": "move/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova le mail con oggetto fattura",
+      "expected": "find/messages",
+      "raw": "find/messages",
+      "v24": "find/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/messages",
+          "projected": "find/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elenca i file in /tmp",
+      "expected": "list/files",
+      "raw": "list/files",
+      "v24": "list/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/files",
+          "projected": "list/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elenca le sottocartelle di /tmp",
+      "expected": "list/dirs",
+      "raw": "list/dirs",
+      "v24": "list/dirs",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/dirs",
+          "projected": "list/dirs",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cancella la cartella build_old",
+      "expected": "delete/dirs",
+      "raw": "delete/dirs",
+      "v24": "delete/dirs",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "delete/dirs",
+          "projected": "delete/dirs",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "controlla l'url https://x.com",
+      "expected": "read/urls",
+      "raw": "read/urls",
+      "v24": "read/urls",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/urls",
+          "projected": "read/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "scarica il json da example.com",
+      "expected": "read/urls",
+      "raw": "read/urls",
+      "v24": "read/urls",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/urls",
+          "projected": "read/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "crea un evento domani alle 9",
+      "expected": "create/events",
+      "raw": "create/events",
+      "v24": "create/events",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "create/events",
+          "projected": "create/events",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "che impegni ho domani",
+      "expected": "read/events",
+      "raw": "read/events",
+      "v24": "read/events",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/events",
+          "projected": "read/events",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cerca foto al mare",
+      "expected": "find/images",
+      "raw": "find/images",
+      "v24": "find/images",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/images",
+          "projected": "find/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "che ora e'",
+      "expected": "get/numbers",
+      "raw": "get/numbers",
+      "v24": "get/numbers",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/numbers",
+          "projected": "get/numbers",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dove mi trovo",
+      "expected": "get/places",
+      "raw": "get/persons",
+      "v24": "get/persons",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/persons",
+          "projected": "get/persons",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "controlla se ffmpeg e' installato",
+      "expected": "find/packages",
+      "raw": "find/packages",
+      "v24": "find/packages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/packages",
+          "projected": "find/packages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi /etc/hosts",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "mostrami il contenuto di config.py",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "apri il file note.txt",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dammi il contenuto di /var/log/syslog",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "voglio vedere cosa c'e' in log.txt",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "open the file readme.md",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "show me the contents of app.log",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "che dimensione ha config.py",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "quanto pesa il file backup.iso",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "quando e' stato modificato report.pdf",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "che permessi ha /etc/passwd",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dammi le informazioni sul file fattura.pdf",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "how big is video.mp4",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "when was photo.jpg last modified",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "i metadati EXIF della foto IMG_001.jpg",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi il testo dalla foto scan.png",
+      "expected": "read/images",
+      "raw": "read/images",
+      "v24": "read/images",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/images",
+          "projected": "read/images",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "read the text in the screenshot.png",
+      "expected": "read/images",
+      "raw": "read/images",
+      "v24": "read/images",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/images",
+          "projected": "read/images",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi il testo grezzo del pdf manuale.pdf",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dammi il testo della pagina salvata index.html",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le mail di oggi",
+      "expected": "read/messages",
+      "raw": "read/messages",
+      "v24": "read/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "riassumi le mail di oggi",
+      "expected": "describe/messages",
+      "raw": "describe/messages",
+      "v24": "describe/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "describe/messages",
+          "projected": "describe/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "summarize my inbox",
+      "expected": "describe/messages",
+      "raw": "describe/messages",
+      "v24": "describe/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "describe/messages",
+          "projected": "describe/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "fammi un riassunto delle ultime email",
+      "expected": "describe/messages",
+      "raw": "describe/messages",
+      "v24": "describe/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "describe/messages",
+          "projected": "describe/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "sintetizza le mail della settimana",
+      "expected": "describe/messages",
+      "raw": "describe/messages",
+      "v24": "describe/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "describe/messages",
+          "projected": "describe/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dammi il contenuto delle ultime mail",
+      "expected": "read/messages",
+      "raw": "read/messages",
+      "v24": "read/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "riassumi le foto per anno e luogo",
+      "expected": "describe/images",
+      "raw": "describe/images",
+      "v24": "describe/images",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "describe/images",
+          "projected": "describe/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "scarica il json da https://api.example.com/data",
+      "expected": "read/urls",
+      "raw": "read/urls",
+      "v24": "read/urls",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/urls",
+          "projected": "read/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi la pagina https://example.com",
+      "expected": "read/urls",
+      "raw": "read/urls",
+      "v24": "read/urls",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/urls",
+          "projected": "read/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dammi il contenuto di http://x.com/info.json",
+      "expected": "read/urls",
+      "raw": "read/files",
+      "v24": "read/urls",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/urls",
+          "rules": [
+            {
+              "rule_id": "catalog.typed_carrier_authority",
+              "before": {
+                "action": "read",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "read",
+                "object": "urls",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "fetch the json from https://httpbin.org/uuid",
+      "expected": "read/urls",
+      "raw": "read/urls",
+      "v24": "read/urls",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/urls",
+          "projected": "read/urls",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "scarica il report.pdf in /tmp/reports",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le note dal file appunti.txt",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova i file .py in /opt",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cerca le foto al mare",
+      "expected": "find/images",
+      "raw": "find/images",
+      "v24": "find/images",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/images",
+          "projected": "find/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "find pdfs modified today",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cerca i documenti che contengono fattura",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi /opt/metnos/README.md",
+      "expected": "read/files",
+      "raw": "read/files",
+      "v24": "read/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/files",
+          "projected": "read/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "che ora e'",
+      "expected": "get/numbers",
+      "raw": "get/numbers",
+      "v24": "get/numbers",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/numbers",
+          "projected": "get/numbers",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "what time is it",
+      "expected": "get/numbers",
+      "raw": "get/numbers",
+      "v24": "get/numbers",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/numbers",
+          "projected": "get/numbers",
+          "rules": [],
+          "evidence_coverage": [
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elenca i file in /tmp",
+      "expected": "list/files",
+      "raw": "list/files",
+      "v24": "list/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/files",
+          "projected": "list/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova i .py in /tmp",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elenca le sottocartelle di /opt",
+      "expected": "list/dirs",
+      "raw": "list/dirs",
+      "v24": "list/dirs",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/dirs",
+          "projected": "list/dirs",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "cosa c'e' nella cartella Downloads",
+      "expected": "list/dirs",
+      "raw": "list/files",
+      "v24": "list/dirs",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/files",
+          "projected": "list/dirs",
+          "rules": [
+            {
+              "rule_id": "catalog.typed_carrier_authority",
+              "before": {
+                "action": "list",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "after": {
+                "action": "list",
+                "object": "dirs",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ]
+            }
+          ],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "list the IMAP folders",
+      "expected": "list/messages",
+      "raw": "list/messages",
+      "v24": "list/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/messages",
+          "projected": "list/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "trova le directory piu' grandi",
+      "expected": "find/dirs",
+      "raw": "find/dirs",
+      "v24": "find/dirs",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/dirs",
+          "projected": "find/dirs",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "quanti file ci sono in /opt",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "conta i file in /opt",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "how many files are in /opt",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "elenca le folder IMAP",
+      "expected": "list/messages",
+      "raw": "list/messages",
+      "v24": "list/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "list/messages",
+          "projected": "list/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "leggi le mail nell'inbox",
+      "expected": "read/messages",
+      "raw": "read/messages",
+      "v24": "read/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "read/messages",
+          "projected": "read/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "scarta i file piu' piccoli di 1KB",
+      "expected": "filter/files",
+      "raw": "filter/files",
+      "v24": "filter/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "filter/files",
+          "projected": "filter/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "tieni solo le mail non lette",
+      "expected": "filter/messages",
+      "raw": "filter/messages",
+      "v24": "filter/messages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "filter/messages",
+          "projected": "filter/messages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "escludi i file temporanei",
+      "expected": "filter/files",
+      "raw": "filter/files",
+      "v24": "filter/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "filter/files",
+          "projected": "filter/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "keep only photos from 2024",
+      "expected": "filter/images",
+      "raw": "filter/images",
+      "v24": "filter/images",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "filter/images",
+          "projected": "filter/images",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "quanto e' grande la cartella Downloads",
+      "expected": "find/dirs",
+      "raw": "find/dirs",
+      "v24": "find/dirs",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/dirs",
+          "projected": "find/dirs",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "dimmi la mia posizione",
+      "expected": "get/places",
+      "raw": "get/places",
+      "v24": "get/places",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/places",
+          "projected": "get/places",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "arricchisci le foto con i dati EXIF",
+      "expected": "get/files",
+      "raw": "get/files",
+      "v24": "get/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "get/files",
+          "projected": "get/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "verifica che python3 sia presente",
+      "expected": "find/packages",
+      "raw": "find/packages",
+      "v24": "find/packages",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/packages",
+          "projected": "find/packages",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "is nginx running",
+      "expected": "find/processes",
+      "raw": "find/processes",
+      "v24": "find/processes",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/processes",
+          "projected": "find/processes",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    },
+    {
+      "query": "esiste il file /tmp/lock",
+      "expected": "find/files",
+      "raw": "find/files",
+      "v24": "find/files",
+      "status": "projected",
+      "trace": [
+        {
+          "predicate_id": 1,
+          "candidate": "find/files",
+          "projected": "find/files",
+          "rules": [],
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "catalog_status": "prototype_frozen_not_production_reviewed"
+        }
+      ]
+    }
+  ]
+}

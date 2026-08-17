@@ -1,0 +1,72 @@
+{
+  "contract_version": "metnos.catalog-projection/2.4.1-shadow",
+  "base_contract": {
+    "path": "/tmp/metnos_v24_rules_frozen.json",
+    "sha256": "e41561e12c835b15bce40e25eb2eb28ead3b27228c8bd05867dc1f9d7b6c8357"
+  },
+  "review_state": "prototype_frozen_not_production_reviewed",
+  "warning": "V24.1 is a frozen offline delta. Legacy relation inference is comparison-only; production must receive an explicit source-grounded claim from the analyzer.",
+  "primary_sink_contracts": {
+    "extract/entries": {
+      "primary_artifact_durability": "ephemeral",
+      "explicit_sink_policy": "secondary_persistence",
+      "sink_domain": "entries",
+      "materialization_route": "write/entries",
+      "manifest_state": "prototype_manual_review_required"
+    },
+    "compress/files": {
+      "primary_artifact_durability": "persistent",
+      "explicit_sink_policy": "owned_primary_output",
+      "sink_domain": "files",
+      "manifest_state": "derived_from_catalog_candidate"
+    },
+    "read/files": {
+      "primary_artifact_durability": "executor_destination_semantics",
+      "explicit_sink_policy": "owned_primary_output",
+      "sink_domain": "files",
+      "manifest_state": "prototype_manual_review_required"
+    },
+    "read/urls": {
+      "primary_artifact_durability": "ephemeral",
+      "explicit_sink_policy": "secondary_persistence_unless_explicit_consumer",
+      "sink_domain": "files",
+      "materialization_route": "write/files",
+      "manifest_state": "prototype_manual_review_required"
+    }
+  },
+  "argument_bindings": {
+    "calendar_event_attachment": {
+      "target_routes": ["create/events"],
+      "support_objects": ["files"],
+      "candidate_object_basis": "destination_artifact",
+      "legacy_inference": {
+        "candidate_routes": ["write/files"],
+        "resource_scopes": ["single_known"],
+        "require_explicit_patient": true,
+        "require_primary_sink_same_span_and_domain": true,
+        "require_target_source_edge": true
+      },
+      "acquisition_route": {
+        "action": "get",
+        "object": "files",
+        "qualifier": "none"
+      },
+      "manifest_state": "prototype_manual_review_required"
+    }
+  },
+  "question_bindings": {
+    "runtime.current_location": {
+      "route": {
+        "action": "get",
+        "object": "places",
+        "qualifier": "none"
+      },
+      "evidence_required": true,
+      "manifest_state": "prototype_manual_review_required"
+    }
+  },
+  "freeze_protocol": {
+    "cross_validation_requires_lock_sha256": true,
+    "post_lock_rule_changes_forbidden": true
+  }
+}

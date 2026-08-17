@@ -1,0 +1,222 @@
+{
+  "version": "metnos.v26.5.1-durable-manifest/0.9",
+  "repository_relative": true,
+  "preimport_verification_required": true,
+  "artifacts": [
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact_adapter.py",
+      "sha256": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+      "role": "runtime_input",
+      "import_allowed": true
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact.schema.json",
+      "sha256": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+      "role": "runtime_input",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact.prompt.txt",
+      "sha256": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+      "role": "runtime_input",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_registry.json",
+      "sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+      "role": "runtime_input",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_self_contained_validator.py",
+      "sha256": "b19b3aa781ab3ac44b973db2aed3f6da889c29703addfbdf8251a5c60ae97656",
+      "role": "runtime_input",
+      "import_allowed": true
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_validator_generator.py",
+      "sha256": "e5a56091cedbfe4d9a3cdeb9358bf2bbc6a23c708817fbd24e254a636870bc45",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_validator_selftest.py",
+      "sha256": "49293184b244a6e9e26e786c53d12a5a510490d9ec554c70a20ff21e7974e6d0",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_validator_selftest_result.json",
+      "sha256": "1b2021d9f50efa6e7867fe872c5eb4a378e9f714ba9a3d74f52ae35de0fcbda3",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_compact_mutation_matrix.json",
+      "sha256": "69103b64374527feb0d40bc709043066e030fa81101651f724e52e79d5a9c1cc",
+      "role": "runtime_input",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_compact_mutation_fixture.json",
+      "sha256": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+      "role": "runtime_input",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_compact_mutation_fixture_generator.py",
+      "sha256": "871b79d90035205048f8b9fcc1d34e40fad074f3a775db124cb88d66385038ba",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_compact_mutation_suite.py",
+      "sha256": "c5f0d940d3feac82162d408e10663cbc8fa2b6db20450cc29c32b4554cddf4cb",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_compact_mutation_suite_result.json",
+      "sha256": "3306d299b18726da1b903643d9c85763c05ec57680259c2ab05ddf0aa8bdb68f",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact_schema_audit_result.json",
+      "sha256": "b3498f513fbfe5382fc89f4d12afc7f00e6311a649f7ca42aee3bd039ac86ff3",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact_prompt_audit_result.json",
+      "sha256": "8be621a34ed64a438cf2f299a5ba7f6dca9ca93f517be1d608fd6efae95b6101",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_independent_static_review.md",
+      "sha256": "49b096b67e44fd9366a70517caac931237bf1b7801e4c5cb06f9bd26a9087e77",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_independent_static_review.json",
+      "sha256": "34ec814faa6ed4634f461938473b2d6fbaa81af39229c31be27761c1683890d9",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_oracle_audit_v1.freeze.json",
+      "sha256": "f2f5d6046a7fb0b6fead8f5ab27c35c230aebd928411d5d5a962bce90209a70f",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_phase1_runner.py",
+      "sha256": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+      "role": "historical_source_only",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v264/metnos_v264_independent_graph_probe.py",
+      "sha256": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+      "role": "historical_source_only",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/replay_deps/metnos_prompt_contamination_audit.py",
+      "sha256": "1cedfa7115744da79764c6b2fd31c2be67eada3fcc18d23bb46a5108eb190169",
+      "role": "historical_source_only",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_contamination_corpus_generator.py",
+      "sha256": "93894cffdbb8cbb178bc2c8867c77f4c3ebdcf259e4e3e7e4e6d53cf4a4997bd",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_contamination_query_corpus.json",
+      "sha256": "237aae0006fd6926fc20e5f31aa50a4aa0bd8a2d10e7162a9ebe8424c6558149",
+      "role": "audit_dataset",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_contamination_auditor_generator.py",
+      "sha256": "6446359e1c497cd949fbaf045c9a1b9cb4d2f60ce6f9fee9bb51cef1d771b6d8",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_contamination_auditor.py",
+      "sha256": "a1e7f7babc6dcce1f4e1de0040c41b5ed212db0054a0f3e5d8f46511b12c4b1d",
+      "role": "audit_tool",
+      "import_allowed": true
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_contamination_audit.py",
+      "sha256": "a686fd95970b6cde4af2f29363d7f67bc78736e4c4b7c993c95301b219576779",
+      "role": "audit_tool",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_contamination_audit_result.json",
+      "sha256": "50e1c5931fe60bfb1007bf5624b1f836214c43fab98194350b66921549487c92",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_independent_contamination_review.md",
+      "sha256": "014cfc55e651f363daf0898a05c01781f317a66a0cd57d90f5028c4bdd05fed9",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_candidate_core.py",
+      "sha256": "e212b78554dbf2d33fc5d966a7074655a9b0de0eab41c1d8f6cc15789cb5d227",
+      "role": "runtime_input",
+      "import_allowed": true
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/candidates/v2651/metnos_v2651_candidate_core_selftest_result.json",
+      "sha256": "d1476a1660ed81dd52cf3ef7b24ab9a679d107d62b54e2bb083d123efd696746",
+      "role": "evidence",
+      "import_allowed": false
+    },
+    {
+      "path": "tests/benchmarks/intent_accuracy_bench.py",
+      "sha256": "412eaa6620bb2f29486510196e37267f92c1b817d13b469734bd045693140a51",
+      "role": "audit_source",
+      "import_allowed": false
+    },
+    {
+      "path": "tests/benchmarks/intent_compound_bench.py",
+      "sha256": "85ef748c5384e72bfeacf018b9e7fdb3f6c74fcc5d64abe518303d4e96657cd0",
+      "role": "audit_source",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/question_focus_controls_v1.json",
+      "sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+      "role": "audit_source",
+      "import_allowed": false
+    },
+    {
+      "path": "internal/tools/request_analysis_lab/request_analysis_adversarial_v1.py",
+      "sha256": "e06c45789f748c7275a47c8d63086a1b97a662fabe6f9dd57001ae0bda4977ab",
+      "role": "audit_source",
+      "import_allowed": false
+    }
+  ],
+  "remaining_blockers": [
+    "candidate_core_independent_review_pending",
+    "transport_wrapper_freeze_and_external_gate_missing",
+    "semantic_k1_k5_and_extended_evaluation_missing"
+  ],
+  "authorization": {
+    "freeze": false,
+    "gate": false,
+    "network": false,
+    "inference": false
+  }
+}

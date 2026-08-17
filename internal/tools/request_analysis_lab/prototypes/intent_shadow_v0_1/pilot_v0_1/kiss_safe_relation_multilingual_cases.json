@@ -1,0 +1,145 @@
+{
+  "format": "metnos.intent-safe-relation-diagnostic/0.1",
+  "cases": [
+    {
+      "case_id": "rel-en-01",
+      "language_tag": "en-GB",
+      "query": "Find the open issues and close the ones you found.",
+      "routes": ["find/issues", "delete/issues"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-en-02",
+      "language_tag": "en-GB",
+      "query": "Read Issue 42 and then close Issue 42.",
+      "routes": ["read/issues", "delete/issues"],
+      "expected": {"target_source": "direct", "after_previous": true}
+    },
+    {
+      "case_id": "rel-it-01",
+      "language_tag": "it-IT",
+      "query": "Trova i file temporanei e, dopo la mia conferma, elimina quelli trovati.",
+      "routes": ["find/files", "delete/files"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-it-02",
+      "language_tag": "it-IT",
+      "query": "Dimmi l'ora attuale, poi elimina.",
+      "routes": ["get/now", "delete/issues"],
+      "expected": {"target_source": "unknown", "after_previous": true}
+    },
+    {
+      "case_id": "rel-es-01",
+      "language_tag": "es-MX",
+      "query": "Busca los archivos PDF y comprime los archivos encontrados.",
+      "routes": ["find/files", "compress/files"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-es-02",
+      "language_tag": "es-MX",
+      "query": "Busca el contacto de Ana y, de forma independiente, dime la hora actual.",
+      "routes": ["find/contacts", "get/now"],
+      "expected": {"target_source": "none", "after_previous": false}
+    },
+    {
+      "case_id": "rel-de-01",
+      "language_tag": "de-DE",
+      "query": "Suche die temporären Dateien und lösche die gefundenen Dateien erst nach meiner Bestätigung.",
+      "routes": ["find/files", "delete/files"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-de-02",
+      "language_tag": "de-DE",
+      "query": "Lies Issue 42 und schließe danach Issue 42.",
+      "routes": ["read/issues", "delete/issues"],
+      "expected": {"target_source": "direct", "after_previous": true}
+    },
+    {
+      "case_id": "rel-tr-01",
+      "language_tag": "tr-TR",
+      "query": "Geçici dosyaları bul ve yalnızca onayımı aldıktan sonra bulduklarını sil.",
+      "routes": ["find/files", "delete/files"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-tr-02",
+      "language_tag": "tr-TR",
+      "query": "Şu anki saati söyle, sonra sil.",
+      "routes": ["get/now", "delete/issues"],
+      "expected": {"target_source": "unknown", "after_previous": true}
+    },
+    {
+      "case_id": "rel-sr-01",
+      "language_tag": "sr-Cyrl-RS",
+      "query": "Пронађи привремене датотеке и обриши оне које си пронашао.",
+      "routes": ["find/files", "delete/files"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-sr-02",
+      "language_tag": "sr-Cyrl-RS",
+      "query": "Пронађи Анин контакт и независно прикажи тренутно време.",
+      "routes": ["find/contacts", "get/now"],
+      "expected": {"target_source": "none", "after_previous": false}
+    },
+    {
+      "case_id": "rel-ar-01",
+      "language_tag": "ar-EG",
+      "query": "ابحث عن الملفات المؤقتة ثم احذف الملفات التي عثرت عليها بعد موافقتي.",
+      "routes": ["find/files", "delete/files"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-ar-02",
+      "language_tag": "ar-EG",
+      "query": "اقرأ المشكلة 42 ثم أغلق المشكلة 42.",
+      "routes": ["read/issues", "delete/issues"],
+      "expected": {"target_source": "direct", "after_previous": true}
+    },
+    {
+      "case_id": "rel-hi-01",
+      "language_tag": "hi-IN",
+      "query": "वेब पर आधिकारिक परियोजना दस्तावेज़ का URL ढूँढो और फिर उसका मुख्य पाठ पढ़ो।",
+      "routes": ["find/urls", "read/urls"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-hi-02",
+      "language_tag": "hi-IN",
+      "query": "अनिल का संपर्क ढूँढो और स्वतंत्र रूप से वर्तमान समय बताओ।",
+      "routes": ["find/contacts", "get/now"],
+      "expected": {"target_source": "none", "after_previous": false}
+    },
+    {
+      "case_id": "rel-ja-01",
+      "language_tag": "ja-JP",
+      "query": "Issue 42 を読んでから、Issue 42 を閉じてください。",
+      "routes": ["read/issues", "delete/issues"],
+      "expected": {"target_source": "direct", "after_previous": true}
+    },
+    {
+      "case_id": "rel-ja-02",
+      "language_tag": "ja-JP",
+      "query": "開いている Issue を見つけて、見つかったものを閉じてください。",
+      "routes": ["find/issues", "delete/issues"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-zh-01",
+      "language_tag": "zh-Hant-TW",
+      "query": "找出暫存檔，並在我確認後只刪除找到的那些檔案。",
+      "routes": ["find/files", "delete/files"],
+      "expected": {"target_source": "previous_step", "after_previous": true}
+    },
+    {
+      "case_id": "rel-zh-02",
+      "language_tag": "zh-Hant-TW",
+      "query": "尋找台北車站，並且獨立顯示目前執行中的系統程序；兩個動作互不依賴。",
+      "routes": ["find/places", "get/processes"],
+      "expected": {"target_source": "none", "after_previous": false}
+    }
+  ]
+}

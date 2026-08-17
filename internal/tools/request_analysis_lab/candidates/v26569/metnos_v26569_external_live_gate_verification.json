@@ -1,0 +1,44 @@
+{
+  "authorization": {
+    "authorized_case_count": 34,
+    "endpoint": "http://127.0.0.1:8080",
+    "external_preflight_required": true,
+    "inference_calls_before_lock": 0,
+    "inline_preflight_method": "GET",
+    "inline_preflight_required": true,
+    "model_request_attempt_limit": 34,
+    "one_call_per_case": true,
+    "output_must_be_absent": true,
+    "output_path": "/tmp/metnos_v26569_live_k1_34.json",
+    "python_executable": "/usr/bin/python3",
+    "python_flags": [
+      "-I",
+      "-B"
+    ],
+    "repetitions": 1,
+    "retries": 0,
+    "transport_preflight_calls_before_lock": 1
+  },
+  "authorization_review": {
+    "path": "internal/tools/request_analysis_lab/candidates/v26569/metnos_v26569_external_live_authorization_review.json",
+    "sha256": "632ab710a26a1762dff4ec9c1053d463ea06b96c9c842a9c020841508e22284a"
+  },
+  "authorized_output_preexisting": false,
+  "authorizes_live": true,
+  "authorizes_runtime_cutover": false,
+  "candidate_outputs_read": 0,
+  "inference_calls": 0,
+  "mutation_suite": {
+    "failed": 0,
+    "mutations": 27,
+    "runner_rejections": 27
+  },
+  "network_calls": 0,
+  "preflight_sha256": "9999eba3f8c4a3bc03a3c410db001ca2f79e4da739b5cc351029da52f885b4dd",
+  "status": "PASS",
+  "verifier": {
+    "path": "internal/tools/request_analysis_lab/candidates/v26569/metnos_v26569_external_live_gate_verifier.py",
+    "sha256": "efb67268dcdf125553825ebeebf2ffb959821a8dcff4834e939cda8d76600d61"
+  },
+  "version": "metnos.v26.5.6.9-external-live-gate-verification/1.0"
+}

@@ -1,0 +1,779 @@
+{
+  "call_count": 37,
+  "cases_sha256": "052c0fead3cf050da87b4e6987beb877fc458d4b0877cfaa6dbf73587615db60",
+  "format": "metnos.intent-kiss-convention-probe/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1085,
+      "gate_request_sha256": "df8f39bc7fbe30a8a2aa89c675c4831cda821567d3f2cb2c1ef43571b30f72eb",
+      "language_tag": "en-GB",
+      "main_elapsed_ms": 9496,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-002",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "gate": {
+        "alternative_action_paths": true,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 799,
+      "gate_request_sha256": "c94c8fd5928906fa24676d267028ec405e70c9f57052082f7fc5fda802efbaee",
+      "language_tag": "en-GB",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-003",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1080,
+      "gate_request_sha256": "29250ba9dbea54cdbfccdb59c355c219be865402c17cf51774567d5777d928c0",
+      "language_tag": "it-IT",
+      "main_elapsed_ms": 9495,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9jb250YWN0cyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJnZXQvbm93IgogICAgfQogIF0KfQ==",
+      "relation_elapsed_ms": 895,
+      "relation_flags": [
+        false
+      ],
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-004",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": false,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 806,
+      "gate_request_sha256": "f61c68550707fd74f300a9a537d42ac4dacf83e054e034bf38d6e4f89bb02b91",
+      "language_tag": "it-IT",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-005",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1088,
+      "gate_request_sha256": "bac87567e438c14f7f24f3c0915ed6de64d5ef797ee5c7f51c8a231ca334f45d",
+      "language_tag": "es-MX",
+      "main_elapsed_ms": 9526,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJjb21wcmVzcy9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-006",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "all_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 783,
+      "gate_request_sha256": "1a559a7fde1734cf7e755221c1bab2ede6696554aa5f83a209fff2e535fdb567",
+      "language_tag": "es-MX",
+      "main_elapsed_ms": 9205,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-007",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1070,
+      "gate_request_sha256": "14fe3befbdd07f6268f7c0866296cfdd4eea311ddb820108248fcbfcb271eee6",
+      "language_tag": "de-DE",
+      "main_elapsed_ms": 9230,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-008",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 793,
+      "gate_request_sha256": "f9c8489466225e3d10423346c9611ceee53b326101b1b15f2378f5444f3568c1",
+      "language_tag": "de-DE",
+      "main_elapsed_ms": 545,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAicmVhZC9tZXNzYWdlcyIKICAgIH0KICBdCn0=",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-009",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1066,
+      "gate_request_sha256": "e17ac26bd9070d5aadb7b14c55bfe41e3a50b374eb9e0664aa7331621f7c47e9",
+      "language_tag": "tr-TR",
+      "main_elapsed_ms": 9145,
+      "raw_model_output_b64": "eyJraW5kIjoib3BlcmF0aW9uX2dyYXBoIiwic3RlcHMiOlt7InJvdXRlIjoiZ2V0L2xvY2F0aW9uIn1dfQ==",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-010",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 830,
+      "gate_request_sha256": "245fcefc86bf631774f6f49dbe07791421d269c4601fda818ad049fb3adaecbf",
+      "language_tag": "tr-TR",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-011",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1064,
+      "gate_request_sha256": "f9479bc990067e7394639c81a919c5abda68f8bd4e1c7819ff14e3683a2b7ae6",
+      "language_tag": "sr-Cyrl-RS",
+      "main_elapsed_ms": 9232,
+      "raw_model_output_b64": "eyJraW5kIjoib3BlcmF0aW9uX2dyYXBoIiwic3RlcHMiOlt7InJvdXRlIjoiZ2V0L3Byb2Nlc3NlcyJ9XX0=",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-012",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "all_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 802,
+      "gate_request_sha256": "377fe56cb37b722836a9a601dd15940fffc019ea4b9068416b896bb4bd65c81c",
+      "language_tag": "sr-Cyrl-RS",
+      "main_elapsed_ms": 9298,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-013",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1099,
+      "gate_request_sha256": "5f82f5f6be2407123f88c318a071da017056ae47c22bc2a2be9e85f7e29e112a",
+      "language_tag": "ar-EG",
+      "main_elapsed_ms": 9678,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9wbGFjZXMiCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "relation_elapsed_ms": 896,
+      "relation_flags": [
+        false
+      ],
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-014",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "gate": {
+        "alternative_action_paths": true,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 803,
+      "gate_request_sha256": "194584a167bc3069771a662728abf44804f7445e3fe138109904ea434b64a86d",
+      "language_tag": "ar-EG",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-015",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1136,
+      "gate_request_sha256": "8dfdd154f121a29108918e6022c40b5a4f19b1f69cb8c0b6543adcc29bc521f4",
+      "language_tag": "hi-IN",
+      "main_elapsed_ms": 9774,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC91cmxzIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogInJlYWQvdXJscyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-016",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 764,
+      "gate_request_sha256": "c0aba73fb1e12da3afaa0a0272180fcaa64b35e28400f3400706401ddb235e4a",
+      "language_tag": "hi-IN",
+      "main_elapsed_ms": 556,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9pbWFnZXMiCiAgICB9CiAgXQp9",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-017",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 792,
+      "gate_request_sha256": "9c0cea0ce280eb0734f10ea4c2d58bb15786d7ce0b02c8eccbcee5270430e444",
+      "language_tag": "ja-JP",
+      "main_elapsed_ms": 9320,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "all_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 835,
+      "gate_request_sha256": "1969e21ff446bc54f3313804e31b4c44665494c36cc15854e6d75e641aaca219",
+      "language_tag": "ja-JP",
+      "main_elapsed_ms": 9399,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-019",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 814,
+      "gate_request_sha256": "a9f8f51a83f9c0115cb58b339bd6d0deb43c5d6f68d71467583627ffac27f3b3",
+      "language_tag": "zh-Hant-TW",
+      "main_elapsed_ms": 9488,
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2ZpbGVzIgogICAgfQogIF0KfQ==",
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-020",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 822,
+      "gate_request_sha256": "14546fb0c7a2d72b0a29712051b75027408f4b565585076740a9b95d3e26cd76",
+      "language_tag": "zh-Hant-TW",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "relation_elapsed_ms": 0,
+      "relation_flags": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "source": "reference_panel",
+      "status": "valid"
+    }
+  ],
+  "summary": {
+    "exact": 18,
+    "new_multilingual_exact": 0,
+    "new_multilingual_valid": 0,
+    "valid": 20
+  }
+}

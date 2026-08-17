@@ -1,0 +1,93 @@
+{
+  "freeze_format": "metnos.intent-prompt-style-freeze/0.1",
+  "status": "offline_style_experiment_not_runtime",
+  "current_candidate": {
+    "freeze_sha256": "81c62394da4916ee4a2c55f8e8c028e8b589b497e9c222fd2c86a8d0b4a75a4d",
+    "contract": {
+      "contract_version": "metnos.intent-ir/0.2",
+      "overlay_version": "metnos.intent-ir-prompt-overlay/0.3",
+      "registry_sha256": "7895f6c12040d0d5b3963170645b8c4899611ce80b082dbeb224ec3686cc46bb",
+      "schema_sha256": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+      "schema_semantic_sha256": "de86d0a70a9c966f39c74ed046a1a45452de93a1e548bab1152da94c47f69ff2",
+      "prompt_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c"
+    },
+    "critical_files": {
+      "candidate_v0_3.freeze.json": "81c62394da4916ee4a2c55f8e8c028e8b589b497e9c222fd2c86a8d0b4a75a4d",
+      "intent_ir_v0_3.schema.json": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+      "intent_ir_v0_3.prompt.txt": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+      "build_artifacts.py": "567d0e7047f556bcbe25557b9bee18f0a18d58c09544bf1908fd52d25e5d538e",
+      "projection.py": "f2881cd62a6e74c542175274bcbc83d33bb667b22797e325453bda0dc97800c0",
+      "structured_client.py": "f5ecaa150def5adb8f1fda2ba36b84c2aea7cafa77d21380d7a6e13b69e6ec69"
+    }
+  },
+  "contract": {
+    "package_version": "metnos.intent-prompt-style/0.1",
+    "contract_version": "metnos.intent-ir/0.2",
+    "registry_sha256": "7895f6c12040d0d5b3963170645b8c4899611ce80b082dbeb224ec3686cc46bb",
+    "schema_sha256": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+    "schema_semantic_sha256": "de86d0a70a9c966f39c74ed046a1a45452de93a1e548bab1152da94c47f69ff2",
+    "prompt_sha256": {
+      "S0_CURRENT": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+      "S1_METNOS_SHORT": "557910d65e8064a7280834a70d1e7666688cdb3ddf7d7abdd41a248f6025ead3",
+      "S2_PROCEDURAL": "e36a499a2668055f7a73023df1c639e6b5f4baba5c39c590726194f04c050dfa"
+    },
+    "prompt_metrics": {
+      "S0_CURRENT": {
+        "utf8_bytes": 22868,
+        "lines": 114,
+        "whitespace_tokens": 3167
+      },
+      "S1_METNOS_SHORT": {
+        "utf8_bytes": 22301,
+        "lines": 105,
+        "whitespace_tokens": 3110
+      },
+      "S2_PROCEDURAL": {
+        "utf8_bytes": 22323,
+        "lines": 105,
+        "whitespace_tokens": 3122
+      }
+    }
+  },
+  "files": {
+    "README.md": "c63790c3d336d42514dae1bddbc69e46b20a3950694441ee21a72f8185258c23",
+    "__init__.py": "0f2364cb0c464b8b5d956835743420f3b3716bddc5069ba6c57b1ac7d61e4da9",
+    "authority_inventory.py": "a32c2e0cd9f6498f7bea5661748ba046c8bf7e31671f1c5f8294901e72b9099e",
+    "authority_rule_inventory_v0_1.json": "044300b9570d4582c4447e60ff3fec331ba8bdb0acdb0f8b651922a6d86b9044",
+    "build_artifacts.py": "80efe1398f5eb7011a64604bad5405b09562345c5721bb58ab91a77623df086b",
+    "intent_ir_style_v0_1.schema.json": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+    "projection.py": "477b53d10c40e3fcab71db0f05243bf3b74bdc973566241e4ab1630d82741fd1",
+    "prompt_s0_current.txt": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+    "prompt_s1_metnos_short.txt": "557910d65e8064a7280834a70d1e7666688cdb3ddf7d7abdd41a248f6025ead3",
+    "prompt_s2_procedural.txt": "e36a499a2668055f7a73023df1c639e6b5f4baba5c39c590726194f04c050dfa",
+    "prompt_style_metrics_v0_1.json": "5a0597cb34fba350ad1b17be25cf25f0a4ff18a610d2612546de9ce74c466ec0",
+    "self_review.md": "1c1fa33f1ddf30bdfe17768e49ffd0f1f0fd439b70577dadc57a5aec326da5f4",
+    "structured_client.py": "ce29b92ff33930ec7257eeba73ad5b8cc1bafc8780ec3c17c77c3bbe29a91306",
+    "tests/__init__.py": "84116ea94333625a0f94a214d51ef34b777319fabbe9d3a0b8a9873992786702",
+    "tests/test_style.py": "85430bc233f2e07a1223bd088cc22856bded4b766726e250d3cbbe37ebca419c"
+  },
+  "constraints": {
+    "arms": [
+      "S0_CURRENT",
+      "S1_METNOS_SHORT",
+      "S2_PROCEDURAL"
+    ],
+    "logical_change": [
+      "prompt_style_only"
+    ],
+    "new_semantic_rules": 0,
+    "registry_changed": false,
+    "schema_changed": false,
+    "validator_changed": false,
+    "compiler_changed": false,
+    "adapter_semantics_changed": false,
+    "model_or_limits_changed": false,
+    "gpu_calls": 0,
+    "network_calls": 0,
+    "oracle_in_live_path": false
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "freeze_payload_sha256": "a0bb51919ba6a64488d11749d3cf421943df68a4005e2706f56a3bd39ab00c32"
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "authorization": {
+    "endpoint": "http://127.0.0.1:8080",
+    "inference_calls": 0,
+    "method": "GET",
+    "output_path": "/tmp/metnos_v26571_transport_preflight.json",
+    "post_calls": 0,
+    "python_executable": "/usr/bin/python3",
+    "python_flags": [
+      "-I",
+      "-B"
+    ],
+    "request_body_bytes": 0,
+    "request_path": "/v1/models",
+    "transport_attempt_limit": 1,
+    "url": "http://127.0.0.1:8080/v1/models"
+  },
+  "authorization_review": {
+    "path": "internal/tools/request_analysis_lab/candidates/v26571/metnos_v26571_transport_preflight_authorization_review.json",
+    "sha256": "0d2a0b64a641d1d62ed1c4913173a01c9dd774f7afd5be5ead5df25aa2f5eb35"
+  },
+  "authorized_output_preexisting": false,
+  "authorizes_external_gate": false,
+  "authorizes_live": false,
+  "authorizes_preflight": true,
+  "candidate_outputs_read": 0,
+  "fake_transport_probe": {
+    "actual_opens": 1,
+    "get_calls": 1,
+    "post_calls": 0,
+    "request_body_bytes": 0,
+    "response_status": "PASS"
+  },
+  "model_calls": 0,
+  "mutation_suite": {
+    "authorization_mutations": 27,
+    "failed": 0,
+    "gate_mutations": 25,
+    "runner_gate_rejections": 25,
+    "total": 75,
+    "verification_mutations": 23
+  },
+  "network_calls": 0,
+  "server_calls": 0,
+  "status": "PASS",
+  "verifier": {
+    "path": "internal/tools/request_analysis_lab/candidates/v26571/metnos_v26571_transport_preflight_gate_verifier.py",
+    "sha256": "95f1a2d0c58e09af27d620ccc9b59853ec4bf7fbf3e07827eb3d5ed33295b5c3"
+  },
+  "version": "metnos.v26.5.7.1-transport-preflight-gate-verification/1.0"
+}

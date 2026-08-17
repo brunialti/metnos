@@ -1,0 +1,22 @@
+{
+  "contamination_audit_sha256": "4a3de10ed31eaa8e10049bc255632bd320df6bae366c1533e6395ac515743769",
+  "freeze_sha256": "80c1b4e70f1ef5cb75d1ddea1458f3a4934598729a03c3c552c562fe8eeaeb0c",
+  "inference_allowed": true,
+  "native_run_required": true,
+  "posthoc_credit_allowed": false,
+  "requirements": {
+    "mutation_failures": 0,
+    "overlap_n_ge_3": {
+      "adversarial70": 0,
+      "full109": 0,
+      "question-controls34": 0
+    },
+    "surface_or_mixed_lines": 0,
+    "whole_query_matches": {
+      "adversarial70": 0,
+      "full109": 0,
+      "question-controls34": 0
+    }
+  },
+  "version": "metnos.v26.3-minimal-technical-contract/1.0"
+}

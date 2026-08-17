@@ -1,0 +1,20 @@
+{
+  "audit_version": "metnos.intent-shadow-live-evaluation-audit/0.3",
+  "checks": {
+    "canonical_A": 75,
+    "canonical_B": 25,
+    "canonical_delta_B_minus_A": -50,
+    "critical_columns": 9,
+    "false_negatives_corrected": 62,
+    "raw_A": 29,
+    "raw_B": 9,
+    "rows": 248,
+    "typed_B": 0,
+    "verdict": "candidate_fail"
+  },
+  "error_count": 0,
+  "errors": [],
+  "evaluation_sha256": "f7d85c38474c477a95414de83fe563c8b1f81719318c357a83284cbcfa85582e",
+  "historical_evaluation_sha256": "6eee1f559b20f3145780ae9dca52eaf101df82f442214cdfec0751f50845d25d",
+  "status": "ok"
+}

@@ -1,0 +1,53 @@
+{
+  "version": "metnos.v26.4-independent-graph-final-review/1.0",
+  "date": "2026-08-08",
+  "verdict": "pass_relation_graph_contract",
+  "inference_calls": 0,
+  "candidate_outputs_read": 0,
+  "runtime_cutover_eligible": false,
+  "artifacts": {
+    "runner_sha256": "ea3fc46b50ce25a72652214b380e251f092ada87420a3e056b67eda60b24057d",
+    "registry_sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+    "schema_sha256": "06452e75f0a1ec7a42c9bf87dfae3da4e1528fc07b02d9276272a1e9ff0c7fec",
+    "prompt_sha256": "2e60f19500b6d6193d53f483707533ca39ec1fee6a0256b18e6a96994f53406f",
+    "mutations_sha256": "ff2c02177cab32eb8d84e6d0f714442f3161a9371f85189b6ae55589bbf34922",
+    "contamination_audit_sha256": "6845ef5ab1a3b7f7871909a285b070c292cfe97b2cf923471ebfeee99af78ff9",
+    "freeze_sha256": "83d3b4441d83d8f90e5eb591f9eeaf052885150e6806cd3ceefd046d948ccde6",
+    "independent_probe_sha256": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+    "independent_probe_result_sha256": "7b0ff821783d9f5d071b4da0ccaa7f562f57afd47136cfc73c863a12663fb62c"
+  },
+  "verification": {
+    "verify_freeze": "pass",
+    "external_gate": "missing_rejected_fail_closed",
+    "author_inference_allowed": false,
+    "candidate_core": {"passed": 69, "failed": 0},
+    "independent": {
+      "passed": 125,
+      "failed": 0,
+      "positive_controls": 19,
+      "validator_mutations": 68,
+      "classifier_controls": 19,
+      "oracle_only_mappings": 4
+    },
+    "oracle_representability_and_gates": "34/34_offline"
+  },
+  "covered_dimensions": [
+    "multi_clause_multi_action_multi_domain",
+    "relation_arity_order_type",
+    "bound_unknown_from_atom_output",
+    "cycles_self_future_depth_fanout",
+    "unknown_multiplicity_by_speech_and_clause",
+    "role_scope_safety",
+    "proof_reference_compatibility",
+    "typed_ambiguity_distinctness_and_coverage",
+    "unsupported_without_atoms_and_mixed_coverage",
+    "direct_current_location_atom_targets"
+  ],
+  "remaining_required_gates": [
+    "external_independent_lock",
+    "native_34_case_run",
+    "principal_109_suite",
+    "redacted_historical_multi_action_multi_domain_holdout",
+    "latency_and_outage_checks"
+  ]
+}

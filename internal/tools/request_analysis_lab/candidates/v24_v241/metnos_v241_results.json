@@ -1,0 +1,2732 @@
+{
+  "catalog_gate": {
+    "reason": "prototype manifest metadata are not production-reviewed",
+    "runtime_cutover_eligible": false
+  },
+  "created_at": "2026-08-08T16:20:10.311594+00:00",
+  "freeze": {
+    "base_projector_sha256": "7ab109898feddf5fc8c32c1b921f0220ab097b7e72a742d99879f32af1430e64",
+    "base_rules_sha256": "e41561e12c835b15bce40e25eb2eb28ead3b27228c8bd05867dc1f9d7b6c8357",
+    "base_schema_sha256": "0d08b7205632efef8a7f9dadc0c63fe81b42e72daf03b062d7663eb5f98b7e24",
+    "created_at": "2026-08-08T16:20:06.328316+00:00",
+    "cross_validation_started": true,
+    "cross_validation_started_at": "2026-08-08T16:20:09.311738+00:00",
+    "freeze_version": "metnos.v24.1-offline-freeze/1.0",
+    "projector_sha256": "964ab447f730a0a145178d23c05404e876e06be0b56688d9372dc5e890c8d68e",
+    "rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82",
+    "schema_sha256": "82b24c50dfcf10eed7736231c7640e75f773025864dd933889a474d531b375b4",
+    "v21_adversarial_sha256": "49ce8e7c698af56d3972ad1b8e8278565e5223a53a4cef884a2b40bb832c8dfe",
+    "v23_full_dataset_sha256": "23261f777059586b72d4858c6e60d46fb2e2e15df5bcb5725ebafcb1ad981929",
+    "v23lite_dataset_sha256": "860ed8b6ba5646fd5a5d2d96bf3a9fa09d7f2ffc9dff6560a9fc54eafc7367fa",
+    "v24_on_v23lite_baseline_sha256": "2757d52eb324f89e6946a95792df0604b8436c098d91bfd8d6f58a00ff07f669",
+    "v24_results_baseline_sha256": "6c0a3ed9959ac3c6523037d2aaac4c42c5b780b70d69aa21e49e834384ca956f"
+  },
+  "mutations": {
+    "by_kind": {
+      "inference_guard": {
+        "passed": 1,
+        "tests": 1
+      },
+      "projection": {
+        "passed": 6,
+        "tests": 6
+      },
+      "runtime_gate": {
+        "passed": 1,
+        "tests": 1
+      },
+      "validator": {
+        "passed": 2,
+        "tests": 2
+      }
+    },
+    "failed": 0,
+    "passed": 10,
+    "tests": 10
+  },
+  "suite_version": "metnos.v24.1-cross-validation/1.0",
+  "v21_adversarial": {
+    "records": [
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.show_content.it",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.show_content.en",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.show_content.fr",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.show_content.es",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.show_content.de",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.negation.it",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.negation.en",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.negation.fr",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.negation.es",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.negation.de",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.condition.it",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.condition.en",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.condition.fr",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.condition.es",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.condition.de",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files"
+        ],
+        "id": "ind.passive_description.it",
+        "status": "projected",
+        "v24": [
+          "find/files"
+        ],
+        "v241": [
+          "find/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files"
+        ],
+        "id": "ind.passive_description.en",
+        "status": "projected",
+        "v24": [
+          "find/files"
+        ],
+        "v241": [
+          "find/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files"
+        ],
+        "id": "ind.passive_description.fr",
+        "status": "projected",
+        "v24": [
+          "find/files"
+        ],
+        "v241": [
+          "find/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files"
+        ],
+        "id": "ind.passive_description.es",
+        "status": "projected",
+        "v24": [
+          "find/files"
+        ],
+        "v241": [
+          "find/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files"
+        ],
+        "id": "ind.passive_description.de",
+        "status": "projected",
+        "v24": [
+          "find/files"
+        ],
+        "v241": [
+          "find/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/messages"
+        ],
+        "id": "ind.quote.it",
+        "status": "projected",
+        "v24": [
+          "find/messages"
+        ],
+        "v241": [
+          "find/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/messages"
+        ],
+        "id": "ind.quote.en",
+        "status": "projected",
+        "v24": [
+          "find/messages"
+        ],
+        "v241": [
+          "find/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/messages"
+        ],
+        "id": "ind.quote.fr",
+        "status": "projected",
+        "v24": [
+          "find/messages"
+        ],
+        "v241": [
+          "find/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/messages"
+        ],
+        "id": "ind.quote.es",
+        "status": "projected",
+        "v24": [
+          "find/messages"
+        ],
+        "v241": [
+          "find/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/messages"
+        ],
+        "id": "ind.quote.de",
+        "status": "projected",
+        "v24": [
+          "find/messages"
+        ],
+        "v241": [
+          "find/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "write/files"
+        ],
+        "id": "ind.deontic_passive.it",
+        "status": "fail_closed",
+        "v24": [],
+        "v241": [],
+        "valid": false
+      },
+      {
+        "expected": [
+          "write/files"
+        ],
+        "id": "ind.deontic_passive.en",
+        "status": "fail_closed",
+        "v24": [],
+        "v241": [],
+        "valid": false
+      },
+      {
+        "expected": [
+          "write/files"
+        ],
+        "id": "ind.deontic_passive.fr",
+        "status": "fail_closed",
+        "v24": [],
+        "v241": [],
+        "valid": false
+      },
+      {
+        "expected": [
+          "write/files"
+        ],
+        "id": "ind.deontic_passive.es",
+        "status": "fail_closed",
+        "v24": [],
+        "v241": [],
+        "valid": false
+      },
+      {
+        "expected": [
+          "write/files"
+        ],
+        "id": "ind.deontic_passive.de",
+        "status": "fail_closed",
+        "v24": [],
+        "v241": [],
+        "valid": false
+      },
+      {
+        "expected": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "id": "ind.multiquery.it",
+        "status": "projected",
+        "v24": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "id": "ind.multiquery.en",
+        "status": "projected",
+        "v24": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "id": "ind.multiquery.fr",
+        "status": "projected",
+        "v24": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "id": "ind.multiquery.es",
+        "status": "projected",
+        "v24": [
+          "find/entries",
+          "compress/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/entries",
+          "compress/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "id": "ind.multiquery.de",
+        "status": "projected",
+        "v24": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "id": "ind.classify_group.it",
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "v241": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "id": "ind.classify_group.en",
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "v241": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "id": "ind.classify_group.fr",
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "v241": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "id": "ind.classify_group.es",
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "v241": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "id": "ind.classify_group.de",
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "v241": [
+          "find/images",
+          "classify/images",
+          "group/images"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.reflexive_description.it",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.reflexive_description.en",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.reflexive_description.fr",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.reflexive_description.es",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/files"
+        ],
+        "id": "ind.reflexive_description.de",
+        "status": "projected",
+        "v24": [
+          "read/files"
+        ],
+        "v241": [
+          "read/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "write/files"
+        ],
+        "id": "ind.url_pipeline.it",
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "write/files"
+        ],
+        "v241": [
+          "read/urls",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "write/files"
+        ],
+        "id": "ind.url_pipeline.en",
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "write/files"
+        ],
+        "v241": [
+          "read/urls",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "write/files"
+        ],
+        "id": "ind.url_pipeline.fr",
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "write/files"
+        ],
+        "v241": [
+          "read/urls",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "write/files"
+        ],
+        "id": "ind.url_pipeline.es",
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "write/files"
+        ],
+        "v241": [
+          "read/urls",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "write/files"
+        ],
+        "id": "ind.url_pipeline.de",
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "write/files"
+        ],
+        "v241": [
+          "read/urls",
+          "write/files"
+        ],
+        "valid": true
+      }
+    ],
+    "summary": {
+      "baseline_exact": 44,
+      "fail_closed": 5,
+      "improvements": 0,
+      "records": 50,
+      "regressions": 0,
+      "v241_exact": 44,
+      "valid": 45
+    }
+  },
+  "v23_full": {
+    "improvements": [
+      {
+        "expected": [
+          "read/messages",
+          "extract/entries",
+          "write/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "index": 20,
+        "query": "leggi le mail di fatturazione, estrai gli importi nello store, crea un foglio riepilogo, trova il contatto del fornitore e fissa un promemoria di pagamento",
+        "rules": [
+          "v241.catalog.primary_sink_ownership",
+          "v241.catalog.primary_sink_ownership"
+        ],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "v241": [
+          "read/messages",
+          "extract/entries",
+          "write/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/urls",
+          "extract/entries",
+          "write/entries",
+          "send/messages",
+          "create/tasks"
+        ],
+        "index": 23,
+        "query": "cerca online le conferenze AI 2026, estrai nome e data, salvale nello store, mandami l'elenco e programma un task settimanale di aggiornamento",
+        "rules": [
+          "v241.catalog.primary_sink_ownership",
+          "v241.catalog.primary_sink_ownership"
+        ],
+        "status": "projected",
+        "v24": [
+          "find/urls",
+          "extract/entries",
+          "send/messages",
+          "create/tasks"
+        ],
+        "v241": [
+          "find/urls",
+          "extract/entries",
+          "write/entries",
+          "send/messages",
+          "create/tasks"
+        ],
+        "valid": true
+      }
+    ],
+    "regressions": [],
+    "summary": {
+      "baseline_exact": 100,
+      "fail_closed": 2,
+      "improvements": 2,
+      "records": 109,
+      "regressions": 0,
+      "v241_exact": 102,
+      "valid": 107
+    }
+  },
+  "v23lite": {
+    "improvements": [
+      {
+        "expected": [
+          "read/urls",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "get/files"
+        ],
+        "index": 19,
+        "inferred_relations": 1,
+        "query": "scarica il pdf da https://x.com/a.pdf, salvalo in /tmp, mandalo via mail a roberto, crea un evento promemoria domani e allega la foto logo.png",
+        "raw": [
+          "read/files",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "write/files"
+        ],
+        "rules": [
+          "v241.argument.calendar_event_attachment"
+        ],
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "write/files"
+        ],
+        "v241": [
+          "read/urls",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "get/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/messages",
+          "extract/entries",
+          "write/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "index": 20,
+        "inferred_relations": 0,
+        "query": "leggi le mail di fatturazione, estrai gli importi nello store, crea un foglio riepilogo, trova il contatto del fornitore e fissa un promemoria di pagamento",
+        "raw": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "rules": [
+          "v241.catalog.primary_sink_ownership",
+          "v241.catalog.primary_sink_ownership"
+        ],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "v241": [
+          "read/messages",
+          "extract/entries",
+          "write/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "valid": true
+      }
+    ],
+    "records": [
+      {
+        "expected": [
+          "read/messages",
+          "write/files"
+        ],
+        "index": 1,
+        "inferred_relations": 0,
+        "query": "leggi le mail di oggi e salvale in un file",
+        "raw": [
+          "read/messages",
+          "write/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "write/files"
+        ],
+        "v241": [
+          "read/messages",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files",
+          "compress/files"
+        ],
+        "index": 2,
+        "inferred_relations": 0,
+        "query": "trova i file .log in /tmp e comprimili in un archivio",
+        "raw": [
+          "find/files",
+          "compress/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/files",
+          "compress/files"
+        ],
+        "v241": [
+          "find/files",
+          "compress/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "send/messages"
+        ],
+        "index": 3,
+        "inferred_relations": 0,
+        "query": "scarica il json da https://httpbin.org/uuid e inviamelo via mail",
+        "raw": [
+          "read/urls",
+          "send/messages"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "send/messages"
+        ],
+        "v241": [
+          "read/urls",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "get/processes",
+          "write/files"
+        ],
+        "index": 4,
+        "inferred_relations": 0,
+        "query": "trova i processi che consumano piu' memoria e scrivi un report",
+        "raw": [
+          "get/processes",
+          "write/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "get/processes",
+          "write/files"
+        ],
+        "v241": [
+          "get/processes",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/messages",
+          "describe/messages"
+        ],
+        "index": 5,
+        "inferred_relations": 0,
+        "query": "leggi le ultime mail e riassumile",
+        "raw": [
+          "read/messages",
+          "describe/messages"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "describe/messages"
+        ],
+        "v241": [
+          "read/messages",
+          "describe/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/messages",
+          "write/entries"
+        ],
+        "index": 6,
+        "inferred_relations": 0,
+        "query": "cerca le fatture nelle mail e salvale nello store",
+        "raw": [
+          "find/entries",
+          "write/entries"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/messages",
+          "write/entries"
+        ],
+        "v241": [
+          "find/messages",
+          "write/entries"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "classify/images"
+        ],
+        "index": 7,
+        "inferred_relations": 0,
+        "query": "trova le foto al mare e classificale per anno",
+        "raw": [
+          "find/images",
+          "classify/images"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "classify/images"
+        ],
+        "v241": [
+          "find/images",
+          "classify/images"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "list/files",
+          "filter/files",
+          "delete/files"
+        ],
+        "index": 8,
+        "inferred_relations": 0,
+        "query": "elenca i file in /tmp, filtra quelli piu' grandi di 1MB e cancellali",
+        "raw": [
+          "list/files",
+          "filter/files",
+          "delete/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "list/files",
+          "filter/files",
+          "delete/files"
+        ],
+        "v241": [
+          "list/files",
+          "filter/files",
+          "delete/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "index": 9,
+        "inferred_relations": 0,
+        "query": "trova i pdf in Documenti, comprimili e mandameli via mail",
+        "raw": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/files",
+          "compress/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/messages",
+          "create/events"
+        ],
+        "index": 10,
+        "inferred_relations": 0,
+        "query": "leggi le mail di oggi e crea gli eventi corrispondenti in calendario",
+        "raw": [
+          "read/messages",
+          "create/events"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "create/events"
+        ],
+        "v241": [
+          "read/messages",
+          "create/events"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/files",
+          "filter/files",
+          "compress/files",
+          "delete/files"
+        ],
+        "index": 11,
+        "inferred_relations": 0,
+        "query": "prendi i .txt di /tmp/test, filtra quelli vuoti, comprimi i restanti e cancella gli originali",
+        "raw": [
+          "find/files",
+          "filter/files",
+          "compress/files",
+          "delete/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/files",
+          "filter/files",
+          "compress/files",
+          "delete/files"
+        ],
+        "v241": [
+          "find/files",
+          "filter/files",
+          "compress/files",
+          "delete/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/messages",
+          "extract/entries",
+          "create/files"
+        ],
+        "index": 12,
+        "inferred_relations": 0,
+        "query": "leggi le mail di Anthropic, estrai gli importi e crea un foglio di calcolo",
+        "raw": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet"
+        ],
+        "v241": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "compress/files",
+          "send/messages"
+        ],
+        "index": 13,
+        "inferred_relations": 0,
+        "query": "find the photos from 2020, compress them and send them to me",
+        "raw": [
+          "find/images",
+          "compress/files",
+          "send/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "compress/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/images",
+          "compress/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/messages",
+          "write/files"
+        ],
+        "index": 14,
+        "inferred_relations": 0,
+        "query": "read today's emails and save them to a file",
+        "raw": [
+          "read/messages",
+          "write/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "write/files"
+        ],
+        "v241": [
+          "read/messages",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "send/messages"
+        ],
+        "index": 15,
+        "inferred_relations": 0,
+        "query": "download the report from https://x.com/r.pdf and email it",
+        "raw": [
+          "read/files",
+          "send/messages"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "send/messages"
+        ],
+        "v241": [
+          "read/urls",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/urls",
+          "write/files"
+        ],
+        "index": 16,
+        "inferred_relations": 0,
+        "query": "cerca online cos'e' il QUIC e salva il riassunto in un file",
+        "raw": [
+          "find/urls",
+          "write/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/urls",
+          "write/files"
+        ],
+        "v241": [
+          "find/urls",
+          "write/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "move/files",
+          "send/messages"
+        ],
+        "index": 17,
+        "inferred_relations": 0,
+        "query": "trova le foto sfocate, spostale in /tmp/blur e mandami l'elenco",
+        "raw": [
+          "find/images",
+          "move/files",
+          "send/entries"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "move/files",
+          "send/messages"
+        ],
+        "v241": [
+          "find/images",
+          "move/files",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/tasks",
+          "filter/tasks",
+          "delete/tasks"
+        ],
+        "index": 18,
+        "inferred_relations": 0,
+        "query": "leggi i task attivi, filtra quelli scaduti e cancellali",
+        "raw": [
+          "read/tasks",
+          "filter/tasks",
+          "delete/tasks"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/tasks",
+          "filter/tasks",
+          "delete/tasks"
+        ],
+        "v241": [
+          "read/tasks",
+          "filter/tasks",
+          "delete/tasks"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/urls",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "get/files"
+        ],
+        "index": 19,
+        "inferred_relations": 1,
+        "query": "scarica il pdf da https://x.com/a.pdf, salvalo in /tmp, mandalo via mail a roberto, crea un evento promemoria domani e allega la foto logo.png",
+        "raw": [
+          "read/files",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "write/files"
+        ],
+        "rules": [
+          "v241.argument.calendar_event_attachment"
+        ],
+        "status": "projected",
+        "v24": [
+          "read/urls",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "write/files"
+        ],
+        "v241": [
+          "read/urls",
+          "write/files",
+          "send/messages",
+          "create/events",
+          "get/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/messages",
+          "extract/entries",
+          "write/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "index": 20,
+        "inferred_relations": 0,
+        "query": "leggi le mail di fatturazione, estrai gli importi nello store, crea un foglio riepilogo, trova il contatto del fornitore e fissa un promemoria di pagamento",
+        "raw": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "rules": [
+          "v241.catalog.primary_sink_ownership",
+          "v241.catalog.primary_sink_ownership"
+        ],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "v241": [
+          "read/messages",
+          "extract/entries",
+          "write/entries",
+          "create/files_spreadsheet",
+          "find/contacts",
+          "create/events"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "get/processes",
+          "write/files",
+          "send/messages",
+          "find/urls",
+          "create/events",
+          "get/processes"
+        ],
+        "index": 21,
+        "inferred_relations": 0,
+        "query": "trova i processi che usano piu' CPU, scrivi un report, mandamelo via mail, cerca online come ridurli, fissa un controllo fra un'ora e dimmi quanta RAM resta",
+        "raw": [
+          "get/processes",
+          "write/files",
+          "send/messages",
+          "find/urls",
+          "create/events",
+          "get/processes"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "get/processes",
+          "write/files",
+          "send/messages",
+          "find/urls",
+          "create/events",
+          "get/processes"
+        ],
+        "v241": [
+          "get/processes",
+          "write/files",
+          "send/messages",
+          "find/urls",
+          "create/events",
+          "get/processes"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/images",
+          "compress/files",
+          "get/persons",
+          "send/messages"
+        ],
+        "index": 22,
+        "inferred_relations": 0,
+        "query": "cerca le foto del compleanno, comprimile in un archivio, identifica le persone nelle foto e mandami l'album per mail",
+        "raw": [
+          "find/images",
+          "compress/files",
+          "get/persons",
+          "send/messages"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/images",
+          "compress/files",
+          "get/persons",
+          "send/messages"
+        ],
+        "v241": [
+          "find/images",
+          "compress/files",
+          "get/persons",
+          "send/messages"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "find/urls",
+          "extract/entries",
+          "write/entries",
+          "send/messages",
+          "create/tasks"
+        ],
+        "index": 23,
+        "inferred_relations": 0,
+        "query": "cerca online le conferenze AI 2026, estrai nome e data, salvale nello store, mandami l'elenco e programma un task settimanale di aggiornamento",
+        "raw": [
+          "find/events",
+          "extract/entries",
+          "send/entries",
+          "create/tasks"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "find/urls",
+          "extract/entries",
+          "write/entries",
+          "send/messages",
+          "create/tasks"
+        ],
+        "v241": [
+          "find/urls",
+          "extract/entries",
+          "write/entries",
+          "send/messages",
+          "create/tasks"
+        ],
+        "valid": true
+      },
+      {
+        "expected": [
+          "read/messages",
+          "write/files",
+          "get/files",
+          "share/files"
+        ],
+        "index": 24,
+        "inferred_relations": 0,
+        "query": "leggi le mail con allegati foto, salva le immagini in /tmp/foto, trova dove sono state scattate e condividile col contatto Lucia",
+        "raw": [
+          "read/messages",
+          "write/files",
+          "get/files",
+          "share/files"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "write/files",
+          "get/files",
+          "share/files"
+        ],
+        "v241": [
+          "read/messages",
+          "write/files",
+          "get/files",
+          "share/files"
+        ],
+        "valid": true
+      },
+      {
+        "expected": "delete/persons",
+        "index": 25,
+        "inferred_relations": 0,
+        "query": "cancella l'enrollment di ospite alfa",
+        "raw": "delete/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "delete/persons",
+        "v241": "delete/persons",
+        "valid": true
+      },
+      {
+        "expected": "delete/persons",
+        "index": 26,
+        "inferred_relations": 0,
+        "query": "cancella la registrazione biometrica di ospite beta",
+        "raw": "delete/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "delete/persons",
+        "v241": "delete/persons",
+        "valid": true
+      },
+      {
+        "expected": "delete/persons",
+        "index": 27,
+        "inferred_relations": 0,
+        "query": "elimina l'iscrizione di ospite gamma",
+        "raw": "delete/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "delete/persons",
+        "v241": "delete/persons",
+        "valid": true
+      },
+      {
+        "expected": "delete/persons",
+        "index": 28,
+        "inferred_relations": 0,
+        "query": "rimuovi ospite gamma dal registro volti",
+        "raw": "delete/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "delete/persons",
+        "v241": "delete/persons",
+        "valid": true
+      },
+      {
+        "expected": "set/persons",
+        "index": 29,
+        "inferred_relations": 0,
+        "query": "aggiungi ospite alfa al registro volti",
+        "raw": "set/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "set/persons",
+        "v241": "set/persons",
+        "valid": true
+      },
+      {
+        "expected": "get/persons",
+        "index": 30,
+        "inferred_relations": 0,
+        "query": "chi e' enrollato",
+        "raw": "get/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/persons",
+        "v241": "get/persons",
+        "valid": true
+      },
+      {
+        "expected": "delete/persons",
+        "index": 31,
+        "inferred_relations": 0,
+        "query": "delete ospite alfa's enrollment",
+        "raw": "delete/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "delete/persons",
+        "v241": "delete/persons",
+        "valid": true
+      },
+      {
+        "expected": "get/persons",
+        "index": 32,
+        "inferred_relations": 0,
+        "query": "who is enrolled",
+        "raw": "get/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/persons",
+        "v241": "get/persons",
+        "valid": true
+      },
+      {
+        "expected": "read/persons",
+        "index": 33,
+        "inferred_relations": 0,
+        "query": "dimmi tutto su ospite alfa",
+        "raw": "read/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/persons",
+        "v241": "read/persons",
+        "valid": true
+      },
+      {
+        "expected": "read/persons",
+        "index": 34,
+        "inferred_relations": 0,
+        "query": "chi sono io",
+        "raw": "read/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/persons",
+        "v241": "read/persons",
+        "valid": true
+      },
+      {
+        "expected": "get/persons",
+        "index": 35,
+        "inferred_relations": 0,
+        "query": "elenca le persone registrate",
+        "raw": "get/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/persons",
+        "v241": "get/persons",
+        "valid": true
+      },
+      {
+        "expected": "read/messages",
+        "index": 36,
+        "inferred_relations": 0,
+        "query": "leggi le mail di oggi",
+        "raw": "read/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/messages",
+        "v241": "read/messages",
+        "valid": true
+      },
+      {
+        "expected": "move/messages",
+        "index": 37,
+        "inferred_relations": 0,
+        "query": "sposta in spam le mail di pubblicita",
+        "raw": "move/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "move/messages",
+        "v241": "move/messages",
+        "valid": true
+      },
+      {
+        "expected": "find/messages",
+        "index": 38,
+        "inferred_relations": 0,
+        "query": "trova le mail con oggetto fattura",
+        "raw": "find/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/messages",
+        "v241": "find/messages",
+        "valid": true
+      },
+      {
+        "expected": "list/files",
+        "index": 39,
+        "inferred_relations": 0,
+        "query": "elenca i file in /tmp",
+        "raw": "list/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "list/files",
+        "v241": "list/files",
+        "valid": true
+      },
+      {
+        "expected": "list/dirs",
+        "index": 40,
+        "inferred_relations": 0,
+        "query": "elenca le sottocartelle di /tmp",
+        "raw": "list/dirs",
+        "rules": [],
+        "status": "projected",
+        "v24": "list/dirs",
+        "v241": "list/dirs",
+        "valid": true
+      },
+      {
+        "expected": "delete/dirs",
+        "index": 41,
+        "inferred_relations": 0,
+        "query": "cancella la cartella build_old",
+        "raw": "delete/dirs",
+        "rules": [],
+        "status": "projected",
+        "v24": "delete/dirs",
+        "v241": "delete/dirs",
+        "valid": true
+      },
+      {
+        "expected": "read/urls",
+        "index": 42,
+        "inferred_relations": 0,
+        "query": "controlla l'url https://x.com",
+        "raw": "read/urls",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/urls",
+        "v241": "read/urls",
+        "valid": true
+      },
+      {
+        "expected": "read/urls",
+        "index": 43,
+        "inferred_relations": 0,
+        "query": "scarica il json da example.com",
+        "raw": "read/urls",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/urls",
+        "v241": "read/urls",
+        "valid": true
+      },
+      {
+        "expected": "create/events",
+        "index": 44,
+        "inferred_relations": 0,
+        "query": "crea un evento domani alle 9",
+        "raw": "create/events",
+        "rules": [],
+        "status": "projected",
+        "v24": "create/events",
+        "v241": "create/events",
+        "valid": true
+      },
+      {
+        "expected": "read/events",
+        "index": 45,
+        "inferred_relations": 0,
+        "query": "che impegni ho domani",
+        "raw": "read/events",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/events",
+        "v241": "read/events",
+        "valid": true
+      },
+      {
+        "expected": "find/images",
+        "index": 46,
+        "inferred_relations": 0,
+        "query": "cerca foto al mare",
+        "raw": "find/images",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/images",
+        "v241": "find/images",
+        "valid": true
+      },
+      {
+        "expected": "get/numbers",
+        "index": 47,
+        "inferred_relations": 0,
+        "query": "che ora e'",
+        "raw": "get/numbers",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/numbers",
+        "v241": "get/numbers",
+        "valid": true
+      },
+      {
+        "expected": "get/places",
+        "index": 48,
+        "inferred_relations": 0,
+        "query": "dove mi trovo",
+        "raw": "get/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/persons",
+        "v241": "get/persons",
+        "valid": true
+      },
+      {
+        "expected": "find/packages",
+        "index": 49,
+        "inferred_relations": 0,
+        "query": "controlla se ffmpeg e' installato",
+        "raw": "find/packages",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/packages",
+        "v241": "find/packages",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 50,
+        "inferred_relations": 0,
+        "query": "leggi /etc/hosts",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 51,
+        "inferred_relations": 0,
+        "query": "mostrami il contenuto di config.py",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 52,
+        "inferred_relations": 0,
+        "query": "apri il file note.txt",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 53,
+        "inferred_relations": 0,
+        "query": "dammi il contenuto di /var/log/syslog",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 54,
+        "inferred_relations": 0,
+        "query": "voglio vedere cosa c'e' in log.txt",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 55,
+        "inferred_relations": 0,
+        "query": "open the file readme.md",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 56,
+        "inferred_relations": 0,
+        "query": "show me the contents of app.log",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 57,
+        "inferred_relations": 0,
+        "query": "che dimensione ha config.py",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 58,
+        "inferred_relations": 0,
+        "query": "quanto pesa il file backup.iso",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 59,
+        "inferred_relations": 0,
+        "query": "quando e' stato modificato report.pdf",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 60,
+        "inferred_relations": 0,
+        "query": "che permessi ha /etc/passwd",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 61,
+        "inferred_relations": 0,
+        "query": "dammi le informazioni sul file fattura.pdf",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 62,
+        "inferred_relations": 0,
+        "query": "how big is video.mp4",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 63,
+        "inferred_relations": 0,
+        "query": "when was photo.jpg last modified",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 64,
+        "inferred_relations": 0,
+        "query": "i metadati EXIF della foto IMG_001.jpg",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "read/images",
+        "index": 65,
+        "inferred_relations": 0,
+        "query": "leggi il testo dalla foto scan.png",
+        "raw": "read/images",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/images",
+        "v241": "read/images",
+        "valid": true
+      },
+      {
+        "expected": "read/images",
+        "index": 66,
+        "inferred_relations": 0,
+        "query": "read the text in the screenshot.png",
+        "raw": "read/images",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/images",
+        "v241": "read/images",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 67,
+        "inferred_relations": 0,
+        "query": "leggi il testo grezzo del pdf manuale.pdf",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 68,
+        "inferred_relations": 0,
+        "query": "dammi il testo della pagina salvata index.html",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/messages",
+        "index": 69,
+        "inferred_relations": 0,
+        "query": "leggi le mail di oggi",
+        "raw": "read/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/messages",
+        "v241": "read/messages",
+        "valid": true
+      },
+      {
+        "expected": "describe/messages",
+        "index": 70,
+        "inferred_relations": 0,
+        "query": "riassumi le mail di oggi",
+        "raw": "describe/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "describe/messages",
+        "v241": "describe/messages",
+        "valid": true
+      },
+      {
+        "expected": "describe/messages",
+        "index": 71,
+        "inferred_relations": 0,
+        "query": "summarize my inbox",
+        "raw": "describe/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "describe/messages",
+        "v241": "describe/messages",
+        "valid": true
+      },
+      {
+        "expected": "describe/messages",
+        "index": 72,
+        "inferred_relations": 0,
+        "query": "fammi un riassunto delle ultime email",
+        "raw": "describe/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "describe/messages",
+        "v241": "describe/messages",
+        "valid": true
+      },
+      {
+        "expected": "describe/messages",
+        "index": 73,
+        "inferred_relations": 0,
+        "query": "sintetizza le mail della settimana",
+        "raw": "describe/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "describe/messages",
+        "v241": "describe/messages",
+        "valid": true
+      },
+      {
+        "expected": "read/messages",
+        "index": 74,
+        "inferred_relations": 0,
+        "query": "dammi il contenuto delle ultime mail",
+        "raw": "read/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/messages",
+        "v241": "read/messages",
+        "valid": true
+      },
+      {
+        "expected": "describe/images",
+        "index": 75,
+        "inferred_relations": 0,
+        "query": "riassumi le foto per anno e luogo",
+        "raw": "describe/images",
+        "rules": [],
+        "status": "projected",
+        "v24": "describe/images",
+        "v241": "describe/images",
+        "valid": true
+      },
+      {
+        "expected": "read/urls",
+        "index": 76,
+        "inferred_relations": 0,
+        "query": "scarica il json da https://api.example.com/data",
+        "raw": "read/urls",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/urls",
+        "v241": "read/urls",
+        "valid": true
+      },
+      {
+        "expected": "read/urls",
+        "index": 77,
+        "inferred_relations": 0,
+        "query": "leggi la pagina https://example.com",
+        "raw": "read/urls",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/urls",
+        "v241": "read/urls",
+        "valid": true
+      },
+      {
+        "expected": "read/urls",
+        "index": 78,
+        "inferred_relations": 0,
+        "query": "dammi il contenuto di http://x.com/info.json",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/urls",
+        "v241": "read/urls",
+        "valid": true
+      },
+      {
+        "expected": "read/urls",
+        "index": 79,
+        "inferred_relations": 0,
+        "query": "fetch the json from https://httpbin.org/uuid",
+        "raw": "read/urls",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/urls",
+        "v241": "read/urls",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 80,
+        "inferred_relations": 0,
+        "query": "scarica il report.pdf in /tmp/reports",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 81,
+        "inferred_relations": 0,
+        "query": "leggi le note dal file appunti.txt",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 82,
+        "inferred_relations": 0,
+        "query": "trova i file .py in /opt",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      },
+      {
+        "expected": "find/images",
+        "index": 83,
+        "inferred_relations": 0,
+        "query": "cerca le foto al mare",
+        "raw": "find/images",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/images",
+        "v241": "find/images",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 84,
+        "inferred_relations": 0,
+        "query": "find pdfs modified today",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 85,
+        "inferred_relations": 0,
+        "query": "cerca i documenti che contengono fattura",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      },
+      {
+        "expected": "read/files",
+        "index": 86,
+        "inferred_relations": 0,
+        "query": "leggi /opt/metnos/README.md",
+        "raw": "read/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/files",
+        "v241": "read/files",
+        "valid": true
+      },
+      {
+        "expected": "get/numbers",
+        "index": 87,
+        "inferred_relations": 0,
+        "query": "che ora e'",
+        "raw": "get/numbers",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/numbers",
+        "v241": "get/numbers",
+        "valid": true
+      },
+      {
+        "expected": "get/numbers",
+        "index": 88,
+        "inferred_relations": 0,
+        "query": "what time is it",
+        "raw": "get/numbers",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/numbers",
+        "v241": "get/numbers",
+        "valid": true
+      },
+      {
+        "expected": "list/files",
+        "index": 89,
+        "inferred_relations": 0,
+        "query": "elenca i file in /tmp",
+        "raw": "list/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "list/files",
+        "v241": "list/files",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 90,
+        "inferred_relations": 0,
+        "query": "trova i .py in /tmp",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      },
+      {
+        "expected": "list/dirs",
+        "index": 91,
+        "inferred_relations": 0,
+        "query": "elenca le sottocartelle di /opt",
+        "raw": "list/dirs",
+        "rules": [],
+        "status": "projected",
+        "v24": "list/dirs",
+        "v241": "list/dirs",
+        "valid": true
+      },
+      {
+        "expected": "list/dirs",
+        "index": 92,
+        "inferred_relations": 0,
+        "query": "cosa c'e' nella cartella Downloads",
+        "raw": "list/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "list/dirs",
+        "v241": "list/dirs",
+        "valid": true
+      },
+      {
+        "expected": "list/messages",
+        "index": 93,
+        "inferred_relations": 0,
+        "query": "list the IMAP folders",
+        "raw": "list/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "list/messages",
+        "v241": "list/messages",
+        "valid": true
+      },
+      {
+        "expected": "find/dirs",
+        "index": 94,
+        "inferred_relations": 0,
+        "query": "trova le directory piu' grandi",
+        "raw": "find/dirs",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/dirs",
+        "v241": "find/dirs",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 95,
+        "inferred_relations": 0,
+        "query": "quanti file ci sono in /opt",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 96,
+        "inferred_relations": 0,
+        "query": "conta i file in /opt",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 97,
+        "inferred_relations": 0,
+        "query": "how many files are in /opt",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      },
+      {
+        "expected": "list/messages",
+        "index": 98,
+        "inferred_relations": 0,
+        "query": "elenca le folder IMAP",
+        "raw": "list/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "list/messages",
+        "v241": "list/messages",
+        "valid": true
+      },
+      {
+        "expected": "read/messages",
+        "index": 99,
+        "inferred_relations": 0,
+        "query": "leggi le mail nell'inbox",
+        "raw": "read/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "read/messages",
+        "v241": "read/messages",
+        "valid": true
+      },
+      {
+        "expected": "filter/files",
+        "index": 100,
+        "inferred_relations": 0,
+        "query": "scarta i file piu' piccoli di 1KB",
+        "raw": "filter/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "filter/files",
+        "v241": "filter/files",
+        "valid": true
+      },
+      {
+        "expected": "filter/messages",
+        "index": 101,
+        "inferred_relations": 0,
+        "query": "tieni solo le mail non lette",
+        "raw": "filter/messages",
+        "rules": [],
+        "status": "projected",
+        "v24": "filter/messages",
+        "v241": "filter/messages",
+        "valid": true
+      },
+      {
+        "expected": "filter/files",
+        "index": 102,
+        "inferred_relations": 0,
+        "query": "escludi i file temporanei",
+        "raw": "filter/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "filter/files",
+        "v241": "filter/files",
+        "valid": true
+      },
+      {
+        "expected": "filter/images",
+        "index": 103,
+        "inferred_relations": 0,
+        "query": "keep only photos from 2024",
+        "raw": "filter/images",
+        "rules": [],
+        "status": "projected",
+        "v24": "filter/images",
+        "v241": "filter/images",
+        "valid": true
+      },
+      {
+        "expected": "find/dirs",
+        "index": 104,
+        "inferred_relations": 0,
+        "query": "quanto e' grande la cartella Downloads",
+        "raw": "find/dirs",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/dirs",
+        "v241": "find/dirs",
+        "valid": true
+      },
+      {
+        "expected": "get/places",
+        "index": 105,
+        "inferred_relations": 0,
+        "query": "dimmi la mia posizione",
+        "raw": "get/places",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/places",
+        "v241": "get/places",
+        "valid": true
+      },
+      {
+        "expected": "get/files",
+        "index": 106,
+        "inferred_relations": 0,
+        "query": "arricchisci le foto con i dati EXIF",
+        "raw": "get/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/files",
+        "v241": "get/files",
+        "valid": true
+      },
+      {
+        "expected": "find/packages",
+        "index": 107,
+        "inferred_relations": 0,
+        "query": "verifica che python3 sia presente",
+        "raw": "find/packages",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/packages",
+        "v241": "find/packages",
+        "valid": true
+      },
+      {
+        "expected": "find/processes",
+        "index": 108,
+        "inferred_relations": 0,
+        "query": "is nginx running",
+        "raw": "find/processes",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/processes",
+        "v241": "find/processes",
+        "valid": true
+      },
+      {
+        "expected": "find/files",
+        "index": 109,
+        "inferred_relations": 0,
+        "query": "esiste il file /tmp/lock",
+        "raw": "find/files",
+        "rules": [],
+        "status": "projected",
+        "v24": "find/files",
+        "v241": "find/files",
+        "valid": true
+      }
+    ],
+    "regressions": [],
+    "remaining": [
+      {
+        "expected": [
+          "read/messages",
+          "extract/entries",
+          "create/files"
+        ],
+        "index": 12,
+        "inferred_relations": 0,
+        "query": "leggi le mail di Anthropic, estrai gli importi e crea un foglio di calcolo",
+        "raw": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet"
+        ],
+        "rules": [],
+        "status": "projected",
+        "v24": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet"
+        ],
+        "v241": [
+          "read/messages",
+          "extract/entries",
+          "create/files_spreadsheet"
+        ],
+        "valid": true
+      },
+      {
+        "expected": "get/places",
+        "index": 48,
+        "inferred_relations": 0,
+        "query": "dove mi trovo",
+        "raw": "get/persons",
+        "rules": [],
+        "status": "projected",
+        "v24": "get/persons",
+        "v241": "get/persons",
+        "valid": true
+      }
+    ],
+    "summary": {
+      "baseline_exact": 105,
+      "fail_closed": 0,
+      "improvements": 2,
+      "records": 109,
+      "regressions": 0,
+      "v241_exact": 107,
+      "valid": 109
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "created_at": "2026-08-08T16:11:11.811337+00:00",
+  "cross_validation_started": true,
+  "cross_validation_started_at": "2026-08-08T16:11:14.518771+00:00",
+  "freeze_version": "metnos.v24-offline-freeze/1.0",
+  "projector_path": "/tmp/metnos_v24_offline.py",
+  "projector_sha256": "7ab109898feddf5fc8c32c1b921f0220ab097b7e72a742d99879f32af1430e64",
+  "rules_path": "/tmp/metnos_v24_rules_frozen.json",
+  "rules_sha256": "e41561e12c835b15bce40e25eb2eb28ead3b27228c8bd05867dc1f9d7b6c8357",
+  "schema_path": "/tmp/metnos_v24_contract.schema.json",
+  "schema_sha256": "0d08b7205632efef8a7f9dadc0c63fe81b42e72daf03b062d7663eb5f98b7e24"
+}

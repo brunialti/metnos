@@ -1,0 +1,114 @@
+{
+  "format": "metnos.intent-approval-fix-pilot/0.1",
+  "records": [
+    {
+      "case_id": "bp-006",
+      "elapsed_ms": 10968,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "093e802097aea834bc39a1ff3c11e2c930caa45f63f4a8d7d62b4f447dd77e4a",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "find/files"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 10003,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "c665d1254398abef19665cdbb8c14e24cf78a5c66ddf01f904df14ea5ea23e91",
+      "semantic": null,
+      "status": "document_invalid"
+    }
+  ],
+  "state": "stopped_after_probe"
+}

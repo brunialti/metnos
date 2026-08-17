@@ -1,0 +1,168 @@
+{
+  "candidate_outputs_read": 0,
+  "existing_probe_sha256": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+  "existing_probe_summary": {
+    "classifier_controls": 19,
+    "failed": 0,
+    "oracle_only_mappings": 4,
+    "passed": 125,
+    "positive_controls": 19,
+    "tests": 125,
+    "validator_mutations": 68
+  },
+  "network_calls": 0,
+  "runner_sha256": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+  "scope": "design adapter only; no decoder schema, prompt, freeze, model run, or live accuracy credit",
+  "summary": {
+    "byte_reduction_percent": 5.64,
+    "compact_bytes": 23744,
+    "existing_positive_roundtrips": 19,
+    "failed": 0,
+    "full_bytes": 25162,
+    "new_fail_closed_controls": 5,
+    "passed": 24,
+    "tests": 24
+  },
+  "tests": [
+    {
+      "compact_bytes": 610,
+      "full_bytes": 636,
+      "id": "P01_direct_current_location",
+      "pass": true
+    },
+    {
+      "compact_bytes": 662,
+      "full_bytes": 688,
+      "id": "P02_polar_complete_proposition",
+      "pass": true
+    },
+    {
+      "compact_bytes": 996,
+      "full_bytes": 1059,
+      "id": "P03_queryable_imperative_dependency",
+      "pass": true
+    },
+    {
+      "compact_bytes": 2068,
+      "full_bytes": 2205,
+      "id": "P04_dependency_fanout",
+      "pass": true
+    },
+    {
+      "compact_bytes": 1217,
+      "full_bytes": 1269,
+      "id": "P05_two_independent_domains",
+      "pass": true
+    },
+    {
+      "compact_bytes": 1147,
+      "full_bytes": 1210,
+      "id": "P06_direct_output_also_consumed",
+      "pass": true
+    },
+    {
+      "compact_bytes": 1556,
+      "full_bytes": 1645,
+      "id": "P07_embedded_plus_main",
+      "pass": true
+    },
+    {
+      "compact_bytes": 2510,
+      "full_bytes": 2614,
+      "id": "P08_ambiguity_preserves_unaffected_action",
+      "pass": true
+    },
+    {
+      "compact_bytes": 1805,
+      "full_bytes": 1979,
+      "id": "P09_depth_exactly_four_synthetic_registry",
+      "pass": true
+    },
+    {
+      "compact_bytes": 1509,
+      "full_bytes": 1657,
+      "id": "P10_diamond_dag_synthetic_registry",
+      "pass": true
+    },
+    {
+      "compact_bytes": 797,
+      "full_bytes": 837,
+      "id": "P11_mixed_supported_unsupported",
+      "pass": true
+    },
+    {
+      "compact_bytes": 581,
+      "full_bytes": 607,
+      "id": "P12_scoped_unknown_unconsumed",
+      "pass": true
+    },
+    {
+      "compact_bytes": 1206,
+      "full_bytes": 1258,
+      "id": "M014_nested_span_overlap",
+      "pass": true
+    },
+    {
+      "compact_bytes": 996,
+      "full_bytes": 1059,
+      "id": "M042_queryable_imperative_one_unknown",
+      "pass": true
+    },
+    {
+      "compact_bytes": 581,
+      "full_bytes": 607,
+      "id": "M043_embedded_unconsumed_unknown_oracle_corrected",
+      "pass": true
+    },
+    {
+      "compact_bytes": 2068,
+      "full_bytes": 2205,
+      "id": "M047_fanout_second_consumer",
+      "pass": true
+    },
+    {
+      "compact_bytes": 1217,
+      "full_bytes": 1269,
+      "id": "M048_global_two_unknown_rejection_guard",
+      "pass": true
+    },
+    {
+      "compact_bytes": 2019,
+      "full_bytes": 2145,
+      "id": "X001_dependency_semantics_make_alternatives_distinct",
+      "pass": true
+    },
+    {
+      "compact_bytes": 199,
+      "full_bytes": 213,
+      "id": "X008_whole_unsupported_valid",
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "duplicate_clause_span",
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "orphan_dependency_span",
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "supported_unsupported_span_collision",
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "future_source_ordinal",
+      "pass": true
+    },
+    {
+      "fail_closed": true,
+      "id": "ambiguous_source_output",
+      "pass": true
+    }
+  ],
+  "version": "metnos.v26.5-compact-normal-form-probe/0.1"
+}

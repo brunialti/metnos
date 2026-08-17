@@ -1,0 +1,76 @@
+{
+  "arm_id": "A",
+  "backend_identity": {
+    "absolute_sources": {
+      "/etc/systemd/system/llama-server.service": "47bcd6dcee57e1bb50fbf58f85c72b576c6886ab515d3eb9a28b1860dcbc3788",
+      "/etc/systemd/system/llama-server.service.d/override.conf": "dffe0d4e35973ddf9893361780d9c3b9736daea7d2873b96f1cb6e817fb2974f",
+      "/home/roberto/.config/metnos/llm_tiers.toml": "2b5ff25e0933d0afdd847d3185272b8405215e4b401b32bf3ab544b535193c9a",
+      "/home/roberto/llama.cpp-0712/build/bin/llama-server": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+      "/home/roberto/llamacpp.env": "a50cac232aeccb1b8116e834173d15cde180e78193e1b0897e2a50905915efe3",
+      "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+      "/opt/suprastructure/config/models.yaml": "a0bb1a2ab22ced6d2bc3194aa63e935bfd01809cc4e95a2d6d937f154954a97f",
+      "/opt/suprastructure/models/manifest.yaml": "1460122a73eeaaf82580b5b7a0547179a3fc1542d69bd683f1078efb9ec22e73"
+    },
+    "api_model_id": "local",
+    "backend": "llama.cpp Vulkan",
+    "backend_binary": "/home/roberto/llama.cpp-0712/build/bin/llama-server",
+    "backend_binary_sha256": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+    "backend_build": "1422 (e3546c794)",
+    "endpoint": "http://localhost:8080/v1/chat/completions",
+    "physical_model_id": "qwen3.6-35b-a3b",
+    "provider": "llamacpp",
+    "source_revision": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
+    "weights_path": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "weights_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "weights_size_bytes": 22663387424
+  },
+  "created_date": "2026-08-13",
+  "current_extractor": {
+    "entrypoint": "runtime.intent_extractor.extract_intent",
+    "level": "micro",
+    "measurement_max_tokens": 4000,
+    "prompt_languages": [
+      "en",
+      "it"
+    ],
+    "prompt_role": "intent_extractor_v4",
+    "response_format": "current_control_unchanged_none",
+    "scaffold": false,
+    "secondary_probe_disabled": true,
+    "single_primary_response": true,
+    "tier": "fast",
+    "workload": "intent.extract"
+  },
+  "provenance": {
+    "fresh_control": true,
+    "historic_candidate_repair": false,
+    "label": "current_metnos_intent_extractor_fresh_run1_snapshot",
+    "production_read_only": true
+  },
+  "repo_sources": {
+    "runtime/compound_decomposer.py": "251b0c6fac0556fef0fb901e687dbcc701ad6830e86b7b829cac1a485c962b54",
+    "runtime/config.py": "99ab42df29d4ee0e12f62245efce1411ed27583cc599d78daec5003a157422dc",
+    "runtime/detection_lexicon.py": "5f6e5fa8ae42852efe5609e98740fb970325c6e4d0b71a39b2ac5e3fc330cc26",
+    "runtime/detection_lexicon_seed.py": "76d357239390d806d2fd800de1042dfc687e4b02d30c66eac9bc2c2ab6189506",
+    "runtime/hashutil.py": "0332b42a8f83fd3152165f81663e0a95290a78ce9747308a6cdb9ae0c1b66e9b",
+    "runtime/i18n.py": "cf3bf9396f80d651871bfcc4dce8a2af1d025b0a1c2e7ddc754226bdfe18dedd",
+    "runtime/intent_extractor.py": "35bade0bf74d59a4ac1fefd779169294eb66e76acfd6bcbc3caae34367d8d22a",
+    "runtime/logging_setup.py": "fc5a30ca628446861f05a956a2c6dad4a9bcb5fbc4961f7fc4d8660a2d0744d9",
+    "runtime/prefilter.py": "4dd44d4d644c62dff802a9eaf13d49a1114918abbc9ebf2405cad9874adc0371",
+    "runtime/prompt_loader.py": "bd8a920cc9c965a0410b8bffb0d1730f7db8e5be4b35799dd726e0abaf48617c",
+    "runtime/prompts/en/intent_extractor_v4.j2": "5f2a6e779f7b453c3b6a2582a2aefad7eea4fee12d8b236fc5089cf17fb20ef8",
+    "runtime/prompts/it/intent_extractor_v4.j2": "f03364fea8775de8e2a6d244ce086f24e1b773a03705c6b91f76e54e96b7db48",
+    "runtime/tool_grammar.py": "af89d26b0949a65d10b9181414f9883f8326dd762d4f773be71c2f18dc86b303",
+    "runtime/vocab.py": "6eb5a2cab733b50e3f8f020faa35d02c8a2d7da285fad1f280c80b8e0f053600"
+  },
+  "run_id": "intent-shadow-v0.2-run1",
+  "runtime_state": {
+    "behavior_sha256": "9aaf4297c5fa58aab6c9cd131871cdec036ffa11908ad7e5ccb6e81b74be1306",
+    "language_policy": "canonical_and_typed=it; legacy=case_language; loader fallback unchanged",
+    "mode": "read_only",
+    "path": "/home/roberto/.local/share/metnos/detection.sqlite",
+    "row_count": 180
+  },
+  "snapshot_format": "metnos.intent-current-control-snapshot/0.2-run1",
+  "snapshot_payload_sha256": "5f018b66210cf2668f2f3c4d18a7b36c94c7c3cae769940dc6119c7a3bfd8814"
+}

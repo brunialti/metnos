@@ -1,0 +1,327 @@
+{
+  "count": 20,
+  "exact": 19,
+  "format": "metnos.structural-gate-probe/0.1",
+  "records": [
+    {
+      "approval_expected": "none",
+      "case_id": "bp-001",
+      "decision": "defer",
+      "elapsed_ms": 1052,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "257c35315da97ff3b64831d409cdf13d1617d7b9b3e8f798e2a6d1f9e47df122"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-002",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 750,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:unsupported_dependency",
+      "features": {
+        "alternative_action_paths": true,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "a84f04674781c8904368188c7633b24d50b86c3c8ac34471da6c612aea71bc07"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-003",
+      "decision": "defer",
+      "elapsed_ms": 1039,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "9632381fdae9c7c8e2b51428f34e663ccb27e635b8925712a427ec5a91146a28"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-004",
+      "decision": "system_control:undo_last_turn",
+      "elapsed_ms": 782,
+      "error": null,
+      "exact": true,
+      "expected": "system_control:undo_last_turn",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": false,
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "cf45c70608918135a0b76c7bf8c0649b9556e30384a2e51ece57e02aaa0ab450"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-005",
+      "decision": "defer",
+      "elapsed_ms": 1044,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "bc27aa20f1f5b6e5b23d0e5a048aee76c8cf6500afbdfdeaba521c28b59e77d1"
+    },
+    {
+      "approval_expected": "suffix_actions",
+      "case_id": "bp-006",
+      "decision": "defer",
+      "elapsed_ms": 774,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "suffix_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "4abe1134440c4ae4daa800d701d3aa32ea70397d7967c3bf7606efbe1e555710"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-007",
+      "decision": "defer",
+      "elapsed_ms": 1037,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "9d6b48aab1b283d4dac6fb9f74b6c955ee6637c8c915cec14fb1b147b06de52e"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-008",
+      "decision": "defer",
+      "elapsed_ms": 777,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "d559a27d0f4c639c2c0276a4530e6efc9f6760d04747443b051af942e59b6751"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-009",
+      "decision": "system_control:undo_last_turn",
+      "elapsed_ms": 1073,
+      "error": null,
+      "exact": false,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": false,
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "be15a9a047aa1a7ccb229f7d4a8bf24a78f84968ea246e57582b3caaba55201a"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-010",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 750,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "ed09c61264ab4dfdb8f651db2793d331fb0fdba8b40f1351ca7ec5adbb45ec24"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-011",
+      "decision": "defer",
+      "elapsed_ms": 1021,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "cda2bc8043b3f2947f3db3dc3b195094a0f5603e39149444e35c07f708a2ae2d"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-012",
+      "decision": "defer",
+      "elapsed_ms": 747,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "f911db1b7484097a75395f1d129240f5091780610f8d7ac7e4ce9997ef2bcb5a"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-013",
+      "decision": "defer",
+      "elapsed_ms": 1049,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "c69b1d7c968246a5953243597dbee73870ffc4a9e532fec043a82c59019e5449"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-014",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 761,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:unsupported_dependency",
+      "features": {
+        "alternative_action_paths": true,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "000b189dccd03df04391f3597f0e82fb948a0f5b1d7570c91a97471edcd0aa1d"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-015",
+      "decision": "defer",
+      "elapsed_ms": 1050,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "1265268bcef3f0214228b8ecb3e140b5fc82f9437f17c38a1fd42ccc4395960e"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-016",
+      "decision": "defer",
+      "elapsed_ms": 633,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "ac729df52b40358199903c999f1402f6e882ae865f5c35baa8e4f21f72e6a9ce"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-017",
+      "decision": "defer",
+      "elapsed_ms": 1049,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "cb65da9c7402334fa1b02455bc60695707362cf2840bb2e454cc44968b54f088"
+    },
+    {
+      "approval_expected": "all_actions",
+      "case_id": "bp-018",
+      "decision": "defer",
+      "elapsed_ms": 815,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "all_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "0b909d68e5ba2f2841bd53338cab533b9272aa8c1d9b3cc6fe78e849fc668ec1"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-019",
+      "decision": "defer",
+      "elapsed_ms": 1073,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "5a6bd9fcbeea8fe1d0f2d73aafa5e87d1f3b00d97e623b30dc3a04de09e4c9cb"
+    },
+    {
+      "approval_expected": "none",
+      "case_id": "bp-020",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 753,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "features": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "1af2dd38143300c67e046e4b488fed43ad59f129afb86163fc24983fad9b38e6"
+    }
+  ]
+}

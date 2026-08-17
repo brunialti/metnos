@@ -1,0 +1,1583 @@
+{
+  "acceptance": {
+    "core_failed": 0,
+    "independent_classifier_controls": 19,
+    "independent_failed": 0,
+    "independent_positive_controls": 19,
+    "independent_tests": 125,
+    "independent_validator_mutations": 68,
+    "oracle_only_mappings": 4,
+    "oracle_representability_and_gates": "34/34"
+  },
+  "candidate_outputs_read": 0,
+  "core": {
+    "summary": {
+      "failed": 0,
+      "passed": 69,
+      "tests": 69
+    },
+    "tests": [
+      {
+        "id": "registry_invariants",
+        "pass": true
+      },
+      {
+        "id": "direct_valid",
+        "pass": true
+      },
+      {
+        "id": "direct_binding",
+        "pass": true
+      },
+      {
+        "id": "dependency_valid",
+        "pass": true
+      },
+      {
+        "id": "dependency_classified",
+        "pass": true
+      },
+      {
+        "id": "role_speech_mismatch",
+        "pass": true
+      },
+      {
+        "id": "relation_tense_proof",
+        "pass": true
+      },
+      {
+        "id": "actor_current_wrong_proof",
+        "pass": true
+      },
+      {
+        "id": "historical_wrong_proof",
+        "pass": true
+      },
+      {
+        "id": "reference_type_mismatch",
+        "pass": true
+      },
+      {
+        "id": "missing_relation_proof",
+        "pass": true
+      },
+      {
+        "id": "missing_argument_proof",
+        "pass": true
+      },
+      {
+        "id": "open_question_without_unknown",
+        "pass": true
+      },
+      {
+        "id": "forward_edge_invalid",
+        "pass": true
+      },
+      {
+        "id": "dependency_output_missing_invalid",
+        "pass": true
+      },
+      {
+        "id": "unconsumed_dependency_invalid",
+        "pass": true
+      },
+      {
+        "id": "non_output_edge_invalid",
+        "pass": true
+      },
+      {
+        "id": "duplicate_alternatives_invalid",
+        "pass": true
+      },
+      {
+        "id": "single_alternative_invalid",
+        "pass": true
+      },
+      {
+        "id": "typed_ambiguity_valid",
+        "pass": true
+      },
+      {
+        "id": "unsupported_structurally_valid",
+        "pass": true
+      },
+      {
+        "id": "status_branch_order",
+        "pass": true
+      },
+      {
+        "id": "no_evidence_none",
+        "pass": true
+      },
+      {
+        "id": "grammatical_person_removed",
+        "pass": true
+      },
+      {
+        "id": "subject_ref_removed",
+        "pass": true
+      },
+      {
+        "id": "uax29_zh",
+        "pass": true
+      },
+      {
+        "id": "uax29_ja",
+        "pass": true
+      },
+      {
+        "id": "runtime_gold_isolated",
+        "pass": true
+      },
+      {
+        "id": "one_call_no_retry",
+        "pass": true
+      },
+      {
+        "id": "no_prior_runner_import",
+        "pass": true
+      },
+      {
+        "id": "explicit_endpoint",
+        "pass": true
+      },
+      {
+        "id": "author_gate_blocked",
+        "pass": true
+      },
+      {
+        "id": "author_gate_not_external",
+        "pass": true
+      },
+      {
+        "id": "registry_matches_oracle",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.it.reflexive",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.it.nominal",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.en.copular",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.fr.inversion",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.es.prodrop",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.de.copular",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.tr.fused",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.ja.case_marked",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:pos.zh.wh_in_situ",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.identity.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.identity.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.identity.fr",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.identity.es",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.identity.de",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.third_person.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.third_person.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.third_person.es",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.people_here.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.people_here.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.place_identity.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.file_location.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.file_location.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.process_host.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.nearby_operand.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.nearby_operand.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.polar.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.historical.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.share.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.quote.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.condition.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.relative_clause.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.workflow_position.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.document_position.en",
+        "pass": true
+      },
+      {
+        "id": "oracle_representable:neg.progress.it",
+        "pass": true
+      },
+      {
+        "id": "oracle_hash_chain",
+        "pass": true
+      }
+    ]
+  },
+  "independent_probe": {
+    "candidate_outputs_read": 0,
+    "failed": [],
+    "network_calls": 0,
+    "registry_sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+    "results": [
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P01_direct_current_location",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "not_applicable",
+          "targets": [
+            1
+          ],
+          "valid": true
+        },
+        "id": "P01_direct_classifier",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P02_polar_complete_proposition",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "forbidden",
+          "targets": [],
+          "valid": true
+        },
+        "id": "P02_polar_classifier",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P03_queryable_imperative_dependency",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "required",
+          "targets": [],
+          "valid": true
+        },
+        "id": "P03_dependency_classifier",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P04_dependency_fanout",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P05_two_independent_domains",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P06_direct_output_also_consumed",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "required",
+          "targets": [
+            1
+          ],
+          "valid": true
+        },
+        "id": "P06_direct_and_dependency",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P07_embedded_plus_main",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "not_applicable",
+          "targets": [
+            3
+          ],
+          "valid": true
+        },
+        "id": "P07_scope_dependency_safe",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": [],
+        "id": "P07_scope_safety_safe",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P08_ambiguity_preserves_unaffected_action",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P09_depth_exactly_four_synthetic_registry",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_depth"
+          ],
+          "valid": false
+        },
+        "id": "M059_dependency_depth_five",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P10_diamond_dag_synthetic_registry",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P11_mixed_supported_unsupported",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "P12_scoped_unknown_unconsumed",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M001_unknown_top_field",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M002_focus_reintroduced",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M003_grammatical_person_reintroduced",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M004_supported_zero_atoms",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M005_unsupported_with_atom",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M006_ambiguity_one_alternative",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M007_ambiguity_five_alternatives",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "duplicate_alternative"
+          ],
+          "valid": false
+        },
+        "id": "M008_ambiguity_duplicate_semantics",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_not_output",
+            "alternative_coverage"
+          ],
+          "valid": false
+        },
+        "id": "M009_cross_alternative_atom_ref",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": "requires frozen expected graph",
+        "id": "M010_ambiguity_drops_unaffected_action",
+        "layer": "oracle_only",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "clause_span_consistency",
+            "primary_cardinality",
+            "clause_ids"
+          ],
+          "valid": false
+        },
+        "id": "M011_duplicate_clause_id",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "atom_clause_order",
+            "clause_source_order"
+          ],
+          "valid": false
+        },
+        "id": "M012_clause_id_reverse",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "clause_span"
+          ],
+          "valid": false
+        },
+        "id": "M013_clause_span_out_of_bounds",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "M014_nested_span_overlap",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M015_atom_unknown_relation",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "relation_arity"
+          ],
+          "valid": false
+        },
+        "id": "M016_relation_missing_arg",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "relation_arity"
+          ],
+          "valid": false
+        },
+        "id": "M017_relation_extra_arg",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "reference_type"
+          ],
+          "valid": false
+        },
+        "id": "M018_swap_arg_order",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "M019_wrong_role_same_arity_by_construction",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "M020_unknown_wrong_type_by_construction",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M021_bound_unknown_ref",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "reference_type"
+          ],
+          "valid": false
+        },
+        "id": "M022_bound_ref_wrong_slot_type",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_type"
+          ],
+          "valid": false
+        },
+        "id": "M023_derived_into_slot_without_allowlist",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_type"
+          ],
+          "valid": false
+        },
+        "id": "M024_derived_wrong_output_type",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M025_silent_output_type_rewrite",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M026_bound_with_source_fields",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M027_unknown_with_ref",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M028_from_output_with_bound_ref",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M029_duplicate_supplied_type_disagrees",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "role_speech",
+            "closed_proposition_unknown"
+          ],
+          "valid": false
+        },
+        "id": "M030_main_request_assertion",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "role_speech",
+            "queryable_unknown"
+          ],
+          "valid": false
+        },
+        "id": "M031_assertion_open_question",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "role_speech"
+          ],
+          "valid": false
+        },
+        "id": "M032_quote_imperative",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "role_speech"
+          ],
+          "valid": false
+        },
+        "id": "M033_condition_open_question",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "role_speech",
+            "closed_proposition_unknown"
+          ],
+          "valid": false
+        },
+        "id": "M034_relative_assertion",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "action_speech"
+          ],
+          "valid": false
+        },
+        "id": "M035_action_open_question",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "action_speech"
+          ],
+          "valid": false
+        },
+        "id": "M036_action_polar",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "primary_cardinality",
+            "clause_ids"
+          ],
+          "valid": false
+        },
+        "id": "M037_two_primary_atoms_one_clause",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "queryable_unknown"
+          ],
+          "valid": false
+        },
+        "id": "M038_open_question_zero_unknown",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "queryable_unknown"
+          ],
+          "valid": false
+        },
+        "id": "M039_open_question_two_unknowns",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "closed_proposition_unknown"
+          ],
+          "valid": false
+        },
+        "id": "M040_polar_one_unknown",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "action_unknown",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M041_primary_action_unknown",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "M042_queryable_imperative_one_unknown",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "M043_embedded_unconsumed_unknown_oracle_corrected",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_output_count",
+            "dependency_not_output"
+          ],
+          "valid": false
+        },
+        "id": "M044_auxiliary_zero_output",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_output_slot",
+            "dependency_output_count",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M045_auxiliary_two_outputs",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "projection_missing",
+            "orphan_dependency",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M046_auxiliary_unconsumed",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "M047_fanout_second_consumer",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "M048_global_two_unknown_rejection_guard",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_order",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M049_source_missing",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_order",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M050_self_reference",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_order",
+            "output_unconsumed",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M051_future_reference",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_order"
+          ],
+          "valid": false
+        },
+        "id": "M052_two_node_cycle",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_order"
+          ],
+          "valid": false
+        },
+        "id": "M053_three_node_cycle",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "atom_order",
+            "dependency_order",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M054_duplicate_atom_id",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "atom_order"
+          ],
+          "valid": false
+        },
+        "id": "M055_atom_array_id_disagree",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_output_index",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M056_source_role_missing",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "dependency_not_output",
+            "output_unconsumed"
+          ],
+          "valid": false
+        },
+        "id": "M057_source_role_bound",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "M058_source_role_index_disagree_by_construction",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M061_missing_clause_role_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M062_missing_relation_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M063_missing_argument_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_family"
+          ],
+          "valid": false
+        },
+        "id": "M064_tense_proves_relation",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_family"
+          ],
+          "valid": false
+        },
+        "id": "M065_interrogative_proves_recipient",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_family"
+          ],
+          "valid": false
+        },
+        "id": "M066_actor_current_wrong_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M067_explicit_span_zero",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_span"
+          ],
+          "valid": false
+        },
+        "id": "M068_explicit_span_reverse",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_span"
+          ],
+          "valid": false
+        },
+        "id": "M069_explicit_span_outside_clause",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M070_nonexplicit_fake_span",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_family"
+          ],
+          "valid": false
+        },
+        "id": "M071_from_output_noncomposition_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "M072_composition_source_disagree_by_construction",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_family"
+          ],
+          "valid": false
+        },
+        "id": "M073_bound_with_composition_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_span"
+          ],
+          "valid": false
+        },
+        "id": "M074_proof_cross_atom",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "M075_proof_cross_alternative_by_construction",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "schema"
+          ],
+          "valid": false
+        },
+        "id": "M076_supported_none_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "forbidden",
+          "targets": [],
+          "valid": true
+        },
+        "id": "M077_direct_actor_third_party",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "forbidden",
+          "targets": [],
+          "valid": true
+        },
+        "id": "M078_direct_time_historical",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": "open-question binding is invalid before classification",
+        "id": "M079_direct_position_bound",
+        "layer": "structural_precondition",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "forbidden",
+          "targets": [],
+          "valid": true
+        },
+        "id": "M080_direct_speech_polar",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "forbidden",
+          "targets": [],
+          "valid": true
+        },
+        "id": "M081_direct_scope_quote",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "required",
+          "targets": [],
+          "valid": true
+        },
+        "id": "M082_dependency_location_not_direct",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "required",
+          "targets": [
+            1
+          ],
+          "valid": true
+        },
+        "id": "M083_direct_then_consumed",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "forbidden",
+          "targets": [],
+          "valid": true
+        },
+        "id": "M084_identity_namespace",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "forbidden",
+          "targets": [],
+          "valid": true
+        },
+        "id": "M085_workflow_namespace",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "not_applicable",
+          "targets": [
+            1,
+            2
+          ],
+          "valid": true
+        },
+        "id": "M086_two_direct_clauses",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": "requires frozen expected graph",
+        "id": "M087_drop_second_action",
+        "layer": "oracle_only",
+        "pass": true
+      },
+      {
+        "detail": "requires frozen expected graph",
+        "id": "M088_merge_domains_wrong_relation",
+        "layer": "oracle_only",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "projection_source_order",
+            "atom_clause_order"
+          ],
+          "valid": false
+        },
+        "id": "M089_reorder_independent_actions",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": "generic validator cannot infer omitted source semantics",
+        "id": "M090_partial_becomes_whole_unsupported",
+        "layer": "oracle_only",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "X001_dependency_semantics_make_alternatives_distinct",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "alternative_coverage"
+          ],
+          "valid": false
+        },
+        "id": "X002_alternative_clause_drop",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "clause_ids"
+          ],
+          "valid": false
+        },
+        "id": "X003_supported_unsupported_clause_collision",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": [
+          "effectful_outbound_consent"
+        ],
+        "id": "X004_main_action_safety_obligation",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": "not_applicable",
+        "id": "X005_scoped_action_no_dependency",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": [],
+        "id": "X006_scoped_action_no_safety",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "dependency": "context_resolution_required",
+          "targets": [],
+          "valid": true
+        },
+        "id": "X007_context_position_not_direct",
+        "layer": "classifier",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [],
+          "valid": true
+        },
+        "id": "X008_whole_unsupported_valid",
+        "layer": "validator_positive",
+        "pass": true
+      },
+      {
+        "detail": {
+          "codes": [
+            "proof_family"
+          ],
+          "valid": false
+        },
+        "id": "X009_unsupported_wrong_proof",
+        "layer": "validator_mutation",
+        "pass": true
+      },
+      {
+        "detail": "verify_freeze hash check after final freeze",
+        "id": "M091_registry_byte_change_mapped",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": "runner+validator source hashes after final freeze",
+        "id": "M092_validator_byte_change_mapped",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": "self-contained runner source and runtime fingerprint",
+        "id": "M093_segmenter_transitive_change_mapped",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "M094_author_gate_substitution",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "M095_oracle_hash_change_mapped",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": "mutation hash check after final freeze",
+        "id": "M096_mutation_suite_change_mapped",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": [],
+        "id": "X010_registry_invariants",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": 7302,
+        "id": "X011_schema_compact_under_10kb",
+        "layer": "static",
+        "pass": true
+      },
+      {
+        "detail": null,
+        "id": "X012_no_removed_fields",
+        "layer": "static",
+        "pass": true
+      }
+    ],
+    "runner_sha256": "ea3fc46b50ce25a72652214b380e251f092ada87420a3e056b67eda60b24057d",
+    "summary": {
+      "classifier_controls": 19,
+      "failed": 0,
+      "oracle_only_mappings": 4,
+      "passed": 125,
+      "positive_controls": 19,
+      "tests": 125,
+      "validator_mutations": 68
+    },
+    "version": "metnos.v26.4-independent-graph-probe/0.1"
+  },
+  "network_calls": 0,
+  "sources": {
+    "/tmp/metnos_v264_graph_invariant_review_preoutput.md": "001f834d67f0937173123c0fab7398957d6aefd0ea3f35d62f6219382dd21b41",
+    "/tmp/metnos_v264_graph_mutation_proposal.json": "c3e6d50744237b98b6381a017cb4d7725d0b4ab01e708bb1fb36319ce624f790",
+    "/tmp/metnos_v264_independent_graph_probe.py": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+    "/tmp/metnos_v264_independent_graph_probe_result.json": "7b0ff821783d9f5d071b4da0ccaa7f562f57afd47136cfc73c863a12663fb62c"
+  },
+  "version": "metnos.v26.4-offline-mutation-bundle/1.0"
+}

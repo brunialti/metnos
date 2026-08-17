@@ -1,0 +1,261 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "clauses": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "answer_mode": {
+            "enum": [
+              "none",
+              "open_variable",
+              "boolean",
+              "operation_result"
+            ],
+            "type": "string"
+          },
+          "clause_end_segment_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "clause_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "clause_start_segment_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "deixis_center": {
+            "enum": [
+              "none",
+              "speaker",
+              "addressee",
+              "context",
+              "explicit_entity",
+              "quoted_speaker"
+            ],
+            "type": "string"
+          },
+          "focus_end_segment_id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "focus_evidence_kind": {
+            "enum": [
+              "none",
+              "explicit_segment",
+              "predicate_morphology",
+              "clause_semantics",
+              "speaker_context",
+              "discourse_context",
+              "tense_morphology"
+            ],
+            "type": "string"
+          },
+          "focus_role": {
+            "enum": [
+              "none",
+              "location",
+              "entity",
+              "identity",
+              "truth_value",
+              "host",
+              "entities",
+              "delivery_result",
+              "destination",
+              "progress"
+            ],
+            "type": "string"
+          },
+          "focus_start_segment_id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "focus_type": {
+            "enum": [
+              "none",
+              "spatial_position",
+              "person",
+              "place_identity",
+              "identity",
+              "boolean",
+              "host",
+              "entity_collection",
+              "permission_result",
+              "resource_locator",
+              "workflow_progress"
+            ],
+            "type": "string"
+          },
+          "grammatical_person": {
+            "enum": [
+              "none",
+              "first",
+              "second",
+              "third",
+              "ambiguous"
+            ],
+            "type": "string"
+          },
+          "interpretation": {
+            "enum": [
+              "supported",
+              "ambiguous",
+              "unsupported"
+            ],
+            "type": "string"
+          },
+          "predicate_segment_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "relation": {
+            "enum": [
+              "none",
+              "spatial.located_at",
+              "identity.same_as",
+              "filesystem.located_at",
+              "runtime.host_of",
+              "spatial.near",
+              "acl.share",
+              "movement.destination",
+              "workflow.position",
+              "document.position"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "request",
+              "condition",
+              "description",
+              "quote"
+            ],
+            "type": "string"
+          },
+          "speech_act": {
+            "enum": [
+              "assertion",
+              "open_question",
+              "polar_question",
+              "imperative",
+              "condition",
+              "quote",
+              "description"
+            ],
+            "type": "string"
+          },
+          "subject_end_segment_id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subject_evidence_kind": {
+            "enum": [
+              "none",
+              "explicit_segment",
+              "predicate_morphology",
+              "clause_semantics",
+              "speaker_context",
+              "discourse_context",
+              "tense_morphology"
+            ],
+            "type": "string"
+          },
+          "subject_ref": {
+            "enum": [
+              "none",
+              "current_actor",
+              "explicit_entity",
+              "unknown_entity",
+              "deictic_context",
+              "current_actor_location_operand",
+              "quoted_actor"
+            ],
+            "type": "string"
+          },
+          "subject_start_segment_id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subject_type": {
+            "enum": [
+              "none",
+              "actor",
+              "person",
+              "place",
+              "file",
+              "process",
+              "collection",
+              "resource",
+              "spatial_position"
+            ],
+            "type": "string"
+          },
+          "time_end_segment_id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "time_evidence_kind": {
+            "enum": [
+              "none",
+              "explicit_segment",
+              "predicate_morphology",
+              "clause_semantics",
+              "speaker_context",
+              "discourse_context",
+              "tense_morphology"
+            ],
+            "type": "string"
+          },
+          "time_scope": {
+            "enum": [
+              "none",
+              "current",
+              "historical",
+              "contextual"
+            ],
+            "type": "string"
+          },
+          "time_start_segment_id": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "clause_id",
+          "clause_start_segment_id",
+          "clause_end_segment_id",
+          "predicate_segment_id",
+          "role",
+          "interpretation",
+          "speech_act",
+          "answer_mode",
+          "relation",
+          "focus_role",
+          "focus_type",
+          "focus_evidence_kind",
+          "focus_start_segment_id",
+          "focus_end_segment_id",
+          "subject_ref",
+          "subject_type",
+          "grammatical_person",
+          "deixis_center",
+          "subject_evidence_kind",
+          "subject_start_segment_id",
+          "subject_end_segment_id",
+          "time_scope",
+          "time_evidence_kind",
+          "time_start_segment_id",
+          "time_end_segment_id"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "clauses"
+  ],
+  "type": "object"
+}

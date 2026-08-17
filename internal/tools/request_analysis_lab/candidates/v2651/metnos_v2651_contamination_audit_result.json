@@ -1,0 +1,186 @@
+{
+  "auditor_sha256": "a1e7f7babc6dcce1f4e1de0040c41b5ed212db0054a0f3e5d8f46511b12c4b1d",
+  "candidate_outputs_read": 0,
+  "checks": [
+    {
+      "detail": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+      "id": "preimport_hash:prompt",
+      "pass": true
+    },
+    {
+      "detail": "237aae0006fd6926fc20e5f31aa50a4aa0bd8a2d10e7162a9ebe8424c6558149",
+      "id": "preimport_hash:corpus",
+      "pass": true
+    },
+    {
+      "detail": "a1e7f7babc6dcce1f4e1de0040c41b5ed212db0054a0f3e5d8f46511b12c4b1d",
+      "id": "preimport_hash:auditor",
+      "pass": true
+    },
+    {
+      "detail": "8be621a34ed64a438cf2f299a5ba7f6dca9ca93f517be1d608fd6efae95b6101",
+      "id": "preimport_hash:historical_result",
+      "pass": true
+    },
+    {
+      "detail": {
+        "adversarial70": 70,
+        "full109": 109,
+        "question-controls34": 34
+      },
+      "id": "extended_213_counts",
+      "pass": true
+    },
+    {
+      "detail": {
+        "adversarial70": {
+          "computed": "0aec548d942b321401591ba431ef4f700537c1b2af8fc91e28559e6ad7eb55aa",
+          "declared": "0aec548d942b321401591ba431ef4f700537c1b2af8fc91e28559e6ad7eb55aa",
+          "expected": "0aec548d942b321401591ba431ef4f700537c1b2af8fc91e28559e6ad7eb55aa"
+        },
+        "full109": {
+          "computed": "420cace8d56babcace02fede1dcc64d92310a3e293cebe9567b5303a1d4abd20",
+          "declared": "420cace8d56babcace02fede1dcc64d92310a3e293cebe9567b5303a1d4abd20",
+          "expected": "420cace8d56babcace02fede1dcc64d92310a3e293cebe9567b5303a1d4abd20"
+        },
+        "question-controls34": {
+          "computed": "81b31348e3e9f077b3e289a3e16938e2eec9bc882c3866b2f8f40c1aace18813",
+          "declared": "81b31348e3e9f077b3e289a3e16938e2eec9bc882c3866b2f8f40c1aace18813",
+          "expected": "81b31348e3e9f077b3e289a3e16938e2eec9bc882c3866b2f8f40c1aace18813"
+        }
+      },
+      "id": "corpus_sequence_digests_pinned",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "query_only_corpus",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "corpus_keys_are_query_only",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "historical_audit_exact_replay",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "surface_or_mixed_lines_zero",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "whole_query_overlap_zero_all_213",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "ngram_overlap_ge_3_zero_all_213",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "maximum_objective_static_eligibility",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "redacted_matches_empty",
+      "pass": true
+    },
+    {
+      "detail": [],
+      "id": "report_contains_no_raw_query",
+      "pass": true
+    }
+  ],
+  "corpus_sha256": "237aae0006fd6926fc20e5f31aa50a4aa0bd8a2d10e7162a9ebe8424c6558149",
+  "dataset_manifest": {
+    "adversarial70": {
+      "query_sequence_sha256": "0aec548d942b321401591ba431ef4f700537c1b2af8fc91e28559e6ad7eb55aa",
+      "records": 70
+    },
+    "full109": {
+      "query_sequence_sha256": "420cace8d56babcace02fede1dcc64d92310a3e293cebe9567b5303a1d4abd20",
+      "records": 109
+    },
+    "question-controls34": {
+      "query_sequence_sha256": "81b31348e3e9f077b3e289a3e16938e2eec9bc882c3866b2f8f40c1aace18813",
+      "records": 34
+    }
+  },
+  "dynamic_imports_after_hash_verification": 1,
+  "failed": [],
+  "model_calls": 0,
+  "network_calls": 0,
+  "prompt_audit": {
+    "acceptance_reason": "No detected source-language trigger/example prose.",
+    "bytes": 8154,
+    "dataset_overlap": {
+      "adversarial70": {
+        "cases_with_maximal_overlap_n_ge_3": 0,
+        "cases_with_maximal_overlap_n_ge_4": 0,
+        "overlaps_by_class": {},
+        "overlaps_by_ngram_tokens": {},
+        "records": 70,
+        "redacted_matches": [],
+        "whole_query_occurs_in_prompt": 0
+      },
+      "full109": {
+        "cases_with_maximal_overlap_n_ge_3": 0,
+        "cases_with_maximal_overlap_n_ge_4": 0,
+        "overlaps_by_class": {},
+        "overlaps_by_ngram_tokens": {},
+        "records": 109,
+        "redacted_matches": [],
+        "whole_query_occurs_in_prompt": 0
+      },
+      "question-controls34": {
+        "cases_with_maximal_overlap_n_ge_3": 0,
+        "cases_with_maximal_overlap_n_ge_4": 0,
+        "overlaps_by_class": {},
+        "overlaps_by_ngram_tokens": {},
+        "records": 34,
+        "redacted_matches": [],
+        "whole_query_occurs_in_prompt": 0
+      }
+    },
+    "line_inventory": {
+      "nonempty_lines_by_class": {
+        "structural_or_common_prose": 39,
+        "technical_ontology": 9
+      },
+      "surface_or_mixed_line_count": 0,
+      "surface_or_mixed_line_fingerprints": []
+    },
+    "maximum_objective_acceptance_credit_eligible": true,
+    "path": "/opt/metnos/internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact.prompt.txt",
+    "sha256": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+    "tokens": 1140
+  },
+  "prompt_sha256": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+  "redaction": {
+    "matched_ngrams_persisted": false,
+    "prompt_excerpts_persisted": false,
+    "raw_queries_persisted_in_report": false
+  },
+  "summary": {
+    "datasets": {
+      "adversarial70": 70,
+      "full109": 109,
+      "question-controls34": 34
+    },
+    "failed": 0,
+    "ngram_overlaps_ge_3": 0,
+    "passed": 15,
+    "surface_or_mixed_lines": 0,
+    "tests": 15,
+    "total_queries": 213,
+    "whole_query_overlaps": 0
+  },
+  "version": "metnos.v26.5.1-contamination-audit/0.2"
+}

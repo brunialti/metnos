@@ -1,0 +1,924 @@
+{
+  "candidate_outputs_read": 0,
+  "checks": [
+    {
+      "detail": "accepted",
+      "id": "positive:P01_direct",
+      "pass": true
+    },
+    {
+      "detail": "accepted",
+      "id": "positive:P04_fanout_multi_action",
+      "pass": true
+    },
+    {
+      "detail": "accepted",
+      "id": "positive:P05_multi_domain",
+      "pass": true
+    },
+    {
+      "detail": "accepted",
+      "id": "positive:P06_projection_output_reuse",
+      "pass": true
+    },
+    {
+      "detail": "accepted",
+      "id": "positive:P08_typed_ambiguity",
+      "pass": true
+    },
+    {
+      "detail": "accepted",
+      "id": "positive:P11_mixed_coverage",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "native_negative_cases:N001_source_ordinal_missing",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "native_negative_cases:N002_source_ordinal_zero",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "native_negative_cases:N003_source_ordinal_negative",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "native_negative_cases:N004_source_ordinal_boolean",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "native_negative_cases:N005_source_ordinal_string",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N006_source_ordinal_self",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N007_source_ordinal_future",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N008_source_ordinal_out_of_range",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "source must expose exactly one derivable output"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N009_source_zero_outputs",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "source must expose exactly one derivable output"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N010_source_multiple_outputs",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "two semantic clauses claim the same source span"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N011_supported_unsupported_span_collision",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "unsupported clauses share one span"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N012_unsupported_span_collision",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "alternatives disagree on common clause order"
+        ],
+        "stage": "adapter"
+      },
+      "id": "native_negative_cases:N013_alternative_common_coverage_disagrees",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "native_negative_cases:N014_atom_limit",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "native_negative_cases:N015_clause_limit",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "clause_limit",
+          "proof_limit"
+        ],
+        "stage": "validator"
+      },
+      "id": "native_negative_cases:N016_proof_and_clause_limits",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "dependency_depth",
+          "dependency_type"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M059_dependency_depth_five",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M001_unknown_top_field",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M002_focus_reintroduced",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M003_grammatical_person_reintroduced",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M004_supported_zero_atoms",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M005_unsupported_with_atom",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M006_ambiguity_one_alternative",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M007_ambiguity_five_alternatives",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "duplicate_alternative"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M008_ambiguity_duplicate_semantics",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:R009_alternative_local_source_ordinal",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [],
+        "stage": "accepted"
+      },
+      "id": "historical_cases:O_M011_duplicate_clause_id",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [],
+        "stage": "accepted"
+      },
+      "id": "historical_cases:O_M012_clause_id_reverse",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "clause_span"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M013_clause_span_out_of_bounds",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M015_atom_unknown_relation",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "relation_arity"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M016_relation_missing_arg",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "relation_arity"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M017_relation_extra_arg",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "reference_type"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M018_swap_arg_order",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M021_bound_unknown_ref",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "reference_type"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M022_bound_ref_wrong_slot_type",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "dependency_type"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M023_derived_into_slot_without_allowlist",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "dependency_type"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M024_derived_wrong_output_type",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M025_silent_output_type_rewrite",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M026_bound_with_source_fields",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M027_unknown_with_ref",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M028_from_output_with_bound_ref",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M029_duplicate_supplied_type_disagrees",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "closed_proposition_unknown",
+          "role_speech"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M030_main_request_assertion",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "queryable_unknown",
+          "role_speech"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M031_assertion_open_question",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "role_speech"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M032_quote_imperative",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "role_speech"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M033_condition_open_question",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "closed_proposition_unknown",
+          "role_speech"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M034_relative_assertion",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "action_speech"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M035_action_open_question",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "action_speech"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M036_action_polar",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "two semantic clauses claim the same source span"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:M037_two_primary_atoms_one_clause",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "queryable_unknown"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M038_open_question_zero_unknown",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "queryable_unknown"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M039_open_question_two_unknowns",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "closed_proposition_unknown"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M040_polar_one_unknown",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "action_unknown",
+          "output_unconsumed"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M041_primary_action_unknown",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "source must expose exactly one derivable output"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:R044_source_without_output",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "source must expose exactly one derivable output"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:R045_source_with_two_outputs",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "dependency has no projection with the same clause span"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:M046_auxiliary_unconsumed",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:R049_source_ordinal_out_of_range",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:R050_source_ordinal_self",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:M051_future_reference",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:M052_two_node_cycle",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "edge does not point to a prior array item"
+        ],
+        "stage": "adapter"
+      },
+      "id": "historical_cases:M053_three_node_cycle",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:R054_atom_id_reintroduced",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:R055_atom_id_array_disagreement_reintroduced",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:R056_output_index_reintroduced_out_of_range",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:R057_output_index_reintroduced_bound_slot",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M061_missing_clause_role_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M062_missing_relation_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M063_missing_argument_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_family"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M064_tense_proves_relation",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_family"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M065_interrogative_proves_recipient",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_family"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M066_actor_current_wrong_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M067_explicit_span_zero",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_span"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M068_explicit_span_reverse",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_span"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M069_explicit_span_outside_clause",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M070_nonexplicit_fake_span",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_family"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M071_from_output_noncomposition_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_family"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M073_bound_with_composition_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_span"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M074_proof_cross_atom",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "schema"
+        ],
+        "stage": "schema"
+      },
+      "id": "historical_cases:M076_supported_none_proof",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "atom_clause_order",
+          "projection_source_order"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:M089_reorder_independent_actions",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "alternative_coverage"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:X002_alternative_clause_drop",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [],
+        "stage": "accepted"
+      },
+      "id": "historical_cases:O_X003_supported_unsupported_clause_collision",
+      "pass": true
+    },
+    {
+      "detail": {
+        "codes": [
+          "proof_family"
+        ],
+        "stage": "validator"
+      },
+      "id": "historical_cases:X009_unsupported_wrong_proof",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "request_keeps_original",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "segments_align",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "response_schema_is_verified_artifact",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "prompt_is_verified_artifact",
+      "pass": true
+    },
+    {
+      "detail": null,
+      "id": "environment_pinned",
+      "pass": true
+    },
+    {
+      "detail": [],
+      "id": "network_quiet",
+      "pass": true
+    }
+  ],
+  "environment": {
+    "jsonschema": "4.10.3",
+    "regex": "2026.3.32",
+    "unicode": "15.0.0"
+  },
+  "failed": [],
+  "manifest_version": "metnos.v26.5.1-durable-manifest/0.9",
+  "model_calls": 0,
+  "network_calls": 0,
+  "summary": {
+    "failed": 0,
+    "historical_cases": 68,
+    "native_negative_cases": 16,
+    "passed": 96,
+    "positive_controls": 6,
+    "tests": 96
+  },
+  "version": "metnos.v26.5.1-candidate-core/0.1"
+}

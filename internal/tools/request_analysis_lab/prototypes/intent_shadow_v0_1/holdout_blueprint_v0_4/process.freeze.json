@@ -1,0 +1,49 @@
+{
+  "format": "metnos.intent-holdout-process-freeze/0.4",
+  "state": "preflight_only_no_queries_no_case_gold_no_run",
+  "generated": {
+    "authority.json": {
+      "file_sha256": "e4cffb80f7f0447c1e1fbdf4e8eb7ef055b0b8846da8b6d5bde8049d8cfb1606",
+      "payload_sha256": "11b65f106178c4c1fede74173707ea43e4478014be65aa9f03e553ba79054c90"
+    },
+    "glossary.json": {
+      "file_sha256": "ab1b98810090557dad09029a9a8af0d66bd8daa12a08bd62187b0a82a227898b",
+      "payload_sha256": "c4ba7c1759a44e1fd2c7db81670920ce6dc0f89070690b22363a9263666301f1"
+    },
+    "mutation_catalog.json": {
+      "file_sha256": "b3c660d126642b24896068f5ede3ae4ba2aeedd9b6cc1eaea6b0de8d49678487",
+      "payload_sha256": "0f6266e6c842bacbd25fc2a39e91bf0edbfd19ef3deaa177a3aa8a1034a7c008"
+    },
+    "pilot_matrix.json": {
+      "file_sha256": "6d54280686c4b09b350c8458827111c957840d300c9ed22c4f34eab037e58036",
+      "payload_sha256": "fd52ea9c262bcccae7c4efd0b40a04e22f60b9ab48162483e56ecd7eafe42e52"
+    },
+    "rubrics.json": {
+      "file_sha256": "c39ed04d9f92789a8ed2611b967b0bebf8ba3ca2d749fa5bd3aa7d907d124861",
+      "payload_sha256": "e52d262e231b3addef96af64e03366163b275e09177a4c9645875f12c8c826a6"
+    }
+  },
+  "local_files": {
+    "__init__.py": "853e2ecf14ea0b091ddcc0be211b490192d047910f712eaca443cad4b5bfb66a",
+    "FORMAL_SPEC.md": "0c57d736057a1db98c323ffc9f38336ba8bc04aacb6c7f48d00ae6745187859d",
+    "model.py": "486996e2b1931433c1d92bc97f2b6741737dc7d0ef3dc5dd99014a095b16a65a",
+    "engine.py": "a21f0508ac07eac5988c7903c98220df65a61dd77f436dcf1cb48b0b9582717c",
+    "build.py": "28b17fd73d2f87d2f9139bacb384454b7007d0285d12e0778b5e66c98adae138",
+    "preflight.py": "d8c7d828f7ba2693a44402926964bc450e3a5aa59c001bc4497ed9c7dca619ab",
+    "synthetic_fixture.py": "06eaad43b80a444860d5d06f754d2621e58576c4ba22655e8f82d7f6cc52c2d1",
+    "test_engine.py": "54a8d865df11838beb878d363b37b85e8eba1182220ddb24a0d5aa53ab808210",
+    "test_mutations.py": "479b4dc0d3d56474c6625661a341d0b359f6829b1d81fb66af2043a6aba5896f"
+  },
+  "source_files": {
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_2/intent_ir_registry_projection_v0_2.json": "64e887728f5c14b05243fa5032471d146d9a0dfa2889c8784e651044b7860316",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/intent_shadow_model_v0_1.schema.json": "8e229746c152a6a6bc6a5097e3e20a0c4581a3313736d99ae1fd771b5c3c2dc2",
+    "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md": "3b82156a3a3d3414f211926a32ccd40593de1d6faa6adfcf76474c8d32717aa5",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/holdout_v0_1/adjudication_contract.json": "b143534a2d6f80e397092237c6ead60e14734863cfce7684117b1b9cbdbbc252",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/prompt_challenger_v0_1/prompt_challenger_v0_1.freeze.json": "91f7acb5b582f1ad064ed19e788207c8a0452e1a712d934a60f8e7e59463d966"
+  },
+  "environment": {
+    "python": "3.12.3",
+    "json_canonical": "utf8_sorted_keys_no_nan_compact"
+  }
+}

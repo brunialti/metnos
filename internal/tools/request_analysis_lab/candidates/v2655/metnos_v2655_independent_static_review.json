@@ -1,0 +1,94 @@
+{
+  "version": "metnos.v26.5.5-independent-static-review/1.0",
+  "review_date": "2026-08-09",
+  "scope": "offline_facade_delta_exact_json_utf8_budget",
+  "verdict": "STATIC_PASS",
+  "live_authorization": false,
+  "candidate_facade_selftest_result_modified": false,
+  "network_calls": 0,
+  "model_calls": 0,
+  "freeze_created": false,
+  "gate_created": false,
+  "candidate_identity": {
+    "facade_sha256": "fc34ffefc8c77c51a959a1fea5625ea896242afcfff0ed2a41e7f89c14d48d63",
+    "selftest_sha256": "91bb542d9f7e0c11e37f352c22a5df2d724e03f51d4bec6dd5429f1086e68426",
+    "author_result_sha256": "8bfcb165cb2bfeb77102ec0b39e83b3a2729a87d167bea338e14f6c9bf4eab34",
+    "readme_before_review_sha256": "3efe702e4f6c288820894efab655c60acdf32145399f91ac210ca43157c31b67"
+  },
+  "unchanged_v2654_dependencies": {
+    "worker_sha256": "c57c8ececdfffdc2380c7e318e1c9fe8070d074fadf641e0c458367704c20e22",
+    "worker_bytes": 19601,
+    "runtime_manifest_sha256": "88d7b0096ab2e0c76164c0c3c98705e68cadf06ef2bd5698d353f2139f552391",
+    "runtime_manifest_bytes": 1426
+  },
+  "fresh_selftest": {
+    "groups": 14,
+    "passed": 14,
+    "failed": 0,
+    "stdout_sha256": "571ca98c148a5f7c0295c619124fc1e68d59f85bc9fe09d497a433b37ef8dac1",
+    "replays": {
+      "v2654_author_groups": "24/24",
+      "compact_mutation": "106/106",
+      "contamination_audit": "15/15",
+      "candidate_positive": "6/6",
+      "candidate_native_negative": "16/16"
+    },
+    "process_overhead_ms": {
+      "samples": 7,
+      "min": 83.493,
+      "median": 87.884,
+      "max": 91.951
+    }
+  },
+  "independent_probes": {
+    "canonical_differential": {
+      "cases": 1004,
+      "mismatches": 0,
+      "coverage": "envelope, separators, keys, strings, all control characters, quote, backslash, UTF-8 widths, null, booleans, bounded integers, finite floats, nesting and repeated aliases"
+    },
+    "finite_float_differential": {
+      "cases": 10011,
+      "mismatches": 0
+    },
+    "exact_boundary": {
+      "accepted_bytes": 1500000,
+      "rejected_bytes": 1500001,
+      "over_boundary_reached_json_dumps": false,
+      "over_boundary_peak_after_input_bytes": 3368
+    },
+    "escaped_key_boundary": {
+      "accepted_bytes": 1499791,
+      "rejected_bytes": 1500375,
+      "over_boundary_reached_json_dumps": false,
+      "over_boundary_peak_after_input_bytes": 79116
+    },
+    "pre_dump_rejections": {
+      "cases": 14,
+      "failures": 0,
+      "coverage": "request/value/key surrogates, NaN, infinity, scalar/container/key/request subclasses, dictionary/list cycles"
+    }
+  },
+  "verified_properties": [
+    "The exact cumulative count precedes json.dumps and stops during string or container traversal at byte 1500001.",
+    "The count includes fixed envelope syntax, compact separators, original_request, every key and every value occurrence.",
+    "String accounting matches ensure_ascii=false JSON escaping and strict UTF-8 scalar widths; surrogates fail before serialization.",
+    "Null, exact booleans, signed 64-bit integers and finite-float repr lengths match the canonical encoder.",
+    "Repeated aliases are counted per serialized occurrence; cycles and subclasses fail before serialization.",
+    "The post-encoding equality guard retains the counted-size invariant for every accepted request."
+  ],
+  "semantic_regression": {
+    "positive": "6/6",
+    "native_negative": "16/16",
+    "multi_action": "PASS",
+    "multi_domain": "PASS",
+    "projection_reuse": "PASS",
+    "typed_ambiguity": "PASS",
+    "mixed_coverage": "PASS"
+  },
+  "blockers": [],
+  "limitations": [
+    "This is an offline static/replay verdict for the V26.5.5 facade delta only.",
+    "The unchanged V26.5.4 worker, manifest and external Python environment retain their documented trust-root status."
+  ],
+  "next_step": "A separate future freeze/review may bind the passed facade, unchanged worker/manifest, this review and the Python environment. This STATIC PASS does not create a freeze or authorize a gate, network call, model call or live run."
+}

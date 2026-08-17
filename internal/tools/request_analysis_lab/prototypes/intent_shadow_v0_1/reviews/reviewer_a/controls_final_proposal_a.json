@@ -1,0 +1,214 @@
+{
+  "proposal_format": "metnos.intent-shadow-final-controls-proposal/0.1",
+  "created_date": "2026-08-12",
+  "review": {
+    "proposer": "Reviewer A",
+    "authorship": "non-human AI proposal",
+    "new_semantic_policy_introduced": false,
+    "existing_controls_modified": false,
+    "oracle_files_modified": false
+  },
+  "scope": {
+    "existing_control_count": 34,
+    "new_control_count": 4,
+    "resulting_control_count": 38,
+    "current_semantics_note": "The multi-corpus control targets only the current get_images_indices view of materialized indexes. A future persistent corpus registry is out of scope and does not affect the expected document.",
+    "languages": [
+      "it"
+    ]
+  },
+  "sources": {
+    "existing_34_controls": {
+      "path": "internal/tools/request_analysis_lab/question_focus_controls_v1.json",
+      "sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf"
+    },
+    "reviewer_a_original_proposals": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/reviewer_a/intent_shadow_oracle_reviewer_a_v0_1.json",
+      "sha256": "53d8f32679df6fc40f8528aa088ef212f354bee7118ab78394b2731dacf75509"
+    },
+    "reviewer_b_original_proposals": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/reviewer_b/intent_shadow_oracle_reviewer_b_v0_1.json",
+      "sha256": "a7a33a4aa7e422eb13514d7064cc6651ba67885df3c92f8e4093676aaeefc7dc"
+    },
+    "contract": {
+      "path": "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md",
+      "sha256": "3b82156a3a3d3414f211926a32ccd40593de1d6faa6adfcf76474c8d32717aa5"
+    },
+    "registry": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+      "sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8"
+    }
+  },
+  "selection_from_original_eight": {
+    "reviewed_proposal_count": 8,
+    "consolidated_into_final": [
+      {
+        "original_ids": [
+          "reviewer_a.control.038",
+          "reviewer_b.ctrl.37.indispensable_outside_registry.it"
+        ],
+        "final_control_id": "intent_shadow.control.035.compound_outside_registry",
+        "reason": "The originals exercise the same approved whole-compound fail-closed rule; one clearer variant is sufficient."
+      }
+    ],
+    "not_selected": [
+      {
+        "original_ids": [
+          "reviewer_a.control.035",
+          "reviewer_b.ctrl.36.mixed_root.it"
+        ],
+        "reason": "They are semantic duplicates of each other and cover a settled root-exclusivity rule rather than a newly observed error frontier."
+      },
+      {
+        "original_ids": [
+          "reviewer_a.control.036",
+          "reviewer_b.ctrl.35.condition_owned_mutation.it"
+        ],
+        "reason": "Both cover barrier ownership; retained as useful source material but displaced by the four higher-priority adjudication frontiers."
+      },
+      {
+        "original_ids": [
+          "reviewer_a.control.037"
+        ],
+        "reason": "Negation remains useful but was displaced by the higher-priority route-boundary controls."
+      },
+      {
+        "original_ids": [
+          "reviewer_b.ctrl.38.safe_but_inaccurate_stop.it"
+        ],
+        "reason": "It semantically duplicates existing control neg.historical.en, which already asks for a historical actor location."
+      }
+    ]
+  },
+  "controls": [
+    {
+      "ordinal": 35,
+      "control_id": "intent_shadow.control.035.compound_outside_registry",
+      "language": "it",
+      "query_text": "Leggi le mail non lette di oggi e salva tutti i risultati nello store controllo_posta.",
+      "query_sha256": "229fc189f3cd702a87fb24019ee1517d5454e98377dcb10d6125b343808eb3fb",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "adversarial_targets": [
+        "indispensable_outside_registry_clause",
+        "no_partial_executable_subgraph",
+        "exact_store_object_semantics"
+      ],
+      "reason": "read/messages is registered, but the named logical store is not and cannot be replaced by a files route. The indispensable save clause makes the entire compound outside_registry."
+    },
+    {
+      "ordinal": 36,
+      "control_id": "intent_shadow.control.036.multi_corpus_get_images",
+      "language": "it",
+      "query_text": "Per ogni corpus con indice immagini unificato già materializzato, mostra il percorso del corpus e il numero di foto indicizzate.",
+      "query_sha256": "f1a99b21af2977797fe951cef0d3de6c8d5ce235160a31f1947842509869da65",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/images"
+          }
+        ]
+      },
+      "adversarial_targets": [
+        "multi_corpus_scope",
+        "materialized_unified_index_discovery",
+        "no_spurious_find_dirs",
+        "per_corpus_count_from_status"
+      ],
+      "reason": "The approved get/images interpretation enumerates materialized unified corpus indices and returns base_path and n_entries per corpus. No discovery or compute node is part of the minimal graph."
+    },
+    {
+      "ordinal": 37,
+      "control_id": "intent_shadow.control.037.structured_field_projection",
+      "language": "it",
+      "query_text": "Leggi gli eventi di domani e crea un foglio di calcolo con le colonne titolo, inizio e fine, rinominando titolo in evento.",
+      "query_sha256": "d917da4655d37c9c78cbbe2f48fa0f438aaabe47b1ea0b09df960e56ae47adf9",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "kind": "operation",
+            "route": "create/files",
+            "data_from": [
+              {
+                "from": 0
+              }
+            ]
+          }
+        ]
+      },
+      "adversarial_targets": [
+        "structured_field_selection",
+        "structured_field_rename",
+        "projection_not_extraction",
+        "typed_data_dependency"
+      ],
+      "reason": "Calendar events already contain structured title/start/end fields. Selecting and renaming those fields is projection into the spreadsheet creator, not a missing extraction operation."
+    },
+    {
+      "ordinal": 38,
+      "control_id": "intent_shadow.control.038.reference_photo_find_persons",
+      "language": "it",
+      "query_text": "Usa la foto allegata come riferimento e trova nella raccolta le foto che mostrano la stessa persona.",
+      "query_sha256": "00d19afe73c5c2777f7d334d708f7f54743811afa33399bc58931a44064892c5",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/persons"
+          }
+        ]
+      },
+      "adversarial_targets": [
+        "reference_image_face_similarity",
+        "find_persons_not_get_persons",
+        "registry_lookup_boundary"
+      ],
+      "reason": "find/persons accepts reference_images and performs face matching over indexed photos. get/persons only lists or looks up enrolled-person records by name and cannot consume the reference photo."
+    }
+  ],
+  "coverage": {
+    "distinct_axes": [
+      "whole-compound fail-closed for an indispensable outside-registry store",
+      "single-node multi-corpus status through get/images",
+      "structured-record projection into create/files",
+      "reference-photo similarity through find/persons"
+    ],
+    "root_counts": {
+      "operation_graph": 3,
+      "system_control": 0,
+      "unrepresentable": 1
+    },
+    "unrepresentable_reason_counts": {
+      "outside_registry": 1
+    }
+  },
+  "verification": {
+    "existing_controls_count": 34,
+    "new_controls_count": 4,
+    "resulting_controls_count": 38,
+    "unique_control_ids": true,
+    "unique_ordinals": true,
+    "unique_queries": true,
+    "unique_query_hashes": true,
+    "exact_query_overlap_with_existing_34": [],
+    "query_hash_overlap_with_existing_34": [],
+    "semantic_duplicates_with_existing_34": [],
+    "semantic_duplicates_within_final_four": [],
+    "exact_query_overlap_with_frozen_120": [],
+    "roots_and_reasons_in_registry": true,
+    "operation_routes_in_registry": true,
+    "data_dependencies_backward_and_valid": true,
+    "new_policy_required": false,
+    "errors": []
+  }
+}

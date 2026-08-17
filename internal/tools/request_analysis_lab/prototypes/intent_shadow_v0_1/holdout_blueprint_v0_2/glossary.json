@@ -1,0 +1,758 @@
+{
+  "format": "metnos.intent-holdout-neutral-glossary/0.2",
+  "source_registry_sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+  "operations": {
+    "change/files": {
+      "author_gloss": "converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "change/pulls": {
+      "author_gloss": "merge or otherwise operate on an existing GitHub pull request.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compress/files": {
+      "author_gloss": "compress files into a new zip/tar/gz archive.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/entries": {
+      "author_gloss": "compute an aggregated value (max/min/avg/sum/count) on entries.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/files": {
+      "author_gloss": "computes source-code LOC statistics, walking directory trees in parallel.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "compute/signatures": {
+      "author_gloss": "compute or classify a signature; it can idempotently apply the safety seed.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "consult/frontier": {
+      "author_gloss": "consult an expert oracle for deep analysis.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/calendars": {
+      "author_gloss": "create a NEW Google calendar container (not an event).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/dirs": {
+      "author_gloss": "create directories (batch, even empty).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/events": {
+      "author_gloss": "create calendar appointments.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/files": {
+      "author_gloss": "creates a new Google Doc. creates and populates a new local .xlsx.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/images": {
+      "author_gloss": "index photos in a selected local collection, incrementally or by rebuilding the index.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/issues": {
+      "author_gloss": "create a new issue in a GitHub repository.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "create/tasks": {
+      "author_gloss": "schedule a recurring task, reminder, or timer. start a GitHub Actions workflow.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/calendars": {
+      "author_gloss": "delete Google calendar containers (DESTRUCTIVE: also removes the events inside); accepts the NAME.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/credentials": {
+      "author_gloss": "delete credentials from storage (purge or bindings).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/dirs": {
+      "author_gloss": "delete directories (empty or forced).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/events": {
+      "author_gloss": "delete calendar events, by ids or time window.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/files": {
+      "author_gloss": "delete files after a verified backup.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/images": {
+      "author_gloss": "delete the persistent unified image index.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/issues": {
+      "author_gloss": "close or delete an existing GitHub issue.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/messages": {
+      "author_gloss": "delete a comment from a GitHub issue or pull request.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/persons": {
+      "author_gloss": "deletes persons/enrollment from the biometric registry (purge or by name/slug).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "delete/tasks": {
+      "author_gloss": "delete a scheduled recurring task, reminder, or timer.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "describe/numbers": {
+      "author_gloss": "calculates descriptive statistics on a list of numbers.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/entries": {
+      "author_gloss": "filter entries by criteria.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/lists": {
+      "author_gloss": "compare, intersect, subtract, or deduplicate two lists using selected matching fields.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "filter/texts": {
+      "author_gloss": "filter text lines by pattern.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/contacts": {
+      "author_gloss": "search contacts in an external address book by name/email/phone.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/credentials": {
+      "author_gloss": "lists configured accounts and services (mail, api, cloud): metadata-only credentials.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/dirs": {
+      "author_gloss": "find directories and compute aggregate metadata with a parallel recursive walk.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/events": {
+      "author_gloss": "find free slots in the calendar.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/files": {
+      "author_gloss": "search files by pattern with a parallel recursive walk.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/images": {
+      "author_gloss": "search indexed photos by content, person or face. finds web images from text or an image. Uses deterministic signals; local semantic ranking runs only without lexical signals.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/issues": {
+      "author_gloss": "list issues, bug reports, or tickets in a GitHub repository.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/packages": {
+      "author_gloss": "finds an executable command in the system PATH.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/persons": {
+      "author_gloss": "search photos of a registered person.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/places": {
+      "author_gloss": "find real-world places by text query or coordinates.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/pulls": {
+      "author_gloss": "list pull requests in a GitHub repository.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "find/urls": {
+      "author_gloss": "find and discover URLs and documents on the web.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/files": {
+      "author_gloss": "gets size, dates, and EXIF for KNOWN files.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/images": {
+      "author_gloss": "gets unified image-index status for one corpus or all corpora.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/inputs": {
+      "author_gloss": "gets structured inputs (dialog/form).",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/location": {
+      "author_gloss": "tells where the current actor is.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/now": {
+      "author_gloss": "gets the current date and time in the configured timezone or an explicit IANA zone.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/persons": {
+      "author_gloss": "reads the biometric persons registry.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/places": {
+      "author_gloss": "gets place name from GPS coordinates.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/processes": {
+      "author_gloss": "reads processes and system health.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/proposals": {
+      "author_gloss": "reads introvertive proposals, including historical categories.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/signatures": {
+      "author_gloss": "query safety-signature lists and status.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "get/urls": {
+      "author_gloss": "gets data from HTTP/HTTPS URLs.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "group/entries": {
+      "author_gloss": "merges and deduplicates entries from multiple lists.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/dirs": {
+      "author_gloss": "lists directories and files; recursive mode walks subdirectories in parallel.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/skills": {
+      "author_gloss": "list available capability modules and whether each is enabled.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "list/tasks": {
+      "author_gloss": "list scheduled recurring tasks, reminders, and timers.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "login/session": {
+      "author_gloss": "log in through a previously registered website session.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "move/files": {
+      "author_gloss": "move or rename files in batch.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "move/messages": {
+      "author_gloss": "move messages between folders or labels.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/contacts": {
+      "author_gloss": "read one contact from external address book.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/events": {
+      "author_gloss": "reads calendar events.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/files": {
+      "author_gloss": "reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures. read local CSV files. reads text from Google Doc. extracts text from images and scanned PDFs: local OCR first, bounded VLM only if insufficient. reads a spreadsheet rows (local .xlsx/.csv or Google Sheet). read local Excel spreadsheet files.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/issues": {
+      "author_gloss": "read one GitHub issue, including its content and comments.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/messages": {
+      "author_gloss": "reads IMAP messages combining time and text filters.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/persons": {
+      "author_gloss": "reads local identity profiles.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/pulls": {
+      "author_gloss": "read one GitHub pull request, including its content and diff.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/tasks": {
+      "author_gloss": "read the details of one recurring task, reminder, or timer. list GitHub Actions workflow runs for a repository. read execution history for recurring tasks, reminders, or timers.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "read/urls": {
+      "author_gloss": "reads web pages and extracts main text; PDF URLs extracted as text automatically. reads PDF documents from URLs and extracts text and metadata.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "reply/messages": {
+      "author_gloss": "reply within an existing Gmail message thread.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "send/messages": {
+      "author_gloss": "send email/Telegram and reply in-thread on Gmail. post comments on GitHub issues or pull requests.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/credentials": {
+      "author_gloss": "encrypts credentials; defines the mandate.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/issues": {
+      "author_gloss": "change the state, labels, or assignees of an existing GitHub issue.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/messages": {
+      "author_gloss": "add or remove labels on identified Gmail messages.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/persons": {
+      "author_gloss": "enroll a person in the named registry.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/pulls": {
+      "author_gloss": "change the state, title, or reviewers of an existing GitHub pull request.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/signatures": {
+      "author_gloss": "sets or removes signatures from user curation.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/skills": {
+      "author_gloss": "enable or disable a capability module.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "set/tasks": {
+      "author_gloss": "pause, resume, or immediately trigger an existing recurring task.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "share/files": {
+      "author_gloss": "grants access permissions to Drive files without duplicating them.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "sort/entries": {
+      "author_gloss": "sorts entries in memory.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    },
+    "write/files": {
+      "author_gloss": "persist records or text to local files. append text to an existing Google Doc (.doc). writes a local sheet, creating it if missing.",
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ]
+    }
+  },
+  "outside_families": {
+    "physical_world_action": "perform an indispensable physical-world action absent from the digital capability set",
+    "financial_transaction": "perform an indispensable purchase, payment, transfer, or financial transaction",
+    "expert_judgement": "provide an indispensable medical, legal, ethical, or subjective expert judgment",
+    "unregistered_device_control": "control a device or vehicle absent from the capability set",
+    "unregistered_external_service": "book, order, or modify an account through an unregistered service",
+    "unsupported_content_transformation": "perform a content transformation absent from the exact capability set",
+    "unsupported_entity_creation": "create an entity for which no creation capability exists"
+  },
+  "system_controls": {
+    "undo_last_turn": {
+      "author_gloss": "undo the immediately previous assistant turn."
+    }
+  },
+  "barriers": {
+    "get/approval": {
+      "author_gloss": "request approval for the owned digital actions."
+    }
+  },
+  "languages": [
+    "en-GB",
+    "it-IT",
+    "es-MX",
+    "de-DE",
+    "tr-TR",
+    "sr-Cyrl-RS",
+    "ar-EG",
+    "hi-IN",
+    "ja-JP",
+    "zh-Hant-TW"
+  ],
+  "same_neutral_projection_for_every_language": true
+}

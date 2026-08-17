@@ -1,0 +1,137 @@
+{
+  "proposal_format": "metnos.intent-shadow-controls-final-proposal/0.1",
+  "created_date": "2026-08-12",
+  "review": {
+    "reviewer": "AI reviewer B",
+    "independent": true,
+    "human_review": false,
+    "phase": "post_blind_mechanical_selection"
+  },
+  "contract_version": "metnos.intent-shadow/0.1",
+  "registry_payload_sha256": "7a4f2916af8963d8d16fb79cb355d23e9739163f2241a84fa28bc6c070ed4a0a",
+  "baseline": {
+    "existing_controls": 34,
+    "existing_controls_path": "internal/tools/request_analysis_lab/question_focus_controls_v1.json",
+    "existing_controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+    "new_controls": 4,
+    "resulting_total": 38
+  },
+  "selection_policy": [
+    "use_only_approved_semantic_decisions",
+    "maximize_coverage_of_recent_adversarial_failures",
+    "avoid_query_hash_and_semantic_duplicates",
+    "keep_each_control_focused_on_a_distinct_boundary"
+  ],
+  "controls": [
+    {
+      "control_id": "final.control.035.compound_fail_closed",
+      "language": "it",
+      "query_text": "Trova i file .log in /tmp e stampali tutti sulla stampante dell'ufficio.",
+      "query_sha256": "24b35b88ea9ffd4218bcc83c0b1de9be386f7ab0cd9f2aeeeb8459e8a84c9906",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "adversarial_targets": [
+        "indispensable_outside_registry_clause",
+        "whole_compound_fail_closed",
+        "no_partial_executable_subgraph"
+      ],
+      "rationale": "La ricerca file è registrata, ma la stampa fisica indispensabile non lo è: la regola approvata rende fuori registro l'intero composto.",
+      "confidence": 1.0,
+      "ambiguity": null
+    },
+    {
+      "control_id": "final.control.036.multi_corpus_get_images",
+      "language": "it",
+      "query_text": "Per ogni corpus indicizzato, elenca il percorso base e il numero di immagini nel relativo indice unificato.",
+      "query_sha256": "db52765072a1ce26ddf316e902d3afd5f0f59005b3e872ae0f3d439c4f130b8f",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/images"
+          }
+        ]
+      },
+      "adversarial_targets": [
+        "multi_corpus_enumeration",
+        "unified_image_index_counts",
+        "minimal_exact_graph"
+      ],
+      "rationale": "La modalità senza base_path di get/images enumera gli indici unificati materializzati e restituisce base_path e conteggio per corpus; non servono operazioni aggiuntive.",
+      "confidence": 1.0,
+      "ambiguity": null
+    },
+    {
+      "control_id": "final.control.037.structured_projection",
+      "language": "it",
+      "query_text": "Leggi gli eventi di domani e crea un file JSON con i soli campi summary e start, rinominati titolo e inizio.",
+      "query_sha256": "82cf33367dc95f3a9d2c9946100d663f6575f379c4824860d5694a820d5f0428",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "kind": "operation",
+            "route": "create/files",
+            "data_from": [
+              {
+                "from": 0
+              }
+            ]
+          }
+        ]
+      },
+      "adversarial_targets": [
+        "structured_field_projection",
+        "projection_not_transformation",
+        "explicit_data_dependency"
+      ],
+      "rationale": "summary e start sono già campi strutturati di read/events; selezione e rinomina sono una proiezione, mentre create/files dipende dai dati letti.",
+      "confidence": 1.0,
+      "ambiguity": null
+    },
+    {
+      "control_id": "final.control.038.photo_similarity_find_persons",
+      "language": "it",
+      "query_text": "Trova, usando questa foto come riferimento, quale persona registrata ha il volto più somigliante.",
+      "query_sha256": "0108bc85713d9710faaf47f67551caaf849e5f2e69a22f7bdc975555a15b9df3",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/persons"
+          }
+        ]
+      },
+      "adversarial_targets": [
+        "reference_photo_similarity",
+        "find_persons_not_get_persons",
+        "near_miss_accuracy"
+      ],
+      "rationale": "La foto è una reference image per la ricerca di somiglianza di find/persons; get/persons legge il registro per nome noto o lo elenca e non accetta immagini.",
+      "confidence": 1.0,
+      "ambiguity": null
+    }
+  ],
+  "verification": {
+    "control_count": 4,
+    "resulting_total": 38,
+    "unique_control_ids": true,
+    "unique_queries": true,
+    "unique_query_sha256": true,
+    "no_exact_query_or_hash_overlap_with_existing_34": true,
+    "no_semantic_duplicate_with_existing_34": true,
+    "pairwise_distinct_semantic_targets": true,
+    "expected_shapes_conform_to_contract": true,
+    "all_routes_and_reasons_in_registry": true,
+    "new_policy_required": false,
+    "error_count": 0
+  }
+}

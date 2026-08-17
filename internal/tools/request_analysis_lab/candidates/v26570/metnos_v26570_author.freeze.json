@@ -1,0 +1,70 @@
+{
+ "artifacts": {
+  "metnos_v26570_author_pre_gate.json": {
+   "bytes": 636,
+   "sha256": "4573ee318d55d603151ecfb0ec98bf2d2d8d33228363642e20c17eeaa8835491"
+  },
+  "metnos_v26570_author_selftest_result.json": {
+   "bytes": 5118,
+   "sha256": "e8f936ebf3ea6f25deaa0e3d2d3bd202c4a89e765ed0f3b553bfdfab4b4c2c73"
+  },
+  "metnos_v26570_offline_selftest.py": {
+   "bytes": 25034,
+   "sha256": "2d8486cab20a38d5f1f2df2792b48b7dcd54ffbe8e1e11ccac4337b977f629f4"
+  },
+  "metnos_v26570_registry_projection.py": {
+   "bytes": 26363,
+   "sha256": "3f18906b2e3fd56584de0d582680742171670892ecdc569cf6881fee55f42b95"
+  },
+  "metnos_v26570_relation_typed.prompt.txt": {
+   "bytes": 8125,
+   "sha256": "19c7a5e811319b39cff3c2c8cef6e6eb0ffe3f2cc2e67daf68b83f1eeb4cd3e4"
+  },
+  "metnos_v26570_relation_typed.schema.json": {
+   "bytes": 111165,
+   "sha256": "8a9845fa3ca6805f2fa1db182184b3b1c81bce45c906e70778f0548331bd06f2"
+  }
+ },
+ "delta_against_v26568": "identical projection logic; the schema is serialised in generator order so the discriminant precedes what depends on it",
+ "frozen_at": "2026-08-10",
+ "inference": false,
+ "limits": {
+  "authorizes_live": false,
+  "authorizes_runtime_cutover": false,
+  "authorizes_transport": false,
+  "certifies_general_109": false
+ },
+ "live_runs": 0,
+ "measures": {
+  "closed_codes": 20,
+  "inherited_v26566": "71/71 PASS",
+  "live_families_closed": 6,
+  "previous_schema_bytes": 7650,
+  "random_generated": 1310,
+  "random_schema_valid": 1200,
+  "random_valid": 241,
+  "random_validator_codes": {
+   "action_assertion": 100,
+   "action_unknown": 334,
+   "clause_source_order": 390,
+   "closed_proposition_unknown": 306,
+   "dependency_order": 297,
+   "embedded_unknown": 313,
+   "output_unconsumed": 506,
+   "projection_source_order": 162,
+   "proof_predicate": 627,
+   "proof_span": 668
+  },
+  "schema_bytes": 76469,
+  "schema_definitions": 97
+ },
+ "model_calls": 0,
+ "network_calls": 0,
+ "selftest": {
+  "all_green": true,
+  "passed": 24,
+  "total": 24
+ },
+ "status": "PRE_INFRA_REVIEW",
+ "version": "metnos.v26.5.7.0-author-freeze/1.0"
+}

@@ -1,0 +1,169 @@
+{
+  "candidate_outputs_read": 0,
+  "network_calls": 0,
+  "network_events": [],
+  "summary": {
+    "failed": 0,
+    "passed": 34,
+    "pipeline_positive_roundtrips": 19,
+    "tests": 34
+  },
+  "tests": [
+    {
+      "id": "hash:metnos_v265_compact_adapter.py",
+      "pass": true
+    },
+    {
+      "id": "hash:metnos_v265_compact.schema.json",
+      "pass": true
+    },
+    {
+      "id": "hash:metnos_v265_compact.prompt.txt",
+      "pass": true
+    },
+    {
+      "id": "hash:metnos_v265_compact_schema_audit_result.json",
+      "pass": true
+    },
+    {
+      "id": "hash:metnos_v265_compact_prompt_audit_result.json",
+      "pass": true
+    },
+    {
+      "id": "hash:metnos_v2641_typed_phase1_runner.py",
+      "pass": true
+    },
+    {
+      "id": "hash:metnos_v264_independent_graph_probe.py",
+      "pass": true
+    },
+    {
+      "id": "pipeline:P01_direct_current_location",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P02_polar_complete_proposition",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P03_queryable_imperative_dependency",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P04_dependency_fanout",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P05_two_independent_domains",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P06_direct_output_also_consumed",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P07_embedded_plus_main",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P08_ambiguity_preserves_unaffected_action",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P09_depth_exactly_four_synthetic_registry",
+      "pass": true,
+      "validator": "synthetic_probe_registry"
+    },
+    {
+      "id": "pipeline:P10_diamond_dag_synthetic_registry",
+      "pass": true,
+      "validator": "synthetic_probe_registry"
+    },
+    {
+      "id": "pipeline:P11_mixed_supported_unsupported",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:P12_scoped_unknown_unconsumed",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:M014_nested_span_overlap",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:M042_queryable_imperative_one_unknown",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:M043_embedded_unconsumed_unknown_oracle_corrected",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:M047_fanout_second_consumer",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:M048_global_two_unknown_rejection_guard",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:X001_dependency_semantics_make_alternatives_distinct",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "pipeline:X008_whole_unsupported_valid",
+      "pass": true,
+      "validator": "frozen_parent"
+    },
+    {
+      "id": "fail_closed:future_edge",
+      "pass": true
+    },
+    {
+      "id": "fail_closed:orphan_dependency",
+      "pass": true
+    },
+    {
+      "id": "schema_audit_green",
+      "pass": true
+    },
+    {
+      "id": "prompt_audit_green",
+      "pass": true
+    },
+    {
+      "id": "existing_probe_125",
+      "pass": true
+    },
+    {
+      "id": "network_audit_hook_quiet",
+      "pass": true
+    },
+    {
+      "id": "runner_has_no_endpoint_cli",
+      "pass": true
+    },
+    {
+      "id": "runner_has_no_inference_path",
+      "pass": true
+    }
+  ],
+  "version": "metnos.v26.5-offline-runner-self-test/0.1"
+}

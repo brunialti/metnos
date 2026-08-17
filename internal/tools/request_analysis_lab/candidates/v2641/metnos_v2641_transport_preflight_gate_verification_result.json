@@ -1,0 +1,48 @@
+{
+  "authorization": {
+    "attempts": 1,
+    "inference_calls": 0,
+    "live_gate_authorized": false,
+    "method": "GET",
+    "request_body_allowed": false,
+    "url": "http://127.0.0.1:8080/v1/models"
+  },
+  "authorized_command": "python3 /tmp/metnos_v2641_typed_phase1_runner.py --preflight --endpoint http://127.0.0.1:8080 --output /tmp/metnos_v2641_transport_preflight_result.json",
+  "candidate_outputs_read": 0,
+  "errors": [],
+  "gate_path": "/tmp/metnos_v2641_transport_preflight.lock.json",
+  "gate_sha256": "70c1995d2b291bb9301840b12386c97814d59a1ecd2d4731b8fca5e24c298ba4",
+  "mutations": [
+    {"id": "status", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "authority", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "freeze", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "runner", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "method", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "body", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "attempts", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "inference", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "output", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "network_before_lock", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "endpoint", "independent_error_count": 1, "pass": true, "runner_error_count": 2},
+    {"id": "url", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "review_path", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "review_hash", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "verifier_path", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "verifier_hash", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "missing_key", "independent_error_count": 2, "pass": true, "runner_error_count": 2},
+    {"id": "extra_key", "independent_error_count": 1, "pass": true, "runner_error_count": 1},
+    {"id": "preexisting_output", "independent_error_count": 1, "pass": true, "runner_error_count": 0},
+    {"id": "oracle_dependency", "independent_error_count": 1, "pass": true, "runner_error_count": 0},
+    {"id": "v264_review_dependency", "independent_error_count": 1, "pass": true, "runner_error_count": 0},
+    {"id": "v2641_review_dependency", "independent_error_count": 1, "pass": true, "runner_error_count": 0}
+  ],
+  "network_calls": 0,
+  "summary": {
+    "dependencies": 14,
+    "mutation_failed": 0,
+    "mutation_passed": 22,
+    "mutations": 22
+  },
+  "valid": true,
+  "version": "metnos.v26.4.1-transport-preflight-gate-verifier/1.0"
+}

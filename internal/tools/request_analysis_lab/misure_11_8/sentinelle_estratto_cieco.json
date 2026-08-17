@@ -1,0 +1,4205 @@
+{
+  "versione": "sentinelle_estratto_cieco/1.0",
+  "campione": {
+    "numero_richieste": 120,
+    "sha256_lista_richieste": "36aba12b9ec0f366569498bba0fa4dd876f4d2354f736058791182ca41e37af4"
+  },
+  "etichette_opache": [
+    "braccio_1",
+    "braccio_2",
+    "braccio_3"
+  ],
+  "replica_duplicata": {
+    "verifica": "Le due repliche dello stesso braccio sono identiche su valid, reason e frame in tutti i 120 indici.",
+    "uso": "È inclusa una sola replica."
+  },
+  "normalizzazione_presentazione": {
+    "criterio": "Proiezione canonica comune già presente negli artefatti raccolti; nessun metadato di configurazione del braccio è esposto.",
+    "completezza": "Per ogni coppia sono conservati integralmente frame, valid e reason; il frame include semantic_heads e predicates con ruolo, verbo, oggetto e tutti gli altri campi presenti nella proiezione comune."
+  },
+  "casi": [
+    {
+      "indice": 18,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request",
+                "lemma": "analizzare",
+                "semantic_gloss_en": "analyze",
+                "semantic_action": "read",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 9,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 15,
+                "role": "request",
+                "lemma": "riconciliare",
+                "semantic_gloss_en": "reconcile",
+                "semantic_action": "classify",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 17,
+                "patient_end_token_id": 17,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 32,
+                "role": "request",
+                "lemma": "estrarre",
+                "semantic_gloss_en": "extract",
+                "semantic_action": "extract",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 35,
+                "patient_end_token_id": 35,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 53,
+                "role": "request",
+                "lemma": "normalizzare",
+                "semantic_gloss_en": "normalize",
+                "semantic_action": "change",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 54,
+                "patient_end_token_id": 62,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 3,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 63,
+                "role": "request",
+                "lemma": "eliminare",
+                "semantic_gloss_en": "eliminate",
+                "semantic_action": "filter",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 66,
+                "patient_end_token_id": 71,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 4,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 76,
+                "role": "request",
+                "lemma": "unificare",
+                "semantic_gloss_en": "unify",
+                "semantic_action": "group",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 77,
+                "patient_end_token_id": 79,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 97,
+                "role": "request",
+                "lemma": "distinguere",
+                "semantic_gloss_en": "distinguish",
+                "semantic_action": "classify",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 98,
+                "patient_end_token_id": 118,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 6,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 119,
+                "role": "request",
+                "lemma": "segnalare",
+                "semantic_gloss_en": "report",
+                "semantic_action": "describe",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 121,
+                "patient_end_token_id": 136,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 7,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 151,
+                "role": "request",
+                "lemma": "creare",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 160,
+                "patient_end_token_id": 193,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 8,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 155,
+                  "end_token_id": 158,
+                  "object": "dirs"
+                }
+              },
+              {
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 194,
+                "role": "request",
+                "lemma": "generare",
+                "semantic_gloss_en": "generate",
+                "semantic_action": "compress",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 197,
+                "patient_end_token_id": 203,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 9,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 197,
+                  "end_token_id": 197,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 11,
+                "predicate_anchor_token_id": 206,
+                "role": "request",
+                "lemma": "eseguire",
+                "semantic_gloss_en": "execute",
+                "semantic_action": "read",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 208,
+                "patient_end_token_id": 208,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 12,
+                "predicate_anchor_token_id": 210,
+                "role": "request",
+                "lemma": "salvare",
+                "semantic_gloss_en": "save",
+                "semantic_action": "write",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 212,
+                "patient_end_token_id": 212,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 10,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 213,
+                  "end_token_id": 214,
+                  "object": "dirs"
+                }
+              },
+              {
+                "predicate_id": 13,
+                "predicate_anchor_token_id": 216,
+                "role": "forbid",
+                "lemma": "inviare",
+                "semantic_gloss_en": "send",
+                "semantic_action": "send",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 14,
+                "predicate_anchor_token_id": 219,
+                "role": "forbid",
+                "lemma": "creare",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 224,
+                "patient_end_token_id": 224,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 15,
+                "predicate_anchor_token_id": 220,
+                "role": "forbid",
+                "lemma": "modificare",
+                "semantic_gloss_en": "modify",
+                "semantic_action": "change",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 224,
+                "patient_end_token_id": 224,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 16,
+                "predicate_anchor_token_id": 222,
+                "role": "forbid",
+                "lemma": "cancellare",
+                "semantic_gloss_en": "cancel",
+                "semantic_action": "delete",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 224,
+                "patient_end_token_id": 224,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 17,
+                "predicate_anchor_token_id": 226,
+                "role": "forbid",
+                "lemma": "modificare",
+                "semantic_gloss_en": "modify",
+                "semantic_action": "change",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 228,
+                "patient_end_token_id": 228,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 18,
+                "predicate_anchor_token_id": 231,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "write",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 232,
+                "patient_end_token_id": 233,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "read",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request"
+              },
+              {
+                "verb": "classify",
+                "verb_resolution": "direct",
+                "object": "events",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 15,
+                "role": "request"
+              },
+              {
+                "verb": "extract",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 32,
+                "role": "request"
+              },
+              {
+                "verb": "change",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 3,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 53,
+                "role": "request"
+              },
+              {
+                "verb": "filter",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 4,
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 63,
+                "role": "request"
+              },
+              {
+                "verb": "group",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 5,
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 76,
+                "role": "request"
+              },
+              {
+                "verb": "classify",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 6,
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 97,
+                "role": "request"
+              },
+              {
+                "verb": "describe",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 7,
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 119,
+                "role": "request"
+              },
+              {
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 8,
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 151,
+                "role": "request"
+              },
+              {
+                "verb": "compress",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 9,
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 194,
+                "role": "request"
+              },
+              {
+                "verb": "read",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 11,
+                "predicate_anchor_token_id": 206,
+                "role": "request"
+              },
+              {
+                "verb": "write",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 10,
+                "predicate_id": 12,
+                "predicate_anchor_token_id": 210,
+                "role": "request"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 13,
+                "predicate_anchor_token_id": 216,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 14,
+                "predicate_anchor_token_id": 219,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 15,
+                "predicate_anchor_token_id": 220,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 16,
+                "predicate_anchor_token_id": 222,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 17,
+                "predicate_anchor_token_id": 226,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 18,
+                "predicate_anchor_token_id": 231,
+                "role": "forbid"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {},
+          "valid": false,
+          "reason": "transport_or_json"
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request",
+                "lemma": "analizzare",
+                "semantic_gloss_en": "analyze",
+                "semantic_action": "read",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 9,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 15,
+                "role": "request",
+                "lemma": "riconciliare",
+                "semantic_gloss_en": "reconcile",
+                "semantic_action": "classify",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 17,
+                "patient_end_token_id": 17,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 32,
+                "role": "request",
+                "lemma": "estrarre",
+                "semantic_gloss_en": "extract",
+                "semantic_action": "extract",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 35,
+                "patient_end_token_id": 35,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 53,
+                "role": "request",
+                "lemma": "normalizzare",
+                "semantic_gloss_en": "normalize",
+                "semantic_action": "change",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 54,
+                "patient_end_token_id": 62,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 3,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 63,
+                "role": "request",
+                "lemma": "eliminare",
+                "semantic_gloss_en": "eliminate",
+                "semantic_action": "filter",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 66,
+                "patient_end_token_id": 71,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 4,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 76,
+                "role": "request",
+                "lemma": "unificare",
+                "semantic_gloss_en": "unify",
+                "semantic_action": "group",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 77,
+                "patient_end_token_id": 79,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 97,
+                "role": "request",
+                "lemma": "distinguere",
+                "semantic_gloss_en": "distinguish",
+                "semantic_action": "classify",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 98,
+                "patient_end_token_id": 118,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 6,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 119,
+                "role": "request",
+                "lemma": "segnalare",
+                "semantic_gloss_en": "report",
+                "semantic_action": "describe",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 121,
+                "patient_end_token_id": 136,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 7,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 151,
+                "role": "request",
+                "lemma": "creare",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 160,
+                "patient_end_token_id": 193,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 8,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 155,
+                  "end_token_id": 158,
+                  "object": "dirs"
+                }
+              },
+              {
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 194,
+                "role": "request",
+                "lemma": "generare",
+                "semantic_gloss_en": "generate",
+                "semantic_action": "compress",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 197,
+                "patient_end_token_id": 203,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 9,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 197,
+                  "end_token_id": 197,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 11,
+                "predicate_anchor_token_id": 206,
+                "role": "request",
+                "lemma": "eseguire",
+                "semantic_gloss_en": "execute",
+                "semantic_action": "read",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 208,
+                "patient_end_token_id": 208,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 12,
+                "predicate_anchor_token_id": 210,
+                "role": "request",
+                "lemma": "salvare",
+                "semantic_gloss_en": "save",
+                "semantic_action": "write",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 212,
+                "patient_end_token_id": 212,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 10,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 213,
+                  "end_token_id": 214,
+                  "object": "dirs"
+                }
+              },
+              {
+                "predicate_id": 13,
+                "predicate_anchor_token_id": 216,
+                "role": "forbid",
+                "lemma": "inviare",
+                "semantic_gloss_en": "send",
+                "semantic_action": "send",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 14,
+                "predicate_anchor_token_id": 219,
+                "role": "forbid",
+                "lemma": "creare",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 224,
+                "patient_end_token_id": 224,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 15,
+                "predicate_anchor_token_id": 220,
+                "role": "forbid",
+                "lemma": "modificare",
+                "semantic_gloss_en": "modify",
+                "semantic_action": "change",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 224,
+                "patient_end_token_id": 224,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 16,
+                "predicate_anchor_token_id": 222,
+                "role": "forbid",
+                "lemma": "cancellare",
+                "semantic_gloss_en": "cancel",
+                "semantic_action": "delete",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 224,
+                "patient_end_token_id": 224,
+                "patient_object": "events",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 17,
+                "predicate_anchor_token_id": 226,
+                "role": "forbid",
+                "lemma": "modificare",
+                "semantic_gloss_en": "modify",
+                "semantic_action": "change",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 228,
+                "patient_end_token_id": 228,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 18,
+                "predicate_anchor_token_id": 231,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "write",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 232,
+                "patient_end_token_id": 233,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "read",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2
+              },
+              {
+                "role": "request",
+                "verb": "classify",
+                "verb_resolution": "direct",
+                "object": "events",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 15
+              },
+              {
+                "role": "request",
+                "verb": "extract",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 32
+              },
+              {
+                "role": "request",
+                "verb": "change",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 3,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 53
+              },
+              {
+                "role": "request",
+                "verb": "filter",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 4,
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 63
+              },
+              {
+                "role": "request",
+                "verb": "group",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 5,
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 76
+              },
+              {
+                "role": "request",
+                "verb": "classify",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 6,
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 97
+              },
+              {
+                "role": "request",
+                "verb": "describe",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 7,
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 119
+              },
+              {
+                "role": "request",
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 8,
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 151
+              },
+              {
+                "role": "request",
+                "verb": "compress",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 9,
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 194
+              },
+              {
+                "role": "request",
+                "verb": "read",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 11,
+                "predicate_anchor_token_id": 206
+              },
+              {
+                "role": "request",
+                "verb": "write",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 10,
+                "predicate_id": 12,
+                "predicate_anchor_token_id": 210
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 13,
+                "predicate_anchor_token_id": 216
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 14,
+                "predicate_anchor_token_id": 219
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 15,
+                "predicate_anchor_token_id": 220
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 16,
+                "predicate_anchor_token_id": 222
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 17,
+                "predicate_anchor_token_id": 226
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 18,
+                "predicate_anchor_token_id": 231
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 25,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "undo",
+                "semantic_gloss_en": "undo",
+                "semantic_action": "change",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "change",
+                "verb_resolution": "technical_override",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "undo",
+                "semantic_gloss_en": "undo",
+                "semantic_action": "change",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "verb": "change",
+                "verb_resolution": "technical_override",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "undo",
+                "semantic_gloss_en": "undo",
+                "semantic_action": "change",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "change",
+                "verb_resolution": "technical_override",
+                "object": "files",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 30,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "chiedere",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "get",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 14,
+                "role": "condition",
+                "lemma": "impostare",
+                "semantic_gloss_en": "set",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "get",
+                "verb_resolution": "generalized",
+                "object": "issues",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "generalized",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 14,
+                "role": "condition"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "chiedere",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "get",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 14,
+                "role": "condition",
+                "lemma": "impostare",
+                "semantic_gloss_en": "set",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "verb": "get",
+                "verb_resolution": "generalized",
+                "object": "issues",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 14,
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "generalized",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "chiedere",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "get",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 14,
+                "role": "condition",
+                "lemma": "impostare",
+                "semantic_gloss_en": "set",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "get",
+                "verb_resolution": "generalized",
+                "object": "issues",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1
+              },
+              {
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "generalized",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 14
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 59,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request",
+                "lemma": "get_approval",
+                "semantic_gloss_en": "get approval",
+                "semantic_action": "get",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 10,
+                "role": "condition",
+                "lemma": "on_approve",
+                "semantic_gloss_en": "on approve",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "lemma": "write_issues",
+                "semantic_gloss_en": "write issues",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 14,
+                "patient_end_token_id": 14,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "get",
+                "verb_resolution": "generalized",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "generalized",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 10,
+                "role": "condition"
+              },
+              {
+                "verb": "set",
+                "verb_resolution": "generalized",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 12,
+                "role": "request"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request",
+                "lemma": "get_approval",
+                "semantic_gloss_en": "get approval",
+                "semantic_action": "get",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 10,
+                "role": "condition",
+                "lemma": "on_approve",
+                "semantic_gloss_en": "on approve",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "lemma": "write_issues",
+                "semantic_gloss_en": "write issues",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 14,
+                "patient_end_token_id": 14,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request",
+                "verb": "get",
+                "verb_resolution": "generalized",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 10,
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "generalized",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "verb": "set",
+                "verb_resolution": "generalized",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2,
+                "role": "request",
+                "lemma": "get_approval",
+                "semantic_gloss_en": "get approval",
+                "semantic_action": "get",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 10,
+                "role": "condition",
+                "lemma": "on_approve",
+                "semantic_gloss_en": "on approve",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "lemma": "write_issues",
+                "semantic_gloss_en": "write issues",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 14,
+                "patient_end_token_id": 14,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "get",
+                "verb_resolution": "generalized",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 2
+              },
+              {
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "generalized",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 10
+              },
+              {
+                "role": "request",
+                "verb": "set",
+                "verb_resolution": "generalized",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 12
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 65,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "accedere",
+                "semantic_gloss_en": "access",
+                "semantic_action": "login",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 3,
+                  "end_token_id": 3,
+                  "object": "urls"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "lemma": "trovare",
+                "semantic_gloss_en": "find",
+                "semantic_action": "find",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 8,
+                "patient_end_token_id": 10,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 11,
+                "role": "condition",
+                "lemma": "limitarsi",
+                "semantic_gloss_en": "limit",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 15,
+                "role": "forbid",
+                "lemma": "scaricare",
+                "semantic_gloss_en": "download",
+                "semantic_action": "read",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 17,
+                "role": "forbid",
+                "lemma": "modificare",
+                "semantic_gloss_en": "modify",
+                "semantic_action": "change",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 20,
+                "role": "forbid",
+                "lemma": "inviare",
+                "semantic_gloss_en": "send",
+                "semantic_action": "send",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "login",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request"
+              },
+              {
+                "verb": "find",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 5,
+                "role": "request"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 11,
+                "role": "condition"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 15,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 17,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 20,
+                "role": "forbid"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "accedere",
+                "semantic_gloss_en": "access",
+                "semantic_action": "login",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 3,
+                  "end_token_id": 3,
+                  "object": "urls"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "lemma": "trovare",
+                "semantic_gloss_en": "find",
+                "semantic_action": "find",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 8,
+                "patient_end_token_id": 10,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 11,
+                "role": "condition",
+                "lemma": "limitarsi",
+                "semantic_gloss_en": "limit",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 15,
+                "role": "forbid",
+                "lemma": "scaricare",
+                "semantic_gloss_en": "download",
+                "semantic_action": "read",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 17,
+                "role": "forbid",
+                "lemma": "modificare",
+                "semantic_gloss_en": "modify",
+                "semantic_action": "change",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 20,
+                "role": "forbid",
+                "lemma": "inviare",
+                "semantic_gloss_en": "send",
+                "semantic_action": "send",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "verb": "login",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "verb": "find",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 11,
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 15,
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 17,
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 20,
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "accedere",
+                "semantic_gloss_en": "access",
+                "semantic_action": "login",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 3,
+                  "end_token_id": 3,
+                  "object": "urls"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "lemma": "trovare",
+                "semantic_gloss_en": "find",
+                "semantic_action": "find",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 8,
+                "patient_end_token_id": 10,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 11,
+                "role": "condition",
+                "lemma": "limitarsi",
+                "semantic_gloss_en": "limit",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 15,
+                "role": "forbid",
+                "lemma": "scaricare",
+                "semantic_gloss_en": "download",
+                "semantic_action": "read",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 17,
+                "role": "forbid",
+                "lemma": "modificare",
+                "semantic_gloss_en": "modify",
+                "semantic_action": "change",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 20,
+                "role": "forbid",
+                "lemma": "inviare",
+                "semantic_gloss_en": "send",
+                "semantic_action": "send",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "login",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1
+              },
+              {
+                "role": "request",
+                "verb": "find",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 5
+              },
+              {
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 11
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 15
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 17
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 20
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 66,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "annullare",
+                "semantic_gloss_en": "cancel",
+                "semantic_action": "delete",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 4,
+                "patient_end_token_id": 4,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "delete",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "annullare",
+                "semantic_gloss_en": "cancel",
+                "semantic_action": "delete",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 4,
+                "patient_end_token_id": 4,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "verb": "delete",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "annullare",
+                "semantic_gloss_en": "cancel",
+                "semantic_action": "delete",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 4,
+                "patient_end_token_id": 4,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "delete",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 69,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 7,
+                "role": "request",
+                "lemma": "chiedere",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 13,
+                "role": "condition",
+                "lemma": "impostare",
+                "semantic_gloss_en": "set",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 15,
+                "patient_end_token_id": 15,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 7,
+                "role": "request"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 13,
+                "role": "condition"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 7,
+                "role": "request",
+                "lemma": "chiedere",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 13,
+                "role": "condition",
+                "lemma": "impostare",
+                "semantic_gloss_en": "set",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 15,
+                "patient_end_token_id": 15,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 7,
+                "role": "request",
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 13,
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 7,
+                "role": "request",
+                "lemma": "chiedere",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 13,
+                "role": "condition",
+                "lemma": "impostare",
+                "semantic_gloss_en": "set",
+                "semantic_action": "set",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 15,
+                "patient_end_token_id": 15,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 7
+              },
+              {
+                "role": "condition",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 13
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 77,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "Cerca",
+                "semantic_gloss_en": "search",
+                "semantic_action": "find",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 6,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 3,
+                  "end_token_id": 4,
+                  "object": "entries"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "lemma": "chiedi",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 15,
+                "patient_end_token_id": 15,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 16,
+                "role": "request",
+                "lemma": "pubblica",
+                "semantic_gloss_en": "publish",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 18,
+                "patient_end_token_id": 18,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 22,
+                "role": "request",
+                "lemma": "aggiorna",
+                "semantic_gloss_en": "update",
+                "semantic_action": "set",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 24,
+                "patient_end_token_id": 24,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "find",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request"
+              },
+              {
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 12,
+                "role": "request"
+              },
+              {
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 16,
+                "role": "request"
+              },
+              {
+                "verb": "set",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 22,
+                "role": "request"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "Cerca",
+                "semantic_gloss_en": "search",
+                "semantic_action": "find",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 6,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 3,
+                  "end_token_id": 4,
+                  "object": "entries"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "lemma": "chiedi",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 15,
+                "patient_end_token_id": 15,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 16,
+                "role": "request",
+                "lemma": "pubblica",
+                "semantic_gloss_en": "publish",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 18,
+                "patient_end_token_id": 18,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 20,
+                  "end_token_id": 20,
+                  "object": "urls"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 22,
+                "role": "request",
+                "lemma": "aggiorna",
+                "semantic_gloss_en": "update",
+                "semantic_action": "set",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 6,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "verb": "find",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 16,
+                "role": "request",
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 22,
+                "role": "request",
+                "verb": "set",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1,
+                "role": "request",
+                "lemma": "Cerca",
+                "semantic_gloss_en": "search",
+                "semantic_action": "find",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 6,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 3,
+                  "end_token_id": 4,
+                  "object": "entries"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 12,
+                "role": "request",
+                "lemma": "chiedi",
+                "semantic_gloss_en": "ask",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 15,
+                "patient_end_token_id": 15,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 16,
+                "role": "request",
+                "lemma": "pubblica",
+                "semantic_gloss_en": "publish",
+                "semantic_action": "send",
+                "resource_scope": "single_known",
+                "patient_start_token_id": 18,
+                "patient_end_token_id": 18,
+                "patient_object": "messages",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 22,
+                "role": "request",
+                "lemma": "aggiorna",
+                "semantic_gloss_en": "update",
+                "semantic_action": "set",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 24,
+                "patient_end_token_id": 24,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "find",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 1
+              },
+              {
+                "role": "request",
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 12
+              },
+              {
+                "role": "request",
+                "verb": "send",
+                "verb_resolution": "direct",
+                "object": "messages",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 16
+              },
+              {
+                "role": "request",
+                "verb": "set",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 22
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 79,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 4,
+                "role": "request",
+                "lemma": "leggi",
+                "semantic_gloss_en": "read",
+                "semantic_action": "read",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 6,
+                "patient_object": "urls",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 9,
+                  "end_token_id": 31,
+                  "object": "urls"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 37,
+                "role": "request",
+                "lemma": "rileva",
+                "semantic_gloss_en": "get",
+                "semantic_action": "get",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 36,
+                "patient_end_token_id": 36,
+                "patient_object": "urls",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 53,
+                "role": "request",
+                "lemma": "elimina",
+                "semantic_gloss_en": "filter",
+                "semantic_action": "filter",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 55,
+                "patient_end_token_id": 56,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 57,
+                "role": "request",
+                "lemma": "segnala",
+                "semantic_gloss_en": "classify",
+                "semantic_action": "classify",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 73,
+                "patient_end_token_id": 73,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 71,
+                "role": "request",
+                "lemma": "raggruppa",
+                "semantic_gloss_en": "group",
+                "semantic_action": "group",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 73,
+                "patient_end_token_id": 73,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 77,
+                "role": "request",
+                "lemma": "crea",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 81,
+                "patient_end_token_id": 81,
+                "patient_object": "dirs",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 87,
+                "role": "request",
+                "lemma": "ordinato",
+                "semantic_gloss_en": "sort",
+                "semantic_action": "sort",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 87,
+                "patient_end_token_id": 87,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 93,
+                "role": "request",
+                "lemma": "foglio",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 93,
+                "patient_end_token_id": 95,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 93,
+                  "end_token_id": 95,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 109,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 114,
+                "role": "forbid",
+                "lemma": "eseguire",
+                "semantic_gloss_en": "execute",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "read",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 4,
+                "role": "request"
+              },
+              {
+                "verb": "get",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 37,
+                "role": "request"
+              },
+              {
+                "verb": "filter",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 53,
+                "role": "request"
+              },
+              {
+                "verb": "classify",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 57,
+                "role": "request"
+              },
+              {
+                "verb": "group",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 71,
+                "role": "request"
+              },
+              {
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "dirs",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 77,
+                "role": "request"
+              },
+              {
+                "verb": "sort",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 5,
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 87,
+                "role": "request"
+              },
+              {
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "spreadsheet",
+                "input_from_predicate_id": 5,
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 93,
+                "role": "request"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 109,
+                "role": "forbid"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 114,
+                "role": "forbid"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 4,
+                "role": "request",
+                "lemma": "leggi",
+                "semantic_gloss_en": "read",
+                "semantic_action": "read",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 6,
+                "patient_object": "urls",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 9,
+                  "end_token_id": 31,
+                  "object": "urls"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 37,
+                "role": "request",
+                "lemma": "rileva",
+                "semantic_gloss_en": "get",
+                "semantic_action": "get",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 36,
+                "patient_end_token_id": 36,
+                "patient_object": "urls",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 53,
+                "role": "request",
+                "lemma": "elimina",
+                "semantic_gloss_en": "filter",
+                "semantic_action": "filter",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 55,
+                "patient_end_token_id": 56,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 57,
+                "role": "request",
+                "lemma": "segnala",
+                "semantic_gloss_en": "classify",
+                "semantic_action": "classify",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 73,
+                "patient_end_token_id": 73,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 71,
+                "role": "request",
+                "lemma": "raggruppa",
+                "semantic_gloss_en": "group",
+                "semantic_action": "group",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 73,
+                "patient_end_token_id": 73,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 77,
+                "role": "request",
+                "lemma": "crea",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 81,
+                "patient_end_token_id": 81,
+                "patient_object": "dirs",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 87,
+                "role": "request",
+                "lemma": "ordinato",
+                "semantic_gloss_en": "sort",
+                "semantic_action": "sort",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 87,
+                "patient_end_token_id": 87,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 93,
+                "role": "request",
+                "lemma": "foglio",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 93,
+                "patient_end_token_id": 95,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 93,
+                  "end_token_id": 95,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 109,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 114,
+                "role": "forbid",
+                "lemma": "eseguire",
+                "semantic_gloss_en": "execute",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 4,
+                "role": "request",
+                "verb": "read",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 37,
+                "role": "request",
+                "verb": "get",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 53,
+                "role": "request",
+                "verb": "filter",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 57,
+                "role": "request",
+                "verb": "classify",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 71,
+                "role": "request",
+                "verb": "group",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 77,
+                "role": "request",
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "dirs",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 87,
+                "role": "request",
+                "verb": "sort",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 5
+              },
+              {
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 93,
+                "role": "request",
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "spreadsheet",
+                "input_from_predicate_id": 5
+              },
+              {
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 109,
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 114,
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 4,
+                "role": "request",
+                "lemma": "leggi",
+                "semantic_gloss_en": "read",
+                "semantic_action": "read",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 6,
+                "patient_end_token_id": 6,
+                "patient_object": "urls",
+                "carrier": {
+                  "kind": "source_container",
+                  "start_token_id": 9,
+                  "end_token_id": 31,
+                  "object": "urls"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 37,
+                "role": "request",
+                "lemma": "rileva",
+                "semantic_gloss_en": "get",
+                "semantic_action": "get",
+                "resource_scope": "collection_by_criterion",
+                "patient_start_token_id": 36,
+                "patient_end_token_id": 36,
+                "patient_object": "urls",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 1,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 53,
+                "role": "request",
+                "lemma": "elimina",
+                "semantic_gloss_en": "filter",
+                "semantic_action": "filter",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 55,
+                "patient_end_token_id": 56,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 57,
+                "role": "request",
+                "lemma": "segnala",
+                "semantic_gloss_en": "classify",
+                "semantic_action": "classify",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 73,
+                "patient_end_token_id": 73,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 71,
+                "role": "request",
+                "lemma": "raggruppa",
+                "semantic_gloss_en": "group",
+                "semantic_action": "group",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 73,
+                "patient_end_token_id": 73,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 2,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 77,
+                "role": "request",
+                "lemma": "crea",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 81,
+                "patient_end_token_id": 81,
+                "patient_object": "dirs",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 87,
+                "role": "request",
+                "lemma": "ordinato",
+                "semantic_gloss_en": "sort",
+                "semantic_action": "sort",
+                "resource_scope": "held_result",
+                "patient_start_token_id": 87,
+                "patient_end_token_id": 87,
+                "patient_object": "entries",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 93,
+                "role": "request",
+                "lemma": "foglio",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 93,
+                "patient_end_token_id": 95,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 5,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 93,
+                  "end_token_id": 95,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 109,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              },
+              {
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 114,
+                "role": "forbid",
+                "lemma": "eseguire",
+                "semantic_gloss_en": "execute",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "read",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 4
+              },
+              {
+                "role": "request",
+                "verb": "get",
+                "verb_resolution": "direct",
+                "object": "urls",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 1,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 37
+              },
+              {
+                "role": "request",
+                "verb": "filter",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 3,
+                "predicate_anchor_token_id": 53
+              },
+              {
+                "role": "request",
+                "verb": "classify",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 4,
+                "predicate_anchor_token_id": 57
+              },
+              {
+                "role": "request",
+                "verb": "group",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 2,
+                "predicate_id": 5,
+                "predicate_anchor_token_id": 71
+              },
+              {
+                "role": "request",
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "dirs",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 6,
+                "predicate_anchor_token_id": 77
+              },
+              {
+                "role": "request",
+                "verb": "sort",
+                "verb_resolution": "direct",
+                "object": "entries",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 5,
+                "predicate_id": 7,
+                "predicate_anchor_token_id": 87
+              },
+              {
+                "role": "request",
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "spreadsheet",
+                "input_from_predicate_id": 5,
+                "predicate_id": 8,
+                "predicate_anchor_token_id": 93
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 9,
+                "predicate_anchor_token_id": 109
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 10,
+                "predicate_anchor_token_id": 114
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    },
+    {
+      "indice": 83,
+      "bracci": [
+        {
+          "etichetta": "braccio_1",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "lemma": "crea",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 14,
+                  "end_token_id": 14,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 34,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 35,
+                "patient_end_token_id": 36,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "spreadsheet",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 5,
+                "role": "request"
+              },
+              {
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 34,
+                "role": "forbid"
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_2",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "lemma": "crea",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 14,
+                  "end_token_id": 14,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 34,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "spreadsheet",
+                "input_from_predicate_id": 0
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 34,
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        },
+        {
+          "etichetta": "braccio_3",
+          "frame": {
+            "semantic_heads": [
+              {
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 5,
+                "role": "request",
+                "lemma": "crea",
+                "semantic_gloss_en": "create",
+                "semantic_action": "create",
+                "resource_scope": "new_resource",
+                "patient_start_token_id": 0,
+                "patient_end_token_id": 0,
+                "patient_object": "none",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "primary_output",
+                  "start_token_id": 14,
+                  "end_token_id": 14,
+                  "object": "files"
+                }
+              },
+              {
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 34,
+                "role": "forbid",
+                "lemma": "sovrascrivere",
+                "semantic_gloss_en": "overwrite",
+                "semantic_action": "none",
+                "resource_scope": "not_applicable",
+                "patient_start_token_id": 35,
+                "patient_end_token_id": 36,
+                "patient_object": "files",
+                "carrier": {
+                  "kind": "none"
+                },
+                "source_predicate_id": 0,
+                "sink": {
+                  "kind": "none"
+                }
+              }
+            ],
+            "predicates": [
+              {
+                "role": "request",
+                "verb": "create",
+                "verb_resolution": "direct",
+                "object": "files",
+                "object_qualifier": "spreadsheet",
+                "input_from_predicate_id": 0,
+                "predicate_id": 1,
+                "predicate_anchor_token_id": 5
+              },
+              {
+                "role": "forbid",
+                "verb": "none",
+                "verb_resolution": "direct",
+                "object": "none",
+                "object_qualifier": "none",
+                "input_from_predicate_id": 0,
+                "predicate_id": 2,
+                "predicate_anchor_token_id": 34
+              }
+            ]
+          },
+          "valid": true,
+          "reason": ""
+        }
+      ]
+    }
+  ]
+}
+

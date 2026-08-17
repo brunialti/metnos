@@ -1,0 +1,18 @@
+{
+  "chronology_format": "metnos.intent-challenger-pre-holdout/0.1",
+  "phase": "challenger_frozen_before_new_holdout",
+  "observation_scope": "complete intent_shadow_v0_1 prototype namespace",
+  "absence_predicate": "no relative path component starts with holdout or run4, case-insensitive",
+  "observed_matches": [],
+  "sequence_contract": {
+    "challenger_must_be_frozen_before_holdout_materialization": true,
+    "future_holdout_must_bind_exact_challenger_freeze_sha256": true,
+    "future_holdout_inputs_are_not_build_inputs_here": true
+  },
+  "source_prompt_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+  "challenger_prompt_sha256": "29cf1d9faba4977bf6bf641ab28cbbcc37d4f7f4a1483a9b4b9c290ebe909c5d",
+  "integrity": {
+    "algorithm": "sha256",
+    "payload_sha256": "9ee0eaee94dbeb27409ef0c8fec0d2f62319660f0ea2eb42f7edc0c7890a2687"
+  }
+}

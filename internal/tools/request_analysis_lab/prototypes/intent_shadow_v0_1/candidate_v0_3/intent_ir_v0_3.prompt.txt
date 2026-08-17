@@ -1,0 +1,114 @@
+INPUT_LANGUAGE_TAG: {input_language_tag}
+CHOOSE ROOT FIRST: select exactly one root that matches the request, then emit it as one JSON object with kind first.
+EQUIVALENT ROOT TEMPLATES:
+- {"kind":"operation_graph","steps":[{"route":"<registry-route>"}]}
+- {"kind":"system_control","control":"<registry-control>"}
+- {"kind":"unrepresentable","reason":"<registry-reason>"}
+FORBIDDEN: explanations, extra keys, ports, path, ordinal, outcome, continuation, or free inputs.
+OPERATIONS: emit only operations required by the request; never enumerate the registry or alternatives.
+OPERATION ORDINAL 0 MUST OMIT FROM: it has no previous operation.
+FROM: omit from unless an operation has a real data dependency; each index must identify a strictly previous operation visible on the same path.
+A STEP MUST NEVER REFERENCE ITS OWN ORDINAL OR A LATER ORDINAL.
+VALID COMPLETE GRAPH: {"kind":"operation_graph","steps":[{"route":"<source-route>"},{"route":"<consumer-route>","from":[0]}]}
+FORBIDDEN: input/output; the compiler derives unique registry ports.
+BARRIER: body contains every operation that requires approval.
+FORBIDDEN: outcomes or continuations; body means approved and the compiler creates an empty rejection.
+VALID BARRIER: {"barrier":"<registry-barrier>","body":[{"route":"<route>"}]}
+
+OPERATION REGISTRY (exact identifiers; descriptions are language-tagged authority data):
+- change/files | [en] SCOPE: converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). NOT: extract text (-> read_files); decompress archives (-> compress_files). | [it] SCOPE: converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). NOT: estrarre testo (-> read_files); decomprimere archivi (-> compress_files).
+- change/pulls | [und] SCOPE: opera su una pull request (es. merge). NOT: usare per issue; omettere number.
+- compress/files | [en] SCOPE: compress files into a new zip/tar/gz archive. NOT: directories, existing destinations, or decompression (unsupported). | [it] SCOPE: comprime file in un nuovo archivio zip/tar/gz. NOT: directory, destinazioni esistenti o decompressione (non supportata).
+- compute/entries | [en] SCOPE: compute an aggregated value (max/min/avg/sum/count) on entries. NOT: sort the list (-> sort_entries); filter by criteria (-> filter_entries). | [it] SCOPE: calcola un valore aggregato (max/min/avg/sum/count) su entries. NOT: ordinare la lista (-> sort_entries); filtrare per criteri (-> filter_entries).
+- compute/files | [en] SCOPE: computes source-code LOC statistics, walking directory trees in parallel. NOT: convert formats (change_files_format) or create archives (compress_files). | [it] SCOPE: calcola statistiche LOC su codice sorgente, visitando gli alberi in parallelo. NOT: convertire formati (change_files_format) o creare archivi (compress_files).
+- compute/signatures | [en] SCOPE: compute or classify a signature; it can idempotently apply the safety seed. NOT: query lists (-> get_signatures); modify user curation (-> set_signatures). | [it] SCOPE: calcola o classifica signature; può applicare idempotentemente il seed di sicurezza. NOT: consultare liste (-> get_signatures); modificare curatela utente (-> set_signatures).
+- consult/frontier | [en] SCOPE: consult an expert oracle for deep analysis. NOT: local summaries (-> describe_entries). | [it] SCOPE: consulta un oracolo esperto per analisi profonda. NOT: riassunti locali (-> describe_entries).
+- create/calendars | [en] SCOPE: create a NEW Google calendar container (not an event). NOT: event/appointment -> create_events; does not list calendars; delete -> delete_calendars. | [it] SCOPE: crea un NUOVO calendario-contenitore Google (non un evento). NOT: evento/appuntamento -> create_events; non elenca calendari; cancellare -> delete_calendars.
+- create/dirs | [en] SCOPE: create directories (batch, even empty). NOT: delete (-> delete_dirs); search (-> find_dirs); list (-> list_dirs). | [it] SCOPE: crea directory (batch, anche vuote). NOT: cancellare (-> delete_dirs); cercare (-> find_dirs); elencare (-> list_dirs).
+- create/events | [en] SCOPE: create calendar appointments. NOT: from web/text FIRST extract_entries; relative dates FIRST get_now; read -> read_events. | [it] SCOPE: crea appuntamenti in calendario. NOT: da web/testo PRIMA extract_entries; "domani" PRIMA get_now; leggere -> read_events.
+- create/files | [en] SCOPE: creates a new Google Doc. NOT: writing to existing doc (-> write_files_doc); creating sheets (-> create_files_spreadsheet). | [it] SCOPE: crea un nuovo Google Doc. NOT: scrivere in doc esistente (-> write_files_doc); creare fogli (-> create_files_spreadsheet).
+- create/images | [en] SCOPE: index photos in `base_path` (incremental or rebuild). NOT: idx='scene' (deprecated); `find_files` (filesystem, no index). | [it] SCOPE: indicizza foto in `base_path` (incrementale o rebuild). NOT: idx='scene' (deprecated); `find_files` (filesystem, no indice).
+- create/issues | [und] SCOPE: crea una nuova issue su un repo GitHub. NOT: omettere repo o title.
+- create/tasks | [und] Registra un task temporizzato che Metnos esegue automaticamente alla cadenza specificata, senza interazione utente
+- delete/calendars | [en] SCOPE: delete Google calendar containers (DESTRUCTIVE: also removes the events inside); accepts the NAME. NOT: deleting an EVENT -> delete_events; create -> create_calendars. | [it] SCOPE: cancella calendari-contenitore Google (DESTRUTTIVO: elimina anche gli eventi dentro); accetta il NOME. NOT: cancellare un EVENTO -> delete_events; creare -> create_calendars.
+- delete/credentials | [en] SCOPE: delete credentials from storage (purge or bindings). NOT: read (-> find_credentials) or save (-> set_credentials); do not use bindings with all=true. | [it] SCOPE: cancella credenziali dallo storage (purge o binding). NOT: leggere (-> find_credentials) o salvare (-> set_credentials); non usare bindings con all=true.
+- delete/dirs | [en] SCOPE: delete directories (empty or forced). NOT: create (-> create_dirs); list (-> list_dirs); find (-> find_dirs). | [it] SCOPE: cancella directory (vuote o forzate). NOT: creare (-> create_dirs); elencare (-> list_dirs); cercare (-> find_dirs).
+- delete/events | [en] SCOPE: delete calendar events, by ids or time window. NOT: read_events first when time_window is enough; create -> create_events. | [it] SCOPE: cancella eventi dal calendario, per id o finestra temporale. NOT: read_events prima quando basta time_window; creare -> create_events.
+- delete/files | [en] SCOPE: delete files after a verified backup. NOT: directories (-> delete_dirs), symlinks, or moves (-> move_files). | [it] SCOPE: cancella file dopo un backup verificato. NOT: directory (-> delete_dirs), symlink o spostamenti (-> move_files).
+- delete/images | [en] SCOPE: delete the persistent unified image index. NOT: delete actual photos (-> delete_files); rebuild (-> create_images_indices). | [it] SCOPE: cancella l'indice persistente unificato delle immagini. NOT: cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices).
+- delete/issues | [und] SCOPE: chiude/elimina una issue. NOT: omettere number.
+- delete/messages | [und] SCOPE: elimina un commento su issue/PR. NOT: omettere comment_id.
+- delete/persons | [en] SCOPE: deletes persons/enrollment from the biometric registry (purge or by name/slug). NOT: credentials/tokens (-> delete_credentials); photos on filesystem (-> delete_files). | [it] SCOPE: cancella persone/enrollment dal registro biometrico (purge o per nome/slug). NOT: credenziali/token (-> delete_credentials); foto dal filesystem (-> delete_files).
+- delete/tasks | [und] Cancella/ferma un TASK RICORRENTE / PROMEMORIA / TIMER schedulato
+- describe/numbers | [en] SCOPE: calculates descriptive statistics on a list of numbers. NOT: aggregate record fields (-> compute_entries); text or images. | [it] SCOPE: calcola statistiche descrittive su una lista di numeri. NOT: aggregare campi di record (-> compute_entries); testo o immagini.
+- filter/entries | [en] SCOPE: filter entries by criteria. NOT: search disk (-> find); enumerate (-> list). | [it] SCOPE: filtra entries per criteri. NOT: cercare su disco (-> find); enumerare (-> list).
+- filter/lists | [en] SCOPE: ops between TWO lists (A=from_step, B=with_step) on on_keys; delta = monitor dedup. NOT: single-list -> filter_entries; scalars -> compute_entries. | [it] SCOPE: opera fra DUE liste (A=from_step, B=with_step) su on_keys; delta = dedup monitor. NOT: mono-lista -> filter_entries; scalari -> compute_entries.
+- filter/texts | [en] SCOPE: filter text lines by pattern. NOT: read files (-> read_files); search directories (-> find). | [it] SCOPE: filtra righe di testo per pattern. NOT: leggere file (-> read_files); cercare in directory (-> find).
+- find/contacts | [en] SCOPE: search contacts in an external address book by name/email/phone. NOT: read one contact (-> read_contacts); identity profiles (-> read_persons). | [it] SCOPE: cerca contatti nella rubrica esterna per nome/email/telefono. NOT: leggere un singolo contatto (-> read_contacts); profili identitari (-> read_persons).
+- find/credentials | [en] SCOPE: lists configured accounts and services (mail, api, cloud): metadata-only credentials. NOT: reading account mail (-> read_messages); secret values (-> set_credentials). | [it] SCOPE: elenca account e servizi configurati (mail, api, cloud): credenziali metadata-only. NOT: leggere le mail (-> read_messages); valori segreti (-> set_credentials).
+- find/dirs | [en] SCOPE: find directories and compute aggregate metadata with a parallel recursive walk. NOT: list files (-> find_files); directory contents (-> list_dirs). | [it] SCOPE: trova directory e calcola metadati aggregati con visita ricorsiva parallela. NOT: elencare file (-> find_files); contenuti dir (-> list_dirs).
+- find/events | [en] SCOPE: find free slots in the calendar. NOT: read events (-> read_events); create events (-> create_events). | [it] SCOPE: trova slot liberi nel calendario. NOT: leggere eventi (-> read_events); creare eventi (-> create_events).
+- find/files | [en] SCOPE: search files by pattern with a parallel recursive walk. NOT: list_dirs+filter_entries; get_files (ID lookup); exact duplicate search (-> find_files_hash). | [it] SCOPE: cerca file per pattern con visita ricorsiva parallela. NOT: list_dirs+filter_entries; get_files (lookup ID); ricerca di duplicati esatti (-> find_files_hash).
+- find/images | [en] SCOPE: search indexed photos by content, person or face. NOT: EXIF of known paths -> get_files; files of a folder by path -> find_files. | [it] SCOPE: cerca foto indicizzate per contenuto, persona o volto. NOT: EXIF di path noti -> get_files; file di una cartella per path -> find_files.
+- find/issues | [und] SCOPE: elenca le issue (segnalazioni/bug/ticket) di un repo GitHub. NOT: usare per pull request (-> find_pulls_github); omettere repo.
+- find/packages | [en] SCOPE: finds an executable command in the system PATH. NOT: querying a package-manager database; reading files (-> read_files). | [it] SCOPE: cerca un comando eseguibile nel PATH del sistema. NOT: interrogare il database del package manager; leggere file (-> read_files).
+- find/persons | [en] SCOPE: search photos of a registered person. NOT: enroll (-> set_persons); direct lookup (-> get_persons). | [it] SCOPE: cerca foto di persona registrata. NOT: enroll (-> set_persons); lookup diretto (-> get_persons).
+- find/places | [en] SCOPE: find real-world places by text query or coordinates. NOT: read files (-> read_files); get data by known IDs (-> get_places). | [it] SCOPE: cerca luoghi reali per query testuale o coordinate. NOT: leggere file (-> read_files); ottenere dati per ID noti (-> get_places).
+- find/pulls | [und] SCOPE: elenca le pull request (richieste di merge) di un repo GitHub. NOT: usare per issue (-> find_issues_github); omettere repo.
+- find/urls | [en] SCOPE: find and discover URLs and documents on the web. NOT: get/read on known URLs. | [it] SCOPE: cerca e scopri URL e documenti sul web. NOT: get/read su URL noti.
+- get/files | [en] SCOPE: gets size, dates, and EXIF for KNOWN files. NOT: search by subject -> find_images_indices; by pattern -> find_files. | [it] SCOPE: ottiene dimensione, date ed EXIF di file NOTI. NOT: cercare per soggetto -> find_images_indices; per pattern -> find_files.
+- get/images | [en] SCOPE: gets unified image-index status for one corpus or all corpora. NOT: build indexes (-> create_images_indices); search photos (-> find_images_indices). | [it] SCOPE: ottiene lo stato dell'indice immagini unificato per un corpus o per tutti. NOT: costruire indici (-> create_images_indices); cercare foto (-> find_images_indices).
+- get/inputs | [en] SCOPE: gets structured inputs (dialog/form). NOT: deriving observable data (-> find_*/read_*); executing commands (-> admin). | [it] SCOPE: ottiene input strutturati (dialogo/form). NOT: derivare dati osservabili (-> find_*/read_*); eseguire comandi (-> admin).
+- get/location | [en] SCOPE: tells where the current actor is. NOT: geocode a place name -> find_places; look for nearby places -> get_places; read the history. | [it] SCOPE: dice dove si trova l'attore corrente. NOT: geocodificare un nome di luogo -> find_places; cercare luoghi vicini -> get_places; leggere la cronologia.
+- get/now | [en] SCOPE: gets the current date and time in the configured timezone or an explicit IANA zone. NOT: read calendar events or infer a timezone from a place. | [it] SCOPE: ottiene data e ora correnti nel fuso configurato o in un fuso IANA esplicito. NOT: leggere eventi calendario o stimare un fuso da un luogo.
+- get/persons | [en] SCOPE: reads the biometric persons registry. NOT: profiles -> read_persons; photos -> find_persons_indices; enrollment -> set_persons. | [it] SCOPE: legge il registro biometrico persone. NOT: profili -> read_persons; foto -> find_persons_indices; enrollment -> set_persons.
+- get/places | [en] SCOPE: gets place name from GPS coordinates. NOT: text search (-> find_places). | [it] SCOPE: ottiene il nome del luogo da coordinate GPS. NOT: cerca per testo (-> find_places).
+- get/processes | [en] SCOPE: reads processes and system health. NOT: scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location). | [it] SCOPE: legge processi e salute del sistema. NOT: task schedulati (-> list_tasks), metadati file (-> get_files), ora o posizione (-> get_now/get_location).
+- get/proposals | [en] SCOPE: reads introvertive proposals, including historical categories. NOT: search data (-> find); filter entries already read (-> filter). | [it] SCOPE: legge proposte introvertive, incluse categorie storiche. NOT: cercare dati (-> find); filtrare entries già lette (-> filter).
+- get/signatures | [en] SCOPE: query safety-signature lists and status. NOT: compute signatures (-> compute_signatures); modify curation (-> set_signatures). | [it] SCOPE: consulta liste e stato delle signature di sicurezza. NOT: calcolare signature (-> compute_signatures); modificare curatela (-> set_signatures).
+- get/urls | [en] SCOPE: gets data from HTTP/HTTPS URLs. NOT: find URLs (-> find_urls); read HTML (-> read_urls_html). | [it] SCOPE: ottiene dati da URL HTTP/HTTPS. NOT: cercare URL (-> find_urls); leggere HTML (-> read_urls_html).
+- group/entries | [en] SCOPE: merges and deduplicates entries from multiple lists. NOT: group by value or aggregate (-> compute_entries); filter (-> filter_entries). | [it] SCOPE: unisce e deduplica entries da più liste. NOT: raggruppare per valore o aggregare (-> compute_entries); filtrare (-> filter_entries).
+- list/dirs | [en] SCOPE: lists directories and files; recursive mode walks subdirectories in parallel. NOT: create (create_dirs), delete (delete_dirs), search patterns (find_dirs). | [it] SCOPE: elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo. NOT: creare (create_dirs), cancellare (delete_dirs), cercare pattern (find_dirs).
+- list/skills | [und] Elenca le SKILL di Metnos (gruppi di capacità attivabili: foto, mail, web, geo, calendario, github, frontier + core) con stato ATTIVA/DISATTIVA/DORMIENTE e prerequisiti
+- list/tasks | [und] Elenca i TASK RICORRENTI / PROMEMORIA / TIMER schedulati (NON processi di sistema, NON eventi calendar)
+- login/session | [und] Esegue il login al form web di un dominio gia' registrato (credentials.store(domain, payload)) e salva il cookie session in '~/.config/metnos/cookies/<domain>.txt' (formato Mozilla, mode 0600)
+- move/files | [en] SCOPE: move or rename files in batch. NOT: convert formats (-> change_files_format); compress (-> compress_files). | [it] SCOPE: sposta o rinomina file in batch. NOT: convertire formati (-> change_files_format); comprimere (-> compress_files).
+- move/messages | [en] SCOPE: move messages between folders or labels. NOT: change labels only (-> set_messages) or delete. | [it] SCOPE: sposta messaggi tra cartelle o etichette. NOT: cambiare solo etichette (-> set_messages) o cancellare.
+- read/contacts | [en] SCOPE: read one contact from external address book. NOT: confuse with read_persons (system users). | [it] SCOPE: legge un contatto dalla rubrica esterna. NOT: confondere con read_persons (utenti sistema).
+- read/events | [en] SCOPE: reads calendar events. NOT: read mail or create events (-> read_messages, create_events). | [it] SCOPE: legge eventi calendario. NOT: leggere mail o creare eventi (-> read_messages, create_events).
+- read/files | [en] SCOPE: reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures. NOT: one sheet -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr. | [it] SCOPE: legge PDF/DOCX/XLSX/CSV misti e calcola firme hash SHA-256. NOT: singolo foglio -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr.
+- read/issues | [und] SCOPE: legge UNA issue (contenuto + commenti) per numero. NOT: usare per elencare (-> find_issues_github); omettere number.
+- read/messages | [en] SCOPE: reads IMAP messages combining time and text filters. NOT: sending (-> send_messages) or moving messages (-> move_messages). | [it] SCOPE: legge messaggi IMAP combinando filtri temporali e testuali. NOT: inviare (-> send_messages) o spostare messaggi (-> move_messages).
+- read/persons | [en] SCOPE: reads local identity profiles. NOT: biometric registry -> get_persons; photos -> find_persons_indices; changes or credentials. | [it] SCOPE: legge profili identitari locali. NOT: registro biometrico -> get_persons; foto -> find_persons_indices; modifiche o credenziali.
+- read/pulls | [und] SCOPE: legge UNA pull request (contenuto + diff) per numero. NOT: usare per elencare (-> find_pulls_github); omettere number.
+- read/tasks | [und] Mostra dettaglio di UN TASK RICORRENTE / PROMEMORIA / TIMER per nome: schedule, ultima esecuzione, esito ultimo fire, query, label, storico
+- read/urls | [en] SCOPE: reads web pages and extracts main text; PDF URLs extracted as text automatically. NOT: PDF-only lists (-> read_urls_pdf); URL discovery (-> find_urls). | [it] SCOPE: legge pagine web e ne estrae il testo; URL PDF estratti come testo automaticamente. NOT: solo PDF noti (-> read_urls_pdf); ricerca URL (-> find_urls).
+- reply/messages | [und] Risponde in-thread a uno o piu' messaggi (Gmail)
+- send/messages | [en] SCOPE: send email/Telegram and reply in-thread on Gmail. NOT: read -> read_messages; labels -> set_messages. | [it] SCOPE: invia mail/Telegram e risponde in-thread Gmail. NOT: leggere -> read_messages; label -> set_messages. | [und] SCOPE: posta commenti su issue/PR GitHub (vettoriale §2.1, anche 1). NOT: omettere target/body; target deve essere issue:N o pr:N.
+- set/credentials | [en] SCOPE: encrypts credentials; defines the mandate. NOT: read credentials (-> find_credentials); expose secrets. | [it] SCOPE: cifra credenziali; definisce il mandato. NOT: leggere credenziali (-> find_credentials); esporre segreti.
+- set/issues | [und] SCOPE: modifica stato/label/assegnatari di una issue. NOT: omettere number.
+- set/messages | [en] SCOPE: add or remove labels on identified Gmail messages. NOT: list labels without a target; move folders -> move_messages. | [it] SCOPE: aggiunge o rimuove etichette su messaggi Gmail identificati. NOT: elencare label senza target; spostare cartelle -> move_messages.
+- set/persons | [en] SCOPE: enroll a person in the named registry. NOT: search photos (-> find_persons_indices); auto-identify (-> get_persons). | [it] SCOPE: registra persona nel registro nominale. NOT: cercare foto (-> find_persons_indices); identificare automaticamente (-> get_persons).
+- set/pulls | [und] SCOPE: aggiorna stato/titolo/reviewer di una pull request. NOT: usare per issue; omettere number.
+- set/signatures | [en] SCOPE: sets or removes signatures from user curation. NOT: compute -> compute_signatures; read -> get_signatures. | [it] SCOPE: imposta o rimuove signature dalla curatela. NOT: calcolo -> compute_signatures; lettura -> get_signatures.
+- set/skills | [und] Abilita o disabilita una SKILL (gruppo di capacità) per nome
+- set/tasks | [und] Cambia lo stato di un task ricorrente esistente
+- share/files | [en] SCOPE: grants access permissions to Drive files without duplicating them. NOT: sending copies (send_messages) or overwriting (write_files). | [it] SCOPE: concede permessi di accesso a file Drive senza duplicarli. NOT: inviare copie (send_messages) o sovrascrivere (write_files).
+- sort/entries | [en] SCOPE: sorts entries in memory. NOT: persistent order; aggregates -> compute_entries; filters -> filter_entries. | [it] SCOPE: ordina entries in memoria. NOT: ordine persistente; aggregati -> compute_entries; filtri -> filter_entries.
+- write/files | [en] SCOPE: persist records/text to local files (vectorial §2.1). NOT: without from_step nor content. | [it] SCOPE: salva record/testo in file locali (vettoriale §2.1). NOT: senza from_step ne' content.
+SYSTEM CONTROL REGISTRY:
+- undo_last_turn
+BARRIER REGISTRY:
+- get/approval | body=approved | rejected=empty
+UNREPRESENTABLE REASONS:
+- ambiguous_intent | More than one incompatible analysis remains.
+- missing_required_information | The requested intent lacks information needed to form a typed structure.
+- mixed_root_kinds | System control and ordinary operation cannot share the exclusive root.
+- no_actionable_intent | The utterance contains no independently actionable request.
+- outside_registry | The meaning is understood but has no reviewed registry entry.
+- unsupported_dependency | The requested data or control dependency is outside version 0.1.
+FINAL MINI-CHECK:
+- Exactly one root was selected before writing details.
+- An operation graph contains only necessary operations; step 0 omits from.
+- Every from denotes a real dependency on a strictly previous visible operation.
+- No registry enumeration, alternative plan, forbidden field, or explanatory text is present.

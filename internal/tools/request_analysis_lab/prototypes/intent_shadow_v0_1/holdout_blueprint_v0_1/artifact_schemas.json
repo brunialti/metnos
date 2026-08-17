@@ -1,0 +1,1075 @@
+{
+  "format": "metnos.intent-holdout-artifact-schemas/0.1",
+  "canonical_expected_schema": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/intent_shadow_model_v0_1.schema.json",
+  "schemas": {
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "metnos.intent-holdout-blueprint-proposal/0.1"
+        },
+        "proposal_id": {
+          "type": "string",
+          "pattern": "^bp-[0-9]{3}$"
+        },
+        "language_tag": {
+          "type": "string",
+          "enum": [
+            "en-GB",
+            "it-IT",
+            "es-MX",
+            "de-DE",
+            "tr-TR",
+            "sr-Cyrl-RS",
+            "ar-EG",
+            "hi-IN",
+            "ja-JP",
+            "zh-Hant-TW"
+          ]
+        },
+        "cell": {
+          "type": "string",
+          "enum": [
+            "G1_SINGLE",
+            "G2_COMPOUND_INDEPENDENT",
+            "G3_COMPOUND_DEPENDENT",
+            "G4_COVERAGE_BOUNDARY",
+            "G5_LINGUISTIC_VARIATION",
+            "S1_APPROVAL",
+            "S2_NEGATION",
+            "S3_CONDITIONAL_BRANCH",
+            "S4_UNDO",
+            "S5_MIXED_CONTROL",
+            "S6_FALSE_ACTION_TRAP"
+          ]
+        },
+        "subtype": {
+          "type": "string",
+          "minLength": 1
+        },
+        "obligations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "positive"
+                  },
+                  "capability": {
+                    "type": "string",
+                    "enum": [
+                      "change/files",
+                      "change/pulls",
+                      "compress/files",
+                      "compute/entries",
+                      "compute/files",
+                      "compute/signatures",
+                      "consult/frontier",
+                      "create/calendars",
+                      "create/dirs",
+                      "create/events",
+                      "create/files",
+                      "create/images",
+                      "create/issues",
+                      "create/tasks",
+                      "delete/calendars",
+                      "delete/credentials",
+                      "delete/dirs",
+                      "delete/events",
+                      "delete/files",
+                      "delete/images",
+                      "delete/issues",
+                      "delete/messages",
+                      "delete/persons",
+                      "delete/tasks",
+                      "describe/numbers",
+                      "filter/entries",
+                      "filter/lists",
+                      "filter/texts",
+                      "find/contacts",
+                      "find/credentials",
+                      "find/dirs",
+                      "find/events",
+                      "find/files",
+                      "find/images",
+                      "find/issues",
+                      "find/packages",
+                      "find/persons",
+                      "find/places",
+                      "find/pulls",
+                      "find/urls",
+                      "get/files",
+                      "get/images",
+                      "get/inputs",
+                      "get/location",
+                      "get/now",
+                      "get/persons",
+                      "get/places",
+                      "get/processes",
+                      "get/proposals",
+                      "get/signatures",
+                      "get/urls",
+                      "group/entries",
+                      "list/dirs",
+                      "list/skills",
+                      "list/tasks",
+                      "login/session",
+                      "move/files",
+                      "move/messages",
+                      "read/contacts",
+                      "read/events",
+                      "read/files",
+                      "read/issues",
+                      "read/messages",
+                      "read/persons",
+                      "read/pulls",
+                      "read/tasks",
+                      "read/urls",
+                      "reply/messages",
+                      "send/messages",
+                      "set/credentials",
+                      "set/issues",
+                      "set/messages",
+                      "set/persons",
+                      "set/pulls",
+                      "set/signatures",
+                      "set/skills",
+                      "set/tasks",
+                      "share/files",
+                      "sort/entries",
+                      "write/files"
+                    ]
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "capability"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "negated"
+                  },
+                  "capability": {
+                    "type": "string",
+                    "enum": [
+                      "change/files",
+                      "change/pulls",
+                      "compress/files",
+                      "compute/entries",
+                      "compute/files",
+                      "compute/signatures",
+                      "consult/frontier",
+                      "create/calendars",
+                      "create/dirs",
+                      "create/events",
+                      "create/files",
+                      "create/images",
+                      "create/issues",
+                      "create/tasks",
+                      "delete/calendars",
+                      "delete/credentials",
+                      "delete/dirs",
+                      "delete/events",
+                      "delete/files",
+                      "delete/images",
+                      "delete/issues",
+                      "delete/messages",
+                      "delete/persons",
+                      "delete/tasks",
+                      "describe/numbers",
+                      "filter/entries",
+                      "filter/lists",
+                      "filter/texts",
+                      "find/contacts",
+                      "find/credentials",
+                      "find/dirs",
+                      "find/events",
+                      "find/files",
+                      "find/images",
+                      "find/issues",
+                      "find/packages",
+                      "find/persons",
+                      "find/places",
+                      "find/pulls",
+                      "find/urls",
+                      "get/files",
+                      "get/images",
+                      "get/inputs",
+                      "get/location",
+                      "get/now",
+                      "get/persons",
+                      "get/places",
+                      "get/processes",
+                      "get/proposals",
+                      "get/signatures",
+                      "get/urls",
+                      "group/entries",
+                      "list/dirs",
+                      "list/skills",
+                      "list/tasks",
+                      "login/session",
+                      "move/files",
+                      "move/messages",
+                      "read/contacts",
+                      "read/events",
+                      "read/files",
+                      "read/issues",
+                      "read/messages",
+                      "read/persons",
+                      "read/pulls",
+                      "read/tasks",
+                      "read/urls",
+                      "reply/messages",
+                      "send/messages",
+                      "set/credentials",
+                      "set/issues",
+                      "set/messages",
+                      "set/persons",
+                      "set/pulls",
+                      "set/signatures",
+                      "set/skills",
+                      "set/tasks",
+                      "share/files",
+                      "sort/entries",
+                      "write/files"
+                    ]
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "capability"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "outside"
+                  },
+                  "outside_family": {
+                    "type": "string",
+                    "enum": [
+                      "physical_world_action",
+                      "financial_transaction",
+                      "expert_judgement",
+                      "unregistered_device_control",
+                      "unregistered_external_service",
+                      "unsupported_content_transformation",
+                      "unsupported_entity_creation"
+                    ]
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "outside_family"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "control"
+                  },
+                  "control": {
+                    "const": "undo_last_turn"
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "control"
+                ]
+              }
+            ]
+          }
+        },
+        "relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "independent",
+                  "consumes",
+                  "explicit_order",
+                  "approval_owns",
+                  "branch_true",
+                  "branch_false"
+                ]
+              },
+              "members": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^o[1-9][0-9]*$"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "members"
+            ]
+          }
+        },
+        "canonical_mention_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^o[1-9][0-9]*$"
+          }
+        },
+        "scenario_taxonomy": {
+          "type": "string",
+          "enum": [
+            "personal_organization",
+            "workplace_collaboration",
+            "education",
+            "community_activity",
+            "arts_and_culture",
+            "software_development",
+            "digital_media",
+            "travel_and_places",
+            "household_administration",
+            "public_service",
+            "research",
+            "small_organization"
+          ]
+        },
+        "argument_roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "actor",
+              "target",
+              "source",
+              "destination",
+              "recipient",
+              "approver",
+              "container",
+              "criterion",
+              "producer_output",
+              "branch_condition"
+            ]
+          }
+        },
+        "surface_constraints": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "indirect",
+              "elliptical",
+              "polite",
+              "colloquial",
+              "long_distance",
+              "multi_clause",
+              "explicit_negation",
+              "explicit_approval",
+              "explicit_condition",
+              "undo_only"
+            ]
+          }
+        },
+        "authority_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "format",
+        "proposal_id",
+        "language_tag",
+        "cell",
+        "subtype",
+        "obligations",
+        "relations",
+        "canonical_mention_order",
+        "scenario_taxonomy",
+        "argument_roles",
+        "surface_constraints",
+        "authority_manifest_sha256"
+      ]
+    },
+    "semantic_gold": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "metnos.intent-holdout-semantic-gold/0.1"
+        },
+        "proposal_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "authority_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expected": {
+          "$ref": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/intent_shadow_model_v0_1.schema.json"
+        },
+        "safety_applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "approval": {
+              "type": "boolean"
+            },
+            "branch_ownership": {
+              "type": "boolean"
+            },
+            "false_action": {
+              "type": "boolean"
+            },
+            "negation": {
+              "type": "boolean"
+            },
+            "ordering": {
+              "type": "boolean"
+            },
+            "system_control": {
+              "type": "boolean"
+            },
+            "undo": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "approval",
+            "branch_ownership",
+            "false_action",
+            "negation",
+            "ordering",
+            "system_control",
+            "undo"
+          ]
+        },
+        "confidence": {
+          "const": "high"
+        }
+      },
+      "required": [
+        "format",
+        "proposal_sha256",
+        "authority_manifest_sha256",
+        "expected",
+        "safety_applicability",
+        "confidence"
+      ]
+    },
+    "author_projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "metnos.intent-holdout-author-projection/0.1"
+        },
+        "proposal_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "authority_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "language_tag": {
+          "type": "string",
+          "enum": [
+            "en-GB",
+            "it-IT",
+            "es-MX",
+            "de-DE",
+            "tr-TR",
+            "sr-Cyrl-RS",
+            "ar-EG",
+            "hi-IN",
+            "ja-JP",
+            "zh-Hant-TW"
+          ]
+        },
+        "obligation_glosses": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "obligation_ref": {
+                "type": "string",
+                "pattern": "^o[1-9][0-9]*$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "positive",
+                  "negated",
+                  "outside",
+                  "control"
+                ]
+              },
+              "neutral_gloss": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "obligation_ref",
+              "kind",
+              "neutral_gloss"
+            ]
+          }
+        },
+        "relation_glosses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "canonical_mention_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^o[1-9][0-9]*$"
+          }
+        },
+        "surface_constraints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "format",
+        "proposal_sha256",
+        "authority_manifest_sha256",
+        "language_tag",
+        "obligation_glosses",
+        "relation_glosses",
+        "canonical_mention_order",
+        "surface_constraints"
+      ]
+    },
+    "post_query_judgment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "metnos.intent-holdout-post-query-judgment/0.1"
+        },
+        "query_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "proposal_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "authority_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "expected": {
+          "$ref": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/intent_shadow_model_v0_1.schema.json"
+        },
+        "safety_applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "approval": {
+              "type": "boolean"
+            },
+            "branch_ownership": {
+              "type": "boolean"
+            },
+            "false_action": {
+              "type": "boolean"
+            },
+            "negation": {
+              "type": "boolean"
+            },
+            "ordering": {
+              "type": "boolean"
+            },
+            "system_control": {
+              "type": "boolean"
+            },
+            "undo": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "approval",
+            "branch_ownership",
+            "false_action",
+            "negation",
+            "ordering",
+            "system_control",
+            "undo"
+          ]
+        },
+        "reconstructed_obligations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "positive"
+                  },
+                  "capability": {
+                    "type": "string",
+                    "enum": [
+                      "change/files",
+                      "change/pulls",
+                      "compress/files",
+                      "compute/entries",
+                      "compute/files",
+                      "compute/signatures",
+                      "consult/frontier",
+                      "create/calendars",
+                      "create/dirs",
+                      "create/events",
+                      "create/files",
+                      "create/images",
+                      "create/issues",
+                      "create/tasks",
+                      "delete/calendars",
+                      "delete/credentials",
+                      "delete/dirs",
+                      "delete/events",
+                      "delete/files",
+                      "delete/images",
+                      "delete/issues",
+                      "delete/messages",
+                      "delete/persons",
+                      "delete/tasks",
+                      "describe/numbers",
+                      "filter/entries",
+                      "filter/lists",
+                      "filter/texts",
+                      "find/contacts",
+                      "find/credentials",
+                      "find/dirs",
+                      "find/events",
+                      "find/files",
+                      "find/images",
+                      "find/issues",
+                      "find/packages",
+                      "find/persons",
+                      "find/places",
+                      "find/pulls",
+                      "find/urls",
+                      "get/files",
+                      "get/images",
+                      "get/inputs",
+                      "get/location",
+                      "get/now",
+                      "get/persons",
+                      "get/places",
+                      "get/processes",
+                      "get/proposals",
+                      "get/signatures",
+                      "get/urls",
+                      "group/entries",
+                      "list/dirs",
+                      "list/skills",
+                      "list/tasks",
+                      "login/session",
+                      "move/files",
+                      "move/messages",
+                      "read/contacts",
+                      "read/events",
+                      "read/files",
+                      "read/issues",
+                      "read/messages",
+                      "read/persons",
+                      "read/pulls",
+                      "read/tasks",
+                      "read/urls",
+                      "reply/messages",
+                      "send/messages",
+                      "set/credentials",
+                      "set/issues",
+                      "set/messages",
+                      "set/persons",
+                      "set/pulls",
+                      "set/signatures",
+                      "set/skills",
+                      "set/tasks",
+                      "share/files",
+                      "sort/entries",
+                      "write/files"
+                    ]
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "capability"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "negated"
+                  },
+                  "capability": {
+                    "type": "string",
+                    "enum": [
+                      "change/files",
+                      "change/pulls",
+                      "compress/files",
+                      "compute/entries",
+                      "compute/files",
+                      "compute/signatures",
+                      "consult/frontier",
+                      "create/calendars",
+                      "create/dirs",
+                      "create/events",
+                      "create/files",
+                      "create/images",
+                      "create/issues",
+                      "create/tasks",
+                      "delete/calendars",
+                      "delete/credentials",
+                      "delete/dirs",
+                      "delete/events",
+                      "delete/files",
+                      "delete/images",
+                      "delete/issues",
+                      "delete/messages",
+                      "delete/persons",
+                      "delete/tasks",
+                      "describe/numbers",
+                      "filter/entries",
+                      "filter/lists",
+                      "filter/texts",
+                      "find/contacts",
+                      "find/credentials",
+                      "find/dirs",
+                      "find/events",
+                      "find/files",
+                      "find/images",
+                      "find/issues",
+                      "find/packages",
+                      "find/persons",
+                      "find/places",
+                      "find/pulls",
+                      "find/urls",
+                      "get/files",
+                      "get/images",
+                      "get/inputs",
+                      "get/location",
+                      "get/now",
+                      "get/persons",
+                      "get/places",
+                      "get/processes",
+                      "get/proposals",
+                      "get/signatures",
+                      "get/urls",
+                      "group/entries",
+                      "list/dirs",
+                      "list/skills",
+                      "list/tasks",
+                      "login/session",
+                      "move/files",
+                      "move/messages",
+                      "read/contacts",
+                      "read/events",
+                      "read/files",
+                      "read/issues",
+                      "read/messages",
+                      "read/persons",
+                      "read/pulls",
+                      "read/tasks",
+                      "read/urls",
+                      "reply/messages",
+                      "send/messages",
+                      "set/credentials",
+                      "set/issues",
+                      "set/messages",
+                      "set/persons",
+                      "set/pulls",
+                      "set/signatures",
+                      "set/skills",
+                      "set/tasks",
+                      "share/files",
+                      "sort/entries",
+                      "write/files"
+                    ]
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "capability"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "outside"
+                  },
+                  "outside_family": {
+                    "type": "string",
+                    "enum": [
+                      "physical_world_action",
+                      "financial_transaction",
+                      "expert_judgement",
+                      "unregistered_device_control",
+                      "unregistered_external_service",
+                      "unsupported_content_transformation",
+                      "unsupported_entity_creation"
+                    ]
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "outside_family"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "obligation_id": {
+                    "type": "string",
+                    "pattern": "^o[1-9][0-9]*$"
+                  },
+                  "kind": {
+                    "const": "control"
+                  },
+                  "control": {
+                    "const": "undo_last_turn"
+                  }
+                },
+                "required": [
+                  "obligation_id",
+                  "kind",
+                  "control"
+                ]
+              }
+            ]
+          }
+        },
+        "reconstructed_relations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "independent",
+                  "consumes",
+                  "explicit_order",
+                  "approval_owns",
+                  "branch_true",
+                  "branch_false"
+                ]
+              },
+              "members": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^o[1-9][0-9]*$"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "members"
+            ]
+          }
+        },
+        "canonical_mention_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^o[1-9][0-9]*$"
+          }
+        },
+        "scenario_taxonomy": {
+          "type": "string",
+          "enum": [
+            "personal_organization",
+            "workplace_collaboration",
+            "education",
+            "community_activity",
+            "arts_and_culture",
+            "software_development",
+            "digital_media",
+            "travel_and_places",
+            "household_administration",
+            "public_service",
+            "research",
+            "small_organization"
+          ]
+        },
+        "argument_roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "actor",
+              "target",
+              "source",
+              "destination",
+              "recipient",
+              "approver",
+              "container",
+              "criterion",
+              "producer_output",
+              "branch_condition"
+            ]
+          }
+        },
+        "confidence": {
+          "const": "high"
+        }
+      },
+      "required": [
+        "format",
+        "query_sha256",
+        "proposal_sha256",
+        "authority_manifest_sha256",
+        "expected",
+        "safety_applicability",
+        "reconstructed_obligations",
+        "reconstructed_relations",
+        "canonical_mention_order",
+        "scenario_taxonomy",
+        "argument_roles",
+        "confidence"
+      ]
+    },
+    "post_query_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "metnos.intent-holdout-post-query-envelope/0.1"
+        },
+        "proposal_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "projection_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "author_bundle_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "gold_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "query_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "judgment_sha256": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "authority_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "exact_match": {
+          "const": true
+        }
+      },
+      "required": [
+        "format",
+        "proposal_sha256",
+        "projection_sha256",
+        "author_bundle_sha256",
+        "gold_sha256",
+        "query_sha256",
+        "judgment_sha256",
+        "authority_manifest_sha256",
+        "exact_match"
+      ]
+    }
+  }
+}

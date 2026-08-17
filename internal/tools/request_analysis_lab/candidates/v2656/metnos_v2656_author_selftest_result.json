@@ -1,0 +1,41 @@
+{
+  "fake_transport_calls": {
+    "complete_batch_get": 1,
+    "complete_batch_post": 34
+  },
+  "model_calls": 0,
+  "network_calls": 0,
+  "passed": 21,
+  "runner_sha256": "ffb55a27da2167dc1ecb3cf878bf4f949380b81ffff1890dbe7a5f7ee4adf225",
+  "status": "PASS",
+  "test_names": [
+    "isolated_pinned_interpreter_context",
+    "one_call_zero_retry_and_single_snapshot_static",
+    "author_freeze_pass_external_gate_absent",
+    "reproducible_compact_request_and_exact_uax_segmentation",
+    "fake_34_complete_exact_counters_zero_gold_reads_query_free",
+    "separate_offline_evaluator_phase1_metrics_and_batch_sha",
+    "offline_evaluator_rejects_incomplete_batch_before_gold",
+    "oracle_failure_does_not_change_or_lose_model_batch",
+    "offline_evaluator_cli_exclusive_output_and_failure_recovery",
+    "model_json_and_schema_invalid_continue_full_batch",
+    "transport_failfast_no_postbatch_and_hash_only_diagnostics",
+    "unexpected_case_exception_returns_and_persists_partial_batch",
+    "outer_protocol_error_failfast_distinct_from_model_invalid",
+    "inline_get_preflight_consumes_zero_inference",
+    "accepted_response_count_survives_body_failures",
+    "external_preflight_endpoint_recency_and_context_fail_closed",
+    "raw_frame_and_original_request_handoff_to_v2655_facade",
+    "facade_invalid_exception_is_type_only_and_query_free",
+    "facade_multi_action_multi_domain_and_typed_ambiguity_replay",
+    "gate_reference_nofollow_bounded_single_snapshot",
+    "exclusive_atomic_no_clobber_output"
+  ],
+  "tests": 21,
+  "timing": {
+    "full_fake_34_batch_ms": 3560.7676029903814,
+    "full_fake_median_case_ms": 103.70967999915592,
+    "selftest_total_ms": 8429.748266004026
+  },
+  "version": "metnos.v26.5.6-offline-author-selftest/1.0"
+}

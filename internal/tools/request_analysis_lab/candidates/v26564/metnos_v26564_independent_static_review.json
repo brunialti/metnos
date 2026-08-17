@@ -1,0 +1,145 @@
+{
+  "version": "metnos.v26.5.6.4-independent-infrastructure-review/1.0",
+  "review_date": "2026-08-09",
+  "verdict": "STATIC_PASS",
+  "live_authorization": false,
+  "preflight_authorization": false,
+  "network_calls": 0,
+  "server_calls": 0,
+  "model_calls": 0,
+  "gate_created": false,
+  "preflight_created": false,
+  "frozen_candidate_artifacts_modified": false,
+  "candidate_identity": {
+    "runner_sha256": "6fb5785d32b73f9d7dad4e917b211fdcdc12d9ca05088cc6d8ed9c4b167b146a",
+    "offline_evaluator_sha256": "f2c4a900f3b1cc6d9341785f99f7386891dc490812e9330cb256401a0cb967a3",
+    "selftest_sha256": "ad9e4c0d401f2bdf6ff1bafad0df2d619e5d8aed42483fdeeecd0600602ca03e",
+    "freeze_sha256": "d41a440551af5bfc430000e12bcdda2cbc89ca8c601b137d74b6e57f47f6cd56",
+    "author_pre_gate_sha256": "365bc9637fb3c1d1d09812968b5ad85de0875b0b09fc3f21834c89fbca178236",
+    "author_selftest_result_sha256": "dbccbbd61bff02501ed163337fe911e2524d5cb082afdea44762ba632a8a30c7"
+  },
+  "fresh_replays": {
+    "selftest": "85/85 PASS",
+    "inherited_v26563": "66/66 PASS",
+    "new_tests": "19/19 PASS",
+    "verify_freeze": "PASS",
+    "valid_batch_scalar_leaves": 2028,
+    "invalid_batch_scalar_leaves": 1994,
+    "author_recursive_scalar_templates_mutated": 148,
+    "fake_complete_batch_get": 1,
+    "fake_complete_batch_post": 34,
+    "fake_complete_batch_opens": 35,
+    "batch_cap_bytes": 7609728,
+    "fresh_batch_serialized_bytes_with_newline": 66190,
+    "real_network_calls": 0,
+    "real_model_calls": 0
+  },
+  "semantic_parent_identity": {
+    "checked": 8,
+    "byte_identical": 8,
+    "identities": {
+      "facade_v2655": "fc34ffefc8c77c51a959a1fea5625ea896242afcfff0ed2a41e7f89c14d48d63",
+      "worker_v2654": "c57c8ececdfffdc2380c7e318e1c9fe8070d074fadf641e0c458367704c20e22",
+      "worker_manifest_v2654": "88d7b0096ab2e0c76164c0c3c98705e68cadf06ef2bd5698d353f2139f552391",
+      "compact_adapter": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+      "injected_validator": "66760987f5d2335c79114632affa5c04ffecd9ffe5f8e1a7adec7bc50b4b793d",
+      "typed_registry": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+      "compact_schema": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+      "compact_prompt": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418"
+    }
+  },
+  "recursive_scalar_census": {
+    "independent_normalized_paths": 148,
+    "independent_path_type_pairs": 150,
+    "wrong_scalar_type_mutations_rejected": 594,
+    "json_scalar_types_exercised": [
+      "bool",
+      "int",
+      "float",
+      "str",
+      "null"
+    ],
+    "full_schema_integer_leaf_keys": 9,
+    "full_schema_string_leaf_keys": 8,
+    "schema_vocabulary_exact_match": true,
+    "unclassified_observed_scalar_leaves": 0
+  },
+  "branch_and_container_probes": {
+    "genuine_branches_accepted": [
+      "evaluated_valid",
+      "model_content_json_invalid",
+      "schema_invalid",
+      "adapter_invalid",
+      "validator_invalid",
+      "facade_input_invalid"
+    ],
+    "scalar_path_type_to_empty_dict_or_list_rejected": 300,
+    "observed_container_wrong_type_rejected": 71,
+    "observed_nonempty_container_emptied_rejected": 64,
+    "exhaustive_pre_gold_closure_mutations_rejected": 435,
+    "full_end_to_end_mutations_rejected_before_gold": 45,
+    "gold_reads_on_rejected_mutations": 0,
+    "container_cases": [
+      "scalar_replaced_by_empty_dict_or_list",
+      "dict_replaced_by_list",
+      "list_replaced_by_dict",
+      "extra_empty_dict_or_list",
+      "known_scalar_key_at_wrong_frame_location"
+    ]
+  },
+  "request_proof": {
+    "valid_batch_reconstructed": "34/34",
+    "valid_mixed_invalid_and_facade_invalid_reconstructed": "102/102",
+    "inputs": [
+      "pinned_query",
+      "derived_unicode_segments",
+      "pinned_compact_prompt",
+      "pinned_compact_schema"
+    ]
+  },
+  "endpoint_boundary_runner_and_evaluator": {
+    "ipv4_port_1": "ACCEPT",
+    "ipv4_port_65535": "ACCEPT",
+    "ipv6_port_1": "ACCEPT",
+    "ipv6_port_65535": "ACCEPT",
+    "ipv4_port_0": "REJECT",
+    "ipv6_port_0": "REJECT",
+    "port_65536": "REJECT",
+    "missing_port": "REJECT",
+    "localhost": "REJECT"
+  },
+  "timestamp_contract": {
+    "all_four_exact_nonnegative_int": true,
+    "negative_each_rejected_before_gold": true,
+    "wall_reversal_rejected_before_gold": true,
+    "monotonic_reversal_rejected_before_gold": true,
+    "clock_duration_inconsistency_rejected_before_gold": true
+  },
+  "removed_observations": {
+    "persisted_raw_frame_sha256": false,
+    "persisted_model_content": false,
+    "persisted_response_body": false,
+    "reinjection_rejected_before_gold": true
+  },
+  "future_gate_exact_equality": {
+    "recursive_dict_and_list": true,
+    "bool_vs_int_distinguished": true,
+    "int_vs_float_distinguished": true,
+    "null_vs_bool_distinguished": true,
+    "extra_dict_keys_rejected": true,
+    "list_length_mismatch_rejected": true
+  },
+  "offline_hygiene": {
+    "candidate_bytecode_entries": 0,
+    "preflight_gate_present": false,
+    "external_gate_present": false,
+    "candidate_batch_or_evaluation_outputs_present": false
+  },
+  "blockers": [],
+  "scope_limitations": [
+    "The frozen registry covers 10 Phase-1 relations only.",
+    "This review does not certify the general 109-case suite or runtime cutover.",
+    "No preflight, gate, transport, model or live action is authorized."
+  ],
+  "next_step": "Preserve the frozen bytes. Any preflight or live activity requires a new, separate gate and authorization outside this static review."
+}

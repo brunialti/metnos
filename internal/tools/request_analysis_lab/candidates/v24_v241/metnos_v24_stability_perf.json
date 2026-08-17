@@ -1,0 +1,15 @@
+{
+  "suite_version": "metnos.v24-offline-stability/1.0",
+  "records_per_round": 109,
+  "rounds": 20,
+  "unique_output_hashes": 1,
+  "output_sha256": "8e80ed39a064d34b73e266d3b6a469ae1597725b64a4e37b7d3d58169c0199f4",
+  "latency_ms": {
+    "median": 1.7343745,
+    "mean": 1.8045618651376147,
+    "p95": 2.209203,
+    "p99": 2.511337,
+    "max": 6.387255
+  },
+  "measurement_note": "CPU wall time for migrate-already-complete V24 validation plus research projection; excludes LLM inference and transport."
+}

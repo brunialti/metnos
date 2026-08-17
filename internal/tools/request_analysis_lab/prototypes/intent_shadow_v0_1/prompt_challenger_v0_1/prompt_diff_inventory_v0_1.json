@@ -1,0 +1,41 @@
+{
+  "inventory_format": "metnos.intent-prompt-exact-diff/0.1",
+  "source": {
+    "arm": "S0_CURRENT",
+    "candidate_path": "../candidate_v0_3/intent_ir_v0_3.prompt.txt",
+    "style_path": "../prompt_style_v0_1/prompt_s0_current.txt",
+    "sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c"
+  },
+  "result": {
+    "path": "intent_ir_prompt_challenger_v0_1.txt",
+    "utf8_bytes": 23320,
+    "sha256": "29cf1d9faba4977bf6bf641ab28cbbcc37d4f7f4a1483a9b4b9c290ebe909c5d"
+  },
+  "exact_delta": {
+    "removed_lines": [
+      "CHOOSE ROOT FIRST: select exactly one root that matches the request, then emit it as one JSON object with kind first."
+    ],
+    "replacement_lines": [
+      "COVERAGE BEFORE ROOT: identify every indispensable requested intent in the complete input; do not omit or approximate any.",
+      "COVERAGE CHECK: if an understood indispensable intent lacks a reviewed registry entry, the whole request is unrepresentable with reason outside_registry.",
+      "CHOOSE ROOT AFTER COVERAGE: apply the existing exclusive-root contract to the complete request, select exactly one matching root, then emit it as one JSON object with kind first."
+    ],
+    "insertion_anchor": "FINAL MINI-CHECK:",
+    "inserted_first_bullet": "- Every indispensable requested intent was accounted for before root selection; none was omitted or approximated.",
+    "removed_line_count": 1,
+    "added_line_count": 4
+  },
+  "invariants": {
+    "all_other_prompt_lines_byte_identical": true,
+    "positive_examples_byte_identical": true,
+    "registry_projection_byte_identical": true,
+    "schema_byte_identical": true,
+    "core_and_adapter_inherited_unchanged": true,
+    "language_path_shared_for_every_valid_bcp47_tag": true,
+    "benchmark_query_or_identifier_added": false
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "payload_sha256": "14373999f09380f9ec3e9d71a04c79f95748c7ce565f6b88cd5cb17c3ef5e324"
+  }
+}

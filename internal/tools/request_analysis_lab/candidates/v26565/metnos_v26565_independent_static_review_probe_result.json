@@ -1,0 +1,588 @@
+{
+ "frozen_artifacts_modified": false,
+ "gold_modified": false,
+ "inference": false,
+ "live_runs": 0,
+ "model_calls": 0,
+ "network_calls": 0,
+ "probes": [
+  {
+   "evidence": {
+    "artifacts_ok": 9,
+    "artifacts_verified": 9,
+    "declared_selftest": {
+     "all_green": true,
+     "by_group": {
+      "best_effort_diagnosis": {
+       "passed": 3,
+       "total": 3
+      },
+      "contamination": {
+       "passed": 2,
+       "total": 2
+      },
+      "coverage_shapes": {
+       "passed": 5,
+       "total": 5
+      },
+      "fail_closed": {
+       "passed": 3,
+       "total": 3
+      },
+      "fingerprint_privacy": {
+       "passed": 3,
+       "total": 3
+      },
+      "materialisation": {
+       "passed": 4,
+       "total": 4
+      },
+      "mutation_suite": {
+       "passed": 3,
+       "total": 3
+      },
+      "no_emitted_identity": {
+       "passed": 5,
+       "total": 5
+      },
+      "no_fatal_invariant_outside_the_schema": {
+       "passed": 5,
+       "total": 5
+      },
+      "regression_of_the_v26564_failures": {
+       "passed": 4,
+       "total": 4
+      },
+      "representability": {
+       "passed": 2,
+       "total": 2
+      },
+      "unicode_metamorphic": {
+       "passed": 3,
+       "total": 3
+      }
+     },
+     "passed": 42,
+     "total": 42
+    },
+    "dependencies_ok": 5,
+    "dependencies_verified": 5,
+    "freeze_sha256": "b7b02367bba88c244dd772b0722f4925292e4e318eca80b5df0b0556f3638f90",
+    "pyc_or_pycache": [],
+    "readme_hash_rows": 10,
+    "readme_mismatches": []
+   },
+   "outcome": "confirmed",
+   "probe": "R0",
+   "title": "freeze table, README hash table, pinned dependency bytes, no bytecode"
+  },
+  {
+   "evidence": [
+    "clauses is a scalar: TypeError: 'int' object is not iterable",
+    "dependencies is a scalar: TypeError: 'int' object is not iterable",
+    "alternatives is a scalar: TypeError: 'int' object is not iterable",
+    "an alternative is a scalar: AttributeError: 'int' object has no attribute 'get'",
+    "unsupported clauses is a scalar: TypeError: 'int' object is not iterable"
+   ],
+   "outcome": "FINDING",
+   "probe": "B1",
+   "title": "expand_frame raises on schema-invalid scalar-where-container input"
+  },
+  {
+   "evidence": [
+    "clauses is a scalar: TypeError: 'int' object is not iterable",
+    "dependencies is a scalar: TypeError: object of type 'int' has no len()",
+    "alternatives is a scalar: TypeError: 'int' object is not iterable",
+    "an alternative is a scalar: AttributeError: 'int' object has no attribute 'get'",
+    "unsupported clauses is a scalar: TypeError: 'int' object is not iterable"
+   ],
+   "outcome": "FINDING",
+   "probe": "B1b",
+   "title": "structural_fingerprint raises on the same inputs"
+  },
+  {
+   "evidence": {
+    "raised": [
+     "clauses is a scalar: TypeError: 'int' object is not iterable",
+     "dependencies is a scalar: TypeError: 'int' object is not iterable",
+     "alternatives is a scalar: TypeError: 'int' object is not iterable",
+     "an alternative is a scalar: AttributeError: 'int' object has no attribute 'get'",
+     "unsupported clauses is a scalar: TypeError: 'int' object is not iterable"
+    ],
+    "stage_2_is_guarded": false,
+    "stage_3_is_guarded": true
+   },
+   "outcome": "FINDING",
+   "probe": "B1c",
+   "title": "pipeline.evaluate has no guard around stage 2, so the raise escapes and the case is recorded on ZERO stages"
+  },
+  {
+   "evidence": {
+    "fingerprint": {
+     "binding_kinds": [
+      "sifre kelimesi hangi klasorde BINDING"
+     ],
+     "clause_roles": [
+      "sifre kelimesi hangi klasorde ROLE"
+     ],
+     "proof_kinds": [
+      "clause_construction",
+      "clause_construction",
+      "interrogative_construction",
+      "sifre kelimesi hangi klasorde PROOF"
+     ],
+     "relations": [
+      "sifre kelimesi hangi klasorde RELATION"
+     ],
+     "speech_acts": [
+      "sifre kelimesi hangi klasorde ACT"
+     ],
+     "status": "sifre kelimesi hangi klasorde STATUS"
+    },
+    "leaked_fields": [
+     "sifre kelimesi hangi klasorde ACT",
+     "sifre kelimesi hangi klasorde BINDING",
+     "sifre kelimesi hangi klasorde PROOF",
+     "sifre kelimesi hangi klasorde RELATION",
+     "sifre kelimesi hangi klasorde ROLE",
+     "sifre kelimesi hangi klasorde STATUS"
+    ]
+   },
+   "outcome": "FINDING",
+   "probe": "B2",
+   "title": "structural_fingerprint copies model-controlled strings verbatim when the frame is schema-invalid, which is exactly when S4 is needed"
+  },
+  {
+   "evidence": {
+    "group_probes_an_invalid_frame": false
+   },
+   "outcome": "FINDING",
+   "probe": "B2b",
+   "title": "the author privacy group probes only frames built by build_frame_from_template, i.e. schema-valid ones"
+  },
+  {
+   "evidence": {
+    "alternatives_disagree": {
+     "expansion": [
+      "alternatives_disagree_on_unsupported_clauses"
+     ],
+     "schema_errors": [],
+     "valid": false,
+     "validator": [
+      "alternative_coverage",
+      "clause_ids"
+     ]
+    },
+    "same_clause_other_index": {
+     "expansion": [
+      "alternatives_disagree_on_unsupported_clauses"
+     ],
+     "schema_errors": [],
+     "valid": false,
+     "validator": [
+      "alternative_coverage",
+      "clause_ids"
+     ]
+    }
+   },
+   "outcome": "FINDING",
+   "probe": "B3",
+   "title": "typed_ambiguity alternatives that differ on out-of-registry clauses are SCHEMA-VALID yet always invalid, through rules the response schema cannot express"
+  },
+  {
+   "evidence": {
+    "alternative_clause_counts": [
+     2,
+     1
+    ],
+    "emitted_unsupported_clauses": [
+     {
+      "clause_end_segment_id": 3,
+      "clause_id": 1,
+      "clause_role": "main_request",
+      "clause_role_proof": {
+       "kind": "discourse_structure"
+      },
+      "clause_start_segment_id": 1,
+      "reason": "out_of_registry"
+     }
+    ],
+    "expansion_codes": [
+     "alternatives_disagree_on_unsupported_clauses"
+    ]
+   },
+   "outcome": "FINDING",
+   "probe": "B3b",
+   "title": "the expander keeps only alternative 1's out-of-registry clauses and silently drops those of the later alternatives"
+  },
+  {
+   "evidence": {
+    "max_clauses_per_analysis": 8,
+    "schema_errors": [],
+    "validator": [
+     "alternative_coverage",
+     "clause_ids",
+     "clause_limit"
+    ]
+   },
+   "outcome": "FINDING",
+   "probe": "B3c",
+   "title": "a per-alternative clause array within the frozen bound can still trip clause_limit once alternative 1's out-of-registry clauses are added to every alternative's footprint"
+  },
+  {
+   "evidence": {
+    "atoms_after_expansion": 24,
+    "max_atoms_per_analysis": 16,
+    "response_schema_atom_ceiling": 128,
+    "response_schema_errors": [],
+    "semantic_codes_measured": 0,
+    "stages_measured_reported": 3,
+    "validator_stage_codes": [
+     "schema"
+    ]
+   },
+   "outcome": "FINDING",
+   "probe": "B4",
+   "title": "the response schema bounds dependencies per clause but not atoms per analysis; past the frozen bound the validator's own schema rejects the normal form and validate_frame returns early, so every semantic check is censored"
+  },
+  {
+   "evidence": {
+    "frames_generated": 4501,
+    "immune_code_hits": 0,
+    "pipeline_exceptions": 0,
+    "schema_valid_frames": 4000,
+    "seed": 20260809
+   },
+   "outcome": "confirmed",
+   "probe": "C1",
+   "title": "4000 random SCHEMA-VALID frames never trigger primary_cardinality / orphan_dependency / clause_span_consistency / projection_missing"
+  },
+  {
+   "evidence": {
+    "code_census": {
+     "action_assertion": 518,
+     "action_speech": 398,
+     "action_unknown": 789,
+     "alternative_coverage": 802,
+     "alternatives_disagree_on_unsupported_clauses": 694,
+     "clause_ids": 377,
+     "clause_source_order": 1478,
+     "closed_proposition_unknown": 843,
+     "dependency_not_output": 783,
+     "dependency_order": 2694,
+     "dependency_output_count": 2181,
+     "dependency_output_slot": 1090,
+     "dependency_relation": 1401,
+     "dependency_type": 528,
+     "edge_source_ordinal_not_backward": 6277,
+     "edge_source_ordinal_out_of_range": 3637,
+     "embedded_unknown": 84,
+     "output_unconsumed": 1573,
+     "projection_source_order": 1057,
+     "proof_family": 3322,
+     "proof_predicate": 860,
+     "proof_span": 1241,
+     "queryable_unknown": 1252,
+     "reference_type": 2994,
+     "relation_arity": 3025,
+     "role_speech": 2963,
+     "source_output_slot_not_derivable": 2989
+    },
+    "invalid_frames": 3322,
+    "invalid_from_expansion_only": 0,
+    "valid_frames": 678,
+    "validator_inner_schema_only": 0
+   },
+   "outcome": "context",
+   "probe": "C1b",
+   "title": "invalidity of a schema-valid frame is dominated by rules the response schema cannot express; some are contributed by the expander alone"
+  },
+  {
+   "evidence": {
+    "schema_errors": [],
+    "stage_codes": {
+     "expansion": [],
+     "schema": [],
+     "validator": []
+    },
+    "valid": true
+   },
+   "outcome": "confirmed",
+   "probe": "C2",
+   "title": "an inter-clause edge - clause 2 consuming clause 1's projection unknown - is representable and validates"
+  },
+  {
+   "evidence": {
+    "expansion": [
+     "edge_source_ordinal_not_backward",
+     "edge_source_ordinal_out_of_range"
+    ],
+    "per_alternative_atom_ids": [
+     [
+      1,
+      2
+     ],
+     [
+      1,
+      2
+     ]
+    ],
+    "prompt_sentence": "Atom order is derived from the structure: within each clause the dependencies come first in array order, then that clause's projection, and clauses are taken in array order. A from_prior_atom edge names an earlier atom in that derived order",
+    "schema_errors": [],
+    "validator": [
+     "alternative_coverage",
+     "dependency_order",
+     "output_unconsumed"
+    ]
+   },
+   "outcome": "FINDING",
+   "probe": "C2b",
+   "title": "ordinals restart at 1 inside every alternative while the prompt says source_ordinal counts 'from one across the whole analysis'; the literal reading yields a schema-valid frame that fails expansion and validation"
+  },
+  {
+   "evidence": {
+    "derived_ceiling": "number of atoms in the enclosing scope",
+    "schema_constraint": {
+     "minimum": 1,
+     "type": "integer"
+    },
+    "static_upper_bound_available": 16
+   },
+   "outcome": "FINDING",
+   "probe": "C2c",
+   "title": "source_ordinal is emitted but its target space is derived; the schema bounds it below and not above"
+  },
+  {
+   "evidence": {
+    "schema_errors": [],
+    "validator": [
+     "clause_source_order",
+     "projection_source_order",
+     "proof_span"
+    ]
+   },
+   "outcome": "FINDING",
+   "probe": "C3",
+   "title": "clauses emitted out of source order are schema-valid and rejected by prose-only ordering rules"
+  },
+  {
+   "evidence": {
+    "distinct_fingerprints": 1,
+    "scripts": 9,
+    "segment_counts_by_form": {
+     "NFC": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      9
+     ],
+     "NFD": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      9
+     ],
+     "NFKC": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      9
+     ],
+     "NFKD": [
+      1,
+      2,
+      3,
+      4,
+      6,
+      9
+     ]
+    },
+    "uniformly_valid": true
+   },
+   "outcome": "confirmed",
+   "probe": "C4",
+   "title": "one fingerprint over 9 scripts x NFC/NFD/NFKC/NFKD, uniformly valid"
+  },
+  {
+   "evidence": {
+    "prompt": {
+     "shared_2gram_examples": [
+      [
+       "in the"
+      ]
+     ],
+     "shared_2gram_queries": 1,
+     "shared_3gram_queries": 0,
+     "shared_4gram_queries": 0,
+     "verbatim_query_matches": 0
+    },
+    "schema": {
+     "shared_2gram_examples": [],
+     "shared_2gram_queries": 0,
+     "shared_3gram_queries": 0,
+     "shared_4gram_queries": 0,
+     "verbatim_query_matches": 0
+    }
+   },
+   "outcome": "confirmed",
+   "probe": "C5",
+   "title": "no control query is copied into the prompt or the schema; no 3-gram or 4-gram is shared"
+  },
+  {
+   "evidence": {
+    "leaked_identifiers": []
+   },
+   "outcome": "confirmed",
+   "probe": "C5b",
+   "title": "no gold, fixture or overlay identifier reaches the prompt or the schema"
+  },
+  {
+   "evidence": {
+    "enum_literals": 53,
+    "registry_derived": 45,
+    "structural": 8,
+    "unexplained": []
+   },
+   "outcome": "confirmed",
+   "probe": "C6",
+   "title": "every enum and const in the response schema is either a fixed structural key or a denotation of the frozen registry"
+  },
+  {
+   "evidence": {
+    "double_quoted_lines": [],
+    "non_ascii_characters": [],
+    "registry_descriptions_injected": 20
+   },
+   "outcome": "confirmed",
+   "probe": "C6b",
+   "title": "the prompt carries no double-quoted surface example and is ASCII only"
+  },
+  {
+   "evidence": {
+    "bridge": {
+     "actor.current_position": {
+      "entity": "actor.current",
+      "time": "time.current"
+     }
+    },
+    "files_mentioning_it": {
+     "metnos_v26565_independent_static_review_probe.py": 4,
+     "metnos_v26565_offline_selftest.py": 2
+    }
+   },
+   "outcome": "confirmed",
+   "probe": "C6c",
+   "title": "DERIVED_REFERENCE_BRIDGE lives in the self-test fixture only and reaches neither the prompt, the schema, the expander nor the pipeline"
+  },
+  {
+   "evidence": {
+    "examples_of_undetected_drift": [
+     {
+      "case": "actor_current_position_open",
+      "from": "open_question",
+      "path": "clauses/0/projection/speech_act",
+      "to": "imperative"
+     },
+     {
+      "case": "actor_current_position_open",
+      "from": "actor.current",
+      "path": "clauses/0/projection/arguments/0/ref",
+      "to": "actor.quoted"
+     },
+     {
+      "case": "actor_current_position_open",
+      "from": "open_question",
+      "path": "clauses/0/projection/speech_act",
+      "to": "imperative"
+     },
+     {
+      "case": "actor_current_position_open",
+      "from": "actor.current",
+      "path": "clauses/0/projection/arguments/0/ref",
+      "to": "actor.quoted"
+     },
+     {
+      "case": "actor_current_position_open",
+      "from": "open_question",
+      "path": "clauses/0/projection/speech_act",
+      "to": "imperative"
+     },
+     {
+      "case": "actor_current_position_open",
+      "from": "actor.current",
+      "path": "clauses/0/projection/arguments/0/ref",
+      "to": "actor.quoted"
+     },
+     {
+      "case": "actor_current_position_open",
+      "from": "open_question",
+      "path": "clauses/0/projection/speech_act",
+      "to": "imperative"
+     },
+     {
+      "case": "actor_current_position_open",
+      "from": "actor.current",
+      "path": "clauses/0/projection/arguments/0/ref",
+      "to": "actor.quoted"
+     }
+    ],
+    "mutants": 1934,
+    "pipeline_exceptions": 0,
+    "rejected": 1680,
+    "schema_blocked": 753,
+    "still_valid": 254,
+    "still_valid_but_semantically_different": 53
+   },
+   "outcome": "context",
+   "probe": "C7",
+   "title": "single-scalar mutation sweep over all 34 gold frames"
+  },
+  {
+   "evidence": {
+    "author_mutations": 12,
+    "independent_mutants": 1934,
+    "note": "the representability group does compare semantics, but only on the unmutated gold frames",
+    "undetected_semantic_drift": 53
+   },
+   "outcome": "context",
+   "probe": "C7b",
+   "title": "structural validity is not a semantic oracle: the author mutation group asserts only that `valid` is false, so a mutation that stays valid while changing the gold semantics is not counted"
+  },
+  {
+   "evidence": {
+    "conditional_guards": [
+     "if SCHEMA_PATH.exists():",
+     "if PROMPT_PATH.exists():"
+    ],
+    "reported_total": 42,
+    "total_without_those_files": 40
+   },
+   "outcome": "FINDING",
+   "probe": "C8",
+   "title": "two materialisation checks run only if the artifact exists, so the reported total is conditional on the bundle being complete"
+  },
+  {
+   "evidence": {
+    "first_disjunct_matches": false,
+    "second_disjunct_matches": true
+   },
+   "outcome": "FINDING",
+   "probe": "C8b",
+   "title": "the 'prompt forbids numeric labels' check has a dead first disjunct: prompt.replace(chr(10), chr(10)) is a no-op and the literal never matches"
+  }
+ ],
+ "seed": 20260809,
+ "summary": {
+  "confirmed": 9,
+  "context": 3,
+  "findings": 14,
+  "probes": 26
+ },
+ "version": "metnos.v26.5.6.5-independent-static-review-probe/1.0"
+}

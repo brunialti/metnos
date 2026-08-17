@@ -1,0 +1,361 @@
+{
+  "call_count": 16,
+  "cases_sha256": "052c0fead3cf050da87b4e6987beb877fc458d4b0877cfaa6dbf73587615db60",
+  "format": "metnos.intent-kiss-compiled-probe/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1102,
+      "gate_request_sha256": "9962fb9855e732454c15837bc844b23865628267406185c275f96b3321c7db45",
+      "language_tag": "en-GB",
+      "main_elapsed_ms": 8728,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "source": "previous_failure",
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": true,
+        "approval_scope": "all_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1202,
+      "gate_request_sha256": "3ed3dd948415b7e8b750b2ca969b896d8d3e4a83dc02dc3212754eb3a774e11a",
+      "language_tag": "ja-JP",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "source": "previous_failure",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-001",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "delete/issues"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1110,
+      "gate_request_sha256": "194c711f5f200bf760a91b39a8d24c475586e183260011267ee42b6a38685bc2",
+      "language_tag": "it-IT",
+      "main_elapsed_ms": 8740,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-002",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": false,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 820,
+      "gate_request_sha256": "9a3f0aa121a47fa6ebe39ba5f88cc77da313c081580b2dae0f9deacc94bbf2ae",
+      "language_tag": "en-GB",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-003",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "delete/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1112,
+      "gate_request_sha256": "f477bb197675ba35d08daf9bbb43714d90bebc9da33692b6988a5d73b8463d0a",
+      "language_tag": "de-DE",
+      "main_elapsed_ms": 8794,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-004",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1119,
+      "gate_request_sha256": "744ea158744eeb00d7f33a8613e0c593192e65681771e8e2d3ce5119e02b8234",
+      "language_tag": "es-MX",
+      "main_elapsed_ms": 8800,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-005",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "send/messages"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": true,
+        "approval_scope": "suffix_actions",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1137,
+      "gate_request_sha256": "f474aafa2545150de3fd695f278e3da8f41766bc25bb9a91e9752c7763bdb2d5",
+      "language_tag": "tr-TR",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-006",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "delete/calendars"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1090,
+      "gate_request_sha256": "ebcd8b2733d1d5be503098b9a3f2631b4a9cb689da2a1c0248d191f73fe2decd",
+      "language_tag": "sr-Cyrl-RS",
+      "main_elapsed_ms": 8870,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-007",
+      "error": null,
+      "exact": true,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": false,
+        "system_control": "undo_last_turn"
+      },
+      "gate_elapsed_ms": 798,
+      "gate_request_sha256": "0e830dbcd890c20da90f8aa877d7760e26009e582c684ab2a36b4673dcdb306b",
+      "language_tag": "ja-JP",
+      "main_elapsed_ms": 0,
+      "raw_model_output_b64": null,
+      "semantic": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    },
+    {
+      "case_id": "ml-008",
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "gate": {
+        "alternative_action_paths": false,
+        "approval_scope": "none",
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "gate_elapsed_ms": 1129,
+      "gate_request_sha256": "0d01b59377301aa84433bc4fd40a45fe7fd7afdafef05aa76300d324f346cfc4",
+      "language_tag": "zh-Hant-TW",
+      "main_elapsed_ms": 8923,
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJ1bnN1cHBvcnRlZF9kZXBlbmRlbmN5Igp9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "source": "new_multilingual",
+      "status": "valid"
+    }
+  ],
+  "summary": {
+    "exact": 2,
+    "new_multilingual_exact": 2,
+    "new_multilingual_valid": 8,
+    "valid": 10
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "batch_cap_bytes": 7609728,
+  "batch_serialized_bytes_with_newline": 69102,
+  "fake_transport_calls": {
+    "complete_batch_actual_opens": 35,
+    "complete_batch_get": 1,
+    "complete_batch_post": 34
+  },
+  "inherited_v26562_passed": 50,
+  "model_calls": 0,
+  "network_calls": 0,
+  "new_passed": 16,
+  "new_tests": 16,
+  "offline_evaluator_sha256": "5046d26effe17e2b39a8fac41c1efa4850f8b69784a499fc6ff32d72506df3ac",
+  "runner_sha256": "8571df498a58a9de9cc6703845a156e4d7a0dd679107f753a090f2cb9e509465",
+  "selftest_total_ms": 28733.97826598375,
+  "status": "PASS",
+  "test_names": [
+    "inherited_v26562_50_of_50",
+    "author_freeze_pass_both_operational_gates_absent",
+    "operational_gate_validation_reachable_author_absence_separate",
+    "native_no_proxy_no_redirect_static",
+    "literal_loopback_endpoint_only",
+    "fake_two_open_proxy_redirect_rejected",
+    "output_parent_openat_anchor_survives_path_swap",
+    "preflight_producer_requires_separate_gate_and_no_clobber",
+    "runner_and_evaluator_cli_errors_are_sanitized",
+    "evaluator_context_rejected_before_batch_or_exec",
+    "fake_34_and_separate_evaluator_pass",
+    "dependency_tree_membership_recomputed_before_compile_exec",
+    "pre_gold_exact_valid_and_two_invalid_status_shapes",
+    "pre_gold_8_bypasses_and_boundaries_zero_gold_reads",
+    "exact_batch_cap_precedes_large_encoding",
+    "candidate_has_no_bytecode_cache"
+  ],
+  "total_asserted_tests": 66,
+  "version": "metnos.v26.5.6.3-offline-author-selftest/1.0"
+}

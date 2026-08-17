@@ -1,0 +1,52 @@
+{
+  "fixture": {
+    "native_negative": 16,
+    "positive": 6,
+    "synthetic_real_segments": 80
+  },
+  "freeze_created": false,
+  "gate_created": false,
+  "model_calls": 0,
+  "network_calls": 0,
+  "offline": true,
+  "pins": {
+    "fixture_sha256": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+    "manifest_sha256": "88d7b0096ab2e0c76164c0c3c98705e68cadf06ef2bd5698d353f2139f552391",
+    "worker_sha256": "c57c8ececdfffdc2380c7e318e1c9fe8070d074fadf641e0c458367704c20e22"
+  },
+  "process_overhead_ms": {
+    "max": 89.597,
+    "median": 88.263,
+    "min": 84.453,
+    "samples": 7
+  },
+  "status": "PASS",
+  "test_count": 24,
+  "tests": [
+    "durable_hash_pins",
+    "facade_only_evaluate",
+    "fixture_positive_6_of_6",
+    "multi_action_and_projection_reuse",
+    "multi_domain",
+    "typed_ambiguity",
+    "mixed_supported_unsupported_coverage",
+    "fixture_native_negative_16_of_16",
+    "caller_monkeypatch_does_not_cross_process",
+    "isolated_minimal_environment",
+    "protocol_rejects_source_absolute_path_nonmember_module_injection",
+    "id_only_bypass_rejected",
+    "frame_source_path_injection_rejected_by_schema",
+    "exact_json_snapshot_rejects_subclass_nan_object_cycle",
+    "transport_ast_allowlists_and_single_shell_free_spawn",
+    "zero_arg_one_shot_worker_surface",
+    "unique_lexical_compile_exec_sinks",
+    "compact_schema_precedes_compile",
+    "fixed_registry_assignment",
+    "ast_reflection_guards_present",
+    "audit_hook_denies_network_subprocess_shell_ctypes_exec_fork",
+    "worker_import_refused",
+    "forged_hash_and_symlink_rejected",
+    "one_shot_process_overhead_measured"
+  ],
+  "version": "metnos.v26.5.4-author-selftest/1.0"
+}

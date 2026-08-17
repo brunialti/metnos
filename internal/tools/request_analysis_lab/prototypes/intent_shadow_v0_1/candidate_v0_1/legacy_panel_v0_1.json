@@ -1,0 +1,259 @@
+{
+  "panel_format": "metnos.intent-shadow-legacy-panel/0.1",
+  "created_date": "2026-08-12",
+  "status": "frozen_separate_phase1_panel",
+  "decision": {
+    "owner": "Roberto",
+    "selected_option": "A",
+    "automatic_intent_shadow_conversion": false,
+    "cross_panel_compensation": false,
+    "evaluation_authority": "phase1_typed_oracle_v1"
+  },
+  "gold_fields_present": false,
+  "count": 34,
+  "source_file_sha256": {
+    "controls": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+    "phase1_oracle": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af"
+  },
+  "cases": [
+    {
+      "ordinal": 1,
+      "opaque_case_id": "pos.it.reflexive",
+      "language": "it",
+      "query": "dove mi trovo",
+      "query_sha256": "7aa069dbadd39448d5a017c9fad20739c2d4a6eb7440d5cd4c5718f55911d8ff"
+    },
+    {
+      "ordinal": 2,
+      "opaque_case_id": "pos.it.nominal",
+      "language": "it",
+      "query": "qual è la mia posizione attuale",
+      "query_sha256": "6a4299be8ac71f25b0393ebd8133fa7296192427360e78001392304c121112a1"
+    },
+    {
+      "ordinal": 3,
+      "opaque_case_id": "pos.en.copular",
+      "language": "en",
+      "query": "where am I",
+      "query_sha256": "ef03ddf8b821820cbdbf66e9ce0788615b5a00fc8485444868705438d6999d92"
+    },
+    {
+      "ordinal": 4,
+      "opaque_case_id": "pos.fr.inversion",
+      "language": "fr",
+      "query": "où suis-je",
+      "query_sha256": "ea5c18a4f257f45d988e87952e464310f7a2e87cabfac8a5994b8ba36cf12b8c"
+    },
+    {
+      "ordinal": 5,
+      "opaque_case_id": "pos.es.prodrop",
+      "language": "es",
+      "query": "dónde estoy",
+      "query_sha256": "4572600200c05801c3a89011baf8ab2ae809f9e23f3157934e7a96c3b9e5764d"
+    },
+    {
+      "ordinal": 6,
+      "opaque_case_id": "pos.de.copular",
+      "language": "de",
+      "query": "wo bin ich",
+      "query_sha256": "63f6af6255ba56f1864daadff3d57c48ba20f67523adb73365a553a4b3d312fe"
+    },
+    {
+      "ordinal": 7,
+      "opaque_case_id": "pos.tr.fused",
+      "language": "tr",
+      "query": "neredeyim",
+      "query_sha256": "feaccd3507580e2dfa32aa4391a0e496d358f80b9ce30c9463a6bd12f2094740"
+    },
+    {
+      "ordinal": 8,
+      "opaque_case_id": "pos.ja.case_marked",
+      "language": "ja",
+      "query": "私はどこにいますか",
+      "query_sha256": "960181ec11532980550d9a1fe030c8dac1eacabf0b53256e7d45ead9985589c0"
+    },
+    {
+      "ordinal": 9,
+      "opaque_case_id": "pos.zh.wh_in_situ",
+      "language": "zh",
+      "query": "我在哪里",
+      "query_sha256": "23e4bd034eec482fc5e7f83f2fb1a22d8c3402a3ce873164de38d79fe9c078ca"
+    },
+    {
+      "ordinal": 10,
+      "opaque_case_id": "neg.identity.it",
+      "language": "it",
+      "query": "chi sono",
+      "query_sha256": "2292180a45ee421a834e575e93079145c6444fdd424d501c63b5ecafc72da5fe"
+    },
+    {
+      "ordinal": 11,
+      "opaque_case_id": "neg.identity.en",
+      "language": "en",
+      "query": "who am I",
+      "query_sha256": "e985008e99806dd3156707da6fff9a04c02c98ae6af838a24bd8f2c7d590491e"
+    },
+    {
+      "ordinal": 12,
+      "opaque_case_id": "neg.identity.fr",
+      "language": "fr",
+      "query": "qui suis-je",
+      "query_sha256": "591e3c8b11e400f3746addfa07988de519a11e9c380a3c5924fb6acc37a07558"
+    },
+    {
+      "ordinal": 13,
+      "opaque_case_id": "neg.identity.es",
+      "language": "es",
+      "query": "quién soy",
+      "query_sha256": "de9ec48c6fb274ce8d9e241013756611a536090620cfa2620f43f81612c0f4bd"
+    },
+    {
+      "ordinal": 14,
+      "opaque_case_id": "neg.identity.de",
+      "language": "de",
+      "query": "wer bin ich",
+      "query_sha256": "60aa2e8a5691a39051eca6e82d6d8d921a9bb5c8e9c4fab439638555d7b5d111"
+    },
+    {
+      "ordinal": 15,
+      "opaque_case_id": "neg.third_person.it",
+      "language": "it",
+      "query": "dov'è Lucia",
+      "query_sha256": "9bc7f1922e19df8e2f740924313f49b3292536b118de465e480e06d91f93eee6"
+    },
+    {
+      "ordinal": 16,
+      "opaque_case_id": "neg.third_person.en",
+      "language": "en",
+      "query": "where is Lucia",
+      "query_sha256": "46db75d888968bd8bf8464703613b4200f04bdf27dcbcd8c69ceb9d88270908c"
+    },
+    {
+      "ordinal": 17,
+      "opaque_case_id": "neg.third_person.es",
+      "language": "es",
+      "query": "dónde está Lucia",
+      "query_sha256": "29f7b24da099252fb0dac8aa274c8e56e2ed5af779bf4c7e1a10351987dc104b"
+    },
+    {
+      "ordinal": 18,
+      "opaque_case_id": "neg.people_here.it",
+      "language": "it",
+      "query": "chi c'è qui",
+      "query_sha256": "967bf2e99d1393e7dfc8fc72e9ec559a9f270a0f9dc63dde66ad4b45676e5c96"
+    },
+    {
+      "ordinal": 19,
+      "opaque_case_id": "neg.people_here.en",
+      "language": "en",
+      "query": "who is here",
+      "query_sha256": "0dc2c81361fa0d7a640143b07d0b7c6808310d64020a134378bc5901d1bb13a1"
+    },
+    {
+      "ordinal": 20,
+      "opaque_case_id": "neg.place_identity.it",
+      "language": "it",
+      "query": "che posto è questo",
+      "query_sha256": "2ae6b27f0fcf0a9d1f50927bfce2a43131f71caa2e61b2e2cb36668e576934c5"
+    },
+    {
+      "ordinal": 21,
+      "opaque_case_id": "neg.file_location.it",
+      "language": "it",
+      "query": "dove si trova report.pdf",
+      "query_sha256": "987a5d8802fce61a60ad35f783420d2a5f364aaf5a2910a92e29048eeb2f90c4"
+    },
+    {
+      "ordinal": 22,
+      "opaque_case_id": "neg.file_location.en",
+      "language": "en",
+      "query": "where is report.pdf",
+      "query_sha256": "8d477961cab8e90950600bdf6d5eb2013850b2a1993b9d2d1288569efdebe17f"
+    },
+    {
+      "ordinal": 23,
+      "opaque_case_id": "neg.process_host.en",
+      "language": "en",
+      "query": "where is nginx running",
+      "query_sha256": "f9fdb5b533936c139cc66f5850ae477e98d81b3cfb8fb7101d7fd551173c67a9"
+    },
+    {
+      "ordinal": 24,
+      "opaque_case_id": "neg.nearby_operand.it",
+      "language": "it",
+      "query": "trova ristoranti vicino a me",
+      "query_sha256": "678dfb9022e2ca516fe683e3b1ae706a2b8361ff95f87a4efb733ea976375b84"
+    },
+    {
+      "ordinal": 25,
+      "opaque_case_id": "neg.nearby_operand.en",
+      "language": "en",
+      "query": "find restaurants near me",
+      "query_sha256": "d686f74f667e5453d9815dd1b94df175bd4e8775c7b96e8c49340654d2d8dfbf"
+    },
+    {
+      "ordinal": 26,
+      "opaque_case_id": "neg.polar.it",
+      "language": "it",
+      "query": "sono a Roma",
+      "query_sha256": "6d2588e20f3541e7db0446d0a59b3138e2134fdded36ef35a9b3557f83961e8c"
+    },
+    {
+      "ordinal": 27,
+      "opaque_case_id": "neg.historical.en",
+      "language": "en",
+      "query": "where was I yesterday",
+      "query_sha256": "50f51077dbfb9ef3cb994adf58bf55edf59e435a87170bd5643b313ec99400e4"
+    },
+    {
+      "ordinal": 28,
+      "opaque_case_id": "neg.share.it",
+      "language": "it",
+      "query": "condividi la mia posizione con Lucia",
+      "query_sha256": "5878b56d55b3c8321d4ca301f0e3823f799fbccb79e2efe091309e95a1e87fe4"
+    },
+    {
+      "ordinal": 29,
+      "opaque_case_id": "neg.quote.en",
+      "language": "en",
+      "query": "the document says \"where am I\"",
+      "query_sha256": "e089752a9a01bf29bbb559d3ddea35c7f0ab5d2968b906d8cb86c2290adb7379"
+    },
+    {
+      "ordinal": 30,
+      "opaque_case_id": "neg.condition.it",
+      "language": "it",
+      "query": "se non sai dove mi trovo chiedimelo",
+      "query_sha256": "85a9ee99227fcff35c2bbcdf5b0e11703d55da5b697b9d0e32b0afba6a90f362"
+    },
+    {
+      "ordinal": 31,
+      "opaque_case_id": "neg.relative_clause.it",
+      "language": "it",
+      "query": "sposta i file dove sono ora",
+      "query_sha256": "029b477fe675b189bf359e9b74c66997c0363f300975b9f76b5e620fc8cc7bd0"
+    },
+    {
+      "ordinal": 32,
+      "opaque_case_id": "neg.workflow_position.it",
+      "language": "it",
+      "query": "nel processo di installazione dove mi trovo",
+      "query_sha256": "2a0e89fb33446bd42d52d6049bf0ef09fb2b56737f7683c9bf3617af861bba31"
+    },
+    {
+      "ordinal": 33,
+      "opaque_case_id": "neg.document_position.en",
+      "language": "en",
+      "query": "where am I in the document",
+      "query_sha256": "e96d900f2ab17bb44e1d1d9951a0ef22d434500feb5bd7e70f8b4752971eeefd"
+    },
+    {
+      "ordinal": 34,
+      "opaque_case_id": "neg.progress.it",
+      "language": "it",
+      "query": "a che punto sono",
+      "query_sha256": "463720e32113f7a72128a4a53033f8447f61f520eb0756578a1f59591d54ed2c"
+    }
+  ],
+  "panel_payload_sha256": "5bd08d53af2556f6e79c812e71f3f745b210d1a18da3017c066e35658d89bf46"
+}

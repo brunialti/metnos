@@ -1,0 +1,2592 @@
+{
+  "projection_format": "metnos.intent-ir-registry-projection/0.2",
+  "contract_version": "metnos.intent-ir/0.2",
+  "source_registry": {
+    "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+    "file_sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+    "payload_sha256": "7a4f2916af8963d8d16fb79cb355d23e9739163f2241a84fa28bc6c070ed4a0a"
+  },
+  "operations": {
+    "change/files": {
+      "source_executors": [
+        "change_files_format"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/change_files_format/manifest.toml",
+          "source_sha256": "ce6d712dbff1c843b294831ab09016c00c0d18dbe65c55224269729fbf936508",
+          "languages": {
+            "en": {
+              "full": "SCOPO: converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: extract text (-> read_files); decompress archives (-> compress_files). OUT: {results:[{src,dst,path,created,prev_blob_path?}], dirs_created, ok_count, summary}.",
+              "scope": "converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).",
+              "not": "extract text (-> read_files); decompress archives (-> compress_files)."
+            },
+            "it": {
+              "full": "SCOPO: converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: estrarre testo (-> read_files); decomprimere archivi (-> compress_files). OUT: {results:[{src,dst,path,created,prev_blob_path?}], dirs_created, ok_count, summary}.",
+              "scope": "converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).",
+              "not": "estrarre testo (-> read_files); decomprimere archivi (-> compress_files)."
+            }
+          },
+          "executor": "change_files_format"
+        }
+      ]
+    },
+    "change/pulls": {
+      "source_executors": [
+        "change_pulls_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "change_pulls_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: opera su una pull request (es. merge). PATTERN: change_pulls_github(repo=\"owner/name\", number=N, merge_method=\"merge\"). NON: usare per issue; omettere number. OUT: results=[{number,merged}].",
+              "scope": "opera su una pull request (es. merge).",
+              "not": "usare per issue; omettere number."
+            }
+          }
+        }
+      ]
+    },
+    "compress/files": {
+      "source_executors": [
+        "compress_files"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/compress_files/manifest.toml",
+          "source_sha256": "bc8ee321e31198754a9f86dec135f61bad8ceafccd3d9ecbc26cce5170bb5b87",
+          "languages": {
+            "en": {
+              "full": "SCOPO: compress files into a new zip/tar/gz archive. PATTERN: compress_files(from_step=N, dest=\"/dir/out.zip\"). NON: directories, existing destinations, or decompression (unsupported). OUT: results=[{path,created,file_count,archive_bytes,format}], failed, dirs_created, and counts.",
+              "scope": "compress files into a new zip/tar/gz archive.",
+              "not": "directories, existing destinations, or decompression (unsupported)."
+            },
+            "it": {
+              "full": "SCOPO: comprime file in un nuovo archivio zip/tar/gz. PATTERN: compress_files(from_step=N, dest=\"/dir/out.zip\"). NON: directory, destinazioni esistenti o decompressione (non supportata). OUT: results=[{path,created,file_count,archive_bytes,format}], failed, dirs_created e conteggi.",
+              "scope": "comprime file in un nuovo archivio zip/tar/gz.",
+              "not": "directory, destinazioni esistenti o decompressione (non supportata)."
+            }
+          },
+          "executor": "compress_files"
+        }
+      ]
+    },
+    "compute/entries": {
+      "source_executors": [
+        "compute_entries"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/compute_entries/manifest.toml",
+          "source_sha256": "650f0744c744846ee45f58ba75e4174a6416a1ec7c6e39a8f8df5677e4b64cee",
+          "languages": {
+            "en": {
+              "full": "SCOPO: compute an aggregated value (max/min/avg/sum/count) on entries. PATTERN: compute_entries(key=\"val\", op=\"max\"). NON: sort the list (-> sort_entries); filter by criteria (-> filter_entries). OUT: {value, op, key, count_input, ignored_non_numeric, entry?}.",
+              "scope": "compute an aggregated value (max/min/avg/sum/count) on entries.",
+              "not": "sort the list (-> sort_entries); filter by criteria (-> filter_entries)."
+            },
+            "it": {
+              "full": "SCOPO: calcola un valore aggregato (max/min/avg/sum/count) su entries. PATTERN: compute_entries(key=\"val\", op=\"max\"). NON: ordinare la lista (-> sort_entries); filtrare per criteri (-> filter_entries). OUT: {value, op, key, count_input, ignored_non_numeric, entry?}.",
+              "scope": "calcola un valore aggregato (max/min/avg/sum/count) su entries.",
+              "not": "ordinare la lista (-> sort_entries); filtrare per criteri (-> filter_entries)."
+            }
+          },
+          "executor": "compute_entries"
+        }
+      ]
+    },
+    "compute/files": {
+      "source_executors": [
+        "compute_files_loc"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/compute_files_loc/manifest.toml",
+          "source_sha256": "5703c1f748a95f547d7ff6d6a16a407d071d6f21ac62c64c467fbbdea803e664",
+          "languages": {
+            "en": {
+              "full": "SCOPO: computes source-code LOC statistics, walking directory trees in parallel. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (change_files_format) or create archives (compress_files). OUT: totals and statistics by extension and path.",
+              "scope": "computes source-code LOC statistics, walking directory trees in parallel.",
+              "not": "convert formats (change_files_format) or create archives (compress_files)."
+            },
+            "it": {
+              "full": "SCOPO: calcola statistiche LOC su codice sorgente, visitando gli alberi in parallelo. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (change_files_format) o creare archivi (compress_files). OUT: totali e statistiche per estensione e percorso.",
+              "scope": "calcola statistiche LOC su codice sorgente, visitando gli alberi in parallelo.",
+              "not": "convertire formati (change_files_format) o creare archivi (compress_files)."
+            }
+          },
+          "executor": "compute_files_loc"
+        }
+      ]
+    },
+    "compute/signatures": {
+      "source_executors": [
+        "compute_signatures"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/compute_signatures/manifest.toml",
+          "source_sha256": "0214474b094e7ecb9240eba3567a737f298acf758bf38bc968e03d1f859bb4b8",
+          "languages": {
+            "en": {
+              "full": "SCOPO: compute or classify a signature; it can idempotently apply the safety seed. PATTERN: compute_signatures(op='command', argv=[...]). NON: query lists (-> get_signatures); modify user curation (-> set_signatures). OUT: for `command` {signature,binary,subcommand_or_flag,target_kind,requires_sudo}; for `reversibility` {class,undo_hint,reason}; for `seed_apply` {applied,skipped,seed_version,...}.",
+              "scope": "compute or classify a signature; it can idempotently apply the safety seed.",
+              "not": "query lists (-> get_signatures); modify user curation (-> set_signatures)."
+            },
+            "it": {
+              "full": "SCOPO: calcola o classifica signature; può applicare idempotentemente il seed di sicurezza. PATTERN: compute_signatures(op='command', argv=[...]). NON: consultare liste (-> get_signatures); modificare curatela utente (-> set_signatures). OUT: per `command` {signature,binary,subcommand_or_flag,target_kind,requires_sudo}; per `reversibility` {class,undo_hint,reason}; per `seed_apply` {applied,skipped,seed_version,...}.",
+              "scope": "calcola o classifica signature; può applicare idempotentemente il seed di sicurezza.",
+              "not": "consultare liste (-> get_signatures); modificare curatela utente (-> set_signatures)."
+            }
+          },
+          "executor": "compute_signatures"
+        }
+      ]
+    },
+    "consult/frontier": {
+      "source_executors": [
+        "consult_frontier"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/consult_frontier/manifest.toml",
+          "source_sha256": "52e2c95850d1748bf07cf6373dcaa7eaf6136a362e5fb901447ee57fd22625c7",
+          "languages": {
+            "en": {
+              "full": "SCOPO: consult an expert oracle for deep analysis. PATTERN: consult_frontier(role=\"expert\", output_spec={...}). NON: local summaries (-> describe_entries). OUT: {response_text, response_structured, tokens_in, tokens_out, cost_usd, tier_used, cached, iters_done, remote_bytes_read}.",
+              "scope": "consult an expert oracle for deep analysis.",
+              "not": "local summaries (-> describe_entries)."
+            },
+            "it": {
+              "full": "SCOPO: consulta un oracolo esperto per analisi profonda. PATTERN: consult_frontier(role=\"esperto\", output_spec={...}). NON: riassunti locali (-> describe_entries). OUT: {response_text, response_structured, tokens_in, tokens_out, cost_usd, tier_used, cached, iters_done, remote_bytes_read}.",
+              "scope": "consulta un oracolo esperto per analisi profonda.",
+              "not": "riassunti locali (-> describe_entries)."
+            }
+          },
+          "executor": "consult_frontier"
+        }
+      ]
+    },
+    "create/calendars": {
+      "source_executors": [
+        "create_calendars"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/create_calendars/manifest.toml",
+          "source_sha256": "3ff91ce76cd5d89cb27f0718d7524667781df66b9022593814dc693f21c5695f",
+          "languages": {
+            "en": {
+              "full": "SCOPO: create a NEW Google calendar container (not an event). PATTERN: create_calendars(summary=\"metnos\"). NON: event/appointment -> create_events; does not list calendars; delete -> delete_calendars. OUT: results=[{ok, calendar_id, summary}].",
+              "scope": "create a NEW Google calendar container (not an event).",
+              "not": "event/appointment -> create_events; does not list calendars; delete -> delete_calendars."
+            },
+            "it": {
+              "full": "SCOPO: crea un NUOVO calendario-contenitore Google (non un evento). PATTERN: create_calendars(summary=\"metnos\"). NON: evento/appuntamento -> create_events; non elenca calendari; cancellare -> delete_calendars. OUT: results=[{ok, calendar_id, summary}].",
+              "scope": "crea un NUOVO calendario-contenitore Google (non un evento).",
+              "not": "evento/appuntamento -> create_events; non elenca calendari; cancellare -> delete_calendars."
+            }
+          },
+          "executor": "create_calendars"
+        }
+      ]
+    },
+    "create/dirs": {
+      "source_executors": [
+        "create_dirs"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/create_dirs/manifest.toml",
+          "source_sha256": "376b49fc7cdaabec8d870e83b3d33b33d7506be160bbc71c649a48a914a13e9d",
+          "languages": {
+            "en": {
+              "full": "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=[\"/tmp/d\"]). NON: delete (-> delete_dirs); search (-> find_dirs); list (-> list_dirs). OUT: results=[{created}], best-effort.",
+              "scope": "create directories (batch, even empty).",
+              "not": "delete (-> delete_dirs); search (-> find_dirs); list (-> list_dirs)."
+            },
+            "it": {
+              "full": "SCOPO: crea directory (batch, anche vuote). PATTERN: create_dirs(paths=[\"/tmp/d\"]). NON: cancellare (-> delete_dirs); cercare (-> find_dirs); elencare (-> list_dirs). OUT: results=[{created}], best-effort.",
+              "scope": "crea directory (batch, anche vuote).",
+              "not": "cancellare (-> delete_dirs); cercare (-> find_dirs); elencare (-> list_dirs)."
+            }
+          },
+          "executor": "create_dirs"
+        }
+      ]
+    },
+    "create/events": {
+      "source_executors": [
+        "create_events"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/create_events/manifest.toml",
+          "source_sha256": "177d373dafea0e9c372d3bee676b12f53dd6212be706ecbd001ed5a07e63f96b",
+          "languages": {
+            "en": {
+              "full": "SCOPO: create calendar appointments. PATTERN: create_events(summary=\"Standup\", start=\"2026-05-14T09:00:00+02:00\", end=\"...\"); many -> from_step=N. NON: from web/text FIRST extract_entries; relative dates FIRST get_now; read -> read_events. OUT: results=[{ok,id,summary,htmlLink}] (§2.6 transformative), reverse delete_events_by_id.",
+              "scope": "create calendar appointments.",
+              "not": "from web/text FIRST extract_entries; relative dates FIRST get_now; read -> read_events."
+            },
+            "it": {
+              "full": "SCOPO: crea appuntamenti in calendario. PATTERN: create_events(summary=\"Standup\", start=\"2026-05-14T09:00:00+02:00\", end=\"...\"); molti -> from_step=N. NON: da web/testo PRIMA extract_entries; \"domani\" PRIMA get_now; leggere -> read_events. OUT: results=[{ok,id,summary,htmlLink}] (§2.6 trasformativo), reverse delete_events_by_id.",
+              "scope": "crea appuntamenti in calendario.",
+              "not": "da web/testo PRIMA extract_entries; \"domani\" PRIMA get_now; leggere -> read_events."
+            }
+          },
+          "executor": "create_events"
+        }
+      ]
+    },
+    "create/files": {
+      "source_executors": [
+        "create_files_doc",
+        "create_files_spreadsheet"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/create_files_doc/manifest.toml",
+          "source_sha256": "d3c6212da39edd547536c9daf93e8a0c90835d871948d775029a124a8d956385",
+          "languages": {
+            "en": {
+              "full": "SCOPO: creates a new Google Doc. PATTERN: create_files_doc(title='Title', body='Text'). NON: writing to existing doc (-> write_files_doc); creating sheets (-> create_files_spreadsheet). OUT: results=[{document_id, title, web_view_url}].",
+              "scope": "creates a new Google Doc.",
+              "not": "writing to existing doc (-> write_files_doc); creating sheets (-> create_files_spreadsheet)."
+            },
+            "it": {
+              "full": "SCOPO: crea un nuovo Google Doc. PATTERN: create_files_doc(title='Titolo', body='Testo'). NON: scrivere in doc esistente (-> write_files_doc); creare fogli (-> create_files_spreadsheet). OUT: results=[{document_id, title, web_view_url}].",
+              "scope": "crea un nuovo Google Doc.",
+              "not": "scrivere in doc esistente (-> write_files_doc); creare fogli (-> create_files_spreadsheet)."
+            }
+          },
+          "executor": "create_files_doc"
+        },
+        {
+          "source": "executors/create_files_spreadsheet/manifest.toml",
+          "source_sha256": "e2b68bc2231d46b7040f336435117a80674008864320f66a634ca1af3ad30a9d",
+          "languages": {
+            "en": {
+              "full": "SCOPO: creates and populates a new local .xlsx. PATTERN: create_files_spreadsheet(title=\"photos\", values=[[\"a\",\"b\"]]); from a step use from_step+columns. NON: existing sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,title,rows,data_rows}]; id=attachable path.",
+              "scope": "creates and populates a new local .xlsx.",
+              "not": "existing sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\"."
+            },
+            "it": {
+              "full": "SCOPO: crea e popola un nuovo .xlsx locale. PATTERN: create_files_spreadsheet(title=\"foto\", values=[[\"a\",\"b\"]]); da step usa from_step+columns. NON: foglio esistente -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,title,rows,data_rows}]; id=path allegabile.",
+              "scope": "crea e popola un nuovo .xlsx locale.",
+              "not": "foglio esistente -> write_files_spreadsheet; Google -> client=\"google_workspace\"."
+            }
+          },
+          "executor": "create_files_spreadsheet"
+        }
+      ]
+    },
+    "create/images": {
+      "source_executors": [
+        "create_images_indices"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/create_images_indices/manifest.toml",
+          "source_sha256": "772d46f48fa94c126e2f85a10876e754ec0fea6911ced96df8a2fca63f33a3d7",
+          "languages": {
+            "en": {
+              "full": "SCOPO: index photos in `base_path` (incremental or rebuild). PATTERN: create_images_indices(base_path='~/photos', force=false). NON: idx='scene' (deprecated); `find_files` (filesystem, no index). OUT: {ok,schema_version,ok_count,fail_count,base_path,n_entries_total,refreshed_count,last_refresh_at,index_path,model_text,model_vlm,model_face}.",
+              "scope": "index photos in `base_path` (incremental or rebuild).",
+              "not": "idx='scene' (deprecated); `find_files` (filesystem, no index)."
+            },
+            "it": {
+              "full": "SCOPO: indicizza foto in `base_path` (incrementale o rebuild). PATTERN: create_images_indices(base_path='~/foto', force=false). NON: idx='scene' (deprecated); `find_files` (filesystem, no indice). OUT: {ok,schema_version,ok_count,fail_count,base_path,n_entries_total,refreshed_count,last_refresh_at,index_path,model_text,model_vlm,model_face}.",
+              "scope": "indicizza foto in `base_path` (incrementale o rebuild).",
+              "not": "idx='scene' (deprecated); `find_files` (filesystem, no indice)."
+            }
+          },
+          "executor": "create_images_indices"
+        }
+      ]
+    },
+    "create/issues": {
+      "source_executors": [
+        "create_issues_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "create_issues_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: crea una nuova issue su un repo GitHub. PATTERN: create_issues_github(repo=\"owner/name\", title=\"...\", body=\"...\"). NON: omettere repo o title. OUT: results=[{number,url}].",
+              "scope": "crea una nuova issue su un repo GitHub.",
+              "not": "omettere repo o title."
+            }
+          }
+        }
+      ]
+    },
+    "create/tasks": {
+      "source_executors": [
+        "create_tasks",
+        "create_tasks_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "create_tasks",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Registra un task temporizzato che Metnos esegue automaticamente alla cadenza specificata, senza interazione utente. Al fire lancia la query come se fosse un turno utente reale e invia il risultato sul canale dell'utente che lo ha richiesto. USA QUESTO TOOL per: (a) ricorrenze infinite ('ogni giorno alle X', 'ogni N ore/minuti', 'sempre') → omettere `times` (default forever); (b) ONE-SHOT ('fra 30 minuti', 'domani alle 14', 'una volta sola') → `times=1` con `when` calcolato (es. 'fra 30 min' → `when='every_30m', times=1`); (c) max-N-volte ('per le prossime 5 settimane', 'fai 10 volte') → `times=N`. REGISTRA SUBITO senza chiedere conferma. Dopo aver registrato conferma all'utente in 1 frase con il nome esatto del task creato e i parametri salienti."
+            }
+          }
+        },
+        {
+          "executor": "create_tasks_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: avvia un workflow GitHub Actions. PATTERN: create_tasks_github(repo=\"owner/name\", workflow=\"ci.yml\", ref=\"main\"). NON: omettere repo o workflow. OUT: results=[{workflow,dispatched}].",
+              "scope": "avvia un workflow GitHub Actions.",
+              "not": "omettere repo o workflow."
+            }
+          }
+        }
+      ]
+    },
+    "delete/calendars": {
+      "source_executors": [
+        "delete_calendars"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/delete_calendars/manifest.toml",
+          "source_sha256": "8d163a80e393d0c6f18bedc161d468643647167e6c835ff2e2e4db4ffa62b8f9",
+          "languages": {
+            "en": {
+              "full": "SCOPO: delete Google calendar containers (DESTRUCTIVE: also removes the events inside); accepts the NAME. PATTERN: delete_calendars(summary=\"metnos\"). NON: deleting an EVENT -> delete_events; create -> create_calendars. OUT: results=[{ok, calendar_id, deleted}].",
+              "scope": "delete Google calendar containers (DESTRUCTIVE: also removes the events inside); accepts the NAME.",
+              "not": "deleting an EVENT -> delete_events; create -> create_calendars."
+            },
+            "it": {
+              "full": "SCOPO: cancella calendari-contenitore Google (DESTRUTTIVO: elimina anche gli eventi dentro); accetta il NOME. PATTERN: delete_calendars(summary=\"metnos\"). NON: cancellare un EVENTO -> delete_events; creare -> create_calendars. OUT: results=[{ok, calendar_id, deleted}].",
+              "scope": "cancella calendari-contenitore Google (DESTRUTTIVO: elimina anche gli eventi dentro); accetta il NOME.",
+              "not": "cancellare un EVENTO -> delete_events; creare -> create_calendars."
+            }
+          },
+          "executor": "delete_calendars"
+        }
+      ]
+    },
+    "delete/credentials": {
+      "source_executors": [
+        "delete_credentials"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/delete_credentials/manifest.toml",
+          "source_sha256": "e476390675625ce9426289f59c1fa2f1e6927ab59989311d1780b9ef046b9899",
+          "languages": {
+            "en": {
+              "full": "SCOPO: delete credentials from storage (purge or bindings). PATTERN: delete_credentials(bindings=[\"x\"]) or all=true. NON: read (-> find_credentials) or save (-> set_credentials); do not use bindings with all=true. OUT: {ok, results:[{binding, deleted, removed_fields_count}], n_deleted}.",
+              "scope": "delete credentials from storage (purge or bindings).",
+              "not": "read (-> find_credentials) or save (-> set_credentials); do not use bindings with all=true."
+            },
+            "it": {
+              "full": "SCOPO: cancella credenziali dallo storage (purge o binding). PATTERN: delete_credentials(bindings=[\"x\"]) o all=true. NON: leggere (-> find_credentials) o salvare (-> set_credentials); non usare bindings con all=true. OUT: {ok, results:[{binding, deleted, removed_fields_count}], n_deleted}.",
+              "scope": "cancella credenziali dallo storage (purge o binding).",
+              "not": "leggere (-> find_credentials) o salvare (-> set_credentials); non usare bindings con all=true."
+            }
+          },
+          "executor": "delete_credentials"
+        }
+      ]
+    },
+    "delete/dirs": {
+      "source_executors": [
+        "delete_dirs"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/delete_dirs/manifest.toml",
+          "source_sha256": "081a12ab5f85a299265123be691ee161c56cd8b7d3bd4d94a2135ca0de010b3d",
+          "languages": {
+            "en": {
+              "full": "SCOPO: delete directories (empty or forced). PATTERN: delete_dirs(paths=[\"/tmp\"], force=false). NON: create (-> create_dirs); list (-> list_dirs); find (-> find_dirs). OUT: results=[...], best-effort.",
+              "scope": "delete directories (empty or forced).",
+              "not": "create (-> create_dirs); list (-> list_dirs); find (-> find_dirs)."
+            },
+            "it": {
+              "full": "SCOPO: cancella directory (vuote o forzate). PATTERN: delete_dirs(paths=[\"/tmp\"], force=false). NON: creare (-> create_dirs); elencare (-> list_dirs); cercare (-> find_dirs). OUT: results=[...], best-effort.",
+              "scope": "cancella directory (vuote o forzate).",
+              "not": "creare (-> create_dirs); elencare (-> list_dirs); cercare (-> find_dirs)."
+            }
+          },
+          "executor": "delete_dirs"
+        }
+      ]
+    },
+    "delete/events": {
+      "source_executors": [
+        "delete_events"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/delete_events/manifest.toml",
+          "source_sha256": "15e6151f412b095b4ca8278397944ffaeca81e85dea9e6d6ce7c7a1d1b59af9c",
+          "languages": {
+            "en": {
+              "full": "SCOPO: delete calendar events, by ids or time window. PATTERN: delete_events(event_ids=[\"ev1\"]) or delete_events(time_window=\"yesterday\") in ONE step. NON: read_events first when time_window is enough; create -> create_events. OUT: results=[{id, ...}], n_deleted.",
+              "scope": "delete calendar events, by ids or time window.",
+              "not": "read_events first when time_window is enough; create -> create_events."
+            },
+            "it": {
+              "full": "SCOPO: cancella eventi dal calendario, per id o finestra temporale. PATTERN: delete_events(event_ids=[\"ev1\"]) o delete_events(time_window=\"yesterday\") in UN passo. NON: read_events prima quando basta time_window; creare -> create_events. OUT: results=[{id, ...}], n_deleted.",
+              "scope": "cancella eventi dal calendario, per id o finestra temporale.",
+              "not": "read_events prima quando basta time_window; creare -> create_events."
+            }
+          },
+          "executor": "delete_events"
+        }
+      ]
+    },
+    "delete/files": {
+      "source_executors": [
+        "delete_files"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/delete_files/manifest.toml",
+          "source_sha256": "01f7b2287b56b73f9330a171bca750676a83ff37716e52f3d2e0813a5fc81ac7",
+          "languages": {
+            "en": {
+              "full": "SCOPO: delete files after a verified backup. PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: directories (-> delete_dirs), symlinks, or moves (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed, and counts.",
+              "scope": "delete files after a verified backup.",
+              "not": "directories (-> delete_dirs), symlinks, or moves (-> move_files)."
+            },
+            "it": {
+              "full": "SCOPO: cancella file dopo un backup verificato. PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: directory (-> delete_dirs), symlink o spostamenti (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed e conteggi.",
+              "scope": "cancella file dopo un backup verificato.",
+              "not": "directory (-> delete_dirs), symlink o spostamenti (-> move_files)."
+            }
+          },
+          "executor": "delete_files"
+        }
+      ]
+    },
+    "delete/images": {
+      "source_executors": [
+        "delete_images_indices"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/delete_images_indices/manifest.toml",
+          "source_sha256": "a49157c71a1ddc00c0d00a354bd6ef9ccd42d9ca0049ce668f074289873f8f7d",
+          "languages": {
+            "en": {
+              "full": "SCOPO: delete the persistent unified image index. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: delete actual photos (-> delete_files); rebuild (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}.",
+              "scope": "delete the persistent unified image index.",
+              "not": "delete actual photos (-> delete_files); rebuild (-> create_images_indices)."
+            },
+            "it": {
+              "full": "SCOPO: cancella l'indice persistente unificato delle immagini. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}.",
+              "scope": "cancella l'indice persistente unificato delle immagini.",
+              "not": "cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices)."
+            }
+          },
+          "executor": "delete_images_indices"
+        }
+      ]
+    },
+    "delete/issues": {
+      "source_executors": [
+        "delete_issues_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "delete_issues_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: chiude/elimina una issue. PATTERN: delete_issues_github(repo=\"owner/name\", number=N). NON: omettere number. OUT: results=[{number,deleted}].",
+              "scope": "chiude/elimina una issue.",
+              "not": "omettere number."
+            }
+          }
+        }
+      ]
+    },
+    "delete/messages": {
+      "source_executors": [
+        "delete_messages_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "delete_messages_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: elimina un commento su issue/PR. PATTERN: delete_messages_github(repo=\"owner/name\", comment_id=ID). NON: omettere comment_id. OUT: results=[{comment_id,deleted}].",
+              "scope": "elimina un commento su issue/PR.",
+              "not": "omettere comment_id."
+            }
+          }
+        }
+      ]
+    },
+    "delete/persons": {
+      "source_executors": [
+        "delete_persons"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/delete_persons/manifest.toml",
+          "source_sha256": "bf9317c00c3b805cffbf8eea78efe9e53946abf1abb3fc923c9cecb8123bbde1",
+          "languages": {
+            "en": {
+              "full": "SCOPO: deletes persons/enrollment from the biometric registry (purge or by name/slug). PATTERN: delete_persons(names=[\"A\"]). NON: credentials/tokens (-> delete_credentials); photos on filesystem (-> delete_files). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}.",
+              "scope": "deletes persons/enrollment from the biometric registry (purge or by name/slug).",
+              "not": "credentials/tokens (-> delete_credentials); photos on filesystem (-> delete_files)."
+            },
+            "it": {
+              "full": "SCOPO: cancella persone/enrollment dal registro biometrico (purge o per nome/slug). PATTERN: delete_persons(names=[\"A\"]). NON: credenziali/token (-> delete_credentials); foto dal filesystem (-> delete_files). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}.",
+              "scope": "cancella persone/enrollment dal registro biometrico (purge o per nome/slug).",
+              "not": "credenziali/token (-> delete_credentials); foto dal filesystem (-> delete_files)."
+            }
+          },
+          "executor": "delete_persons"
+        }
+      ]
+    },
+    "delete/tasks": {
+      "source_executors": [
+        "delete_tasks"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "delete_tasks",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Cancella/ferma un TASK RICORRENTE / PROMEMORIA / TIMER schedulato. USA per: 'cancella il task ping', 'ferma il timer X', 'rimuovi il promemoria delle mail', 'stoppa il task ricorrente'. Accetta `id` numerico (preferito, univoco) o `name` slug. Se l'utente non specifica chiaramente quale task, chiama prima list_tasks per mostrare l'elenco con id. Un actor cancella solo i propri task. NON CONFONDERE CON: `delete_events` (eventi calendar), `kill` processo sistema."
+            }
+          }
+        }
+      ]
+    },
+    "describe/numbers": {
+      "source_executors": [
+        "describe_numbers"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/describe_numbers/manifest.toml",
+          "source_sha256": "1d3d8ce65539202e03228f8fab21b1ecfaef02dded595e9b6db73e211ca0af85",
+          "languages": {
+            "en": {
+              "full": "SCOPO: calculates descriptive statistics on a list of numbers. PATTERN: describe_numbers(values=[1,2], fields=['mean']). NON: aggregate record fields (-> compute_entries); text or images. OUT: {n,n_missing,statistics:{mean?,median?,stdev?,min?,max?...}}.",
+              "scope": "calculates descriptive statistics on a list of numbers.",
+              "not": "aggregate record fields (-> compute_entries); text or images."
+            },
+            "it": {
+              "full": "SCOPO: calcola statistiche descrittive su una lista di numeri. PATTERN: describe_numbers(values=[1,2], fields=['mean']). NON: aggregare campi di record (-> compute_entries); testo o immagini. OUT: {n,n_missing,statistics:{mean?,median?,stdev?,min?,max?...}}.",
+              "scope": "calcola statistiche descrittive su una lista di numeri.",
+              "not": "aggregare campi di record (-> compute_entries); testo o immagini."
+            }
+          },
+          "executor": "describe_numbers"
+        }
+      ]
+    },
+    "filter/entries": {
+      "source_executors": [
+        "filter_entries"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/filter_entries/manifest.toml",
+          "source_sha256": "13ac4b4c4247af3a926c0fae3f42b9899ff1a09dfc34a3dd3d751251a8d44289",
+          "languages": {
+            "en": {
+              "full": "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, kind='image'). NON: search disk (-> find); enumerate (-> list). OUT: entries=[...].",
+              "scope": "filter entries by criteria.",
+              "not": "search disk (-> find); enumerate (-> list)."
+            },
+            "it": {
+              "full": "SCOPO: filtra entries per criteri. PATTERN: filter_entries(from_step=1, kind='image'). NON: cercare su disco (-> find); enumerare (-> list). OUT: entries=[...].",
+              "scope": "filtra entries per criteri.",
+              "not": "cercare su disco (-> find); enumerare (-> list)."
+            }
+          },
+          "executor": "filter_entries"
+        }
+      ]
+    },
+    "filter/lists": {
+      "source_executors": [
+        "filter_lists"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/filter_lists/manifest.toml",
+          "source_sha256": "bf20ae50afb5f84f1b0f021a008d7a0672d6e80504cb2bd0094c0abe60892eb5",
+          "languages": {
+            "en": {
+              "full": "SCOPO: ops between TWO lists (A=from_step, B=with_step) on on_keys; delta = monitor dedup. PATTERN: filter_lists(op=\"delta\", from_step=A, with_step=B, on_keys=[\"number\"]). NON: single-list -> filter_entries; scalars -> compute_entries. OUT: {ok, op, entries, metadata{count_a,count_b,count_out}}.",
+              "scope": "ops between TWO lists (A=from_step, B=with_step) on on_keys; delta = monitor dedup.",
+              "not": "single-list -> filter_entries; scalars -> compute_entries."
+            },
+            "it": {
+              "full": "SCOPO: opera fra DUE liste (A=from_step, B=with_step) su on_keys; delta = dedup monitor. PATTERN: filter_lists(op=\"delta\", from_step=A, with_step=B, on_keys=[\"number\"]). NON: mono-lista -> filter_entries; scalari -> compute_entries. OUT: {ok, op, entries, metadata{count_a,count_b,count_out}}.",
+              "scope": "opera fra DUE liste (A=from_step, B=with_step) su on_keys; delta = dedup monitor.",
+              "not": "mono-lista -> filter_entries; scalari -> compute_entries."
+            }
+          },
+          "executor": "filter_lists"
+        }
+      ]
+    },
+    "filter/texts": {
+      "source_executors": [
+        "filter_texts_lines"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/filter_texts_lines/manifest.toml",
+          "source_sha256": "03083b7f139af40d0d7815ee8f46a5803b682b3562d203f1a751d30df426d421",
+          "languages": {
+            "en": {
+              "full": "SCOPO: filter text lines by pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: read files (-> read_files); search directories (-> find). OUT: lines=[{line,line_number?}].",
+              "scope": "filter text lines by pattern.",
+              "not": "read files (-> read_files); search directories (-> find)."
+            },
+            "it": {
+              "full": "SCOPO: filtra righe di testo per pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: leggere file (-> read_files); cercare in directory (-> find). OUT: lines=[{line,line_number?}].",
+              "scope": "filtra righe di testo per pattern.",
+              "not": "leggere file (-> read_files); cercare in directory (-> find)."
+            }
+          },
+          "executor": "filter_texts_lines"
+        }
+      ]
+    },
+    "find/contacts": {
+      "source_executors": [
+        "find_contacts"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_contacts/manifest.toml",
+          "source_sha256": "8074478cc1142830b6f165c11d25a26eaed4ad174f6f5b08e9e1e8ef9f65ecb0",
+          "languages": {
+            "en": {
+              "full": "SCOPO: search contacts in an external address book by name/email/phone. PATTERN: find_contacts(query=\"name\"). NON: read one contact (-> read_contacts); identity profiles (-> read_persons). OUT: entries=[{id, name, emails, phones}].",
+              "scope": "search contacts in an external address book by name/email/phone.",
+              "not": "read one contact (-> read_contacts); identity profiles (-> read_persons)."
+            },
+            "it": {
+              "full": "SCOPO: cerca contatti nella rubrica esterna per nome/email/telefono. PATTERN: find_contacts(query=\"nome\"). NON: leggere un singolo contatto (-> read_contacts); profili identitari (-> read_persons). OUT: entries=[{id, name, emails, phones}].",
+              "scope": "cerca contatti nella rubrica esterna per nome/email/telefono.",
+              "not": "leggere un singolo contatto (-> read_contacts); profili identitari (-> read_persons)."
+            }
+          },
+          "executor": "find_contacts"
+        }
+      ]
+    },
+    "find/credentials": {
+      "source_executors": [
+        "find_credentials"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_credentials/manifest.toml",
+          "source_sha256": "536efce641dffd10a1db3e55b86b0bdb934f01d5f37ff4503c915b063e6cd045",
+          "languages": {
+            "en": {
+              "full": "SCOPO: lists configured accounts and services (mail, api, cloud): metadata-only credentials. PATTERN: find_credentials(query=\"google\", top_k=10). NON: reading account mail (-> read_messages); secret values (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}.",
+              "scope": "lists configured accounts and services (mail, api, cloud): metadata-only credentials.",
+              "not": "reading account mail (-> read_messages); secret values (-> set_credentials)."
+            },
+            "it": {
+              "full": "SCOPO: elenca account e servizi configurati (mail, api, cloud): credenziali metadata-only. PATTERN: find_credentials(query=\"google\", top_k=10). NON: leggere le mail (-> read_messages); valori segreti (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}.",
+              "scope": "elenca account e servizi configurati (mail, api, cloud): credenziali metadata-only.",
+              "not": "leggere le mail (-> read_messages); valori segreti (-> set_credentials)."
+            }
+          },
+          "executor": "find_credentials"
+        }
+      ]
+    },
+    "find/dirs": {
+      "source_executors": [
+        "find_dirs"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_dirs/manifest.toml",
+          "source_sha256": "9074831425d010550b9a3595642776298e85addd1a0f3360ec219413bc88aaa6",
+          "languages": {
+            "en": {
+              "full": "SCOPO: find directories and compute aggregate metadata with a parallel recursive walk. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: list files (-> find_files); directory contents (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime}], whole-set counts, and source completeness.",
+              "scope": "find directories and compute aggregate metadata with a parallel recursive walk.",
+              "not": "list files (-> find_files); directory contents (-> list_dirs)."
+            },
+            "it": {
+              "full": "SCOPO: trova directory e calcola metadati aggregati con visita ricorsiva parallela. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: elencare file (-> find_files); contenuti dir (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime}], conteggi complessivi e completezza della sorgente.",
+              "scope": "trova directory e calcola metadati aggregati con visita ricorsiva parallela.",
+              "not": "elencare file (-> find_files); contenuti dir (-> list_dirs)."
+            }
+          },
+          "executor": "find_dirs"
+        }
+      ]
+    },
+    "find/events": {
+      "source_executors": [
+        "find_events_empty"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_events_empty/manifest.toml",
+          "source_sha256": "2e5a8bbcd903f459489b2adf4a75fb118dd6ca29a9e3cf28a6762bc9f0fa0fcf",
+          "languages": {
+            "en": {
+              "full": "SCOPO: find free slots in the calendar. PATTERN: find_events_empty(time_windows=['next-week'], size='1hour'). NON: read events (-> read_events); create events (-> create_events). OUT: entries=[{kind:'free_slot', start, end, duration_min, calendar_id}].",
+              "scope": "find free slots in the calendar.",
+              "not": "read events (-> read_events); create events (-> create_events)."
+            },
+            "it": {
+              "full": "SCOPO: trova slot liberi nel calendario. PATTERN: find_events_empty(time_windows=['next-week'], size='1hour'). NON: leggere eventi (-> read_events); creare eventi (-> create_events). OUT: entries=[{kind:'free_slot', start, end, duration_min, calendar_id}].",
+              "scope": "trova slot liberi nel calendario.",
+              "not": "leggere eventi (-> read_events); creare eventi (-> create_events)."
+            }
+          },
+          "executor": "find_events_empty"
+        }
+      ]
+    },
+    "find/files": {
+      "source_executors": [
+        "find_files"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_files/manifest.toml",
+          "source_sha256": "62c61b8d17390529ff59f05b0dea438f7a78475c410ae600b55379e056114b03",
+          "languages": {
+            "en": {
+              "full": "SCOPO: search files by pattern with a parallel recursive walk. PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]). NON: list_dirs+filter_entries; get_files (ID lookup); exact duplicate search (-> find_files_hash). OUT: entries=[{path,name,type,mime,kind,size,mtime}], counts, and source completeness.",
+              "scope": "search files by pattern with a parallel recursive walk.",
+              "not": "list_dirs+filter_entries; get_files (ID lookup); exact duplicate search (-> find_files_hash)."
+            },
+            "it": {
+              "full": "SCOPO: cerca file per pattern con visita ricorsiva parallela. PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]). NON: list_dirs+filter_entries; get_files (lookup ID); ricerca di duplicati esatti (-> find_files_hash). OUT: entries=[{path,name,type,mime,kind,size,mtime}], conteggi e completezza della sorgente.",
+              "scope": "cerca file per pattern con visita ricorsiva parallela.",
+              "not": "list_dirs+filter_entries; get_files (lookup ID); ricerca di duplicati esatti (-> find_files_hash)."
+            }
+          },
+          "executor": "find_files"
+        }
+      ]
+    },
+    "find/images": {
+      "source_executors": [
+        "find_images_indices",
+        "find_images_web"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_images_indices/manifest.toml",
+          "source_sha256": "628c8801220c52f1e7dbec1347f49ac05d1e57a19ea07e326d7fa049e6b1a9ce",
+          "languages": {
+            "en": {
+              "full": "SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text=\"sea\"); name=\"name\"; min_face_pixels=40000. NON: EXIF of known paths -> get_files; files of a folder by path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}.",
+              "scope": "search indexed photos by content, person or face.",
+              "not": "EXIF of known paths -> get_files; files of a folder by path -> find_files."
+            },
+            "it": {
+              "full": "SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text=\"mare\"); name=\"nome\"; min_face_pixels=40000. NON: EXIF di path noti -> get_files; file di una cartella per path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}.",
+              "scope": "cerca foto indicizzate per contenuto, persona o volto.",
+              "not": "EXIF di path noti -> get_files; file di una cartella per path -> find_files."
+            }
+          },
+          "executor": "find_images_indices"
+        },
+        {
+          "source": "executors/find_images_web/manifest.toml",
+          "source_sha256": "4d98d5c21633489405cd688f3259b759c5af6b34fe82d98b3c3f7bd9313dd66c",
+          "languages": {
+            "en": {
+              "full": "SCOPO: finds web images from text or an image. Uses deterministic signals; local semantic ranking runs only without lexical signals. PATTERN: queries=[\"subject\"] or paths=[\"/img.jpg\"]. NON: use local indexes. OUT: entries + attachments.",
+              "scope": "finds web images from text or an image. Uses deterministic signals; local semantic ranking runs only without lexical signals.",
+              "not": "use local indexes."
+            },
+            "it": {
+              "full": "SCOPO: cerca immagini sul web da testo o immagine. Usa segnali deterministici; il ranking semantico locale interviene solo senza segnali lessicali. PATTERN: queries=[\"soggetto\"] oppure paths=[\"/img.jpg\"]. NON: usare indici locali. OUT: entries + attachments.",
+              "scope": "cerca immagini sul web da testo o immagine. Usa segnali deterministici; il ranking semantico locale interviene solo senza segnali lessicali.",
+              "not": "usare indici locali."
+            }
+          },
+          "executor": "find_images_web"
+        }
+      ]
+    },
+    "find/issues": {
+      "source_executors": [
+        "find_issues_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "find_issues_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: elenca le issue (segnalazioni/bug/ticket) di un repo GitHub. PATTERN: find_issues_github(repo=\"owner/name\", state=\"open\"). NON: usare per pull request (-> find_pulls_github); omettere repo. OUT: entries=[{number,title,state,user,...}].",
+              "scope": "elenca le issue (segnalazioni/bug/ticket) di un repo GitHub.",
+              "not": "usare per pull request (-> find_pulls_github); omettere repo."
+            }
+          }
+        }
+      ]
+    },
+    "find/packages": {
+      "source_executors": [
+        "find_packages"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_packages/manifest.toml",
+          "source_sha256": "420a5e7fee768162992c176ea9671b1642645457828eec3c1ac3ddbc846f56eb",
+          "languages": {
+            "en": {
+              "full": "SCOPO: finds an executable command in the system PATH. PATTERN: find_packages(package_name='ffmpeg'). NON: querying a package-manager database; reading files (-> read_files). OUT: entries=[{package_name,path}], empty if not found.",
+              "scope": "finds an executable command in the system PATH.",
+              "not": "querying a package-manager database; reading files (-> read_files)."
+            },
+            "it": {
+              "full": "SCOPO: cerca un comando eseguibile nel PATH del sistema. PATTERN: find_packages(package_name='ffmpeg'). NON: interrogare il database del package manager; leggere file (-> read_files). OUT: entries=[{package_name,path}], lista vuota se non trovato.",
+              "scope": "cerca un comando eseguibile nel PATH del sistema.",
+              "not": "interrogare il database del package manager; leggere file (-> read_files)."
+            }
+          },
+          "executor": "find_packages"
+        }
+      ]
+    },
+    "find/persons": {
+      "source_executors": [
+        "find_persons_indices"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_persons_indices/manifest.toml",
+          "source_sha256": "dc179b306821556a2e7fd5102e174ef1c35bfde634e41b58a28687770df51e7c",
+          "languages": {
+            "en": {
+              "full": "SCOPO: search photos of a registered person. PATTERN: find_persons_indices(name=\"name\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); direct lookup (-> get_persons). OUT: entries=[{score, match_type}].",
+              "scope": "search photos of a registered person.",
+              "not": "enroll (-> set_persons); direct lookup (-> get_persons)."
+            },
+            "it": {
+              "full": "SCOPO: cerca foto di persona registrata. PATTERN: find_persons_indices(name=\"nome\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); lookup diretto (-> get_persons). OUT: entries=[{score, match_type}].",
+              "scope": "cerca foto di persona registrata.",
+              "not": "enroll (-> set_persons); lookup diretto (-> get_persons)."
+            }
+          },
+          "executor": "find_persons_indices"
+        }
+      ]
+    },
+    "find/places": {
+      "source_executors": [
+        "find_places"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_places/manifest.toml",
+          "source_sha256": "49d04d8ca1eed38ba60b808cf36bb7187293f34f3f623482aebf83aa934e7f96",
+          "languages": {
+            "en": {
+              "full": "SCOPO: find real-world places by text query or coordinates. PATTERN: find_places(queries=[\"...\"], near={lat:0,lon:0}). NON: read files (-> read_files); get data by known IDs (-> get_places). OUT: entries=[{lat,lon,address,slug,distance_km}].",
+              "scope": "find real-world places by text query or coordinates.",
+              "not": "read files (-> read_files); get data by known IDs (-> get_places)."
+            },
+            "it": {
+              "full": "SCOPO: cerca luoghi reali per query testuale o coordinate. PATTERN: find_places(queries=[\"...\"], near={lat:0,lon:0}). NON: leggere file (-> read_files); ottenere dati per ID noti (-> get_places). OUT: entries=[{lat,lon,address,slug,distance_km}].",
+              "scope": "cerca luoghi reali per query testuale o coordinate.",
+              "not": "leggere file (-> read_files); ottenere dati per ID noti (-> get_places)."
+            }
+          },
+          "executor": "find_places"
+        }
+      ]
+    },
+    "find/pulls": {
+      "source_executors": [
+        "find_pulls_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "find_pulls_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: elenca le pull request (richieste di merge) di un repo GitHub. PATTERN: find_pulls_github(repo=\"owner/name\", state=\"open\"). NON: usare per issue (-> find_issues_github); omettere repo. OUT: entries=[{number,title,state,...}].",
+              "scope": "elenca le pull request (richieste di merge) di un repo GitHub.",
+              "not": "usare per issue (-> find_issues_github); omettere repo."
+            }
+          }
+        }
+      ]
+    },
+    "find/urls": {
+      "source_executors": [
+        "find_urls"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/find_urls/manifest.toml",
+          "source_sha256": "b74325d9a50357bfdb20df3b04a02d01744f0277f5bbec14dfccacdb3c852a24",
+          "languages": {
+            "en": {
+              "full": "SCOPO: find and discover URLs and documents on the web. PATTERN: find_urls(search_query=\"...\") or find_urls(seed_urls=[\"...\"], topic=[...]). NON: get/read on known URLs. OUT: entries=[{url,title,snippet,score,depth,content_type,fetched_at,lastmod,is_document,doc_ext,parent_url}], discovered_documents, discovery_strategy, metadata, robots_skipped, truncated.",
+              "scope": "find and discover URLs and documents on the web.",
+              "not": "get/read on known URLs."
+            },
+            "it": {
+              "full": "SCOPO: cerca e scopri URL e documenti sul web. PATTERN: find_urls(search_query=\"...\") o find_urls(seed_urls=[\"...\"], topic=[...]). NON: get/read su URL noti. OUT: entries=[{url,title,snippet,score,depth,content_type,fetched_at,lastmod,is_document,doc_ext,parent_url}], discovered_documents, discovery_strategy, metadata, robots_skipped, truncated.",
+              "scope": "cerca e scopri URL e documenti sul web.",
+              "not": "get/read su URL noti."
+            }
+          },
+          "executor": "find_urls"
+        }
+      ]
+    },
+    "get/files": {
+      "source_executors": [
+        "get_files"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_files/manifest.toml",
+          "source_sha256": "6135181b8cc3fef5797cd43dc9a06a041a7fd95f752052cfb928f88ecb4f67a5",
+          "languages": {
+            "en": {
+              "full": "SCOPO: gets size, dates, and EXIF for KNOWN files. PATTERN: get_files(paths=[\"/tmp/a.jpg\"], fields=['size','dates.semantic']). NON: search by subject -> find_images_indices; by pattern -> find_files. OUT: entries with size_bytes, dates, GPS, and camera.",
+              "scope": "gets size, dates, and EXIF for KNOWN files.",
+              "not": "search by subject -> find_images_indices; by pattern -> find_files."
+            },
+            "it": {
+              "full": "SCOPO: ottiene dimensione, date ed EXIF di file NOTI. PATTERN: get_files(paths=[\"/tmp/a.jpg\"], fields=['size','dates.semantic']). NON: cercare per soggetto -> find_images_indices; per pattern -> find_files. OUT: entries con size_bytes, dates, gps e camera.",
+              "scope": "ottiene dimensione, date ed EXIF di file NOTI.",
+              "not": "cercare per soggetto -> find_images_indices; per pattern -> find_files."
+            }
+          },
+          "executor": "get_files"
+        }
+      ]
+    },
+    "get/images": {
+      "source_executors": [
+        "get_images_indices"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_images_indices/manifest.toml",
+          "source_sha256": "d95d06c979bc559b5e74f1b7433e7be2fa664985077ddff358f0f9105ebac909",
+          "languages": {
+            "en": {
+              "full": "SCOPO: gets unified image-index status for one corpus or all corpora. PATTERN: get_images_indices(); or base_path=\"/img\". NON: build indexes (-> create_images_indices); search photos (-> find_images_indices). OUT: entries=[{idx='unified',base_path,exists,n_entries,last_refresh_at,size_mb,model,dim}].",
+              "scope": "gets unified image-index status for one corpus or all corpora.",
+              "not": "build indexes (-> create_images_indices); search photos (-> find_images_indices)."
+            },
+            "it": {
+              "full": "SCOPO: ottiene lo stato dell'indice immagini unificato per un corpus o per tutti. PATTERN: get_images_indices(); oppure base_path=\"/img\". NON: costruire indici (-> create_images_indices); cercare foto (-> find_images_indices). OUT: entries=[{idx='unified',base_path,exists,n_entries,last_refresh_at,size_mb,model,dim}].",
+              "scope": "ottiene lo stato dell'indice immagini unificato per un corpus o per tutti.",
+              "not": "costruire indici (-> create_images_indices); cercare foto (-> find_images_indices)."
+            }
+          },
+          "executor": "get_images_indices"
+        }
+      ]
+    },
+    "get/inputs": {
+      "source_executors": [
+        "get_inputs"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_inputs/manifest.toml",
+          "source_sha256": "0e843c5e3dca3979ebb2a7d64fd18cfb9312c10a6267b24825a310fc442d4b77",
+          "languages": {
+            "en": {
+              "full": "SCOPO: gets structured inputs (dialog/form). PATTERN: get_inputs(title='...', dialog=[{var:'x',prompt:'...',schema:{kind:'text'}}]). NON: deriving observable data (-> find_*/read_*); executing commands (-> admin). OUT: {ok,decision,dialog_id,step_index,step_total,values,expandable_caps,final_message_hint}.",
+              "scope": "gets structured inputs (dialog/form).",
+              "not": "deriving observable data (-> find_*/read_*); executing commands (-> admin)."
+            },
+            "it": {
+              "full": "SCOPO: ottiene input strutturati (dialogo/form). PATTERN: get_inputs(title='...', dialog=[{var:'x',prompt:'...',schema:{kind:'text'}}]). NON: derivare dati osservabili (-> find_*/read_*); eseguire comandi (-> admin). OUT: {ok,decision,dialog_id,step_index,step_total,values,expandable_caps,final_message_hint}.",
+              "scope": "ottiene input strutturati (dialogo/form).",
+              "not": "derivare dati osservabili (-> find_*/read_*); eseguire comandi (-> admin)."
+            }
+          },
+          "executor": "get_inputs"
+        }
+      ]
+    },
+    "get/location": {
+      "source_executors": [
+        "get_location"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_location/manifest.toml",
+          "source_sha256": "2f83dab988960d2d7c65e584f636a6d1ffee4f710cd775da3938dd1722ad54f3",
+          "languages": {
+            "en": {
+              "full": "SCOPO: tells where the current actor is. PATTERN: get_location(). NON: geocode a place name -> find_places; look for nearby places -> get_places; read the history. OUT: {location:{lat,lon,source,accuracy_m},age_seconds?,actor}. Tries in order shared, configured, WiFi and IP; `source` states which one answered, and `ip` is worth a city, not a position.",
+              "scope": "tells where the current actor is.",
+              "not": "geocode a place name -> find_places; look for nearby places -> get_places; read the history."
+            },
+            "it": {
+              "full": "SCOPO: dice dove si trova l'attore corrente. PATTERN: get_location(). NON: geocodificare un nome di luogo -> find_places; cercare luoghi vicini -> get_places; leggere la cronologia. OUT: {location:{lat,lon,source,accuracy_m},age_seconds?,actor}. Prova in ordine posizione condivisa, configurata, WiFi e IP; `source` dice quale ha risposto e `ip` vale una citta', non una posizione.",
+              "scope": "dice dove si trova l'attore corrente.",
+              "not": "geocodificare un nome di luogo -> find_places; cercare luoghi vicini -> get_places; leggere la cronologia."
+            }
+          },
+          "executor": "get_location"
+        }
+      ]
+    },
+    "get/now": {
+      "source_executors": [
+        "get_now"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_now/manifest.toml",
+          "source_sha256": "a81a6812cb6f6cf7d2d6aa83452812c21573c542932c55fd26986d4ad5216839",
+          "languages": {
+            "en": {
+              "full": "SCOPO: gets the current date and time in the configured timezone or an explicit IANA zone. PATTERN: get_now() or get_now(timezone=\"Europe/Rome\"). NON: read calendar events or infer a timezone from a place. OUT: {content,now,time,date,metadata} with typed failure for invalid zones.",
+              "scope": "gets the current date and time in the configured timezone or an explicit IANA zone.",
+              "not": "read calendar events or infer a timezone from a place."
+            },
+            "it": {
+              "full": "SCOPO: ottiene data e ora correnti nel fuso configurato o in un fuso IANA esplicito. PATTERN: get_now() oppure get_now(timezone=\"Europe/Rome\"). NON: leggere eventi calendario o stimare un fuso da un luogo. OUT: {content,now,time,date,metadata} con errore tipizzato sui fusi invalidi.",
+              "scope": "ottiene data e ora correnti nel fuso configurato o in un fuso IANA esplicito.",
+              "not": "leggere eventi calendario o stimare un fuso da un luogo."
+            }
+          },
+          "executor": "get_now"
+        }
+      ]
+    },
+    "get/persons": {
+      "source_executors": [
+        "get_persons"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_persons/manifest.toml",
+          "source_sha256": "f281f353f7a10e2187933d4635140e43468e2abc5fbf297bd533b64fbe472131",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads the biometric persons registry. PATTERN: get_persons(name=\"name\"); no args lists everyone. NON: profiles -> read_persons; photos -> find_persons_indices; enrollment -> set_persons. OUT: {ok,entries,n_entries,status?}.",
+              "scope": "reads the biometric persons registry.",
+              "not": "profiles -> read_persons; photos -> find_persons_indices; enrollment -> set_persons."
+            },
+            "it": {
+              "full": "SCOPO: legge il registro biometrico persone. PATTERN: get_persons(name=\"nome\"); senza arg elenca tutti. NON: profili -> read_persons; foto -> find_persons_indices; enrollment -> set_persons. OUT: {ok,entries,n_entries,status?}.",
+              "scope": "legge il registro biometrico persone.",
+              "not": "profili -> read_persons; foto -> find_persons_indices; enrollment -> set_persons."
+            }
+          },
+          "executor": "get_persons"
+        }
+      ]
+    },
+    "get/places": {
+      "source_executors": [
+        "get_places"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_places/manifest.toml",
+          "source_sha256": "1f46f060ce02e091ace9006cc6de9a355d76aeca52df8074435396aa360295d1",
+          "languages": {
+            "en": {
+              "full": "SCOPO: gets place name from GPS coordinates. PATTERN: get_places(coords=[{lat,lon}]) or from_step=N. NON: text search (-> find_places). OUT: entries=[{place}].",
+              "scope": "gets place name from GPS coordinates.",
+              "not": "text search (-> find_places)."
+            },
+            "it": {
+              "full": "SCOPO: ottiene il nome del luogo da coordinate GPS. PATTERN: get_places(coords=[{lat,lon}]) o from_step=N. NON: cerca per testo (-> find_places). OUT: entries=[{place}].",
+              "scope": "ottiene il nome del luogo da coordinate GPS.",
+              "not": "cerca per testo (-> find_places)."
+            }
+          },
+          "executor": "get_places"
+        }
+      ]
+    },
+    "get/processes": {
+      "source_executors": [
+        "get_processes"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_processes/manifest.toml",
+          "source_sha256": "fc0424b3f35a25d19f982103c11a07582aea8feda7c4751ea1e71d8a8f5ed71d",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads processes and system health. PATTERN: get_processes(top=5, include_health=true). NON: scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location). OUT: attested entries and health.",
+              "scope": "reads processes and system health.",
+              "not": "scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location)."
+            },
+            "it": {
+              "full": "SCOPO: legge processi e salute del sistema. PATTERN: get_processes(top=5, include_health=true). NON: task schedulati (-> list_tasks), metadati file (-> get_files), ora o posizione (-> get_now/get_location). OUT: entries e health attestato.",
+              "scope": "legge processi e salute del sistema.",
+              "not": "task schedulati (-> list_tasks), metadati file (-> get_files), ora o posizione (-> get_now/get_location)."
+            }
+          },
+          "executor": "get_processes"
+        }
+      ]
+    },
+    "get/proposals": {
+      "source_executors": [
+        "get_proposals"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_proposals/manifest.toml",
+          "source_sha256": "4562d4173250280cdb8baa525df255e04cb44eb79c1dd7922da7ec0cf1a39dcf",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads introvertive proposals, including historical categories. PATTERN: get_proposals(kind=\"all\"). NON: search data (-> find); filter entries already read (-> filter). OUT: entries=[{kind,audit_ts,payload}].",
+              "scope": "reads introvertive proposals, including historical categories.",
+              "not": "search data (-> find); filter entries already read (-> filter)."
+            },
+            "it": {
+              "full": "SCOPO: legge proposte introvertive, incluse categorie storiche. PATTERN: get_proposals(kind=\"all\"). NON: cercare dati (-> find); filtrare entries già lette (-> filter). OUT: entries=[{kind,audit_ts,payload}].",
+              "scope": "legge proposte introvertive, incluse categorie storiche.",
+              "not": "cercare dati (-> find); filtrare entries già lette (-> filter)."
+            }
+          },
+          "executor": "get_proposals"
+        }
+      ]
+    },
+    "get/signatures": {
+      "source_executors": [
+        "get_signatures"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_signatures/manifest.toml",
+          "source_sha256": "f280d14eb7e0f903ad49e349695662bd57f513aebd4b0dfa36635fbe45ce3605",
+          "languages": {
+            "en": {
+              "full": "SCOPO: query safety-signature lists and status. PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: compute signatures (-> compute_signatures); modify curation (-> set_signatures). OUT: single lookups return flat fields (`negate`/`allow`/`matched_*`); `graylist`, `all`, and `promotion_candidates` return `entries`; `seed_diff` returns `diff` and `totals`.",
+              "scope": "query safety-signature lists and status.",
+              "not": "compute signatures (-> compute_signatures); modify curation (-> set_signatures)."
+            },
+            "it": {
+              "full": "SCOPO: consulta liste e stato delle signature di sicurezza. PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: calcolare signature (-> compute_signatures); modificare curatela (-> set_signatures). OUT: i lookup singoli restituiscono campi flat (`negate`/`allow`/`matched_*`); `graylist`, `all` e `promotion_candidates` restituiscono `entries`; `seed_diff` restituisce `diff` e `totals`.",
+              "scope": "consulta liste e stato delle signature di sicurezza.",
+              "not": "calcolare signature (-> compute_signatures); modificare curatela (-> set_signatures)."
+            }
+          },
+          "executor": "get_signatures"
+        }
+      ]
+    },
+    "get/urls": {
+      "source_executors": [
+        "get_urls"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_urls/manifest.toml",
+          "source_sha256": "dc0386b1a7b49895134abfcbe50d852265de5118cdef5f0a1c6864f209a0a450",
+          "languages": {
+            "en": {
+              "full": "SCOPO: gets data from HTTP/HTTPS URLs. PATTERN: get_urls(url=\"http://...\"). NON: find URLs (-> find_urls); read HTML (-> read_urls_html). OUT: entries=[...].",
+              "scope": "gets data from HTTP/HTTPS URLs.",
+              "not": "find URLs (-> find_urls); read HTML (-> read_urls_html)."
+            },
+            "it": {
+              "full": "SCOPO: ottiene dati da URL HTTP/HTTPS. PATTERN: get_urls(url=\"http://...\"). NON: cercare URL (-> find_urls); leggere HTML (-> read_urls_html). OUT: entries=[...].",
+              "scope": "ottiene dati da URL HTTP/HTTPS.",
+              "not": "cercare URL (-> find_urls); leggere HTML (-> read_urls_html)."
+            }
+          },
+          "executor": "get_urls"
+        }
+      ]
+    },
+    "group/entries": {
+      "source_executors": [
+        "group_entries"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/group_entries/manifest.toml",
+          "source_sha256": "13f83e113dab9b17ee7502ae565644f49ec414c6e4ef37145c26f830de68f0d2",
+          "languages": {
+            "en": {
+              "full": "SCOPO: merges and deduplicates entries from multiple lists. PATTERN: group_entries(entries_lists=[...], dedup_key='url'). NON: group by value or aggregate (-> compute_entries); filter (-> filter_entries). OUT: entries=[...], total_in, dedupes.",
+              "scope": "merges and deduplicates entries from multiple lists.",
+              "not": "group by value or aggregate (-> compute_entries); filter (-> filter_entries)."
+            },
+            "it": {
+              "full": "SCOPO: unisce e deduplica entries da più liste. PATTERN: group_entries(entries_lists=[...], dedup_key='url'). NON: raggruppare per valore o aggregare (-> compute_entries); filtrare (-> filter_entries). OUT: entries=[...], total_in, dedupes.",
+              "scope": "unisce e deduplica entries da più liste.",
+              "not": "raggruppare per valore o aggregare (-> compute_entries); filtrare (-> filter_entries)."
+            }
+          },
+          "executor": "group_entries"
+        }
+      ]
+    },
+    "list/dirs": {
+      "source_executors": [
+        "list_dirs"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/list_dirs/manifest.toml",
+          "source_sha256": "c183b2fb279e5cd861ddee6219464f951d3ee2d4feccb092187919bde040e4af",
+          "languages": {
+            "en": {
+              "full": "SCOPO: lists directories and files; recursive mode walks subdirectories in parallel. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: create (create_dirs), delete (delete_dirs), search patterns (find_dirs). OUT: sorted entries and complete count.",
+              "scope": "lists directories and files; recursive mode walks subdirectories in parallel.",
+              "not": "create (create_dirs), delete (delete_dirs), search patterns (find_dirs)."
+            },
+            "it": {
+              "full": "SCOPO: elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: creare (create_dirs), cancellare (delete_dirs), cercare pattern (find_dirs). OUT: elementi ordinati e conteggio completo.",
+              "scope": "elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo.",
+              "not": "creare (create_dirs), cancellare (delete_dirs), cercare pattern (find_dirs)."
+            }
+          },
+          "executor": "list_dirs"
+        }
+      ]
+    },
+    "list/skills": {
+      "source_executors": [
+        "list_skills"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "list_skills",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Elenca le SKILL di Metnos (gruppi di capacità attivabili: foto, mail, web, geo, calendario, github, frontier + core) con stato ATTIVA/DISATTIVA/DORMIENTE e prerequisiti. USA per: 'che skill ho', 'quali capacità sono attive', 'lista skill', 'cosa sa fare Metnos', 'quali moduli posso abilitare'. NON CONFONDERE CON: `list_tasks` (task schedulati), `get_processes` (processi sistema)."
+            }
+          }
+        }
+      ]
+    },
+    "list/tasks": {
+      "source_executors": [
+        "list_tasks"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "list_tasks",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Elenca i TASK RICORRENTI / PROMEMORIA / TIMER schedulati (NON processi di sistema, NON eventi calendar). USA per: 'che task ho schedulato', 'mostrami i miei promemoria', 'cosa ho pianificato', 'quali timer ho attivi', 'lista task ricorrenti', 'cosa fa Metnos automaticamente'. NON CONFONDERE CON: `get_processes` (processi sistema), `read_events` (eventi calendar/appuntamenti)."
+            }
+          }
+        }
+      ]
+    },
+    "login/session": {
+      "source_executors": [
+        "login_session"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "login_session",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Esegue il login al form web di un dominio gia' registrato (credentials.store(domain, payload)) e salva il cookie session in '~/.config/metnos/cookies/<domain>.txt' (formato Mozilla, mode 0600). Se un cookie session valido (non scaduto, name in `session_cookie_names`) e' gia' cached e force=false, ritorna immediato con cached:true. Altrimenti: GET login_url per estrarre csrf token (cerca <input> il cui name matcha 'csrf|csrf_token|_token|authenticity_token'), POST con form_data + csrf, verifica successo via (a) presenza session cookie nel jar, (b) status 302/303, (c) assenza di campo password nella response page. Le credenziali sono caricate via `runtime.credentials` (cifrate AES-128/Fernet con chiave derivata HKDF-SHA256 dalla admin.key locale; lo schema payload e' {login_url, method, form_data:{username, password,...}, session_cookie_names}). Esempio uso: login_session(domain='web.spaggiari.eu') -> {ok:true, cached:false, session_cookies:['JSESSIONID'], cookie_file:'~/.config/metnos/cookies/web.spaggiari.eu.txt'}; subito dopo find_urls/read_urls_html possono passare auth_cookies_file=cookie_file. Capability: 'auth.password_storage' e' separata da 'network.write' per audit. Salvataggio prima volta delle credenziali fuori dal flusso planner (script/cli a parte)."
+            }
+          }
+        }
+      ]
+    },
+    "move/files": {
+      "source_executors": [
+        "move_files"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/move_files/manifest.toml",
+          "source_sha256": "691920d882e1a1aa77c0095cd098044a96a2b304f397c00923791977f2d2a35c",
+          "languages": {
+            "en": {
+              "full": "SCOPO: move or rename files in batch. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convert formats (-> change_files_format); compress (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best effort.",
+              "scope": "move or rename files in batch.",
+              "not": "convert formats (-> change_files_format); compress (-> compress_files)."
+            },
+            "it": {
+              "full": "SCOPO: sposta o rinomina file in batch. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convertire formati (-> change_files_format); comprimere (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort.",
+              "scope": "sposta o rinomina file in batch.",
+              "not": "convertire formati (-> change_files_format); comprimere (-> compress_files)."
+            }
+          },
+          "executor": "move_files"
+        }
+      ]
+    },
+    "move/messages": {
+      "source_executors": [
+        "move_messages"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/move_messages/manifest.toml",
+          "source_sha256": "590e59705c35429c293c5d8d8f994ff0fdd2b9468c3760f5f2630959c52ffaa9",
+          "languages": {
+            "en": {
+              "full": "SCOPO: move messages between folders or labels. PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"). For direct IMAP IDs provide account and src_folder. NON: change labels only (-> set_messages) or delete. OUT: results=[...].",
+              "scope": "move messages between folders or labels.",
+              "not": "change labels only (-> set_messages) or delete."
+            },
+            "it": {
+              "full": "SCOPO: sposta messaggi tra cartelle o etichette. PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"). Per ID IMAP diretti fornisci account e src_folder. NON: cambiare solo etichette (-> set_messages) o cancellare. OUT: results=[...].",
+              "scope": "sposta messaggi tra cartelle o etichette.",
+              "not": "cambiare solo etichette (-> set_messages) o cancellare."
+            }
+          },
+          "executor": "move_messages"
+        }
+      ]
+    },
+    "read/contacts": {
+      "source_executors": [
+        "read_contacts"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/read_contacts/manifest.toml",
+          "source_sha256": "bf04cffa141babfff05c46c6737d7d2bed3377c3578991bd0d16444bb5b65346",
+          "languages": {
+            "en": {
+              "full": "SCOPO: read one contact from external address book. PATTERN: read_contacts(contact_id=\"luca-bianchi\"). NON: confuse with read_persons (system users). OUT: entries=[{name,emails,phones}].",
+              "scope": "read one contact from external address book.",
+              "not": "confuse with read_persons (system users)."
+            },
+            "it": {
+              "full": "SCOPO: legge un contatto dalla rubrica esterna. PATTERN: read_contacts(contact_id=\"luca-bianchi\"). NON: confondere con read_persons (utenti sistema). OUT: entries=[{name,emails,phones}].",
+              "scope": "legge un contatto dalla rubrica esterna.",
+              "not": "confondere con read_persons (utenti sistema)."
+            }
+          },
+          "executor": "read_contacts"
+        }
+      ]
+    },
+    "read/events": {
+      "source_executors": [
+        "read_events"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/read_events/manifest.toml",
+          "source_sha256": "d42b55134863d853f29ff023d340a7122873492f269e338d2b76337e4623518d",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads calendar events. PATTERN: read_events(time_window='today', top_k=10). NON: read mail or create events (-> read_messages, create_events). OUT: entries=[{kind:'calendar_event', id, start, end, summary, location}].",
+              "scope": "reads calendar events.",
+              "not": "read mail or create events (-> read_messages, create_events)."
+            },
+            "it": {
+              "full": "SCOPO: legge eventi calendario. PATTERN: read_events(time_window='today', top_k=10). NON: leggere mail o creare eventi (-> read_messages, create_events). OUT: entries=[{kind:'calendar_event', id, start, end, summary, location}].",
+              "scope": "legge eventi calendario.",
+              "not": "leggere mail o creare eventi (-> read_messages, create_events)."
+            }
+          },
+          "executor": "read_events"
+        }
+      ]
+    },
+    "read/files": {
+      "source_executors": [
+        "read_files",
+        "read_files_csv",
+        "read_files_doc",
+        "read_files_ocr",
+        "read_files_spreadsheet",
+        "read_files_xlsx"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/read_files/manifest.toml",
+          "source_sha256": "829a324864a4cb0c7346cabe8c424d3b1ec43be49a9bc73a78bb3b9cf130d39d",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures. PATTERN: read_files(from_step=N, parse=\"auto\", deduplicate_content=true). NON: one sheet -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr. OUT: entries with text, readability, sha256, source; duplicates.",
+              "scope": "reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures.",
+              "not": "one sheet -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr."
+            },
+            "it": {
+              "full": "SCOPO: legge PDF/DOCX/XLSX/CSV misti e calcola firme hash SHA-256. PATTERN: read_files(from_step=N, parse=\"auto\", deduplicate_content=true). NON: singolo foglio -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr. OUT: entries con testo, leggibilità, sha256 e origine; duplicates.",
+              "scope": "legge PDF/DOCX/XLSX/CSV misti e calcola firme hash SHA-256.",
+              "not": "singolo foglio -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr."
+            }
+          },
+          "executor": "read_files"
+        },
+        {
+          "source": "executors/read_files_csv/manifest.toml",
+          "source_sha256": "62376572178b40510b91c87140f537cd910d1024a2ca392c59c55cefb6b74020",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads local CSV files (vectorial §2.1). PATTERN: read_files_csv(paths=[\"a.csv\"]). NON: use for Excel (-> read_files_xlsx) or images (-> read_files_ocr). OUT: entries=[...]",
+              "scope": "reads local CSV files (vectorial §2.1).",
+              "not": "use for Excel (-> read_files_xlsx) or images (-> read_files_ocr)."
+            },
+            "it": {
+              "full": "SCOPO: legge file CSV locali (vettoriale §2.1). PATTERN: read_files_csv(paths=[\"a.csv\"]). NON: usare per Excel (-> read_files_xlsx) o immagini (-> read_files_ocr). OUT: entries=[...]",
+              "scope": "legge file CSV locali (vettoriale §2.1).",
+              "not": "usare per Excel (-> read_files_xlsx) o immagini (-> read_files_ocr)."
+            }
+          },
+          "executor": "read_files_csv"
+        },
+        {
+          "source": "executors/read_files_doc/manifest.toml",
+          "source_sha256": "fc46c3a130131a7153f3dc55943be6fe0c3ad88b6da54702715f0a852f277d80",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads text from Google Doc. PATTERN: read_files_doc(name='document title'). NON: invent document_id; confuse with read_files (local) or write_files_doc (creates). OUT: entries=[{document_id,title,body_text,content_length}].",
+              "scope": "reads text from Google Doc.",
+              "not": "invent document_id; confuse with read_files (local) or write_files_doc (creates)."
+            },
+            "it": {
+              "full": "SCOPO: legge testo da Google Doc. PATTERN: read_files_doc(name='titolo del documento'). NON: inventare document_id; confondere con read_files (locale) o write_files_doc (crea). OUT: entries=[{document_id,title,body_text,content_length}].",
+              "scope": "legge testo da Google Doc.",
+              "not": "inventare document_id; confondere con read_files (locale) o write_files_doc (crea)."
+            }
+          },
+          "executor": "read_files_doc"
+        },
+        {
+          "source": "executors/read_files_ocr/manifest.toml",
+          "source_sha256": "5c4e71faa1f76815fb1d0061dcd0aae2876ada99bd08a503b74b6d5443b0896f",
+          "languages": {
+            "en": {
+              "full": "SCOPO: extracts text from images and scanned PDFs: local OCR first, bounded VLM only if insufficient. PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: read native files or convert formats. OUT: entries=[{content}].",
+              "scope": "extracts text from images and scanned PDFs: local OCR first, bounded VLM only if insufficient.",
+              "not": "read native files or convert formats."
+            },
+            "it": {
+              "full": "SCOPO: estrae testo da immagini e PDF scansionati: OCR locale prima, VLM bounded solo se insufficiente. PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: leggere file nativi o convertire formati. OUT: entries=[{content}].",
+              "scope": "estrae testo da immagini e PDF scansionati: OCR locale prima, VLM bounded solo se insufficiente.",
+              "not": "leggere file nativi o convertire formati."
+            }
+          },
+          "executor": "read_files_ocr"
+        },
+        {
+          "source": "executors/read_files_spreadsheet/manifest.toml",
+          "source_sha256": "c9f8204e6ca9a6f35bb41e3e28b56710df8175aa8612d2924e361cd1c5262f1f",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads a spreadsheet rows (local .xlsx/.csv or Google Sheet). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/f.xlsx\") | (name=\"title\", client=\"google_workspace\"). NON: invented id; text -> read_files. OUT: entries=list[list] rows x cells + values.",
+              "scope": "reads a spreadsheet rows (local .xlsx/.csv or Google Sheet).",
+              "not": "invented id; text -> read_files."
+            },
+            "it": {
+              "full": "SCOPO: legge le righe di un foglio (.xlsx/.csv locale o Google Sheet). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/f.xlsx\") | (name=\"titolo\", client=\"google_workspace\"). NON: id inventato; testo -> read_files. OUT: entries=list[list] righe x celle + values.",
+              "scope": "legge le righe di un foglio (.xlsx/.csv locale o Google Sheet).",
+              "not": "id inventato; testo -> read_files."
+            }
+          },
+          "executor": "read_files_spreadsheet"
+        },
+        {
+          "source": "executors/read_files_xlsx/manifest.toml",
+          "source_sha256": "d50c96ea36b4f10b15f910541309ee2d21372e24e12dff78eb689bae79950e47",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads local Excel files (.xlsx) (vectorial §2.1). PATTERN: read_files_xlsx(paths=[\"f.xlsx\"], sheet=\"Dati 2026\"). NON: .xls or CSV files (-> read_files_csv). OUT: entries=[...].",
+              "scope": "reads local Excel files (.xlsx) (vectorial §2.1).",
+              "not": ".xls or CSV files (-> read_files_csv)."
+            },
+            "it": {
+              "full": "SCOPO: legge file Excel (.xlsx) locali (vettoriale §2.1). PATTERN: read_files_xlsx(paths=[\"f.xlsx\"], sheet=\"Dati 2026\"). NON: file .xls o CSV (-> read_files_csv). OUT: entries=[...].",
+              "scope": "legge file Excel (.xlsx) locali (vettoriale §2.1).",
+              "not": "file .xls o CSV (-> read_files_csv)."
+            }
+          },
+          "executor": "read_files_xlsx"
+        }
+      ]
+    },
+    "read/issues": {
+      "source_executors": [
+        "read_issues_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "read_issues_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: legge UNA issue (contenuto + commenti) per numero. PATTERN: read_issues_github(repo=\"owner/name\", number=N). NON: usare per elencare (-> find_issues_github); omettere number. OUT: entries=[{number,title,body,comments,...}].",
+              "scope": "legge UNA issue (contenuto + commenti) per numero.",
+              "not": "usare per elencare (-> find_issues_github); omettere number."
+            }
+          }
+        }
+      ]
+    },
+    "read/messages": {
+      "source_executors": [
+        "read_messages"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/read_messages/manifest.toml",
+          "source_sha256": "278d057a0980f37b58e897804290aee4320035adbdb769e59d3ca04359c8fedf",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads IMAP messages combining time and text filters. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=500). NON: sending (-> send_messages) or moving messages (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]",
+              "scope": "reads IMAP messages combining time and text filters.",
+              "not": "sending (-> send_messages) or moving messages (-> move_messages)."
+            },
+            "it": {
+              "full": "SCOPO: legge messaggi IMAP combinando filtri temporali e testuali. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=500). NON: inviare (-> send_messages) o spostare messaggi (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]",
+              "scope": "legge messaggi IMAP combinando filtri temporali e testuali.",
+              "not": "inviare (-> send_messages) o spostare messaggi (-> move_messages)."
+            }
+          },
+          "executor": "read_messages"
+        }
+      ]
+    },
+    "read/persons": {
+      "source_executors": [
+        "read_persons"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/read_persons/manifest.toml",
+          "source_sha256": "5c0ea2cb6b82fd2884e4ba30161cadb894dab2891dea3e5785ae5f326afbce67",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads local identity profiles. PATTERN: read_persons(name=\"X\") or read_persons(role=\"guest\"). NON: biometric registry -> get_persons; photos -> find_persons_indices; changes or credentials. OUT: entries with role, autonomy, examples, and channels.",
+              "scope": "reads local identity profiles.",
+              "not": "biometric registry -> get_persons; photos -> find_persons_indices; changes or credentials."
+            },
+            "it": {
+              "full": "SCOPO: legge profili identitari locali. PATTERN: read_persons(name=\"X\") o read_persons(role=\"guest\"). NON: registro biometrico -> get_persons; foto -> find_persons_indices; modifiche o credenziali. OUT: entries con ruolo, autonomia, esempi e canali.",
+              "scope": "legge profili identitari locali.",
+              "not": "registro biometrico -> get_persons; foto -> find_persons_indices; modifiche o credenziali."
+            }
+          },
+          "executor": "read_persons"
+        }
+      ]
+    },
+    "read/pulls": {
+      "source_executors": [
+        "read_pulls_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "read_pulls_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: legge UNA pull request (contenuto + diff) per numero. PATTERN: read_pulls_github(repo=\"owner/name\", number=N). NON: usare per elencare (-> find_pulls_github); omettere number. OUT: entries=[{number,title,body,diff,...}].",
+              "scope": "legge UNA pull request (contenuto + diff) per numero.",
+              "not": "usare per elencare (-> find_pulls_github); omettere number."
+            }
+          }
+        }
+      ]
+    },
+    "read/tasks": {
+      "source_executors": [
+        "read_tasks",
+        "read_tasks_github",
+        "read_tasks_history"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "read_tasks",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Mostra dettaglio di UN TASK RICORRENTE / PROMEMORIA / TIMER per nome: schedule, ultima esecuzione, esito ultimo fire, query, label, storico. USA per: 'mostra dettaglio task X', 'quando ha girato l'ultima volta', 'che esito ha avuto', 'storico esecuzioni task X', 'ultima esecuzione del timer'. NON CONFONDERE CON: `get_processes` (processi sistema), `read_events` (eventi calendar)."
+            }
+          }
+        },
+        {
+          "executor": "read_tasks_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: elenca le run dei workflow GitHub Actions di un repo. PATTERN: read_tasks_github(repo=\"owner/name\", status=\"completed\"). NON: omettere repo. OUT: entries=[{run_id,workflow,status,...}].",
+              "scope": "elenca le run dei workflow GitHub Actions di un repo.",
+              "not": "omettere repo."
+            }
+          }
+        },
+        {
+          "executor": "read_tasks_history",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Ritorna lo STORICO ESECUZIONI di un TASK RICORRENTE / PROMEMORIA / TIMER (o di tutti). Per ogni fire: timestamp, status (ok/error/timeout/skipped), duration, output. USA per: 'mostrami gli ultimi N fire del task X', 'cronologia task', 'storico esecuzioni del task ricorrente', 'storico timer', 'ha mai dato errore il task', 'log esecuzioni schedulate', 'storico ultimi N giorni'. Dopo il primo ok EMETTI final_answer con un riassunto: NON ripetere la call con limit diverso (l'observation gia' contiene history completa). NON CONFONDERE CON: `get_processes` (processi sistema correnti), `read_events` (eventi calendar)."
+            }
+          }
+        }
+      ]
+    },
+    "read/urls": {
+      "source_executors": [
+        "read_urls_html",
+        "read_urls_pdf"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/read_urls_html/manifest.toml",
+          "source_sha256": "f3329949692d7b1ae5e3105ecfefe7bc2d641380f27068ac7095a43fcac72315",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads web pages and extracts main text; PDF URLs extracted as text automatically. PATTERN: read_urls_html(urls=[\"https://example.com\"]). NON: PDF-only lists (-> read_urls_pdf); URL discovery (-> find_urls). OUT: entries=[{url,title,body_text,meta,lang,fetched_at}].",
+              "scope": "reads web pages and extracts main text; PDF URLs extracted as text automatically.",
+              "not": "PDF-only lists (-> read_urls_pdf); URL discovery (-> find_urls)."
+            },
+            "it": {
+              "full": "SCOPO: legge pagine web e ne estrae il testo; URL PDF estratti come testo automaticamente. PATTERN: read_urls_html(urls=[\"https://example.com\"]). NON: solo PDF noti (-> read_urls_pdf); ricerca URL (-> find_urls). OUT: entries=[{url,title,body_text,meta,lang,fetched_at}].",
+              "scope": "legge pagine web e ne estrae il testo; URL PDF estratti come testo automaticamente.",
+              "not": "solo PDF noti (-> read_urls_pdf); ricerca URL (-> find_urls)."
+            }
+          },
+          "executor": "read_urls_html"
+        },
+        {
+          "source": "executors/read_urls_pdf/manifest.toml",
+          "source_sha256": "14cec29d89b5e0e8ac24a329fe98a016c05b1561cd76db748d0ecf35fd3ba601",
+          "languages": {
+            "en": {
+              "full": "SCOPO: reads PDF documents from URLs and extracts text and metadata. PATTERN: read_urls_pdf(urls=[\"https://...pdf\"]). NON: HTML web pages (-> read_urls_html); URL discovery (-> find_urls). OUT: entries=[{url, title, author, body_text, n_pages, used_lib, fetched_at}].",
+              "scope": "reads PDF documents from URLs and extracts text and metadata.",
+              "not": "HTML web pages (-> read_urls_html); URL discovery (-> find_urls)."
+            },
+            "it": {
+              "full": "SCOPO: legge documenti PDF da URL e ne estrae testo e metadati. PATTERN: read_urls_pdf(urls=[\"https://...pdf\"]). NON: pagine web HTML (-> read_urls_html); ricerca URL (-> find_urls). OUT: entries=[{url, title, author, body_text, n_pages, used_lib, fetched_at}].",
+              "scope": "legge documenti PDF da URL e ne estrae testo e metadati.",
+              "not": "pagine web HTML (-> read_urls_html); ricerca URL (-> find_urls)."
+            }
+          },
+          "executor": "read_urls_pdf"
+        }
+      ]
+    },
+    "reply/messages": {
+      "source_executors": [
+        "reply_messages"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "reply_messages",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Risponde in-thread a uno o piu' messaggi (Gmail). Distinto da `send_messages` perche': richiede message_id originale, headers In-Reply-To/References autocomposti, Subject auto-prefissato 'Re: '. USO CORRETTO: 'rispondi a queste mail con \\\"ok ricevuto\\\"' -> reply_messages(message_ids=..., body='ok ricevuto'). NON CONFONDERE CON `send_messages` (nuovo thread, richiede to/recipient_id) o `set_messages` (cambia labels). Backend: solo client='google_workspace' (SMTP/IMAP reply manuale non implementato MVP)."
+            }
+          }
+        }
+      ]
+    },
+    "send/messages": {
+      "source_executors": [
+        "send_messages",
+        "send_messages_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/send_messages/manifest.toml",
+          "source_sha256": "c800275e7431862c1e60bda94af66c8c678d0017406173f7cc5ca1e3e6fab7e2",
+          "languages": {
+            "en": {
+              "full": "SCOPO: send email/Telegram and reply in-thread on Gmail. PATTERN: send_messages(to_user='lucia' or '${RUNTIME:actor}', messages=[{body='text'}]); reply: {in_reply_to='id',body='ok'}. NON: read -> read_messages; labels -> set_messages. OUT: {ok,ok_count,fail_count,partial?,results,failed}.",
+              "scope": "send email/Telegram and reply in-thread on Gmail.",
+              "not": "read -> read_messages; labels -> set_messages."
+            },
+            "it": {
+              "full": "SCOPO: invia mail/Telegram e risponde in-thread Gmail. PATTERN: send_messages(to_user='lucia' o '${RUNTIME:actor}', messages=[{body='testo'}]); risposta: {in_reply_to='id',body='ok'}. NON: leggere -> read_messages; label -> set_messages. OUT: {ok,ok_count,fail_count,partial?,results,failed}.",
+              "scope": "invia mail/Telegram e risponde in-thread Gmail.",
+              "not": "leggere -> read_messages; label -> set_messages."
+            }
+          },
+          "executor": "send_messages"
+        },
+        {
+          "executor": "send_messages_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: posta commenti su issue/PR GitHub (vettoriale §2.1, anche 1). PATTERN: N commenti da uno step -> send_messages_github(from_step=N, repo=\"owner/name\", target_template=\"issue:{number}\", body_template=\"{reply}\"); 1 commento -> send_messages_github(repo=\"owner/name\", target=\"issue:N\", body=\"...\"). NON: omettere target/body; target deve essere issue:N o pr:N. OUT: results=[{posted,url}].",
+              "scope": "posta commenti su issue/PR GitHub (vettoriale §2.1, anche 1).",
+              "not": "omettere target/body; target deve essere issue:N o pr:N."
+            }
+          }
+        }
+      ]
+    },
+    "set/credentials": {
+      "source_executors": [
+        "set_credentials"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/set_credentials/manifest.toml",
+          "source_sha256": "36f15af1e04e143022bc3f0782b93ded9d0a28ed99432f1a1669cac456063ae8",
+          "languages": {
+            "en": {
+              "full": "SCOPO: encrypts credentials; defines the mandate. PATTERN: set_credentials(binding='x', fields={}); without fields opens the form or updates the mandate. NON: read credentials (-> find_credentials); expose secrets. OUT: binding metadata.",
+              "scope": "encrypts credentials; defines the mandate.",
+              "not": "read credentials (-> find_credentials); expose secrets."
+            },
+            "it": {
+              "full": "SCOPO: cifra credenziali; definisce il mandato. PATTERN: set_credentials(binding='x', fields={}); senza fields apre il form o aggiorna il mandato. NON: leggere credenziali (-> find_credentials); esporre segreti. OUT: metadati del binding.",
+              "scope": "cifra credenziali; definisce il mandato.",
+              "not": "leggere credenziali (-> find_credentials); esporre segreti."
+            }
+          },
+          "executor": "set_credentials"
+        }
+      ]
+    },
+    "set/issues": {
+      "source_executors": [
+        "set_issues_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "set_issues_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: modifica stato/label/assegnatari di una issue. PATTERN: set_issues_github(repo=\"owner/name\", number=N, state=\"closed\"). NON: omettere number. OUT: results=[{number,updated}].",
+              "scope": "modifica stato/label/assegnatari di una issue.",
+              "not": "omettere number."
+            }
+          }
+        }
+      ]
+    },
+    "set/messages": {
+      "source_executors": [
+        "set_messages"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/set_messages/manifest.toml",
+          "source_sha256": "2a9da564f8e08c4a138e1586ba07fda5aafbfda6feb3a4e8e39a146cc1e40a9c",
+          "languages": {
+            "en": {
+              "full": "SCOPO: add or remove labels on identified Gmail messages. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: list labels without a target; move folders -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}.",
+              "scope": "add or remove labels on identified Gmail messages.",
+              "not": "list labels without a target; move folders -> move_messages."
+            },
+            "it": {
+              "full": "SCOPO: aggiunge o rimuove etichette su messaggi Gmail identificati. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: elencare label senza target; spostare cartelle -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}.",
+              "scope": "aggiunge o rimuove etichette su messaggi Gmail identificati.",
+              "not": "elencare label senza target; spostare cartelle -> move_messages."
+            }
+          },
+          "executor": "set_messages"
+        }
+      ]
+    },
+    "set/persons": {
+      "source_executors": [
+        "set_persons"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/set_persons/manifest.toml",
+          "source_sha256": "c3ad32671eefa596c95e398fbde19e07a0757b9095b91102389a355f468f2bc0",
+          "languages": {
+            "en": {
+              "full": "SCOPO: enroll a person in the named registry. PATTERN: set_persons(name='Name', paths=['~/photo.jpg']). NON: search photos (-> find_persons_indices); auto-identify (-> get_persons). OUT: {ok, results:[{path,slug,name,face_box,added}], errors:[{path,error}], n_examples_after, warn?}.",
+              "scope": "enroll a person in the named registry.",
+              "not": "search photos (-> find_persons_indices); auto-identify (-> get_persons)."
+            },
+            "it": {
+              "full": "SCOPO: registra persona nel registro nominale. PATTERN: set_persons(name='Nome', paths=['~/foto.jpg']). NON: cercare foto (-> find_persons_indices); identificare automaticamente (-> get_persons). OUT: {ok, results:[{path,slug,name,face_box,added}], errors:[{path,error}], n_examples_after, warn?}.",
+              "scope": "registra persona nel registro nominale.",
+              "not": "cercare foto (-> find_persons_indices); identificare automaticamente (-> get_persons)."
+            }
+          },
+          "executor": "set_persons"
+        }
+      ]
+    },
+    "set/pulls": {
+      "source_executors": [
+        "set_pulls_github"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "set_pulls_github",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "SCOPO: aggiorna stato/titolo/reviewer di una pull request. PATTERN: set_pulls_github(repo=\"owner/name\", number=N, state=\"closed\"). NON: usare per issue; omettere number. OUT: results=[{number,updated}].",
+              "scope": "aggiorna stato/titolo/reviewer di una pull request.",
+              "not": "usare per issue; omettere number."
+            }
+          }
+        }
+      ]
+    },
+    "set/signatures": {
+      "source_executors": [
+        "set_signatures"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/set_signatures/manifest.toml",
+          "source_sha256": "51e0d7f31a40006966658ce4f966bd4df909959e8cc40212b2d634e5f0773006",
+          "languages": {
+            "en": {
+              "full": "SCOPO: sets or removes signatures from user curation. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; read -> get_signatures. OUT: {signature,kind,removed?,previous_kind?,message}; not undoable.",
+              "scope": "sets or removes signatures from user curation.",
+              "not": "compute -> compute_signatures; read -> get_signatures."
+            },
+            "it": {
+              "full": "SCOPO: imposta o rimuove signature dalla curatela. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolo -> compute_signatures; lettura -> get_signatures. OUT: {signature,kind,removed?,previous_kind?,message}; non annullabile.",
+              "scope": "imposta o rimuove signature dalla curatela.",
+              "not": "calcolo -> compute_signatures; lettura -> get_signatures."
+            }
+          },
+          "executor": "set_signatures"
+        }
+      ]
+    },
+    "set/skills": {
+      "source_executors": [
+        "set_skills"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "set_skills",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Abilita o disabilita una SKILL (gruppo di capacità) per nome. USA per: 'attiva la skill foto', 'disabilita github', 'spegni il web', 'riattiva mail', 'disattiva geo'. `enabled=true` abilita, `enabled=false` disabilita. La skill 'core' non è disattivabile. Effetto dal turno successivo. NON CONFONDERE CON: `set_tasks` (pausa/fire di un task schedulato)."
+            }
+          }
+        }
+      ]
+    },
+    "set/tasks": {
+      "source_executors": [
+        "set_tasks"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "executor": "set_tasks",
+          "source": "tests/benchmarks/catalog_snapshot.json",
+          "source_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+          "languages": {
+            "und": {
+              "full": "Cambia lo stato di un task ricorrente esistente. Due operazioni in mutua esclusione: (a) `enabled=bool` abilita/disabilita temporaneamente il task (USA per 'metti in pausa X', 'riattiva X', 'sospendi'); (b) `fire_now=true` forza l'esecuzione immediata fuori cadenza (USA per 'esegui subito X', 'forza il fire', 'prova adesso X'). Specifica esattamente uno dei due. fire_now solo HOST."
+            }
+          }
+        }
+      ]
+    },
+    "share/files": {
+      "source_executors": [
+        "share_files"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/share_files/manifest.toml",
+          "source_sha256": "4216f88f7eefa617e53f292e2a0c7fd782874b6a012b41682dbc1c0a87aa41cd",
+          "languages": {
+            "en": {
+              "full": "SCOPO: grants access permissions to Drive files without duplicating them. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: sending copies (send_messages) or overwriting (write_files). OUT: results=[...].",
+              "scope": "grants access permissions to Drive files without duplicating them.",
+              "not": "sending copies (send_messages) or overwriting (write_files)."
+            },
+            "it": {
+              "full": "SCOPO: concede permessi di accesso a file Drive senza duplicarli. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: inviare copie (send_messages) o sovrascrivere (write_files). OUT: results=[...].",
+              "scope": "concede permessi di accesso a file Drive senza duplicarli.",
+              "not": "inviare copie (send_messages) o sovrascrivere (write_files)."
+            }
+          },
+          "executor": "share_files"
+        }
+      ]
+    },
+    "sort/entries": {
+      "source_executors": [
+        "sort_entries"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/sort_entries/manifest.toml",
+          "source_sha256": "56d82f3c65c19cda2ad421b83f639b20035f89cb0510ff04d203e341d46e989f",
+          "languages": {
+            "en": {
+              "full": "SCOPO: sorts entries in memory. PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: persistent order; aggregates -> compute_entries; filters -> filter_entries. OUT: {entries,count,total_input,sorted_by,desc,truncated}.",
+              "scope": "sorts entries in memory.",
+              "not": "persistent order; aggregates -> compute_entries; filters -> filter_entries."
+            },
+            "it": {
+              "full": "SCOPO: ordina entries in memoria. PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: ordine persistente; aggregati -> compute_entries; filtri -> filter_entries. OUT: {entries,count,total_input,sorted_by,desc,truncated}.",
+              "scope": "ordina entries in memoria.",
+              "not": "ordine persistente; aggregati -> compute_entries; filtri -> filter_entries."
+            }
+          },
+          "executor": "sort_entries"
+        }
+      ]
+    },
+    "write/files": {
+      "source_executors": [
+        "write_files",
+        "write_files_doc",
+        "write_files_spreadsheet"
+      ],
+      "input_ports": [
+        "primary"
+      ],
+      "output_ports": [
+        "result"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/write_files/manifest.toml",
+          "source_sha256": "736577789f42f91d0d7d7784bdb182dffb5343909e6fd5c73d85323c7d954f21",
+          "languages": {
+            "en": {
+              "full": "SCOPO: persist records/text to local files (vectorial §2.1). PATTERN: write_files(from_step=N, path=\"/dir/out.txt\") aggregates into ONE file; one file per record -> path_template=\"/dir/f_{number}.json\". NON: without from_step nor content. OUT: results=[{path,created,skipped,bytes_written}] + created_count + skipped_count.",
+              "scope": "persist records/text to local files (vectorial §2.1).",
+              "not": "without from_step nor content."
+            },
+            "it": {
+              "full": "SCOPO: salva record/testo in file locali (vettoriale §2.1). PATTERN: write_files(from_step=N, path=\"/dir/out.txt\") aggrega in UN file; un file per record -> path_template=\"/dir/f_{number}.json\". NON: senza from_step ne' content. OUT: results=[{path,created,skipped,bytes_written}] + created_count + skipped_count.",
+              "scope": "salva record/testo in file locali (vettoriale §2.1).",
+              "not": "senza from_step ne' content."
+            }
+          },
+          "executor": "write_files"
+        },
+        {
+          "source": "executors/write_files_doc/manifest.toml",
+          "source_sha256": "7ed056bf6629e3804c340643a7abe485a56733cc4bb1b3e80d1aabe166add91c",
+          "languages": {
+            "en": {
+              "full": "SCOPO: append text to an existing Google Doc (.doc). PATTERN: write_files_doc(document_id='1abc...', text='...'). NON: create new doc (-> create_files_doc); local file (-> write_files). OUT: results=[{document_id, characters_appended}].",
+              "scope": "append text to an existing Google Doc (.doc).",
+              "not": "create new doc (-> create_files_doc); local file (-> write_files)."
+            },
+            "it": {
+              "full": "SCOPO: appendi testo a un Google Doc esistente (.doc). PATTERN: write_files_doc(document_id='1abc...', text='...'). NON: creare nuovo doc (-> create_files_doc); file locale (-> write_files). OUT: results=[{document_id, characters_appended}].",
+              "scope": "appendi testo a un Google Doc esistente (.doc).",
+              "not": "creare nuovo doc (-> create_files_doc); file locale (-> write_files)."
+            }
+          },
+          "executor": "write_files_doc"
+        },
+        {
+          "source": "executors/write_files_spreadsheet/manifest.toml",
+          "source_sha256": "6fa7521cce3c3f6a7c1c9b8df290d94a7682c23433ec8d444e6ceaefac742a91",
+          "languages": {
+            "en": {
+              "full": "SCOPO: writes a local sheet, creating it if missing. PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); from a step use from_step+columns. NON: text -> write_files; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,updated_cells,created,mode,data_rows}].",
+              "scope": "writes a local sheet, creating it if missing.",
+              "not": "text -> write_files; Google -> client=\"google_workspace\"."
+            },
+            "it": {
+              "full": "SCOPO: scrive un foglio locale, creandolo se manca. PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); da step usa from_step+columns. NON: testo -> write_files; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,updated_cells,created,mode,data_rows}].",
+              "scope": "scrive un foglio locale, creandolo se manca.",
+              "not": "testo -> write_files; Google -> client=\"google_workspace\"."
+            }
+          },
+          "executor": "write_files_spreadsheet"
+        }
+      ]
+    }
+  },
+  "system_controls": {
+    "undo_last_turn": {
+      "source_executor": "undo_last_turn",
+      "descriptions": [
+        {
+          "source": "executors/undo_last_turn/manifest.toml",
+          "source_sha256": "27625259993f14c219722c6e2c76605dd6382590ddd86b661950d41b195c1601",
+          "languages": {
+            "en": {
+              "full": "SCOPO: cancel all reversible operations of the last user turn. PATTERN: undo_last_turn(). NON: irreversible operations (skipped); consecutive calls (idempotent). OUT: {undone_count, skipped_count, details, turn_id?}.",
+              "scope": "cancel all reversible operations of the last user turn.",
+              "not": "irreversible operations (skipped); consecutive calls (idempotent)."
+            },
+            "it": {
+              "full": "SCOPO: annulla le operazioni reversibili dell'ultimo turno utente. PATTERN: undo_last_turn(). NON: operazioni irreversibili (saltate); chiamate consecutive (idempotente). OUT: {undone_count, skipped_count, details, turn_id?}.",
+              "scope": "annulla le operazioni reversibili dell'ultimo turno utente.",
+              "not": "operazioni irreversibili (saltate); chiamate consecutive (idempotente)."
+            }
+          },
+          "executor": "undo_last_turn"
+        }
+      ]
+    }
+  },
+  "barriers": {
+    "get/approval": {
+      "source_executor": "get_approval",
+      "body_outcome": "approved",
+      "empty_outcomes": [
+        "rejected"
+      ],
+      "descriptions": [
+        {
+          "source": "executors/get_approval/manifest.toml",
+          "source_sha256": "800f24382d69064171fd5bdf9cdef049328b7a5f72f203692269df05d593398c",
+          "languages": {
+            "en": {
+              "full": "SCOPO: human consent (Approve/Reject), then runs the executor. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_entries\", args={...}}). NON: free values -> get_inputs; action without consent -> call the executor. OUT: {ok, decision='input_required', dialog_id, final_message_hint}.",
+              "scope": "human consent (Approve/Reject), then runs the executor.",
+              "not": "free values -> get_inputs; action without consent -> call the executor."
+            },
+            "it": {
+              "full": "SCOPO: consenso umano (Approva/Disapprova), poi esegue l'executor. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_entries\", args={...}}). NON: valori liberi -> get_inputs; azione senza consenso -> esegui executor. OUT: {ok, decision='input_required', dialog_id, final_message_hint}.",
+              "scope": "consenso umano (Approva/Disapprova), poi esegue l'executor.",
+              "not": "valori liberi -> get_inputs; azione senza consenso -> esegui executor."
+            }
+          },
+          "executor": "get_approval"
+        }
+      ]
+    }
+  },
+  "unrepresentable_reasons": {
+    "ambiguous_intent": "More than one incompatible analysis remains.",
+    "missing_required_information": "The requested intent lacks information needed to form a typed structure.",
+    "mixed_root_kinds": "System control and ordinary operation cannot share the exclusive root.",
+    "no_actionable_intent": "The utterance contains no independently actionable request.",
+    "outside_registry": "The meaning is understood but has no reviewed registry entry.",
+    "unsupported_dependency": "The requested data or control dependency is outside version 0.1."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "projection_payload_sha256": "7895f6c12040d0d5b3963170645b8c4899611ce80b082dbeb224ec3686cc46bb"
+  }
+}

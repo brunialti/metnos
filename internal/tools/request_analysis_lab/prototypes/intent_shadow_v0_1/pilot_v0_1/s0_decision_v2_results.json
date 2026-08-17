@@ -1,0 +1,128 @@
+{
+  "probe_exact": 1,
+  "probe_valid": 4,
+  "records": [
+    {
+      "case_id": "bp-004",
+      "elapsed_ms": 9015,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoidW5zdXBwb3J0ZWRfZGVwZW5kZW5jeSJ9",
+      "request_sha256": "51e0c169cc916a6dc8b567b1a93a806b5ae3ca217fb4675e6787ee74f24b21c1",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-006",
+      "elapsed_ms": 9962,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImJhcnJpZXIiOiAiZ2V0L2FwcHJvdmFsIiwKICAgICAgImJvZHkiOiBbCiAgICAgICAgewogICAgICAgICAgInJvdXRlIjogImRlbGV0ZS9maWxlcyIsCiAgICAgICAgICAiZnJvbSI6IFsKICAgICAgICAgICAgMAogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "b81c999835ea838b0a6a0be35d593c4f9cb031941cf3d5d2ac4593ea3b9f85af",
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 9150,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJ1bnN1cHBvcnRlZF9kZXBlbmRlbmN5Igp9",
+      "request_sha256": "857013a2599a4bb7f4f30c096873f773a2574d6db6151eb50fcfdfdb3412f73a",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-014",
+      "elapsed_ms": 9579,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L25vdyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJyZWFkL2V2ZW50cyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "b357f2c366702f89b70293da0e1ca2c779f7578d5836cdb85e6dcd7428f77e70",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/now"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/events"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-020",
+      "elapsed_ms": 9058,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoibWl4ZWRfcm9vdF9raW5kcyJ9",
+      "request_sha256": "583a2622f5b60fae1bc84d55098a629135d4e430a44a8c91fa55dbb5446fc1b4",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "status": "valid"
+    }
+  ],
+  "state": "stopped_after_probe"
+}

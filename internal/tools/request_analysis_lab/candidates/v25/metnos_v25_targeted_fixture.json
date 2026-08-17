@@ -1,0 +1,158 @@
+[
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": true,
+    "id": "location.it.where",
+    "language": "it",
+    "query": "dove mi trovo",
+    "track": "location"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": true,
+    "id": "location.it.position",
+    "language": "it",
+    "query": "dimmi la mia posizione",
+    "track": "location"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": true,
+    "id": "location.en",
+    "language": "en",
+    "query": "where am I",
+    "track": "location"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": true,
+    "id": "location.fr",
+    "language": "fr",
+    "query": "où suis-je",
+    "track": "location"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": true,
+    "id": "location.es",
+    "language": "es",
+    "query": "dónde estoy",
+    "track": "location"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": true,
+    "id": "location.de",
+    "language": "de",
+    "query": "wo bin ich",
+    "track": "location"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": true,
+    "id": "location.pt_holdout",
+    "language": "pt",
+    "query": "onde estou",
+    "track": "location_holdout"
+  },
+  {
+    "expected": "read/persons",
+    "expected_argument": false,
+    "expected_question": false,
+    "id": "control.identity.it",
+    "language": "it",
+    "query": "chi sono io",
+    "track": "control"
+  },
+  {
+    "expected": "read/persons",
+    "expected_argument": false,
+    "expected_question": false,
+    "id": "control.identity.en",
+    "language": "en",
+    "query": "who am I",
+    "track": "control"
+  },
+  {
+    "expected": "read/persons",
+    "expected_argument": false,
+    "expected_question": false,
+    "id": "control.person.it",
+    "language": "it",
+    "query": "dimmi tutto su ospite alfa",
+    "track": "control"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": false,
+    "id": "control.place.it",
+    "language": "it",
+    "query": "dammi le coordinate di Parigi",
+    "track": "control"
+  },
+  {
+    "expected": "get/places",
+    "expected_argument": false,
+    "expected_question": false,
+    "id": "control.place.en",
+    "language": "en",
+    "query": "where is the Eiffel Tower",
+    "track": "control"
+  },
+  {
+    "expected": [
+      "create/events",
+      "get/files"
+    ],
+    "expected_argument": true,
+    "expected_question": false,
+    "id": "attachment.compact.it",
+    "language": "it",
+    "query": "crea un evento promemoria domani e allega la foto logo.png",
+    "track": "attachment"
+  },
+  {
+    "expected": [
+      "read/urls",
+      "write/files",
+      "send/messages",
+      "create/events",
+      "get/files"
+    ],
+    "expected_argument": true,
+    "expected_question": false,
+    "id": "attachment.full.it",
+    "language": "it",
+    "query": "scarica il pdf da https://x.com/a.pdf, salvalo in /tmp, mandalo via mail a roberto, crea un evento promemoria domani e allega la foto logo.png",
+    "track": "attachment"
+  },
+  {
+    "expected": "write/files",
+    "expected_argument": false,
+    "expected_question": false,
+    "id": "control.write_file.it",
+    "language": "it",
+    "query": "scrivi il file report.txt",
+    "track": "negative_write"
+  },
+  {
+    "expected": [
+      "create/events",
+      "write/files"
+    ],
+    "expected_argument": false,
+    "expected_question": false,
+    "id": "control.event_then_write.it",
+    "language": "it",
+    "query": "crea un evento domani e scrivi un file di riepilogo",
+    "track": "negative_write"
+  }
+]

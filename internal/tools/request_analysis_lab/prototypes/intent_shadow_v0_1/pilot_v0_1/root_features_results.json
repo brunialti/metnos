@@ -1,0 +1,348 @@
+{
+  "count": 20,
+  "exact": 8,
+  "format": "metnos.root-features-probe/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1266,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "6d9c0fc174f15a4029d5ebbae1f72b0e21520c395a336fc06641801066a7e281",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-002",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 920,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:unsupported_dependency",
+      "features": {
+        "conditional_branch": true,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "18d9dce55af9ecf439d5636d34271bee58afe5c16540cb3ea13fae30db854689",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-003",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1497,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "8e49522f53f4e82e241f174ebcc806773d63d6040b9768023d737a846bbb0999",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-004",
+      "decision": "system_control:undo_last_turn",
+      "elapsed_ms": 808,
+      "error": null,
+      "exact": true,
+      "expected": "system_control:undo_last_turn",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": false,
+        "registry_coverage": "missing",
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "0e90ac3845e98a7c5dcafef3c96f444c6ac0056daeceedc104b3dad63a025bed",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-005",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1404,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "614ea418e2eaf3e2d754ff0b09ce71e7603e3aaa66ef014432789109a421e56d",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-006",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 841,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": true,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "6e5d3a87c1ea1927c695ea6576974e9c67adf0b42922f31b44d488d005bf915e",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-007",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1449,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:outside_registry",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "8182237195354cfa34e3c504c68d4e8b15ca27c64b3bd55079be500454b9079d",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-008",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 798,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "72862df2c723980f8b0afca768bf8a0ca706554a7d46c4f16ab34a82392d4c4a",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-009",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1415,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "60005ea808e83eb1ac4221023468e5b417332d8caee3ece7a30f08e592b5b8f2",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-010",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 899,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "daa502605a221c76546f7465efab8a40c9368e6ed2ab5a2d79a416cadab5f879",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-011",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1438,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "acc5187be4a6790856cbb2bb8506f59f5c4bb9e7c3366f899fff7adc534eba4b",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-012",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1042,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:outside_registry",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "missing_required_information",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "c32d518d5ba829d30d57d21bbe7a01bf337e3ad1e49aebf9a0925ed7a0ce76aa",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-013",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1412,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "980ed0d7b74329a2af6023ed3d725e696cb38b6143df95019f9c6e195adb582e",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-014",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 801,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:unsupported_dependency",
+      "features": {
+        "conditional_branch": true,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "fae70550a3e516dd83d0a97ac95d7aa599800887625672179b18c41d8f5e9ac5",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-015",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1438,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "e78c7b85e088c24f6abc97d9becad712240c697d360aaa9a41f6a1dcbfdecde6",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-016",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 825,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "3946c1e55c24103fdb83b004794f294f0532fba2acab45b39dc282a461659316",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-017",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1316,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:outside_registry",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": false,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "b2b9eb3885e0dc3cc4d01f93ee72d064f74a7ce12a7f58ad3268a6c2b08fb065",
+      "root_exact": true
+    },
+    {
+      "case_id": "bp-018",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 771,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": true,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "fdd61ac26ec8f1583d1586c6229159e0f5789a5dae838cc77c263e7fd958d38d",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-019",
+      "decision": "unrepresentable:outside_registry",
+      "elapsed_ms": 1638,
+      "error": null,
+      "exact": false,
+      "expected": "operation_graph",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "none"
+      },
+      "request_sha256": "e5064172a27ce6e527e2e67320958e36e6d686365b5c1e0a23a93e0ca0b3b55d",
+      "root_exact": false
+    },
+    {
+      "case_id": "bp-020",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 960,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "features": {
+        "conditional_branch": false,
+        "fallback_reason": "none",
+        "ordinary_action": true,
+        "registry_coverage": "missing",
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "801d9bfe2daa802a9baa2697ce55088e8371070f29c959ca95e004b4c757692d",
+      "root_exact": true
+    }
+  ],
+  "root_exact": 8
+}

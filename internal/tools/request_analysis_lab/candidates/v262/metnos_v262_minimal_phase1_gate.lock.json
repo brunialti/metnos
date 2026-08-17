@@ -1,0 +1,20 @@
+{
+  "lock_version": "metnos.v26.2-minimal-phase1-gate-lock/1.0",
+  "status": "frozen_one_native_k1_authorization",
+  "network_calls_before_gate_lock": 0,
+  "gate_path": "/tmp/metnos_v262_minimal_phase1_preinference_gate.json",
+  "gate_sha256": "dfdfafb715e357a773893f62b6576fe27b712f032cb47640cd2f26a652d3d48d",
+  "freeze_path": "/tmp/metnos_v262_minimal_phase1.freeze.json",
+  "freeze_sha256": "757f461e26cb39083c039d4a4f3871e56e94a3bc30e5c838ff8a1401d5e8ff9d",
+  "audit_path": "/tmp/metnos_prompt_contamination_audit.json",
+  "audit_sha256": "7340b0fb3fdcb13ee5c3285aa7d4659a91b2ba7028a7ede7b4ad793b594cc49f",
+  "independent_review_path": "/tmp/metnos_v262_independent_review.json",
+  "independent_review_sha256": "4cb7134b780ecc2f7eea5b35ec397730fcab6199e94d01733df20a41cd9ce6d7",
+  "verifier_path": "/tmp/metnos_v262_gate_verifier.py",
+  "verifier_sha256": "7956f9120cff9e80b98edde3dffd2a3bc7eed70bb2517ffee969c5c9f9aa5cd1",
+  "authorized_native_runs": 1,
+  "authorized_case_count": 34,
+  "authorized_repetitions": 1,
+  "route_integration_allowed": false,
+  "runtime_cutover_eligible": false
+}

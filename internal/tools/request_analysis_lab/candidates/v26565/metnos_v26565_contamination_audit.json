@@ -1,0 +1,14 @@
+{
+ "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+ "ngram_order": 4,
+ "note": "The prompt is generated from the frozen typed registry: every literal is a structural key or a technical denotation. It contains no source-language example, no synonym list and no surface mapping.",
+ "prompt_sha256": "0c798be9821a484e718b4c6a5ed8ebc623dee16c08fe8713d1723d22bada5cba",
+ "prompt_token_count": 1256,
+ "queries_audited": 34,
+ "raw_queries_copied": false,
+ "scope": "V26.5.6.5 clause-owned prompt vs the 34 frozen focus controls",
+ "shared_4gram_queries": 0,
+ "verbatim_query_matches": 0,
+ "verdict": "PASS",
+ "version": "metnos.v26.5.6.5-contamination-audit/1.0"
+}

@@ -1,0 +1,596 @@
+{
+  "freezes": {
+    "v241": {
+      "actual": {
+        "base_projector_sha256": "7ab109898feddf5fc8c32c1b921f0220ab097b7e72a742d99879f32af1430e64",
+        "base_rules_sha256": "e41561e12c835b15bce40e25eb2eb28ead3b27228c8bd05867dc1f9d7b6c8357",
+        "base_schema_sha256": "0d08b7205632efef8a7f9dadc0c63fe81b42e72daf03b062d7663eb5f98b7e24",
+        "projector_sha256": "964ab447f730a0a145178d23c05404e876e06be0b56688d9372dc5e890c8d68e",
+        "rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82",
+        "schema_sha256": "82b24c50dfcf10eed7736231c7640e75f773025864dd933889a474d531b375b4",
+        "v21_adversarial_sha256": "49ce8e7c698af56d3972ad1b8e8278565e5223a53a4cef884a2b40bb832c8dfe",
+        "v24_on_v23lite_baseline_sha256": "2757d52eb324f89e6946a95792df0604b8436c098d91bfd8d6f58a00ff07f669",
+        "v24_results_baseline_sha256": "6c0a3ed9959ac3c6523037d2aaac4c42c5b780b70d69aa21e49e834384ca956f"
+      },
+      "lock_path": "/tmp/metnos_v241_freeze.lock.json",
+      "lock_sha256": "1713836a0a1a4085ef664d08098fd1174ce364c0aba8be2b054d4af7d8efe6b2",
+      "matched": true,
+      "mismatches": {}
+    },
+    "v25": {
+      "actual": {
+        "base_bench_sha256": "db2abaf6aaba2ad77205dda3fda96cdfab272a17079e57b0e472201395a4a329",
+        "fixture_sha256": "90f6010619290bdb6662f1a62f3ef77e6589b0dbe020699bcd54f00dfa236994",
+        "prompt_sha256": "2ffa10811b5de6d8ffc3e55d307a7f019754dfd5e95a757d43918bd07b01c60f",
+        "runner_sha256": "d252ee2fa9dc70be8c34a001aab0eedd78ca2d73e127f81cb28ada3db7b36ba0",
+        "schema_sha256": "d0b436d296ed9bf701109c02cd707fd3884316ba01e4eca604760320e1737a08",
+        "v241_rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82"
+      },
+      "lock_path": "/tmp/metnos_v25_live.freeze.json",
+      "lock_sha256": "f100ca5276a371b40a43aba3ba82f68c7b0a815bbe0b8a7b71c3ff703d151c5f",
+      "matched": true,
+      "mismatches": {}
+    }
+  },
+  "network_calls": 0,
+  "overall": {
+    "production_cutover_eligible": false,
+    "runtime_gold_isolation_pass": true,
+    "v241_reproduction_pass": true,
+    "v251_by_construction_pass": false,
+    "v25_measurement_reproduction_pass": true
+  },
+  "projector_metamorphics": {
+    "failed": 0,
+    "passed": 6,
+    "tests": [
+      {
+        "id": "question_text_invariant",
+        "pass": true
+      },
+      {
+        "id": "question_claim_controls_projection",
+        "pass": true
+      },
+      {
+        "id": "argument_text_invariant",
+        "pass": true
+      },
+      {
+        "id": "argument_claim_controls_projection",
+        "pass": true
+      },
+      {
+        "id": "projector_api_has_no_gold_expected_query",
+        "pass": true
+      },
+      {
+        "id": "projector_source_does_not_read_lemma_gloss",
+        "pass": true
+      }
+    ]
+  },
+  "redaction": {
+    "model_outputs_persisted": false,
+    "raw_queries_persisted": false
+  },
+  "runtime_dataflow": {
+    "evaluation_fields_colocated_but_not_reachable_from_run_case": true,
+    "v25_call_chain": {
+      "functions": [
+        {
+          "forbidden_symbol_hits": [],
+          "function": "_request_body",
+          "pass": true
+        },
+        {
+          "forbidden_symbol_hits": [],
+          "function": "_call_once",
+          "pass": true
+        },
+        {
+          "forbidden_symbol_hits": [],
+          "function": "run_case",
+          "pass": true
+        }
+      ],
+      "pass": true
+    },
+    "v25_to_v241_uses_no_legacy_inference": true
+  },
+  "spreadsheet_overlay": {
+    "catalog_evidence_hashes_match": true,
+    "dataset_hash_matches": true,
+    "evaluation_overlay_is_colocated_in_runner": true,
+    "gold_original_modified": false,
+    "original_expected_matches": true,
+    "path": "/tmp/metnos_v25_gold_adjudication_overlay.json",
+    "query_hash_matches": true,
+    "runtime_call_chain_has_no_overlay_symbol": true,
+    "runtime_prompt_projector_invisible": true,
+    "sha256": "892358b893d941a885d17184a21c756b14df5c2082e0c30b37e058b379317577",
+    "shadow_only_not_human_approved_production": true,
+    "status": "adjudicated_for_shadow_evaluation"
+  },
+  "tool_sha256": "341200c3ecbf2d84249034522dff01f3a4b839782e92e329b3bb80712cf92d8e",
+  "v241_recomputed": {
+    "computed": {
+      "v21_adversarial": {
+        "baseline_exact": 44,
+        "fail_closed": 5,
+        "improvements": 0,
+        "records": 50,
+        "regressions": 0,
+        "v241_exact": 44,
+        "valid": 45
+      },
+      "v23_full": {
+        "baseline_exact": 100,
+        "fail_closed": 2,
+        "improvements": 2,
+        "records": 109,
+        "regressions": 0,
+        "v241_exact": 102,
+        "valid": 107
+      },
+      "v23lite": {
+        "baseline_exact": 105,
+        "fail_closed": 0,
+        "improvements": 2,
+        "records": 109,
+        "regressions": 0,
+        "v241_exact": 107,
+        "valid": 109
+      }
+    },
+    "mutations": {
+      "all_pass": true,
+      "v24": {
+        "by_kind": {
+          "projector_boundary": {
+            "passed": 12,
+            "tests": 12
+          },
+          "retry_policy": {
+            "passed": 2,
+            "tests": 2
+          },
+          "runtime_gate": {
+            "passed": 2,
+            "tests": 2
+          },
+          "validator_mutation": {
+            "passed": 15,
+            "tests": 15
+          }
+        },
+        "failed": 0,
+        "passed": 31,
+        "tests": 31
+      },
+      "v241": {
+        "by_kind": {
+          "inference_guard": {
+            "passed": 1,
+            "tests": 1
+          },
+          "projection": {
+            "passed": 6,
+            "tests": 6
+          },
+          "runtime_gate": {
+            "passed": 1,
+            "tests": 1
+          },
+          "validator": {
+            "passed": 2,
+            "tests": 2
+          }
+        },
+        "failed": 0,
+        "passed": 10,
+        "tests": 10
+      }
+    },
+    "saved": {
+      "v21_adversarial": {
+        "baseline_exact": 44,
+        "fail_closed": 5,
+        "improvements": 0,
+        "records": 50,
+        "regressions": 0,
+        "v241_exact": 44,
+        "valid": 45
+      },
+      "v23_full": {
+        "baseline_exact": 100,
+        "fail_closed": 2,
+        "improvements": 2,
+        "records": 109,
+        "regressions": 0,
+        "v241_exact": 102,
+        "valid": 107
+      },
+      "v23lite": {
+        "baseline_exact": 105,
+        "fail_closed": 0,
+        "improvements": 2,
+        "records": 109,
+        "regressions": 0,
+        "v241_exact": 107,
+        "valid": 109
+      }
+    },
+    "stability": {
+      "hashes": [
+        "e6340527528365bccbddd41fc21e2c6d37adb1d2aaa6fee7fe0ab337a383a070",
+        "e6340527528365bccbddd41fc21e2c6d37adb1d2aaa6fee7fe0ab337a383a070",
+        "e6340527528365bccbddd41fc21e2c6d37adb1d2aaa6fee7fe0ab337a383a070"
+      ],
+      "latency_ms_max_for_109": 307.3742080014199,
+      "latency_ms_median_for_109": 305.37052400177345,
+      "runs": 3,
+      "unique_signature_status_hashes": 1
+    },
+    "summaries_match": true
+  },
+  "v251": {
+    "active_first_order": [
+      "question_slot",
+      "support_argument",
+      "explicit_entity",
+      "held_result",
+      "context_implicit",
+      "none"
+    ],
+    "coupling_mutations": [
+      {
+        "codes": [
+          "question_slot_required"
+        ],
+        "id": "context_implicit_places_rejected",
+        "implication": "overbroad: all implicit get/places are treated as current-location",
+        "observed": true
+      },
+      {
+        "id": "explicit_places_bypasses_question_slot",
+        "implication": "question-slot claim is not mandatory by construction",
+        "observed": true
+      },
+      {
+        "id": "held_file_bypasses_support_argument",
+        "implication": "support claim is not mandatory by construction",
+        "observed": true
+      }
+    ],
+    "freeze_active_first": {
+      "actual": {
+        "base_bench_sha256": "db2abaf6aaba2ad77205dda3fda96cdfab272a17079e57b0e472201395a4a329",
+        "base_v25_sha256": "d252ee2fa9dc70be8c34a001aab0eedd78ca2d73e127f81cb28ada3db7b36ba0",
+        "candidate_v251_sha256": "5457bd02aac5c2fa5699c002522ccc5bffc393e56a8435004c1ee1948bd5505f",
+        "fixture_sha256": "90f6010619290bdb6662f1a62f3ef77e6589b0dbe020699bcd54f00dfa236994",
+        "prompt_sha256": "d45acca1f003b8c38a55cf7d66d4d0b784a608aa0fcbff1e30f009e585ec1bb2",
+        "runner_sha256": "b818afdba9789d32206ce631bd3d261a44f0a5bc752f05b85ade21a8615d4055",
+        "schema_sha256": "f64eca91c70659cb1a26025592ca8c44b0fc3d116b48325726f1eef7b55dfd8e",
+        "v241_rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82"
+      },
+      "lock_path": "/tmp/metnos_v251_active_live.freeze.json",
+      "lock_sha256": "f5faa64172de94f82b1909994fc000d880333a3792b34d3ed2674b8924f463f1",
+      "matched": true,
+      "mismatches": {}
+    },
+    "freeze_none_first": {
+      "actual": {
+        "base_bench_sha256": "db2abaf6aaba2ad77205dda3fda96cdfab272a17079e57b0e472201395a4a329",
+        "base_v25_sha256": "d252ee2fa9dc70be8c34a001aab0eedd78ca2d73e127f81cb28ada3db7b36ba0",
+        "fixture_sha256": "90f6010619290bdb6662f1a62f3ef77e6589b0dbe020699bcd54f00dfa236994",
+        "prompt_sha256": "d45acca1f003b8c38a55cf7d66d4d0b784a608aa0fcbff1e30f009e585ec1bb2",
+        "runner_sha256": "5457bd02aac5c2fa5699c002522ccc5bffc393e56a8435004c1ee1948bd5505f",
+        "schema_sha256": "13bc5864e6e5494c47ded6f090b9620fa903b7d12e34436ac86c7c1cf2cee746",
+        "v241_rules_sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82"
+      },
+      "lock_path": "/tmp/metnos_v251_live.freeze.json",
+      "lock_sha256": "edd8c373aba8b003ea136b2b844c7d5084c1239b948bbb0f93bbeecb7294293e",
+      "matched": true,
+      "mismatches": {}
+    },
+    "none_first_order": [
+      "none",
+      "explicit_entity",
+      "held_result",
+      "context_implicit",
+      "question_slot",
+      "support_argument"
+    ],
+    "production_acceptance": false,
+    "reason": "Frozen A/B is diagnostically valid, but requested-result variants can evade both mandatory relation claims.",
+    "runtime_dataflow": {
+      "none_first": {
+        "functions": [
+          {
+            "forbidden_symbol_hits": [],
+            "function": "request_body",
+            "pass": true
+          },
+          {
+            "forbidden_symbol_hits": [],
+            "function": "call_once",
+            "pass": true
+          },
+          {
+            "forbidden_symbol_hits": [],
+            "function": "run_case",
+            "pass": true
+          }
+        ],
+        "pass": true
+      },
+      "to_v241_uses_no_legacy_inference": true
+    },
+    "same_prompt": true,
+    "schema_variant_set_equal": true,
+    "self_test": {
+      "failed": 0,
+      "passed": 6,
+      "tests": 6
+    }
+  },
+  "v25_targeted": {
+    "embedded_comparable_metrics_match": true,
+    "embedded_summary": {
+      "argument_binding_gate": 14,
+      "question_binding_gate": 9,
+      "records": 16,
+      "retries": 0,
+      "route_exact_adjudicated": 16,
+      "route_exact_original": 16,
+      "strict": 7,
+      "valid": 16
+    },
+    "fixture_sha256": "90f6010619290bdb6662f1a62f3ef77e6589b0dbe020699bcd54f00dfa236994",
+    "output_path": "/tmp/metnos_v25_targeted_k1.json",
+    "output_sha256": "2f679aaf19581c1d5bc118e8e71d9ff9cc43d3cc98947c906eff365542b6344b",
+    "per_case_redacted": [
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "eb1889c124dc94de51e86a334855acee37cbaa4c615a65b735093c55fd75ba14",
+        "question_ok": false,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "7bb0e4db6a71c7f5242ab9f39eb2658c9606b6fc6bc48da6e3126f674bd6c590",
+        "question_ok": false,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "1e6aff50b2ec93658bd4c9383e378048072551bfa7687e55fdc7f46023e326a4",
+        "question_ok": false,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "aa6ee15a9f070d4d56bb876cfeee68eba754a6472000663a92f5175bf2d19357",
+        "question_ok": false,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "058f46348af61618d3d232e6cfc346c3a83cefd6336b0e11bd3c98b1aca839a2",
+        "question_ok": false,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "eea3f72566984075653454fcb85ae4c80a90733f12881491d40ab8cea3e74634",
+        "question_ok": false,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "a2859f9a696a13a51a9d2d349c5384dde552618e53d25d229cfcfaa20758670e",
+        "question_ok": false,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "5d5f2b4e4a5f90cceeaa8c7cec3d974edafd49c009d98a46d60b917224f54c87",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": true,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "38ff7c449a25da183cd781fbfdf5b9379eddbf7aa4778170dd0c7575da6071ce",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": true,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "bd262e4a424920c36b95807e25ab66798ff145f82d07c30d873d9677535c0016",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": true,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "69211479e96d368fcd2b74d550046430360cbefa4a9b82d140996d260c1dae51",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": true,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "36db489ecc0cab68652714b5b340a4688859ca54a89d6ef20b028f81bc3d7a06",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": true,
+        "valid_status": true
+      },
+      {
+        "argument_ok": false,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "b0244554cc71ec73ca452130df793f676d193e26acc33d881184cd9f1e79b0b8",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": false,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "6222cddb34017d45e4ebc2c59e048b1945a3098e4bf1fb7e90ec5dc8828148e6",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": false,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "2bce5de578e56c55ded13751a7db1ec1a17b805916a3c4922d6fc2ea26745f93",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": true,
+        "valid_status": true
+      },
+      {
+        "argument_ok": true,
+        "arguments": 0,
+        "attempts": 1,
+        "independent_invariants_valid": true,
+        "opaque_case_id": "1293941919bc6986fa2d808a5cb8aa45da4fdd21e5a24625ee5a1ded6c6d1153",
+        "question_ok": true,
+        "questions": 0,
+        "route_ok": true,
+        "same_case": true,
+        "schema_valid": true,
+        "strict_ok": true,
+        "valid_status": true
+      }
+    ],
+    "summary": {
+      "active_arguments": 0,
+      "active_questions": 0,
+      "argument_binding_gate": 14,
+      "independent_invariants_valid": 16,
+      "projection_disagreements": 0,
+      "question_binding_gate": 9,
+      "records": 16,
+      "retries": 0,
+      "route_exact_original": 16,
+      "same_case": 16,
+      "schema_valid": 16,
+      "strict": 7,
+      "valid": 16
+    }
+  },
+  "verification_version": "metnos.v25-independent-offline/1.0"
+}

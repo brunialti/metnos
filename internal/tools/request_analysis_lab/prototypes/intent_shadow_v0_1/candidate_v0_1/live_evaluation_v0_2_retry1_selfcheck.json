@@ -1,0 +1,213 @@
+{
+  "report_format": "metnos.intent-shadow-live-evaluation-selfcheck/0.2-retry1",
+  "created_date": "2026-08-13",
+  "status": "pass",
+  "evaluation_executed_once": true,
+  "third_attempt_executed": false,
+  "source_evaluation": {
+    "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/live_evaluation_v0_2_retry1.json",
+    "sha256": "6eee1f559b20f3145780ae9dca52eaf101df82f442214cdfec0751f50845d25d",
+    "evaluator_status": "ok"
+  },
+  "preserved_previous_failure": {
+    "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/live_evaluation_v0_2.json",
+    "sha256": "96fc99ddd2d8518737da0bb51da9e88ce09adea5917397d7d4a1d4432cc83fbc",
+    "unchanged": true
+  },
+  "preconditions": {
+    "replay_gate_status": "pass",
+    "records_verified": 316,
+    "pairs_verified": 158,
+    "allowed_mismatch_count": 1,
+    "unexpected_mismatch_count": 0,
+    "oracle_verifier_status": "ok",
+    "oracle_verifier_error_count": 0,
+    "oracle_frozen_files": 23,
+    "oracle_freeze_sha256": "eb9d051af8cee705536348ac602f7888595e5046937ec2ef09a632fddba63a03",
+    "oracle_payload_sha256": "2cdec2776fa48594db8729ec1aa17a635956a61f64b2ce7ad00aa32f8cc0427f"
+  },
+  "arm_mapping": {
+    "A": "fresh current Metnos intent extractor plus frozen lab adapter",
+    "B": "intent-shadow candidate 0.1 direct schema extractor"
+  },
+  "critical_columns": [
+    "semantic_exact",
+    "root_exact",
+    "correct_abstention",
+    "technical_valid",
+    "false_action_avoided",
+    "undo_exact",
+    "consent_exact",
+    "negation_exact",
+    "branch_ownership_exact"
+  ],
+  "panels": {
+    "canonical_120": {
+      "A": {
+        "total": 120,
+        "semantic_exact": 29,
+        "root_exact": 91,
+        "correct_abstention": 27,
+        "incorrect_abstention": 19,
+        "technical_valid": 120,
+        "false_action_avoided": 107,
+        "undo_exact": 120,
+        "consent_exact": 117,
+        "negation_exact": 107,
+        "branch_ownership_exact": 117
+      },
+      "B": {
+        "total": 120,
+        "semantic_exact": 9,
+        "root_exact": 37,
+        "correct_abstention": 7,
+        "incorrect_abstention": 26,
+        "technical_valid": 117,
+        "false_action_avoided": 113,
+        "undo_exact": 120,
+        "consent_exact": 117,
+        "negation_exact": 113,
+        "branch_ownership_exact": 117
+      }
+    },
+    "typed_controls_4": {
+      "A": {
+        "total": 4,
+        "semantic_exact": 1,
+        "root_exact": 3,
+        "correct_abstention": 1,
+        "incorrect_abstention": 1,
+        "technical_valid": 4,
+        "false_action_avoided": 3,
+        "undo_exact": 4,
+        "consent_exact": 4,
+        "negation_exact": 3,
+        "branch_ownership_exact": 4
+      },
+      "B": {
+        "total": 4,
+        "semantic_exact": 0,
+        "root_exact": 0,
+        "correct_abstention": 0,
+        "incorrect_abstention": 1,
+        "technical_valid": 4,
+        "false_action_avoided": 4,
+        "undo_exact": 4,
+        "consent_exact": 4,
+        "negation_exact": 4,
+        "branch_ownership_exact": 4
+      }
+    },
+    "legacy_phase1_34": {
+      "A": {
+        "total": 34,
+        "direct_binding_exact": 25
+      },
+      "B": {
+        "total": 34,
+        "direct_binding_exact": 29
+      },
+      "separate": true,
+      "cross_panel_compensation": false
+    }
+  },
+  "status_definitions": {
+    "valid": "valid_representable plus valid_unrepresentable",
+    "invalid": "document_invalid plus missing extraction",
+    "technical": "technical_invalid",
+    "transport": "HTTP not accepted or transport_error present",
+    "categories_are_mutually_exclusive_for_this_batch": true
+  },
+  "status_counts": {
+    "canonical_120.A": {
+      "total": 120,
+      "valid": 116,
+      "valid_representable": 70,
+      "valid_unrepresentable": 46,
+      "invalid": 4,
+      "document_invalid": 4,
+      "technical": 0,
+      "transport": 0
+    },
+    "canonical_120.B": {
+      "total": 120,
+      "valid": 60,
+      "valid_representable": 27,
+      "valid_unrepresentable": 33,
+      "invalid": 57,
+      "document_invalid": 57,
+      "technical": 3,
+      "transport": 0
+    },
+    "typed_controls_4.A": {
+      "total": 4,
+      "valid": 4,
+      "valid_representable": 2,
+      "valid_unrepresentable": 2,
+      "invalid": 0,
+      "document_invalid": 0,
+      "technical": 0,
+      "transport": 0
+    },
+    "typed_controls_4.B": {
+      "total": 4,
+      "valid": 1,
+      "valid_representable": 0,
+      "valid_unrepresentable": 1,
+      "invalid": 3,
+      "document_invalid": 3,
+      "technical": 0,
+      "transport": 0
+    },
+    "legacy_phase1_34.A": {
+      "total": 34,
+      "valid": 34,
+      "valid_representable": 30,
+      "valid_unrepresentable": 4,
+      "invalid": 0,
+      "document_invalid": 0,
+      "technical": 0,
+      "transport": 0
+    },
+    "legacy_phase1_34.B": {
+      "total": 34,
+      "valid": 24,
+      "valid_representable": 13,
+      "valid_unrepresentable": 11,
+      "invalid": 6,
+      "document_invalid": 6,
+      "technical": 4,
+      "transport": 0
+    }
+  },
+  "hierarchical_verdict": {
+    "canonical_delta_B_minus_A": -20,
+    "typed_special_4_of_4": false,
+    "critical_regressions": [
+      "semantic_exact",
+      "root_exact",
+      "correct_abstention",
+      "technical_valid"
+    ],
+    "verdict": "candidate_fail"
+  },
+  "self_checks": {
+    "arm_mapping_matches_protocol": true,
+    "all_158_pairs_have_A_and_B": true,
+    "all_batch_records_match_manifest_identity": true,
+    "typed_denominators_match": true,
+    "legacy_denominators_match": true,
+    "all_typed_aggregates_recomputed_from_rows": true,
+    "legacy_aggregates_recomputed_from_rows": true,
+    "nine_critical_columns_exact": true,
+    "hierarchical_verdict_recomputed": true,
+    "transport_failures_zero": true,
+    "cross_panel_compensation_absent": true
+  },
+  "immutable_hashes": {
+    "batch_sha256": "eac40d320a8e2d98b0a11ab2ed652cf9ecc64b4893fb2e658a9bbde50143ca0b",
+    "journal_sha256": "403135c52aff5852e782f6549bc55f0f08d64b6a92e7a8fb4b9c6374c7515c4e",
+    "sealed_batch_freeze_sha256": "8f58208fd6082b6fafda953882356c3f4d0084cf183aefeeaafb8b08847cde4c",
+    "oracle_sha256": "3e0d1155fad7b2920b3b04bb6e617747849c8fe4a1abfea5920f1b51dba6a123"
+  }
+}

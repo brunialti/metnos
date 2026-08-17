@@ -1,0 +1,490 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "clauses": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "clause_end_segment_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "clause_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "clause_start_segment_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "evidence": {
+            "additionalProperties": false,
+            "properties": {
+              "relation": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "none"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "end_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "explicit_segment"
+                      },
+                      "start_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "start_segment_id",
+                      "end_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "predicate_morphology"
+                      },
+                      "predicate_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "predicate_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "clause_end_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "clause_start_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "clause_semantics"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "clause_start_segment_id",
+                      "clause_end_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "speaker_context"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "discourse_context"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "tense_morphology"
+                      },
+                      "predicate_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "predicate_segment_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "subject": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "none"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "end_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "explicit_segment"
+                      },
+                      "start_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "start_segment_id",
+                      "end_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "predicate_morphology"
+                      },
+                      "predicate_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "predicate_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "clause_end_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "clause_start_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "clause_semantics"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "clause_start_segment_id",
+                      "clause_end_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "speaker_context"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "discourse_context"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "tense_morphology"
+                      },
+                      "predicate_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "predicate_segment_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "time": {
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "none"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "end_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "explicit_segment"
+                      },
+                      "start_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "start_segment_id",
+                      "end_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "predicate_morphology"
+                      },
+                      "predicate_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "predicate_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "clause_end_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "clause_start_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "clause_semantics"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "clause_start_segment_id",
+                      "clause_end_segment_id"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "speaker_context"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "discourse_context"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "tense_morphology"
+                      },
+                      "predicate_segment_id": {
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "predicate_segment_id"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "relation",
+              "subject",
+              "time"
+            ],
+            "type": "object"
+          },
+          "grammatical_person": {
+            "enum": [
+              "none",
+              "first",
+              "second",
+              "third",
+              "ambiguous"
+            ],
+            "type": "string"
+          },
+          "interpretation": {
+            "enum": [
+              "supported",
+              "ambiguous",
+              "unsupported"
+            ],
+            "type": "string"
+          },
+          "predicate_segment_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "relation": {
+            "enum": [
+              "none",
+              "spatial.located_at",
+              "identity.same_as",
+              "filesystem.located_at",
+              "runtime.host_of",
+              "spatial.near",
+              "acl.share",
+              "movement.destination",
+              "workflow.position",
+              "document.position"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "request",
+              "condition",
+              "description",
+              "quote"
+            ],
+            "type": "string"
+          },
+          "speech_act": {
+            "enum": [
+              "assertion",
+              "open_question",
+              "polar_question",
+              "imperative",
+              "condition",
+              "quote",
+              "description"
+            ],
+            "type": "string"
+          },
+          "subject_ref": {
+            "enum": [
+              "none",
+              "current_actor",
+              "explicit_entity",
+              "unknown_entity",
+              "deictic_context",
+              "current_actor_location_operand",
+              "quoted_actor"
+            ],
+            "type": "string"
+          },
+          "time_scope": {
+            "enum": [
+              "none",
+              "current",
+              "historical",
+              "contextual"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "clause_id",
+          "clause_start_segment_id",
+          "clause_end_segment_id",
+          "predicate_segment_id",
+          "role",
+          "interpretation",
+          "speech_act",
+          "relation",
+          "subject_ref",
+          "grammatical_person",
+          "time_scope",
+          "evidence"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "clauses"
+  ],
+  "type": "object"
+}

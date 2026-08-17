@@ -1,0 +1,54 @@
+{
+  "authorization": {
+    "authorized_case_count": 34,
+    "endpoint": "http://127.0.0.1:8080",
+    "external_preflight_required": true,
+    "inference_calls_before_lock": 0,
+    "inline_preflight_method": "GET",
+    "inline_preflight_required": true,
+    "model_request_attempt_limit": 34,
+    "one_call_per_case": true,
+    "output_must_be_absent": true,
+    "output_path": "/tmp/metnos_v26567_live_k1_34.json",
+    "python_executable": "/usr/bin/python3",
+    "python_flags": [
+      "-I",
+      "-B"
+    ],
+    "repetitions": 1,
+    "retries": 0,
+    "transport_preflight_calls_before_lock": 1
+  },
+  "candidate_outputs_read": 0,
+  "dependencies": {
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_author.freeze.json": "79ecf2c9d130767a58ddaafa037de3b48ee4dd84e6e65c282bc84bd70873852e",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_author_pre_gate.json": "de5b931c02d4842982bdf01a14fb04343884adbab4d77b4801a03e490ada3e5c",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_author_static_review.json": "c81b781862637c7e4578a17eb1cb0936b359c4e0b0f96db7a0443165748a839d",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_author_static_review.md": "9f42a1ac850417a85ead23a5f071dcb69029763b873a9602f894654d809c570b",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_external_live_gate_verifier.py": "d95c5f29669470a8c3ab2bdc4118451ad77f1f59c8a296f644fca5a3f45a2ce9",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_k1_runner.py": "4af76aaa874c46c890ac248b896a20d443f5cd260fb8e73e431b380e5ae57c23",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_preflight_gate.lock.json": "053f97743856440f301efb5a7d8235cff38c0dc8a96430feb6270b44e93081c9",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_transport_preflight.json": "67f7c284615967f38ed39e9920c961da9636061a8206ce17f3588c936dd6cf72",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_transport_preflight_authorization_review.json": "a7344c57e7fa0612e461438bb7e90fa2630ce662935618ef332618d43701239d",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_transport_preflight_gate_verification.json": "ce7602b3e438290aff94868f501685341d2ff9982f54884f3e2cf7cdb3fb412a",
+    "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_transport_preflight_gate_verifier.py": "e39ae6cc4e89466b134a74cab5589e3fdf21316f9cf9d82b4216e5c4ca47efd2"
+  },
+  "external_gate_authorization": true,
+  "independent_review_performed": false,
+  "inference_calls_during_authorization": 0,
+  "live_authorization": false,
+  "network_calls_during_authorization": 0,
+  "preflight": {
+    "archive_path": "internal/tools/request_analysis_lab/candidates/v26567/metnos_v26567_transport_preflight.json",
+    "bytes": 1632,
+    "completed_at_unix_ns": 1786347303046039136,
+    "sha256": "67f7c284615967f38ed39e9920c961da9636061a8206ce17f3588c936dd6cf72",
+    "source_path": "/tmp/metnos_v26567_transport_preflight.json"
+  },
+  "runtime_cutover_authorization": false,
+  "status": "AUTHORIZE_ONE_NATIVE_K1_34",
+  "verdict": "STATIC_PASS",
+  "verdict_authority": "user",
+  "verdict_basis": "author static review, PASS after corrections, zero residual findings; the user authorized it to stand as STATIC_PASS on 10 August 2026 because no independent agent was available",
+  "version": "metnos.v26.5.6.7-external-live-authorization-review/1.0"
+}

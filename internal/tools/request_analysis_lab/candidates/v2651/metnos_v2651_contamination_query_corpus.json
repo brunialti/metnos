@@ -1,0 +1,1100 @@
+{
+  "adversarial_logical_sha256": "620803a44fc63e88d4b613963ca55e7f9a82a4c87f2f6c912b1e65904ea472f8",
+  "contains_expected_or_gold": false,
+  "dataset_manifest": {
+    "adversarial70": {
+      "query_sequence_sha256": "0aec548d942b321401591ba431ef4f700537c1b2af8fc91e28559e6ad7eb55aa",
+      "records": 70
+    },
+    "full109": {
+      "query_sequence_sha256": "420cace8d56babcace02fede1dcc64d92310a3e293cebe9567b5303a1d4abd20",
+      "records": 109
+    },
+    "question-controls34": {
+      "query_sequence_sha256": "81b31348e3e9f077b3e289a3e16938e2eec9bc882c3866b2f8f40c1aace18813",
+      "records": 34
+    }
+  },
+  "datasets": {
+    "adversarial70": [
+      {
+        "opaque_case_id": "96c818ac4a6ba23a9a3f79695d017bd601e4b8b0fc1271a9ca8631d85a9a8294",
+        "query": "Mostrami il contenuto grezzo di /tmp/audit.log.",
+        "query_sha256_utf8": "9f2d85ec085452ec64978ddeeab04b4a2a804697872e723c9f576e47e037e584"
+      },
+      {
+        "opaque_case_id": "02f952e06a4eb222ce815ffd7934f17d2b88b1d56640ea3d25b26e4d5fe3689e",
+        "query": "Show me the raw contents of /tmp/audit.log.",
+        "query_sha256_utf8": "c42ff602765043e77d1107acd48d78b298463746fcc609b7b4073146ab711e0c"
+      },
+      {
+        "opaque_case_id": "20a7609dd5199298642e1e35097262dace3745f043ac34b2c714c4942d662207",
+        "query": "Montre-moi le contenu brut de /tmp/audit.log.",
+        "query_sha256_utf8": "e742072d3c43b0ddc3f19301e734f20005dbac6b6fc87d4f0f5eb15a21ef12b0"
+      },
+      {
+        "opaque_case_id": "8fce009935148aa467423e0a0963d0f207e892e96693c10ae5b3c4bb79a31f3e",
+        "query": "Muéstrame el contenido bruto de /tmp/audit.log.",
+        "query_sha256_utf8": "84f8b14ee07391774a187ca2bfe9c9be10dfbede37874d9c80e66b6bff992e96"
+      },
+      {
+        "opaque_case_id": "8cd282276cf605a0fe477caf4886edd2a9c19e3a4380ce620c62fd406656d029",
+        "query": "Zeig mir den Rohinhalt von /tmp/audit.log an.",
+        "query_sha256_utf8": "a57dcb2f54a835a3a169a270acf485a1daa72568d57ed8d059640401c92c7abf"
+      },
+      {
+        "opaque_case_id": "7f40f49302c6d781ceeeb82906b5663a430c59b5059564d7dae79cb0e566e2a1",
+        "query": "Non cancellare rapporto.txt; leggine soltanto il contenuto.",
+        "query_sha256_utf8": "2bef47794b3659b099c342a5f0b6e8f95091b5e8e690d4f1eed9100396686905"
+      },
+      {
+        "opaque_case_id": "a1e6f29b89abfcb3ed12b2a12cfe356e34445efe1d7e814daa56f8aaf82f1c60",
+        "query": "Do not delete report.txt; only read its contents.",
+        "query_sha256_utf8": "539292f8b781ad0b4910bf314325661185d64e47f4ce4a5eda0f9ed2883d0801"
+      },
+      {
+        "opaque_case_id": "40af1bc330b4ecce61e64dab46a04df86220e8881e77cebbc96a46f55b32dacc",
+        "query": "Ne supprime pas rapport.txt ; lis seulement son contenu.",
+        "query_sha256_utf8": "2709004c6d76dd1d7ac17c694b8f1c942bb987035c569061ca1316b45e6b6aa4"
+      },
+      {
+        "opaque_case_id": "4fe182d0e91c8d2055a326c11924e64396c2b124b55c9138ea1e8108bc92c057",
+        "query": "No borres informe.txt; lee solamente su contenido.",
+        "query_sha256_utf8": "78d07a59d96d25fc0519752e3968820d46ee42f3ce12706f87f68e90da8cb357"
+      },
+      {
+        "opaque_case_id": "a19b3ba8f605828041216c5d38f001f141b7c2b94955ad7622ffc875288a4b54",
+        "query": "Lösche bericht.txt nicht; lies nur seinen Inhalt.",
+        "query_sha256_utf8": "89b95d53e30c99e2b982a93479616c526975e88e51e75cca5770e5bc82db6fee"
+      },
+      {
+        "opaque_case_id": "0b0ddb20778df01014ee33a409a6a6d1a0a327d421323adaf6081ac91cccc2a8",
+        "query": "Se il file lock.txt esiste, leggi il file lock.txt.",
+        "query_sha256_utf8": "9d13d9d2aeacb437234bd4d389a66a7b9c63415fd2dc44c25a26fc88a2116d9f"
+      },
+      {
+        "opaque_case_id": "4adfa68dbc7f48fa70d8f30f19c1eaef930194c797caff1efe24481daca885ac",
+        "query": "If the file lock.txt exists, read the file lock.txt.",
+        "query_sha256_utf8": "bfe5afedf4b7cd8ec36c0939af4fb4c10f360d96b71d87722d39509482b60fe8"
+      },
+      {
+        "opaque_case_id": "73ff3da8861e87dd74a40cebf0559cfa615b288f9403f1cfaea6458e0aa57b1f",
+        "query": "Si le fichier lock.txt existe, lis le fichier lock.txt.",
+        "query_sha256_utf8": "276250feb5830688187f1552e2a37b675b1d76d0719ea51763e9f4d88952faa8"
+      },
+      {
+        "opaque_case_id": "0866717c207d6fedc498fbc55e9521269b84b1cdc44b3e1206c8f9f2d977871e",
+        "query": "Si el archivo lock.txt existe, lee el archivo lock.txt.",
+        "query_sha256_utf8": "5ab0b33730e7d1069c729860bc963c49ba2740b7f481e742b470292ed7c08222"
+      },
+      {
+        "opaque_case_id": "9dbc926fbc7957c5f834bcbc23329e94e76b2f06941740ac4b9ec5831d42deca",
+        "query": "Wenn die Datei lock.txt existiert, lies die Datei lock.txt.",
+        "query_sha256_utf8": "71ad3e26cc83a3ff81c20c820913274b9bc2d4e328544360c504e57ebdcec56d"
+      },
+      {
+        "opaque_case_id": "f8a096be517bc38151a903e7c37ff379c12b0ac1dea3df72afc2fb6e2282577c",
+        "query": "Trova i documenti creati dopo lunedì.",
+        "query_sha256_utf8": "1e04a6e3a70515d7d220a790f821ddf66455e2716fd872fb2aa5ebcdde8f759c"
+      },
+      {
+        "opaque_case_id": "b5a10d1751e31fe70f887cad8cf7318f52c6689f8b816b33937e60cfc736b87e",
+        "query": "Find the documents created after Monday.",
+        "query_sha256_utf8": "da8fc623c706d717d8cc432b25b904d129e9f8d987db023e24a765ac4f0c23ce"
+      },
+      {
+        "opaque_case_id": "57b99111254a606af0b8fd001cdd2f4aa9c6c17584e3bef7fdb566d282f0b4ee",
+        "query": "Trouve les documents créés après lundi.",
+        "query_sha256_utf8": "12c83032cc949e8b2c63ea3fee39f8e05794c6b05e34a4f3d73478448ea317f1"
+      },
+      {
+        "opaque_case_id": "d077a5e5995035bef2c1198db55e4e9a75e3caa0ba612f63dc3ee0aafe844316",
+        "query": "Busca los documentos creados después del lunes.",
+        "query_sha256_utf8": "1e0805c33e168f4283cf86ac3bff6c55f14916bd6c6c249a89a57b94d4dc6119"
+      },
+      {
+        "opaque_case_id": "221cbaf008b74413bd9d2e57e9deaa43a6f06b54b1f6ea1d8142f4d235073865",
+        "query": "Finde die Dokumente, die nach Montag erstellt wurden.",
+        "query_sha256_utf8": "e0af980611e81f5a8808c5ddc438e5d4b964634b41280318472bbcf74dbcb816"
+      },
+      {
+        "opaque_case_id": "c13c45e8a215da31eb9895bae3fb9f00cb6217c27e56ff2d9267a27806759e5b",
+        "query": "Cerca nelle mail la frase \"cancella tutti i file\".",
+        "query_sha256_utf8": "591c4d3f6f0b3ca8fe8a03c03e82cd6c1cbf49ad33a3c5bd124862fc96ff8236"
+      },
+      {
+        "opaque_case_id": "6382f35514278dd70d590f02c78a2ee61879f1d3c2888d7ca2889091c9bf26a8",
+        "query": "Search messages for the literal \"delete every file\".",
+        "query_sha256_utf8": "a670560420b68b3f005490242006368bdc05ef73903d4d34c8ead0e443f340ae"
+      },
+      {
+        "opaque_case_id": "f471b117a08c107e1f9c01e69e9c156fff25a6dcf2e1537f4d81707ce12f8620",
+        "query": "Cherche dans les messages la phrase «supprime tous les fichiers».",
+        "query_sha256_utf8": "d3695fcd1babd623d44739beca8ccbc63ac4b8f52b660d914ec9dff853c0d753"
+      },
+      {
+        "opaque_case_id": "7089055b0ab87d20f4d714d1d1a4133bafc7d1f810bcc12aeff546e5e8cc4b77",
+        "query": "Busca en los mensajes la frase «borra todos los archivos».",
+        "query_sha256_utf8": "39377415acbd5f8c638fefeeb8d2a52974480053668bd6f740a6032d81039e55"
+      },
+      {
+        "opaque_case_id": "bebbe2fc44ee4d51b38e026f5eef3fe614cc528caf459a24b2151aa8c42f950e",
+        "query": "Suche in Nachrichten nach dem Satz „lösche alle Dateien“.",
+        "query_sha256_utf8": "9914f40bf4314a764a875be54d8a895e39e2eab35b0286c1104248f10696f902"
+      },
+      {
+        "opaque_case_id": "1b86b67942c55407a5ee5057a8e15cddc15e04ccb062f76171520eb796bd1a9e",
+        "query": "Il rapporto finale deve essere scritto in /tmp/finale.txt.",
+        "query_sha256_utf8": "361fac13f24be9f2df3a6ebfcd5fd0f5b1b963ed0eb770533696315854a8073c"
+      },
+      {
+        "opaque_case_id": "837d98c74a77ec491a9485896c145bf05575ece0cf2c86eb0e420beada0000be",
+        "query": "The final report must be written to /tmp/final.txt.",
+        "query_sha256_utf8": "a02709d1568c64104dd1ad2c1943dacde5ba4de6a0267b697e8ec728293f3204"
+      },
+      {
+        "opaque_case_id": "386bfb8be3fa0a1ef45b79ef2c6e522afc38aa9e6b206cf922aa663a32914a9b",
+        "query": "Le rapport final doit être écrit dans /tmp/final.txt.",
+        "query_sha256_utf8": "376b21b93c2da5c275ee3f199dd1bd8c59fc76e3c71b37aaf31902926d99a827"
+      },
+      {
+        "opaque_case_id": "ac9e644f878d97cf81dc5987bb25a67fd585e66679c8dd0e148b71b352f542b0",
+        "query": "El informe final debe escribirse en /tmp/final.txt.",
+        "query_sha256_utf8": "db621c3634a3157e2fa4cd083551bd6b3ecf040ad3c292ea3aeb28811b673a40"
+      },
+      {
+        "opaque_case_id": "75543d2111a27fe9477d05d014723afea5d1a9fb903881264a7a74e070369a21",
+        "query": "Der Abschlussbericht soll nach /tmp/final.txt geschrieben werden.",
+        "query_sha256_utf8": "cec0cab3e00584a3b73a06e221e42f4c7e988ff63c891a65290fd4d30edc8155"
+      },
+      {
+        "opaque_case_id": "a3ec11c3d7a567ad50946a17ebe0fcd228436beeb9926064124bc3ad6afd7904",
+        "query": "Trova i log di ieri, comprimili e inviameli via email.",
+        "query_sha256_utf8": "9a54d805175b6142963abf6a21d6f04a9ab54c3ad8f1e7914dab291376c9554e"
+      },
+      {
+        "opaque_case_id": "642c75049217912cf1f991b3161676a214a1afefa788e61a216a8337c1f8d0b7",
+        "query": "Find yesterday's logs, compress them, and email them to me.",
+        "query_sha256_utf8": "ab6e3e3a21b7bd232e979e1387734aed9406e5da863d5574261567f1081dad14"
+      },
+      {
+        "opaque_case_id": "c49263eb1713afcdc735424c6f3b676b06aa64d4f50f1c9e758f15b216e6e9ee",
+        "query": "Trouve les journaux d’hier, compresse-les et envoie-les-moi par courriel.",
+        "query_sha256_utf8": "c66827c179ee8876a9c5734de3f425c86e1c423af957e45ebf658d52f46760a1"
+      },
+      {
+        "opaque_case_id": "7874b795730415193dbcf9b1ac6f6ffc98450bc75cf0469ebdcba4c5b347f15d",
+        "query": "Busca los registros de ayer, comprímelos y envíamelos por correo.",
+        "query_sha256_utf8": "9f788f71f2a4b1f62c2dac13bcb298cd76b96ba4d303510c9093b428c2b583f6"
+      },
+      {
+        "opaque_case_id": "8e4a568bf5ee45d3d62d466bf32a2a13300542cf1d071d229b5fc4c7d396a1b2",
+        "query": "Finde die Protokolle von gestern, komprimiere sie und sende sie mir per E-Mail.",
+        "query_sha256_utf8": "b5868b31bb75c66d2b7f50e09d91b74aababf7b4cf38f4a24e13e794124133d2"
+      },
+      {
+        "opaque_case_id": "65cb82a61d5568ddbc4a646002bacb0de2824979ae245324275782dde1a01858",
+        "query": "Trova le foto del viaggio, classificale per soggetto e poi raggruppale per anno.",
+        "query_sha256_utf8": "dbc2712db55f43e3d46b7df3cb1f9d16fbb0f9dea4e4636574230af2b6326300"
+      },
+      {
+        "opaque_case_id": "f42b74986b17b2edab62dc474840be8df95e9de61e6c7f491f635b918f354d45",
+        "query": "Find the trip photos, classify them by subject, then group them by year.",
+        "query_sha256_utf8": "dd7b02547239fccbc0a9c01b495f3d6a4d30ebfe86086e7f0c051c10cc4cacd9"
+      },
+      {
+        "opaque_case_id": "e44bab6c107afcb910d11b8d7f384586b59a38c8e5bf295b0fbb92f174ce91f6",
+        "query": "Trouve les photos du voyage, classe-les par sujet puis regroupe-les par année.",
+        "query_sha256_utf8": "c45ef7bd4ef89f9e65055c10f78c078aa904cacd36bd70408d8390de8834e0bc"
+      },
+      {
+        "opaque_case_id": "03f53b98898e53d4af9a2c092a4bb1ef46160408c0e85fdf4c919930350cd94c",
+        "query": "Busca las fotos del viaje, clasifícalas por tema y luego agrúpalas por año.",
+        "query_sha256_utf8": "7d5841393e56d849bf402367b40bc2561335751626aea0e858b864ba9529963a"
+      },
+      {
+        "opaque_case_id": "2c936b2f1887fad71f08554577f13e1c5112b48754b20ca117f19c34af873a1d",
+        "query": "Finde die Reisefotos, klassifiziere sie nach Motiv und gruppiere sie dann nach Jahr.",
+        "query_sha256_utf8": "21798d61e2eba1ddc47b7bf364fd8cf8897b267130b2ac336680af133f1ba0b0"
+      },
+      {
+        "opaque_case_id": "1be4b1da7de849bb7e1a7d4b3da99d7871b3ca27caf98201a61b32706ba16306",
+        "query": "Il file si è spostato da solo; ora leggi il contenuto del file.",
+        "query_sha256_utf8": "1455892398011d05df9f60e53ba5fa35bd8cedfd093b9904f8a41a5ff087d14e"
+      },
+      {
+        "opaque_case_id": "e7b54398e2766d67595ea3aa7a3200c48962ad5856d9763fb9fb96010e4f8f3c",
+        "query": "The file moved by itself; now read the file's contents.",
+        "query_sha256_utf8": "4087baca134d00a2798956444c7d796422d07bb4d06b8e3a506a77949b414fca"
+      },
+      {
+        "opaque_case_id": "9ed64f4ed8f74df1cdf2457b61c09f120afa35836d069944a6eab4cd27cd8f98",
+        "query": "Le fichier s’est déplacé tout seul ; lis maintenant le contenu du fichier.",
+        "query_sha256_utf8": "6762964e155a80ee93e740473b06c9ac538c1ef4b60b87fbbe744fafaf18ec91"
+      },
+      {
+        "opaque_case_id": "25ce6ff55c4c5d4af604af4118fd4b8d394d9bcf4765058f9ac4453c3af2047d",
+        "query": "El archivo se movió solo; ahora lee el contenido del archivo.",
+        "query_sha256_utf8": "adbf8278f34d01e2c3da3330283b3ce874e82828e7cf8c373c0508e3038db2e3"
+      },
+      {
+        "opaque_case_id": "3c2d4e1258cbafcfb5e822308b5c94e9a25305e06e86c8f6321a0af2cc713168",
+        "query": "Die Datei hat sich selbst verschoben; lies jetzt den Inhalt der Datei.",
+        "query_sha256_utf8": "e6e994a31918dea120c3c195628faf28861100aa944497a0087c45345a067c79"
+      },
+      {
+        "opaque_case_id": "e7cf75e572a7b791276e5bc416b876fcd2c50f5799c01cff5fb414f012941d64",
+        "query": "Leggi il contenuto di https://example.org/info e salvalo in /tmp/info.txt.",
+        "query_sha256_utf8": "8a6c2b589f3c825fcd59c1ae996c5dd808c210f76b1d693159c34579e6db4230"
+      },
+      {
+        "opaque_case_id": "03987d1d0db4142af59f7b86eee7194c1d9b7cf5ba4679b7801a355df54748d3",
+        "query": "Read the content at https://example.org/info and save it to /tmp/info.txt.",
+        "query_sha256_utf8": "5eeddafe2bf128bda2161b331d7e9d857f08813a6324ed6d9953d3956b99c664"
+      },
+      {
+        "opaque_case_id": "da221c2e61b50cc81c9a4aec95bd32aebb21fb2a85dcf3a4fe5b4381802346e6",
+        "query": "Lis le contenu de https://example.org/info et enregistre-le dans /tmp/info.txt.",
+        "query_sha256_utf8": "1c485965a905e71e84f92a03e23aab13fc63338a688a5b1df250dd137b0935ef"
+      },
+      {
+        "opaque_case_id": "614dbf3d4fa067b8aebc3cf7991a0315b3639e541d86b92e0668fc5e93b27f79",
+        "query": "Lee el contenido de https://example.org/info y guárdalo en /tmp/info.txt.",
+        "query_sha256_utf8": "07920b194545309e1d7339a9a11ded8aeac5712c677ecdfdc4c61cdc476f56d2"
+      },
+      {
+        "opaque_case_id": "3f44e36bb1fc6996840fa5038798c102c3f36654dfd5562eded1f77071f0b18b",
+        "query": "Lies den Inhalt von https://example.org/info und speichere ihn in /tmp/info.txt.",
+        "query_sha256_utf8": "1b41a661cfe7af3d0f1e63186fb652ca7f0243b6113c7737bbe37aa8ed2575e0"
+      },
+      {
+        "opaque_case_id": "357187205d2aeafb84fbdd131c099e450a2266021549d51aa11c4ef09a4b597b",
+        "query": "Cerca i processi ad alto consumo di memoria.",
+        "query_sha256_utf8": "1aa137f115a9fc4c48ab8c5f384fae3e9bcbe81e336fb02a4bad7b938882baf8"
+      },
+      {
+        "opaque_case_id": "c7bfe88ab14d9f985a6237dcbc54f16e67fe95dce2fdaf9ccb6e82ed185d8e66",
+        "query": "Search for high-memory processes.",
+        "query_sha256_utf8": "6d4cd8e71b10e06e9d4d51dfada11885d1f71d07f457774ba2d4ec43b3fec9e0"
+      },
+      {
+        "opaque_case_id": "5dd517eb9f6c29c541409524168aea81722480e71f4abaef824af2b14a4a5c0d",
+        "query": "Recherche les processus à forte consommation de mémoire.",
+        "query_sha256_utf8": "4db7129e1d6ff2e66a3dfc93aea7f99f17f3b561343db37bcd0b26e94d40722e"
+      },
+      {
+        "opaque_case_id": "04841d206d97b8974f518e0b76408f3a9fdbcb0debfeb3797a1148b864f7e531",
+        "query": "Busca procesos con alto consumo de memoria.",
+        "query_sha256_utf8": "6307c5b7aeef9cb366eecc8bcc9c3570c0030a00765e4a428eed3790d44e83eb"
+      },
+      {
+        "opaque_case_id": "dd8dcfcae4c3574b96e1f973dcf98576d89c4049d7a21f1e4aad307d939fe5d3",
+        "query": "Suche nach speicherintensiven Prozessen.",
+        "query_sha256_utf8": "51ba901a2ff88f95e20ae754d870483d4d7d6362bbfd24da2e94b50625e61e92"
+      },
+      {
+        "opaque_case_id": "c69063996a3fe102e03807ad85e49a1c7a5a74bce05cfa5e6ca8838c38456fee",
+        "query": "Allega /tmp/logo.png al messaggio e invialo a Lucia.",
+        "query_sha256_utf8": "7bc913ce7c3a62952a65654b7c99f7d055ed080c4af0e9d2a151172299fd24a8"
+      },
+      {
+        "opaque_case_id": "0492de840958b6917bc36db7ab35b2e92fe12ef6eba119ae71916f5d9089b5c9",
+        "query": "Attach /tmp/logo.png to the message and send it to Lucia.",
+        "query_sha256_utf8": "0f1e788f4af0bc942eb8322b56539919f0d2936888e264009fa276b56a3caa2e"
+      },
+      {
+        "opaque_case_id": "05b4671624dbab855f75b697d95bd805a685509cf9ca97c297abb556cc13210d",
+        "query": "Joins /tmp/logo.png au message puis envoie-le à Lucia.",
+        "query_sha256_utf8": "76b3d9066e6b60d8802463395494e7b80c67f9c8aea0c78221cbb2cac9246e10"
+      },
+      {
+        "opaque_case_id": "5eca895d09cc5d2d360031f0d46ebd87a19cda1c0c5fee299898cc6ba1ae2089",
+        "query": "Adjunta /tmp/logo.png al mensaje y envíalo a Lucía.",
+        "query_sha256_utf8": "146235f62ca68c524d83e1749d0bbd60a191538c7f84f00ad73e576ed1b3c585"
+      },
+      {
+        "opaque_case_id": "9e0b2d754afa63812984b4c584aaedcce85825c890566580d69ff08e12a10b6d",
+        "query": "Hänge /tmp/logo.png an die Nachricht an und sende sie an Lucia.",
+        "query_sha256_utf8": "717b00b12d8b338213166b4ac0b0c9749c7879d75098aca864f67c553e62a7eb"
+      },
+      {
+        "opaque_case_id": "2cd2da46ef429f94d9c3196e527c43c4006584486f6281c062d2e142fa75221c",
+        "query": "Estrai totale e valuta dalle ricevute direttamente nello store dei record, poi crea un nuovo foglio di calcolo.",
+        "query_sha256_utf8": "ee1cb51edb44f2c497aa8cc8945dfe24f04da35de5fdcb75b2601244bc16af91"
+      },
+      {
+        "opaque_case_id": "1621951a690cfe2275eb8b81f867c968a5a0835c91bbe686b464bfbb4d66c039",
+        "query": "Extract total and currency from the receipts directly into the record store, then create a new spreadsheet.",
+        "query_sha256_utf8": "8584d3b868e6ece3a71a635e346d0a94426e06c044c99bbf34605ec6f6230e4d"
+      },
+      {
+        "opaque_case_id": "7a181e5ce9c4c0814f1487eaf14d23228fd6c39c525c92f0ac1cecb4e6f09f1d",
+        "query": "Extrais le total et la devise des reçus directement dans le registre de données, puis crée une nouvelle feuille de calcul.",
+        "query_sha256_utf8": "b1f7b4e0cc3840d04fe5abf1d4c145f69343083f66a65698b701d5ae5ca352cb"
+      },
+      {
+        "opaque_case_id": "8cdb48feb006cdd48e409e91ceb5be1f14182dc42ef3672b5744e963e540bd89",
+        "query": "Extrae el total y la moneda de los recibos directamente al almacén de registros; luego crea una hoja de cálculo nueva.",
+        "query_sha256_utf8": "961cf602ccb3d5c4d4e1696437a0a89ff53f84ec5cb1ebab7d588d17cbb1ac98"
+      },
+      {
+        "opaque_case_id": "68d12fc3cff28934bcca1dd4d1c07336b054d99f06b2a315ba2a234c49582597",
+        "query": "Extrahiere Betrag und Währung aus den Belegen direkt in den Datenspeicher und erstelle danach eine neue Tabelle.",
+        "query_sha256_utf8": "0bfb06ca188ed891684c284ed2f9305d9d25d0b50af0c10c262f08379b134efd"
+      },
+      {
+        "opaque_case_id": "2423612cb57d91abc080e0d554c71117860c16a6056f1766d4292276554039bc",
+        "query": "Trova le foto panoramiche, spostale in /tmp/pano e condividile con Lucia in sola lettura.",
+        "query_sha256_utf8": "580fee9999c50ed28266b76c8ccf20ba096c17e4166dd0052adaeca3ccad944a"
+      },
+      {
+        "opaque_case_id": "f706a29b6c4fbb6ea4843c94a498637fca0f65614e68165e19bed5f2040c421b",
+        "query": "Find the panoramic photos, move them to /tmp/pano, and share them with Lucia as read-only.",
+        "query_sha256_utf8": "d1a99f8e36257c7b54dcf06102553c740133dd04632ed1ea6df70c05932ef88a"
+      },
+      {
+        "opaque_case_id": "15951079d2ca9a1b040010db0aa4c83c0e963ba8d978dd443e2495f5be7ba014",
+        "query": "Trouve les photos panoramiques, déplace-les dans /tmp/pano puis partage-les avec Lucia en lecture seule.",
+        "query_sha256_utf8": "f566100239536cccd7d1a54a3970e0a9e4e77c4737c66327a0ceb9392254c519"
+      },
+      {
+        "opaque_case_id": "28cf335b38926b354d22cd0525586ee7676e501ffe5474205b91ed9174320da8",
+        "query": "Busca las fotos panorámicas, muévelas a /tmp/pano y compártelas con Lucía en modo de solo lectura.",
+        "query_sha256_utf8": "65f7e39054725dce31dd187fb1c6d73c4ae56643c97fb71a610c0e9b222c3b00"
+      },
+      {
+        "opaque_case_id": "e36033c84ac330cd6e4001e71789eab1d7782998ccd678f8b6d8c0d65f4e5a1f",
+        "query": "Finde die Panoramafotos, verschiebe sie nach /tmp/pano und teile sie mit Lucia mit Nur-Lese-Zugriff.",
+        "query_sha256_utf8": "c5ccd8ad9915289ee3ebcbb75deb2f0aa7958709d1c5523b517b36e3a64c7704"
+      }
+    ],
+    "full109": [
+      {
+        "opaque_case_id": "f187aa52b45a4a9c320ba2ca68c647ea47de42b8cd6ccdf54fd1820d9f010017",
+        "query": "leggi le mail di oggi e salvale in un file",
+        "query_sha256_utf8": "22eafa47c3658e8a95374b2607889714fecc8106e20991ffd8893d4c9bcb0a2b"
+      },
+      {
+        "opaque_case_id": "2ddc7b9ca9929b509106ab318f0a9e6db7846b5d765fe19c0df1f930251c1725",
+        "query": "trova i file .log in /tmp e comprimili in un archivio",
+        "query_sha256_utf8": "61d22f3ba31321506051a41e1bfd1b47c8ef99a17c14ce48d91d23b605572c5e"
+      },
+      {
+        "opaque_case_id": "597f2aefa746e59e872e964ef23bae06e67e46df7d2dad00fa7d6b2301741073",
+        "query": "scarica il json da https://httpbin.org/uuid e inviamelo via mail",
+        "query_sha256_utf8": "cebfc64b54e1160ff51df926b8230991fe6072a77f61f3a8eea5f95ebe9e210d"
+      },
+      {
+        "opaque_case_id": "b37b3099af3eccc95e2f26927416189adba5cf303564b759095d1d2d6dbc3ac7",
+        "query": "trova i processi che consumano piu' memoria e scrivi un report",
+        "query_sha256_utf8": "5f9bd961805ecf26a886e8fa470dc45df14fcdfd1116688249f97c495534f5ff"
+      },
+      {
+        "opaque_case_id": "6012745d0cdb0ec0284eb3032221ac8c366b8ce6a24b61c67672458893da5a8e",
+        "query": "leggi le ultime mail e riassumile",
+        "query_sha256_utf8": "9cbd3b32c269a4d9c5de57884acd1075e0d8ab09636287b0beb2ad23b1cdf3b2"
+      },
+      {
+        "opaque_case_id": "26a9c05c1d7ade962f0eef5784ac6e6ee88219d6dc3fccf903467f4be190a2ff",
+        "query": "cerca le fatture nelle mail e salvale nello store",
+        "query_sha256_utf8": "4a4918764a297b73619b74a6695abf96dae961379a1267cdae6c8c5d13ceed6e"
+      },
+      {
+        "opaque_case_id": "d945fbf6770d302b845c8c7a2d938bc3a9a8faa987923b2f7de8662f38663e37",
+        "query": "trova le foto al mare e classificale per anno",
+        "query_sha256_utf8": "07b283ccda76d917bfc487dd030fa5dc2f24a73c57cf46b3acf9c2d5b27e52b3"
+      },
+      {
+        "opaque_case_id": "1bb1c27a47cc2551136fa6c0a986b0a0aa571731de98b027f7adff40a0a0dd20",
+        "query": "elenca i file in /tmp, filtra quelli piu' grandi di 1MB e cancellali",
+        "query_sha256_utf8": "dbe568384085c82d700e70c48734639448253dea140dd0bdb9098c2ad1b12d45"
+      },
+      {
+        "opaque_case_id": "7558dc3a3d2129fd6671fdbd65dcd371e45dfd44a9af2a10864db3854d458611",
+        "query": "trova i pdf in Documenti, comprimili e mandameli via mail",
+        "query_sha256_utf8": "359d4c8cfa396c876edf84df895e36c6093ea2fdf5bed9a77fb16cb4191fb8f2"
+      },
+      {
+        "opaque_case_id": "c3e2ce0eb964f7902bd0b1a24bfedd0d2772fc6d814b22231e01bf818d0a48d7",
+        "query": "leggi le mail di oggi e crea gli eventi corrispondenti in calendario",
+        "query_sha256_utf8": "c1798b2c1d7eeafdc27023475b0747fd42d915413dfc5e6eeda2ec9f72accbb8"
+      },
+      {
+        "opaque_case_id": "1af575181d92c6a49627c9510a40a98c6c7662984479b0dc28bb10eb38cb1035",
+        "query": "prendi i .txt di /tmp/test, filtra quelli vuoti, comprimi i restanti e cancella gli originali",
+        "query_sha256_utf8": "956817301c6aba4e889d4e3952bf03fcc7fcb1a4711f8b3286efc8a89b720355"
+      },
+      {
+        "opaque_case_id": "723dfe64317500ef00f630ac5d8839ec1e439bf06b1a37f31bff2f6714c772dd",
+        "query": "leggi le mail di Anthropic, estrai gli importi e crea un foglio di calcolo",
+        "query_sha256_utf8": "a049f499f6d470e5c621a1924001d7cda7d3839da149437e5acba71f603621b0"
+      },
+      {
+        "opaque_case_id": "38fc654fce351788f567174f8b8e4902f4b827000f567a27d5186defd756fa54",
+        "query": "find the photos from 2020, compress them and send them to me",
+        "query_sha256_utf8": "e2373a36e27857d35202249f685715122b33027a07d380ad734d0e1ebce419e5"
+      },
+      {
+        "opaque_case_id": "f64409485accd4492cb73e794570327dd4c1f70e18f8d77067eccc77de1e9de2",
+        "query": "read today's emails and save them to a file",
+        "query_sha256_utf8": "3967cde4b0fbdfd2efa92f6e9e1dbc435925cc9cac21baade6942a7ec3bc2df9"
+      },
+      {
+        "opaque_case_id": "e2819adfc6b30d88119c4b5df94830f31abd5dcf420d272cf6a6d39497180e38",
+        "query": "download the report from https://x.com/r.pdf and email it",
+        "query_sha256_utf8": "fac81a3ddc4362c206c74ba606849c1075246cd8cc62e86383662a6505a58624"
+      },
+      {
+        "opaque_case_id": "93d146ef2f61e98690078b9edd990affa68c1207efed4cf6ea648a9d02eff847",
+        "query": "cerca online cos'e' il QUIC e salva il riassunto in un file",
+        "query_sha256_utf8": "5b783fef2b4bd50cd307f843805cfde3c5fc57c0d8033d2d534c9992d0e5cc7f"
+      },
+      {
+        "opaque_case_id": "ac53849062e60ca6481c287e28c0be0362f9c6217f1e19458b56cabaddad339c",
+        "query": "trova le foto sfocate, spostale in /tmp/blur e mandami l'elenco",
+        "query_sha256_utf8": "99a59e60abbb819f82c6d921840f853310b34a699b30661489d8bacfc4299d9c"
+      },
+      {
+        "opaque_case_id": "3fcd74460f2232f805d807cda5ca2e785645102cf85139bba7321e943eef7774",
+        "query": "leggi i task attivi, filtra quelli scaduti e cancellali",
+        "query_sha256_utf8": "d1605c3c92e480638c94c6e43f885a334d9780847869609e6086d186adeada91"
+      },
+      {
+        "opaque_case_id": "fc096ec9a9bb567a298385f0e03df92ed56328d0e507bd7ddb7f79ff8460bc6d",
+        "query": "scarica il pdf da https://x.com/a.pdf, salvalo in /tmp, mandalo via mail a roberto, crea un evento promemoria domani e allega la foto logo.png",
+        "query_sha256_utf8": "e9cfed9477f4fb8458f8f09480c6d16690091509b571a266ab0906fdf59339ba"
+      },
+      {
+        "opaque_case_id": "1c297cc944dc4c0d015d36dce2404d0ffe2e21df91bb7016cc02a88574bd2a43",
+        "query": "leggi le mail di fatturazione, estrai gli importi nello store, crea un foglio riepilogo, trova il contatto del fornitore e fissa un promemoria di pagamento",
+        "query_sha256_utf8": "36597b056ac335914490a0336d3f126546276ce8b937c6bb2e1d69ff5481c462"
+      },
+      {
+        "opaque_case_id": "0c4ff944cdcc070e00d12c1380688cfae60a5a692cfce043c5ea53ade7665440",
+        "query": "trova i processi che usano piu' CPU, scrivi un report, mandamelo via mail, cerca online come ridurli, fissa un controllo fra un'ora e dimmi quanta RAM resta",
+        "query_sha256_utf8": "e648f9c818d864374c7eca03ff02a9b6403369ff40d9ac49c5e767d67f1abdf3"
+      },
+      {
+        "opaque_case_id": "27447b99ffbcd2e86d3af760f22f861e2785e0902b9e8f939eee18fcecba6818",
+        "query": "cerca le foto del compleanno, comprimile in un archivio, identifica le persone nelle foto e mandami l'album per mail",
+        "query_sha256_utf8": "9a4e8c8346c9059c9f2d38d61a562659b2b5a0a2d91e80a10c2521e78e519b2c"
+      },
+      {
+        "opaque_case_id": "0b9a8ad1d37e5bf5418b6b6793fd7d4507a8abb1269ce54202953d32dd85e210",
+        "query": "cerca online le conferenze AI 2026, estrai nome e data, salvale nello store, mandami l'elenco e programma un task settimanale di aggiornamento",
+        "query_sha256_utf8": "9622a27da565d11075e0bfa7c712e728cd7d509c0ab5eb26d5428901a342bc50"
+      },
+      {
+        "opaque_case_id": "19e8726a89c1ae719e3a9692f8a0e1f336f0ea5a618fdde8966b62656649e78a",
+        "query": "leggi le mail con allegati foto, salva le immagini in /tmp/foto, trova dove sono state scattate e condividile col contatto Lucia",
+        "query_sha256_utf8": "0706a3afa5646570b73f5ad03aabec55ee85679aa43ad3eb145373f5e10c88ef"
+      },
+      {
+        "opaque_case_id": "632b229c3658ae358bc2097aaec80bfbf0d878233f3ea25efea19b5e3fdd80d7",
+        "query": "cancella l'enrollment di ospite alfa",
+        "query_sha256_utf8": "beae0e1c0093c3ae8065d36ff1f5f8241601b2e8663509ec7793ae844b7f372b"
+      },
+      {
+        "opaque_case_id": "3ab458e28b17bdb71a594523d74455741029f20847bae4f964a6f2758a9eafd0",
+        "query": "cancella la registrazione biometrica di ospite beta",
+        "query_sha256_utf8": "7cb9ff0ed686fb268f8aae08670b8f5ee0d5672a740b878bd6138546ef9e832e"
+      },
+      {
+        "opaque_case_id": "bbeebca41d63c8af6aee3b75c7c96a99fba33c7f02643031a413fc3f90597de0",
+        "query": "elimina l'iscrizione di ospite gamma",
+        "query_sha256_utf8": "6b5e94e3feb8922256dcb3cb45a9a8805826c66b6057beaf7556a7426781639a"
+      },
+      {
+        "opaque_case_id": "1b66bd02677bd167b6e5069cdb4713fe689e8bf210cd0b4effe133b77f9bf77b",
+        "query": "rimuovi ospite gamma dal registro volti",
+        "query_sha256_utf8": "fac51c538eefacf99871364c8a1c2c02fae004892c982012f7b6ae2165464441"
+      },
+      {
+        "opaque_case_id": "638fd50ef1bb39147a76fb18dda600a5ea262920c6be6c7dffb531a5926b3641",
+        "query": "aggiungi ospite alfa al registro volti",
+        "query_sha256_utf8": "e39aa049d38ec69be202ebb174ce8a79620cb8d9aaa681aaef74a02cb6b4739c"
+      },
+      {
+        "opaque_case_id": "47412bc9e9aa08e397d6e1d963913562261a32beb38f85d47d16b95a287d006b",
+        "query": "chi e' enrollato",
+        "query_sha256_utf8": "c48abc01cc951a06852e2228e1cb9f12f7efafa65945dd21bec7a24e5a440cba"
+      },
+      {
+        "opaque_case_id": "164e56b6a50d1697974ae53d451223eac6c7a38d4f9690d3438256be3d41d165",
+        "query": "delete ospite alfa's enrollment",
+        "query_sha256_utf8": "94344a5be0d1bfe2908a367b5230d3d80b2a5f6edc9639f1d3950450d3abf5c4"
+      },
+      {
+        "opaque_case_id": "ee8dacc9ee720e9f6ca334fd4d3340eded2442a58a91b7bef3ac8e81c2f5f0e0",
+        "query": "who is enrolled",
+        "query_sha256_utf8": "006339806424009ea8af6036ff664df13b8534fc20b52b189842ab31a92ea928"
+      },
+      {
+        "opaque_case_id": "aeb1214e0cf729633dc5e149f39e946f1438d501d160ae109d8ed9e71984a4e9",
+        "query": "dimmi tutto su ospite alfa",
+        "query_sha256_utf8": "87be9b5b7f34e41d942a51bc3301465bb4804739952d33b06ee300246fd20c5d"
+      },
+      {
+        "opaque_case_id": "cf15d16b2b4f828ca1e682fdc10babaaccaab7ba1a926d15ecb53002a523b8b1",
+        "query": "chi sono io",
+        "query_sha256_utf8": "c10acce54f0f71e6ba4952627d75163cd1fedca22a4b775b4b859b3079431df7"
+      },
+      {
+        "opaque_case_id": "2980fcd4da3aedc8f8ebd0607aef51ffe7b4cafb3d73b02d4f9de45a6219e17e",
+        "query": "elenca le persone registrate",
+        "query_sha256_utf8": "8f6e5f5c5d43978e2418fa7b423be26aa6316f862a861e71b45c6161a1a9d904"
+      },
+      {
+        "opaque_case_id": "a8c0b52707ed13e5deefc674d9a7bbf8d91faaa80afdb17a1e7820b7f219fb00",
+        "query": "leggi le mail di oggi",
+        "query_sha256_utf8": "9c8f9649c4d4c1e7ef115c54e7d591d5674e6d0c6f4361579246791140ce277e"
+      },
+      {
+        "opaque_case_id": "dfc3702c767c272ea56fbd783140d65f93e33381c01daa6da5f3a4cb11f15274",
+        "query": "sposta in spam le mail di pubblicita",
+        "query_sha256_utf8": "9bcf529eb22cd64e846735a9eaf91f617b9c656168d57d325f100056d55c0179"
+      },
+      {
+        "opaque_case_id": "2d82a087e277cf5d1612b02122dfb13be0b0ce0e2e8f08e0e6c4bf72784187c0",
+        "query": "trova le mail con oggetto fattura",
+        "query_sha256_utf8": "c6bb596c26a3ea01ad5a54e82a65a5c55253bf5823f22af26f04aa85db83e544"
+      },
+      {
+        "opaque_case_id": "8d31a0672ed89e3b20d950fd72b067ddadcd59dfa5402731a15a366b7492b63c",
+        "query": "elenca i file in /tmp",
+        "query_sha256_utf8": "526a59bbbc46a0581817f8fc67d4610ed36ec1dc34c490cfc94c7948fde8241f"
+      },
+      {
+        "opaque_case_id": "a67fab394523faf50cf0baac2a0a0e3f28d46b5df2be0dc856e056a229aaa2a6",
+        "query": "elenca le sottocartelle di /tmp",
+        "query_sha256_utf8": "ec568a2d7e8b674cd5cdab1820a410d18432aa112df3962689e0ba7575b2df6d"
+      },
+      {
+        "opaque_case_id": "b964d24c78bc569cb5118c18496aad552a58c2febb9c7976086311f8bf372453",
+        "query": "cancella la cartella build_old",
+        "query_sha256_utf8": "883856676bbffce636092b433de1a2813fab01c43bf9f26f0df6ebae3bcbf116"
+      },
+      {
+        "opaque_case_id": "344bf740394117bed6aa2894a0729736f6a67c0e63e58815aff901d34a1bfdf1",
+        "query": "controlla l'url https://x.com",
+        "query_sha256_utf8": "94dc0f623c55403bb0186d3e6b858df3f182e9e1d9e774d2765d8dbe6b5a7e98"
+      },
+      {
+        "opaque_case_id": "ec787ed610766abeb8c3af48214a41f00b5d8fc6606a3f12df2481fc136c022a",
+        "query": "scarica il json da example.com",
+        "query_sha256_utf8": "bf2f0ecc0772d838f59a3e9dfc6271931b61b8e23f646915b03c5b5c6af4e7f4"
+      },
+      {
+        "opaque_case_id": "f92f72c53e2316635f7448c4ec4fbd41c5a759cfeb85b0eedc0a53e35a796aa3",
+        "query": "crea un evento domani alle 9",
+        "query_sha256_utf8": "6b97a6fff33f31f28cfa34619c582a565925055490c0c7b61526d5dc53bdedf4"
+      },
+      {
+        "opaque_case_id": "0511442a549b251b810798af9a450f3c13097c7cdf7b6cc960c1203269dedb53",
+        "query": "che impegni ho domani",
+        "query_sha256_utf8": "3acfdf6b5e5767fe7814fcb729719ff042e28471481eae0f13ac1ce21dc5b4f1"
+      },
+      {
+        "opaque_case_id": "fd781ab977971a91faaabdea82841795999dedcb8503996624f3078ae932bf39",
+        "query": "cerca foto al mare",
+        "query_sha256_utf8": "9126d0f9ccc8215a47a0d4b3cfb3d5e620aed62a967b3477e2c6c82381896384"
+      },
+      {
+        "opaque_case_id": "ffc05ebf6a871feed6cb98c28fd4e05abc1255cd7c2a17223668a90a7e81394a",
+        "query": "che ora e'",
+        "query_sha256_utf8": "2d00b9613bf27367eed181135e5ce74989660dd4dc1a109cd3423ced8b75401a"
+      },
+      {
+        "opaque_case_id": "616b403a916900aa2c89e6c676f3b022d4e93098f2c8d4245249c63437b09c06",
+        "query": "dove mi trovo",
+        "query_sha256_utf8": "7aa069dbadd39448d5a017c9fad20739c2d4a6eb7440d5cd4c5718f55911d8ff"
+      },
+      {
+        "opaque_case_id": "b55383ec627bd8446403b26516d019fce86598716c82ea03942a5749b2484cc7",
+        "query": "controlla se ffmpeg e' installato",
+        "query_sha256_utf8": "a2465abbe5c93b87bafa9cbd010dd3dc1b0a7aa3c45f6f8d78f39821ba961354"
+      },
+      {
+        "opaque_case_id": "a655c0d854ee86ffcf165e315704ae5b4276d894e8e7a5c201ea6f54934e799d",
+        "query": "leggi /etc/hosts",
+        "query_sha256_utf8": "3592f52f8c358473f9757cf69169974bc44c991217e1f01ae21da782badcb88d"
+      },
+      {
+        "opaque_case_id": "c7757eabd3f89315f1d2baa3439ff6f2c892ed43f3092e989854f51156f119da",
+        "query": "mostrami il contenuto di config.py",
+        "query_sha256_utf8": "1c6e4676373ae8bff0fb8f59ae73c30ba40e6c79e299fdc471799c1652cd9fb4"
+      },
+      {
+        "opaque_case_id": "33487636c26ce24a9e5ce8c8b4555dde06d2b6ea9addd5a10d781cec93532b6e",
+        "query": "apri il file note.txt",
+        "query_sha256_utf8": "7ac096fde74d23c36ac77f798cee21f223040229d68e47064ed1573760990192"
+      },
+      {
+        "opaque_case_id": "82f03622fb239877000bac7de9678f34dbd1dc42c72d0da5bda5ae3d04630cb0",
+        "query": "dammi il contenuto di /var/log/syslog",
+        "query_sha256_utf8": "6f5b2185d8ba719bcca307e27d91da0366944e1cd1ed56b96c7fbd49b022921f"
+      },
+      {
+        "opaque_case_id": "2a42747ff69086c1017a8583f99c64855e6707b71f530445462684c5d98bc664",
+        "query": "voglio vedere cosa c'e' in log.txt",
+        "query_sha256_utf8": "8e8b5ab18d075805405c7117581afc9b4c60a4b09fb591ef7a3f88bf77a9a983"
+      },
+      {
+        "opaque_case_id": "23ea7bb9151a21bce9bd8c15b9977ea23550b171036758bdc7e7f904e1c3b8a8",
+        "query": "open the file readme.md",
+        "query_sha256_utf8": "6f209bad12519ef02c0d5f35cfe414ad66e63b530168bb673e4b5cd897697c2e"
+      },
+      {
+        "opaque_case_id": "b081fb8b611bb1b7d85bd7a3e7b30c99845fcd5517f199547c0d9d60590aeb72",
+        "query": "show me the contents of app.log",
+        "query_sha256_utf8": "1fb6a17897f689d1036490427510827bf0ebf9b716eeaaeec4b63d762fda7dba"
+      },
+      {
+        "opaque_case_id": "fe3030f378a0fce9ecfbed0729bc25e4df406211172d0b56c4f9c8a529bb6df4",
+        "query": "che dimensione ha config.py",
+        "query_sha256_utf8": "7da8513763d398c0fc84f6ba6a90f3fdc6ab78f42d7f69f4608cbfb2176f71b8"
+      },
+      {
+        "opaque_case_id": "e90df09427198f3143261c44e245d6f393359bd85bb72b63c15726ade7fed58a",
+        "query": "quanto pesa il file backup.iso",
+        "query_sha256_utf8": "3bff8ce9aab64b74d257f03f6013e6cc91ca955e97d6119ddb4d903c1cf23337"
+      },
+      {
+        "opaque_case_id": "42e0e4a2ab18ed79c77aca2ccae423a80dbf53e9cec8428c12cc0280196a6c2a",
+        "query": "quando e' stato modificato report.pdf",
+        "query_sha256_utf8": "7999bb03684f7989e6ad7be26365e3562fa0d353c38f4e22c0f572eda4714f1d"
+      },
+      {
+        "opaque_case_id": "71dc2c331ce0eac56cf7f7f4dd713f712707155d00f1633fda239c0f93b7d9bc",
+        "query": "che permessi ha /etc/passwd",
+        "query_sha256_utf8": "5e1456f5f0e4b5531167997c8d7181ac9d84544b9a51b7cace08254ad8e9a032"
+      },
+      {
+        "opaque_case_id": "700c6fd5c85e0ca368c245abad36c6cdb2d0227dc4de511d188fbcee6bbb6682",
+        "query": "dammi le informazioni sul file fattura.pdf",
+        "query_sha256_utf8": "530814f803b16e9a5c8a177bb45a56cb75dffb9c186a95124fb7f8f6a1cc5ebd"
+      },
+      {
+        "opaque_case_id": "2e6e954ab7929a41375d0a164cf37d36ae39ee45a9762cd396b2d9d04b8e3244",
+        "query": "how big is video.mp4",
+        "query_sha256_utf8": "01ed66e8586a55195f6a9860352d8dcbc69b57b5262d4280493a41a0a653fc82"
+      },
+      {
+        "opaque_case_id": "09eaeb446241c08b25bcca79836fda8d19b92776fce12c9376b2c2d59c897c11",
+        "query": "when was photo.jpg last modified",
+        "query_sha256_utf8": "d273fb7669770da701d5b39a2cf90e632253f582ff3b6a99c62ff4ff83ed5720"
+      },
+      {
+        "opaque_case_id": "f464bc7353103f2dfb9cf6f3aacafc10190a71eccaff1da1cf7be3c9d1ddcc71",
+        "query": "i metadati EXIF della foto IMG_001.jpg",
+        "query_sha256_utf8": "d140df908e48291de96eb48be1bade9d151cdc9a6799d7565cba3b790273c412"
+      },
+      {
+        "opaque_case_id": "01585ea558276df9758a3c2eb7fbcab58b7d2a7b1daad8ff5d397203607a829e",
+        "query": "leggi il testo dalla foto scan.png",
+        "query_sha256_utf8": "fe0caebeec14c073d8d7b799ac7861de9cda2d16c416341afa5b5e3e8f338bf2"
+      },
+      {
+        "opaque_case_id": "c3a54c445b68fc56e4252e2181448b8156cd2416e9211a767b9946cf1418e982",
+        "query": "read the text in the screenshot.png",
+        "query_sha256_utf8": "1a4ed9c7fdf61f511a681dbd52ed4ab113668ca373224e642ddd0d49d5f2eaa7"
+      },
+      {
+        "opaque_case_id": "c3ab47b30c34f1ff48ede33c28dde6f76351516a6d74c6c7dac1505b37a7349f",
+        "query": "leggi il testo grezzo del pdf manuale.pdf",
+        "query_sha256_utf8": "606422e282d8b35bc6b19c0ccc4365447f2b78b4fe5521669f023756524dab78"
+      },
+      {
+        "opaque_case_id": "45470e664be75b85b8a489b5a39322301aa83b279046b49a579694cf6d65937b",
+        "query": "dammi il testo della pagina salvata index.html",
+        "query_sha256_utf8": "860c39cb18f6c2d2f74a232bbb9c2690661470066d23c3ecd1ed4cf5878969ad"
+      },
+      {
+        "opaque_case_id": "2df846e908bb2cb928f72fd05308826d4d10ce1751f2578275e159890099c3a7",
+        "query": "leggi le mail di oggi",
+        "query_sha256_utf8": "9c8f9649c4d4c1e7ef115c54e7d591d5674e6d0c6f4361579246791140ce277e"
+      },
+      {
+        "opaque_case_id": "f6ad9467c8a760abf39060175292989b25fa0ad693eddcb60032c22d85b039a5",
+        "query": "riassumi le mail di oggi",
+        "query_sha256_utf8": "a5556dec3dc2e953f099b8c9fc53c32fc473f9f500ca85c3fe9dfa1ff3a03c28"
+      },
+      {
+        "opaque_case_id": "c8afcc5fd602fa2b16e33c9c8ec0892323cbc550bf846523abdbbba092897b20",
+        "query": "summarize my inbox",
+        "query_sha256_utf8": "0751050589ed0e198d207b091565d76f629a8f0bc72c3904f6317993dc7c8ac4"
+      },
+      {
+        "opaque_case_id": "daebeb9423b2caae744f77ee7b9ffa8ee421fa4fa7bc6bdb4498724fd6b7f3f2",
+        "query": "fammi un riassunto delle ultime email",
+        "query_sha256_utf8": "c516ba2e8c9053c8d49171b5123205e523eadd728f8c5446c3b88c92a4f00f27"
+      },
+      {
+        "opaque_case_id": "67943b36a033587a34e414fdbf7d335a130887aebeabd12e956ce615e704bbed",
+        "query": "sintetizza le mail della settimana",
+        "query_sha256_utf8": "a8bef55dbb9e91aef42e85c5342bda7c7b899572dcf6f0d62c8d9b8c08f0c38c"
+      },
+      {
+        "opaque_case_id": "0a3ec7d510e7ecf953ffcefc94d503a9389b09d3f0e6d7f655ca654215ced91e",
+        "query": "dammi il contenuto delle ultime mail",
+        "query_sha256_utf8": "39fb196b706aab991839a0b8a80b43b53f079dd3e68f31bfa72d748fd40dc745"
+      },
+      {
+        "opaque_case_id": "e448d505d6a30760645211b3905b7c4b09f961163ea0bf25d1d6474e4a1bae3a",
+        "query": "riassumi le foto per anno e luogo",
+        "query_sha256_utf8": "e4c0ef7232c1bef414c02776baba1fbd40264551227fa9f4b0c2a6f29e9d061d"
+      },
+      {
+        "opaque_case_id": "a9f6b38970cc7b69eeebe43dfc4f22600a8c728c37432a13ace0a6ce116a399f",
+        "query": "scarica il json da https://api.example.com/data",
+        "query_sha256_utf8": "0c93496e3cf0d1c0d424c05a5ee95617b8f2bab08156bcb0add71d38cb039bd5"
+      },
+      {
+        "opaque_case_id": "7b9f55a8cf6f7b217def33d78b4a836362e387c23c8287c27a14522c900c84ba",
+        "query": "leggi la pagina https://example.com",
+        "query_sha256_utf8": "2b75aded43ffd689f44c30ed1e6d587352ac9764d56e29d6471740cbfa4248a4"
+      },
+      {
+        "opaque_case_id": "fcf19d90080e475893be3b080ab6d9d0578703a123ca24cc80efd1abd8c5d949",
+        "query": "dammi il contenuto di http://x.com/info.json",
+        "query_sha256_utf8": "e587071c507f56646e60b82b85e5093da8f76bd2b440ba57e87d7f938c600f59"
+      },
+      {
+        "opaque_case_id": "b086539a0612d758f65dc59823ce35602ccb7cc5bfe4cfab81745ac54f4f2888",
+        "query": "fetch the json from https://httpbin.org/uuid",
+        "query_sha256_utf8": "fd49e4b8762016c00e87f407953868133b5abf0363f8be5d07fd127d0c5d6d95"
+      },
+      {
+        "opaque_case_id": "71109cfc84014ccb7d4d5e8d5260fa0858ee7eae1da430927cd82ee0be5e7818",
+        "query": "scarica il report.pdf in /tmp/reports",
+        "query_sha256_utf8": "176c23a956652590bb85ef3b9dfd22457dd5d179409f3228e857b05cc102990c"
+      },
+      {
+        "opaque_case_id": "b5a4d1339d97e7600571c3b2b8495b6bf881cc4b15d39a5f9956cc3ea3b6ac38",
+        "query": "leggi le note dal file appunti.txt",
+        "query_sha256_utf8": "fffd13c2880af801a54529eab6d1831344562e5fc37dfb6086824d727f1a12fc"
+      },
+      {
+        "opaque_case_id": "c09c59f01a249bc423785d0db009b8ff2068036381ec85af56bfc691708eaeb1",
+        "query": "trova i file .py in /opt",
+        "query_sha256_utf8": "5580d3c68545d06611a3a00aa372cecd66e02d2809e953bf57a5a58904a1cdca"
+      },
+      {
+        "opaque_case_id": "60a66e654645bb6b709d085de4d48e2d8e769fed9e9f0992226f5f7d0fca96a2",
+        "query": "cerca le foto al mare",
+        "query_sha256_utf8": "8c461202c7a2637dd0d9fb209abd4dd1688b27e1868fd5e5c225c6819a10aed9"
+      },
+      {
+        "opaque_case_id": "6862f254b2a4bf923f8836ee5f925a7529407c11cbcfc24af3c8b25b60927679",
+        "query": "find pdfs modified today",
+        "query_sha256_utf8": "11a8d444b3cfef66c29fd54f7ac8161ae101844e3f384146776c64ec1c2f7d5c"
+      },
+      {
+        "opaque_case_id": "25a657dd08608f6cab177e48c0136e26f30d8b592133b56ec27edfa14a1f3946",
+        "query": "cerca i documenti che contengono fattura",
+        "query_sha256_utf8": "bcd10d8636d7f58cd11a235ceecabe134b40218ec6586065f60301e7396c6576"
+      },
+      {
+        "opaque_case_id": "c66838c603a82b43a0491c8aef7ad6dd703f650fd211059b374e8ffe4c71189d",
+        "query": "leggi /opt/metnos/README.md",
+        "query_sha256_utf8": "651d7df457d6f4e6c46bea7b5fd35136c939b772a1d045644f0d46a4ed709517"
+      },
+      {
+        "opaque_case_id": "5a42783e6d8173680eeaf16c947c9e992d53c5842228062b8e6bceb210462a39",
+        "query": "che ora e'",
+        "query_sha256_utf8": "2d00b9613bf27367eed181135e5ce74989660dd4dc1a109cd3423ced8b75401a"
+      },
+      {
+        "opaque_case_id": "c90926c8133eab279588b42ca91c8c1f723bd88d5f57df2dbe55b4a53ffea002",
+        "query": "what time is it",
+        "query_sha256_utf8": "cbe649f8e0039474b8f9860b9c39e740883affb4f1c0ac850404572172a08a9a"
+      },
+      {
+        "opaque_case_id": "974c611cd299605d29190be2ed364217bad8815f3813f2e223ed861b05a56183",
+        "query": "elenca i file in /tmp",
+        "query_sha256_utf8": "526a59bbbc46a0581817f8fc67d4610ed36ec1dc34c490cfc94c7948fde8241f"
+      },
+      {
+        "opaque_case_id": "a3dbe6cc57577ce89987c60c7fa9ec6b4c3450163e99bd079d5913705511b334",
+        "query": "trova i .py in /tmp",
+        "query_sha256_utf8": "0d48f4b77fdfdbeffa30e1d0e4099bffa779a6a2917da9649526551ea9de2470"
+      },
+      {
+        "opaque_case_id": "336bfcf1029d3e1792f0b063c50757400a6e0673aff27baa43547f0b63b6af00",
+        "query": "elenca le sottocartelle di /opt",
+        "query_sha256_utf8": "a8f6da6f21f9159615dd93f4ec7fc04e226a978fd1372a776733fd8f3de8b8f2"
+      },
+      {
+        "opaque_case_id": "d1c725f755d2e0f95163439f2fd814b2c1abf85e03b55a9ab5e564410b2efa89",
+        "query": "cosa c'e' nella cartella Downloads",
+        "query_sha256_utf8": "354002b2ab83321e23b7e6ef14db92a021e9e627043904a2acfa3ec2da1fb133"
+      },
+      {
+        "opaque_case_id": "14e9784b8c853ca32c65d56e02f0f825787b8cdcf8eae1602624d555bb6238dd",
+        "query": "list the IMAP folders",
+        "query_sha256_utf8": "3e255eef75547f902ee00788a1b1a57c74fabe705d705ae84f9a1f52faa6a9a2"
+      },
+      {
+        "opaque_case_id": "bb7b6f78d2e34194e0171225917024cd6db564e21cd993408808174217a0e7d8",
+        "query": "trova le directory piu' grandi",
+        "query_sha256_utf8": "72ef03c3453d364568a4e20e9dbb6c6a5ff3d7e9fbe5ddffb5862ea1ff561004"
+      },
+      {
+        "opaque_case_id": "c2fe176e480af87ef7929f219e3efbe36a942ee83ff9914b9ebfc8b42d33c1ed",
+        "query": "quanti file ci sono in /opt",
+        "query_sha256_utf8": "ce1a5a266135f85ee48279475c129f5073a3152a5fa5cd4d32cef9f68f4a93b2"
+      },
+      {
+        "opaque_case_id": "6c5b460ece312a23727304bcc955a2d0b818e13ba36c0501a5ae26a3a3969f36",
+        "query": "conta i file in /opt",
+        "query_sha256_utf8": "dd9926b3a7e36f82ba35338d8d7de803b183df81bdb0711182ceda90e47c3fe4"
+      },
+      {
+        "opaque_case_id": "0a8cd03584d1f3fb81cabe1fe239dd33a75607aa9beff39a0947131e0ac644c4",
+        "query": "how many files are in /opt",
+        "query_sha256_utf8": "d843352813dc76e8f87d43b8836f8d98741a57995f2e38e99958880c47ec62dc"
+      },
+      {
+        "opaque_case_id": "75dba35d1b015a772755cedc86b3d37bf0dc054e9cbf6a2e3caa66a89191ca6d",
+        "query": "elenca le folder IMAP",
+        "query_sha256_utf8": "ea90bd936fd17648987305da02ea9f697b76d71167962f11861139fa923d3f8c"
+      },
+      {
+        "opaque_case_id": "ba7a01be654a0ae8e38af51f3b70ace309d683296a0773901198b8841d131bd4",
+        "query": "leggi le mail nell'inbox",
+        "query_sha256_utf8": "aaf85fc1ce987b456b19a60894bf2cb3a064b3b9b1d3ed10a39745e23f529d29"
+      },
+      {
+        "opaque_case_id": "e2b2f3b01b55d65b9d6e8b9e3190e65aad792ecb9b087a59042e5b34173f1a1d",
+        "query": "scarta i file piu' piccoli di 1KB",
+        "query_sha256_utf8": "7a3ab6f7bd2581ce5a8531ea825001cff3d294e647243f4026857f20ee675787"
+      },
+      {
+        "opaque_case_id": "db3dbd0afceb5edc7b5ab5990a8e30d810113b71906a72bde51ae4051d81fa79",
+        "query": "tieni solo le mail non lette",
+        "query_sha256_utf8": "1ac90d985c6b8362f67c5a104edc140032ae35576f9a72e54589fcd6872c2b8c"
+      },
+      {
+        "opaque_case_id": "d834ca38482359b2d165c1f3a829f65cc97b1e2965a5a34f76b7cc4c0244ba47",
+        "query": "escludi i file temporanei",
+        "query_sha256_utf8": "f76de786e266872c10c31ea48c2fadc7c6820fa208ae0cebe92d1f8b38eee156"
+      },
+      {
+        "opaque_case_id": "219493df3ec7a679bef527df1d1d7bde845a4f735c100824d2d801f5ebc4b6a5",
+        "query": "keep only photos from 2024",
+        "query_sha256_utf8": "bfe143a97f8f1c21349c392e0ee6a72532848bbad64f1ed95aae1beb6989e00b"
+      },
+      {
+        "opaque_case_id": "c7c9cab1def3eda6650b31646aa46ebc710d825b3939fe2c6b8a4adec3db6f65",
+        "query": "quanto e' grande la cartella Downloads",
+        "query_sha256_utf8": "a1c06a5f9fa80289a7e6f0c1d51a097d91a5fcaa33d7a4d11fff4d7198839790"
+      },
+      {
+        "opaque_case_id": "f5e507da8ba3fda61dc138492c5432851de484acd5c263e192c87418b877c1d8",
+        "query": "dimmi la mia posizione",
+        "query_sha256_utf8": "517569a56593fa28393acae330e1dd7b7885ff4c3f0756dc214e81ee69518eeb"
+      },
+      {
+        "opaque_case_id": "79c2cd95534e33a5bb25c3c9553e5afa1b57e996a479ef36ee2238fa85750463",
+        "query": "arricchisci le foto con i dati EXIF",
+        "query_sha256_utf8": "79e33e5f51110541b0979337e85cba1a304ba1b58b45425047e623dccd5da1d9"
+      },
+      {
+        "opaque_case_id": "bb3fecadb64ff2deb987cc84529d8e494bf06fda012104c5acf9c04087fa0a98",
+        "query": "verifica che python3 sia presente",
+        "query_sha256_utf8": "9c4ddb1fc2725e3bf423f7e32782a7fff3e132fc2b339734c8098a25ae5b9493"
+      },
+      {
+        "opaque_case_id": "23dea3c1777a0754dd24d4df499890c739258926f48fe0ac3f55ce1062a4c7cb",
+        "query": "is nginx running",
+        "query_sha256_utf8": "c0e69d5ce0682ffe630a5d0381c0df644fce131e68c29d51c7fe76499f230200"
+      },
+      {
+        "opaque_case_id": "4d2d43c2744263f016685a70b4bda9810805eb6218b9b03159032b24e7b94416",
+        "query": "esiste il file /tmp/lock",
+        "query_sha256_utf8": "6e16380fdea49a24e68e27e7bb037c7369669fc7c02f25dbf3ca63db6faf2930"
+      }
+    ],
+    "question-controls34": [
+      {
+        "opaque_case_id": "6cbdededbae0648fbf2a51b77aab7afc2dc1decbe411c9e3d81ca12c4c3e9e48",
+        "query": "dove mi trovo",
+        "query_sha256_utf8": "7aa069dbadd39448d5a017c9fad20739c2d4a6eb7440d5cd4c5718f55911d8ff"
+      },
+      {
+        "opaque_case_id": "dc100d51139e4e2504b7e6e237e12f630ca51b178e01c9d1374b2ca769b7327a",
+        "query": "qual è la mia posizione attuale",
+        "query_sha256_utf8": "6a4299be8ac71f25b0393ebd8133fa7296192427360e78001392304c121112a1"
+      },
+      {
+        "opaque_case_id": "92d7a1e33689ab5575d8454ddb6451f9ec9cb522cbd086960b3af284ab314e9a",
+        "query": "where am I",
+        "query_sha256_utf8": "ef03ddf8b821820cbdbf66e9ce0788615b5a00fc8485444868705438d6999d92"
+      },
+      {
+        "opaque_case_id": "37b163f7012e6f9be42ca52cf857516412613859fd16b919588e4f582c9f0f08",
+        "query": "où suis-je",
+        "query_sha256_utf8": "ea5c18a4f257f45d988e87952e464310f7a2e87cabfac8a5994b8ba36cf12b8c"
+      },
+      {
+        "opaque_case_id": "bbee12b2b3ffb9862396c14e2a7ab9fbafcc8d170191525f0e6733b52e038665",
+        "query": "dónde estoy",
+        "query_sha256_utf8": "4572600200c05801c3a89011baf8ab2ae809f9e23f3157934e7a96c3b9e5764d"
+      },
+      {
+        "opaque_case_id": "18646ae29901a85de8c1cada117ffb25427f53bedbf65bd66db4efc2fb22e89a",
+        "query": "wo bin ich",
+        "query_sha256_utf8": "63f6af6255ba56f1864daadff3d57c48ba20f67523adb73365a553a4b3d312fe"
+      },
+      {
+        "opaque_case_id": "85626bab7acf972c932fb8aad669ffece6314f73d3793bad8e75b863df7cbd58",
+        "query": "neredeyim",
+        "query_sha256_utf8": "feaccd3507580e2dfa32aa4391a0e496d358f80b9ce30c9463a6bd12f2094740"
+      },
+      {
+        "opaque_case_id": "89aeb0b38301773d102d0beaacb1dad1a551315f1a7ee57ac40920d396f0f151",
+        "query": "私はどこにいますか",
+        "query_sha256_utf8": "960181ec11532980550d9a1fe030c8dac1eacabf0b53256e7d45ead9985589c0"
+      },
+      {
+        "opaque_case_id": "7f407a44a50dff17b625a46a81148247fd32dd2787e1ca0d61864db2014fd859",
+        "query": "我在哪里",
+        "query_sha256_utf8": "23e4bd034eec482fc5e7f83f2fb1a22d8c3402a3ce873164de38d79fe9c078ca"
+      },
+      {
+        "opaque_case_id": "41468d55c9b777dbf1758a6ca2358cd2cdc5ad1b8353af6978ad5ff5c8d1c40f",
+        "query": "chi sono",
+        "query_sha256_utf8": "2292180a45ee421a834e575e93079145c6444fdd424d501c63b5ecafc72da5fe"
+      },
+      {
+        "opaque_case_id": "2fbb74363cc0f64e0b47ff58efc3e605f74f22646b2f5af3a878aa4d8b2a25cc",
+        "query": "who am I",
+        "query_sha256_utf8": "e985008e99806dd3156707da6fff9a04c02c98ae6af838a24bd8f2c7d590491e"
+      },
+      {
+        "opaque_case_id": "1627b88a9922fd9a4aba151669f4700b9ec013b50d4f425432070e7ad8c755f0",
+        "query": "qui suis-je",
+        "query_sha256_utf8": "591e3c8b11e400f3746addfa07988de519a11e9c380a3c5924fb6acc37a07558"
+      },
+      {
+        "opaque_case_id": "80a54629f25762530b32ae9b65faec33079567679056b84ab442ad6e3af10076",
+        "query": "quién soy",
+        "query_sha256_utf8": "de9ec48c6fb274ce8d9e241013756611a536090620cfa2620f43f81612c0f4bd"
+      },
+      {
+        "opaque_case_id": "fb11ce8ce19bd5c351691fe54c6fb15365a5b2365875ee841af93b4cfe5d40c4",
+        "query": "wer bin ich",
+        "query_sha256_utf8": "60aa2e8a5691a39051eca6e82d6d8d921a9bb5c8e9c4fab439638555d7b5d111"
+      },
+      {
+        "opaque_case_id": "ee101a3b59b8abccea3ecef9a2d1f2efc0e2420b36c442cdf4dfb06101710bb5",
+        "query": "dov'è Lucia",
+        "query_sha256_utf8": "9bc7f1922e19df8e2f740924313f49b3292536b118de465e480e06d91f93eee6"
+      },
+      {
+        "opaque_case_id": "85b6cfe33e95f991264e30744db157146c54299972fbd224142e175fd9462d58",
+        "query": "where is Lucia",
+        "query_sha256_utf8": "46db75d888968bd8bf8464703613b4200f04bdf27dcbcd8c69ceb9d88270908c"
+      },
+      {
+        "opaque_case_id": "0ae421eff27b436c2002581682dc74689f75b5852c9c07d5cb18cfe98a6b392b",
+        "query": "dónde está Lucia",
+        "query_sha256_utf8": "29f7b24da099252fb0dac8aa274c8e56e2ed5af779bf4c7e1a10351987dc104b"
+      },
+      {
+        "opaque_case_id": "48b8226a0c172742361e3570c6b14a69fe42b9ca0a18a80f5ea03958cb5e5991",
+        "query": "chi c'è qui",
+        "query_sha256_utf8": "967bf2e99d1393e7dfc8fc72e9ec559a9f270a0f9dc63dde66ad4b45676e5c96"
+      },
+      {
+        "opaque_case_id": "b711a1da44b36ccfe1f6acccf2bf44c1e6eab026d0b6f9568e1848169071330a",
+        "query": "who is here",
+        "query_sha256_utf8": "0dc2c81361fa0d7a640143b07d0b7c6808310d64020a134378bc5901d1bb13a1"
+      },
+      {
+        "opaque_case_id": "2bfe22120b8742d32a83296c123e18520bec0700607dfe089c695689e9c7a893",
+        "query": "che posto è questo",
+        "query_sha256_utf8": "2ae6b27f0fcf0a9d1f50927bfce2a43131f71caa2e61b2e2cb36668e576934c5"
+      },
+      {
+        "opaque_case_id": "49f122e315ff4ea4039e0e257c25d3a91a51ef0899b7cbf0ec9cdcc55dcf616b",
+        "query": "dove si trova report.pdf",
+        "query_sha256_utf8": "987a5d8802fce61a60ad35f783420d2a5f364aaf5a2910a92e29048eeb2f90c4"
+      },
+      {
+        "opaque_case_id": "c164efa2c2ad88b85c3d6e0b45552637c44d2f800b23fc1e2b834ad24147634c",
+        "query": "where is report.pdf",
+        "query_sha256_utf8": "8d477961cab8e90950600bdf6d5eb2013850b2a1993b9d2d1288569efdebe17f"
+      },
+      {
+        "opaque_case_id": "d60126558448ba9e0598884e739e3ab5920b08e2289d5ddcfc84af0758a55fec",
+        "query": "where is nginx running",
+        "query_sha256_utf8": "f9fdb5b533936c139cc66f5850ae477e98d81b3cfb8fb7101d7fd551173c67a9"
+      },
+      {
+        "opaque_case_id": "19a46e3170b70d85e021f96b7b0d43b05ed8a6571647dff4031c17f6fe9b7bc8",
+        "query": "trova ristoranti vicino a me",
+        "query_sha256_utf8": "678dfb9022e2ca516fe683e3b1ae706a2b8361ff95f87a4efb733ea976375b84"
+      },
+      {
+        "opaque_case_id": "752340da204ac64c290508f07842663995e1511899fc792cde5e9a67a41ac44f",
+        "query": "find restaurants near me",
+        "query_sha256_utf8": "d686f74f667e5453d9815dd1b94df175bd4e8775c7b96e8c49340654d2d8dfbf"
+      },
+      {
+        "opaque_case_id": "64008e4226e18ed878b45b258b38b7fdc558271218cbd3c0e1eceae23eb70cec",
+        "query": "sono a Roma",
+        "query_sha256_utf8": "6d2588e20f3541e7db0446d0a59b3138e2134fdded36ef35a9b3557f83961e8c"
+      },
+      {
+        "opaque_case_id": "0c869290dfc895fd52fa1f09c6ddf333930c03f6ea4dab14d94082138d54b01d",
+        "query": "where was I yesterday",
+        "query_sha256_utf8": "50f51077dbfb9ef3cb994adf58bf55edf59e435a87170bd5643b313ec99400e4"
+      },
+      {
+        "opaque_case_id": "28c9d01979d390265bc841b03d7dfcc31c47871ba735412c3d22ae9ca806583b",
+        "query": "condividi la mia posizione con Lucia",
+        "query_sha256_utf8": "5878b56d55b3c8321d4ca301f0e3823f799fbccb79e2efe091309e95a1e87fe4"
+      },
+      {
+        "opaque_case_id": "346efe773cded64ed10921a8a7955770348c354a5c8a114c1490b0f1427d3f2b",
+        "query": "the document says \"where am I\"",
+        "query_sha256_utf8": "e089752a9a01bf29bbb559d3ddea35c7f0ab5d2968b906d8cb86c2290adb7379"
+      },
+      {
+        "opaque_case_id": "0a0c883e2ed07fc3fe4ae747556c7b4b7b02643a38cdbb4e5ca5ce344e674158",
+        "query": "se non sai dove mi trovo chiedimelo",
+        "query_sha256_utf8": "85a9ee99227fcff35c2bbcdf5b0e11703d55da5b697b9d0e32b0afba6a90f362"
+      },
+      {
+        "opaque_case_id": "71dbd995e58f31d417b55ef5dc1bce642131eafad159d2b5655da33f89ad442a",
+        "query": "sposta i file dove sono ora",
+        "query_sha256_utf8": "029b477fe675b189bf359e9b74c66997c0363f300975b9f76b5e620fc8cc7bd0"
+      },
+      {
+        "opaque_case_id": "bf56639d01018c87ab0421d6033e884d0fe6d9bde97d3973656690990e1e54a2",
+        "query": "nel processo di installazione dove mi trovo",
+        "query_sha256_utf8": "2a0e89fb33446bd42d52d6049bf0ef09fb2b56737f7683c9bf3617af861bba31"
+      },
+      {
+        "opaque_case_id": "eb675fe75df90116a0728fb86515094c75619046f1d2d134003f5d640aa1ea99",
+        "query": "where am I in the document",
+        "query_sha256_utf8": "e96d900f2ab17bb44e1d1d9951a0ef22d434500feb5bd7e70f8b4752971eeefd"
+      },
+      {
+        "opaque_case_id": "ba148e42cf758e709e1cd99b5b36e1fe3e7e55764f3a8a987f6fe253f5427be8",
+        "query": "a che punto sono",
+        "query_sha256_utf8": "463720e32113f7a72128a4a53033f8447f61f520eb0756578a1f59591d54ed2c"
+      }
+    ]
+  },
+  "purpose": "audit_only_never_prompt_runtime_or_projector_input",
+  "raw_query_count": 213,
+  "source_hashes": {
+    "adversarial_source": "e06c45789f748c7275a47c8d63086a1b97a662fabe6f9dd57001ae0bda4977ab",
+    "compound_benchmark": "85ef748c5384e72bfeacf018b9e7fdb3f6c74fcc5d64abe518303d4e96657cd0",
+    "mono_benchmark": "412eaa6620bb2f29486510196e37267f92c1b817d13b469734bd045693140a51",
+    "question_controls": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf"
+  },
+  "version": "metnos.v26.5.1-contamination-query-corpus/0.1"
+}

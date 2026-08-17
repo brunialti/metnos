@@ -1,0 +1,132 @@
+{
+  "arms": {
+    "A": "fresh current Metnos intent extractor plus frozen lab adapter",
+    "B": "intent-shadow candidate 0.1 direct schema extractor"
+  },
+  "authorization": {
+    "authorization_file": "live_run_authorization_v0_1.json",
+    "decisions_approved": 7,
+    "independent_audit_required": true,
+    "inference_executed": false,
+    "network_preflight_allowed": false,
+    "owner": "Roberto",
+    "root_final_authorization_required": true
+  },
+  "backend": {
+    "absolute_sources": {
+      "/etc/systemd/system/llama-server.service": "47bcd6dcee57e1bb50fbf58f85c72b576c6886ab515d3eb9a28b1860dcbc3788",
+      "/etc/systemd/system/llama-server.service.d/override.conf": "dffe0d4e35973ddf9893361780d9c3b9736daea7d2873b96f1cb6e817fb2974f",
+      "/home/roberto/.config/metnos/llm_tiers.toml": "2b5ff25e0933d0afdd847d3185272b8405215e4b401b32bf3ab544b535193c9a",
+      "/home/roberto/llama.cpp-0712/build/bin/llama-server": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+      "/home/roberto/llamacpp.env": "a50cac232aeccb1b8116e834173d15cde180e78193e1b0897e2a50905915efe3",
+      "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+      "/opt/suprastructure/config/models.yaml": "a0bb1a2ab22ced6d2bc3194aa63e935bfd01809cc4e95a2d6d937f154954a97f",
+      "/opt/suprastructure/models/manifest.yaml": "1460122a73eeaaf82580b5b7a0547179a3fc1542d69bd683f1078efb9ec22e73"
+    },
+    "api_model_id": "local",
+    "backend": "llama.cpp Vulkan",
+    "backend_binary": "/home/roberto/llama.cpp-0712/build/bin/llama-server",
+    "backend_binary_sha256": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+    "backend_build": "1422 (e3546c794)",
+    "endpoint": "http://localhost:8080/v1/chat/completions",
+    "physical_model_id": "qwen3.6-35b-a3b",
+    "provider": "llamacpp",
+    "source_revision": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
+    "weights_path": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "weights_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "weights_size_bytes": 22663387424
+  },
+  "bindings": {
+    "candidate_prompt_sha256": "285997290ab6594a0ae9ba6cc0d14af9a63e4793ea75b59ccac5823c1cd26003",
+    "candidate_schema_sha256": "8e229746c152a6a6bc6a5097e3e20a0c4581a3313736d99ae1fd771b5c3c2dc2",
+    "control_snapshot_file_sha256": "65d2714f7b692e1c24a37b292ebf29714d39f6a06599f210e456455104d00f95",
+    "legacy_panel_file_sha256": "9dcbf842a1bff8c98af669532619a674400129b3414dff1899ccf924a1234626",
+    "query_suite_file_sha256": "86b75f0bfe20c15891841406c4ff5c83e4f85f85908f7c01b2c3e1f0fac07ca3",
+    "registry_file_sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8"
+  },
+  "created_date": "2026-08-12",
+  "evaluation": {
+    "canonical_improvement_gate": "candidate_B_minus_control_A_at_least_3_exact_of_120",
+    "critical_columns_no_regression": [
+      "semantic_exact",
+      "root_exact",
+      "correct_abstention",
+      "technical_valid",
+      "false_action_avoided",
+      "undo_exact",
+      "consent_exact",
+      "negation_exact",
+      "branch_ownership_exact"
+    ],
+    "gold_access": "only_after_complete_316_record_batch_is_sealed",
+    "inconclusive_delta": [
+      -2,
+      2
+    ],
+    "legacy_report": "separate Phase-1 direct-binding panel; no compensation",
+    "typed_special_gate": "candidate_B_exact_4_of_4"
+  },
+  "failure_policy": {
+    "ambiguous_first_transport_attempt_blocks_rerun": true,
+    "append_only_journal": true,
+    "atomic_checkpoints": true,
+    "consumed_at": "first accepted HTTP POST",
+    "invalid_json_or_semantics": "count_error_and_continue",
+    "marker_written_before_first_socket_attempt": true,
+    "raw_response_capture": true,
+    "retry": false,
+    "transport_or_timeout_after_consumption": "stop_and_seal_partial"
+  },
+  "generation_profile": {
+    "max_output_tokens": 4000,
+    "retry_count": 0,
+    "same_for_both_arms": true,
+    "seed": 42,
+    "temperature": 0,
+    "thinking": false,
+    "timeout_seconds": 120
+  },
+  "panels": {
+    "canonical_120": {
+      "both_arms": true,
+      "queries": 120,
+      "reported_separately": true
+    },
+    "legacy_phase1_34": {
+      "automatic_conversion": false,
+      "both_arms": true,
+      "cross_panel_compensation": false,
+      "queries": 34,
+      "separate_phase1_oracle": true
+    },
+    "typed_controls_4": {
+      "both_arms": true,
+      "queries": 4,
+      "reported_separately": true
+    }
+  },
+  "protocol_format": "metnos.intent-shadow-live-protocol/0.1",
+  "protocol_payload_sha256": "09074f0eabd03e288eabac6a28dc8266cafe76c6dee92f94737d245926a0bfba",
+  "protocol_version": "intent-shadow-paired-gpu/0.1",
+  "schedule": {
+    "algorithm": "AB on even sample_index; BA on odd sample_index",
+    "arm_count": 2,
+    "paired_request_optimization": false,
+    "query_count": 158,
+    "request_count": 316,
+    "sample_index_range": [
+      0,
+      157
+    ]
+  },
+  "status": "prepared_not_authorized",
+  "technical_limits": {
+    "classification": "technical_invalid",
+    "depth": 64,
+    "integer_digits": 64,
+    "json_bytes": 262144,
+    "never_unrepresentable": true,
+    "nodes": 10000,
+    "string_chars": 65536
+  }
+}

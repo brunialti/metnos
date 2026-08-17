@@ -1,0 +1,380 @@
+{
+  "cases": [
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.it.reflexive"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.it.nominal"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.en.copular"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.fr.inversion"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.es.prodrop"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.de.copular"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.tr.fused"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.ja.case_marked"
+    },
+    {
+      "expect_binding": true,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "current"
+      ],
+      "id": "pos.zh.wh_in_situ"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "identity",
+        "identity",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.identity.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "identity",
+        "identity",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.identity.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "identity",
+        "identity",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.identity.fr"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "identity",
+        "identity",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.identity.es"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "identity",
+        "identity",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.identity.de"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "explicit_person",
+        "current"
+      ],
+      "id": "neg.third_person.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "explicit_person",
+        "current"
+      ],
+      "id": "neg.third_person.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "explicit_person",
+        "current"
+      ],
+      "id": "neg.third_person.es"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "entity",
+        "unknown_person",
+        "current_context"
+      ],
+      "id": "neg.people_here.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "entity",
+        "unknown_person",
+        "current_context"
+      ],
+      "id": "neg.people_here.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "identity",
+        "place_identity",
+        "deictic_place",
+        "current"
+      ],
+      "id": "neg.place_identity.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "filesystem_location",
+        "location",
+        "explicit_file",
+        "current"
+      ],
+      "id": "neg.file_location.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "filesystem_location",
+        "location",
+        "explicit_file",
+        "current"
+      ],
+      "id": "neg.file_location.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "runtime_host",
+        "host",
+        "explicit_process",
+        "current"
+      ],
+      "id": "neg.process_host.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "imperative",
+        "proximity_search",
+        "entities",
+        "restaurants",
+        "current_actor_location_operand"
+      ],
+      "id": "neg.nearby_operand.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "imperative",
+        "proximity_search",
+        "entities",
+        "restaurants",
+        "current_actor_location_operand"
+      ],
+      "id": "neg.nearby_operand.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "polar_question",
+        "located_at",
+        "truth_value",
+        "current_actor",
+        "explicit_place"
+      ],
+      "id": "neg.polar.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "located_at",
+        "location",
+        "current_actor",
+        "historical"
+      ],
+      "id": "neg.historical.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "imperative",
+        "share",
+        "delivery_result",
+        "current_actor_location_operand",
+        "current"
+      ],
+      "id": "neg.share.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "quote",
+        "located_at",
+        "none",
+        "quoted_actor",
+        "quoted_time"
+      ],
+      "id": "neg.quote.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "condition",
+        "located_at",
+        "none",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.condition.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "imperative",
+        "move",
+        "destination",
+        "explicit_files",
+        "relative_clause"
+      ],
+      "id": "neg.relative_clause.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "workflow_state",
+        "progress",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.workflow_position.it"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "document_position",
+        "progress",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.document_position.en"
+    },
+    {
+      "expect_binding": false,
+      "expected_tuple": [
+        "open_question",
+        "workflow_state",
+        "progress",
+        "current_actor",
+        "current"
+      ],
+      "id": "neg.progress.it"
+    }
+  ],
+  "source_controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "version": "metnos.v25.2-desired-observation/1.0"
+}

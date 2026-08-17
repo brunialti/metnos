@@ -1,0 +1,90 @@
+{
+  "format": "metnos.intent-holdout-mutation-catalog/0.1",
+  "synthetic_only": true,
+  "mutations": [
+    {
+      "id": "M01",
+      "target": "authority",
+      "mutation": "stale_or_swapped_hash",
+      "expected_code": "HASH_BINDING"
+    },
+    {
+      "id": "M02",
+      "target": "case_binding",
+      "mutation": "wrong_case_id",
+      "expected_code": "CASE_BINDING"
+    },
+    {
+      "id": "M03",
+      "target": "schema",
+      "mutation": "missing_extra_or_wrong_version",
+      "expected_code": "CLOSED_SCHEMA"
+    },
+    {
+      "id": "M04",
+      "target": "gold",
+      "mutation": "expected_safety_or_confidence_changed",
+      "expected_code": "GOLD_MISMATCH"
+    },
+    {
+      "id": "M05",
+      "target": "obligations",
+      "mutation": "positive_negated_or_outside_added_removed",
+      "expected_code": "OBLIGATION_MISMATCH"
+    },
+    {
+      "id": "M06",
+      "target": "semantics",
+      "mutation": "polarity_root_control_or_capability_changed",
+      "expected_code": "SEMANTIC_MISMATCH"
+    },
+    {
+      "id": "M07",
+      "target": "relations",
+      "mutation": "dependency_order_branch_or_approval_changed",
+      "expected_code": "RELATION_MISMATCH"
+    },
+    {
+      "id": "M08",
+      "target": "relational",
+      "mutation": "orphan_atom_or_invented_expected_node",
+      "expected_code": "RELATIONAL_MISMATCH"
+    },
+    {
+      "id": "M09",
+      "target": "fingerprint",
+      "mutation": "unauthorized_collision",
+      "expected_code": "FINGERPRINT_COLLISION"
+    },
+    {
+      "id": "M10",
+      "target": "assignment",
+      "mutation": "language_cell_or_subtype_changed",
+      "expected_code": "ASSIGNMENT_MISMATCH"
+    },
+    {
+      "id": "M11",
+      "target": "isolation",
+      "mutation": "reviewer_pool_or_author_context_reused",
+      "expected_code": "ISOLATION_REUSE"
+    },
+    {
+      "id": "M12",
+      "target": "lifecycle",
+      "mutation": "forbidden_read_extra_query_or_postseal_edit",
+      "expected_code": "LIFECYCLE_VIOLATION"
+    },
+    {
+      "id": "M13",
+      "target": "judgment",
+      "mutation": "different_query_hashes",
+      "expected_code": "QUERY_BINDING"
+    },
+    {
+      "id": "M14",
+      "target": "reconstruction",
+      "mutation": "same_expected_different_obligations",
+      "expected_code": "RECONSTRUCTION_MISMATCH"
+    }
+  ]
+}

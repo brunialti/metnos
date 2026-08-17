@@ -90,6 +90,13 @@ paraphrase, regression, and E2E evidence before declaring conformance.
 Small A/B benches that make a change provable instead of plausible. They run
 against the live instance and change nothing.
 
+For the active structured request-analysis work, do not start from an
+individual scratch benchmark. Read
+`request_analysis_lab/README.md` and
+`../design/handover_request_analysis_8_8_2026.md` first. They identify the
+single current freeze, rejected variants, denominators, hashes, and the next
+safe command.
+
 - `misura_intent.py` — 13 control queries through the real intent extractor.
   `--dump prima.json` before a change, `--confronta prima.json` after; the
   output names every query whose clauses moved. Temperature 0 and a fixed seed

@@ -1,0 +1,145 @@
+{
+  "version": "metnos.v26.5.6-independent-infrastructure-review/1.0",
+  "review_date": "2026-08-09",
+  "verdict": "STATIC_BLOCK",
+  "live_authorization": false,
+  "network_calls": 0,
+  "model_calls": 0,
+  "candidate_live_outputs_read": false,
+  "candidate_frozen_artifacts_modified": false,
+  "freeze_created": false,
+  "gate_created": false,
+  "fresh_replays": {
+    "author_selftest": "21/21 PASS",
+    "author_selftest_transport": {
+      "fake_get": 1,
+      "fake_post": 34,
+      "real_network": 0,
+      "real_model": 0
+    },
+    "verify_freeze": "PASS",
+    "contamination_audit": "15/15 PASS"
+  },
+  "independent_hash_inventory": {
+    "freeze_sha256": "d17cddcb1f4aae770f9288294c17a2b49cb7321916dfa61bd33ba954cfe813f5",
+    "freeze_artifact_pins": 20,
+    "freeze_pin_failures": 0,
+    "package_files": {
+      "jsonschema": 38,
+      "regex": 11
+    },
+    "package_tree_failures": 0,
+    "loaded_nonstdlib_modules": 51,
+    "loaded_inventory_failures": 0
+  },
+  "independent_fake_batch_probe": {
+    "status": "MODEL_BATCH_COMPLETE",
+    "fake_get": 1,
+    "fake_post": 34,
+    "model_request_attempts": 34,
+    "retries": 0,
+    "forbidden_query_keys": 0,
+    "raw_query_occurrences": 0,
+    "runner_postbatch_artifact_reads": 0,
+    "batch_bytes_compact": 78340,
+    "batch_sha256": "63d9fd33a3bf5299571f497b30de555eeb3c2b71aabce3bfaf75d223142fbdce",
+    "offline_evaluation_status": "PHASE1_EVALUATED",
+    "offline_evaluation_batch_sha_matches": true,
+    "unexpected_exception_case": 6,
+    "partial_records_preserved": 5,
+    "exception_text_persisted": false
+  },
+  "isolation_and_scope": {
+    "runtime_cases": 34,
+    "runtime_fixture_query_only_shape": true,
+    "runtime_source_sha_matches": true,
+    "runtime_query_hash_sequence_matches_source": true,
+    "oracle_fields_present": false,
+    "contamination_corpus_cases": 213,
+    "contamination_failures": 0,
+    "relation_count": 10,
+    "relations": [
+      "spatial.located_at",
+      "identity.same_as",
+      "filesystem.located_at",
+      "runtime.host_of",
+      "spatial.near",
+      "acl.share",
+      "communication.send",
+      "movement.destination",
+      "workflow.position",
+      "document.position"
+    ],
+    "relation_set_sha256": "43e3e76fd404f127a29bff0f2981c0a3f1fccfe3a3c7573d6b9a060d0a2484b3"
+  },
+  "reader_writer_probes": {
+    "bounded_descriptor_rejected": true,
+    "terminal_symlink_rejected": true,
+    "fstat_identity_mutation_rejected": true,
+    "evaluator_writer_dirfd_nofollow_atomic": true,
+    "runner_writer_exclusive_link_fsync": true,
+    "runner_writer_dirfd_nofollow_parent": false
+  },
+  "batch_memory_bound": {
+    "schema_max_compact_branch_bytes": [20288, 74545, 2252],
+    "schema_max_pretty_compact_frame_bytes": 122560,
+    "maximum_atoms": 64,
+    "maximum_bindings": 192,
+    "maximum_unsupported_clauses": 8,
+    "conservative_expanded_pretty_frame_bytes": 189120,
+    "nonframe_envelope_bytes_per_record": 32768,
+    "top_level_envelope_bytes": 65536,
+    "conservative_34_record_serialized_bytes": 7609728,
+    "offline_evaluator_limit_bytes": 33554432,
+    "maximum_shape_occurrence_deep_bytes": 386636,
+    "conservative_accumulated_batch_object_bytes": 15635992,
+    "conservative_additional_serialization_working_set_bytes": 31904024,
+    "explicit_predump_counter_present": false,
+    "current_byte_stable_bundle_has_static_bound": true,
+    "classification": "PASS_WITH_SUCCESSOR_DEFENSE_RECOMMENDED"
+  },
+  "blockers": [
+    {
+      "id": "CLI_EXPECTED_DENIAL_UNCAUGHT",
+      "cause": "Runner main has no exception boundary; an expected absent-gate RuntimeError reaches sys.excepthook/apport.",
+      "evidence": "Gate denial occurred before transport/output, but RuntimeError propagated and the operational invocation attempted /var/crash.",
+      "minimal_fix": "Catch expected CLI errors, emit one sanitized technical diagnostic, and return nonzero without traceback."
+    },
+    {
+      "id": "NO_REVIEWED_PREFLIGHT_PRODUCER",
+      "cause": "CLI exposes only --verify-freeze and --controls while the external gate requires a recent endpoint/context-bound preflight artifact.",
+      "evidence": "Independent AST/CLI inventory: --controls, --endpoint, --output, --verify-freeze; no --preflight.",
+      "minimal_fix": "Add a frozen no-clobber --preflight action behind a distinct preliminary gate."
+    },
+    {
+      "id": "MALFORMED_EXPANDED_FRAME_REACHES_GOLD",
+      "cause": "Pre-gold validation neither closes result keys nor validates the expanded full-frame contract.",
+      "evidence": "A complete fake batch mutated to expanded_frame={} opened source_controls34 before rejection.",
+      "minimal_fix": "Close result shapes per status and run a pinned full-frame validator before every gold identity."
+    },
+    {
+      "id": "DEFAULT_URLLIB_BREAKS_ONE_CALL_BOUNDARY",
+      "cause": "Default urlopen honors proxy environment and follows redirects; counters are initialized to one rather than counting actual opens.",
+      "evidence": "An in-memory 302 caused two handler opens including non-loopback while status PASS and socket_attempts=1; an in-memory proxy probe changed the actual host to proxy.invalid.",
+      "minimal_fix": "Use a frozen opener with ProxyHandler({}) and redirect denial, restrict endpoints to literal loopback IPs, and count every real open."
+    },
+    {
+      "id": "RUNNER_OUTPUT_PARENT_NOT_ANCHORED",
+      "cause": "The runner output writer re-resolves the parent by pathname after inference instead of retaining a no-follow directory fd.",
+      "evidence": "Exclusive hard-link/fsync is present, but no openat no-follow parent chain exists in the runner writer; the evaluator writer has one.",
+      "minimal_fix": "Use the evaluator's anchored dirfd/no-follow exclusive atomic writer pattern."
+    }
+  ],
+  "passed_properties": [
+    "Freeze/hash chain and direct dependency trees match current bytes.",
+    "External gate absence fails closed before transport and output.",
+    "The direct non-redirecting fake path performs one GET plus 34 POSTs with zero retries.",
+    "Runner runtime access stays query-only and does not open fixture, oracle or evaluator artifacts.",
+    "Generated runner batches are query-free and diagnostic text-free.",
+    "Unexpected local case exceptions preserve completed records.",
+    "Offline evaluation binds the exact input batch SHA and writes a separate artifact only after evaluation.",
+    "Bounded no-follow readers reject size, symlink and descriptor-identity mutations.",
+    "The current compact schema and adapter bound a complete serialized batch well below 32 MiB."
+  ],
+  "next_step": "Create and independently review a successor that fixes all blocker causes. Do not create or open an external live gate for V26.5.6."
+}

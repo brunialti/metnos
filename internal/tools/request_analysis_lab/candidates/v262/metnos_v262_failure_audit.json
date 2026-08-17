@@ -1,0 +1,1459 @@
+{
+  "audit_version": "metnos.v26.2-native-k1-failure-audit/1.0",
+  "binding_confusion": {
+    "honest_supported_only_same_gate": {
+      "binding_exact": 16,
+      "evaluable": 19,
+      "false_negative": 1,
+      "false_positive": 2,
+      "not_evaluated": 15,
+      "true_negative": 13,
+      "true_positive": 3
+    },
+    "proposed_five_semantic_fields_plus_evidence": {
+      "binding_exact": 15,
+      "evaluable": 19,
+      "false_negative": 1,
+      "false_positive": 3,
+      "not_evaluated": 15,
+      "true_negative": 12,
+      "true_positive": 3
+    },
+    "v262_reported_policy": {
+      "binding_exact": 20,
+      "evaluable": 26,
+      "false_negative": 4,
+      "false_positive": 2,
+      "not_evaluated": 8,
+      "true_negative": 17,
+      "true_positive": 3
+    }
+  },
+  "category_counts": {
+    "honest_proposed_policy": {
+      "false_binding": 4,
+      "not_evaluated_ambiguous": 7,
+      "not_evaluated_invalid": 1,
+      "not_evaluated_unsupported": 7,
+      "tuple_exact_binding_correct": 5,
+      "tuple_mismatch_binding_correct": 10
+    },
+    "honest_supported_only_same_gate": {
+      "false_binding": 3,
+      "not_evaluated_ambiguous": 7,
+      "not_evaluated_invalid": 1,
+      "not_evaluated_unsupported": 7,
+      "tuple_exact_binding_correct": 5,
+      "tuple_mismatch_binding_correct": 11
+    },
+    "published_policy": {
+      "false_binding": 6,
+      "not_evaluated": 8,
+      "tuple_exact_binding_correct": 5,
+      "tuple_mismatch_binding_correct": 15
+    }
+  },
+  "category_records_redacted": [
+    {
+      "current_category": "false_binding",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "not_evaluated_unsupported",
+      "honest_status": "unsupported",
+      "language": "it",
+      "opaque_case_id": "f94859539aaa0fceb4148395b68efa3754e3cafc1f43ccae529aac9243691a62",
+      "proposed_category": "not_evaluated_unsupported",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "7aa069dbadd39448d5a017c9fad20739c2d4a6eb7440d5cd4c5718f55911d8ff",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "tuple_exact_binding_correct",
+      "current_predicted_binding": true,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "explicit_segment"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "tuple_exact_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "72e27db873528bfcd44c34c79473c809d9bc1e9116b54f7d0014ce675061f87b",
+      "proposed_category": "tuple_exact_binding_correct",
+      "proposed_predicted_binding": true,
+      "query_sha256_utf8": "6a4299be8ac71f25b0393ebd8133fa7296192427360e78001392304c121112a1",
+      "tuple_mismatch_fields": []
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "not_evaluated_ambiguous",
+      "honest_status": "ambiguous",
+      "language": "en",
+      "opaque_case_id": "543baf5a0477483e8d04b37216ad8a5abf6e3bca8501e9118881fc07060fc571",
+      "proposed_category": "not_evaluated_ambiguous",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "ef03ddf8b821820cbdbf66e9ce0788615b5a00fc8485444868705438d6999d92",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "false_binding",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "false_binding",
+      "honest_status": "supported",
+      "language": "fr",
+      "opaque_case_id": "962e2eb3e35aab99097d5026f7005a1b06cae56748c0644a8a28304e1ce1c1da",
+      "proposed_category": "false_binding",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "ea5c18a4f257f45d988e87952e464310f7a2e87cabfac8a5994b8ba36cf12b8c",
+      "tuple_mismatch_fields": [
+        "role"
+      ]
+    },
+    {
+      "current_category": "tuple_exact_binding_correct",
+      "current_predicted_binding": true,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "predicate_morphology",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "tuple_exact_binding_correct",
+      "honest_status": "supported",
+      "language": "es",
+      "opaque_case_id": "c7ae266a5ef12fe3ef7924ec60ea0c53777adb16b4024117addc1773b15ae2da",
+      "proposed_category": "tuple_exact_binding_correct",
+      "proposed_predicted_binding": true,
+      "query_sha256_utf8": "4572600200c05801c3a89011baf8ab2ae809f9e23f3157934e7a96c3b9e5764d",
+      "tuple_mismatch_fields": []
+    },
+    {
+      "current_category": "false_binding",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "not_evaluated_unsupported",
+      "honest_status": "unsupported",
+      "language": "de",
+      "opaque_case_id": "3f5bd2980e69b5fbbb0863ae6aeffd04d50d48516c647e587289f7b8f26f0d74",
+      "proposed_category": "not_evaluated_unsupported",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "63f6af6255ba56f1864daadff3d57c48ba20f67523adb73365a553a4b3d312fe",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "tuple_exact_binding_correct",
+      "current_predicted_binding": true,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "clause_semantics",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "tuple_exact_binding_correct",
+      "honest_status": "supported",
+      "language": "tr",
+      "opaque_case_id": "c4f892cfaa23dd43c6f04a661858f0106963f233a634962ee77448534cd6be8a",
+      "proposed_category": "tuple_exact_binding_correct",
+      "proposed_predicted_binding": true,
+      "query_sha256_utf8": "feaccd3507580e2dfa32aa4391a0e496d358f80b9ce30c9463a6bd12f2094740",
+      "tuple_mismatch_fields": []
+    },
+    {
+      "current_category": "false_binding",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "not_evaluated_unsupported",
+      "honest_status": "unsupported",
+      "language": "ja",
+      "opaque_case_id": "b5626529f15b8020d40c9c6a805834cb934dca5f1fc96d5bea227306eb95766c",
+      "proposed_category": "not_evaluated_unsupported",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "960181ec11532980550d9a1fe030c8dac1eacabf0b53256e7d45ead9985589c0",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "none"
+      },
+      "expected_binding": true,
+      "honest_same_gate_category": "not_evaluated_ambiguous",
+      "honest_status": "ambiguous",
+      "language": "zh",
+      "opaque_case_id": "c07a4e4a2b7601941f44adbc2064a07d49f08da7f82811dd9b6303069ce8631d",
+      "proposed_category": "not_evaluated_ambiguous",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "23e4bd034eec482fc5e7f83f2fb1a22d8c3402a3ce873164de38d79fe9c078ca",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "speaker_context",
+        "time": "tense_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_ambiguous",
+      "honest_status": "ambiguous",
+      "language": "it",
+      "opaque_case_id": "ea7817740f76b64e281d385702274f9f64887cdc6f3a0fe3bb8648ed24883a80",
+      "proposed_category": "not_evaluated_ambiguous",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "2292180a45ee421a834e575e93079145c6444fdd424d501c63b5ecafc72da5fe",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "none",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_unsupported",
+      "honest_status": "unsupported",
+      "language": "en",
+      "opaque_case_id": "9963512e338b6753d6fc19e9e12fd8dd35b00e3e305938c5d788428ece31e7b2",
+      "proposed_category": "not_evaluated_unsupported",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "e985008e99806dd3156707da6fff9a04c02c98ae6af838a24bd8f2c7d590491e",
+      "tuple_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "none",
+        "subject": "clause_semantics",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_unsupported",
+      "honest_status": "unsupported",
+      "language": "fr",
+      "opaque_case_id": "3e66ef71beeabe88f07db26323306fe34fb9b107bba65efc6c68ebdf219c8535",
+      "proposed_category": "not_evaluated_unsupported",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "591e3c8b11e400f3746addfa07988de519a11e9c380a3c5924fb6acc37a07558",
+      "tuple_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "none",
+        "subject": "speaker_context",
+        "time": "tense_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_unsupported",
+      "honest_status": "unsupported",
+      "language": "es",
+      "opaque_case_id": "9afa61063dd254eff1720a8f44df98c5b106d52c38763fa285c77e5340c88d2f",
+      "proposed_category": "not_evaluated_unsupported",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "de9ec48c6fb274ce8d9e241013756611a536090620cfa2620f43f81612c0f4bd",
+      "tuple_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "none",
+        "subject": "explicit_segment",
+        "time": "none"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_unsupported",
+      "honest_status": "unsupported",
+      "language": "de",
+      "opaque_case_id": "6d2c032c34de48943ed1dd740320428c40eb0eda86d8d7b43480b57ee7b054c2",
+      "proposed_category": "not_evaluated_unsupported",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "60aa2e8a5691a39051eca6e82d6d8d921a9bb5c8e9c4fab439638555d7b5d111",
+      "tuple_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "current_category": "tuple_exact_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "explicit_segment",
+        "subject": "explicit_segment",
+        "time": "none"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_exact_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "8230c30a0a2897d7209ad389be200d231048e4cc78aa48b373cad0f4e9d18e68",
+      "proposed_category": "tuple_exact_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "9bc7f1922e19df8e2f740924313f49b3292536b118de465e480e06d91f93eee6",
+      "tuple_mismatch_fields": []
+    },
+    {
+      "current_category": "tuple_exact_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "tense_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_exact_binding_correct",
+      "honest_status": "supported",
+      "language": "en",
+      "opaque_case_id": "97607e5e1662f8a9beea41ed8be36573d8a38eb0f8324325f913519f4ffe137e",
+      "proposed_category": "tuple_exact_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "46db75d888968bd8bf8464703613b4200f04bdf27dcbcd8c69ceb9d88270908c",
+      "tuple_mismatch_fields": []
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "es",
+      "opaque_case_id": "a7074afa19ef282de6fa7253c07aba3441a21485b5d6c646251ce49f1918d128",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "29f7b24da099252fb0dac8aa274c8e56e2ed5af779bf4c7e1a10351987dc104b",
+      "tuple_mismatch_fields": [
+        "subject_ref"
+      ]
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_ambiguous",
+      "honest_status": "ambiguous",
+      "language": "it",
+      "opaque_case_id": "82bf368c440504837f43b49f0c93dd8aa1a74696acd498877af1496b37dce191",
+      "proposed_category": "not_evaluated_ambiguous",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "967bf2e99d1393e7dfc8fc72e9ec559a9f270a0f9dc63dde66ad4b45676e5c96",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_ambiguous",
+      "honest_status": "ambiguous",
+      "language": "en",
+      "opaque_case_id": "8d20d29e5761a567b087d75ae9f5810ad54053b5444199adc5d4f08e81a2e244",
+      "proposed_category": "not_evaluated_ambiguous",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "0dc2c81361fa0d7a640143b07d0b7c6808310d64020a134378bc5901d1bb13a1",
+      "tuple_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "clause_semantics",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "d85300f0a5e80f42119e47f21bd65dd606de5393ffcdbcf6e3aeb2d36d0ccecb",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "2ae6b27f0fcf0a9d1f50927bfce2a43131f71caa2e61b2e2cb36668e576934c5",
+      "tuple_mismatch_fields": [
+        "role",
+        "relation",
+        "subject_ref"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "none"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "085f1a9bbd8a98c07852aeccfe9995da8a497956ea5e702972094c51bc7de04b",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "987a5d8802fce61a60ad35f783420d2a5f364aaf5a2910a92e29048eeb2f90c4",
+      "tuple_mismatch_fields": [
+        "relation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "tense_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "en",
+      "opaque_case_id": "66997e917143fb8137f8db12ff7a8b82ba8988dc3becbb7b01bbb8ed9b76f637",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "8d477961cab8e90950600bdf6d5eb2013850b2a1993b9d2d1288569efdebe17f",
+      "tuple_mismatch_fields": [
+        "relation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "en",
+      "opaque_case_id": "14a4d01b2942a26bc87fac69f6fe6f450b49acc367de836119dc18494fb68cbd",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "f9fdb5b533936c139cc66f5850ae477e98d81b3cfb8fb7101d7fd551173c67a9",
+      "tuple_mismatch_fields": [
+        "relation"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "speaker_context",
+        "time": "none"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "a7fe1472e45e5464bb4b687a333d38144f5501bffb7df466f5f517f77a1d51fe",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "678dfb9022e2ca516fe683e3b1ae706a2b8361ff95f87a4efb733ea976375b84",
+      "tuple_mismatch_fields": [
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "speaker_context"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "en",
+      "opaque_case_id": "f67ee9ac145a28a4f1cc390c953aa0fecd723a4523b95f7d4ed4ac053ad3814d",
+      "proposed_category": "false_binding",
+      "proposed_predicted_binding": true,
+      "query_sha256_utf8": "d686f74f667e5453d9815dd1b94df175bd4e8775c7b96e8c49340654d2d8dfbf",
+      "tuple_mismatch_fields": [
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "predicate_morphology",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "402060ae7e748e51bb67ffdac816ff7ef13b3877c4b42ddf8d463cb0618ff98e",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "6d2588e20f3541e7db0446d0a59b3138e2134fdded36ef35a9b3557f83961e8c",
+      "tuple_mismatch_fields": [
+        "role",
+        "speech_act"
+      ]
+    },
+    {
+      "current_category": "false_binding",
+      "current_predicted_binding": true,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "explicit_segment"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "false_binding",
+      "honest_status": "supported",
+      "language": "en",
+      "opaque_case_id": "ae25856617b30b3ed755473bbb98c2c40bcc27d50623691560dee75b2ee9c7d9",
+      "proposed_category": "false_binding",
+      "proposed_predicted_binding": true,
+      "query_sha256_utf8": "50f51077dbfb9ef3cb994adf58bf55edf59e435a87170bd5643b313ec99400e4",
+      "tuple_mismatch_fields": [
+        "time_scope"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "speaker_context",
+        "time": "none"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "6234733a0b72cbf77e60cdba0750479df75bc30dd884e7565e071da08c98def6",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "5878b56d55b3c8321d4ca301f0e3823f799fbccb79e2efe091309e95a1e87fe4",
+      "tuple_mismatch_fields": [
+        "relation",
+        "subject_ref",
+        "grammatical_person"
+      ]
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "missing",
+        "subject": "missing",
+        "time": "missing"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_invalid",
+      "honest_status": "invalid",
+      "language": "en",
+      "opaque_case_id": "5940e59955c4793246e7450495da98d3cdb02b9de55b90270bd3231825762996",
+      "proposed_category": "not_evaluated_invalid",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "e089752a9a01bf29bbb559d3ddea35c7f0ab5d2968b906d8cb86c2290adb7379",
+      "tuple_mismatch_fields": [
+        "role",
+        "interpretation",
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "none",
+        "subject": "explicit_segment",
+        "time": "none"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "298fa0b7931205814e29ff3d9710bf8328b470bdd43ea92512a79465f06f29a1",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "85a9ee99227fcff35c2bbcdf5b0e11703d55da5b697b9d0e32b0afba6a90f362",
+      "tuple_mismatch_fields": [
+        "relation",
+        "grammatical_person"
+      ]
+    },
+    {
+      "current_category": "tuple_mismatch_binding_correct",
+      "current_predicted_binding": false,
+      "evidence_kinds": {
+        "relation": "explicit_segment",
+        "subject": "speaker_context",
+        "time": "explicit_segment"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "tuple_mismatch_binding_correct",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "703f61679ee09ae77763117a2e15da8e160e9a172a1a60dc6ea31ca89a644040",
+      "proposed_category": "tuple_mismatch_binding_correct",
+      "proposed_predicted_binding": false,
+      "query_sha256_utf8": "029b477fe675b189bf359e9b74c66997c0363f300975b9f76b5e620fc8cc7bd0",
+      "tuple_mismatch_fields": [
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_ambiguous",
+      "honest_status": "ambiguous",
+      "language": "it",
+      "opaque_case_id": "999152661d3a6cfb3fb790be46008578c01258d1122a8bb78c6b29cb175f9dff",
+      "proposed_category": "not_evaluated_ambiguous",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "2a0e89fb33446bd42d52d6049bf0ef09fb2b56737f7683c9bf3617af861bba31",
+      "tuple_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "current_category": "not_evaluated",
+      "current_predicted_binding": null,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "explicit_segment",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "not_evaluated_ambiguous",
+      "honest_status": "ambiguous",
+      "language": "en",
+      "opaque_case_id": "315eb70d2e87847f2a9bdb007248d110e376999dcadd7ab23933458bb545a67d",
+      "proposed_category": "not_evaluated_ambiguous",
+      "proposed_predicted_binding": null,
+      "query_sha256_utf8": "e96d900f2ab17bb44e1d1d9951a0ef22d434500feb5bd7e70f8b4752971eeefd",
+      "tuple_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "current_category": "false_binding",
+      "current_predicted_binding": true,
+      "evidence_kinds": {
+        "relation": "clause_semantics",
+        "subject": "predicate_morphology",
+        "time": "predicate_morphology"
+      },
+      "expected_binding": false,
+      "honest_same_gate_category": "false_binding",
+      "honest_status": "supported",
+      "language": "it",
+      "opaque_case_id": "f65e576916a384dfa2c4ab5fc6304d5d5a07d2a42e0e2ec7a6ef1e21e5fe7a00",
+      "proposed_category": "false_binding",
+      "proposed_predicted_binding": true,
+      "query_sha256_utf8": "463720e32113f7a72128a4a53033f8447f61f520eb0756578a1f59591d54ed2c",
+      "tuple_mismatch_fields": [
+        "relation"
+      ]
+    }
+  ],
+  "evidence": {
+    "relation": {
+      "exact_kind_oracle_available": false,
+      "expected_grounding_rule": "required iff expected relation is not none",
+      "honest_grounding_confusion": {
+        "True": {
+          "False": 1,
+          "True": 18,
+          "__NOT_EVALUATED_AMBIGUOUS__": 7,
+          "__NOT_EVALUATED_INVALID__": 1,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7
+        }
+      },
+      "predicted_kind_distribution": {
+        "clause_semantics": 26,
+        "explicit_segment": 2,
+        "missing": 1,
+        "none": 5
+      },
+      "raw_grounding_confusion": {
+        "True": {
+          "False": 6,
+          "True": 28
+        }
+      }
+    },
+    "subject": {
+      "exact_kind_oracle_available": false,
+      "expected_grounding_rule": "required iff expected subject_ref is not none",
+      "honest_grounding_confusion": {
+        "True": {
+          "True": 19,
+          "__NOT_EVALUATED_AMBIGUOUS__": 7,
+          "__NOT_EVALUATED_INVALID__": 1,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7
+        }
+      },
+      "predicted_kind_distribution": {
+        "clause_semantics": 3,
+        "explicit_segment": 22,
+        "missing": 1,
+        "predicate_morphology": 3,
+        "speaker_context": 5
+      },
+      "raw_grounding_confusion": {
+        "True": {
+          "False": 1,
+          "True": 33
+        }
+      }
+    },
+    "time": {
+      "exact_kind_oracle_available": false,
+      "expected_grounding_rule": "required iff expected time_scope is not none",
+      "honest_grounding_confusion": {
+        "True": {
+          "False": 5,
+          "True": 14,
+          "__NOT_EVALUATED_AMBIGUOUS__": 7,
+          "__NOT_EVALUATED_INVALID__": 1,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7
+        }
+      },
+      "predicted_kind_distribution": {
+        "explicit_segment": 3,
+        "missing": 1,
+        "none": 7,
+        "predicate_morphology": 18,
+        "speaker_context": 1,
+        "tense_morphology": 4
+      },
+      "raw_grounding_confusion": {
+        "True": {
+          "False": 8,
+          "True": 26
+        }
+      }
+    }
+  },
+  "field_confusion": {
+    "grammatical_person": {
+      "honest_accuracy_over_all": {
+        "exact": 14,
+        "mismatch": 20,
+        "total": 34
+      },
+      "honest_supported_only": {
+        "first": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 5,
+          "__NOT_EVALUATED_INVALID__": 1,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7,
+          "first": 7,
+          "second": 2
+        },
+        "none": {
+          "second": 3
+        },
+        "third": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 2,
+          "third": 7
+        }
+      },
+      "raw_accuracy": {
+        "exact": 28,
+        "mismatch": 6,
+        "total": 34
+      },
+      "raw_frame": {
+        "first": {
+          "__INVALID__": 1,
+          "first": 19,
+          "second": 2
+        },
+        "none": {
+          "second": 3
+        },
+        "third": {
+          "third": 9
+        }
+      }
+    },
+    "interpretation": {
+      "honest_accuracy_over_all": {
+        "exact": 19,
+        "mismatch": 15,
+        "total": 34
+      },
+      "honest_supported_only": {
+        "supported": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 7,
+          "__NOT_EVALUATED_INVALID__": 1,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7,
+          "supported": 19
+        }
+      },
+      "raw_accuracy": {
+        "exact": 19,
+        "mismatch": 15,
+        "total": 34
+      },
+      "raw_frame": {
+        "supported": {
+          "__INVALID__": 1,
+          "ambiguous": 7,
+          "supported": 19,
+          "unsupported": 7
+        }
+      }
+    },
+    "relation": {
+      "honest_accuracy_over_all": {
+        "exact": 9,
+        "mismatch": 25,
+        "total": 34
+      },
+      "honest_supported_only": {
+        "acl.share": {
+          "spatial.located_at": 1
+        },
+        "document.position": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 1
+        },
+        "filesystem.located_at": {
+          "spatial.located_at": 2
+        },
+        "identity.same_as": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 1,
+          "__NOT_EVALUATED_UNSUPPORTED__": 4,
+          "spatial.located_at": 1
+        },
+        "movement.destination": {
+          "spatial.located_at": 1
+        },
+        "runtime.host_of": {
+          "spatial.located_at": 1
+        },
+        "spatial.located_at": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 4,
+          "__NOT_EVALUATED_INVALID__": 1,
+          "__NOT_EVALUATED_UNSUPPORTED__": 3,
+          "none": 1,
+          "spatial.located_at": 9
+        },
+        "spatial.near": {
+          "spatial.located_at": 2
+        },
+        "workflow.position": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 1,
+          "spatial.located_at": 1
+        }
+      },
+      "raw_accuracy": {
+        "exact": 17,
+        "mismatch": 17,
+        "total": 34
+      },
+      "raw_frame": {
+        "acl.share": {
+          "spatial.located_at": 1
+        },
+        "document.position": {
+          "spatial.located_at": 1
+        },
+        "filesystem.located_at": {
+          "spatial.located_at": 2
+        },
+        "identity.same_as": {
+          "identity.same_as": 1,
+          "none": 4,
+          "spatial.located_at": 1
+        },
+        "movement.destination": {
+          "spatial.located_at": 1
+        },
+        "runtime.host_of": {
+          "spatial.located_at": 1
+        },
+        "spatial.located_at": {
+          "__INVALID__": 1,
+          "none": 1,
+          "spatial.located_at": 16
+        },
+        "spatial.near": {
+          "spatial.located_at": 2
+        },
+        "workflow.position": {
+          "spatial.located_at": 2
+        }
+      }
+    },
+    "role": {
+      "honest_accuracy_over_all": {
+        "exact": 16,
+        "mismatch": 18,
+        "total": 34
+      },
+      "honest_supported_only": {
+        "condition": {
+          "condition": 1
+        },
+        "quote": {
+          "__NOT_EVALUATED_INVALID__": 1
+        },
+        "request": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 7,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7,
+          "description": 1,
+          "quote": 2,
+          "request": 15
+        }
+      },
+      "raw_accuracy": {
+        "exact": 30,
+        "mismatch": 4,
+        "total": 34
+      },
+      "raw_frame": {
+        "condition": {
+          "condition": 1
+        },
+        "quote": {
+          "__INVALID__": 1
+        },
+        "request": {
+          "description": 1,
+          "quote": 2,
+          "request": 29
+        }
+      }
+    },
+    "speech_act": {
+      "honest_accuracy_over_all": {
+        "exact": 16,
+        "mismatch": 18,
+        "total": 34
+      },
+      "honest_supported_only": {
+        "condition": {
+          "condition": 1
+        },
+        "imperative": {
+          "imperative": 2,
+          "open_question": 2
+        },
+        "open_question": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 7,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7,
+          "open_question": 13
+        },
+        "polar_question": {
+          "assertion": 1
+        },
+        "quote": {
+          "__NOT_EVALUATED_INVALID__": 1
+        }
+      },
+      "raw_accuracy": {
+        "exact": 30,
+        "mismatch": 4,
+        "total": 34
+      },
+      "raw_frame": {
+        "condition": {
+          "condition": 1
+        },
+        "imperative": {
+          "imperative": 2,
+          "open_question": 2
+        },
+        "open_question": {
+          "open_question": 27
+        },
+        "polar_question": {
+          "assertion": 1
+        },
+        "quote": {
+          "__INVALID__": 1
+        }
+      }
+    },
+    "subject_ref": {
+      "honest_accuracy_over_all": {
+        "exact": 13,
+        "mismatch": 21,
+        "total": 34
+      },
+      "honest_supported_only": {
+        "current_actor": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 5,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7,
+          "current_actor": 8
+        },
+        "current_actor_location_operand": {
+          "current_actor": 1
+        },
+        "deictic_context": {
+          "unknown_entity": 1
+        },
+        "explicit_entity": {
+          "current_actor": 3,
+          "deictic_context": 1,
+          "explicit_entity": 5
+        },
+        "quoted_actor": {
+          "__NOT_EVALUATED_INVALID__": 1
+        },
+        "unknown_entity": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 2
+        }
+      },
+      "raw_accuracy": {
+        "exact": 27,
+        "mismatch": 7,
+        "total": 34
+      },
+      "raw_frame": {
+        "current_actor": {
+          "current_actor": 20
+        },
+        "current_actor_location_operand": {
+          "current_actor": 1
+        },
+        "deictic_context": {
+          "unknown_entity": 1
+        },
+        "explicit_entity": {
+          "current_actor": 3,
+          "deictic_context": 1,
+          "explicit_entity": 5
+        },
+        "quoted_actor": {
+          "__INVALID__": 1
+        },
+        "unknown_entity": {
+          "unknown_entity": 2
+        }
+      }
+    },
+    "time_scope": {
+      "honest_accuracy_over_all": {
+        "exact": 15,
+        "mismatch": 19,
+        "total": 34
+      },
+      "honest_supported_only": {
+        "contextual": {
+          "__NOT_EVALUATED_INVALID__": 1,
+          "current": 3
+        },
+        "current": {
+          "__NOT_EVALUATED_AMBIGUOUS__": 7,
+          "__NOT_EVALUATED_UNSUPPORTED__": 7,
+          "current": 15
+        },
+        "historical": {
+          "current": 1
+        }
+      },
+      "raw_accuracy": {
+        "exact": 29,
+        "mismatch": 5,
+        "total": 34
+      },
+      "raw_frame": {
+        "contextual": {
+          "__INVALID__": 1,
+          "current": 3
+        },
+        "current": {
+          "current": 29
+        },
+        "historical": {
+          "current": 1
+        }
+      }
+    }
+  },
+  "network_calls": 0,
+  "oracle_scope_audit": {
+    "conclusion": "full seven-field exactness is over-specified as an acceptance gate for the single get_location binding; it remains a legitimate separate metric only if Phase 1 claims generic relation-analysis fidelity",
+    "correct_target_rejections_with_nonexact_full_tuple": 10,
+    "evidence_kind_gold_available": false,
+    "exact_evidence_kind_must_not_be_scored": true,
+    "mismatch_fields_on_those_rejections": {
+      "grammatical_person": 4,
+      "relation": 8,
+      "role": 2,
+      "speech_act": 2,
+      "subject_ref": 5,
+      "time_scope": 2
+    }
+  },
+  "predetermined_ablations_diagnostic_only": {
+    "drop_person": {
+      "evaluable": 19,
+      "exact": 15,
+      "fields": [
+        "role",
+        "interpretation",
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "time_scope"
+      ],
+      "fn": 1,
+      "fp": 3,
+      "not_evaluated": 15,
+      "require_complete_evidence": true,
+      "tn": 12,
+      "tp": 3
+    },
+    "five_semantic_without_evidence": {
+      "evaluable": 19,
+      "exact": 14,
+      "fields": [
+        "role",
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "time_scope"
+      ],
+      "fn": 1,
+      "fp": 4,
+      "not_evaluated": 15,
+      "require_complete_evidence": false,
+      "tn": 11,
+      "tp": 3
+    },
+    "full_v262": {
+      "evaluable": 19,
+      "exact": 16,
+      "fields": [
+        "role",
+        "interpretation",
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ],
+      "fn": 1,
+      "fp": 2,
+      "not_evaluated": 15,
+      "require_complete_evidence": true,
+      "tn": 13,
+      "tp": 3
+    },
+    "relation_subject_time_only": {
+      "evaluable": 19,
+      "exact": 14,
+      "fields": [
+        "relation",
+        "subject_ref",
+        "time_scope"
+      ],
+      "fp": 5,
+      "not_evaluated": 15,
+      "require_complete_evidence": true,
+      "tn": 10,
+      "tp": 4
+    },
+    "status_as_coverage_plus_five_semantic": {
+      "evaluable": 19,
+      "exact": 15,
+      "fields": [
+        "role",
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "time_scope"
+      ],
+      "fn": 1,
+      "fp": 3,
+      "not_evaluated": 15,
+      "require_complete_evidence": true,
+      "tn": 12,
+      "tp": 3
+    }
+  },
+  "primary_cause": {
+    "class": "technical_definition_regression",
+    "do_not_do": [
+      "do not add source-language terms or paraphrase lists",
+      "do not restore answer_mode, focus role/type, subject_type, or deixis_center",
+      "do not use retry feedback to force semantic claims",
+      "do not optimize a field subset against these 34 controls as acceptance evidence"
+    ],
+    "finding": "V26.2 kept the smaller schema but removed the complete relation arity registry and most role, speech, subject, and time boundaries present in V25.3; the model consequently used ambiguous/unsupported and misclassified non-target relations"
+  },
+  "prompt_contract_audit": {
+    "current_bytes": 1973,
+    "current_prompt_sha256": "dad168f1975a3ab96b3e70303efce939aaab464ba71f567ff9c691d11c862a60",
+    "diagnosis": "minimal_schema_was_not_the_primary_loss;technical_registry_and_boundaries_were_removed_from_prompt",
+    "enum_mention_coverage": {
+      "grammatical_person": {
+        "current_missing_value_hashes": [
+          "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e",
+          "16367aacb67a4a017c8da8ab95682ccb390863780f7114dda0a0e0c55644c7c4",
+          "b1e99324505bd32da0e1f85dcf5e19a09db0481e8a15f62c41eb320304a8e927"
+        ],
+        "current_prompt_mentions": 2,
+        "enum_values": 5,
+        "reference_prompt_mentions": 4
+      },
+      "interpretation": {
+        "current_missing_value_hashes": [],
+        "current_prompt_mentions": 3,
+        "enum_values": 3,
+        "reference_prompt_mentions": 3
+      },
+      "relation": {
+        "current_missing_value_hashes": [
+          "01037d2637f9935157a29607454e398c31cc379be4ce16858e323555c24c2789",
+          "aa570f74e3e66524b3e527794a4e0f74fb76fe80cc48a1d75db00d025774ce44",
+          "963e907d90316d1f31a1cb79ff9320aa643fad49b5e2636717dca70744ab4d39",
+          "1ab05b0d6343ba9af223acd8f3813bb693540e726a808e0ddbc133a52ff4b8c0",
+          "7067117a72748c503ad75e3a0409eb3d1b312f053202a19f99b9a6c5a8089530",
+          "97b3d58b866441901a5c771de5cd3f0d21799952bdf97fa26e41f6682e649668",
+          "62ab10ddffcc9bc660b049ef2be4f8606f5d55a35339eadc583d717924c5e3eb",
+          "23aedb4d3e89732ed1d4656eae5f8bed30780adb25cec28d1560fd236fa6b8a0"
+        ],
+        "current_prompt_mentions": 2,
+        "enum_values": 10,
+        "reference_prompt_mentions": 10
+      },
+      "role": {
+        "current_missing_value_hashes": [
+          "596d40a4ed24c02a31b19d6e633f46f64304a672b40f793d8c6deab868beb0e2",
+          "c9046f7a37ad0ea7cee73355984fa5428982f8b37c8f7bcec91f7ac71a7cd104",
+          "6327245c3a45d3d9ea72b70fbb671926e7b80f63d311bfd73dde876d5df02b26"
+        ],
+        "current_prompt_mentions": 1,
+        "enum_values": 4,
+        "reference_prompt_mentions": 4
+      },
+      "speech_act": {
+        "current_missing_value_hashes": [
+          "7c5b1d49e6875fd887fd522123c4b34169d4cc11a6502cc04cb7eb8f7c166972",
+          "6a4211acaedb27418959903dc1f968a29f054a302dd7f52bd07198c131c03af0",
+          "e7735f86642e2f00514b5ce61fb9fbc2a687455b142a6e41af46498aa9ad7844",
+          "596d40a4ed24c02a31b19d6e633f46f64304a672b40f793d8c6deab868beb0e2",
+          "6327245c3a45d3d9ea72b70fbb671926e7b80f63d311bfd73dde876d5df02b26",
+          "c9046f7a37ad0ea7cee73355984fa5428982f8b37c8f7bcec91f7ac71a7cd104"
+        ],
+        "current_prompt_mentions": 1,
+        "enum_values": 7,
+        "reference_prompt_mentions": 7
+      },
+      "subject_ref": {
+        "current_missing_value_hashes": [
+          "91e7af691c77a5e3e8f61d7f738bec7574cab8e4253b8d05c5ec1dea7dd59c21",
+          "014d12855d8b0a37ae218a3b0c2ac555038d162b2bb85b953378b9723bc2fa3c",
+          "88ed3affc813ff441464aad3f4608bef091ad8036b1b8856e45f30f5920df74c",
+          "12285e613fc75ae58deafcbea1163ae6c46b3e95d6a730648843c5420cce56e1",
+          "43644826cc34219efd9c1399c8c202955f6257d48234c45412997f4f87279c5e"
+        ],
+        "current_prompt_mentions": 2,
+        "enum_values": 7,
+        "reference_prompt_mentions": 4
+      },
+      "time_scope": {
+        "current_missing_value_hashes": [
+          "f5dbf9fe930c4f499bc6573d86f0156f86ed10363bfee0a71efb3eacce58410f"
+        ],
+        "current_prompt_mentions": 3,
+        "enum_values": 4,
+        "reference_prompt_mentions": 4
+      }
+    },
+    "reference_bytes": 4437,
+    "reference_prompt_sha256": "a5582f9e275e95d43e913dfb7097066fcd1c20bee9e972d844b27e31a04fe113",
+    "relation_definitions_with_arity": {
+      "current": 0,
+      "reference": 9
+    }
+  },
+  "proposed_contract": {
+    "binding_rule": "supported AND role=request AND speech_act=open_question AND relation=spatial.located_at AND subject_ref=current_actor AND time_scope=current AND all three evidence claims are grounded",
+    "evidence": "claim-local rather than a parallel evidence object: each relation, subject, and time value carries its own closed tagged proof; structural validator only; no free text",
+    "gold_or_case_examples": 0,
+    "language_surface_terms": 0,
+    "native_acceptance": [
+      "34/34 supported/evaluable (unsupported is NOT_EVALUATED)",
+      "binding confusion reported over all 34 with N/E explicit",
+      "9/9 target positives and 0/25 target leakage",
+      "full tuple exactness published separately, not substituted for route binding",
+      "claim-level evidence coverage scored; evidence kind exactness not scored without an oracle",
+      "one call, zero retry"
+    ],
+    "prompt_requirement": "restore technical definitions and arities for every relation enum plus complete role, speech-act, subject-ref, time-scope, evidence, ambiguity, condition, quote, and description boundaries; generate this registry from catalog metadata in production",
+    "proof_carrying_shape": {
+      "relation_claim": {
+        "evidence": "closed tagged evidence union",
+        "value": "relation enum"
+      },
+      "subject_claim": {
+        "evidence": "closed tagged evidence union",
+        "ref": "subject-ref enum"
+      },
+      "time_claim": {
+        "evidence": "closed tagged evidence union",
+        "scope": "time-scope enum"
+      }
+    },
+    "quality_status": "interpretation remains a separate supported|ambiguous|unsupported coverage outcome, not a tuple operand",
+    "removed_field": "grammatical_person; its only routing-relevant contribution is carried by typed subject evidence",
+    "semantic_fields": [
+      "role",
+      "speech_act",
+      "relation",
+      "subject_ref",
+      "time_scope"
+    ],
+    "status": "design_only_requires_new_freeze_and_native_run"
+  },
+  "raw_field_mismatch_counts": {
+    "grammatical_person": 6,
+    "interpretation": 15,
+    "relation": 17,
+    "role": 4,
+    "speech_act": 4,
+    "subject_ref": 7,
+    "time_scope": 5
+  },
+  "redaction": "no raw query, source phrase, model raw text, or original control id is persisted",
+  "resolution": {
+    "counts": {
+      "ambiguous": 7,
+      "invalid": 1,
+      "supported": 19,
+      "unsupported": 7
+    },
+    "finding": "counting unsupported negative controls as true negatives inflates coverage and binding accuracy",
+    "honest_evaluable_policy": "only_supported_is_evaluable;invalid_ambiguous_unsupported_are_NOT_EVALUATED",
+    "published_evaluable_policy": "invalid_and_ambiguous_are_NOT_EVALUATED;unsupported_is_counted_evaluable"
+  },
+  "run_summary_as_published": {
+    "ambiguous": 7,
+    "binding_exact": 20,
+    "evaluable": 26,
+    "evidence_complete": 17,
+    "latency_call_p50_ms": 3108.5435615023016,
+    "latency_call_p95_ms": 4194.951169803244,
+    "model_calls": 34,
+    "negative_denominator": 19,
+    "negative_leakage": 2,
+    "not_evaluated": 8,
+    "positive_denominator": 7,
+    "positive_hits": 3,
+    "records": 34,
+    "retries": 0,
+    "signature_exact": 5
+  },
+  "scope": "offline_independent_redacted_no_server",
+  "sources": {
+    "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+    "freeze_fixture_sha256": "4e887a1e3cf6f38b20f18e2b39842674ed4ca2a78ede4d93693690e0e62cd427",
+    "prompt_sha256": "dad168f1975a3ab96b3e70303efce939aaab464ba71f567ff9c691d11c862a60",
+    "reference_prompt_sha256": "a5582f9e275e95d43e913dfb7097066fcd1c20bee9e972d844b27e31a04fe113",
+    "run_sha256": "ae8020a29ade3de48922d64cc61fe5f5bf9349fa3defda6643d0c4716757b834",
+    "schema_sha256": "3a8963414f56c9d239a59ef010e76a330dea53f4838c7bb4fed6060698f4caf0"
+  }
+}

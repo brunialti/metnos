@@ -1,0 +1,198 @@
+{
+ "artifact_kind": "causal_postmortem",
+ "artifact_verification": {
+  "archived_byte_identical": true,
+  "candidate_readme_hash_rows_verified": 10,
+  "cross_hash_checks": 14,
+  "cross_hash_failures": 0,
+  "evaluation": {
+   "expected_sha256": "c2602051b1b62daf1b93ec9a0693158c7a341cfe175131c09c43845d8b184522",
+   "match": true,
+   "observed_sha256": "c2602051b1b62daf1b93ec9a0693158c7a341cfe175131c09c43845d8b184522",
+   "path": "/tmp/metnos_v26564_live_k1_34_evaluation.json"
+  },
+  "frozen_author_artifacts_modified": false,
+  "live_batch": {
+   "expected_sha256": "9c15cc295e9465d987c2fd6bcb86ed5d66ed7b28a00a160065b3f7e9de90fc04",
+   "match": true,
+   "observed_sha256": "9c15cc295e9465d987c2fd6bcb86ed5d66ed7b28a00a160065b3f7e9de90fc04",
+   "path": "/tmp/metnos_v26564_live_k1_34.json"
+  },
+  "pinned_dependencies_broken": [],
+  "pinned_dependencies_total": 20,
+  "tmp_originals_unmodified": true
+ },
+ "counters": {
+  "attempted_cases": 34,
+  "configured_cases": 34,
+  "decoded_frames": 34,
+  "evaluated_cases": 34,
+  "exception_chains": 0,
+  "http_responses": 34,
+  "http_status_distribution": {
+   "200": 34
+  },
+  "invalid_cases": 34,
+  "phases": {
+   "complete": 34
+  },
+  "server_accepted_requests": 34,
+  "transport_errors": 0,
+  "valid_cases": 0
+ },
+ "evaluation_summary": {
+  "all_gates_exact": 0,
+  "coverage_exact": 0,
+  "dependency_exact": 0,
+  "direct_binding_exact": 0,
+  "evidence_valid": 0,
+  "general_clause_coverage": "not_measured_by_controls34",
+  "negative_total": 25,
+  "negative_usable_leakage": 0,
+  "positive_total": 9,
+  "positive_usable": 0,
+  "records": 34,
+  "safety_exact": 0
+ },
+ "evaluation_vacuous": {
+  "all_predicted_fields_null": true,
+  "note": "negative_usable_leakage=0 is a vacuous pass: nothing was usable at all, so leakage was impossible. It is not evidence of correct refusal on the 25 negatives."
+ },
+ "failure_distribution": {
+  "by_code": {
+   "dependency has no projection with the same clause span": 1,
+   "proof_family|reference_type": 1,
+   "two semantic clauses claim the same source span": 32
+  },
+  "by_stage": {
+   "adapter": 33,
+   "validator": 1
+  },
+  "censored_before_validator": 33,
+  "reached_validator": 1,
+  "schema_stage_failures": 0
+ },
+ "gate_compliance": {
+  "attempted_cases": 34,
+  "authorized_case_count": 34,
+  "authorizes_runtime_cutover": false,
+  "cutover_authorized": false,
+  "gate_exhausted_reason": "authorization required output_must_be_absent; the output now exists",
+  "gate_mutations": {
+   "failed": 0,
+   "mutations": 27,
+   "runner_rejections": 27
+  },
+  "gate_now_exhausted": true,
+  "model_request_attempt_limit": 34,
+  "model_request_attempts": 34,
+  "one_call_per_case": true,
+  "retries_allowed": 0,
+  "retries_used": 0,
+  "total_transport_attempts": 35,
+  "transport_attempts_expected": 35
+ },
+ "generated_offline": true,
+ "gold_mutated": false,
+ "latency_ms": {
+  "facade_mean": 93.92374776464695,
+  "facade_share_of_total": 0.014416605515685242,
+  "total": {
+   "max": 9494.034645002102,
+   "mean": 6514.969675937798,
+   "min": 5173.0013040069025,
+   "p50": 6109.381514514098,
+   "p95": 9446.901296993019
+  },
+  "transport_mean": 6419.944763794774
+ },
+ "model_calls": 0,
+ "network_calls": 0,
+ "not_diagnosable": {
+  "open_questions": [
+   "which two anchors overlapped, and in which clause",
+   "whether the collision was projection+projection or projection+unsupported_clause (both proven possible)",
+   "whether status was 'supported' or 'typed_ambiguity' (only 'unsupported' is excluded)",
+   "which relations, references and proofs the model chose",
+   "which slot and which proof produced case 32's reference_type and proof_family codes"
+  ],
+  "reason": "_run_case persists expanded_frame only when status is evaluated_valid; valid_cases=0, so no frame was retained. V26.5.6.4 also deliberately removed raw_frame_sha256 and model_content bytes/digest because the offline evaluator cannot reconstruct them.",
+  "unproven_hypothesis": "The model may cover typed ambiguity by emitting two competing projections on one clause instead of using typed_ambiguity alternatives. Consistent with the fact that the only two cases escaping the collision are the two with explicit disambiguating structure (ordinal 24 real dependency, ordinal 32 explicit process frame). NOT verifiable from the current artifacts."
+ },
+ "offline_tests_before_any_run": [
+  {
+   "id": "T1",
+   "name": "gold representability",
+   "status": "green",
+   "where": "probe section A"
+  },
+  {
+   "id": "T2",
+   "name": "schema/decoder gap must be empty",
+   "status": "green on successor, non-empty on current",
+   "where": "probe sections B and C"
+  },
+  {
+   "id": "T3",
+   "name": "non-censoring per-stage reporting",
+   "status": "not implemented"
+  },
+  {
+   "id": "T4",
+   "name": "85/85 candidate self-test stays green",
+   "status": "not re-run in this analysis"
+  }
+ ],
+ "posthoc_rescore": false,
+ "precedent": {
+  "effect": "With an explicit clause_id the error was local and per-case (20/34 partial). Deriving it from the span turned clause identity into a global inferred property, so one repeated span invalidates the whole graph: 34/34 total.",
+  "lesson": "Deriving an identifier does not remove the constraint, it moves it where the schema cannot reach. If the constraint stays fatal it must become structure (S1); if it cannot become structure it must not be fatal (S2).",
+  "summary": "Same failure class recurred, and the mitigation raised its severity.",
+  "v2641_live": "20 of 34 cases had clause_ids as their only error, because prompt and schema did not declare the consecutivity the validator required (handover section 2).",
+  "v265_response": "V26.5 removed clause_id from the LLM output and derived it from span order (handover section 3)."
+ },
+ "probe": {
+  "model_calls": 0,
+  "network_calls": 0,
+  "path": "internal/tools/request_analysis_lab/candidates/v26564/metnos_v26564_postmortem_encoding_probe.py",
+  "result": "all assertions hold"
+ },
+ "proven": [
+  "Both /tmp artifacts match their expected SHA-256 exactly.",
+  "All 20 pinned runtime/postbatch dependencies are byte-intact; 14/14 cross-hashes agree.",
+  "Transport was flawless: 34/34 HTTP 200, 0 errors, 0 exception chains, phase=complete, 0 retries.",
+  "The worker pipeline is schema -> adapter -> validator with early exit; 34/34 frames PASSED the JSON schema.",
+  "0/34 frames were semantically valid; 33 died in the adapter, exactly 1 reached the validator.",
+  "The span-collision code fires iff two anchors (projections + unsupported_clauses) share one (start,end) pair.",
+  "Three distinct schema-VALID frames are rejected by the frozen adapter with the two observed codes, proving the invariants are outside the constrained-decoding surface.",
+  "The gold fixture expects at most one projection per graph (31 supported/1 projection, 3 typed_ambiguity), so the encoding CAN represent the correct answer for every case.",
+  "status was never 'unsupported' in the 33 adapter failures, because that branch raises a different, never-observed code.",
+  "Case 7 ('neredeyim') has segment_count=1, so the only possible span is (1,1) and any two anchors collide by arithmetic necessity; the model provably emitted >=2 anchors there.",
+  "The dependency check demands exact span tuple equality, not containment: widening the dependency span to equal the projection span is accepted.",
+  "The opaque-case-to-query join is cryptographically verified 34/34 on segment_count and segment_layout_sha256.",
+  "The same failure class was already recorded in the V26.4.1 live (20/34 cases failing only on clause_ids); V26.5 responded by removing clause_id and deriving it from span order, which converted a partial per-case error into a total structural one."
+ ],
+ "reruns": 0,
+ "root_cause": "The compact encoding removed clause_id and promoted the source span to surrogate primary key for clause identity. Decoding therefore requires span-injectivity over projections union unsupported_clauses, and exact span equality between a dependency and its projection. Neither invariant is expressible in JSON Schema, so constrained decoding cannot enforce them; both live only in prompt prose; both abort fatally before any semantic validation. One field carries two incompatible semantics at once: clause identity and evidential grounding.",
+ "scope": "typed-registry Phase-1 K1/34 live post-mortem, offline only",
+ "successor": {
+  "S1": "Move clause identity into the document structure: clauses[] each owning exactly one projection and its dependencies[]. Clause identity is the array position, so no numeric label is emitted and compactness is preserved; the span degrades to pure evidence. Makes the 32-case failure schema-unrepresentable and dissolves the dependency-span check by containment.",
+  "S2": "Invariant rule (the generalizable part): every fatal decoder invariant must be either expressible in the response schema or demoted to non-fatal. An invariant that is neither is a latent zero-yield run.",
+  "S3": "Non-censoring diagnosis: do not abort at the first stage; run stages best-effort and report every stage's codes.",
+  "S4": "Persist a bounded structural digest on failure (status, counts of atoms/projections/dependencies/unsupported clauses, span multiset shape). No query material. This is exactly what is missing today.",
+  "constraints_respected": [
+   "no surface mapping",
+   "no hardcoded language lists",
+   "no gold change"
+  ],
+  "gold_projection_counts": {
+   "max": 1,
+   "status_distribution": {
+    "supported": 31,
+    "typed_ambiguity": 3
+   }
+  },
+  "gold_representable_by_successor": true
+ },
+ "version": "metnos.v26.5.6.4-offline-postmortem/1.0"
+}

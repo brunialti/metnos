@@ -92,17 +92,17 @@
   "extract_entries": {
     "source_hash": "sha256:ea2bcab5289919419f23a0dc566577660ef5f4e694cf66a1d377595cee102e86",
     "source_lang": "it",
-    "version_hash": "sha256:127c688489078a4842298bf6b20172b658f17a87c0e35cffadd5809e730f3172"
+    "version_hash": "sha256:928e64564521885031d2d88b0ec1abc814c718d205274460d4c2238d7b46971e"
   },
   "extract_entries_batch": {
     "source_hash": "sha256:7a444928299b12a8e31130a7255f8240e4f986448de1f8a91afc3385a3e2d257",
     "source_lang": "it",
-    "version_hash": "sha256:36de9b4ebdd5bec5a972f048f662cf36ea7556141a6ee1d74600e78a7c374c4a"
+    "version_hash": "sha256:70911c844c0bbd066c617820ccf3b3958fe512cd5cc63f1acea3cd41ffe72912"
   },
   "extract_entries_schema": {
     "source_hash": null,
     "source_lang": null,
-    "version_hash": "sha256:b90e16b576c87ba63fab05b1b30ea0d21f605ebfb06e1a6a9b0c8a1bf45af5aa"
+    "version_hash": "sha256:583da925297efd90e498fcdf7003539071a561dc84faba8b2296ddc4d0057a12"
   },
   "final_assembler": {
     "source_hash": "sha256:86f57856ab222506a26419760b948e295cb2b353fa8f17d7489e23191fbc7bec",

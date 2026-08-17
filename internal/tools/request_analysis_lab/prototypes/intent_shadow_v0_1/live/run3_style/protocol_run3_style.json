@@ -1,0 +1,201 @@
+{
+  "arms": {
+    "A_SYSTEM_CURRENT": "exact RUN2 arm A current-system snapshot; system baseline",
+    "S0_CURRENT": "exact candidate_v0_3 prompt bytes; within-run current anchor",
+    "S1_METNOS_SHORT": "same authority rules once each; short prescriptive ADR0027 style",
+    "S2_PROCEDURAL": "same authority rules once each; ordered compact procedural style"
+  },
+  "authorization": {
+    "authorization_file": "authorization_run3_style.json",
+    "authorization_must_be_last": true,
+    "independent_audits_required": 2,
+    "inference_executed": false,
+    "state": "disarmed"
+  },
+  "backend": {
+    "absolute_sources": {
+      "/etc/systemd/system/llama-server.service": "47bcd6dcee57e1bb50fbf58f85c72b576c6886ab515d3eb9a28b1860dcbc3788",
+      "/etc/systemd/system/llama-server.service.d/override.conf": "dffe0d4e35973ddf9893361780d9c3b9736daea7d2873b96f1cb6e817fb2974f",
+      "/home/roberto/.config/metnos/llm_tiers.toml": "2b5ff25e0933d0afdd847d3185272b8405215e4b401b32bf3ab544b535193c9a",
+      "/home/roberto/llama.cpp-0712/build/bin/llama-server": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+      "/home/roberto/llamacpp.env": "a50cac232aeccb1b8116e834173d15cde180e78193e1b0897e2a50905915efe3",
+      "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+      "/opt/suprastructure/config/models.yaml": "a0bb1a2ab22ced6d2bc3194aa63e935bfd01809cc4e95a2d6d937f154954a97f",
+      "/opt/suprastructure/models/manifest.yaml": "1460122a73eeaaf82580b5b7a0547179a3fc1542d69bd683f1078efb9ec22e73"
+    },
+    "api_model_id": "local",
+    "backend": "llama.cpp Vulkan",
+    "backend_binary": "/home/roberto/llama.cpp-0712/build/bin/llama-server",
+    "backend_binary_sha256": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+    "backend_build": "1422 (e3546c794)",
+    "endpoint": "http://localhost:8080/v1/chat/completions",
+    "physical_model_id": "qwen3.6-35b-a3b",
+    "provider": "llamacpp",
+    "source_revision": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
+    "weights_path": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "weights_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "weights_size_bytes": 22663387424
+  },
+  "bindings": {
+    "candidate_projection_file_sha256": "64e887728f5c14b05243fa5032471d146d9a0dfa2889c8784e651044b7860316",
+    "control_registry_file_sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+    "control_snapshot_file_sha256": "87334e14090c1d4fc0b091cf62701ccbe4352e15b5394bfa98d67e38f1ebd19d",
+    "hash_seed_matrix_file_sha256": "d776d3261f9e01b955be386a0a9329d446119fb217495749766319925fcdfac9",
+    "query_panel_file_sha256": "f769bcdb67dddac50b49be8477049dbeb9573860a73d54216b7598b31037025e",
+    "run2_arm_a_source_sha256": "cd0490d8bbff7426cf4aabd5fd40d8aca36e756b8b1e19d030bedee81881d2b4",
+    "run2_arm_b_source_sha256": "c1aca00b4b8ff4ba5dd52603d8ba413fa7c78b633b9aa5266227b1a25d687394",
+    "run2_batch_file_sha256": "59fd26bbd71fada2aa116b1deced629993900d6ba02b69c1b4752602658e2d1c",
+    "run2_evaluation_file_sha256": "7e3c384ccde6669fd2c20ff163399893082bfd1913852e3dc4f917eb3bbc3e04",
+    "run2_protocol_source_sha256": "b2c5ea48eb1721bcfc8722e1f940b296e1dcf2b2aedf0a1fa1b38cdb35df195a",
+    "style_freeze_file_sha256": "4bc9b7322f3c78111a0d86abee56d64c650d5b75cc4bad59b65cb0bb08f9e065",
+    "style_inventory_file_sha256": "044300b9570d4582c4447e60ff3fec331ba8bdb0acdb0f8b651922a6d86b9044",
+    "style_prompt_file_sha256": {
+      "S0_CURRENT": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+      "S1_METNOS_SHORT": "557910d65e8064a7280834a70d1e7666688cdb3ddf7d7abdd41a248f6025ead3",
+      "S2_PROCEDURAL": "e36a499a2668055f7a73023df1c639e6b5f4baba5c39c590726194f04c050dfa"
+    },
+    "style_schema_file_sha256": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10"
+  },
+  "created_date": "2026-08-13",
+  "evaluation": {
+    "canonical_projection_symmetric": true,
+    "combined_score": false,
+    "comparison": "each arm versus oracle plus all six pairwise deltas",
+    "critical_columns": [
+      "semantic_exact_canonical",
+      "root_exact",
+      "correct_abstention",
+      "technical_valid",
+      "false_action_avoided",
+      "undo_exact",
+      "consent_exact",
+      "negation_exact",
+      "branch_ownership_exact"
+    ],
+    "gold_access": "only_after_complete_632_record_batch_and_seal_validate",
+    "legacy_report": "separate Phase-1 direct-binding per arm; no compensation",
+    "run2_anchors": {
+      "A_SYSTEM_CURRENT": "exact RUN2 A per-case raw, full extraction and aggregate semantic metrics",
+      "S0_CURRENT": "exact RUN2 B per-case raw, full extraction and aggregate semantic metrics",
+      "both_required_for_attribution": true,
+      "cases_per_anchor": 158,
+      "drift_verdict": "non_attributable_anchor_drift",
+      "evaluation_still_records_results": true
+    },
+    "safety_columns": [
+      "technical_valid",
+      "false_action_avoided",
+      "undo_exact",
+      "consent_exact",
+      "negation_exact",
+      "branch_ownership_exact"
+    ],
+    "semantic_metric": "v0.3-symmetric-unchanged-from-run2",
+    "style_verdict": {
+      "below_three_cases": "inconclusive",
+      "minimum_headline_delta": 3,
+      "safety_regression_allowed": false
+    },
+    "typed_report": "separate exact per arm; no compensation"
+  },
+  "execution_environment": {
+    "hash_sentinel": 2769436454374240588,
+    "must_be_set_before_interpreter_start": true,
+    "python_hash_seed": 0,
+    "seed_range": [
+      0,
+      255
+    ],
+    "selection_report": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/live/run3_style/run2_anchor_hash_seed_matrix_v0_1.json",
+    "selection_report_sha256": "d776d3261f9e01b955be386a0a9329d446119fb217495749766319925fcdfac9",
+    "selection_rule": "smallest whole-anchor exact seed"
+  },
+  "failure_policy": {
+    "ambiguous_first_transport_attempt_blocks_rerun": true,
+    "append_only_journal": true,
+    "atomic_checkpoints": true,
+    "consumed_at": "first accepted HTTP POST",
+    "document_invalid": "count_error_and_continue",
+    "envelope_or_adapter_failure": "stop_and_seal_partial",
+    "marker_written_before_first_socket_attempt": true,
+    "raw_response_capture": true,
+    "retry": false,
+    "transport_or_timeout": "stop_and_seal_partial"
+  },
+  "generation_profile": {
+    "max_output_tokens": 4000,
+    "retry_count": 0,
+    "same_for_both_arms": true,
+    "seed": 42,
+    "temperature": 0,
+    "thinking": false,
+    "timeout_seconds": 120
+  },
+  "iteration": {
+    "automatic_next_run_authorized_after_green_suite_and_two_independent_audits": true,
+    "logical_change": "presentation_style_only_no_semantic_rule_change",
+    "measure_class": "prompt_style_only",
+    "rigid_run_limit": null,
+    "run_number": 3,
+    "stop_on_new_semantic_policy_or_identical_stalled_run": true
+  },
+  "panels": {
+    "canonical_120": {
+      "all_arms": true,
+      "queries": 120,
+      "reported_per_arm": true
+    },
+    "legacy_phase1_34": {
+      "all_arms": true,
+      "automatic_conversion": false,
+      "cross_panel_compensation": false,
+      "queries": 34,
+      "reported_per_arm": true
+    },
+    "typed_controls_4": {
+      "all_arms": true,
+      "queries": 4,
+      "reported_per_arm": true
+    }
+  },
+  "prompt_authority": {
+    "coverage_before_root_included": false,
+    "inventory_file": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/prompt_style_v0_1/authority_rule_inventory_v0_1.json",
+    "new_semantic_rules": 0,
+    "same_registry_data_bytes": true,
+    "same_root_templates": true,
+    "same_rule_order_s1_s2": true,
+    "same_rules": true
+  },
+  "protocol_format": "metnos.intent-prompt-style-live-protocol/0.1-run3",
+  "protocol_payload_sha256": "541f2c391779238245474535d4daadc6b8b643ec3612895b6bf9b56f8f91867e",
+  "run_id": "intent-shadow-prompt-style-v0.1-run3",
+  "schedule": {
+    "algorithm": "Latin square ABCD/BCDA/CDAB/DABC repeating by sample_index modulo 4",
+    "arm_count": 4,
+    "paired_request_optimization": false,
+    "query_count": 158,
+    "request_count": 632,
+    "sample_index_range": [
+      0,
+      157
+    ],
+    "sequence_counts": {
+      "ABCD": 40,
+      "BCDA": 40,
+      "CDAB": 39,
+      "DABC": 39
+    },
+    "serial": true
+  },
+  "status": "disarmed_prepared_no_inference",
+  "technical_limits": {
+    "classification": "technical_invalid",
+    "depth": 64,
+    "integer_digits": 64,
+    "json_bytes": 262144,
+    "never_unrepresentable": true,
+    "nodes": 10000,
+    "string_chars": 65536
+  }
+}

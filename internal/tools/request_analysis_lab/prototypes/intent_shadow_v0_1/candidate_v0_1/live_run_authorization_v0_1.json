@@ -1,0 +1,20 @@
+{
+  "authorization_format": "metnos.intent-shadow-live-authorization/0.1",
+  "created_date": "2026-08-12",
+  "independent_audit": {
+    "pass": true,
+    "report_path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/functional_b/live_protocol_preflight_review_cycle2.md",
+    "report_sha256": "90f8473bc47c69da76fe0b3d924a4a4178f4dedd329ac7b1259627389eb25745",
+    "reviewer": "reviewer_b_independent"
+  },
+  "manifest_file_sha256": "11b76818828b83da28ed80e8765bd9e453d4c9b237e4f19fea399593569c9c77",
+  "protocol_file_sha256": "263c3743f3c501e88b4567dee03d2f9107ed959ec752d9ee652b22743dc90d27",
+  "protocol_freeze_file_sha256": "665cc1f2656950cfface0f77bdfc20ee964581cbe421a523d3aa31009e1dc881",
+  "protocol_payload_sha256": "09074f0eabd03e288eabac6a28dc8266cafe76c6dee92f94737d245926a0bfba",
+  "root_authorization": {
+    "authorization_id": "intent-shadow-live-v0_1-32d07149f2bfb674eeec4e72",
+    "authorized": true,
+    "authorized_by": "root"
+  },
+  "single_use_nonce_sha256": "504b629c8426ef1e83bdbabfbf5c18423565fcb0b7c5dcfbe7091cc79e7728db"
+}

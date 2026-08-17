@@ -1,0 +1,47 @@
+{
+  "format": "metnos.intent-holdout-blueprint-preflight-freeze/0.1",
+  "query_count": 0,
+  "gold_case_count": 0,
+  "run_artifact_count": 0,
+  "generated": {
+    "artifact_schemas.json": {
+      "file_sha256": "41b7125cae677ccf59ee921b9c753723c08b9ca98c83d9a93feae10495aec54a",
+      "payload_sha256": "6dd29ba95caacd2523d05ef3a5fc0d34f6bc7f053e7d2869bc7935d8e2f82fbf"
+    },
+    "authority_manifest.json": {
+      "file_sha256": "fa3f9c94f110e7172eab75077ade1d5089345278b8a87f9d5859a15a728df4b1",
+      "payload_sha256": "2d6ba74e08eaa0d90944432ef1d426ae8090d18a3bc70e4d24d151de8c54fc16"
+    },
+    "capability_glossary.json": {
+      "file_sha256": "81d7b70076b3d8440b356d7da4cc367d15e5ee75ef407c178bc4e6cf37bd8921",
+      "payload_sha256": "3d5a1cc6843d2bfe1aef206b08272d1259be539f65f372f63b978102881bd05e"
+    },
+    "mutation_catalog.json": {
+      "file_sha256": "e455f039b2bc5bcd5a31dbe4a47102b7e27acf1b0c7686355003775c898de0c4",
+      "payload_sha256": "5251103f36a3531661886a92779b26fc922ad2be7675254abbd34b48b86269c7"
+    },
+    "pilot_matrix.json": {
+      "file_sha256": "8f38f86de03fb6e7622bc3a5c02d2a0faae83d85bafdb3f11cf6a279f76f34a0",
+      "payload_sha256": "bc0657dbcd9393a57959040af34d1b09e1e73f8c057b404db585897a996e3fee"
+    },
+    "review_rubrics.json": {
+      "file_sha256": "44cac42fa1d3166357699ff7f7f82682aa65d1e8343b5ce8ed494ded083c4705",
+      "payload_sha256": "e1e67daf0ceaf45b3c2ea5a451b54d7dd8140a2f9a28db7d13d83e05833a1743"
+    }
+  },
+  "local_files": {
+    "FORMAL_SPEC.md": "13c40a05676cf904c8726090e6356823d4ac5e50882189f77281070f454e7745",
+    "__init__.py": "817bee61398e7d7804ee89c5c446c32c652c69016fa6e5988c608d3eff77ee01",
+    "build_artifacts.py": "61b425dd1d4fe8af8f7689a4e85ea48d27874c69b2fbef59a232375f3924a834",
+    "preflight.py": "c628518eda08a5ee3933f70593277ffcfcfabd347800ca5bcfd1675c7434f93a",
+    "test_preflight.py": "aeb7c7e5b68b31208e7093300d57d1440cc3f66d2beba999ac20de861f22be7a"
+  },
+  "source_files": {
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_2/intent_ir_registry_projection_v0_2.json": "64e887728f5c14b05243fa5032471d146d9a0dfa2889c8784e651044b7860316",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/intent_shadow_model_v0_1.schema.json": "8e229746c152a6a6bc6a5097e3e20a0c4581a3313736d99ae1fd771b5c3c2dc2",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/holdout_v0_1/adjudication_contract.json": "b143534a2d6f80e397092237c6ead60e14734863cfce7684117b1b9cbdbbc252",
+    "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md": "3b82156a3a3d3414f211926a32ccd40593de1d6faa6adfcf76474c8d32717aa5",
+    "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/prompt_challenger_v0_1/prompt_challenger_v0_1.freeze.json": "91f7acb5b582f1ad064ed19e788207c8a0452e1a712d934a60f8e7e59463d966"
+  }
+}

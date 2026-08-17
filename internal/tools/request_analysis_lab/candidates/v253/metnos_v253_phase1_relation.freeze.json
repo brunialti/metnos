@@ -1,0 +1,11 @@
+{
+  "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "fixture_sha256": "3cb2e32ef682606280bc0e24a30d054deac2f4c0e46f7d60048e5d5bb27f7b8e",
+  "mutations_sha256": "0ece09b8fb8d78c115db7def80d29ec3b34754e1c30cca932197dd29b1c50a3e",
+  "network_calls_before_freeze": 0,
+  "prompt_sha256": "a5582f9e275e95d43e913dfb7097066fcd1c20bee9e972d844b27e31a04fe113",
+  "runner_sha256": "c417278c40aca616b07b95834f75043920e3dc2427a729ab245a7c3f9bf74615",
+  "schema_sha256": "24a3f8c591104da7e344c35938661394e8645a44d905dcb262ae20d953808342",
+  "segmentation": "Unicode UAX#29 default word boundary via regex.WORD",
+  "version": "metnos.v25.3-phase1-relation/1.0"
+}

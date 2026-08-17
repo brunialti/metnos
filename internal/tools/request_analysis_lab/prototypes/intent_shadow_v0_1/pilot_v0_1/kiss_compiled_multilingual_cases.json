@@ -1,0 +1,53 @@
+{
+  "format": "metnos.intent-kiss-compiled-multilingual-cases/0.1",
+  "cases": [
+    {
+      "case_id": "ml-001",
+      "language_tag": "it-IT",
+      "query": "Elimina l'issue 42 dal repository.",
+      "document": {"kind": "operation_graph", "steps": [{"route": "delete/issues"}]}
+    },
+    {
+      "case_id": "ml-002",
+      "language_tag": "en-GB",
+      "query": "Undo all reversible operations from my immediately previous turn.",
+      "document": {"kind": "system_control", "control": "undo_last_turn"}
+    },
+    {
+      "case_id": "ml-003",
+      "language_tag": "de-DE",
+      "query": "Suche die Datei „budget.xlsx“ und lösche anschließend genau die gefundene Datei.",
+      "document": {"kind": "operation_graph", "steps": [{"route": "find/files"}, {"route": "delete/files", "from": [0]}]}
+    },
+    {
+      "case_id": "ml-004",
+      "language_tag": "es-MX",
+      "query": "Busca el contacto de Ana y, de forma independiente, dime la hora actual.",
+      "document": {"kind": "operation_graph", "steps": [{"route": "find/contacts"}, {"route": "get/now"}]}
+    },
+    {
+      "case_id": "ml-005",
+      "language_tag": "tr-TR",
+      "query": "Bana onay sormadan mesajı gönderme; yalnızca onay verirsem Ali'ye mesajı gönder.",
+      "document": {"kind": "operation_graph", "steps": [{"barrier": "get/approval", "body": [{"route": "send/messages"}]}]}
+    },
+    {
+      "case_id": "ml-006",
+      "language_tag": "sr-Cyrl-RS",
+      "query": "Избриши календар „Стари пројекат“.",
+      "document": {"kind": "operation_graph", "steps": [{"route": "delete/calendars"}]}
+    },
+    {
+      "case_id": "ml-007",
+      "language_tag": "ja-JP",
+      "query": "直前のユーザーターンで行った元に戻せる操作をすべて取り消してください。",
+      "document": {"kind": "system_control", "control": "undo_last_turn"}
+    },
+    {
+      "case_id": "ml-008",
+      "language_tag": "zh-Hant-TW",
+      "query": "尋找台北車站，並且獨立顯示目前執行中的系統程序；兩個動作互不依賴。",
+      "document": {"kind": "operation_graph", "steps": [{"route": "find/places"}, {"route": "get/processes"}]}
+    }
+  ]
+}

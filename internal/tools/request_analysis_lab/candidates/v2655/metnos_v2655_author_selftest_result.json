@@ -1,0 +1,71 @@
+{
+  "budget": {
+    "encoded_limit": 1500000,
+    "escaped_key_over_bytes": 1500475,
+    "escaped_key_under_bytes": 1499893,
+    "over_bytes": 1500001,
+    "shared_over_peak_bytes_before_rejection": 16740,
+    "under_bytes": 1500000
+  },
+  "freeze_created": false,
+  "gate_created": false,
+  "hashes": {
+    "baseline_selftest": "bb0fcfb1df49d194b5d778fc968854e4163b4f60e03302ec0cf9c6835dac5082",
+    "contamination_audit": "a686fd95970b6cde4af2f29363d7f67bc78736e4c4b7c993c95301b219576779",
+    "facade": "fc34ffefc8c77c51a959a1fea5625ea896242afcfff0ed2a41e7f89c14d48d63",
+    "fixture": "8ce526f2384c4e1a9e1103c97ee3eb0af3f4bff1302cae621d61f5fe792d023e",
+    "manifest": "88d7b0096ab2e0c76164c0c3c98705e68cadf06ef2bd5698d353f2139f552391",
+    "mutation_suite": "c5f0d940d3feac82162d408e10663cbc8fa2b6db20450cc29c32b4554cddf4cb",
+    "worker": "c57c8ececdfffdc2380c7e318e1c9fe8070d074fadf641e0c458367704c20e22"
+  },
+  "model_calls": 0,
+  "network_calls": 0,
+  "offline": true,
+  "process_overhead_ms": {
+    "max": 93.333,
+    "median": 88.832,
+    "min": 83.102,
+    "samples": 7
+  },
+  "replays": {
+    "candidate_native_negative": {
+      "passed": 16,
+      "tests": 16
+    },
+    "candidate_positive": {
+      "passed": 6,
+      "tests": 6
+    },
+    "contamination": {
+      "passed": 15,
+      "tests": 15
+    },
+    "mutation": {
+      "passed": 106,
+      "tests": 106
+    },
+    "v2654_author_groups": {
+      "passed": 24,
+      "tests": 24
+    }
+  },
+  "status": "PASS",
+  "test_count": 14,
+  "tests": [
+    "durable_inputs_and_unchanged_worker_manifest_pinned",
+    "single_api_and_exact_worker_pin",
+    "baseline_v2654_24_of_24_reproduced",
+    "mutation_suite_106_of_106_reproduced",
+    "contamination_audit_15_of_15_reproduced",
+    "candidate_semantics_positive_6_of_6",
+    "candidate_semantics_native_negative_16_of_16",
+    "candidate_multi_action_multi_domain_ambiguity_present",
+    "exact_boundary_under_accepted_with_shared_unicode_escapes",
+    "exact_boundary_over_rejected_before_dump_with_bounded_peak",
+    "escaped_object_keys_counted_under_and_over",
+    "finite_scalars_and_multibyte_original_exact",
+    "surrogate_nonfinite_subclass_cycle_rejected_before_dump",
+    "candidate_one_shot_overhead_measured"
+  ],
+  "version": "metnos.v26.5.5-author-selftest/1.0"
+}

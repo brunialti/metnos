@@ -1,0 +1,589 @@
+{
+  "cases_sha256": "0ecc2f4d686407c282b4e78819bec70de88356d50cd356eca0a38dbd7a3893a5",
+  "format": "metnos.intent-production-pilot-result/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "elapsed_ms": 6098,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "fd59daeb249b8a3eac5471c8ab9ad6a6968e731e10bdffd3ed16382004df17a9",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-002",
+      "elapsed_ms": 530,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "request_sha256": "f199f59e199b82992903fb75663ef7b6b55f28bd53d7edffe0551304ae460092",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid_unrepresentable"
+    },
+    {
+      "case_id": "bp-003",
+      "elapsed_ms": 447,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "81991a333dc9ad2b8297cbc85e97489ac71859a15fe23e2cf6ed7cf258b163da",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid_unrepresentable"
+    },
+    {
+      "case_id": "bp-004",
+      "elapsed_ms": 181,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "request_sha256": "98421ecff9e1a1ee30c1a49f28b5d1ab9d208150a71c194780043b7ef797c7b7",
+      "semantic": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-005",
+      "elapsed_ms": 414,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "70997f0e21519607881b008236137390641f6ae1961bf934d1c18d67cd3800f3",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-006",
+      "elapsed_ms": 526,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "2bc24e3263c576770e447f6bcf27bdb33d6f7631ea1edcd60412e6d26a865b61",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              },
+              {
+                "body": [],
+                "outcome": "rejected"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 414,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "request_sha256": "18d042f8b852b3fc7df5c97d042b7a4469d4889bcc21ed47a0c229b123282a13",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "kind": "operation",
+            "route": "create/events"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-008",
+      "elapsed_ms": 305,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "a9ed86541a00a71954362bb78c837b6471ecf41fb8d0cc5c9f69c60a2a582afc",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-009",
+      "elapsed_ms": 291,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "611e120b73b09f4ce24b4745ec1b8e73c0d2226434c7d708b9ab8eea63072c19",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/places"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-010",
+      "elapsed_ms": 442,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "request_sha256": "1d76a25c030a71adee6a3c0d6e31fba73f70ae862717c15f418857f68088e51c",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "move/files"
+          },
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-011",
+      "elapsed_ms": 415,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "10ec0d513667644b6a2bd872967565ad61232e25c1d3481609d962cc467269ca",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid_unrepresentable"
+    },
+    {
+      "case_id": "bp-012",
+      "elapsed_ms": 321,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "request_sha256": "f978a61838e46100460756f9ee2306b3504643c0d99de1c7dd88f3c7cadb07d8",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "send/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-013",
+      "elapsed_ms": 406,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "fdcbe4f62276b9015d36867404d6fa6a37326167c2b1769a71b83aa5fb727d06",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-014",
+      "elapsed_ms": 526,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "request_sha256": "3f5e353e7eb30ab57f2182199ebfb49ada734799acab379deb3c398e000596e1",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid_unrepresentable"
+    },
+    {
+      "case_id": "bp-015",
+      "elapsed_ms": 454,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "4445e2ff4fab2c2c27a727e6478d6b427cdd8ff59d9a0405f957527d546f4f6f",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-016",
+      "elapsed_ms": 343,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "9d219a8b57a4fb7a065b259cde6bd109f61072de88dd87a924ddc59ef28a280a",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-017",
+      "elapsed_ms": 200,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "request_sha256": "b3641fd7105d00f5adf8141cf0d46973a3b5e48b8dc7a4673321fc5baf1bb1f4",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "no_actionable_intent"
+      },
+      "status": "valid_unrepresentable"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 568,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "8dd5b5552bb64ad5d5df143f960a293ffbba51de33146e425c27b51f257b9507",
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "kind": "operation",
+                    "route": "set/issues"
+                  }
+                ],
+                "outcome": "approved"
+              },
+              {
+                "body": [],
+                "outcome": "rejected"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-019",
+      "elapsed_ms": 321,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "09a7c0a341b4b203d8e1595de5a65245babcce10aadbc9f73446a084983b2cc0",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    },
+    {
+      "case_id": "bp-020",
+      "elapsed_ms": 332,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "request_sha256": "08d2344b3a8b5482ad27686c8ff636fbeadad4f35e1c5c21b34afc0d90185bad",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/places"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid_representable"
+    }
+  ],
+  "request_count": 20,
+  "retry_count": 0,
+  "state": "complete",
+  "summary": {
+    "exact": 6,
+    "median_elapsed_ms": 414,
+    "technical_invalid": 0,
+    "valid": 20
+  }
+}

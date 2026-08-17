@@ -1,0 +1,958 @@
+{
+  "$id": "https://metnos.invalid/schema/request-analysis-v241.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One node per source predicate. Lemma/gloss are audit-only; catalog projection may consume only typed route, scope, graph, patient, carrier, sink, and attribute claims.",
+  "properties": {
+    "nodes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "argument_relations": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "binding_id": {
+                  "enum": [
+                    "calendar_event_attachment"
+                  ],
+                  "type": "string"
+                },
+                "end_token_id": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "kind": {
+                  "const": "support_argument"
+                },
+                "start_token_id": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "support_object": {
+                  "enum": [
+                    "files",
+                    "dirs",
+                    "packages",
+                    "messages",
+                    "events",
+                    "contacts",
+                    "places",
+                    "processes",
+                    "urls",
+                    "numbers",
+                    "images",
+                    "signatures",
+                    "texts",
+                    "proposals",
+                    "persons",
+                    "tasks",
+                    "inputs",
+                    "approval",
+                    "credentials",
+                    "issues",
+                    "pulls",
+                    "calendars",
+                    "entries",
+                    "lists",
+                    "skills",
+                    "sites",
+                    "preferences"
+                  ],
+                  "type": "string"
+                },
+                "target_predicate_id": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "binding_id",
+                "target_predicate_id",
+                "support_object",
+                "start_token_id",
+                "end_token_id"
+              ],
+              "type": "object"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "attribute_claims": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "end_token_id": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "key": {
+                  "enum": [
+                    "media_metadata"
+                  ],
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "catalog_attribute"
+                },
+                "start_token_id": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "key",
+                "start_token_id",
+                "end_token_id"
+              ],
+              "type": "object"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "carrier": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "source_container"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "value_type": {
+                    "enum": [
+                      "uri",
+                      "filesystem_path",
+                      "message_store",
+                      "message_channel",
+                      "raster_image",
+                      "document",
+                      "text_representation",
+                      "opaque_identifier"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "start_token_id",
+                  "end_token_id",
+                  "object",
+                  "value_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "transport_channel"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "value_type": {
+                    "enum": [
+                      "uri",
+                      "filesystem_path",
+                      "message_store",
+                      "message_channel",
+                      "raster_image",
+                      "document",
+                      "text_representation",
+                      "opaque_identifier"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "start_token_id",
+                  "end_token_id",
+                  "object",
+                  "value_type"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "representation"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "value_type": {
+                    "enum": [
+                      "uri",
+                      "filesystem_path",
+                      "message_store",
+                      "message_channel",
+                      "raster_image",
+                      "document",
+                      "text_representation",
+                      "opaque_identifier"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "start_token_id",
+                  "end_token_id",
+                  "object",
+                  "value_type"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "evidence_refs": {
+            "items": {
+              "enum": [
+                "predicate",
+                "patient",
+                "carrier",
+                "source",
+                "sink",
+                "attribute",
+                "question",
+                "argument_relation"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "input_from_predicate_id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "lemma": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "patient": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "explicit"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "start_token_id",
+                  "end_token_id",
+                  "object"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "basis": {
+                    "enum": [
+                      "predicate_semantics",
+                      "deictic_context",
+                      "ambient_state"
+                    ],
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "implicit"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "object",
+                  "basis"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "anaphoric"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "start_token_id",
+                  "end_token_id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "predicate_anchor_token_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "predicate_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "question_binding": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "binding_id": {
+                    "enum": [
+                      "runtime.current_location"
+                    ],
+                    "type": "string"
+                  },
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "catalog_query"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "binding_id",
+                  "start_token_id",
+                  "end_token_id"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "resource_scope": {
+            "enum": [
+              "single_known",
+              "collection_by_criterion",
+              "whole_domain",
+              "held_result",
+              "new_resource",
+              "not_applicable"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "request",
+              "forbid",
+              "condition",
+              "description",
+              "quote"
+            ],
+            "type": "string"
+          },
+          "route": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "read",
+                      "write",
+                      "move",
+                      "delete",
+                      "create",
+                      "find",
+                      "list",
+                      "filter",
+                      "sort",
+                      "group",
+                      "classify",
+                      "get",
+                      "set",
+                      "send",
+                      "describe",
+                      "render",
+                      "extract",
+                      "compress",
+                      "compute",
+                      "compare",
+                      "change",
+                      "order",
+                      "share",
+                      "open",
+                      "login",
+                      "act"
+                    ],
+                    "type": "string"
+                  },
+                  "kind": {
+                    "const": "candidate"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  },
+                  "qualifier": {
+                    "enum": [
+                      "none",
+                      "csv",
+                      "xlsx",
+                      "ocr",
+                      "zip",
+                      "pdf",
+                      "xml",
+                      "html",
+                      "json",
+                      "text",
+                      "gz",
+                      "tar",
+                      "video",
+                      "audio",
+                      "image",
+                      "hash",
+                      "spreadsheet",
+                      "doc",
+                      "size",
+                      "format",
+                      "loc",
+                      "similar",
+                      "empty",
+                      "lines",
+                      "paragraphs",
+                      "sentences",
+                      "pages",
+                      "segments",
+                      "indices",
+                      "history",
+                      "thread",
+                      "labels",
+                      "web",
+                      "blacklist",
+                      "whitelist",
+                      "graylist",
+                      "forbidden",
+                      "seed",
+                      "sanity",
+                      "command",
+                      "reversibility",
+                      "diff",
+                      "promotion",
+                      "candidates",
+                      "github",
+                      "google_workspace",
+                      "google_photos"
+                    ],
+                    "type": "string"
+                  },
+                  "resolution": {
+                    "enum": [
+                      "direct",
+                      "generalized",
+                      "technical_override"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "action",
+                  "object",
+                  "qualifier",
+                  "resolution"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "semantic_action": {
+            "enum": [
+              "none",
+              "read",
+              "write",
+              "move",
+              "delete",
+              "create",
+              "find",
+              "list",
+              "filter",
+              "sort",
+              "group",
+              "classify",
+              "get",
+              "set",
+              "send",
+              "describe",
+              "render",
+              "extract",
+              "compress",
+              "compute",
+              "compare",
+              "change",
+              "order",
+              "share",
+              "open",
+              "login",
+              "act"
+            ],
+            "type": "string"
+          },
+          "semantic_gloss_en": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sink": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "destination_role": {
+                    "enum": [
+                      "artifact_domain",
+                      "destination_locator",
+                      "external_store",
+                      "recipient_channel"
+                    ],
+                    "type": "string"
+                  },
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "primary_output"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "start_token_id",
+                  "end_token_id",
+                  "object",
+                  "destination_role"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "destination_role": {
+                    "enum": [
+                      "artifact_domain",
+                      "destination_locator",
+                      "external_store",
+                      "recipient_channel"
+                    ],
+                    "type": "string"
+                  },
+                  "end_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "const": "secondary_persistence"
+                  },
+                  "object": {
+                    "enum": [
+                      "files",
+                      "dirs",
+                      "packages",
+                      "messages",
+                      "events",
+                      "contacts",
+                      "places",
+                      "processes",
+                      "urls",
+                      "numbers",
+                      "images",
+                      "signatures",
+                      "texts",
+                      "proposals",
+                      "persons",
+                      "tasks",
+                      "inputs",
+                      "approval",
+                      "credentials",
+                      "issues",
+                      "pulls",
+                      "calendars",
+                      "entries",
+                      "lists",
+                      "skills",
+                      "sites",
+                      "preferences"
+                    ],
+                    "type": "string"
+                  },
+                  "start_token_id": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "start_token_id",
+                  "end_token_id",
+                  "object",
+                  "destination_role"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "predicate_id",
+          "predicate_anchor_token_id",
+          "role",
+          "lemma",
+          "semantic_gloss_en",
+          "semantic_action",
+          "resource_scope",
+          "input_from_predicate_id",
+          "patient",
+          "carrier",
+          "sink",
+          "route",
+          "attribute_claims",
+          "evidence_refs",
+          "question_binding",
+          "argument_relations"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "metnos.request-analysis/2.4.1"
+    }
+  },
+  "required": [
+    "schema_version",
+    "nodes"
+  ],
+  "title": "Metnos grounded request graph V24.1",
+  "type": "object"
+}

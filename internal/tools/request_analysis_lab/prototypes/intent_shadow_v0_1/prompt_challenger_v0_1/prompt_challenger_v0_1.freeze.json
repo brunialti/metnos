@@ -1,0 +1,76 @@
+{
+  "freeze_format": "metnos.intent-prompt-challenger-freeze/0.1",
+  "status": "offline_challenger_frozen_pre_holdout_not_runtime",
+  "current_candidate": {
+    "freeze_sha256": "81c62394da4916ee4a2c55f8e8c028e8b589b497e9c222fd2c86a8d0b4a75a4d",
+    "contract": {
+      "contract_version": "metnos.intent-ir/0.2",
+      "overlay_version": "metnos.intent-ir-prompt-overlay/0.3",
+      "registry_sha256": "7895f6c12040d0d5b3963170645b8c4899611ce80b082dbeb224ec3686cc46bb",
+      "schema_sha256": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+      "schema_semantic_sha256": "de86d0a70a9c966f39c74ed046a1a45452de93a1e548bab1152da94c47f69ff2",
+      "prompt_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c"
+    },
+    "critical_files": {
+      "candidate_v0_3.freeze.json": "81c62394da4916ee4a2c55f8e8c028e8b589b497e9c222fd2c86a8d0b4a75a4d",
+      "intent_ir_v0_3.prompt.txt": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+      "intent_ir_v0_3.schema.json": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+      "build_artifacts.py": "567d0e7047f556bcbe25557b9bee18f0a18d58c09544bf1908fd52d25e5d538e",
+      "projection.py": "f2881cd62a6e74c542175274bcbc83d33bb667b22797e325453bda0dc97800c0",
+      "structured_client.py": "f5ecaa150def5adb8f1fda2ba36b84c2aea7cafa77d21380d7a6e13b69e6ec69"
+    }
+  },
+  "source_s0": {
+    "candidate_prompt_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+    "style_prompt_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+    "expected_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c"
+  },
+  "contract": {
+    "challenger_version": "metnos.intent-prompt-challenger/0.1",
+    "registry_sha256": "7895f6c12040d0d5b3963170645b8c4899611ce80b082dbeb224ec3686cc46bb",
+    "schema_sha256": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+    "schema_semantic_sha256": "de86d0a70a9c966f39c74ed046a1a45452de93a1e548bab1152da94c47f69ff2",
+    "source_prompt_sha256": "3251da0495ca72a5e138f2ca9693eb3d128ff2e4648ccef474cb0a49d7288d5c",
+    "challenger_prompt_sha256": "29cf1d9faba4977bf6bf641ab28cbbcc37d4f7f4a1483a9b4b9c290ebe909c5d"
+  },
+  "files": {
+    "README.md": "488bb8a699692171cc2c622e9ccb7d341fa53fb401cba8d0dc89102ca0c4f98a",
+    "__init__.py": "7083151e3427d3ddbf14802d0ede4260f7cd268f8d15d9bfeb217e2d6c6ce977",
+    "build_artifacts.py": "0aade1ae61f3bd71c37e42ecd583db6e56562aedb6a2c79c043e9d0c8e701931",
+    "intent_ir_prompt_challenger_v0_1.schema.json": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+    "intent_ir_prompt_challenger_v0_1.txt": "29cf1d9faba4977bf6bf641ab28cbbcc37d4f7f4a1483a9b4b9c290ebe909c5d",
+    "pre_holdout_chronology_v0_1.json": "a42f20f9ea571bbb38b17f4ee36cb9994476b814bb8b0db43fb92062ade4a36e",
+    "projection.py": "317442ddb90c90e9883fa26dc495f9aa6faf504fa6a9b27b4b2be823154f3c01",
+    "prompt_diff_inventory_v0_1.json": "2b239c39457e17d56b6b420c35258b706b3fecb48806396f7ee9fb70af068006",
+    "self_review.md": "47929176fe10e5eec82297d8e19b84d7ef5caa2fcfa42e87ccfd9e43e38b8735",
+    "structured_client.py": "69eb5f480c2d8bc3315168d133091f398a63d0e7c20dfa050aa8180199fb7fef",
+    "tests/__init__.py": "5adeee916aad1ada10a4de07798d3019f2957f0360ebe25152c62578dbf4f38a",
+    "tests/test_challenger.py": "413eac94085258e41a9af9b047e28124aaa7c7baf272ee4679840b1828d7ee54"
+  },
+  "constraints": {
+    "logical_change": [
+      "exact_coverage_root_prompt_delta_only"
+    ],
+    "removed_prompt_lines": 1,
+    "added_prompt_lines": 4,
+    "schema_changed": false,
+    "registry_changed": false,
+    "validator_changed": false,
+    "compiler_changed": false,
+    "adapter_semantics_changed": false,
+    "positive_examples_changed": false,
+    "holdout_present_at_freeze": false,
+    "gpu_calls": 0,
+    "network_calls": 0,
+    "runtime_files_changed": false
+  },
+  "chronology": {
+    "proof_file": "pre_holdout_chronology_v0_1.json",
+    "proof_sha256": "a42f20f9ea571bbb38b17f4ee36cb9994476b814bb8b0db43fb92062ade4a36e",
+    "future_holdout_must_bind_this_freeze": true
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "payload_sha256": "e3eceae3648f4f08550e0d9a4adafa236bb4e9a34c4b32d3d3bbd4366df821a0"
+  }
+}

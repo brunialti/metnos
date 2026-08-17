@@ -91,7 +91,7 @@ def metnos_llamacpp_slot_id(value=None) -> int:
     """Risolvi lo slot llama.cpp riservato a Metnos.
 
     Un solo punto di configurazione evita che alcuni consumer tornino al
-    selettore automatico del server e contaminino la cache dello slot Giorgio.
+    selettore automatico del server e contaminino la cache di un altro consumer.
     """
     raw = os.environ.get("METNOS_LLM_SLOT_ID", "1") if value is None else value
     try:

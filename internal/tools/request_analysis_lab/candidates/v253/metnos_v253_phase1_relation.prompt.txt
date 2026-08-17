@@ -1,0 +1,79 @@
+Analyze the exact user request in any language as phase-1 semantics.
+The input provides Unicode word-boundary segments with stable ids and character
+offsets. Return one clause record for every predicate/relation that could be
+mistaken for a requested operation. Preserve source order. Output JSON only.
+
+This phase has no product route, action/tool ontology, capability binding, or
+rewritten query. Determine syntax and denotation directly from the untouched
+request. Enum values are technical concepts, never words to match in source.
+
+Clause role:
+- request: the user asks the assistant to produce a result or effect;
+- condition: a state controlling a request, not independently requested;
+- description: a state, relative clause, history, or assertion;
+- quote: predicate-like literal/quoted content.
+
+Speech act and answer:
+- open_question asks for one unknown variable; answer_mode=open_variable;
+- polar_question asks whether a proposition is true; answer_mode=boolean;
+- imperative requests an effect/result; answer_mode=operation_result when the
+  relation's output is relevant, otherwise none;
+- assertion, condition, description, and quote have answer_mode=none.
+Do not turn a declarative proposition, quoted question, condition, or relative
+clause into an open question.
+
+Relation registry:
+- spatial.located_at(entity, spatial_position, time): physical/geographic
+  placement in the world;
+- identity.same_as(entity, identity): identity, class, or name of an entity;
+- filesystem.located_at(file, resource_locator): storage path/container of a
+  digital filesystem resource;
+- runtime.host_of(process, host): machine/runtime environment of a process;
+- spatial.near(collection, spatial_position): entities selected by proximity;
+- acl.share(resource, grantee): continuing permission/access grant;
+- movement.destination(resource, resource_locator): destination of movement;
+- workflow.position(actor, workflow_progress): state/progress in a workflow;
+- document.position(actor, resource_locator): position within a document;
+- none: no relation represented by this predicate.
+Namespace follows denotation, not the lexical predicate's dictionary sense.
+
+Focus is the answer/output variable, not every argument that is mentioned.
+Set its semantic role and value type. A location used only as an operand for a
+different result is not the focus. A polar question focuses truth_value:boolean.
+Conditions and quotes may preserve a relation while having no requested focus.
+
+The grammatical subject is separate from the focus. Record:
+- subject_ref: current turn actor, explicit/unknown entity, deictic context,
+  current-actor-location used only as an operand, quoted actor, or none;
+- subject_type;
+- grammatical_person independently of identity;
+- deixis_center independently of person.
+Current_actor requires first-person morphology or speaker-context evidence and
+speaker deixis. An explicit third party/resource is explicit_entity with its
+own span and must never become current_actor. A context-deictic place is not the
+speaker. Quoted first person belongs to quoted_actor, not current_actor.
+
+Time is independent. current means now/latest; historical means a past
+observation; contextual means a relative/discourse time. An explicit temporal
+argument must be grounded and must not be replaced by speaker-context current.
+
+Evidence is typed:
+- explicit_segment uses a positive inclusive segment range;
+- predicate_morphology and tense_morphology refer to predicate_segment_id and
+  therefore use 0,0;
+- clause_semantics refers to the clause span and uses 0,0;
+- speaker_context/discourse_context use 0,0;
+- none uses 0,0.
+Focus, subject, and time evidence are independent and may overlap. For an open
+answer variable, focus evidence cannot be none. For an explicit entity,
+subject evidence must be explicit_segment. Historical time requires explicit
+segment or tense morphology evidence.
+
+interpretation=supported only when the complete tuple and evidence are clear.
+Use ambiguous when multiple typed analyses remain plausible, unsupported when
+the relation registry cannot express the denotation. Ambiguous/unsupported are
+valid structured outcomes and must not be forced into a supported relation.
+
+Before output, check clause/predicate segment ranges, speech-act/answer-mode
+agreement, subject/person/deixis agreement, time/evidence agreement, and that
+no quoted/conditional/descriptive predicate is marked as a request.

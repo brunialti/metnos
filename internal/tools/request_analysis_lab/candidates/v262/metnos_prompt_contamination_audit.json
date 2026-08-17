@@ -1,0 +1,707 @@
+{
+  "audit_version": "metnos.prompt-contamination-redacted/1.0",
+  "datasets": {
+    "adversarial70": {
+      "records": 70,
+      "source_files": [
+        {
+          "basename": "metnos_request_analysis_adversarial_v1.json",
+          "sha256": "6be12ace8a344a4c7143ffd9023bb04da9392bd0cb00b691ce0206e69f589537"
+        }
+      ],
+      "source_sha256": "e31888cc13051b9fd35012f27a791b67c9bb3ed35ef0861eb421561984646e51"
+    },
+    "full109": {
+      "records": 109,
+      "source_files": [
+        {
+          "basename": "metnos_v23lite_full_compound_001_012.json",
+          "sha256": "6363db284990c2dc6d130cceadc9cac875e9fd36ce5134457d1fdd72fdf823e7"
+        },
+        {
+          "basename": "metnos_v23lite_full_compound_013_024.json",
+          "sha256": "78da377fad27d514017601bf650d5f205059332dd8020288cc49065e88e5ddea"
+        },
+        {
+          "basename": "metnos_v23lite_full_mono_001_030.json",
+          "sha256": "e150edcec9b93f728c287339d57c214ba7e7b824c7e32044b4f24cc26d4b0a20"
+        },
+        {
+          "basename": "metnos_v23lite_full_mono_031_060.json",
+          "sha256": "7217136e84d929e1088dc8ab41455758712b0e9b3a119cfb5ac92ea478217047"
+        },
+        {
+          "basename": "metnos_v23lite_full_mono_061_085.json",
+          "sha256": "c1c475ee0c5f2ffe1ae34a76d194477419f9be9544dfed4f7fe108836e893c99"
+        }
+      ],
+      "source_sha256": "860ed8b6ba5646fd5a5d2d96bf3a9fa09d7f2ffc9dff6560a9fc54eafc7367fa"
+    },
+    "question-controls34": {
+      "records": 34,
+      "source_files": [
+        {
+          "basename": "metnos_question_focus_negative_controls_v1.json",
+          "sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf"
+        }
+      ],
+      "source_sha256": "cd85c60029c68551ae805dfcd6921740e53504032bcf9cc5a7898ce073a531cb"
+    }
+  },
+  "global_decision": {
+    "experimental_runs_still_informative": true,
+    "maximum_objective_acceptance_credit": false,
+    "reason": "At least V25/V25.1 contain hardcoded surface-language examples or lexical mappings. A 100% fixture score would not isolate structured language-neutral generalization."
+  },
+  "method": {
+    "classification": [
+      "technical_ontology",
+      "surface_language_trigger_or_example",
+      "mixed_surface_and_technical",
+      "structural_or_common_prose"
+    ],
+    "limitation": "Marker-based static classification is conservative and requires manual review of hashed line numbers before production acceptance.",
+    "normalization": "Unicode NFKC + casefold + Unicode word tokens",
+    "overlap": "maximal contiguous token n-grams, 3..8; >=4 highlighted"
+  },
+  "network_calls": 0,
+  "prompts": {
+    "v25": {
+      "acceptance_reason": "Prompt contains source-language examples/mappings or overlaps them; a perfect score cannot establish the no-hardcode maximum objective.",
+      "bytes": 26843,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 1,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {
+            "mixed_surface_and_technical": 1
+          },
+          "overlaps_by_ngram_tokens": {
+            "3": 1
+          },
+          "records": 109,
+          "redacted_matches": [
+            {
+              "class": "mixed_surface_and_technical",
+              "ngram_sha256_nfkc_casefold": "1c35f512ad3171c1f548e59ba4f8684160811a097bb131c235fe3e33e12c7ca4",
+              "ngram_tokens": 3,
+              "opaque_case_id": "0a8cd03584d1f3fb81cabe1fe239dd33a75607aa9beff39a0947131e0ac644c4",
+              "prompt_line": 35,
+              "query_sha256_utf8": "d843352813dc76e8f87d43b8836f8d98741a57995f2e38e99958880c47ec62dc",
+              "whole_query_occurs_in_prompt": false
+            }
+          ],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "mixed_surface_and_technical": 3,
+          "structural_or_common_prose": 175,
+          "surface_language_trigger_or_example": 5,
+          "technical_ontology": 121
+        },
+        "surface_or_mixed_line_count": 8,
+        "surface_or_mixed_line_fingerprints": [
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 31,
+            "line_sha256_nfkc_casefold": "89f5bef2e7b745a7147e50c91c6460ab08acff6e337c06e8a7d8c76204f0c1ce",
+            "token_count": 36
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 35,
+            "line_sha256_nfkc_casefold": "34fb98b8339c93f46a2a851b19a040b84e4c5b911bf24b16c1408689773dfd59",
+            "token_count": 106
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 42,
+            "line_sha256_nfkc_casefold": "661940414f443150955b950ecfd745b4dcc0b387a676df6e3bb59f4a141dde9f",
+            "token_count": 92
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 43,
+            "line_sha256_nfkc_casefold": "0106577c744f426f7da2cc761d4ee8e0f480830ec6020913faa7ec84e8a649ca",
+            "token_count": 27
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 46,
+            "line_sha256_nfkc_casefold": "ab9a52966e488e520d099a36893344aad1b0f7db26a71cdbf75449493b8a41a1",
+            "token_count": 87
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 50,
+            "line_sha256_nfkc_casefold": "517c41d35049d2c0ae82e47894b52b2c9b10e1a7e4e8db0222f70048f76dcf50",
+            "token_count": 62
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 51,
+            "line_sha256_nfkc_casefold": "5e69dbaee073589f42abc697b051faa75a725c13b71440c8600a039676fa15da",
+            "token_count": 66
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 52,
+            "line_sha256_nfkc_casefold": "f42a476464d893bfd23345ad235765c36426d2aa10a0a16ce9a95069cec0909a",
+            "token_count": 89
+          }
+        ]
+      },
+      "maximum_objective_acceptance_credit_eligible": false,
+      "path": "/tmp/metnos_v25_live.prompt.txt",
+      "sha256": "2ffa10811b5de6d8ffc3e55d307a7f019754dfd5e95a757d43918bd07b01c60f",
+      "tokens": 4053
+    },
+    "v25.1-active-first": {
+      "acceptance_reason": "Prompt contains source-language examples/mappings or overlaps them; a perfect score cannot establish the no-hardcode maximum objective.",
+      "bytes": 24605,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 1,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {
+            "mixed_surface_and_technical": 1
+          },
+          "overlaps_by_ngram_tokens": {
+            "3": 1
+          },
+          "records": 109,
+          "redacted_matches": [
+            {
+              "class": "mixed_surface_and_technical",
+              "ngram_sha256_nfkc_casefold": "1c35f512ad3171c1f548e59ba4f8684160811a097bb131c235fe3e33e12c7ca4",
+              "ngram_tokens": 3,
+              "opaque_case_id": "0a8cd03584d1f3fb81cabe1fe239dd33a75607aa9beff39a0947131e0ac644c4",
+              "prompt_line": 35,
+              "query_sha256_utf8": "d843352813dc76e8f87d43b8836f8d98741a57995f2e38e99958880c47ec62dc",
+              "whole_query_occurs_in_prompt": false
+            }
+          ],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "mixed_surface_and_technical": 3,
+          "structural_or_common_prose": 163,
+          "surface_language_trigger_or_example": 5,
+          "technical_ontology": 97
+        },
+        "surface_or_mixed_line_count": 8,
+        "surface_or_mixed_line_fingerprints": [
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 31,
+            "line_sha256_nfkc_casefold": "89f5bef2e7b745a7147e50c91c6460ab08acff6e337c06e8a7d8c76204f0c1ce",
+            "token_count": 36
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 35,
+            "line_sha256_nfkc_casefold": "34fb98b8339c93f46a2a851b19a040b84e4c5b911bf24b16c1408689773dfd59",
+            "token_count": 106
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 42,
+            "line_sha256_nfkc_casefold": "661940414f443150955b950ecfd745b4dcc0b387a676df6e3bb59f4a141dde9f",
+            "token_count": 92
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 43,
+            "line_sha256_nfkc_casefold": "0106577c744f426f7da2cc761d4ee8e0f480830ec6020913faa7ec84e8a649ca",
+            "token_count": 27
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 46,
+            "line_sha256_nfkc_casefold": "ab9a52966e488e520d099a36893344aad1b0f7db26a71cdbf75449493b8a41a1",
+            "token_count": 87
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 50,
+            "line_sha256_nfkc_casefold": "517c41d35049d2c0ae82e47894b52b2c9b10e1a7e4e8db0222f70048f76dcf50",
+            "token_count": 62
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 51,
+            "line_sha256_nfkc_casefold": "5e69dbaee073589f42abc697b051faa75a725c13b71440c8600a039676fa15da",
+            "token_count": 66
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 52,
+            "line_sha256_nfkc_casefold": "f42a476464d893bfd23345ad235765c36426d2aa10a0a16ce9a95069cec0909a",
+            "token_count": 89
+          }
+        ]
+      },
+      "maximum_objective_acceptance_credit_eligible": false,
+      "path": "/tmp/metnos_v251_active_live.prompt.txt",
+      "sha256": "d45acca1f003b8c38a55cf7d66d4d0b784a608aa0fcbff1e30f009e585ec1bb2",
+      "tokens": 3685
+    },
+    "v25.1-none-first": {
+      "acceptance_reason": "Prompt contains source-language examples/mappings or overlaps them; a perfect score cannot establish the no-hardcode maximum objective.",
+      "bytes": 24605,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 1,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {
+            "mixed_surface_and_technical": 1
+          },
+          "overlaps_by_ngram_tokens": {
+            "3": 1
+          },
+          "records": 109,
+          "redacted_matches": [
+            {
+              "class": "mixed_surface_and_technical",
+              "ngram_sha256_nfkc_casefold": "1c35f512ad3171c1f548e59ba4f8684160811a097bb131c235fe3e33e12c7ca4",
+              "ngram_tokens": 3,
+              "opaque_case_id": "0a8cd03584d1f3fb81cabe1fe239dd33a75607aa9beff39a0947131e0ac644c4",
+              "prompt_line": 35,
+              "query_sha256_utf8": "d843352813dc76e8f87d43b8836f8d98741a57995f2e38e99958880c47ec62dc",
+              "whole_query_occurs_in_prompt": false
+            }
+          ],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "mixed_surface_and_technical": 3,
+          "structural_or_common_prose": 163,
+          "surface_language_trigger_or_example": 5,
+          "technical_ontology": 97
+        },
+        "surface_or_mixed_line_count": 8,
+        "surface_or_mixed_line_fingerprints": [
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 31,
+            "line_sha256_nfkc_casefold": "89f5bef2e7b745a7147e50c91c6460ab08acff6e337c06e8a7d8c76204f0c1ce",
+            "token_count": 36
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 35,
+            "line_sha256_nfkc_casefold": "34fb98b8339c93f46a2a851b19a040b84e4c5b911bf24b16c1408689773dfd59",
+            "token_count": 106
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 42,
+            "line_sha256_nfkc_casefold": "661940414f443150955b950ecfd745b4dcc0b387a676df6e3bb59f4a141dde9f",
+            "token_count": 92
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 43,
+            "line_sha256_nfkc_casefold": "0106577c744f426f7da2cc761d4ee8e0f480830ec6020913faa7ec84e8a649ca",
+            "token_count": 27
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 46,
+            "line_sha256_nfkc_casefold": "ab9a52966e488e520d099a36893344aad1b0f7db26a71cdbf75449493b8a41a1",
+            "token_count": 87
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 50,
+            "line_sha256_nfkc_casefold": "517c41d35049d2c0ae82e47894b52b2c9b10e1a7e4e8db0222f70048f76dcf50",
+            "token_count": 62
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 51,
+            "line_sha256_nfkc_casefold": "5e69dbaee073589f42abc697b051faa75a725c13b71440c8600a039676fa15da",
+            "token_count": 66
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 52,
+            "line_sha256_nfkc_casefold": "f42a476464d893bfd23345ad235765c36426d2aa10a0a16ce9a95069cec0909a",
+            "token_count": 89
+          }
+        ]
+      },
+      "maximum_objective_acceptance_credit_eligible": false,
+      "path": "/tmp/metnos_v251_live.prompt.txt",
+      "sha256": "d45acca1f003b8c38a55cf7d66d4d0b784a608aa0fcbff1e30f009e585ec1bb2",
+      "tokens": 3685
+    },
+    "v25.2-relation-goal": {
+      "acceptance_reason": "Prompt contains source-language examples/mappings or overlaps them; a perfect score cannot establish the no-hardcode maximum objective.",
+      "bytes": 28580,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 1,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {
+            "mixed_surface_and_technical": 1
+          },
+          "overlaps_by_ngram_tokens": {
+            "3": 1
+          },
+          "records": 109,
+          "redacted_matches": [
+            {
+              "class": "mixed_surface_and_technical",
+              "ngram_sha256_nfkc_casefold": "1c35f512ad3171c1f548e59ba4f8684160811a097bb131c235fe3e33e12c7ca4",
+              "ngram_tokens": 3,
+              "opaque_case_id": "0a8cd03584d1f3fb81cabe1fe239dd33a75607aa9beff39a0947131e0ac644c4",
+              "prompt_line": 35,
+              "query_sha256_utf8": "d843352813dc76e8f87d43b8836f8d98741a57995f2e38e99958880c47ec62dc",
+              "whole_query_occurs_in_prompt": false
+            }
+          ],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "mixed_surface_and_technical": 3,
+          "structural_or_common_prose": 194,
+          "surface_language_trigger_or_example": 5,
+          "technical_ontology": 126
+        },
+        "surface_or_mixed_line_count": 8,
+        "surface_or_mixed_line_fingerprints": [
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 31,
+            "line_sha256_nfkc_casefold": "89f5bef2e7b745a7147e50c91c6460ab08acff6e337c06e8a7d8c76204f0c1ce",
+            "token_count": 36
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 35,
+            "line_sha256_nfkc_casefold": "34fb98b8339c93f46a2a851b19a040b84e4c5b911bf24b16c1408689773dfd59",
+            "token_count": 106
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 42,
+            "line_sha256_nfkc_casefold": "661940414f443150955b950ecfd745b4dcc0b387a676df6e3bb59f4a141dde9f",
+            "token_count": 92
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 43,
+            "line_sha256_nfkc_casefold": "0106577c744f426f7da2cc761d4ee8e0f480830ec6020913faa7ec84e8a649ca",
+            "token_count": 27
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 46,
+            "line_sha256_nfkc_casefold": "ab9a52966e488e520d099a36893344aad1b0f7db26a71cdbf75449493b8a41a1",
+            "token_count": 87
+          },
+          {
+            "class": "mixed_surface_and_technical",
+            "line": 50,
+            "line_sha256_nfkc_casefold": "517c41d35049d2c0ae82e47894b52b2c9b10e1a7e4e8db0222f70048f76dcf50",
+            "token_count": 62
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 51,
+            "line_sha256_nfkc_casefold": "5e69dbaee073589f42abc697b051faa75a725c13b71440c8600a039676fa15da",
+            "token_count": 66
+          },
+          {
+            "class": "surface_language_trigger_or_example",
+            "line": 52,
+            "line_sha256_nfkc_casefold": "f42a476464d893bfd23345ad235765c36426d2aa10a0a16ce9a95069cec0909a",
+            "token_count": 89
+          }
+        ]
+      },
+      "maximum_objective_acceptance_credit_eligible": false,
+      "path": "/tmp/metnos_v252_relation_goal.prompt.txt",
+      "sha256": "db07fa7d2f589f9348b3f63447e5879237b73ed7485c6eb136e154126e1b8e86",
+      "tokens": 4294
+    },
+    "v26-discovered-1": {
+      "acceptance_reason": "No detected source-language trigger/example prose.",
+      "bytes": 4437,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 109,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "structural_or_common_prose": 56,
+          "technical_ontology": 13
+        },
+        "surface_or_mixed_line_count": 0,
+        "surface_or_mixed_line_fingerprints": []
+      },
+      "maximum_objective_acceptance_credit_eligible": true,
+      "path": "/tmp/metnos_v261_phase1.prompt.txt",
+      "sha256": "a5582f9e275e95d43e913dfb7097066fcd1c20bee9e972d844b27e31a04fe113",
+      "tokens": 638
+    },
+    "v26-discovered-2": {
+      "acceptance_reason": "No detected source-language trigger/example prose.",
+      "bytes": 1973,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 109,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "structural_or_common_prose": 13,
+          "technical_ontology": 12
+        },
+        "surface_or_mixed_line_count": 0,
+        "surface_or_mixed_line_fingerprints": []
+      },
+      "maximum_objective_acceptance_credit_eligible": true,
+      "path": "/tmp/metnos_v262_minimal_phase1.prompt.txt",
+      "sha256": "dad168f1975a3ab96b3e70303efce939aaab464ba71f567ff9c691d11c862a60",
+      "tokens": 286
+    },
+    "v26-discovered-3": {
+      "acceptance_reason": "No detected source-language trigger/example prose.",
+      "bytes": 28220,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 109,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "structural_or_common_prose": 156,
+          "technical_ontology": 143
+        },
+        "surface_or_mixed_line_count": 0,
+        "surface_or_mixed_line_fingerprints": []
+      },
+      "maximum_objective_acceptance_credit_eligible": true,
+      "path": "/tmp/metnos_v26_no_surface.prompt.txt",
+      "sha256": "f08f3d115ccbe65a57a59e63ce8791caf43e07908fbba4e9aa8508c1755a8904",
+      "tokens": 3782
+    },
+    "v26-discovered-4": {
+      "acceptance_reason": "No detected source-language trigger/example prose.",
+      "bytes": 1511,
+      "dataset_overlap": {
+        "adversarial70": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 70,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "full109": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 109,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        },
+        "question-controls34": {
+          "cases_with_maximal_overlap_n_ge_3": 0,
+          "cases_with_maximal_overlap_n_ge_4": 0,
+          "overlaps_by_class": {},
+          "overlaps_by_ngram_tokens": {},
+          "records": 34,
+          "redacted_matches": [],
+          "whole_query_occurs_in_prompt": 0
+        }
+      },
+      "line_inventory": {
+        "nonempty_lines_by_class": {
+          "structural_or_common_prose": 10,
+          "technical_ontology": 6
+        },
+        "surface_or_mixed_line_count": 0,
+        "surface_or_mixed_line_fingerprints": []
+      },
+      "maximum_objective_acceptance_credit_eligible": true,
+      "path": "/tmp/metnos_v26_phase1.prompt.txt",
+      "sha256": "10c8990c8071b01ff8d7fda200f7081ee296d109f2abc648f7ae00a81efcc467",
+      "tokens": 208
+    }
+  },
+  "redaction": {
+    "matched_ngrams_persisted": false,
+    "opaque_fingerprints": "sha256",
+    "prompt_excerpts_persisted": false,
+    "raw_queries_persisted": false
+  },
+  "tool_sha256": "1cedfa7115744da79764c6b2fd31c2be67eada3fcc18d23bb46a5108eb190169",
+  "v26": {
+    "count": 4,
+    "paths": [
+      "/tmp/metnos_v261_phase1.prompt.txt",
+      "/tmp/metnos_v262_minimal_phase1.prompt.txt",
+      "/tmp/metnos_v26_no_surface.prompt.txt",
+      "/tmp/metnos_v26_phase1.prompt.txt"
+    ],
+    "status": "audited"
+  }
+}

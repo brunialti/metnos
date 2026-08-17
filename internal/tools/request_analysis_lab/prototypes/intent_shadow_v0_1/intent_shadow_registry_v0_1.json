@@ -1,0 +1,1604 @@
+{
+  "authority": {
+    "classification_rule": "explicit_entry_only",
+    "kind": "reviewed_shadow",
+    "production_authority": false,
+    "scope": "read_only_laboratory"
+  },
+  "barriers": {
+    "get/approval": {
+      "input_ports": [],
+      "model_facing_inputs": [],
+      "outcome_sources": {
+        "approved": "manifest.args.on_approve",
+        "rejected": "manifest.args.on_reject"
+      },
+      "outcomes": [
+        "approved",
+        "rejected"
+      ],
+      "shadow_classification": "barrier_region",
+      "source": {
+        "capabilities": [
+          "dialog.user_input"
+        ],
+        "code_files": {
+          "executors/get_approval/get_approval.py": "5e5b194deb844f1f3f9e17f9fa9497f798fef7e71e2c7d09903335c8edde7418"
+        },
+        "declared_code_digest": "sha256:5e5b194deb844f1f3f9e17f9fa9497f798fef7e71e2c7d09903335c8edde7418",
+        "executor_name": "get_approval",
+        "manifest_path": "executors/get_approval/manifest.toml",
+        "manifest_sha256": "800f24382d69064171fd5bdf9cdef049328b7a5f72f203692269df05d593398c",
+        "manifest_version": "0.2.0",
+        "non_runtime_manifest_inputs": [
+          "on_approve",
+          "on_reject",
+          "options",
+          "prompt",
+          "timeout_s",
+          "title"
+        ],
+        "placement": {
+          "device_ok": false,
+          "scope": "server"
+        },
+        "runtime_owned_inputs": [
+          "_pre_approved",
+          "actor",
+          "channel",
+          "guard_count",
+          "guard_threshold"
+        ],
+        "signature_path": "executors/get_approval/manifest.toml.sig",
+        "signature_sha256": "5388333c6ba314a348ab036e90c5afb8e56f4b4a362bc635eb4d4f80fdc6905c",
+        "signature_status": "source_signature_pinned"
+      },
+      "source_route": "get/approval"
+    }
+  },
+  "contract_version": "metnos.intent-shadow/0.1",
+  "created_date": "2026-08-12",
+  "integrity": {
+    "algorithm": "sha256",
+    "convention": "canonical UTF-8 JSON with sorted keys and compact separators, excluding integrity.registry_payload_sha256",
+    "registry_payload_sha256": "7a4f2916af8963d8d16fb79cb355d23e9739163f2241a84fa28bc6c070ed4a0a"
+  },
+  "observed_source_sets": {
+    "actions": [
+      "act",
+      "change",
+      "classify",
+      "compare",
+      "compress",
+      "compute",
+      "create",
+      "delete",
+      "describe",
+      "extract",
+      "filter",
+      "find",
+      "get",
+      "group",
+      "list",
+      "login",
+      "move",
+      "open",
+      "order",
+      "read",
+      "render",
+      "send",
+      "set",
+      "share",
+      "sort",
+      "write"
+    ],
+    "catalog_providers_observed": [],
+    "catalog_qualifiers_observed": [
+      "csv",
+      "doc",
+      "empty",
+      "format",
+      "github",
+      "history",
+      "html",
+      "indices",
+      "lines",
+      "loc",
+      "ocr",
+      "pdf",
+      "spreadsheet",
+      "web",
+      "xlsx"
+    ],
+    "objects": [
+      "approval",
+      "calendars",
+      "contacts",
+      "credentials",
+      "dirs",
+      "entries",
+      "events",
+      "files",
+      "images",
+      "inputs",
+      "issues",
+      "lists",
+      "messages",
+      "numbers",
+      "packages",
+      "persons",
+      "places",
+      "preferences",
+      "processes",
+      "proposals",
+      "pulls",
+      "signatures",
+      "sites",
+      "skills",
+      "tasks",
+      "texts",
+      "urls"
+    ],
+    "qualifiers": [
+      "audio",
+      "blacklist",
+      "candidates",
+      "command",
+      "csv",
+      "diff",
+      "doc",
+      "empty",
+      "forbidden",
+      "format",
+      "github",
+      "google_photos",
+      "google_workspace",
+      "graylist",
+      "gz",
+      "hash",
+      "history",
+      "html",
+      "image",
+      "indices",
+      "json",
+      "labels",
+      "lines",
+      "loc",
+      "ocr",
+      "pages",
+      "paragraphs",
+      "pdf",
+      "promotion",
+      "reversibility",
+      "sanity",
+      "seed",
+      "segments",
+      "sentences",
+      "similar",
+      "size",
+      "spreadsheet",
+      "tar",
+      "text",
+      "thread",
+      "video",
+      "web",
+      "whitelist",
+      "xlsx",
+      "xml",
+      "zip"
+    ],
+    "system_executor_names_not_used_as_classifier": [
+      "consult_frontier",
+      "undo_last_turn"
+    ],
+    "system_verbs_not_used_as_classifier": [
+      "admin",
+      "consult",
+      "synthesize",
+      "undo"
+    ],
+    "universal_helpers_not_used_as_classifier": [
+      "classify_entries",
+      "compute_entries",
+      "describe_entries",
+      "extract_entries",
+      "filter_entries",
+      "sort_entries",
+      "undo_last_turn"
+    ],
+    "verb_unique_registry_not_used_as_classifier": []
+  },
+  "operations": {
+    "change/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "change_files_format"
+      ],
+      "verb": "change",
+      "verb_in_actions": true
+    },
+    "change/pulls": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "pulls",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "change_pulls_github"
+      ],
+      "verb": "change",
+      "verb_in_actions": true
+    },
+    "compress/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "compress_files"
+      ],
+      "verb": "compress",
+      "verb_in_actions": true
+    },
+    "compute/entries": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "entries",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "compute_entries"
+      ],
+      "verb": "compute",
+      "verb_in_actions": true
+    },
+    "compute/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "compute_files_loc"
+      ],
+      "verb": "compute",
+      "verb_in_actions": true
+    },
+    "compute/signatures": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "signatures",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "compute_signatures"
+      ],
+      "verb": "compute",
+      "verb_in_actions": true
+    },
+    "consult/frontier": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "frontier",
+      "object_in_objects": false,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "consult_frontier"
+      ],
+      "verb": "consult",
+      "verb_in_actions": false
+    },
+    "create/calendars": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "calendars",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "create_calendars"
+      ],
+      "verb": "create",
+      "verb_in_actions": true
+    },
+    "create/dirs": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "dirs",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "create_dirs"
+      ],
+      "verb": "create",
+      "verb_in_actions": true
+    },
+    "create/events": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "events",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "create_events"
+      ],
+      "verb": "create",
+      "verb_in_actions": true
+    },
+    "create/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "create_files_doc",
+        "create_files_spreadsheet"
+      ],
+      "verb": "create",
+      "verb_in_actions": true
+    },
+    "create/images": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "images",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "create_images_indices"
+      ],
+      "verb": "create",
+      "verb_in_actions": true
+    },
+    "create/issues": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "issues",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "create_issues_github"
+      ],
+      "verb": "create",
+      "verb_in_actions": true
+    },
+    "create/tasks": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "tasks",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "create_tasks",
+        "create_tasks_github"
+      ],
+      "verb": "create",
+      "verb_in_actions": true
+    },
+    "delete/calendars": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "calendars",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_calendars"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/credentials": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "credentials",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_credentials"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/dirs": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "dirs",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_dirs"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/events": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "events",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_events"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_files"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/images": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "images",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_images_indices"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/issues": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "issues",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_issues_github"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/messages": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "messages",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_messages_github"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/persons": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "persons",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_persons"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "delete/tasks": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "tasks",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "delete_tasks"
+      ],
+      "verb": "delete",
+      "verb_in_actions": true
+    },
+    "describe/numbers": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "numbers",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "describe_numbers"
+      ],
+      "verb": "describe",
+      "verb_in_actions": true
+    },
+    "filter/entries": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "entries",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "filter_entries"
+      ],
+      "verb": "filter",
+      "verb_in_actions": true
+    },
+    "filter/lists": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "lists",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "filter_lists"
+      ],
+      "verb": "filter",
+      "verb_in_actions": true
+    },
+    "filter/texts": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "texts",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "filter_texts_lines"
+      ],
+      "verb": "filter",
+      "verb_in_actions": true
+    },
+    "find/contacts": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "contacts",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_contacts"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/credentials": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "credentials",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_credentials"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/dirs": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "dirs",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_dirs"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/events": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "events",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_events_empty"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_files"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/images": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "images",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_images_indices",
+        "find_images_web"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/issues": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "issues",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_issues_github"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/packages": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "packages",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_packages"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/persons": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "persons",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_persons_indices"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/places": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "places",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_places"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/pulls": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "pulls",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_pulls_github"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "find/urls": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "urls",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "find_urls"
+      ],
+      "verb": "find",
+      "verb_in_actions": true
+    },
+    "get/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_files"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/images": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "images",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_images_indices"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/inputs": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "inputs",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_inputs"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/location": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "location",
+      "object_in_objects": false,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_location"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/now": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "now",
+      "object_in_objects": false,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_now"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/persons": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "persons",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_persons"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/places": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "places",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_places"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/processes": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "processes",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_processes"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/proposals": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "proposals",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_proposals"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/signatures": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "signatures",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_signatures"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "get/urls": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "urls",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "get_urls"
+      ],
+      "verb": "get",
+      "verb_in_actions": true
+    },
+    "group/entries": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "entries",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "group_entries"
+      ],
+      "verb": "group",
+      "verb_in_actions": true
+    },
+    "list/dirs": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "dirs",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "list_dirs"
+      ],
+      "verb": "list",
+      "verb_in_actions": true
+    },
+    "list/skills": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "skills",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "list_skills"
+      ],
+      "verb": "list",
+      "verb_in_actions": true
+    },
+    "list/tasks": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "tasks",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "list_tasks"
+      ],
+      "verb": "list",
+      "verb_in_actions": true
+    },
+    "login/session": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "session",
+      "object_in_objects": false,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "login_session"
+      ],
+      "verb": "login",
+      "verb_in_actions": true
+    },
+    "move/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "move_files"
+      ],
+      "verb": "move",
+      "verb_in_actions": true
+    },
+    "move/messages": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "messages",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "move_messages"
+      ],
+      "verb": "move",
+      "verb_in_actions": true
+    },
+    "read/contacts": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "contacts",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_contacts"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/events": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "events",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_events"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_files",
+        "read_files_csv",
+        "read_files_doc",
+        "read_files_ocr",
+        "read_files_spreadsheet",
+        "read_files_xlsx"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/issues": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "issues",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_issues_github"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/messages": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "messages",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_messages"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/persons": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "persons",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_persons"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/pulls": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "pulls",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_pulls_github"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/tasks": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "tasks",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_tasks",
+        "read_tasks_github",
+        "read_tasks_history"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "read/urls": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "urls",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "read_urls_html",
+        "read_urls_pdf"
+      ],
+      "verb": "read",
+      "verb_in_actions": true
+    },
+    "reply/messages": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "messages",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "reply_messages"
+      ],
+      "verb": "reply",
+      "verb_in_actions": false
+    },
+    "send/messages": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "messages",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "send_messages",
+        "send_messages_github"
+      ],
+      "verb": "send",
+      "verb_in_actions": true
+    },
+    "set/credentials": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "credentials",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_credentials"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "set/issues": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "issues",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_issues_github"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "set/messages": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "messages",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_messages"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "set/persons": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "persons",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_persons"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "set/pulls": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "pulls",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_pulls_github"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "set/signatures": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "signatures",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_signatures"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "set/skills": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "skills",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_skills"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "set/tasks": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "tasks",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "set_tasks"
+      ],
+      "verb": "set",
+      "verb_in_actions": true
+    },
+    "share/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "share_files"
+      ],
+      "verb": "share",
+      "verb_in_actions": true
+    },
+    "sort/entries": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "entries",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "sort_entries"
+      ],
+      "verb": "sort",
+      "verb_in_actions": true
+    },
+    "write/files": {
+      "input_ports": [
+        "primary"
+      ],
+      "object": "files",
+      "object_in_objects": true,
+      "output_ports": [
+        "result"
+      ],
+      "port_semantics": "abstract_intent_flow_v0_1",
+      "source_executor_names": [
+        "write_files",
+        "write_files_doc",
+        "write_files_spreadsheet"
+      ],
+      "verb": "write",
+      "verb_in_actions": true
+    }
+  },
+  "reconciliation": {
+    "catalog_executor_count": 96,
+    "classification_precedence": [
+      "explicit_system_control",
+      "explicit_barrier",
+      "privileged_non_route_observation",
+      "catalog_operation",
+      "unrepresentable"
+    ],
+    "classified_outside_catalog": [
+      "get_approval"
+    ],
+    "objects_outside_objects": [
+      "frontier",
+      "location",
+      "now",
+      "session"
+    ],
+    "ordinary_executor_count": 94,
+    "ordinary_route_count": 80,
+    "privileged_non_route_catalog_entries": [],
+    "reserved_catalog_entries": [
+      "undo_last_turn"
+    ],
+    "reserved_internal_alias_catalog_entries": [],
+    "reserved_system_verb_catalog_entries_not_promoted": [
+      "admin"
+    ],
+    "unparsed_catalog_entries": [],
+    "verbs_outside_actions": [
+      "consult",
+      "reply"
+    ]
+  },
+  "registry_format": "metnos.intent-shadow-registry/0.1",
+  "review": {
+    "independent_agent_review": false,
+    "known_limits": [
+      "abstract ports are semantic, not executor argument contracts",
+      "signature files are pinned but cryptographic trust is delegated to production",
+      "registry coverage is bounded by the pinned catalog snapshot"
+    ],
+    "status": "codex_adversarial_reviewed"
+  },
+  "sources": {
+    "executors/get_approval/get_approval.py": "5e5b194deb844f1f3f9e17f9fa9497f798fef7e71e2c7d09903335c8edde7418",
+    "executors/get_approval/manifest.toml": "800f24382d69064171fd5bdf9cdef049328b7a5f72f203692269df05d593398c",
+    "executors/get_approval/manifest.toml.sig": "5388333c6ba314a348ab036e90c5afb8e56f4b4a362bc635eb4d4f80fdc6905c",
+    "executors/undo_last_turn/manifest.toml": "27625259993f14c219722c6e2c76605dd6382590ddd86b661950d41b195c1601",
+    "executors/undo_last_turn/manifest.toml.sig": "e0fbc38c5751c1c284f5885287fcf50418d85729b6e71f24a8176f1c7dd6e7a3",
+    "executors/undo_last_turn/undo_last_turn.py": "b80dfdcae3a2be5e61e8b98e89ca549170bf887a38308b55ecaa924b001ec3e2",
+    "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md": "3b82156a3a3d3414f211926a32ccd40593de1d6faa6adfcf76474c8d32717aa5",
+    "runtime/loader.py": "984fce686e6c98015f8dd873fec24195d1457503a050468c3b7ae50e7e006d79",
+    "runtime/naming_grammar.py": "26f6b9ae97b04a27454ea79dfff06b16162297890ebc81c9e2d3ad831efad205",
+    "runtime/tool_grammar.py": "af89d26b0949a65d10b9181414f9883f8326dd762d4f773be71c2f18dc86b303",
+    "runtime/vocab.py": "6eb5a2cab733b50e3f8f020faa35d02c8a2d7da285fad1f280c80b8e0f053600",
+    "tests/benchmarks/catalog_snapshot.json": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d"
+  },
+  "system_controls": {
+    "undo_last_turn": {
+      "model_facing_inputs": [],
+      "shadow_classification": "system_control_root",
+      "source": {
+        "capabilities": [
+          "system:undo"
+        ],
+        "code_files": {
+          "executors/undo_last_turn/undo_last_turn.py": "b80dfdcae3a2be5e61e8b98e89ca549170bf887a38308b55ecaa924b001ec3e2"
+        },
+        "declared_code_digest": "sha256:b80dfdcae3a2be5e61e8b98e89ca549170bf887a38308b55ecaa924b001ec3e2",
+        "executor_name": "undo_last_turn",
+        "manifest_path": "executors/undo_last_turn/manifest.toml",
+        "manifest_sha256": "27625259993f14c219722c6e2c76605dd6382590ddd86b661950d41b195c1601",
+        "manifest_version": "0.2.0",
+        "non_runtime_manifest_inputs": [],
+        "placement": {
+          "device_ok": false,
+          "scope": "server"
+        },
+        "runtime_owned_inputs": [
+          "_actor",
+          "log_path"
+        ],
+        "signature_path": "executors/undo_last_turn/manifest.toml.sig",
+        "signature_sha256": "e0fbc38c5751c1c284f5885287fcf50418d85729b6e71f24a8176f1c7dd6e7a3",
+        "signature_status": "source_signature_pinned"
+      }
+    }
+  },
+  "unrepresentable_reasons": {
+    "ambiguous_intent": "More than one incompatible analysis remains.",
+    "missing_required_information": "The requested intent lacks information needed to form a typed structure.",
+    "mixed_root_kinds": "System control and ordinary operation cannot share the exclusive root.",
+    "no_actionable_intent": "The utterance contains no independently actionable request.",
+    "outside_registry": "The meaning is understood but has no reviewed registry entry.",
+    "unsupported_dependency": "The requested data or control dependency is outside version 0.1."
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "candidate_outputs_read": 0,
+  "conclusion": {
+    "atom_id_field": "derive from topological array position",
+    "edge_output_index": "derive from source relation and its unique output/unknown binding",
+    "edge_source": "retain one prior-atom pointer; two valid graphs can otherwise collapse to the same representation"
+  },
+  "fixtures_sha256": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+  "network_calls": 0,
+  "runner_sha256": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+  "summary": {
+    "byte_reduction_percent": 2.56,
+    "compact_bytes": 12961,
+    "failed": 0,
+    "full_bytes": 13302,
+    "passed": 11,
+    "tests": 11
+  },
+  "tests": [
+    {"compact_bytes": 624, "full_bytes": 636, "id": "roundtrip:direct", "pass": true},
+    {"compact_bytes": 1024, "full_bytes": 1059, "id": "roundtrip:dependency", "pass": true},
+    {"compact_bytes": 2124, "full_bytes": 2205, "id": "roundtrip:fanout_multi_action", "pass": true},
+    {"compact_bytes": 1175, "full_bytes": 1210, "id": "roundtrip:projection_output_consumed", "pass": true},
+    {"compact_bytes": 1598, "full_bytes": 1645, "id": "roundtrip:quoted_plus_main", "pass": true},
+    {"compact_bytes": 1245, "full_bytes": 1269, "id": "roundtrip:independent_multi_domain", "pass": true},
+    {"compact_bytes": 825, "full_bytes": 837, "id": "roundtrip:mixed_supported_unsupported", "pass": true},
+    {"compact_bytes": 2566, "full_bytes": 2614, "id": "roundtrip:typed_ambiguity", "pass": true},
+    {"compact_bytes": 1780, "full_bytes": 1827, "id": "roundtrip:two_compatible_sources", "pass": true},
+    {
+      "id": "source_pointer_is_irreducible_semantics",
+      "pass": true,
+      "two_valid_graphs_differ_only_by_source": true
+    },
+    {"fail_closed": true, "id": "wrong_output_index_rejected_before_compaction", "pass": true}
+  ],
+  "version": "metnos.v26.4.1-atom-edge-derivation-probe/0.1"
+}

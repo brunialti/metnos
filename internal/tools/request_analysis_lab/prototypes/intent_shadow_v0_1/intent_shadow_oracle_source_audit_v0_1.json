@@ -1,0 +1,47 @@
+{
+  "adjudication_overlays": {
+    "frozen_sample_matches": 0,
+    "typed_root_records": 0,
+    "union_with_current_exact_matches": 3
+  },
+  "audit_error_count": 0,
+  "audit_errors": [],
+  "audit_format": "metnos.intent-shadow-oracle-source-audit/0.1",
+  "choice_required": {
+    "codex_recommendation": "strict_independent_adjudication",
+    "provisional_model_consensus": "Use agreement among existing model arms as provisional labels; this is circular and cannot be called independent gold.",
+    "strict_independent_adjudication": "Create new reviewed gold for every uncovered frozen query and define four additional controls."
+  },
+  "coverage": {
+    "base_missing_independent_gold": 117,
+    "base_required": 120,
+    "base_with_reusable_independent_gold": 3,
+    "controls_available": 34,
+    "controls_missing": 4,
+    "controls_required": 38,
+    "phase1_overlay_cases": 34,
+    "typed_root_records_across_all_sources": 0
+  },
+  "created_date": "2026-08-12",
+  "current_benchmark_gold": {
+    "case_count": 109,
+    "exact_query_matches_with_frozen_sample": 3,
+    "note": "The live benchmark gold is not the frozen 120-case gold; exact text match is required before reuse."
+  },
+  "frozen_sample": {
+    "query_count": 120,
+    "sample_sha256": "36aba12b9ec0f366569498bba0fa4dd876f4d2354f736058791182ca41e37af4",
+    "unique_query_count": 120
+  },
+  "prohibited_shortcut": "Model outputs or agreement among c10/c11/control arms must not be promoted to independent gold without Roberto's decision.",
+  "sources": {
+    "internal/tools/request_analysis_lab/intent_gold_adjudication_overlay_v1.1.shadow.json": "892358b893d941a885d17184a21c756b14df5c2082e0c30b37e058b379317577",
+    "internal/tools/request_analysis_lab/intent_gold_adjudication_overlay_v1.proposed.json": "8392aabcfaa2c40b14eb69371a0f6e0a0efc9e4faf1268e3308f79319f1f9723",
+    "internal/tools/request_analysis_lab/misure_11_8/prova_specchi_riparo_c11.json": "4d0b3aac836fce1a4f2b2eee6d89395c1b3757470716383b8fe4136adc1ba87f",
+    "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_typed_oracle_v1.overlay.json": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af",
+    "internal/tools/request_analysis_lab/question_focus_controls_v1.json": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+    "tests/benchmarks/intent_accuracy_bench.py": "412eaa6620bb2f29486510196e37267f92c1b817d13b469734bd045693140a51",
+    "tests/benchmarks/intent_compound_bench.py": "85ef748c5384e72bfeacf018b9e7fdb3f6c74fcc5d64abe518303d4e96657cd0"
+  },
+  "status": "blocked_on_oracle_authority_choice"
+}

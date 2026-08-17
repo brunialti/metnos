@@ -3,6 +3,26 @@
 > File VIVO: chi subentra lo legge per primo e lo aggiorna smarcando i punti.
 > Narrazione e contesto: memoria `project_session_7_8_2026_sites_goal.md`.
 > Stato dell'albero: tutto committato tranne dove scritto qui sotto.
+>
+> **AGGIORNAMENTO 8/8 — il punto 0 è stato riaperto e generalizzato.** La
+> conclusione storica sotto resta valida per il reducer del fine Sites, ma non
+> è più la conclusione sull'analisi generale della richiesta. Per il lavoro
+> corrente su normalizzazione/intent, partire da
+> `internal/design/handover_request_analysis_8_8_2026.md` e
+> `internal/tools/request_analysis_lab/README.md`. Non riprendere dalle vecchie
+> prove di riscrittura libera.
+>
+> **CHECKPOINT 9/8:** il handover RequestAnalysis compattato è autoritativo.
+> V26.5.6.4 ha STATIC PASS offline ma il suo unico live K1/34 ha prodotto
+> **0/34 frame validi** (32 duplicazioni dello span); trasporto 34/34, retry 0.
+> Output ed evaluator, hash, sessione Claude di analisi e prossimo passo sono
+> nella sezione 0 di `internal/design/handover_request_analysis_8_8_2026.md`.
+> Il successore V26.5.6.5 è in **STATIC BLOCK** indipendente; il timer previsto
+> per il correttivo V26.5.6.6 è stato cancellato. Dettagli e frase di ripresa
+> per Claude sono nel handover autoritativo.
+> Non rilanciare, non iniziare refactor e non autorizzare cutover. Il registro
+> resta limitato a 10 relazioni; il piano generale a tre layer è in
+> `internal/tools/request_analysis_lab/catalog_registry_v1/README.md`.
 
 ## Come si verifica che il sistema fa il suo mestiere
 
@@ -51,42 +71,67 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
 
 ## Da fare, in ordine di resa
 
-0. [ ] **UNA normalizzazione della richiesta, all'inizio** (idea di Roberto,
-   8/8 — ha priorita' sul resto). Oggi le liste di termini che ripuliscono il
-   fine sono sparse in tre punti del navigatore e in una decina di concetti
-   del lessico; l'accorpamento in un solo helper e' il minimo, ma la strada
-   vera e' un'altra: **una sola passata all'ingresso**, che chiede al modello
-   di (a) togliere articoli, preposizioni e tutto cio' che non definisce
-   l'azione, (b) portare i verbi all'infinito eliminando le flessioni, (c)
-   sostituire i verbi ambigui («mostra») con una forma canonica che dica quale
-   componente l'utente sta chiedendo. Da li' in poi tutti i consumatori
-   lavorano su una richiesta gia' pulita, e i filtri per-dominio smettono di
-   esistere invece di essere accorpati.
+0. [x] **UNA normalizzazione della richiesta, all'inizio** — **MISURATA E
+   CHIUSA il 7/8 sera**: la passata di riscrittura **non si fa**, il problema
+   che la motivava e' stato chiuso per la parte che rendeva. Documento con le
+   cinque misure: `internal/design/analysis_normalizzazione_ingresso_7_8.md`.
 
-   **Perche' non e' il riduttore gia' bocciato**: quello girava a OGNI
-   osservazione del pilota (fino a otto per azione) e ACCORCIAVA il fine,
-   perdendo faccette come «passate» o l'anno — per questo e' spento sul caso
-   comune. Questa gira **una volta**, sulla richiesta, e normalizza invece di
-   tagliare.
+   **Perche' non si fa** (misurato, non argomentato): chiedere al modello di
+   RISCRIVERE la richiesta tiene i verbi (9 casi su 14 in prosa), riordina e
+   sul caso di punta restituisce la frase identica col prompt prescrittivo.
+   Chiedergli di ETICHETTARE ogni parola invece funziona (60/60 allineate) — ma
+   confrontata col riduttore che c'e' gia', la forma canonica **perde le
+   faccette** («prossime», «last») e **inquina il fine** con le altre clausole
+   («mail» su una pagina di prenotazioni e' un controllo vero). Il riduttore fa
+   due cose, non una: pulisce e SCEGLIE il contenitore.
+
+   **Cosa e' stato fatto invece** (l'accorpamento, per la parte che rendeva):
+   due famiglie mancanti nel lessico, generali (`text.*`, non `sites.*`) e
+   consultate da un punto solo — **ausiliari** («sono», «ho», «hai», «do»,
+   «have») e **interrogativi** («quali», «che», «dove», «which») — piu' il
+   numero di una cifra che smette di essere buttato via («ultimi **7** giorni»).
+   Residuo di rumore nel fine su 60 richieste reali: **13,9% → 9,7%**.
+   Le forme ambigue con un sostantivo restano FUORI per scelta misurata:
+   «stato» e' lo stato del server piu' spesso che un participio di essere.
+
+   **Il prossimo passo vale 1,6 punti** e va misurato prima di farlo: dei 23
+   verbi che restano nel residuo, 9 sono gia' noti al SoT multilingue
+   `vocab.ACTION_MAPPING` — il filtro del fine consulta invece le sole 5
+   primitive del dominio. Attenzione: la stessa funzione taglia anche i nomi
+   dei controlli di pagina, quindi togliere un verbo lo toglie da entrambi i
+   lati.
+
+   **La forma etichettata resta in cassetta**, col suo banco
+   (`internal/tools/misura_residuo_fine.py`): guadagna il suo posto quando
+   arriva una terza lingua (il lessico va riseminato, il modello no) o quando
+   una misura mostra che la coda dei verbi non canonici pesa. In quel caso si
+   compone — **il lessico decide sulle parole che conosce, il modello sulle
+   altre** — mai il contrario, perche' e' proprio sulle parole che distinguono
+   che il modello sbaglia.
+
+   **Difetto trovato per strada, e chiuso** (valeva piu' di tutto il resto):
+   turno reale `0cde68a46a7a426d`, piano corretto in ogni passo, ultimo passo
+   morto con `unsupported_action` su `action="le mie prenotazioni"` — cioe'
+   **l'esempio canonico del manifest di `act_sites`**. Il resolver pretendeva
+   un verbo per scegliere la primitiva mentre tutto il dominio lo tratta come
+   rumore. Ora **un fine e' un NOME**: un testo senza verbo che nomina qualcosa
+   e' un fine (`search`), e cio' che non nomina niente (un'espressione, un
+   selettore) resta rifiutato — il riscontro di sicurezza su
+   `esegui javascript alert(1)` vale verbatim. Verificato differenzialmente su
+   `git worktree`: il difetto era su HEAD.
 
    **Cosa non risolve, da tenere presente**: le parole che il pilota cerca
    DENTRO la pagina devono stare nella lingua del sito. La mappatura
    sostantivo→parola-del-sito (prenotazione/viaggio/booking) resta lavoro degli
    alias del lessico, comunque la richiesta sia normalizzata.
 
-   **Accorpamento come ripiego** (se la passata unica non si fa): un solo
-   punto che risponda a «questa parola fa parte di cio' che cerco?», con tutte
-   le famiglie a radice dove la radice ha senso. Oggi solo i verbi di richiesta
-   lo sono (`text.request_verb`); articoli e preposizioni restano parole
-   intere, quantificatori e possessivi sono enumerati.
-
    **Censimento fatto l'8/8** — liste che filtrano il fine: nel lessico
    (traducibili, per lingua) `sites.goal_noise` 37, `..._articulated_preposition`
    30, `goal_scope_quantifier` 12, `personal_goal_marker` 8, `text.request_verb`
-   2 regex a radice, piu' le tabelle di alias; NEL CODICE, e quindi NON
-   traducibili, restano due ripieghi in `action_resolver.py`:
-   `_VERBS_FALLBACK` e `_OVERLAY_DISMISS_FALLBACK`, usati solo se il lessico
-   manca.
+   2 regex a radice, **+ `text.auxiliary_verb` e `text.interrogative` (7/8)**,
+   piu' le tabelle di alias; NEL CODICE, e quindi NON traducibili, restano due
+   ripieghi in `action_resolver.py`: `_VERBS_FALLBACK` e
+   `_OVERLAY_DISMISS_FALLBACK`, usati solo se il lessico manca.
 
 1. [ ] **Il fine come STRUTTURA** — analisi in
    `analysis_goal_come_struttura_7_8.md`. **NON e' piu' bloccato: Roberto ha
@@ -151,8 +196,30 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
      Lo script sta in `.../scratchpad/misura_ambito.py`; per renderlo fedele
      servirebbe passare dall'estrattore d'intento vero, non da un `Intent`
      scritto a mano.
-   - Se `ambito` non rende, ci si ferma: gli altri tre campi (`filtro`,
-     `portata`, `cosa`) non si fanno per simmetria.
+   - ✅ **MISURA DAL VIVO FATTA (7/8 notte): il campo RENDE.** Richiesta senza
+     possessivo, «vai su booking.com e mostrami le prenotazioni»: il piano
+     porta `ambito="personale"`, l'audit mostra il passo sul menu dell'account
+     («Il tuo account: roberto brunialti») e poi `mytrips`, e la risposta
+     consegna l'elenco strutturato (turno `e26af4ed18344e3b`, 6 passi, 60,7 s).
+     **Una precisazione onesta**: `ambito` l'ha dichiarato il MOTORE (dispatch
+     lo mette quando il piano entra con le credenziali), non il pianificatore.
+     Che il modello lo scriva da se' leggendo il manifest resta non provato —
+     serve un turno su un piano dove il motore non lo inietta.
+     Quindi: gli altri campi (`filtro`, `portata`, `cosa`) NON sono piu'
+     bloccati dalla misura di `ambito`.
+
+   - 🐛 **Trovato misurando, da guardare prima dei campi nuovi: essere GIA'
+     sul fine non viene riconosciuto.** Stessa richiesta, sessione riusata che
+     era gia' ferma su `mytrips`: il pilota riapre il menu dell'account e
+     finisce in `selector_missing` (27 s). Il motivo e' lo stesso della
+     guardia di stanotte, al contrario: il fine «le prenotazioni» si riduce al
+     token `booking`, che non distingue niente, quindi nessuna pagina puo'
+     attestarlo — nemmeno quella giusta. Dalla home funziona solo perche' il
+     canale STRUTTURALE (area personale) ci arriva per costruzione. Non e' una
+     regressione di stanotte: i token del fine sono gli stessi di prima.
+     La strada: quando il fine non distingue, l'arrivo lo deve attestare il
+     canale strutturale (siamo nell'area personale e la pagina porta record),
+     non le parole. E' esattamente il `done_when`/`cosa` del punto 1.
 
    Nota: **non lo chiude la sonda dell'intent** — sono due livelli diversi (la
    sonda decide DA DOVE leggere, i campi decidono com'e' fatto il fine dentro
@@ -212,6 +279,22 @@ Sospetto NON confermato, lasciato scritto perche' non si ricerchi due volte:
 riusabile fra turni, ma `op_act` li riscrive a OGNI invocazione (anche a
 vuoto), quindi non c'e' valore stantio. Se un giorno un percorso li impostasse
 solo dentro un ramo condizionale, quella garanzia salta.
+
+## Reperti aperti, con la prova gia' in mano
+
+- 🐛 **Una chiamata LLM dentro un executor puo' non avere scadenza propria, e
+  allora eredita i 600 s del provider.** Misurato: `extract_entries` →
+  `_infer_fields` → `call_llm(...)` senza `timeout_s`; con il server del
+  modello occupato (girava la suite) la chiamata e' rimasta appesa **600016 ms**
+  e il turno e' morto dopo 659 s (turno `e53e6d1617d64588`). La risposta finale
+  e' onesta (§2.8: «l'azione extract non e' stata completata»), ma l'utente ha
+  aspettato dieci minuti per saperlo. La scadenza appartiene per progetto al
+  registro dei workload («al consumer restano tetto di output, deadline,
+  grammatica»): il posto giusto e' li', non una costante in `extract_entries`.
+  Serve prima la distribuzione dei tempi reali per scegliere il numero.
+- 🚨 **Corollario di metodo**: non si misura dal vivo mentre gira la suite. Il
+  turno di cui sopra e' l'unico fallimento della notte, e la causa e' la
+  contesa sul modello, non il codice.
 
 ## Trappole che costano ore se non le sai
 

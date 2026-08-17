@@ -1,0 +1,26 @@
+{
+  "authorization_format": "metnos.intent-live-authorization/0.2-run1",
+  "created_date": "2026-08-13",
+  "independent_audit": {
+    "pass": true,
+    "report_path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/functional_b/candidate_v0_2_run1_preflight_audit_cycle2.md",
+    "report_sha256": "4967980f4ce08c088132c6a5b3a748f458423aba563dd304986b52c35b624b32",
+    "reviewer": "reviewer_b_independent"
+  },
+  "iteration_authorization": {
+    "authorized_by": "Roberto",
+    "maximum_new_runs": 3,
+    "this_run": 1
+  },
+  "manifest_file_sha256": "19e03b5d04cc95e81099787498a2519ccde43f20d3172d88a97a36b6525e55c7",
+  "protocol_file_sha256": "4304631f9aed4e1dc2d4646a85d5f849825b45af398d608e5e94ba4505e1077b",
+  "protocol_freeze_file_sha256": "e17246da0a7472a3d246c7dcd75823e14cd2fb25a0ae1a4c2ec8d176f6fef917",
+  "protocol_payload_sha256": "e647d45ecf8e332f31653cadbc22656726d78d38ca6fdae8bdf59368452e9de9",
+  "root_authorization": {
+    "authorization_id": "intent-shadow-v0.2-run1-1acb660551b56ad3834ecd72",
+    "authorized": true,
+    "authorized_by": "root"
+  },
+  "run_id": "intent-shadow-v0.2-run1",
+  "single_use_nonce_sha256": "5ce1c6f6b1caf19e2e39af192fe18b8b4628f158188bc6bbf392c367c0082129"
+}

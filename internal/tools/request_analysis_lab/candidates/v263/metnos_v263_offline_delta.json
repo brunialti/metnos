@@ -1,0 +1,924 @@
+{
+  "acceptance_credit": false,
+  "alternatives": {
+    "A_minimal_atom_full_contract": {
+      "decision": "freeze_and_native_test",
+      "reason": "smallest evidence-backed delta; retains V26.2 semantic fields and restores only missing technical definitions"
+    },
+    "B_two_sections_one_output": {
+      "decision": "reserve_if_A_has_syntax_errors",
+      "risk": "duplicate clause identity, larger output, and cross-section inconsistency",
+      "shape": "clause_facts plus relation_projection in one JSON response and one model call"
+    },
+    "C_relation_candidate_algebra": {
+      "decision": "reserve_if_A_overuses_ambiguity_or_forces_one_relation",
+      "risk": "larger schema/output and new candidate-set oracle required",
+      "shape": "zero candidates means unsupported, one resolved, multiple ambiguous"
+    },
+    "D_fact_table_plus_unifier": {
+      "decision": "longer_term_if_relation_choice_remains_unstable",
+      "risk": "new type ontology, catalog metadata and adjudicated per-clause gold required",
+      "shape": "model emits typed syntactic-semantic facts; deterministic catalog solver chooses relation"
+    },
+    "closed_world_policy": {
+      "decision": "included_in_A",
+      "rule": "unique registry analysis is supported; multiple registry analyses are ambiguous with relation none; no registry analysis is unsupported with relation none"
+    }
+  },
+  "analysis_version": "metnos.v26.3-offline-causal-delta/1.0",
+  "binary_binding": {
+    "v253_first_exact": 34,
+    "v262_not_evaluated": 15,
+    "v262_v263_policy_evaluable": 19,
+    "v262_v263_policy_exact_supported_only": 15
+  },
+  "controlled_comparison": {
+    "causal_limit": "The prompt-regression hypothesis is strongly supported but not isolated until the frozen V26.3 native run; V25.3 also exposed redundant semantic fields.",
+    "differences": [
+      "prompt technical-contract completeness",
+      "schema redundant analysis fields",
+      "evidence reference representation",
+      "maximum output token ceiling"
+    ],
+    "same_cases": 34,
+    "same_first_attempt_seed": 92,
+    "same_temperature": 0,
+    "same_unicode_segmenter_family": "UAX#29 regex.WORD|VERSION1"
+  },
+  "distributions": {
+    "v253_first": {
+      "grammatical_person": {
+        "first": 21,
+        "none": 2,
+        "second": 4,
+        "third": 7
+      },
+      "interpretation": {
+        "supported": 33,
+        "unsupported": 1
+      },
+      "relation": {
+        "acl.share": 1,
+        "document.position": 1,
+        "filesystem.located_at": 2,
+        "identity.same_as": 6,
+        "none": 2,
+        "runtime.host_of": 1,
+        "spatial.located_at": 17,
+        "spatial.near": 2,
+        "workflow.position": 2
+      },
+      "role": {
+        "condition": 1,
+        "description": 1,
+        "quote": 1,
+        "request": 31
+      },
+      "speech_act": {
+        "assertion": 1,
+        "condition": 1,
+        "imperative": 4,
+        "open_question": 28
+      },
+      "subject_ref": {
+        "current_actor": 22,
+        "current_actor_location_operand": 1,
+        "explicit_entity": 7,
+        "none": 3,
+        "quoted_actor": 1
+      },
+      "time_scope": {
+        "contextual": 4,
+        "current": 29,
+        "historical": 1
+      }
+    },
+    "v262_native": {
+      "grammatical_person": {
+        "<missing>": 1,
+        "first": 19,
+        "second": 5,
+        "third": 9
+      },
+      "interpretation": {
+        "<missing>": 1,
+        "ambiguous": 7,
+        "supported": 19,
+        "unsupported": 7
+      },
+      "relation": {
+        "<missing>": 1,
+        "identity.same_as": 1,
+        "none": 5,
+        "spatial.located_at": 27
+      },
+      "role": {
+        "<missing>": 1,
+        "condition": 1,
+        "description": 1,
+        "quote": 2,
+        "request": 29
+      },
+      "speech_act": {
+        "<missing>": 1,
+        "assertion": 1,
+        "condition": 1,
+        "imperative": 2,
+        "open_question": 29
+      },
+      "subject_ref": {
+        "<missing>": 1,
+        "current_actor": 24,
+        "deictic_context": 1,
+        "explicit_entity": 5,
+        "unknown_entity": 3
+      },
+      "time_scope": {
+        "<missing>": 1,
+        "current": 33
+      }
+    }
+  },
+  "field_delta_v253_to_v262": {
+    "grammatical_person": {
+      "recovered": 2,
+      "regressed": 1,
+      "stable_correct": 26,
+      "stable_wrong": 5
+    },
+    "interpretation": {
+      "recovered": 1,
+      "regressed": 15,
+      "stable_correct": 18
+    },
+    "relation": {
+      "regressed": 15,
+      "stable_correct": 17,
+      "stable_wrong": 2
+    },
+    "role": {
+      "regressed": 3,
+      "stable_correct": 30,
+      "stable_wrong": 1
+    },
+    "speech_act": {
+      "regressed": 2,
+      "stable_correct": 30,
+      "stable_wrong": 2
+    },
+    "subject_ref": {
+      "recovered": 2,
+      "regressed": 2,
+      "stable_correct": 25,
+      "stable_wrong": 5
+    },
+    "time_scope": {
+      "recovered": 2,
+      "regressed": 3,
+      "stable_correct": 27,
+      "stable_wrong": 2
+    }
+  },
+  "field_exact": {
+    "v253_first": {
+      "grammatical_person": 27,
+      "interpretation": 33,
+      "relation": 32,
+      "role": 33,
+      "speech_act": 32,
+      "subject_ref": 27,
+      "time_scope": 30
+    },
+    "v262_native": {
+      "grammatical_person": 28,
+      "interpretation": 19,
+      "relation": 17,
+      "role": 30,
+      "speech_act": 30,
+      "subject_ref": 27,
+      "time_scope": 29
+    }
+  },
+  "native_predictions_not_acceptance_claims": {
+    "binding": "target 34/34 with 9/9 positives and zero leakage",
+    "coverage_supported": "must recover materially from V26.2 19/34; target 34/34",
+    "semantic_tuple": "report separately; V25.3 first attempt was 24/34, so 34/34 full tuple is not established by prior data",
+    "valid": "34/34"
+  },
+  "network_calls": 0,
+  "prompt_contract": {
+    "v253": {
+      "bytes": 4437,
+      "enum_mentions": {
+        "evidence_kind": {
+          "mentioned": 7,
+          "total": 7
+        },
+        "grammatical_person": {
+          "mentioned": 4,
+          "total": 5
+        },
+        "interpretation": {
+          "mentioned": 3,
+          "total": 3
+        },
+        "relation": {
+          "mentioned": 10,
+          "total": 10
+        },
+        "role": {
+          "mentioned": 4,
+          "total": 4
+        },
+        "speech_act": {
+          "mentioned": 7,
+          "total": 7
+        },
+        "subject_ref": {
+          "mentioned": 4,
+          "total": 7
+        },
+        "time_scope": {
+          "mentioned": 4,
+          "total": 4
+        }
+      },
+      "relation_signatures_with_arity": 9
+    },
+    "v262": {
+      "bytes": 1973,
+      "enum_mentions": {
+        "evidence_kind": {
+          "mentioned": 7,
+          "total": 7
+        },
+        "grammatical_person": {
+          "mentioned": 2,
+          "total": 5
+        },
+        "interpretation": {
+          "mentioned": 3,
+          "total": 3
+        },
+        "relation": {
+          "mentioned": 2,
+          "total": 10
+        },
+        "role": {
+          "mentioned": 1,
+          "total": 4
+        },
+        "speech_act": {
+          "mentioned": 1,
+          "total": 7
+        },
+        "subject_ref": {
+          "mentioned": 2,
+          "total": 7
+        },
+        "time_scope": {
+          "mentioned": 3,
+          "total": 4
+        }
+      },
+      "relation_signatures_with_arity": 0
+    },
+    "v263": {
+      "bytes": 6760,
+      "enum_mentions": {
+        "evidence_kind": {
+          "mentioned": 7,
+          "total": 7
+        },
+        "grammatical_person": {
+          "mentioned": 5,
+          "total": 5
+        },
+        "interpretation": {
+          "mentioned": 3,
+          "total": 3
+        },
+        "relation": {
+          "mentioned": 10,
+          "total": 10
+        },
+        "role": {
+          "mentioned": 4,
+          "total": 4
+        },
+        "speech_act": {
+          "mentioned": 7,
+          "total": 7
+        },
+        "subject_ref": {
+          "mentioned": 7,
+          "total": 7
+        },
+        "time_scope": {
+          "mentioned": 4,
+          "total": 4
+        }
+      },
+      "relation_signatures_with_arity": 9
+    }
+  },
+  "records_redacted": [
+    {
+      "expected_binding": true,
+      "language": "it",
+      "opaque_case_id": "f94859539aaa0fceb4148395b68efa3754e3cafc1f43ccae529aac9243691a62",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "unsupported",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": true,
+      "language": "it",
+      "opaque_case_id": "72e27db873528bfcd44c34c79473c809d9bc1e9116b54f7d0014ce675061f87b",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": true,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": []
+    },
+    {
+      "expected_binding": true,
+      "language": "en",
+      "opaque_case_id": "543baf5a0477483e8d04b37216ad8a5abf6e3bca8501e9118881fc07060fc571",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "ambiguous",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": true,
+      "language": "fr",
+      "opaque_case_id": "962e2eb3e35aab99097d5026f7005a1b06cae56748c0644a8a28304e1ce1c1da",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "role"
+      ]
+    },
+    {
+      "expected_binding": true,
+      "language": "es",
+      "opaque_case_id": "c7ae266a5ef12fe3ef7924ec60ea0c53777adb16b4024117addc1773b15ae2da",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": true,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": []
+    },
+    {
+      "expected_binding": true,
+      "language": "de",
+      "opaque_case_id": "3f5bd2980e69b5fbbb0863ae6aeffd04d50d48516c647e587289f7b8f26f0d74",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "unsupported",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": true,
+      "language": "tr",
+      "opaque_case_id": "c4f892cfaa23dd43c6f04a661858f0106963f233a634962ee77448534cd6be8a",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": true,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": []
+    },
+    {
+      "expected_binding": true,
+      "language": "ja",
+      "opaque_case_id": "b5626529f15b8020d40c9c6a805834cb934dca5f1fc96d5bea227306eb95766c",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "unsupported",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": true,
+      "language": "zh",
+      "opaque_case_id": "c07a4e4a2b7601941f44adbc2064a07d49f08da7f82811dd9b6303069ce8631d",
+      "v253_first_binding": true,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "ambiguous",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "ea7817740f76b64e281d385702274f9f64887cdc6f3a0fe3bb8648ed24883a80",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "ambiguous",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "9963512e338b6753d6fc19e9e12fd8dd35b00e3e305938c5d788428ece31e7b2",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "unsupported",
+      "v262_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "fr",
+      "opaque_case_id": "3e66ef71beeabe88f07db26323306fe34fb9b107bba65efc6c68ebdf219c8535",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "unsupported",
+      "v262_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "es",
+      "opaque_case_id": "9afa61063dd254eff1720a8f44df98c5b106d52c38763fa285c77e5340c88d2f",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "unsupported",
+      "v262_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "de",
+      "opaque_case_id": "6d2c032c34de48943ed1dd740320428c40eb0eda86d8d7b43480b57ee7b054c2",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "unsupported",
+      "v262_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "8230c30a0a2897d7209ad389be200d231048e4cc78aa48b373cad0f4e9d18e68",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": []
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "97607e5e1662f8a9beea41ed8be36573d8a38eb0f8324325f913519f4ffe137e",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": []
+    },
+    {
+      "expected_binding": false,
+      "language": "es",
+      "opaque_case_id": "a7074afa19ef282de6fa7253c07aba3441a21485b5d6c646251ce49f1918d128",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "subject_ref"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "82bf368c440504837f43b49f0c93dd8aa1a74696acd498877af1496b37dce191",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "subject_ref",
+        "grammatical_person"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "ambiguous",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "8d20d29e5761a567b087d75ae9f5810ad54053b5444199adc5d4f08e81a2e244",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "ambiguous",
+      "v262_mismatch_fields": [
+        "interpretation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "d85300f0a5e80f42119e47f21bd65dd606de5393ffcdbcf6e3aeb2d36d0ccecb",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "subject_ref"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "role",
+        "relation",
+        "subject_ref"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "085f1a9bbd8a98c07852aeccfe9995da8a497956ea5e702972094c51bc7de04b",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "66997e917143fb8137f8db12ff7a8b82ba8988dc3becbb7b01bbb8ed9b76f637",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "14a4d01b2942a26bc87fac69f6fe6f450b49acc367de836119dc18494fb68cbd",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "a7fe1472e45e5464bb4b687a333d38144f5501bffb7df466f5f517f77a1d51fe",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "f67ee9ac145a28a4f1cc390c953aa0fecd723a4523b95f7d4ed4ac053ad3814d",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ],
+      "v262_binding_v263_policy": true,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "402060ae7e748e51bb67ffdac816ff7ef13b3877c4b42ddf8d463cb0618ff98e",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "role",
+        "speech_act"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "role",
+        "speech_act"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "ae25856617b30b3ed755473bbb98c2c40bcc27d50623691560dee75b2ee9c7d9",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": true,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "time_scope"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "6234733a0b72cbf77e60cdba0750479df75bc30dd884e7565e071da08c98def6",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "subject_ref",
+        "grammatical_person"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "relation",
+        "subject_ref",
+        "grammatical_person"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "5940e59955c4793246e7450495da98d3cdb02b9de55b90270bd3231825762996",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "speech_act"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "invalid",
+      "v262_mismatch_fields": [
+        "role",
+        "interpretation",
+        "speech_act",
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "298fa0b7931205814e29ff3d9710bf8328b470bdd43ea92512a79465f06f29a1",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "relation",
+        "grammatical_person",
+        "time_scope"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "relation",
+        "grammatical_person"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "703f61679ee09ae77763117a2e15da8e160e9a172a1a60dc6ea31ca89a644040",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [
+        "interpretation",
+        "relation",
+        "subject_ref",
+        "grammatical_person"
+      ],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "relation",
+        "subject_ref",
+        "grammatical_person",
+        "time_scope"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "999152661d3a6cfb3fb790be46008578c01258d1122a8bb78c6b29cb175f9dff",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "ambiguous",
+      "v262_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "en",
+      "opaque_case_id": "315eb70d2e87847f2a9bdb007248d110e376999dcadd7ab23933458bb545a67d",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": false,
+      "v262_coverage": "ambiguous",
+      "v262_mismatch_fields": [
+        "interpretation",
+        "relation"
+      ]
+    },
+    {
+      "expected_binding": false,
+      "language": "it",
+      "opaque_case_id": "f65e576916a384dfa2c4ab5fc6304d5d5a07d2a42e0e2ec7a6ef1e21e5fe7a00",
+      "v253_first_binding": false,
+      "v253_first_mismatch_fields": [],
+      "v262_binding_v263_policy": true,
+      "v262_coverage": "supported",
+      "v262_mismatch_fields": [
+        "relation"
+      ]
+    }
+  ],
+  "relation_confusions": {
+    "v253_first": {
+      "acl.share": {
+        "acl.share": 1
+      },
+      "document.position": {
+        "document.position": 1
+      },
+      "filesystem.located_at": {
+        "filesystem.located_at": 2
+      },
+      "identity.same_as": {
+        "identity.same_as": 6
+      },
+      "movement.destination": {
+        "none": 1
+      },
+      "runtime.host_of": {
+        "runtime.host_of": 1
+      },
+      "spatial.located_at": {
+        "none": 1,
+        "spatial.located_at": 17
+      },
+      "spatial.near": {
+        "spatial.near": 2
+      },
+      "workflow.position": {
+        "workflow.position": 2
+      }
+    },
+    "v262_native": {
+      "acl.share": {
+        "spatial.located_at": 1
+      },
+      "document.position": {
+        "spatial.located_at": 1
+      },
+      "filesystem.located_at": {
+        "spatial.located_at": 2
+      },
+      "identity.same_as": {
+        "identity.same_as": 1,
+        "none": 4,
+        "spatial.located_at": 1
+      },
+      "movement.destination": {
+        "spatial.located_at": 1
+      },
+      "runtime.host_of": {
+        "spatial.located_at": 1
+      },
+      "spatial.located_at": {
+        "<missing>": 1,
+        "none": 1,
+        "spatial.located_at": 16
+      },
+      "spatial.near": {
+        "spatial.located_at": 2
+      },
+      "workflow.position": {
+        "spatial.located_at": 2
+      }
+    }
+  },
+  "sources": {
+    "v253_prompt_sha256": "a5582f9e275e95d43e913dfb7097066fcd1c20bee9e972d844b27e31a04fe113",
+    "v253_result_sha256": "2beb387e83d9dcc18ee412425bb54126fc7e24d09452743277b509ea5c80038e",
+    "v262_prompt_sha256": "dad168f1975a3ab96b3e70303efce939aaab464ba71f567ff9c691d11c862a60",
+    "v262_result_sha256": "ae8020a29ade3de48922d64cc61fe5f5bf9349fa3defda6643d0c4716757b834",
+    "v263_freeze_sha256": "80c1b4e70f1ef5cb75d1ddea1458f3a4934598729a03c3c552c562fe8eeaeb0c"
+  },
+  "structural_attribution": {
+    "prompt_expected_effect": [
+      "restore symmetric enum boundaries and nine relation arities",
+      "reduce located_at/current/open_question target attraction",
+      "reduce ambiguous and unsupported caused only by implicit arguments"
+    ],
+    "symbolic_evidence_cannot_explain": [
+      "relation selection recovery",
+      "interpretation supported recovery",
+      "role or speech-act recovery"
+    ],
+    "symbolic_evidence_expected_effect": [
+      "remove duplicated clause/predicate anchors",
+      "remove the observed clause_semantics equality invalid",
+      "reduce output tokens without changing semantic claims"
+    ]
+  },
+  "tuple_exact": {
+    "v253_first": 24,
+    "v262_native": 5
+  },
+  "v263_contamination_summary": {
+    "dataset_overlap": {
+      "adversarial70": {
+        "ngram_ge_3": 0,
+        "ngram_ge_4": 0,
+        "whole_query": 0
+      },
+      "full109": {
+        "ngram_ge_3": 0,
+        "ngram_ge_4": 0,
+        "whole_query": 0
+      },
+      "question-controls34": {
+        "ngram_ge_3": 0,
+        "ngram_ge_4": 0,
+        "whole_query": 0
+      }
+    },
+    "eligible": true,
+    "surface_or_mixed_lines": 0
+  },
+  "v263_static_gate": {
+    "contamination_audit_sha256": "4a3de10ed31eaa8e10049bc255632bd320df6bae366c1533e6395ac515743769",
+    "freeze_sha256": "80c1b4e70f1ef5cb75d1ddea1458f3a4934598729a03c3c552c562fe8eeaeb0c",
+    "inference_allowed": true,
+    "native_run_required": true,
+    "posthoc_credit_allowed": false,
+    "requirements": {
+      "mutation_failures": 0,
+      "overlap_n_ge_3": {
+        "adversarial70": 0,
+        "full109": 0,
+        "question-controls34": 0
+      },
+      "surface_or_mixed_lines": 0,
+      "whole_query_matches": {
+        "adversarial70": 0,
+        "full109": 0,
+        "question-controls34": 0
+      }
+    },
+    "version": "metnos.v26.3-minimal-technical-contract/1.0"
+  }
+}

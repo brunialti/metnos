@@ -1,0 +1,94 @@
+{
+  "report_format": "metnos.intent-shadow-live-pre-gold-report/0.2",
+  "created_date": "2026-08-13",
+  "status": "pass",
+  "oracle_opened": false,
+  "evaluation_executed": false,
+  "records_verified_per_replay": 316,
+  "raw_http_responses_verified_per_replay": 316,
+  "journal_records_verified_per_replay": 316,
+  "unexpected_mismatch_count": 0,
+  "panels": {
+    "canonical_120": {
+      "queries": 120,
+      "records": 240,
+      "separate": true
+    },
+    "typed_controls_4": {
+      "queries": 4,
+      "records": 8,
+      "separate": true
+    },
+    "legacy_phase1_34": {
+      "queries": 34,
+      "records": 68,
+      "separate": true
+    }
+  },
+  "integrity": {
+    "v0_2_freeze": true,
+    "historical_protocol_freeze": true,
+    "sealed_batch": true,
+    "sealed_batch_freeze": true,
+    "journal": true,
+    "consumption_marker": true,
+    "checkpoint": true,
+    "raw_http_bytes": true
+  },
+  "replays": [
+    {
+      "python_hash_seed": 0,
+      "status": "pass",
+      "allowed_mismatch_count": 1,
+      "unexpected_mismatch_count": 0,
+      "allowed_mismatches": [
+        {
+          "record_index_zero_based": 80,
+          "request_ordinal": 81,
+          "sample_index": 40,
+          "panel": "canonical_120",
+          "panel_ordinal": 41,
+          "opaque_case_id": "frozen_sample.040",
+          "query_sha256": "a28c35924994e5735fe8463e81184f178a24615fa2d1f5b3db64aa3d35b8cd2b",
+          "arm": "A",
+          "request_sha256": "d4849e0d55076286d9e922ca8e4cb19dcaf696a2bcd4378e7a1fdf79fe33c105",
+          "json_pointer": "adapter_metadata.implicit_actions_ignored",
+          "saved": false,
+          "replay": true,
+          "reason": "approved_boolean_diagnostic_variance_at_fixed_record"
+        }
+      ]
+    },
+    {
+      "python_hash_seed": 2,
+      "status": "pass",
+      "allowed_mismatch_count": 0,
+      "unexpected_mismatch_count": 0,
+      "allowed_mismatches": []
+    }
+  ],
+  "tests": {
+    "finite_total": 12,
+    "finite_passed": 12,
+    "negative_cases": [
+      "missing diagnostic field",
+      "non-boolean diagnostic field",
+      "other adapter metadata changed",
+      "semantic field changed",
+      "two fields changed",
+      "diagnostic mismatch at a different record"
+    ],
+    "positive_cases": [
+      "exact extraction equality",
+      "false to true at the approved pointer and record",
+      "true to false at the approved pointer and record"
+    ],
+    "failed_gate_prevents_typed_and_phase1_gold_access": true
+  },
+  "hashes": {
+    "batch_sha256": "eac40d320a8e2d98b0a11ab2ed652cf9ecc64b4893fb2e658a9bbde50143ca0b",
+    "sealed_batch_freeze_sha256": "8f58208fd6082b6fafda953882356c3f4d0084cf183aefeeaafb8b08847cde4c",
+    "journal_sha256": "403135c52aff5852e782f6549bc55f0f08d64b6a92e7a8fb4b9c6374c7515c4e",
+    "v0_2_freeze_sha256": "2e4608c8924790ebd1c4faafaa99fbeb905b52dc82ff276d3cc4ac5a398fceef"
+  }
+}

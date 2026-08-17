@@ -1,0 +1,758 @@
+{
+  "rules_sha256": "e41561e12c835b15bce40e25eb2eb28ead3b27228c8bd05867dc1f9d7b6c8357",
+  "schema_sha256": "0d08b7205632efef8a7f9dadc0c63fe81b42e72daf03b062d7663eb5f98b7e24",
+  "suite_version": "metnos.v24-mutations/1.0",
+  "summary": {
+    "by_kind": {
+      "projector_boundary": {
+        "passed": 12,
+        "tests": 12
+      },
+      "retry_policy": {
+        "passed": 2,
+        "tests": 2
+      },
+      "runtime_gate": {
+        "passed": 2,
+        "tests": 2
+      },
+      "validator_mutation": {
+        "passed": 15,
+        "tests": 15
+      }
+    },
+    "failed": 0,
+    "passed": 31,
+    "tests": 31
+  },
+  "tests": [
+    {
+      "actual_codes": [],
+      "actual_valid": true,
+      "expected_code": null,
+      "expected_valid": true,
+      "id": "valid.base",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "schema"
+      ],
+      "actual_valid": false,
+      "expected_code": "schema",
+      "expected_valid": false,
+      "id": "reject.patient_none_stale",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "schema"
+      ],
+      "actual_valid": false,
+      "expected_code": "schema",
+      "expected_valid": false,
+      "id": "reject.patient_explicit_zero",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "schema"
+      ],
+      "actual_valid": false,
+      "expected_code": "schema",
+      "expected_valid": false,
+      "id": "reject.patient_implicit_without_basis",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "anaphor_without_source"
+      ],
+      "actual_valid": false,
+      "expected_code": "anaphor_without_source",
+      "expected_valid": false,
+      "id": "reject.patient_anaphor_without_source",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "schema"
+      ],
+      "actual_valid": false,
+      "expected_code": "schema",
+      "expected_valid": false,
+      "id": "reject.carrier_none_stale",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "schema"
+      ],
+      "actual_valid": false,
+      "expected_code": "schema",
+      "expected_valid": false,
+      "id": "reject.carrier_active_zero",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "carrier_path_evidence",
+        "carrier_type"
+      ],
+      "actual_valid": false,
+      "expected_code": "carrier_type",
+      "expected_valid": false,
+      "id": "reject.carrier_type_mismatch",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "schema"
+      ],
+      "actual_valid": false,
+      "expected_code": "schema",
+      "expected_valid": false,
+      "id": "reject.sink_active_zero",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "schema"
+      ],
+      "actual_valid": false,
+      "expected_code": "schema",
+      "expected_valid": false,
+      "id": "reject.sink_none_stale",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "source_edge"
+      ],
+      "actual_valid": false,
+      "expected_code": "source_edge",
+      "expected_valid": false,
+      "id": "reject.forward_source_edge",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "nonrequest_executable"
+      ],
+      "actual_valid": false,
+      "expected_code": "nonrequest_executable",
+      "expected_valid": false,
+      "id": "reject.nonrequest_executable",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "request_without_route"
+      ],
+      "actual_valid": false,
+      "expected_code": "request_without_route",
+      "expected_valid": false,
+      "id": "reject.request_without_route",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "evidence_coverage"
+      ],
+      "actual_valid": false,
+      "expected_code": "evidence_coverage",
+      "expected_valid": false,
+      "id": "reject.evidence_coverage_missing_carrier",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual_codes": [
+        "literal_anchor"
+      ],
+      "actual_valid": false,
+      "expected_code": "literal_anchor",
+      "expected_valid": false,
+      "id": "reject.literal_predicate_anchor",
+      "kind": "validator_mutation",
+      "pass": true
+    },
+    {
+      "actual": "read/files",
+      "expected": "read/files",
+      "id": "project.open_to_read",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "open/files",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "read/files",
+          "rules": [
+            {
+              "after": {
+                "action": "read",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "before": {
+                "action": "open",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_route_alias"
+              ],
+              "rule_id": "catalog.open_files_is_content_read"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": "read/urls",
+      "expected": "read/urls",
+      "id": "project.url_carrier_owns_read",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "read/files",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "read/urls",
+          "rules": [
+            {
+              "after": {
+                "action": "read",
+                "object": "urls",
+                "qualifier": "none"
+              },
+              "before": {
+                "action": "read",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ],
+              "rule_id": "catalog.typed_carrier_authority"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": "list/files",
+      "expected": "list/files",
+      "id": "project.explicit_files_not_replaced_by_directory",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "list/files",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "list/files",
+          "rules": []
+        }
+      ]
+    },
+    {
+      "actual": "list/dirs",
+      "expected": "list/dirs",
+      "id": "project.implicit_directory_content_uses_container",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "list/files",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "list/dirs",
+          "rules": [
+            {
+              "after": {
+                "action": "list",
+                "object": "dirs",
+                "qualifier": "none"
+              },
+              "before": {
+                "action": "list",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ],
+              "rule_id": "catalog.typed_carrier_authority"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": "get/processes",
+      "expected": "get/processes",
+      "id": "project.process_collection_snapshot",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "find/processes",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "get/processes",
+          "rules": [
+            {
+              "after": {
+                "action": "get",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "before": {
+                "action": "find",
+                "object": "processes",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "resource_scope",
+                "catalog_route_capability"
+              ],
+              "rule_id": "catalog.process_collection_is_snapshot"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": "find/processes",
+      "expected": "find/processes",
+      "id": "project.process_single_existence",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "find/processes",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "find/processes",
+          "rules": []
+        }
+      ]
+    },
+    {
+      "actual": "find/messages",
+      "expected": "find/messages",
+      "id": "project.search_in_messages",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "find/entries",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "carrier",
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "find/messages",
+          "rules": [
+            {
+              "after": {
+                "action": "find",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "before": {
+                "action": "find",
+                "object": "entries",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "carrier.kind",
+                "carrier.object",
+                "carrier.value_type",
+                "patient.kind",
+                "catalog.domain_semantics"
+              ],
+              "rule_id": "catalog.typed_carrier_authority"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": "get/files",
+      "expected": "get/files",
+      "id": "project.media_metadata_via_get_files_fields",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "change/images",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "attribute",
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "get/files",
+          "rules": [
+            {
+              "after": {
+                "action": "get",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "before": {
+                "action": "change",
+                "object": "images",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "attribute_claim.key",
+                "attribute_claim.span",
+                "patient.object",
+                "catalog.argument_contract"
+              ],
+              "rule_id": "catalog.attribute.get_files.fields.media_metadata"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": "move/files",
+      "expected": "move/files",
+      "id": "project.primary_sink_does_not_replace_patient_domain",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "move/files",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "predicate_id": 1,
+          "projected": "move/files",
+          "rules": []
+        }
+      ]
+    },
+    {
+      "actual": [
+        "extract/entries",
+        "write/entries"
+      ],
+      "expected": [
+        "extract/entries",
+        "write/entries"
+      ],
+      "id": "project.secondary_persistence_adds_sink",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "extract/entries",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "predicate_id": 1,
+          "projected": "extract/entries",
+          "rules": []
+        },
+        {
+          "candidate": null,
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "sink"
+          ],
+          "predicate_id": 1,
+          "projected": "write/entries",
+          "rules": [
+            {
+              "evidence": [
+                "sink.kind",
+                "sink.object",
+                "sink.span",
+                "catalog.materialization_sink"
+              ],
+              "rule_id": "catalog.secondary_persistence"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": [
+        "extract/entries",
+        "write/entries"
+      ],
+      "expected": [
+        "extract/entries",
+        "write/entries"
+      ],
+      "id": "project.explicit_consumer_suppresses_secondary_duplicate",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "extract/entries",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "sink"
+          ],
+          "predicate_id": 1,
+          "projected": "extract/entries",
+          "rules": []
+        },
+        {
+          "candidate": "write/entries",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate",
+            "source"
+          ],
+          "predicate_id": 2,
+          "projected": "write/entries",
+          "rules": []
+        }
+      ]
+    },
+    {
+      "actual": "send/messages",
+      "expected": "send/messages",
+      "id": "project.send_route_owns_message_envelope",
+      "kind": "projector_boundary",
+      "pass": true,
+      "status": "projected",
+      "trace": [
+        {
+          "candidate": "send/files",
+          "catalog_status": "prototype_frozen_not_production_reviewed",
+          "evidence_coverage": [
+            "patient",
+            "predicate"
+          ],
+          "predicate_id": 1,
+          "projected": "send/messages",
+          "rules": [
+            {
+              "after": {
+                "action": "send",
+                "object": "messages",
+                "qualifier": "none"
+              },
+              "before": {
+                "action": "send",
+                "object": "files",
+                "qualifier": "none"
+              },
+              "evidence": [
+                "candidate_route",
+                "catalog_object_basis"
+              ],
+              "rule_id": "catalog.send_creates_message_envelope"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "actual": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "errors": [
+              {
+                "code": "schema",
+                "message": "{'kind': 'explicit', 'start_token_id': 0, 'end_token_id': 0, 'object': 'files'} is not valid under any of the given schemas",
+                "path": "nodes/0/patient",
+                "retryable": true
+              }
+            ],
+            "valid": false
+          },
+          {
+            "attempt": 2,
+            "errors": [],
+            "valid": true
+          }
+        ],
+        "projection": {
+          "reason": "",
+          "signature": "read/files",
+          "status": "projected",
+          "trace": [
+            {
+              "candidate": "read/files",
+              "catalog_status": "prototype_frozen_not_production_reviewed",
+              "evidence_coverage": [
+                "patient",
+                "predicate"
+              ],
+              "predicate_id": 1,
+              "projected": "read/files",
+              "rules": []
+            }
+          ],
+          "validation": {
+            "errors": [],
+            "valid": true
+          }
+        },
+        "status": "projected"
+      },
+      "id": "retry.one_repair_then_project",
+      "kind": "retry_policy",
+      "pass": true
+    },
+    {
+      "actual": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "errors": [
+              {
+                "code": "schema",
+                "message": "{'kind': 'explicit', 'start_token_id': 0, 'end_token_id': 0, 'object': 'files'} is not valid under any of the given schemas",
+                "path": "nodes/0/patient",
+                "retryable": true
+              }
+            ],
+            "valid": false
+          },
+          {
+            "attempt": 2,
+            "errors": [
+              {
+                "code": "schema",
+                "message": "{'kind': 'explicit', 'start_token_id': 0, 'end_token_id': 0, 'object': 'files'} is not valid under any of the given schemas",
+                "path": "nodes/0/patient",
+                "retryable": true
+              }
+            ],
+            "valid": false
+          }
+        ],
+        "projection": null,
+        "reason": "grounding_invalid_after_retry",
+        "status": "fail_closed"
+      },
+      "id": "retry.two_invalid_fail_closed",
+      "kind": "retry_policy",
+      "pass": true
+    },
+    {
+      "actual": {
+        "reason": "invalid_grounding",
+        "signature": null,
+        "status": "fail_closed",
+        "trace": [],
+        "validation": {
+          "errors": [
+            {
+              "code": "schema",
+              "message": "{'kind': 'explicit', 'start_token_id': 0, 'end_token_id': 0, 'object': 'files'} is not valid under any of the given schemas",
+              "path": "nodes/0/patient",
+              "retryable": true
+            }
+          ],
+          "valid": false
+        }
+      },
+      "id": "projector.invalid_graph_never_projects",
+      "kind": "runtime_gate",
+      "pass": true
+    },
+    {
+      "actual": {
+        "reason": "catalog_contract_unreviewed",
+        "signature": null,
+        "status": "fail_closed",
+        "trace": [],
+        "validation": {
+          "errors": [],
+          "valid": true
+        }
+      },
+      "id": "runtime.unreviewed_catalog_fails_closed",
+      "kind": "runtime_gate",
+      "pass": true
+    }
+  ]
+}

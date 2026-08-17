@@ -1,0 +1,78 @@
+{
+  "format": "metnos.intent-holdout-authority/0.4",
+  "precedence": [
+    "registry",
+    "canonical_schema",
+    "normative_projection",
+    "design_provenance"
+  ],
+  "semantic": {
+    "registry": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+      "sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8"
+    },
+    "canonical_schema": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_1/intent_shadow_model_v0_1.schema.json",
+      "sha256": "8e229746c152a6a6bc6a5097e3e20a0c4581a3313736d99ae1fd771b5c3c2dc2"
+    },
+    "design_provenance": {
+      "path": "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md",
+      "sha256": "3b82156a3a3d3414f211926a32ccd40593de1d6faa6adfcf76474c8d32717aa5"
+    }
+  },
+  "normative_projection": {
+    "confidence": "high_only",
+    "arbitration": "forbidden",
+    "independent_operation_order": "query_mention_order_without_dependency",
+    "complete_request": "indispensable_outside_clause_means_outside_registry",
+    "mixed_root": "system_control_plus_operation_means_mixed_root_kinds",
+    "conditional_branch": "two_unrepresentable_branches_mean_unsupported_dependency",
+    "approval": "barrier_owns_exactly_marked_positive_operations",
+    "negation": "negated_operations_are_not_emitted",
+    "canonical_data_edge": "from_only; proposal ports prove compatibility but are omitted from canonical gold",
+    "outside_families": {
+      "physical_world_action": "perform an indispensable physical-world action absent from the digital capability set",
+      "financial_transaction": "perform an indispensable purchase, payment, transfer, or financial transaction",
+      "expert_judgement": "provide an indispensable medical, legal, ethical, or subjective expert judgment",
+      "unregistered_device_control": "control a device or vehicle absent from the capability set",
+      "unregistered_external_service": "book, order, or modify an account through an unregistered service",
+      "unsupported_content_transformation": "perform a content transformation absent from the exact capability set",
+      "unsupported_entity_creation": "create an entity for which no creation capability exists"
+    },
+    "author_gloss": {
+      "outside": "normative outside-family definition plus a final period",
+      "system_controls": {
+        "undo_last_turn": "undo the immediately previous assistant turn."
+      },
+      "barriers": {
+        "get/approval": "request approval for the owned digital actions."
+      }
+    },
+    "safety": {
+      "approval": "approval relation exists",
+      "branch_ownership": "conditional branch or partial approval ownership exists",
+      "false_action": "negated obligation, tempting outside approximation, positive-plus-outside partial execution, or mixed-root control-plus-operation exists",
+      "negation": "negated obligation exists",
+      "ordering": "consumes, explicit-order, or explicitly ordered conditional relation exists",
+      "system_control": "control obligation exists",
+      "undo": "undo_last_turn obligation exists"
+    },
+    "supersedes_old_contract_fields": [
+      "agreement.confidence_may_differ",
+      "agreement.disagreement_action"
+    ],
+    "provenance": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/holdout_v0_1/adjudication_contract.json",
+      "sha256": "b143534a2d6f80e397092237c6ead60e14734863cfce7684117b1b9cbdbbc252"
+    }
+  },
+  "scope_evidence": {
+    "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/candidate_v0_2/intent_ir_registry_projection_v0_2.json",
+    "sha256": "64e887728f5c14b05243fa5032471d146d9a0dfa2889c8784e651044b7860316"
+  },
+  "challenger_commitment": {
+    "role": "chronology_only_not_semantic_authority",
+    "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/prompt_challenger_v0_1/prompt_challenger_v0_1.freeze.json",
+    "sha256": "91f7acb5b582f1ad064ed19e788207c8a0452e1a712d934a60f8e7e59463d966"
+  }
+}

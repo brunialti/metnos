@@ -1,0 +1,464 @@
+{
+  "evaluator_version": "metnos.v25.2-evaluator/0.1",
+  "input_candidate_version": "metnos.v25.2-desired-observation/1.0",
+  "input_sha256": "0907340994fa395424ee5b0c24f28e0df8739f877ba9f311d854c49522cc2011",
+  "records": [
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.it.reflexive",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.it.nominal",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.en.copular",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.fr.inversion",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.es.prodrop",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.de.copular",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.tr.fused",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.ja.case_marked",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": true,
+      "id": "pos.zh.wh_in_situ",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.identity.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.identity.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.identity.fr",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.identity.es",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.identity.de",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.third_person.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.third_person.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.third_person.es",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.people_here.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.people_here.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.place_identity.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.file_location.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.file_location.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.process_host.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.nearby_operand.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.nearby_operand.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.polar.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.historical.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.share.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.quote.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.condition.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.relative_clause.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.workflow_position.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.document_position.en",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    },
+    {
+      "binding_ok": null,
+      "errors": [
+        "transport_or_json",
+        "transport_or_json"
+      ],
+      "evaluable": false,
+      "expect_binding": false,
+      "id": "neg.progress.it",
+      "predicted_binding": null,
+      "semantic_status": "NOT_EVALUATED",
+      "transport_failure": true
+    }
+  ],
+  "summary": {
+    "binding_exact_count": 0,
+    "binding_exact_denominator": 0,
+    "binding_exact_rate": null,
+    "evaluable": 0,
+    "negative_evaluable_denominator": 0,
+    "negative_leakage_count": 0,
+    "negative_leakage_rate": null,
+    "not_evaluated": 34,
+    "positive_evaluable_denominator": 0,
+    "positive_hits": 0,
+    "positive_recall": null,
+    "records": 34,
+    "transport_failures": 34
+  }
+}

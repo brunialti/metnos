@@ -1,0 +1,287 @@
+{
+  "count": 20,
+  "exact": 20,
+  "format": "metnos.structural-gate-probe/0.1",
+  "records": [
+    {
+      "case_id": "bp-001",
+      "decision": "defer",
+      "elapsed_ms": 1290,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "e16296b8ffeaf0a7621c76ca98ad1449f599ef8e72dd44d85fc0a8d6d9ee96f9"
+    },
+    {
+      "case_id": "bp-002",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 660,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:unsupported_dependency",
+      "features": {
+        "alternative_action_paths": true,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "79e60e4fcae89312020584ce91bc2a7fffd836fd96a0e47735e9fb2713a9ccb8"
+    },
+    {
+      "case_id": "bp-003",
+      "decision": "defer",
+      "elapsed_ms": 894,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "cb94f2ef63d9406c4a296e86dfadb019762acea1e9ac3afb4ca0ac27b3a0e6cd"
+    },
+    {
+      "case_id": "bp-004",
+      "decision": "system_control:undo_last_turn",
+      "elapsed_ms": 614,
+      "error": null,
+      "exact": true,
+      "expected": "system_control:undo_last_turn",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": false,
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "88c809665d7b15fe938e618714992640bf03bdc46a0841f560a95cdfd75e3973"
+    },
+    {
+      "case_id": "bp-005",
+      "decision": "defer",
+      "elapsed_ms": 895,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "517f0e3cc22892329e298bcb1181ff1a66eb157e39bba4a2f721cc2cbbeb30d4"
+    },
+    {
+      "case_id": "bp-006",
+      "decision": "defer",
+      "elapsed_ms": 653,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "0ac33ac85c5530d1f0aadfd7d422031af8e5ef335413b9d6ac7c38676fbe1444"
+    },
+    {
+      "case_id": "bp-007",
+      "decision": "defer",
+      "elapsed_ms": 900,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "06a7e1def4e46aab628149fbc26e5ce5c7a4dd10bcebd087b3873485494e7c6f"
+    },
+    {
+      "case_id": "bp-008",
+      "decision": "defer",
+      "elapsed_ms": 680,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "6c8efefe1b812fff29070c5764a3e02e756695f78f7832bea1dadd9db0ab7312"
+    },
+    {
+      "case_id": "bp-009",
+      "decision": "defer",
+      "elapsed_ms": 884,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "26f315147e0c162385d583f4bae6e3bc70ded4d920d24708dd74c9066fc7a0d9"
+    },
+    {
+      "case_id": "bp-010",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 679,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "7d88d848919dd94da5207123e3d5c7533a7f1aeb0b470d6b7620249720b1c155"
+    },
+    {
+      "case_id": "bp-011",
+      "decision": "defer",
+      "elapsed_ms": 915,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "dc843c47089ace8c3e158e9de5470b7e044eaba68b9de6247a1c0f5feeb82471"
+    },
+    {
+      "case_id": "bp-012",
+      "decision": "defer",
+      "elapsed_ms": 685,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "f1547956e6dc9f3fc8d0aaeab64dfa5a40fd0a1dcde9a10cbb54903fdf87a382"
+    },
+    {
+      "case_id": "bp-013",
+      "decision": "defer",
+      "elapsed_ms": 890,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "07b665004cc3b64add3764c826704ca4486ae42805c653337682108375d111f2"
+    },
+    {
+      "case_id": "bp-014",
+      "decision": "unrepresentable:unsupported_dependency",
+      "elapsed_ms": 650,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:unsupported_dependency",
+      "features": {
+        "alternative_action_paths": true,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "6126074b660b075812f2e4cfb0c727fa4a4e64c22fc1ab87bd222d6b61be3a78"
+    },
+    {
+      "case_id": "bp-015",
+      "decision": "defer",
+      "elapsed_ms": 937,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "47b5e2192e0777b454ce9d070c2bf2c6478490f999c4ed2caa07e3e06feef6d0"
+    },
+    {
+      "case_id": "bp-016",
+      "decision": "defer",
+      "elapsed_ms": 620,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "df10a452c549a2e2ce839f9c25eec73c6c3ed3025f8d46ed81f2d8c5fb41f92b"
+    },
+    {
+      "case_id": "bp-017",
+      "decision": "defer",
+      "elapsed_ms": 886,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "49c0b8d1fa86c8c1a65d52dace2ac3fdf713e95ec0c8579f0a6d8c5dc181ec2f"
+    },
+    {
+      "case_id": "bp-018",
+      "decision": "defer",
+      "elapsed_ms": 684,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "ae4c28d6a0f225b10c6d556c30158e4fa1f9f6f4081a1fb4e55c8832ca8b1918"
+    },
+    {
+      "case_id": "bp-019",
+      "decision": "defer",
+      "elapsed_ms": 917,
+      "error": null,
+      "exact": true,
+      "expected": "defer",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "none"
+      },
+      "request_sha256": "d56d60dd916589799d7235506280b86e5cee77c0ed63236decd767fb5640986c"
+    },
+    {
+      "case_id": "bp-020",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 676,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "features": {
+        "alternative_action_paths": false,
+        "ordinary_action": true,
+        "system_control": "undo_last_turn"
+      },
+      "request_sha256": "ba4f00c7c7268b16fec9c03467f70c7883550467bd3e53e11e0d038af657231d"
+    }
+  ]
+}

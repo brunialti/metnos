@@ -1,0 +1,709 @@
+{
+  "report_version": "metnos.catalog-registry-expansion/1.0",
+  "date": "2026-08-09",
+  "scope": {
+    "mode": "offline_read_only",
+    "network_used": false,
+    "server_used": false,
+    "repository_edited": false,
+    "query_or_gold_used_to_design_mapping": false,
+    "design_inputs": [
+      "signed_or_local_catalog_inventories",
+      "executor_manifests",
+      "technical_schemas",
+      "projector_and_validator_code",
+      "aggregate_report_metadata"
+    ]
+  },
+  "evidence": {
+    "catalog_snapshot": {
+      "path": "tests/benchmarks/catalog_snapshot.json",
+      "sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d"
+    },
+    "typed_registry": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_registry.json",
+      "sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f"
+    },
+    "v24_rules": {
+      "sha256": "e41561e12c835b15bce40e25eb2eb28ead3b27228c8bd05867dc1f9d7b6c8357"
+    },
+    "v241_rules": {
+      "sha256": "254056cf4e7d959812f0d6a8a24c931b84191ea685f0e955d0b14cce57c7ff82"
+    },
+    "v241_result": {
+      "sha256": "a3a556e3cfeb4d7fc1531a79218589d517da6c0dbd3b09c13b455b30a95ef4f7"
+    },
+    "structured_intent_migration": {
+      "path": "/tmp/metnos_catalog_structured_intent_contract_migration.json",
+      "sha256": "1519e4588bf321a9696a8f950bf8ad63a9c069e19b582dff218050eb8273127a"
+    },
+    "migration_validation_sha256": "692ef812236a6441d46d953f1e4560a3a9e3d145dc38ba6ab574b6dba8e70426",
+    "migration_schema_sha256": "ef20e3ce61ea136dd64ebf425b03d744b8778c39120fb1aa54da4c0d107ae40c",
+    "current_manifest_content_inventory_sha256": "784d0ae579574a84389aaaa14eadd320b3429d6e3fbe3a43b2eac2de28d73169"
+  },
+  "census": {
+    "typed_registry_under_v265x": {
+      "semantic_version": "metnos.v26.4-typed-registry/1.0",
+      "relations": 10,
+      "ordered_slots": 26,
+      "queryable_relations": 7,
+      "action_relations": 3,
+      "relations_with_dependency_output": 7,
+      "reference_types": 14,
+      "clause_roles": 5,
+      "speech_acts": 5,
+      "proof_family_groups": 10,
+      "accepted_output_compatibility_edges": 5,
+      "accepted_output_compatibility_source_types": [
+        "spatial.position"
+      ],
+      "relation_ids": [
+        "spatial.located_at",
+        "identity.same_as",
+        "filesystem.located_at",
+        "runtime.host_of",
+        "spatial.near",
+        "acl.share",
+        "communication.send",
+        "movement.destination",
+        "workflow.position",
+        "document.position"
+      ],
+      "explicit_relation_to_executor_table": false,
+      "v265x_line_status": {
+        "v2651_through_v2654": "STATIC_BLOCK",
+        "v2655": "STATIC_PASS_FACADE_DELTA_ONLY",
+        "v2656": "AUTHOR_PRE_INFRA_REVIEW_INFERENCE_DISABLED",
+        "live_accuracy_credit": false
+      },
+      "offline_structural_reports": {
+        "core": "69/69",
+        "graph": "125/125",
+        "infra": "72/72",
+        "suite34_representability_and_gates": "34/34"
+      },
+      "coverage_conclusion": "Strong focused structural evidence, not catalog-general or full-109 coverage."
+    },
+    "snapshot": {
+      "routes": 96,
+      "mechanically_decomposable_names": 89,
+      "special_names": 7,
+      "special_route_ids": [
+        "admin",
+        "consult_frontier",
+        "get_location",
+        "get_now",
+        "login_session",
+        "reply_messages",
+        "undo_last_turn"
+      ],
+      "argument_occurrences": 491,
+      "distinct_argument_names": 255,
+      "explicit_semantic_intent_contracts": 0
+    },
+    "current_checkout_manifests": {
+      "selection": [
+        "executors/*/manifest.toml",
+        "runtime/builtin_executor_contracts/*/manifest.toml"
+      ],
+      "unique_manifests": 103,
+      "intent_contracts": 0,
+      "execution_contracts": {
+        "present": 10,
+        "read_only": 9,
+        "mutating": 1,
+        "missing": 93
+      },
+      "output_contracts": 103,
+      "true_semantic_output_types": 0,
+      "argument_semantic_type_occurrences": 2,
+      "argument_occurrences": 601,
+      "distinct_argument_names": 336,
+      "runtime_resolved_argument_occurrences": 54,
+      "affinity_present": 99,
+      "capabilities_present": 103,
+      "revertible_true": 17
+    },
+    "snapshot_checkout_drift": {
+      "overlap": 81,
+      "snapshot_only_count": 15,
+      "checkout_only_count": 22,
+      "nominal_union": 118,
+      "nominal_union_is_active_inventory": false,
+      "snapshot_only": [
+        "change_pulls_github",
+        "create_issues_github",
+        "create_tasks_github",
+        "delete_issues_github",
+        "delete_messages_github",
+        "find_issues_github",
+        "find_pulls_github",
+        "login_session",
+        "read_issues_github",
+        "read_pulls_github",
+        "read_tasks_github",
+        "reply_messages",
+        "send_messages_github",
+        "set_issues_github",
+        "set_pulls_github"
+      ],
+      "checkout_only": [
+        "act_sites",
+        "classify_entries",
+        "compare_entries",
+        "delete_entries",
+        "delete_preferences",
+        "delete_sites",
+        "describe_entries",
+        "describe_images",
+        "extract_entries",
+        "find_entries",
+        "find_files_hash",
+        "find_images_google_photos",
+        "get_approval",
+        "get_images_google_photos",
+        "get_preferences",
+        "login_sites",
+        "login_urls",
+        "open_sites",
+        "read_sites",
+        "set_preferences",
+        "write_entries",
+        "write_images_google_photos"
+      ]
+    },
+    "v24_migration_metadata": {
+      "rows": 96,
+      "canonical_route_kinds": 89,
+      "special_route_kinds": 7,
+      "manifest_states": {
+        "aligned": 51,
+        "argument_drift": 30,
+        "missing": 15
+      },
+      "field_states": {
+        "derived": 370,
+        "manual_required": 83,
+        "suggested": 998
+      },
+      "argument_states": {
+        "manual_required": 69,
+        "suggested": 422
+      },
+      "materializable_domains": [
+        "entries",
+        "files"
+      ],
+      "runtime_ready_routes": 0
+    },
+    "reported_benchmark_metadata": {
+      "v23lite_raw": "98/109",
+      "v24_on_v23lite": "105/109",
+      "v241_strict": "107/109",
+      "v241_on_v23_full": {
+        "score": "102/109",
+        "valid": 107,
+        "fail_closed": 2
+      },
+      "v21_adversarial": {
+        "score": "44/50",
+        "valid": 45,
+        "fail_closed": 5
+      },
+      "handover_current_adjudicated": "108/109",
+      "full109_records": 109,
+      "full109_clauses": 159,
+      "note": "109 records are not 109 semantic intent IDs."
+    }
+  },
+  "coverage_assessment": {
+    "current_semantic_registry_coverage": "10 focused relations",
+    "current_catalog_contract_coverage": "No reviewed relation-to-executor matrix",
+    "suite34_status": "Focused smoke/representability scope only",
+    "full109_claim_supported": false,
+    "required_future_definition": [
+      "Every active executor has at least one production-reviewed projection",
+      "Every reviewed relation and projection has synthetic contract tests",
+      "Natural-language suites pass without raw-language projector fallbacks"
+    ]
+  },
+  "decision": {
+    "recommended_architecture": "three_compiled_layers",
+    "layers": [
+      {
+        "id": "semantic_registry",
+        "purpose": "Deduplicated technical ontology used by the analyzer",
+        "must_not_contain": [
+          "executor_names_as_semantic_authority",
+          "source_language_terms",
+          "synonym_lists",
+          "stopword_lists",
+          "inflection_or_clitic_rules",
+          "localized_affinity_rules"
+        ]
+      },
+      {
+        "id": "projection_registry",
+        "purpose": "Deterministic relation-to-executor and legacy projection",
+        "visible_to_llm": false,
+        "reads_raw_query": false
+      },
+      {
+        "id": "compact_analyzer_view",
+        "purpose": "Stable ordinal relation signatures and constant response schema"
+      }
+    ],
+    "rejected_primary_design": "One huge enum/oneOf of 96 or 103 executor route names",
+    "rejection_reasons": [
+      "Conflates semantic understanding with product tool selection",
+      "Binds the model to stale inventory",
+      "Inflates prompt and decoder grammar",
+      "Does not generalize to imported providers",
+      "Duplicates equivalent relations"
+    ],
+    "cutover_authorized_now": false
+  },
+  "minimal_schema": {
+    "semantic_registry_required": [
+      "registry_version",
+      "registry_hash",
+      "type_definitions",
+      "action_and_effect_definitions",
+      "relation_definitions",
+      "compatibility_edges"
+    ],
+    "relation_required": [
+      "id",
+      "kind",
+      "action_id",
+      "ordered_slots",
+      "outputs",
+      "default_effect_or_variants",
+      "universal_safety_obligations"
+    ],
+    "slot_required": [
+      "role_id",
+      "type_id",
+      "cardinality",
+      "allowed_binding_kinds",
+      "unknown_policy"
+    ],
+    "output_required": [
+      "output_id",
+      "type_id",
+      "cardinality"
+    ],
+    "projection_required": [
+      "executor_id",
+      "manifest_sha256",
+      "relation_id",
+      "technical_selection_conditions",
+      "slot_to_argument_bindings",
+      "semantic_outputs",
+      "ownership",
+      "durability",
+      "effects",
+      "safety_and_policy_tags",
+      "legacy_projection",
+      "review_provenance"
+    ],
+    "analyzer_output": {
+      "constant_shape": true,
+      "top_level": [
+        "status",
+        "atoms"
+      ],
+      "atom_fields": [
+        "relation_ordinal",
+        "clause_index",
+        "clause_role",
+        "speech_act",
+        "ordered_bindings",
+        "proof"
+      ],
+      "binding_kinds": [
+        "source_span",
+        "context_ref",
+        "typed_literal",
+        "from_prior_atom",
+        "unknown"
+      ],
+      "derived_not_emitted": [
+        "action_id",
+        "slot_role_ids",
+        "slot_type_ids",
+        "output_types"
+      ]
+    },
+    "legacy_projection_rule": "Legacy Intent/route is generated only from projection metadata and typed graph, never from raw user text."
+  },
+  "derivation_policy": {
+    "mechanically_authoritative": [
+      "signed_executor_identity_version_origin_and_digest",
+      "json_property_names_and_primitive_types",
+      "required_default_and_enum",
+      "explicit_runtime_resolved",
+      "capabilities_and_platforms",
+      "explicit_execution_effect",
+      "exact_machine_readable_output_schema_when_available",
+      "hash_reference_and_collision_checks",
+      "ordinal_and_compact_view_generation",
+      "arity_type_cardinality_and_compatibility_validators"
+    ],
+    "bootstrap_suggestion_only": [
+      "route_name_action_object_qualifier_split",
+      "executor_family_clustering",
+      "candidate_relations_and_roles_from_manifest_code_and_technical_tests",
+      "candidate_argument_role_bindings",
+      "candidate_output_domains_from_schema_inline_or_description",
+      "candidate_legacy_projection"
+    ],
+    "production_review_required": [
+      "special_and_multimode_semantics",
+      "relation_action_and_effect_identity",
+      "patient_source_destination_object_basis_and_carrier",
+      "slot_roles_semantic_types_cardinality_and_binding_sources",
+      "output_semantics_ownership_durability_redundancy_and_lifetime",
+      "coercions_and_lossiness",
+      "legacy_aliases_and_projection",
+      "materialization_sinks_and_provider_selection",
+      "safety_consent_recipient_channel_and_mutation_policy",
+      "conditional_variants"
+    ],
+    "review_gate": {
+      "required_state": "production_reviewed",
+      "required_provenance": [
+        "reviewer",
+        "reviewed_at",
+        "source_hashes",
+        "compiler_version"
+      ],
+      "runtime_rejects": [
+        "suggested",
+        "manual_required",
+        "missing_contract",
+        "mutated_source_hash"
+      ]
+    }
+  },
+  "decoder_latency_strategy": {
+    "primary": [
+      "constant_generic_json_schema",
+      "integer_relation_ordinals_under_registry_hash",
+      "deduplicated_semantic_signatures_only_in_prompt",
+      "executor_projection_table_excluded_from_prompt",
+      "one_llm_call_for_full_graph",
+      "post_decode_isolated_registry_validator",
+      "derive_redundant_fields_from_relation_signature",
+      "stable_registry_order_for_prefix_caching"
+    ],
+    "must_avoid": [
+      "oneOf_per_relation",
+      "large_string_enum_of_executor_routes",
+      "one_call_per_clause",
+      "mandatory_two_stage_classifier",
+      "language_specific_candidate_rules"
+    ],
+    "optional_retrieval": {
+      "enabled_by_default": false,
+      "source": "localized_catalog_descriptions_as_i18n_data",
+      "multi_action_method": "whole_request_plus_overlapping_unicode_windows_then_candidate_union",
+      "semantic_authority": false,
+      "activation_gate": "100_percent_candidate_recall_on_109_plus_70_plus_holdout_repeated_K5",
+      "forbidden": [
+        "connector_lists",
+        "stopword_lists",
+        "verb_lists",
+        "synonym_lists_in_code_or_projector"
+      ]
+    },
+    "observed_metadata": {
+      "v241_projector_cpu_median_ms": 2.5,
+      "v241_projector_cpu_p95_ms": 4.02,
+      "inference_included_in_projector_numbers": false,
+      "output_decode_fixed_ms_estimate": 789,
+      "output_decode_ms_per_token_estimate": 9.915,
+      "output_decode_fit_r_squared": 0.9983,
+      "v265_synthetic_byte_reduction_percent": 2.56
+    }
+  },
+  "compiler_invariants": [
+    "Active inventory complete and unambiguous",
+    "Every projection references existing relation types policies and adapters",
+    "Every required executor argument has a binding or explicit runtime source",
+    "Every required semantic slot is projected or causes clarification",
+    "Producer and consumer output types are compatible",
+    "Ownership and durability are consistent across dependencies",
+    "Coercion graph is acyclic bounded and explicitly lossless or reviewed",
+    "Primary materialization sink is unique where required",
+    "No orphan route or unresolved projection collision",
+    "No localized text regex affinity synonym stopword or inflection rule in authority artifacts",
+    "Projection cannot weaken universal safety obligations",
+    "Hashes provenance and review state verified before load",
+    "Manifest registry and ordinal-map mutations fail closed"
+  ],
+  "migration_gates": [
+    {
+      "phase": 0,
+      "name": "signed_catalog_inventory_v2",
+      "requirements": [
+        "Reconcile 15 snapshot-only and 22 checkout-only names",
+        "Classify active historical builtin imported and unavailable",
+        "Freeze inventory hash"
+      ]
+    },
+    {
+      "phase": 1,
+      "name": "reviewed_contract_authoring",
+      "requirements": [
+        "Extend manifest schema with intent contract",
+        "Draft without benchmark query or gold",
+        "Production-review every active executor projection",
+        "No route-name or prose fallback"
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "compiler_and_contract_tests",
+      "requirements": [
+        "All compiler invariants pass",
+        "Synthetic/property tests for every relation projection and compatibility edge",
+        "Multi-action and multi-domain graph composition tests",
+        "Ambiguity unsupported clarification safety and mutation tests"
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "compact_analyzer_offline",
+      "requirements": [
+        "Constant schema",
+        "Isolated validator",
+        "Topological ordering clause coverage dependencies ownership evidence and safety",
+        "Invalid output fails closed"
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "frozen_natural_language_benchmarks",
+      "requirements": [
+        "suite34 K1 then K5 as smoke only",
+        "full109 strict and adjudicated K1 then K5",
+        "109/109 adjudicated in every run",
+        "zero structural invalid and zero regressions",
+        "extended70 K1 then K5 with zero regression or security violation",
+        "contamination audit",
+        "new independent historical holdout after registry freeze"
+      ]
+    },
+    {
+      "phase": 5,
+      "name": "shadow_canary_cutover",
+      "requirements": [
+        "Legacy remains executor during shadow",
+        "Compare route order dependencies arguments provenance ownership effects consent and failures per clause",
+        "Zero unaccepted semantic diffs for agreed window",
+        "Canary with immediate rollback",
+        "Compatibility adapter retained through rollback window"
+      ]
+    },
+    {
+      "phase": 6,
+      "name": "legacy_removal",
+      "requirements": [
+        "Graph is sole semantic source",
+        "No raw-query semantic consumers",
+        "Equivalent tests pass",
+        "Legacy branch shadow fire count is zero",
+        "Rollback window completed"
+      ]
+    }
+  ],
+  "test_metrics": [
+    "schema_validity",
+    "semantic_exactness",
+    "clause_coverage",
+    "ordering_and_dependency_accuracy",
+    "safety_and_evidence_accuracy",
+    "candidate_recall_if_retrieval_enabled",
+    "retry_rate",
+    "llm_call_count",
+    "end_to_end_latency_p50_p95",
+    "legacy_noninferiority_delta"
+  ],
+  "holdout_requirements": [
+    "created_only_after_registry_freeze",
+    "historical_source_redacted_and_deduplicated",
+    "independent_adjudication",
+    "multi_action",
+    "multi_domain",
+    "anaphora",
+    "conditions",
+    "negation",
+    "quotations",
+    "cross_atom_output_dependencies",
+    "oracle_accepts_genuinely_equivalent_alternatives"
+  ],
+  "legacy_removal": {
+    "global_preconditions": [
+      "typed_graph_is_sole_source_of_truth",
+      "no_raw_query_semantic_consumers",
+      "equivalent_tests_pass",
+      "shadow_fire_count_zero",
+      "rollback_window_complete"
+    ],
+    "delete_after_full_cutover": {
+      "runtime/intent_extractor.py": [
+        "_entries_intent_verbs",
+        "_demote_meta_object",
+        "_READING_VERBS",
+        "_OPEN_SOURCE_PROBE",
+        "_bind_reads_to_open_source",
+        "extract_intent",
+        "_parse_json",
+        "whole_module_after_last_import"
+      ],
+      "runtime/prompts": [
+        "it/intent_extractor_v4.j2",
+        "en/intent_extractor_v4.j2",
+        "intent_extractor_scaffold.j2_variants",
+        "equivalent_pending_candidates_after_reference_check"
+      ],
+      "runtime/prefilter.py": [
+        "_VERB_TO_CANONICAL",
+        "_extend_verb_table_from_vocab",
+        "implements_intent_verb",
+        "_DIRECT_MESSAGE_RE",
+        "is_direct_message_query",
+        "detect_canonical_verb",
+        "_IT_CLITIC_SUFFIXES",
+        "_strip_italian_clitic",
+        "detect_canonical_verbs_all",
+        "_OBJECT_HINTS",
+        "_FS_EXTENSIONS",
+        "_DOMAIN_RE",
+        "_detect_domain_in_query",
+        "detect_canonical_object",
+        "_STOPWORDS_IT",
+        "_STOPWORDS_EN",
+        "_STOPWORDS",
+        "affinity_score_raw_query_path",
+        "affinity_phrase_score_raw_query_path",
+        "affinity_phrase_recall_raw_query_path",
+        "_OBJECT_PRIMARY_TOOLS",
+        "_QUERY_DEPENDENT_PRECURSORS",
+        "_EXIF_MARKERS",
+        "_TIME_INTENT_HINTS",
+        "_TIME_INTENT_RE",
+        "_SHELL_INTENT_HINTS",
+        "_SHELL_INTENT_RE",
+        "_GENERIC_AFFINITY_VERBS",
+        "_rank_adaptive_legacy"
+      ],
+      "runtime/prefilter_strategies": [
+        "token_flat.py",
+        "cached_token_flat.py",
+        "token_flat_v2.py::_PROVIDER_MARKERS",
+        "token_flat_v2.py::_VERB_FAMILY",
+        "verb_first.py",
+        "trie.py",
+        "trie_v2.py::_QUALIFIER_MARKERS",
+        "bloom.py_raw_language_path",
+        "fts5.py_raw_language_path",
+        "constraint.py_raw_language_path",
+        "length_adaptive.py_raw_language_path"
+      ],
+      "runtime/vocab.py": [
+        "ACTION_MAPPING_language_mapping",
+        "_OBJECT_SYNONYMS_IT",
+        "_OBJECT_SYNONYMS_EN",
+        "canonical_object",
+        "detect_implicit_actions",
+        "language_dependent_boundary_and_action_rendering"
+      ],
+      "runtime/compound_decomposer.py": [
+        "_connector_pattern",
+        "_FORMAT_HINTS",
+        "_FIELD_STOP",
+        "_FIELD_CUT_PREP",
+        "_SCHEMA_MARKER_RE",
+        "_TABULAR_WITH_FIELDS_RE",
+        "split_query_chunks",
+        "_clean_field_name_and_query_field_derivation",
+        "detect_chunk_action",
+        "derive_tool_name",
+        "_send_has_explicit_recipient_after_typed_recipient_and_consent_coverage"
+      ],
+      "other": [
+        "runtime/nlu.py_after_graph_feature_coverage",
+        "tests/runtime/infra/test_nlu_llm_boundary.py_after_graph_feature_coverage",
+        "runtime/fast_path.py::_LOCATION_PATTERNS_and_location_branch_after_review_and_shadow",
+        "routing_specific_runtime/detection_lexicon_seed.py_concepts_and_consumers"
+      ]
+    },
+    "migrate_before_removal": {
+      "runtime/agent_runtime.py": [
+        "extract_intent_call_sites",
+        "_check_top_k_affinity_jaccard",
+        "_query_has_continuation",
+        "_all_query_verbs_satisfied",
+        "_query_has_notify_continuation",
+        "_query_requires_availability_check",
+        "query_side_count_and_presentation_normalizers"
+      ],
+      "runtime/engine/routing_pool.py": [
+        "_gate_image_modality_raw_query_path",
+        "provider_raw_query_branches",
+        "build_routing_pool_to_projection_resolver"
+      ],
+      "runtime/engine/proposer.py": [
+        "_render_skeleton_to_typed_graph"
+      ],
+      "runtime/engine/dispatch.py": [
+        "_enforce_missing_clauses",
+        "_ensure_extract_clause",
+        "_align_framework_action_pairs",
+        "_align_framework_objects",
+        "_affinity_chunks",
+        "_align_strong_affinity_producers",
+        "_dropped_required_verbs",
+        "_normalize_store_clauses",
+        "_decontaminate_clause_objects",
+        "_fix_unroutable_verbs",
+        "_conform_to_intent_order",
+        "_enforce_missing_objects",
+        "_fill_clause_args",
+        "_scope_sink_provider_to_clause",
+        "_decontaminate_reader_qualifier",
+        "equivalent_query_side_report_normalizers"
+      ]
+    },
+    "retain": [
+      "_coerce_args_to_schema",
+      "_strip_unknown_args",
+      "literal_path_url_email_and_host_validation",
+      "credential_and_secret_redaction",
+      "dataflow_connectivity_and_type_compatibility",
+      "ownership_policy_consent_acl_recipient_and_channel",
+      "taint_tracking_mass_mutation_and_safety_gates",
+      "dom_evidence_and_post_execution_verification",
+      "atomic_validation_and_rollback",
+      "lab_v24_v26_artifacts_as_archived_evidence",
+      "graph_to_legacy_compatibility_adapter_until_rollback_window_ends"
+    ]
+  },
+  "open_decisions": [
+    "Authoritative active/imported/historical inventory among the nominal 118 names",
+    "Reviewed semantic relation granularity after provider deduplication",
+    "Projection variants for multi-mode executors",
+    "Machine-readable semantic output contracts",
+    "Execution and safety contracts for the 93 manifests currently missing execution metadata",
+    "Latency budget after measuring the full cached semantic registry"
+  ],
+  "verdict": {
+    "feasible": true,
+    "replacement_gate_met_now": false,
+    "recommended_next_step": "Build and freeze signed catalog inventory v2, then add reviewed contracts and compile semantic/projection/analyzer views.",
+    "final_cutover_gate": "Complete reviewed active-catalog coverage plus 109/109 adjudicated K5, extended70 with no regressions, frozen independent holdout, and zero unaccepted shadow semantic diffs.",
+    "core_principle": "The LLM interprets language; the registry declares technical capabilities and types; the projector applies only reviewed technical metadata and never raw-language rules."
+  }
+}

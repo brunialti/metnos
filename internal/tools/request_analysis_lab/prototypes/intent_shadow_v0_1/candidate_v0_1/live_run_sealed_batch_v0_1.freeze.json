@@ -1,0 +1,10 @@
+{
+  "accepted_http_posts": 316,
+  "algorithm": "sha256",
+  "authorization_sha256": "480ec7bff9f4668871281689764e3a1064be31f30404c1454e957c72789ee285",
+  "batch_sha256": "eac40d320a8e2d98b0a11ab2ed652cf9ecc64b4893fb2e658a9bbde50143ca0b",
+  "consumption_marker_sha256": "6c5c4ca6d351a35ee684f175b8617ec3cde3a2edf5fbaf50242797c5beb0999f",
+  "freeze_format": "metnos.intent-shadow-live-sealed-batch-freeze/0.1",
+  "journal_sha256": "403135c52aff5852e782f6549bc55f0f08d64b6a92e7a8fb4b9c6374c7515c4e",
+  "record_count": 316
+}

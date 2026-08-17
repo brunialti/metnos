@@ -1,0 +1,365 @@
+Analyze a user request written in ANY language. This is semantic normalization,
+not text rewriting. The input is JSON containing the exact original request and
+its whitespace tokens numbered from 1.
+
+Return one record for every predicate that could otherwise be mistaken for an
+operation. Preserve their order. A record role is:
+- request: an operation the user asks the assistant to execute;
+- forbid: another operation the user explicitly commands not to perform;
+- condition: a state or condition controlling another requested operation;
+- description: a predicate describing data, history, state, or a relative clause;
+- quote: predicate-like text inside a quoted/literal value.
+
+For request records, normalize the predicate directly to one canonical action
+and object from the output schema. Resolve inflection, idiom, attached pronouns,
+ellipsis and cross-clause references from meaning and context. Set
+`predicate_anchor_token_id` to one numbered source token anchoring that
+predicate. Set `input_from_predicate_anchor_id` to an earlier predicate anchor
+supplying an elided patient, otherwise 0. For non-request records use the closest canonical action/object when clear,
+otherwise `none`; they are never executable intents.
+
+Do not translate, rewrite, summarize, copy literals, add implicit operations,
+or turn passive/descriptive/conditional/quoted predicates into requests.
+An operation whose own purpose is to select, keep, exclude, or discard data is
+a request, not a forbid record. Forbid applies only when the grammar prohibits
+performing a separate operation. Do not treat auxiliaries, articles,
+prepositions, pronouns or conjunctions as independent predicates. Output JSON
+only.
+
+Canonical action ontology (technical definitions, not surface-word mappings):
+- read: Materialize the RAW CONTENT/body of an object identified by id/path/URL: bytes, text, JSON, decoded form. Input = KNOWN id/path/URL (object `urls` ONLY if the query contains an explicit http(s) url/endpoint; otherwise the object is the domain one: files/messages/numbers/…). side_effect=fetch_content, unbounded, format-typed (read_*_csv/_pdf/_ocr). NOT describe (summarize/aggregate = describe: read delivers the raw, doesn't summarize) · NOT get (snapshot/metadata, no body) · NOT list (names only) · NOT find (you don't know which yet).
+- write: Creates or replaces the content of a specific file; including the UPLOAD of files/photos to a service or provider ("upload to drive/google photos"). NOT send (send = human recipients or channels: mail, chat, notifications).
+- move: Cambia path o nome di file/dir esistente. Reversibile via swap_src_dst.
+- delete: Distruzione (irreversibile o reversibile con backup blob).
+- create: Creazione di contenitori (dir) o di derivati persistenti del dominio (indici). I file con contenuto vanno a write. Per gli indici: `create_<dom>_indices` (es. create_images_indices) costruisce o aggiorna l'indice del dominio target; il qualifier `_indices` (modalita') segnala che il mezzo di ricerca e' un derivato persistente del dominio.
+- find: DISCOVERY: search a source of truth by PATTERN/QUERY (`patterns`, `query`, `name`). You don't know in advance what exists; you discover it. Output = matching list (empty = absent; subsumes existence-check AND counting «how-many/count X»: you enumerate the ELEMENTS to count them → find_<dom>, object = the element). NOT get (get takes KNOWN ids, not a search pattern; «how many files in DIR» = find_files, not get) · NOT filter (filter stays in-memory on a list already held; find hits the source). Controlled exception `find_<dom>_indices` (ADR 0086): `_indices` = the search MEDIUM is a persistent index, output stays domain entries (find_images_indices → photos).
+- list: ENUMERATE the members of a container WITHOUT fetching content (file names in a dir, IMAP folders). NOT read (read pulls the members' content) · NOT find (find takes a pattern; list takes the container).
+- filter: REDUCE a PRE-EXISTING list of entries (via `from_step:N` or the `entries` arg) to the subset matching a predicate (regex, range, threshold). Pure compute, no I/O to system sources. NOT get/find (those fetch NEW data; filter already holds the list). Also covers selecting a subset of text lines (filter_texts_lines): that is `filter`, not `extract`.
+- sort: Riordina entries per chiave. Opzionale top-K. Pure compute.
+- group: Combina uno o piu' flussi di entries, con deduplica opzionale, oppure raggruppa entries per valore di un campo. Pure compute.
+- classify: Aggiunge un'etichetta a ogni entry secondo un criterio (LLM-augmented).
+- get: Retrieve a SNAPSHOT for KNOWN identifiers (paths, signatures, lat/lon, pid) OR a whole-domain snapshot (accessory filters `user`/`pid`/`top=N`): fresh metadata/attributes/scalar, WITHOUT the content body. side_effect=fetch_metadata|none, cheap, format-agnostic. Input = identifiers or nothing (=all), NEVER a search pattern. NOT read (read pulls the BODY/content: a URL's JSON, a file's text → read) · NOT find (find takes a pattern; get takes ids or nothing) · NOT filter (filter reduces a list already held).
+- set: Idempotent upsert of STATE/labels/assignee/metadata of an EXISTING entity (local config OR remote entity), by KNOWN identifier: the record stays, a status field changes. E.g. «close/reopen the issue» (state=closed/open), «assign», «label», set a config. side_effect=state_update, reversible via diff/prior-state. NOT delete (delete DESTROYS the record; set keeps it alive and editable — «close»≠«delete») · NOT change (change transforms FORM/content: resize/convert/merge; set touches STATE/labels, not pixels/body) · NOT create (create makes a NEW entity; set modifies an existing one).
+- send: Remote side-effect towards RECIPIENTS or channels (SMTP mail, push, webhook, message). NOT uploading files/photos to a storage service ("upload to drive/photos" → write). Irreversible.
+- describe: Insight aggregato/condensato di una lista (LLM-augmented). Opposto di get.
+- render: Format di dati gia' disponibili (markdown/html/json). Non prende dati nuovi.
+- extract: Tira fuori STRUTTURA incapsulata in un contenitore. Due usi (§2.2, allargato 3/6): (1) decompressione archivi zip/tar/gz → `extract_files`; (2) RECORD STRUTTURATI da testo NON strutturato (web, mail, pdf) → `extract_entries` (es. eventi {summary,start,end}, voci di spesa). NON: «estrai righe da un testo» = `filter` (filter_texts_lines); «estrai campi da entries GIÀ strutturate» = `get`; «estrai testo GREZZO da PDF/HTML» = `read` (read_files_pdf/html). Differenza con (2): qui il testo è libero e produci record TIPIZZATI nuovi, non selezioni/leggi.
+- compress: Crea archivio compresso da file/dir.
+- compute: Calcolo deterministico puro (math, eval, unit convert, hashing). Nessun side-effect.
+- compare: Confronto fra due (o piu') entita' → relazione/diff/booleano.
+- change: Modify the FORM/parameters/content of a datum without changing its nature (resize, convert format, rotate, crop, merge a PR). The object stays the same type (an image stays an image: size/pixels change). NOT set (set touches STATE/labels/metadata, not form: «close the issue»=set, not change) · NOT compress (compress archives into a container) · NOT render (render = OUTPUT format).
+- order: Materializza un ordinamento PERSISTENTE del corpus (indice CLIP, perceptual hash, threading messages, ...) per rendere veloci query future. Distinto da sort: sort ordina una lista IN MEMORIA del turno corrente; order produce un derivato durevole su disco. Composizione naturale: order_X_y costruisce/refresha l'indice, find_X_y lo interroga. Refresh tipicamente lazy (al primo find_X_y che lo richiede) o esplicito (utente: 'ricostruisci indice').
+- share: OUTBOUND CONSENT (ADR 0128): grant access a una risorsa senza spostarla o duplicarla. Crea un permission/ACL grant remoto sull'entita' identificata da `id`/`ids`. Distinto da `send` (outbound copy o notifica: il destinatario riceve un OGGETTO, es. una mail) e da `set` (upsert idempotente di valori/labels/metadata interni al record). Esempio: condividere un Drive file con un utente = share_files (l'entita' resta nel proprio drive, il destinatario riceve solo un permesso di lettura/scrittura). Reversibile via revoke (`delete_<obj>_permissions_by_id` 5° reverse_pattern §2.3).
+- open: Opens a persistent, authenticatable browser SESSION on a website (`sites` domain, F1): a stateful/cookie context ready for login and reading. NOT read (read_urls_html reads a PUBLIC stateless page) · NOT get (get_urls = single HTTP fetch). The session_id is internal, wired via from_step.
+- login: Authenticates a `sites` SESSION with the encrypted credentials ALREADY stored in the vault: the BROKER injects the secret (the agent/planner never sees it, §3.2). NOT get_inputs (interactive value collection from the user) · NOT set_credentials (storing credential metadata). Uses already-stored credentials; if absent, fails honestly.
+- act: Performs an ACTION on an authenticated `sites` session (click/fill/submit — F2). Sensitive actions (submit/POST/navigation) go through a BATCH human-approval gate (§4.2). NOT change (transforms a datum's FORM) · NOT send (human recipients). F2 only.
+
+Object is the technical entity the operation acts on, not a grammatical word.
+Use files for generic filesystem I/O, including ordinary image/text files;
+use images only when visual content itself is searched or analyzed. Use dirs
+when the directory/container is the unit being measured, created, deleted or
+enumerated. Use entries for structured records already in memory or in an
+explicit internal record store. Use messages for mail/chat content or an
+outbound human message; events for calendar records; persons for the enrolled
+identity/face registry; contacts for an address book; urls only for an explicit
+web resource/source; processes for operating-system process or machine-health
+snapshots. Choose the closest remaining ontology name by its ordinary technical
+meaning. Never infer an object from a pronoun alone: resolve its antecedent.
+
+
+Validation policy: emit every independently requested operation exactly once.
+An operation embedded only as the patient/state of another predicate is not an
+extra request. A condition may require later planning, but is not an independent
+intent unless the user explicitly commands its verification. The canonical
+intent stays semantic; do not change it merely to imitate a tool name.
+
+Product ontology refinements (technical behavior, independent of input
+language):
+
+1. A direct information question is a requested operation even when it has no
+imperative surface verb. A request for raw/full content is read, not describe;
+describe is only condensation, synthesis, or aggregation.
+2. Identity enrollment and biometric face-registry membership belong to
+persons. Creating/updating membership is set, deleting membership is delete,
+reading a known person's information is read, and taking a registry snapshot is
+get. Ordinary structured business records belong to entries, not persons.
+3. Calendar commitments belong to events. Reading one's commitments is read;
+discovering candidate availability by a criterion is find; creating a booking
+is create.
+4. Mailbox folders are part of messages. Moving a message into another mailbox
+is move, not set. Selecting a subset without destroying source data is filter;
+delete is only actual removal from the source of truth.
+5. For filesystem entities: content of a known file/path is read; attributes of
+a known file are get; existence, pattern search, count of matching elements, or
+selection by a criterion is find; enumerating members of a known container is
+list. Aggregate inspection of directories uses find/dirs in this ontology.
+A destination path mentioned with a requested download does not create a
+second write action unless writing/saving is independently requested.
+6. Images is used for visual search, visual description/classification, and OCR
+reading of image pixels. Generic filesystem operations and file metadata on an
+image use files. Metadata enrichment attached to photo files uses get/files.
+7. packages denotes installed software; existence/installation-state checks are
+find/packages. processes denotes running processes and machine-health snapshots;
+process existence is find/processes, while a whole machine/process snapshot is
+get/processes. numbers includes clock/time scalar answers. places includes the
+user's own location and geographic place lookup.
+8. A predicate in a relative/passive clause describes the requested entity and
+is not an additional operation. A negated or excluded operation is forbid, even
+when expressed by an infinitive or attached pronoun.
+
+Mandatory canonical tie-breaks:
+
+- A person/guest's enrollment, registration, or membership in an identity
+registry is persons even when the registry itself is not named. A question
+about the requester's own identity is read/persons. Enumeration of registered
+people is get/persons; list/persons is not a canonical intent.
+- A request to transfer existing messages between mailboxes is move/messages.
+- Reading/downloading the content represented by an already named file is
+read/files. Merely naming a local destination/container in the same clause does
+not change that predicate to write; a separate save/write predicate would be a
+separate request record.
+- Selecting, keeping, excluding, or discarding members according to a property
+is filter. It is neither delete nor forbid because source data remains intact.
+Role forbid is only for a prohibited operation, not for a negative selection
+criterion.
+- Directory/container aggregate size is find/dirs in the Metnos intent
+ontology, never get/dirs.
+- Adding or retrieving descriptive metadata for photo files is get/files,
+unless the request explicitly changes pixel content. It is not set/images.
+
+`predicate_anchor_token_id` identifies one source token anchoring the predicate,
+never its patient, object, filters, paths, destinations, or dates. It is only a
+stable graph identifier; canonical meaning lives in `verb` and `object`.
+
+Acquiring/downloading content is read even when the same clause names where the
+result should land. Writing is a separate intent only when creation, saving, or
+replacement is independently commanded. Reading text encoded in image pixels,
+including screenshots, is read/images. A requested operation that filters out
+members is request+filter; it is not a prohibited operation.
+
+A yes/no check that software is installed, present, or available on the machine
+is find/packages. A check that one named process, service, or daemon is actively
+running is find/processes. Use get/processes only for a snapshot/list of process
+or machine-health data. Do not infer active execution from mere software
+presence.
+
+Pipeline and routability refinements:
+
+- `input_from_predicate_anchor_id` is a graph edge, not a record ordinal. Use 0
+  when the predicate has an explicit patient or no data dependency. Otherwise
+  use the `predicate_anchor_token_id` of the earlier predicate whose result
+  supplies this predicate's elided patient. Never put a record number there.
+- A whole-domain operating-system process observation, including ranking or
+  selecting current processes by resource use, is get/processes. Only the
+  running-state/existence check for one named process is find/processes.
+- A command to produce a report/document artifact is write/files. Searching
+  within a mailbox remains messages; an explicit internal structured-record
+  store is entries. Persisting extracted records to that store is a separate
+  write/entries request.
+- `group` partitions/combines a held collection; `classify` assigns a category
+  or label to each member. Tasks represent scheduled automated work; events
+  represent calendar commitments and reminders.
+- A transfer to a human recipient or human communication channel is
+  send/messages regardless of the payload type. An explicit HTTP(S) source is
+  urls regardless of the downloaded representation. Public-web discovery is
+  find/urls; it is neither read/urls nor discovery of the subject-matter object.
+- Generic movement, compression, persistence, attachment lookup, metadata
+  lookup, and access sharing of an existing image file use files. Use images
+  only when the operation acts on visual content itself. Recognizing enrolled
+  identities in visual content is get/persons.
+- `object_qualifier` is normally none. Set it only when a requested persistent
+  output artifact requires a distinct canonical technical route; a requested
+  spreadsheet artifact uses the canonical spreadsheet qualifier. Never copy a
+  source filename extension or input representation into this field.
+
+Before emitting JSON, enforce every technical invariant below. These define
+canonical product operations and override literal surface-verb similarity:
+
+1. A resource-ranked or filtered observation of the current process table is
+   get/processes. find/processes is reserved for the existence/running-state of
+   one named process.
+2. Assigning a category/label to every member is classify, including when the
+   category key is a date or place. group only partitions/combines data without
+   assigning labels.
+3. Delivery of any payload to a person or communication channel is
+   send/messages. Granting continuing access to an existing resource is
+   share/files. These operations are distinguished by effect, not recipient.
+4. Reading/downloading from an explicit HTTP(S) source is read/urls. Searching
+   the public web is find/urls regardless of the subject being sought.
+5. A named existing local attachment is get/files. Generic persistence,
+   movement, compression, metadata inspection, and sharing of image files use
+   files; pixel/visual analysis alone uses images. Biometric identity lookup in
+   visual content is get/persons, not classification.
+6. An explicit persistent structured-record store is a distinct write/entries
+   sink. If extraction produces records for that sink, emit both extract/entries
+   and write/entries even when expressed in one grammatical clause.
+7. Creating a new specialized artifact uses create, while updating an existing
+   one uses write. Use an output artifact qualifier only for that newly created
+   or updated artifact; all source formats have qualifier none.
+
+Check that no emitted request violates these seven invariants.
+
+Structural precedence rules:
+
+- Emit exactly one increasing predicate anchor per record. The anchor is a
+  source-token identifier, not a copied span and not a record ordinal.
+- If the user's predicate semantically names one canonical action explicitly,
+  preserve that action. Do not replace classify with group, or share with send,
+  merely because an argument could also support the latter action. Apply a
+  product boundary override only where the technical ontology explicitly
+  requires one, such as a process-table snapshot.
+- `materialize_to` records a persistent sink expressed inside the same predicate
+  when there is no separate save/write predicate anchor. Use the canonical sink
+  object, otherwise none. Extraction directed into the structured-record store
+  therefore has materialize_to=entries. If saving/writing has its own predicate,
+  emit that predicate instead and leave materialize_to=none.
+
+Use a morphology-first structured head, not a rewritten query:
+
+- In `semantic_heads`, emit the predicate's short dictionary-form lemma in the
+  SAME language as its source token. Remove inflection and attached/reflexive
+  pronouns. Do not translate, paraphrase, choose a product action, copy the
+  patient, or rewrite the clause. One lexical lemma is preferred; a genuine
+  phrasal predicate may use at most three words.
+- Complete all heads before product routing. Then use each lemma together with
+  the untouched original request to choose the final canonical action/object.
+  The lemma is morphological evidence, never executable text and never a
+  replacement for the original request.
+- Context decides the technical operation: a display/show lemma can become
+  read, render, or get depending on what is shown; an attachment lemma referring
+  to a named existing file becomes get/files; a process search lemma can become
+  get/processes for a whole-table snapshot. Conversely, a direct classify,
+  share, create, or compress lemma must not be replaced merely because its
+  arguments support another operation.
+
+Immediately after each same-language lemma, emit `semantic_gloss_en`: one
+common English dictionary verb preserving the lemma's lexical meaning before
+product routing. This is a pivot label, not a rewritten request and not a
+surface-term dictionary. Resolve false friends from the untouched local clause.
+A genuine phrasal predicate may use at most three words. Complete lemma and
+gloss before choosing semantic_action, effect, verb, or object.
+
+For each semantic head also emit `resource_scope`, independently of product
+routing. single_known means one already identified entity; collection_by_criterion
+means multiple source-of-truth members selected or ranked by a criterion;
+whole_domain means an unfiltered domain/table snapshot; held_result means the
+patient comes from an earlier predicate; new_resource means this predicate
+creates it; not_applicable is for predicates without a resource patient. This
+is semantic cardinality/state, not a guess based on a product tool name.
+
+Phase 1 must build a grounded predicate/argument graph before Phase 2 product
+routing. This graph is semantic and language-independent; never rewrite the
+request or use source-language trigger lists.
+
+Identity and edges:
+- Assign predicate_id exactly 1,2,3,... in source order. It is the graph node
+  identity and is distinct from predicate_anchor_token_id, which only points to
+  the source predicate token.
+- source_predicate_id is 0 or the predicate_id of an EARLIER predicate whose
+  result supplies this predicate's elided patient. It is never a token number,
+  record count chosen as a patient, or current/future id.
+
+Grounded roles are tagged unions. Choose exactly one variant and emit only its
+fields. A patient is {kind:none} only when no semantic patient exists;
+{kind:explicit,start_token_id,end_token_id,object} when source tokens name it;
+{kind:elided,object} only when source_predicate_id supplies it; or
+{kind:implicit,object} only when context supplies an unstated patient and there
+is no source edge. Never use elided or implicit when patient words are present.
+All explicit spans are inclusive and strictly positive. Carrier and sink use
+the same tagged-union discipline:
+- carrier {kind:none} when there is no explicit carrier; otherwise choose
+  source_container, transport_channel, or representation and include a
+  non-zero source span plus its canonical object.
+- sink {kind:none} when there is no explicit destination; otherwise choose
+  primary_output or secondary_persistence and include a non-zero source span
+  plus its canonical object.
+- primary_output means the predicate itself creates, saves, moves, or updates
+  that destination. It is already the predicate's object and never adds an
+  operation.
+- secondary_persistence means THIS SAME predicate additionally commits its
+  result to a separate persistent store. It is the only sink variant that adds
+  a derived write operation.
+- If saving/writing is an independently expressed predicate, the upstream
+  predicate MUST have {kind:none}; put primary_output on the dedicated
+  save/write predicate and connect it with source_predicate_id. Never encode
+  the same persistence both as an upstream secondary sink and a downstream
+  predicate.
+
+Domain preservation:
+- A held result keeps its semantic patient domain across filter/delete/sort/
+  classify unless the operation explicitly changes representation. Scheduled
+  automation records remain tasks; do not collapse them to generic entries.
+- In discovery, the sought item and its source container may differ. Searching
+  an item inside a source-of-truth domain acts through the source_container;
+  acquiring content from an explicit URL likewise acts through the URL carrier.
+- Raw/full content is content_read. Metadata_lookup is only attributes about a
+  known entity; the words denoting raw content belong in the patient span.
+
+Complete every semantic head, including all grounded roles, before emitting
+any Phase 2 predicate. Phase 2 copies predicate_id, anchor, role and graph edge,
+then emits only verb, verb_resolution, object, and object_qualifier. It MUST NOT
+repeat, reinterpret, or redundantly encode carrier/sink metadata. Product
+selection may consult Phase 1 but may not revise it.
+
+Catalog-grounded bindings (language-neutral; never match source-word lists):
+
+For every semantic head emit `desired_observation`. It is a mandatory,
+flat relation contract; it is not a route, capability ID, rewritten query, or
+surface trigger. Determine every field from the untouched clause before Phase
+2 routing. Never copy words into enum fields.
+
+- `speech_act` records how the clause is used. `open_question` asks for an
+  unknown answer variable; `polar_question` asks for a boolean. Imperatives,
+  conditions, quotations, and descriptions retain their distinct values.
+- `relation` names the technical relation, not the lexical predicate.
+  `spatial.located_at` is geographic placement of an entity at a spatial
+  position and time. Keep filesystem location, process hosting, nearby search,
+  document position, workflow progress, identity, sharing, and movement in
+  their distinct relation families.
+- `focus_role` is the argument requested as the answer, not merely an argument
+  mentioned in the clause. `focus_type` is that answer variable's value type.
+- `subject_ref` identifies whose attribute is queried. Use `current_actor` only
+  for the user/device/session participating in this turn; an explicit or
+  unknown third party is not the current actor. An actor location used only as
+  an input to another request is `current_actor_location_operand`.
+- `time_scope=current` means the requested observation is now/latest, never a
+  historical or merely contextual time.
+- Focus and subject evidence are independent. `explicit_span` and
+  `clause_span` use inclusive positive token ranges. `predicate_morphology`
+  may ground a subject encoded by inflection and uses the predicate token span.
+  `speaker_context` grounds an unspoken current actor and uses 0,0. `none`
+  always uses 0,0. Overlapping evidence is valid.
+- Use relation=none and neutral focus/subject/time/evidence only when the
+  predicate does not express a relation or requested observation. Do not erase
+  a relation merely because its speech act is condition, quote, description,
+  polar question, or imperative.
+
+The catalog projector derives `runtime.current_location` only from this full
+signature on a request head: open_question + spatial.located_at + focus
+location:spatial_position + subject current_actor:actor + time current. The
+model never emits that binding ID. Nearby results, identity, another entity's
+location, historical location, filesystem/runtime/document/workflow position,
+quoted text, conditions, and polar questions cannot satisfy the signature.
+
+For every semantic head emit `argument_binding`, also a tagged union.
+- Use {"kind":"none"} unless this predicate supplies an existing resource as
+  a typed argument to an earlier predicate.
+- `calendar_event_attachment` means this predicate references an already
+  existing file as attachment/support for an earlier create/events predicate.
+  Set target_predicate_id to that earlier id, ground the existing file in a
+  positive span, keep source_predicate_id equal to the target id, use an
+  explicit files patient, route this support predicate as get/files, and use
+  {"kind":"none"} sink. The binding is not a new predicate.
+- Creating, saving, updating, or writing a file is not an argument binding,
+  even when another predicate also creates an event.
+
+Sink ownership comes from the technical operation contract, not a verb list.
+An explicit persistent store for an otherwise ephemeral extracted entries
+result is secondary_persistence and is separate from extract/entries. A
+compression operation owns its archive as primary output. A dedicated
+write/create predicate owns its own output. Never mark an existing support file
+as a new primary output.
+
+Bindings are semantic graph facts. Complete them before Phase 2 routing. Never
+derive them from lemma/gloss spelling, never copy source text, and never emit a
+binding merely to force a known route.

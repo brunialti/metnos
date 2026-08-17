@@ -1,0 +1,927 @@
+{
+  "call_count": 20,
+  "case_ids": [
+    "bp-001",
+    "bp-007",
+    "bp-012",
+    "bp-013",
+    "bp-018"
+  ],
+  "format": "metnos.intent-qwen-parameter-sweep/0.1",
+  "profiles": {
+    "creative_035": {
+      "cache_prompt": false,
+      "temperature": 0.35
+    },
+    "greedy_no_cache": {
+      "cache_prompt": false,
+      "min_p": 0.0,
+      "top_k": 1,
+      "top_p": 1.0
+    },
+    "standard": {},
+    "thinking_1024": {
+      "cache_prompt": false,
+      "reasoning_budget": 1024,
+      "thinking": true
+    }
+  },
+  "records": [
+    {
+      "case_id": "bp-001",
+      "elapsed_ms": 9506,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "standard",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "162c18615673aadb621490c629060b34dc75fe16c1b50ccccf17f10467d39309",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 50,
+          "prompt_tokens": 6064,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6114
+        }
+      },
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "case_id": "bp-001",
+      "elapsed_ms": 9365,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "greedy_no_cache",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "da43ef5222db0dd7bacb95761534030528e3440317d7140c008fcaff93257548",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 50,
+          "prompt_tokens": 6064,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6114
+        }
+      },
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "case_id": "bp-001",
+      "elapsed_ms": 13926,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "thinking_1024",
+      "raw_model_output_b64": "eyJraW5kIjoib3BlcmF0aW9uX2dyYXBoIiwic3RlcHMiOlt7InJvdXRlIjoiZmluZC9maWxlcyIsImZyb20iOlswXX1dfQ==",
+      "request_sha256": "72c47d7bd46efb89fc8d165a8868ba2f6fa47798b46feb3eaa879b2af38d9073",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 1680,
+        "usage": {
+          "completion_tokens": 439,
+          "prompt_tokens": 6062,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6501
+        }
+      },
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "case_id": "bp-001",
+      "elapsed_ms": 9466,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "creative_035",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "a31ecd4edfe2482161838e06fdba9a016bf1c2209d2b475b06b84c737135f17b",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 55,
+          "prompt_tokens": 6064,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6119
+        }
+      },
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 9118,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "greedy_no_cache",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "9fba3ef34ea025b4bd4f0f1eea08d82a49761710906331177aa06393959f2be9",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 23,
+          "prompt_tokens": 6071,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6094
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 19096,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "thinking_1024",
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoib3V0c2lkZV9yZWdpc3RyeSJ9",
+      "request_sha256": "6a75fc8a6a077630b9c974f81c4d98fef7dc20fc7ddec15dee593c7e3c980127",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 3347,
+        "usage": {
+          "completion_tokens": 1038,
+          "prompt_tokens": 6069,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 7107
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 9136,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "creative_035",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "ddebc15f0281549a4fcf631bfa55ce56e32423911e444aa82a89b2f093f5eeed",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 23,
+          "prompt_tokens": 6071,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6094
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 388,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "standard",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "a2bd19b35e5c5b28ee2cc88a82d213d25af24162772118893eac46ff04e14368",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 23,
+          "prompt_tokens": 6071,
+          "prompt_tokens_details": {
+            "cached_tokens": 6043
+          },
+          "total_tokens": 6094
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-012",
+      "elapsed_ms": 19721,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "thinking_1024",
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoib3V0c2lkZV9yZWdpc3RyeSJ9",
+      "request_sha256": "5f2862972756774c699757c90064887e3732c5a875031d9bc549e97e6e916572",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 3804,
+        "usage": {
+          "completion_tokens": 1038,
+          "prompt_tokens": 6076,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 7114
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-012",
+      "elapsed_ms": 9112,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "creative_035",
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoib3V0c2lkZV9yZWdpc3RyeSJ9",
+      "request_sha256": "d4d8b360d97bc90f9399cf1103f51b0de3634440af5a8189b117061480e8255c",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 13,
+          "prompt_tokens": 6078,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6091
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-012",
+      "elapsed_ms": 394,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "standard",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "301b37b6ab9a44ee2addbb9a6d0a8f51352717afa1554bf958a7e517f6b0ba42",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 23,
+          "prompt_tokens": 6078,
+          "prompt_tokens_details": {
+            "cached_tokens": 6046
+          },
+          "total_tokens": 6101
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-012",
+      "elapsed_ms": 9190,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "profile": "greedy_no_cache",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "cfa12666ae7b32c4095118b6ebf048923b61cacf2efb11a9f436e1050c2a2b27",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 23,
+          "prompt_tokens": 6078,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6101
+        }
+      },
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-013",
+      "elapsed_ms": 9664,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "creative_035",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9wbGFjZXMiCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "45c40dd58a966e9e6632e2803c7f44394de6bc1b15ad98ae3ccb0e58d6ef9352",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 54,
+          "prompt_tokens": 6069,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6123
+        }
+      },
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-013",
+      "elapsed_ms": 742,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "standard",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9wbGFjZXMiCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "5d68f5e765c9254c6639f15f5edc648fb828d01db10e4c513a4e23d308df5363",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 54,
+          "prompt_tokens": 6069,
+          "prompt_tokens_details": {
+            "cached_tokens": 6043
+          },
+          "total_tokens": 6123
+        }
+      },
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-013",
+      "elapsed_ms": 9605,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "greedy_no_cache",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9wbGFjZXMiCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "47c20fa4c67859a03a1266bd8fbd5f77dd433129f7c5e1a4a01ee886d81c11d7",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 54,
+          "prompt_tokens": 6069,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6123
+        }
+      },
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-013",
+      "elapsed_ms": 21517,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "thinking_1024",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9wbGFjZXMiLAogICAgICAiZnJvbSI6IFsKICAgICAgICAwCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJnZXQvcHJvY2Vzc2VzIgogICAgfQogIF0KfQ==",
+      "request_sha256": "e4d3089590efe049365840c6aea242d80e617b7be73046710b5fcaba07d04543",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 3846,
+        "usage": {
+          "completion_tokens": 1097,
+          "prompt_tokens": 6067,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 7164
+        }
+      },
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 9722,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "standard",
+      "raw_model_output_b64": "ewogICJzdGVwcyI6IFsKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogInJlYWQvaXNzdWVzIgogICAgfSwKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogImRlbGV0ZS9pc3N1ZXMiCiAgICB9CiAgXQp9",
+      "request_sha256": "86c5edf6a8e8b34841ba14394049ee9564373631145ffda560fa0eec3c857987",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 59,
+          "prompt_tokens": 6030,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6089
+        }
+      },
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 9725,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "greedy_no_cache",
+      "raw_model_output_b64": "ewogICJzdGVwcyI6IFsKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogInJlYWQvaXNzdWVzIgogICAgfSwKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogImRlbGV0ZS9pc3N1ZXMiCiAgICB9CiAgXQp9",
+      "request_sha256": "dd402ef34f102c12bf29cd62b35cdb9530542a91f0916e1b4093d50d792d6871",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 59,
+          "prompt_tokens": 6030,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6089
+        }
+      },
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 21806,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "thinking_1024",
+      "raw_model_output_b64": "eyJzdGVwcyI6Wwp7Im5lZWRzX2FwcHJvdmFsIjp0cnVlLCJyb3V0ZSI6InJlYWQvaXNzdWVzIn0sCnsibmVlZHNfYXBwcm92YWwiOnRydWUsInJvdXRlIjoiZGVsZXRlL2lzc3VlcyIsImZyb20iOlswXX0KXX0=",
+      "request_sha256": "58b3d6ea9e0a6e158b26df71a6dccdb26e98eb11b713e3f8643ec86e856c62c3",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 4445,
+        "usage": {
+          "completion_tokens": 1060,
+          "prompt_tokens": 6028,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 7088
+        }
+      },
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 9729,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "profile": "creative_035",
+      "raw_model_output_b64": "ewogICJzdGVwcyI6IFsKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogInJlYWQvaXNzdWVzIgogICAgfSwKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogImRlbGV0ZS9pc3N1ZXMiCiAgICB9CiAgXQp9",
+      "request_sha256": "dd20641e136de88025800708d42fe04e9aa67476cbc7c844c3e028b0e535678b",
+      "response": {
+        "finish_reason": "stop",
+        "model": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+        "reasoning_chars": 0,
+        "usage": {
+          "completion_tokens": 59,
+          "prompt_tokens": 6030,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 6089
+        }
+      },
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    }
+  ],
+  "retry_count": 0,
+  "summary": {
+    "creative_035": {
+      "exact": 3,
+      "median_elapsed_ms": 9466,
+      "valid": 4
+    },
+    "greedy_no_cache": {
+      "exact": 3,
+      "median_elapsed_ms": 9365,
+      "valid": 4
+    },
+    "standard": {
+      "exact": 3,
+      "median_elapsed_ms": 742,
+      "valid": 4
+    },
+    "thinking_1024": {
+      "exact": 3,
+      "median_elapsed_ms": 19721,
+      "valid": 3
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "action_ontology_present": false,
+  "base_v253_freeze_sha256": "758ffae7a6487cdd103712f2ecb532455f4662ee8e60abf9bbd9a218bc95a4bb",
+  "base_v253_runner_sha256": "c417278c40aca616b07b95834f75043920e3dc2427a729ab245a7c3f9bf74615",
+  "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "evidence_contract": "tagged_union_object_required_relation_subject_time",
+  "fixture_sha256": "4e887a1e3cf6f38b20f18e2b39842674ed4ca2a78ede4d93693690e0e62cd427",
+  "minimal_signature_sha256": "b5f37f03512b5b276e44918015488a2798679f07f0bd327b2cb4b4a22e583ca9",
+  "model_calls_per_case": 1,
+  "mutations_sha256": "e5a8a45f44808e253f963aac4bbcf66ad1b3444b9392a31dc444bd5f4d89846c",
+  "native_run_required": true,
+  "network_calls_before_freeze": 0,
+  "posthoc_credit_allowed": false,
+  "product_route_present": false,
+  "prompt_sha256": "dad168f1975a3ab96b3e70303efce939aaab464ba71f567ff9c691d11c862a60",
+  "removed_redundant_fields": [
+    "answer_mode",
+    "focus_role",
+    "focus_type",
+    "subject_type",
+    "deixis_center"
+  ],
+  "request_body_probe_sha256": "89d26a2e1656f945258f5e375b5455b30221a49420e14d825d914a1bb3c44b88",
+  "retries": 0,
+  "runner_sha256": "0b6ab465fc9cfd19ddd2a59c49d2ce0d5ff4e31867ebc8d0f1c2aa8e558b5cb8",
+  "runtime_cutover_eligible": false,
+  "schema_sha256": "3a8963414f56c9d239a59ef010e76a330dea53f4838c7bb4fed6060698f4caf0",
+  "segmentation": "Unicode UAX#29 default word boundary via regex.WORD|VERSION1",
+  "segmenter_source_sha256": "e6b495f3b0c2dd1974530ca30a1c5c5cb1a63f306f947c4699c8466186d785f6",
+  "status": "frozen_pre_inference",
+  "validator_source_sha256": "64af73f61ca41759bd0d656b3101b9a83f094b1737dc1a58aaa354196a1f0087",
+  "version": "metnos.v26.2-minimal-phase1/1.0"
+}

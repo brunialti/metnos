@@ -1,0 +1,40 @@
+{
+  "version": "metnos.v26.5.4-runtime-manifest/1.0",
+  "artifacts": [
+    {
+      "id": "adapter",
+      "kind": "python_source",
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact_adapter.py",
+      "sha256": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+      "size": 5600
+    },
+    {
+      "id": "validator",
+      "kind": "python_source",
+      "path": "internal/tools/request_analysis_lab/candidates/v2653/metnos_v2653_injected_validator.py",
+      "sha256": "66760987f5d2335c79114632affa5c04ffecd9ffe5f8e1a7adec7bc50b4b793d",
+      "size": 31627
+    },
+    {
+      "id": "registry",
+      "kind": "json_data",
+      "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_registry.json",
+      "sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+      "size": 9456
+    },
+    {
+      "id": "schema",
+      "kind": "json_data",
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact.schema.json",
+      "sha256": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+      "size": 13751
+    },
+    {
+      "id": "prompt",
+      "kind": "utf8_data",
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact.prompt.txt",
+      "sha256": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+      "size": 8154
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+ "confirmed": [
+  {
+   "claim": "the evaluator accepts the bundle's own fake batch",
+   "evidence": "batch 116601 bytes, 34 records",
+   "id": "A0"
+  },
+  {
+   "claim": "expansion_clean_cases is tied to its evidence",
+   "evidence": "forging it on an invalid record is rejected",
+   "id": "B1"
+  },
+  {
+   "claim": "codes that nothing can re-derive are declared, not implied",
+   "evidence": "every record without an expansion carries semantic_codes_reproducible=false",
+   "id": "C2"
+  },
+  {
+   "claim": "the reproducibility declaration cannot be forged",
+   "evidence": "flipping it is rejected before gold",
+   "id": "C3"
+  },
+  {
+   "claim": "the recovered semantic codes are reproducible",
+   "evidence": "erasing them on a censored record is rejected",
+   "id": "C1"
+  },
+  {
+   "claim": "fingerprint and expansion are cross-checked",
+   "evidence": "an inconsistent pair is rejected",
+   "id": "D1"
+  },
+  {
+   "claim": "no smuggling shape reaches a persisted field",
+   "evidence": "5 shapes: fingerprint, schema paths and all code lists stay inside the closed vocabulary",
+   "id": "E1"
+  },
+  {
+   "claim": "an out-of-range span is caught",
+   "evidence": "schema_ok=True, validator=['clause_span', 'proof_family']",
+   "id": "F1"
+  },
+  {
+   "claim": "no transport is reachable without a gate",
+   "evidence": "preflight and live both refuse with the gates absent",
+   "id": "G1"
+  },
+  {
+   "claim": "bundle and pinned bytes are intact",
+   "evidence": "19 pins verified",
+   "id": "H1"
+  }
+ ],
+ "findings": [],
+ "gate_consumed": false,
+ "gate_created": false,
+ "independent": false,
+ "live_runs": 0,
+ "model_calls": 0,
+ "network_calls": 0,
+ "probes": 10,
+ "reviewer": "author",
+ "verdict": "PASS",
+ "version": "metnos.v26.5.6.7-author-static-review-probe/1.0"
+}

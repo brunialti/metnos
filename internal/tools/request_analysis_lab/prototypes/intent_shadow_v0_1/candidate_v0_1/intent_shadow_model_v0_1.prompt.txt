@@ -1,0 +1,98 @@
+Emit exactly one JSON document accepted by the supplied schema.
+Select one exclusive root kind. Do not emit explanations or extra fields.
+Use only registry keys. Preserve operation order and indispensable clauses.
+A meaning outside the registry uses a registered unrepresentable reason; malformed output is not an abstention.
+A barrier owns every node in each emitted outcome body. Omitted outcomes are empty.
+A data edge may reference only a dominating prior operation ordinal; omit uniquely derivable ports.
+Ordinary operation registry:
+- change/files | verb=change | object=files
+- change/pulls | verb=change | object=pulls
+- compress/files | verb=compress | object=files
+- compute/entries | verb=compute | object=entries
+- compute/files | verb=compute | object=files
+- compute/signatures | verb=compute | object=signatures
+- consult/frontier | verb=consult | object=frontier
+- create/calendars | verb=create | object=calendars
+- create/dirs | verb=create | object=dirs
+- create/events | verb=create | object=events
+- create/files | verb=create | object=files
+- create/images | verb=create | object=images
+- create/issues | verb=create | object=issues
+- create/tasks | verb=create | object=tasks
+- delete/calendars | verb=delete | object=calendars
+- delete/credentials | verb=delete | object=credentials
+- delete/dirs | verb=delete | object=dirs
+- delete/events | verb=delete | object=events
+- delete/files | verb=delete | object=files
+- delete/images | verb=delete | object=images
+- delete/issues | verb=delete | object=issues
+- delete/messages | verb=delete | object=messages
+- delete/persons | verb=delete | object=persons
+- delete/tasks | verb=delete | object=tasks
+- describe/numbers | verb=describe | object=numbers
+- filter/entries | verb=filter | object=entries
+- filter/lists | verb=filter | object=lists
+- filter/texts | verb=filter | object=texts
+- find/contacts | verb=find | object=contacts
+- find/credentials | verb=find | object=credentials
+- find/dirs | verb=find | object=dirs
+- find/events | verb=find | object=events
+- find/files | verb=find | object=files
+- find/images | verb=find | object=images
+- find/issues | verb=find | object=issues
+- find/packages | verb=find | object=packages
+- find/persons | verb=find | object=persons
+- find/places | verb=find | object=places
+- find/pulls | verb=find | object=pulls
+- find/urls | verb=find | object=urls
+- get/files | verb=get | object=files
+- get/images | verb=get | object=images
+- get/inputs | verb=get | object=inputs
+- get/location | verb=get | object=location
+- get/now | verb=get | object=now
+- get/persons | verb=get | object=persons
+- get/places | verb=get | object=places
+- get/processes | verb=get | object=processes
+- get/proposals | verb=get | object=proposals
+- get/signatures | verb=get | object=signatures
+- get/urls | verb=get | object=urls
+- group/entries | verb=group | object=entries
+- list/dirs | verb=list | object=dirs
+- list/skills | verb=list | object=skills
+- list/tasks | verb=list | object=tasks
+- login/session | verb=login | object=session
+- move/files | verb=move | object=files
+- move/messages | verb=move | object=messages
+- read/contacts | verb=read | object=contacts
+- read/events | verb=read | object=events
+- read/files | verb=read | object=files
+- read/issues | verb=read | object=issues
+- read/messages | verb=read | object=messages
+- read/persons | verb=read | object=persons
+- read/pulls | verb=read | object=pulls
+- read/tasks | verb=read | object=tasks
+- read/urls | verb=read | object=urls
+- reply/messages | verb=reply | object=messages
+- send/messages | verb=send | object=messages
+- set/credentials | verb=set | object=credentials
+- set/issues | verb=set | object=issues
+- set/messages | verb=set | object=messages
+- set/persons | verb=set | object=persons
+- set/pulls | verb=set | object=pulls
+- set/signatures | verb=set | object=signatures
+- set/skills | verb=set | object=skills
+- set/tasks | verb=set | object=tasks
+- share/files | verb=share | object=files
+- sort/entries | verb=sort | object=entries
+- write/files | verb=write | object=files
+System-control registry:
+- undo_last_turn | model_inputs=none
+Barrier registry:
+- get/approval | outcomes=approved,rejected
+Unrepresentable-reason registry:
+- ambiguous_intent
+- missing_required_information
+- mixed_root_kinds
+- no_actionable_intent
+- outside_registry
+- unsupported_dependency

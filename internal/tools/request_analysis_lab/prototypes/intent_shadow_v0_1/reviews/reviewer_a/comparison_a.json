@@ -1,0 +1,1940 @@
+{
+  "auxiliary_annotations": {
+    "ambiguity_presence_disagreement_indices": [
+      0,
+      10,
+      18,
+      28,
+      35,
+      39,
+      41,
+      43,
+      46,
+      48,
+      58,
+      59,
+      75,
+      85,
+      93,
+      100,
+      109,
+      114
+    ],
+    "ambiguity_present_count": {
+      "reviewer_a": 9,
+      "reviewer_b": 17
+    },
+    "confidence_not_exactly_compared": "Reviewer A uses categorical confidence; reviewer B uses numeric confidence."
+  },
+  "base_comparison": {
+    "comparable_root_subsets": {
+      "operation_graph_both": {
+        "case_count": 81,
+        "disagreements": 4,
+        "exact_document_agreements": 77
+      },
+      "root_kind_disagreements": 13,
+      "system_control_both": {
+        "case_count": 2,
+        "disagreements": 0,
+        "exact_document_agreements": 2
+      },
+      "unrepresentable_both": {
+        "case_count": 24,
+        "exact_document_agreements": 23,
+        "reason_disagreements": 1
+      }
+    },
+    "counts_by_reviewer": {
+      "reviewer_a": {
+        "barrier_nodes": 4,
+        "data_edges": 30,
+        "operation_nodes": 130,
+        "roots": {
+          "operation_graph": 94,
+          "system_control": 2,
+          "unrepresentable": 24
+        },
+        "system_control_roots": 2,
+        "unrepresentable_reasons": {
+          "ambiguous_intent": 1,
+          "no_actionable_intent": 2,
+          "outside_registry": 21
+        }
+      },
+      "reviewer_b": {
+        "barrier_nodes": 3,
+        "data_edges": 10,
+        "operation_nodes": 95,
+        "roots": {
+          "operation_graph": 81,
+          "system_control": 2,
+          "unrepresentable": 37
+        },
+        "system_control_roots": 2,
+        "unrepresentable_reasons": {
+          "no_actionable_intent": 2,
+          "outside_registry": 35
+        }
+      }
+    },
+    "exact_expected_agreement_count": 102,
+    "exact_expected_agreement_indices": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      10,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      23,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      41,
+      42,
+      43,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      98,
+      99,
+      101,
+      102,
+      103,
+      104,
+      105,
+      107,
+      108,
+      110,
+      111,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119
+    ],
+    "expected_disagreement_count": 18,
+    "expected_disagreement_indices": [
+      9,
+      11,
+      22,
+      24,
+      38,
+      39,
+      40,
+      44,
+      76,
+      77,
+      84,
+      85,
+      97,
+      100,
+      106,
+      109,
+      112,
+      113
+    ],
+    "field_comparison": {
+      "barriers": {
+        "agreements": 119,
+        "disagreement_indices": [
+          77
+        ],
+        "disagreements": 1
+      },
+      "control": {
+        "agreements": 120,
+        "disagreement_indices": [],
+        "disagreements": 0
+      },
+      "data_edges": {
+        "agreements": 109,
+        "disagreement_indices": [
+          22,
+          24,
+          39,
+          40,
+          44,
+          76,
+          77,
+          84,
+          100,
+          106,
+          113
+        ],
+        "disagreements": 11
+      },
+      "operation_routes": {
+        "agreements": 103,
+        "disagreement_indices": [
+          9,
+          11,
+          22,
+          24,
+          39,
+          40,
+          44,
+          76,
+          77,
+          84,
+          85,
+          97,
+          100,
+          106,
+          109,
+          112,
+          113
+        ],
+        "disagreements": 17
+      },
+      "reason": {
+        "agreements": 106,
+        "disagreement_indices": [
+          24,
+          38,
+          39,
+          40,
+          44,
+          76,
+          77,
+          85,
+          97,
+          100,
+          106,
+          109,
+          112,
+          113
+        ],
+        "disagreements": 14
+      },
+      "root": {
+        "agreements": 107,
+        "disagreement_indices": [
+          24,
+          39,
+          40,
+          44,
+          76,
+          77,
+          85,
+          97,
+          100,
+          106,
+          109,
+          112,
+          113
+        ],
+        "disagreements": 13
+      }
+    },
+    "triage_signal_counts": {
+      "appears_covered_application_error": 16,
+      "appears_new_semantic_choice": 2
+    }
+  },
+  "comparison_format": "metnos.intent-shadow-oracle-cross-review-comparison/0.1",
+  "controls_comparison": {
+    "controls": {
+      "a": [
+        {
+          "expected": {
+            "kind": "unrepresentable",
+            "reason": "mixed_root_kinds"
+          },
+          "id": "reviewer_a.control.035",
+          "query": "Annulla l'ultima operazione e poi trova i file .log in /tmp.",
+          "query_sha256": "1c53328c1d0bd594fc60c59bb3552e1f47691efdaf0ef584e97c4f05562e3476"
+        },
+        {
+          "expected": {
+            "body": [
+              {
+                "barrier": "get/approval",
+                "cases": [
+                  {
+                    "body": [
+                      {
+                        "kind": "operation",
+                        "route": "delete/files"
+                      }
+                    ],
+                    "outcome": "approved"
+                  },
+                  {
+                    "body": [
+                      {
+                        "kind": "operation",
+                        "route": "move/files"
+                      }
+                    ],
+                    "outcome": "rejected"
+                  }
+                ],
+                "kind": "barrier"
+              }
+            ],
+            "kind": "operation_graph"
+          },
+          "id": "reviewer_a.control.036",
+          "query": "Chiedimi conferma: se approvo cancella /tmp/prova.txt; se rifiuto spostalo in /tmp/scartati/prova.txt.",
+          "query_sha256": "e324347f07382bca2187952b59444c9b067a69e4f58bcd695cec0eb7600de559"
+        },
+        {
+          "expected": {
+            "body": [
+              {
+                "kind": "operation",
+                "route": "find/files"
+              }
+            ],
+            "kind": "operation_graph"
+          },
+          "id": "reviewer_a.control.037",
+          "query": "Non cancellare né spostare nulla: trova soltanto i file .tmp in /tmp.",
+          "query_sha256": "cc0b8799af7b6ca8f94b67874aa9f14c12e0bf4efed566322453704499e61410"
+        },
+        {
+          "expected": {
+            "kind": "unrepresentable",
+            "reason": "outside_registry"
+          },
+          "id": "reviewer_a.control.038",
+          "query": "Trova i file .log in /tmp e pubblicali sul social network aziendale.",
+          "query_sha256": "67f0608f2078b86e25dc45994e3a294bb4633a2f126cbf83fe24605f598b9d59"
+        }
+      ],
+      "b": [
+        {
+          "expected": {
+            "body": [
+              {
+                "kind": "operation",
+                "route": "read/issues"
+              },
+              {
+                "barrier": "get/approval",
+                "cases": [
+                  {
+                    "body": [
+                      {
+                        "data_from": [
+                          {
+                            "from": 0
+                          }
+                        ],
+                        "kind": "operation",
+                        "route": "set/issues"
+                      }
+                    ],
+                    "outcome": "approved"
+                  }
+                ],
+                "kind": "barrier"
+              }
+            ],
+            "kind": "operation_graph"
+          },
+          "id": "reviewer_b.ctrl.35.condition_owned_mutation.it",
+          "query": "Leggi la issue 47 e, solo se approvo, impostala come chiusa.",
+          "query_sha256": "f13776a4b46c441c5fd2c0a59a873fc79196e90ea29e9e16c02ea3f78d052a8e"
+        },
+        {
+          "expected": {
+            "kind": "unrepresentable",
+            "reason": "mixed_root_kinds"
+          },
+          "id": "reviewer_b.ctrl.36.mixed_root.it",
+          "query": "Annulla l'ultima operazione e poi leggi le mail di oggi.",
+          "query_sha256": "3da41938fcb9fa9af7a6aa1cc9485ea72a3347fec8a7a90f5853aee2de089d15"
+        },
+        {
+          "expected": {
+            "kind": "unrepresentable",
+            "reason": "outside_registry"
+          },
+          "id": "reviewer_b.ctrl.37.indispensable_outside_registry.it",
+          "query": "Leggi le mail di oggi e salva i risultati nello store posta_verifica.",
+          "query_sha256": "6b4dccaa8adc465097ef4a0ce0f7830761f4e8772db4cebcb977b15fd8a1093a"
+        },
+        {
+          "expected": {
+            "kind": "unrepresentable",
+            "reason": "outside_registry"
+          },
+          "id": "reviewer_b.ctrl.38.safe_but_inaccurate_stop.it",
+          "query": "Dove ero ieri alle 18?",
+          "query_sha256": "1c56b54ec44e3be3ad8aa70938abd7fbabd5181a596e501d7caffdc55847eb20"
+        }
+      ]
+    },
+    "exact_expected_document_pair_count": 3,
+    "exact_expected_document_pairs": [
+      {
+        "control_a": "reviewer_a.control.035",
+        "control_b": "reviewer_b.ctrl.36.mixed_root.it"
+      },
+      {
+        "control_a": "reviewer_a.control.038",
+        "control_b": "reviewer_b.ctrl.37.indispensable_outside_registry.it"
+      },
+      {
+        "control_a": "reviewer_a.control.038",
+        "control_b": "reviewer_b.ctrl.38.safe_but_inaccurate_stop.it"
+      }
+    ],
+    "exact_query_hash_matches": [],
+    "exact_query_matches": [],
+    "note": "Identical unrepresentable documents are not by themselves semantic duplicates; query purpose and adversarial target were also compared.",
+    "relations": [
+      {
+        "basis": "Entrambi mescolano undo_last_turn con una normale operazione e attendono unrepresentable/mixed_root_kinds; cambia soltanto l'operazione ordinaria.",
+        "control_a": "reviewer_a.control.035",
+        "control_b": "reviewer_b.ctrl.36.mixed_root.it",
+        "relation": "semantic_duplicate"
+      },
+      {
+        "basis": "Entrambi testano il possesso di una mutazione da parte di get/approval; A testa due rami non vuoti, B una dipendenza dati pre-barriera e il solo ramo approved.",
+        "control_a": "reviewer_a.control.036",
+        "control_b": "reviewer_b.ctrl.35.condition_owned_mutation.it",
+        "relation": "thematic_overlap_not_duplicate"
+      },
+      {
+        "basis": "Solo A testa l'ambito della negazione con mutazioni negate e una ricerca read-only conservata.",
+        "control_a": "reviewer_a.control.037",
+        "control_b": null,
+        "relation": "distinct_unmatched"
+      },
+      {
+        "basis": "Entrambi combinano una clausola registrata con un sink/effetto indispensabile fuori registro e attendono l'intero composto outside_registry.",
+        "control_a": "reviewer_a.control.038",
+        "control_b": "reviewer_b.ctrl.37.indispensable_outside_registry.it",
+        "relation": "semantic_duplicate"
+      },
+      {
+        "basis": "Solo B testa una richiesta di posizione storica non coperta dalla capacità corrente.",
+        "control_a": null,
+        "control_b": "reviewer_b.ctrl.38.safe_but_inaccurate_stop.it",
+        "relation": "distinct_unmatched"
+      }
+    ],
+    "reviewer_a_count": 4,
+    "reviewer_b_count": 4,
+    "semantic_duplicate_pair_count": 2,
+    "thematic_overlap_not_duplicate_pair_count": 1
+  },
+  "created_date": "2026-08-12",
+  "disagreements": [
+    {
+      "category": "operation_route_find_persons_vs_get_persons",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/persons"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/persons"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "index": 9,
+      "mismatch_fields": [
+        "operation_routes"
+      ],
+      "query": "a chi assomiglia la persona in questa foto?",
+      "query_sha256": "b160d8651e9ac103fb0c1681ec6964353958f72f15ed2a4d42a0f4efb8e46020",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "find/persons"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/persons"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "get/persons"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "get/persons"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "triage_basis": "Il confine find/get e i contratti di find/persons e get/persons esistono già; la divergenza richiede applicazione delle fonti, non una nuova forma.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "operation_route_find_persons_vs_get_persons",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/persons"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/persons"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "index": 11,
+      "mismatch_fields": [
+        "operation_routes"
+      ],
+      "query": "a chi assomiglia la persona in questa foto",
+      "query_sha256": "f2c45addf79f8b26c12320ac9e99fc2639a0783a87c5910f54bd69935a0702e8",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "find/persons"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/persons"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "get/persons"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "get/persons"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "triage_basis": "Stessa divergenza del caso 9; il registro e i manifest già distinguono ricerca da snapshot nominale.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "folded_count_vs_explicit_compute",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compute/entries"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "index": 22,
+      "mismatch_fields": [
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "quante email di spam ho ricevuto nella mailbox knowcastle",
+      "query_sha256": "9c0d0e23054b787c596cccc3b29fba7ea6d5d595813b8fb010b8e4c3edeae82e",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          }
+        ],
+        "operation_routes": [
+          "read/messages",
+          "compute/entries"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/messages"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "compute/entries"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "read/messages"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/messages"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "triage_basis": "Il contratto della sorgente dichiara già se il conteggio è esposto dal producer; la scelta è verificabile senza nuova semantica di schema.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "generic_store_mapped_to_files_vs_outside_registry",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/issues"
+          },
+          {
+            "kind": "operation",
+            "route": "read/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              },
+              {
+                "from": 1
+              }
+            ],
+            "kind": "operation",
+            "route": "filter/lists"
+          },
+          {
+            "data_from": [
+              {
+                "from": 2
+              }
+            ],
+            "kind": "operation",
+            "route": "write/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 3
+              }
+            ],
+            "kind": "operation",
+            "route": "compute/entries"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 24,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove non ancora presenti e dimmi quante issue nuove hai inserito.",
+      "query_sha256": "b2758cb06c46c2d0d866a7ff2a60a57721c14a2d7eeea6982766431646a7df69",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 2
+          },
+          {
+            "from": 1,
+            "to": 2
+          },
+          {
+            "from": 2,
+            "to": 3
+          },
+          {
+            "from": 3,
+            "to": 4
+          }
+        ],
+        "operation_routes": [
+          "find/issues",
+          "read/files",
+          "filter/lists",
+          "write/files",
+          "compute/entries"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/issues"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "read/files"
+          },
+          {
+            "ordinal": 2,
+            "path": [],
+            "route": "filter/lists"
+          },
+          {
+            "ordinal": 3,
+            "path": [],
+            "route": "write/files"
+          },
+          {
+            "ordinal": 4,
+            "path": [],
+            "route": "compute/entries"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "La regola di significato esatto e la decisione A sul composto indispensabile coprono l'uso di una rotta files per uno store di entries.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "unrepresentable_reason_precedence",
+      "expected_a": {
+        "kind": "unrepresentable",
+        "reason": "ambiguous_intent"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 38,
+      "mismatch_fields": [
+        "reason"
+      ],
+      "query": "cerca tutte fatture anthropic e metti data e importo su spreadsheet",
+      "query_sha256": "d43ca7b1a4a062addab2f5777a5fbbb6260ef4ea525fd010dd9d48a4685ba3fb",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "ambiguous_intent",
+        "root": "unrepresentable"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "Entrambi scelgono unrepresentable, ma ambiguity e una trasformazione fuori registro coesistono; il contratto non ordina le ragioni applicabili.",
+      "triage_signal": "appears_new_semantic_choice"
+    },
+    {
+      "category": "github_file_provider_scope",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/files"
+          },
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 39,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "leggi i file readme su github brunialti/metnos e cerca sul web notizie su python",
+      "query_sha256": "3cc86097287a54fe740a4e92ab2ffc6cb4c0a7a36d3cdc22287c73ecd1970555",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          }
+        ],
+        "operation_routes": [
+          "find/files",
+          "read/files",
+          "find/urls"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/files"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "read/files"
+          },
+          {
+            "ordinal": 2,
+            "path": [],
+            "route": "find/urls"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "Il confine fra rotta astratta e provider/runtime è già descritto dal contratto e dalle fonti congelate; resta da applicarlo al caso.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "generic_store_read_write_vs_outside_registry",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "filter/entries"
+          },
+          {
+            "data_from": [
+              {
+                "from": 1
+              }
+            ],
+            "kind": "operation",
+            "route": "send/messages"
+          },
+          {
+            "data_from": [
+              {
+                "from": 2
+              }
+            ],
+            "kind": "operation",
+            "route": "write/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 40,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "Cerca nello store github_issue_qa le entries con campo status uguale a 'approved', poi posta su GitHub il campo accepted_reply come commento della rispettiva issue del repo brunialti/metnos, infine scrivi nello store github_issue_qa quelle entries con campo status uguale a 'posted'",
+      "query_sha256": "a28c35924994e5735fe8463e81184f178a24615fa2d1f5b3db64aa3d35b8cd2b",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          },
+          {
+            "from": 1,
+            "to": 2
+          },
+          {
+            "from": 2,
+            "to": 3
+          }
+        ],
+        "operation_routes": [
+          "read/files",
+          "filter/entries",
+          "send/messages",
+          "write/files"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/files"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "filter/entries"
+          },
+          {
+            "ordinal": 2,
+            "path": [],
+            "route": "send/messages"
+          },
+          {
+            "ordinal": 3,
+            "path": [],
+            "route": "write/files"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "Significato esatto dello store e decisione A determinano se la composizione è integralmente registrata.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "generic_store_sink_vs_outside_registry",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/issues"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "write/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 44,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "Elenca le issue aperte di brunialti/metnos su github e salvale nello store github_issue_qa",
+      "query_sha256": "fcf916532baba973aee85de3dcfbea5ad68fad1754dc40a4e33ad7c17d0bde25",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          }
+        ],
+        "operation_routes": [
+          "find/issues",
+          "write/files"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/issues"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "write/files"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "La persistenza indispensabile nello store va verificata contro le rotte registrate secondo regole già approvate.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "generic_database_sink_vs_outside_registry",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/issues"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "write/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 76,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "leggi le issue aperte su github di brunialti/metnos e salvale nel database locale come pending",
+      "query_sha256": "13fcd3952a1fb5c8f2fb34a267dad0ec7cf2cc747cd4d4bf04c65cf3003f36d4",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          }
+        ],
+        "operation_routes": [
+          "find/issues",
+          "write/files"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/issues"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "write/files"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "La differenza riguarda l'applicazione della rotta write/files a un database/store, già governata da exact meaning e decisione A.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "store_flow_with_barrier_vs_whole_outside_registry",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "filter/entries"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 1
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "send/messages"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 2
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "write/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 77,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges",
+        "barriers"
+      ],
+      "query": "Cerca nello store github_issue_qa le issue con status uguale a 'answered', chiedi la mia approvazione, pubblica il commento su github e aggiorna lo status a 'posted'",
+      "query_sha256": "3e436229e861143eff061926655ecb46c8b1cf986409670f37b3c25ca28af8cc",
+      "semantic_projection_a": {
+        "barriers": [
+          {
+            "barrier": "get/approval",
+            "outcomes": [
+              "approved"
+            ],
+            "path": [
+              "barrier[2]"
+            ]
+          }
+        ],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          },
+          {
+            "from": 1,
+            "to": 2
+          },
+          {
+            "from": 2,
+            "to": 3
+          }
+        ],
+        "operation_routes": [
+          "read/files",
+          "filter/entries",
+          "send/messages",
+          "write/files"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/files"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "filter/entries"
+          },
+          {
+            "ordinal": 2,
+            "path": [
+              "get/approval:approved"
+            ],
+            "route": "send/messages"
+          },
+          {
+            "ordinal": 3,
+            "path": [
+              "get/approval:approved"
+            ],
+            "route": "write/files"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "Se store read/write è fuori registro, la decisione A già impone l'intera radice unrepresentable; non serve una nuova forma della barriera.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "implicit_multi_corpus_enumeration",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/dirs"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "get/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "index": 84,
+      "mismatch_fields": [
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "Elenca i corpus che hanno un indice immagini unificato e mostra quante foto contiene ciascuno",
+      "query_sha256": "367b0fb1dbd648f9e09e1fdf3922e17e24f733cc34271b402eed29698bb49486",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          }
+        ],
+        "operation_routes": [
+          "find/dirs",
+          "get/images"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/dirs"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "get/images"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "get/images"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "get/images"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "triage_basis": "Le fonti 0.1 non precisano se get/images astratto enumera implicitamente tutti i corpus o richiede una discovery dominante dei corpus.",
+      "triage_signal": "appears_new_semantic_choice"
+    },
+    {
+      "category": "github_known_file_provider_scope",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 85,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes"
+      ],
+      "query": "leggi il file README.md dal repo github brunialti/metnos",
+      "query_sha256": "49bb0f793f39c3070b942d51c7b904edc0a08e4fb36541045561b4bf6d246107",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "read/files"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/files"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "La divergenza può essere risolta applicando il confine esistente fra route verb/object e supporto provider, senza cambiare il contratto.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "bare_domain_read_url_vs_site_navigation",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 97,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes"
+      ],
+      "query": "leggi la pagina di booking.com",
+      "query_sha256": "718b37e2bc483118969fc6b1947aeaecadde33da0571db4e12463fc73c55bc67",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "read/urls"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/urls"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "I contratti esistenti distinguono URL noto, discovery e navigazione sites; il caso richiede applicare quel confine.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "github_file_provider_scope_in_compound",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/files"
+          },
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 100,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "leggi i file readme su github e cerca sul web notizie su python",
+      "query_sha256": "4860e501daa2f606bf33344d128ebc493a12aebd4d5b4acd7d91110bc59f5a10",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          }
+        ],
+        "operation_routes": [
+          "find/files",
+          "read/files",
+          "find/urls"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/files"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "read/files"
+          },
+          {
+            "ordinal": 2,
+            "path": [],
+            "route": "find/urls"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "Una volta applicato il confine provider esistente, la decisione A governa già l'intero composto.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "generic_store_delta_sink_vs_outside_registry",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/issues"
+          },
+          {
+            "kind": "operation",
+            "route": "read/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              },
+              {
+                "from": 1
+              }
+            ],
+            "kind": "operation",
+            "route": "filter/lists"
+          },
+          {
+            "data_from": [
+              {
+                "from": 2
+              }
+            ],
+            "kind": "operation",
+            "route": "write/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 106,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove con status new",
+      "query_sha256": "2f9a57e72d5580eed3337c7b10e63d9cd0ddc535c9c791099fe47096fd267256",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 2
+          },
+          {
+            "from": 1,
+            "to": 2
+          },
+          {
+            "from": 2,
+            "to": 3
+          }
+        ],
+        "operation_routes": [
+          "find/issues",
+          "read/files",
+          "filter/lists",
+          "write/files"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "find/issues"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "read/files"
+          },
+          {
+            "ordinal": 2,
+            "path": [],
+            "route": "filter/lists"
+          },
+          {
+            "ordinal": 3,
+            "path": [],
+            "route": "write/files"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "Store, delta e persistenza vanno confrontati con le rotte registrate; exact meaning e decisione A sono già sufficienti.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "github_container_listing_provider_scope",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "list/dirs"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 109,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes"
+      ],
+      "query": "elenca tutti i file su github nel repo brunialti/metnos",
+      "query_sha256": "384a81ffd25667d888137deb4f7147aa86981de49b1b434d63bce5e04e964ac9",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "list/dirs"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "list/dirs"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "La divergenza riguarda l'applicabilità di list/dirs al provider GitHub, verificabile dalle fonti congelate.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "bare_domain_content_vs_site_navigation",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 112,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes"
+      ],
+      "query": "cosa c'e' scritto nella pagina di booking.com",
+      "query_sha256": "6a19c76960ad5f2b1b75c3daf0dfcd15ed3bfe1cd05ea4d322b208409d4ffe6e",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [
+          "read/urls"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/urls"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "È lo stesso confine read/urls versus sites del caso 97, già descritto dai contratti.",
+      "triage_signal": "appears_covered_application_error"
+    },
+    {
+      "category": "structured_field_projection_vs_missing_route",
+      "expected_a": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "create/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "expected_b": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "index": 113,
+      "mismatch_fields": [
+        "root",
+        "reason",
+        "operation_routes",
+        "data_edges"
+      ],
+      "query": "leggi gli eventi di questa settimana, estrai titolo e orario e crea un foglio di calcolo",
+      "query_sha256": "f68547c6de41121277ed60c158be1b7356748aa13da42b3a9874099b7eb0ffbf",
+      "semantic_projection_a": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [
+          {
+            "from": 0,
+            "to": 1
+          }
+        ],
+        "operation_routes": [
+          "read/events",
+          "create/files"
+        ],
+        "operations": [
+          {
+            "ordinal": 0,
+            "path": [],
+            "route": "read/events"
+          },
+          {
+            "ordinal": 1,
+            "path": [],
+            "route": "create/files"
+          }
+        ],
+        "reason": null,
+        "root": "operation_graph"
+      },
+      "semantic_projection_b": {
+        "barriers": [],
+        "control": null,
+        "data_edges": [],
+        "operation_routes": [],
+        "operations": [],
+        "reason": "outside_registry",
+        "root": "unrepresentable"
+      },
+      "triage_basis": "Il confine approvato fra estrazione da testo e selezione di campi già strutturati, insieme al registro, copre il caso.",
+      "triage_signal": "appears_covered_application_error"
+    }
+  ],
+  "mode": {
+    "adjudication_performed": false,
+    "comparison_kind": "mechanical_after_blind_phase",
+    "note": "Triage signals identify whether a divergence appears covered by existing rules or exposes an uncovered choice; they do not select A or B.",
+    "oracle_files_modified": false
+  },
+  "pairing": {
+    "hash_mismatches": [],
+    "index_mismatches": [],
+    "missing_in_a": [],
+    "missing_in_b": [],
+    "paired_by_index_and_hash": 120,
+    "reviewer_a_case_count": 120,
+    "reviewer_b_case_count": 120,
+    "text_mismatches": []
+  },
+  "sources": {
+    "reviewer_a": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/reviewer_a/intent_shadow_oracle_reviewer_a_v0_1.json",
+      "sha256": "53d8f32679df6fc40f8528aa088ef212f354bee7118ab78394b2731dacf75509"
+    },
+    "reviewer_b": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/reviewer_b/intent_shadow_oracle_reviewer_b_v0_1.json",
+      "sha256": "a7a33a4aa7e422eb13514d7064cc6651ba67885df3c92f8e4093676aaeefc7dc"
+    }
+  },
+  "verification": {
+    "all_120_paired": true,
+    "control_hashes_unique_within_each_reviewer": true,
+    "errors": [],
+    "exact_agreement_plus_disagreement_equals_120": true
+  }
+}
+

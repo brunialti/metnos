@@ -1,0 +1,140 @@
+{
+  "arms": {
+    "A": "fresh current Metnos intent extractor snapshot plus read-only lab adapter",
+    "B": "candidate_v0_2 compact IR, strict structured output, deterministic compiler, critic off"
+  },
+  "authorization": {
+    "authorization_file": "authorization_run1.json",
+    "authorization_must_be_last": true,
+    "independent_audit_required": true,
+    "inference_executed": false,
+    "state": "disarmed"
+  },
+  "backend": {
+    "absolute_sources": {
+      "/etc/systemd/system/llama-server.service": "47bcd6dcee57e1bb50fbf58f85c72b576c6886ab515d3eb9a28b1860dcbc3788",
+      "/etc/systemd/system/llama-server.service.d/override.conf": "dffe0d4e35973ddf9893361780d9c3b9736daea7d2873b96f1cb6e817fb2974f",
+      "/home/roberto/.config/metnos/llm_tiers.toml": "2b5ff25e0933d0afdd847d3185272b8405215e4b401b32bf3ab544b535193c9a",
+      "/home/roberto/llama.cpp-0712/build/bin/llama-server": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+      "/home/roberto/llamacpp.env": "a50cac232aeccb1b8116e834173d15cde180e78193e1b0897e2a50905915efe3",
+      "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+      "/opt/suprastructure/config/models.yaml": "a0bb1a2ab22ced6d2bc3194aa63e935bfd01809cc4e95a2d6d937f154954a97f",
+      "/opt/suprastructure/models/manifest.yaml": "1460122a73eeaaf82580b5b7a0547179a3fc1542d69bd683f1078efb9ec22e73"
+    },
+    "api_model_id": "local",
+    "backend": "llama.cpp Vulkan",
+    "backend_binary": "/home/roberto/llama.cpp-0712/build/bin/llama-server",
+    "backend_binary_sha256": "14f86e51ea42cc2362285d1139d475d58b985a968e78cfbfdbdf9d9e9ee87c78",
+    "backend_build": "1422 (e3546c794)",
+    "endpoint": "http://localhost:8080/v1/chat/completions",
+    "physical_model_id": "qwen3.6-35b-a3b",
+    "provider": "llamacpp",
+    "source_revision": "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d",
+    "weights_path": "/home/roberto/models/qwen36-35b-mtp/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "weights_sha256": "0b21525e972670ed59e1812e170b27c26355381f0656ecc4e25617ece7dac58b",
+    "weights_size_bytes": 22663387424
+  },
+  "bindings": {
+    "candidate_freeze_file_sha256": "1004d0afa2a72567f4dbd0a0daad530ab05449d30d4cd4e57ab06c42d28f93b7",
+    "candidate_projection_file_sha256": "64e887728f5c14b05243fa5032471d146d9a0dfa2889c8784e651044b7860316",
+    "candidate_prompt_file_sha256": "a975386b06d58e6e806f51b9919493931f60869cac7d7ef02eecc77ddfbbe554",
+    "candidate_schema_file_sha256": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+    "control_registry_file_sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+    "control_snapshot_file_sha256": "87334e14090c1d4fc0b091cf62701ccbe4352e15b5394bfa98d67e38f1ebd19d",
+    "query_panel_file_sha256": "f769bcdb67dddac50b49be8477049dbeb9573860a73d54216b7598b31037025e"
+  },
+  "created_date": "2026-08-13",
+  "evaluation": {
+    "canonical_improvement_gate": "candidate_B_minus_control_A_at_least_3_exact_of_120",
+    "canonical_projection_symmetric": true,
+    "critical_columns": [
+      "semantic_exact_canonical",
+      "root_exact",
+      "correct_abstention",
+      "technical_valid",
+      "false_action_avoided",
+      "undo_exact",
+      "consent_exact",
+      "negation_exact",
+      "branch_ownership_exact"
+    ],
+    "gold_access": "only_after_complete_316_record_batch_and_seal_validate",
+    "inconclusive_delta": [
+      -2,
+      2
+    ],
+    "legacy_report": "separate Phase-1 direct-binding panel; no compensation",
+    "typed_special_gate": "candidate_B_exact_4_of_4",
+    "version": "v0.3-symmetric"
+  },
+  "failure_policy": {
+    "ambiguous_first_transport_attempt_blocks_rerun": true,
+    "append_only_journal": true,
+    "atomic_checkpoints": true,
+    "consumed_at": "first accepted HTTP POST",
+    "document_invalid": "count_error_and_continue",
+    "envelope_or_adapter_failure": "stop_and_seal_partial",
+    "marker_written_before_first_socket_attempt": true,
+    "raw_response_capture": true,
+    "retry": false,
+    "transport_or_timeout": "stop_and_seal_partial"
+  },
+  "generation_profile": {
+    "max_output_tokens": 4000,
+    "retry_count": 0,
+    "same_for_both_arms": true,
+    "seed": 42,
+    "temperature": 0,
+    "thinking": false,
+    "timeout_seconds": 120
+  },
+  "iteration": {
+    "later_runs_require_result_review_and_new_protocol": true,
+    "maximum_new_runs_authorized": 3,
+    "run_number": 1
+  },
+  "panels": {
+    "canonical_120": {
+      "both_arms": true,
+      "queries": 120,
+      "reported_separately": true
+    },
+    "legacy_phase1_34": {
+      "automatic_conversion": false,
+      "both_arms": true,
+      "cross_panel_compensation": false,
+      "queries": 34,
+      "reported_separately": true
+    },
+    "typed_controls_4": {
+      "both_arms": true,
+      "queries": 4,
+      "reported_separately": true
+    }
+  },
+  "protocol_format": "metnos.intent-ir-live-protocol/0.2-run1",
+  "protocol_payload_sha256": "e647d45ecf8e332f31653cadbc22656726d78d38ca6fdae8bdf59368452e9de9",
+  "run_id": "intent-shadow-v0.2-run1",
+  "schedule": {
+    "algorithm": "AB on even sample_index; BA on odd sample_index",
+    "arm_count": 2,
+    "paired_request_optimization": false,
+    "query_count": 158,
+    "request_count": 316,
+    "sample_index_range": [
+      0,
+      157
+    ],
+    "serial": true
+  },
+  "status": "disarmed_prepared_no_inference",
+  "technical_limits": {
+    "classification": "technical_invalid",
+    "depth": 64,
+    "integer_digits": 64,
+    "json_bytes": 262144,
+    "never_unrepresentable": true,
+    "nodes": 10000,
+    "string_chars": 65536
+  }
+}

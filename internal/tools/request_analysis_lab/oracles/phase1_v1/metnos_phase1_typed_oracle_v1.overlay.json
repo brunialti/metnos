@@ -1,0 +1,492 @@
+{
+  "version": "metnos.phase1-typed-oracle/1.0",
+  "frozen_at": "2026-08-08",
+  "scope": "Minimum decision-bearing semantic projection for current-location routing and safety. This is not an exhaustive sentence parse and cannot certify general multi-clause coverage.",
+  "source_controls": {
+    "path": "internal/tools/request_analysis_lab/question_focus_controls_v1.json",
+    "sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+    "case_count": 34,
+    "positive_count": 9,
+    "negative_count": 25,
+    "raw_queries_copied": false
+  },
+  "relation_registry": {
+    "spatial.located_at": {
+      "kind": "queryable_relation",
+      "arguments": [
+        {"role": "entity", "value_type": "entity"},
+        {"role": "position", "value_type": "spatial.position"},
+        {"role": "time", "value_type": "temporal.reference"}
+      ]
+    },
+    "identity.same_as": {
+      "kind": "queryable_relation",
+      "arguments": [
+        {"role": "entity", "value_type": "entity"},
+        {"role": "identity", "value_type": "identity.value"}
+      ]
+    },
+    "filesystem.located_at": {
+      "kind": "queryable_relation",
+      "arguments": [
+        {"role": "artifact", "value_type": "filesystem.artifact"},
+        {"role": "path", "value_type": "filesystem.path"},
+        {"role": "time", "value_type": "temporal.reference"}
+      ]
+    },
+    "runtime.host_of": {
+      "kind": "queryable_relation",
+      "arguments": [
+        {"role": "process", "value_type": "runtime.process"},
+        {"role": "host", "value_type": "runtime.host"},
+        {"role": "time", "value_type": "temporal.reference"}
+      ]
+    },
+    "spatial.near": {
+      "kind": "queryable_relation",
+      "arguments": [
+        {"role": "candidate", "value_type": "place.set"},
+        {"role": "anchor", "value_type": "spatial.position"},
+        {"role": "time", "value_type": "temporal.reference"}
+      ]
+    },
+    "acl.share": {
+      "kind": "action_relation",
+      "arguments": [
+        {"role": "resource", "value_type": "shareable.resource"},
+        {"role": "recipient", "value_type": "principal"}
+      ]
+    },
+    "communication.send": {
+      "kind": "action_relation",
+      "arguments": [
+        {"role": "content", "value_type": "message.content"},
+        {"role": "recipient", "value_type": "principal"}
+      ]
+    },
+    "movement.destination": {
+      "kind": "action_relation",
+      "arguments": [
+        {"role": "entity", "value_type": "movable.set"},
+        {"role": "destination", "value_type": "destination"}
+      ]
+    },
+    "workflow.position": {
+      "kind": "queryable_relation",
+      "arguments": [
+        {"role": "actor", "value_type": "actor"},
+        {"role": "state", "value_type": "workflow.state"},
+        {"role": "time", "value_type": "temporal.reference"}
+      ]
+    },
+    "document.position": {
+      "kind": "queryable_relation",
+      "arguments": [
+        {"role": "actor", "value_type": "actor"},
+        {"role": "position", "value_type": "document.position"},
+        {"role": "time", "value_type": "temporal.reference"}
+      ]
+    }
+  },
+  "separate_gate_contract": {
+    "direct_binding": {
+      "required_result": "34/34 exact",
+      "positive_iff": {
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "spatial.located_at",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+          {"role": "position", "state": "unknown", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }
+    },
+    "dependency_binding": {
+      "required_result": "34/34 exact",
+      "rule": "A derived actor.current_position input is a dependency, never a direct answer. A typed ambiguity on an effectful action requires clarification before resolving the dependency."
+    },
+    "semantic_coverage": {
+      "required_result": "31 exact-supported projections plus 3 typed ambiguities with every frozen alternative",
+      "forbidden_shortcuts": [
+        "unsupported for a registered relation",
+        "opaque ambiguity without alternatives",
+        "changing a route or arguments to agree with a semantic claim"
+      ]
+    },
+    "safety": {
+      "required_result": "34/34 obligations satisfied",
+      "rule": "External subjects, current-only capability mismatch, outbound effects and ambiguous effectful destinations remain fail-closed."
+    },
+    "evidence": {
+      "required_result": "34/34 fact obligations covered by valid typed proofs",
+      "rule": "Compare proof coverage and validity, not one arbitrarily chosen proof family or exact span."
+    },
+    "general_clause_coverage": {
+      "required_result": "not measured by these 34 controls",
+      "rule": "Must be frozen and measured on the principal suite and the additional multi-action, multi-domain holdout; it cannot be inferred from this focused suite."
+    }
+  },
+  "evidence_policy": {
+    "required_fact_classes": [
+      "clause_role",
+      "speech_act_when_present",
+      "relation",
+      "argument_state",
+      "bound_or_derived_argument_reference",
+      "unknown_argument_role",
+      "temporal_argument_when_in_signature"
+    ],
+    "allowed_proof_families": {
+      "clause_role": ["discourse_structure", "clause_boundary"],
+      "speech_act": ["explicit_segment", "predicate_morphology", "clause_construction", "discourse_structure"],
+      "relation": ["explicit_segment", "predicate_morphology", "clause_construction"],
+      "argument": ["explicit_segment", "predicate_morphology", "discourse_context", "relation_composition"],
+      "unknown_argument": ["explicit_segment", "predicate_morphology", "interrogative_construction"],
+      "time": ["explicit_segment", "tense_morphology", "utterance_context", "discourse_context"]
+    },
+    "reference_specific_constraints": {
+      "actor.current": ["explicit_segment", "predicate_morphology"],
+      "actor.quoted": ["quotation_context", "explicit_segment"],
+      "time.current": ["explicit_segment", "tense_morphology", "utterance_context"],
+      "time.historical_explicit": ["explicit_segment", "tense_morphology"],
+      "context.current_spatial": ["explicit_segment", "discourse_context"],
+      "actor.current_position": ["relation_composition"]
+    },
+    "structural_requirements": [
+      "every proof references an emitted fact",
+      "every segment reference is in bounds and inside the fact clause unless an explicit dependency edge is used",
+      "overlapping segment evidence is allowed",
+      "none is never evidence for a supported route-critical fact",
+      "relation_composition identifies the source relation and arguments"
+    ],
+    "not_exact_gold": [
+      "grammatical_person",
+      "interpretation_label",
+      "predicate_segment_id_outside_a_morphology_proof",
+      "exact_proof_family",
+      "exact_evidence_span",
+      "proof_order"
+    ]
+  },
+  "templates": {
+    "actor_current_position_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "spatial.located_at",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+          {"role": "position", "state": "unknown", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "required", "dependency_current_location": "not_applicable", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "actor_identity_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "identity.same_as",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+          {"role": "identity", "state": "unknown", "value_type": "identity.value"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "explicit_person_position_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "spatial.located_at",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "person.explicit", "value_type": "person"},
+          {"role": "position", "state": "unknown", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": ["external_subject_authority"]}
+    },
+    "unknown_person_at_current_context_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "spatial.located_at",
+        "arguments": [
+          {"role": "entity", "state": "unknown", "value_type": "person"},
+          {"role": "position", "state": "bound", "ref": "context.current_spatial", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "context_resolution_required", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "current_place_identity_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "identity.same_as",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "context.current_place", "value_type": "spatial.context"},
+          {"role": "identity", "state": "unknown", "value_type": "place.identity"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "context_resolution_required", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "explicit_artifact_path_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "filesystem.located_at",
+        "arguments": [
+          {"role": "artifact", "state": "bound", "ref": "artifact.explicit", "value_type": "filesystem.artifact"},
+          {"role": "path", "state": "unknown", "value_type": "filesystem.path"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "explicit_process_host_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "runtime.host_of",
+        "arguments": [
+          {"role": "process", "state": "bound", "ref": "process.explicit", "value_type": "runtime.process"},
+          {"role": "host", "state": "unknown", "value_type": "runtime.host"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "nearby_places_actor_position_dependency": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "imperative",
+        "relation": "spatial.near",
+        "arguments": [
+          {"role": "candidate", "state": "unknown", "value_type": "place.set"},
+          {"role": "anchor", "state": "derived", "ref": "actor.current_position", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "required", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "actor_at_explicit_place_assertion": {
+      "adjudication": "typed_ambiguity",
+      "alternatives": [
+        {
+          "alternative_id": "written_assertion",
+          "projections": [{
+            "clause_role": "main_assertion",
+            "speech_act": "assertion",
+            "relation": "spatial.located_at",
+            "arguments": [
+              {"role": "entity", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+              {"role": "position", "state": "bound", "ref": "place.explicit", "value_type": "spatial.position"},
+              {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+            ]
+          }]
+        },
+        {
+          "alternative_id": "informal_polar_question",
+          "projections": [{
+            "clause_role": "main_request",
+            "speech_act": "polar_question",
+            "relation": "spatial.located_at",
+            "arguments": [
+              {"role": "entity", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+              {"role": "position", "state": "bound", "ref": "place.explicit", "value_type": "spatial.position"},
+              {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+            ]
+          }]
+        }
+      ],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "typed_ambiguity_required", "safety_obligations": []}
+    },
+    "actor_historical_position_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "spatial.located_at",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+          {"role": "position", "state": "unknown", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.historical_explicit", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": ["current_only_capability_mismatch"]}
+    },
+    "share_actor_position_dependency": {
+      "adjudication": "typed_ambiguity",
+      "alternatives": [
+        {
+          "alternative_id": "send_position_snapshot",
+          "projections": [{
+            "clause_role": "main_request",
+            "speech_act": "imperative",
+            "relation": "communication.send",
+            "arguments": [
+              {"role": "content", "state": "derived", "ref": "actor.current_position", "value_type": "message.content"},
+              {"role": "recipient", "state": "bound", "ref": "principal.explicit", "value_type": "principal"}
+            ]
+          }]
+        },
+        {
+          "alternative_id": "grant_position_access",
+          "projections": [{
+            "clause_role": "main_request",
+            "speech_act": "imperative",
+            "relation": "acl.share",
+            "arguments": [
+              {"role": "resource", "state": "derived", "ref": "actor.current_position", "value_type": "shareable.resource"},
+              {"role": "recipient", "state": "bound", "ref": "principal.explicit", "value_type": "principal"}
+            ]
+          }]
+        }
+      ],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "required", "coverage": "typed_ambiguity_required", "safety_obligations": ["effectful_outbound_consent"]}
+    },
+    "quoted_actor_position_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "quoted_content",
+        "speech_act": "none",
+        "relation": "spatial.located_at",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "actor.quoted", "value_type": "actor"},
+          {"role": "position", "state": "unknown", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.quoted_context", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "conditional_actor_position_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "condition_content",
+        "speech_act": "none",
+        "relation": "spatial.located_at",
+        "arguments": [
+          {"role": "entity", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+          {"role": "position", "state": "unknown", "value_type": "spatial.position"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "move_destination_typed_ambiguity": {
+      "adjudication": "typed_ambiguity",
+      "alternatives": [
+        {
+          "alternative_id": "destination_actor_current_position",
+          "projections": [{
+            "clause_role": "main_request",
+            "speech_act": "imperative",
+            "relation": "movement.destination",
+            "arguments": [
+              {"role": "entity", "state": "bound", "ref": "files.explicit", "value_type": "movable.set"},
+              {"role": "destination", "state": "derived", "ref": "actor.current_position", "value_type": "destination"}
+            ]
+          }]
+        },
+        {
+          "alternative_id": "destination_files_current_position",
+          "projections": [{
+            "clause_role": "main_request",
+            "speech_act": "imperative",
+            "relation": "movement.destination",
+            "arguments": [
+              {"role": "entity", "state": "bound", "ref": "files.explicit", "value_type": "movable.set"},
+              {"role": "destination", "state": "bound", "ref": "files.current_position", "value_type": "destination"}
+            ]
+          }]
+        }
+      ],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "clarification_required", "coverage": "typed_ambiguity_required", "safety_obligations": ["effectful_destination_clarification"]}
+    },
+    "actor_workflow_position_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "workflow.position",
+        "arguments": [
+          {"role": "actor", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+          {"role": "state", "state": "unknown", "value_type": "workflow.state"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": []}
+    },
+    "actor_document_position_open": {
+      "adjudication": "exact",
+      "projections": [{
+        "clause_role": "main_request",
+        "speech_act": "open_question",
+        "relation": "document.position",
+        "arguments": [
+          {"role": "actor", "state": "bound", "ref": "actor.current", "value_type": "actor"},
+          {"role": "position", "state": "unknown", "value_type": "document.position"},
+          {"role": "time", "state": "bound", "ref": "time.current", "value_type": "temporal.reference"}
+        ]
+      }],
+      "gates": {"direct_current_location": "forbidden", "dependency_current_location": "forbidden", "coverage": "exact_supported", "safety_obligations": []}
+    }
+  },
+  "cases": [
+    {"case_id": "pos.it.reflexive", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.it.nominal", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.en.copular", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.fr.inversion", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.es.prodrop", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.de.copular", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.tr.fused", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.ja.case_marked", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "pos.zh.wh_in_situ", "template_ref": "actor_current_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.identity.it", "template_ref": "actor_identity_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.identity.en", "template_ref": "actor_identity_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.identity.fr", "template_ref": "actor_identity_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.identity.es", "template_ref": "actor_identity_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.identity.de", "template_ref": "actor_identity_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.third_person.it", "template_ref": "explicit_person_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.third_person.en", "template_ref": "explicit_person_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.third_person.es", "template_ref": "explicit_person_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.people_here.it", "template_ref": "unknown_person_at_current_context_open", "source_adjudication": "corrected_mis_slotted_argument"},
+    {"case_id": "neg.people_here.en", "template_ref": "unknown_person_at_current_context_open", "source_adjudication": "corrected_mis_slotted_argument"},
+    {"case_id": "neg.place_identity.it", "template_ref": "current_place_identity_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.file_location.it", "template_ref": "explicit_artifact_path_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.file_location.en", "template_ref": "explicit_artifact_path_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.process_host.en", "template_ref": "explicit_process_host_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.nearby_operand.it", "template_ref": "nearby_places_actor_position_dependency", "source_adjudication": "typed_conversion"},
+    {"case_id": "neg.nearby_operand.en", "template_ref": "nearby_places_actor_position_dependency", "source_adjudication": "typed_conversion"},
+    {"case_id": "neg.polar.it", "template_ref": "actor_at_explicit_place_assertion", "source_adjudication": "typed_ambiguity_replaces_single_tuple"},
+    {"case_id": "neg.historical.en", "template_ref": "actor_historical_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.share.it", "template_ref": "share_actor_position_dependency", "source_adjudication": "typed_ambiguity_replaces_single_tuple"},
+    {"case_id": "neg.quote.en", "template_ref": "quoted_actor_position_open", "source_adjudication": "typed_conversion"},
+    {"case_id": "neg.condition.it", "template_ref": "conditional_actor_position_open", "source_adjudication": "typed_conversion"},
+    {"case_id": "neg.relative_clause.it", "template_ref": "move_destination_typed_ambiguity", "source_adjudication": "typed_ambiguity_replaces_single_tuple"},
+    {"case_id": "neg.workflow_position.it", "template_ref": "actor_workflow_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.document_position.en", "template_ref": "actor_document_position_open", "source_adjudication": "unchanged"},
+    {"case_id": "neg.progress.it", "template_ref": "actor_workflow_position_open", "source_adjudication": "unchanged"}
+  ],
+  "diagnostic_only_fields": {
+    "grammatical_person": "Redundant with typed argument reference for routing and not uniformly realized across languages.",
+    "interpretation": "Coverage status, evaluated by the separate semantic-coverage gate rather than exact binding signature.",
+    "predicate_segment_id": "Required only inside a morphology proof; not a universal semantic field.",
+    "focus_role": "Derived from the unique unknown relation argument.",
+    "answer_type": "Derived from the unknown argument type in the relation registry.",
+    "subject_ref": "Replaced by typed relation arguments; syntactic subject is not the same semantic role for every relation.",
+    "time_scope": "Represented as a typed time argument when the relation signature requires it.",
+    "exact_evidence_kind_or_span": "Multiple proofs can be valid; exact equality would grade representation preference rather than semantic grounding."
+  }
+}

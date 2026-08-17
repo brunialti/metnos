@@ -1,0 +1,80 @@
+{
+  "auditor_sha256": "1cedfa7115744da79764c6b2fd31c2be67eada3fcc18d23bb46a5108eb190169",
+  "author_pre_gate_inference_allowed": false,
+  "author_pre_gate_sha256": "b7a6a219d57b1fd866bd8407d3178d093ac944c5509c118461d565c50290007a",
+  "author_pre_gate_transport_preflight_allowed": false,
+  "batch_fail_fast": true,
+  "classifier_bundle_sha256": "979d75c6c932bba3a3df68c8eb4fdbf83fe3511b2acf3412abbb1a06b02bf99d",
+  "contamination_audit_sha256": "4d56e736c666dae096cfebdf5618daf4125c538c2c11cf216531fb2c196b3349",
+  "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "evaluator_bundle_sha256": "f06b91064d16b8a31c3695d89b0fd127b1f8b7d720027d403f78392351bea83a",
+  "exclusive_output_writer_source_sha256": "a44afc89551dba6f145fba5b7b63ca4376b41d5b68c508cc1b673a138ad2dc31",
+  "external_gate_validator_source_sha256": "b4c962d2ce8eb0527ee9196f252b29f0f5e67789c651d2435760a590e46f1e55",
+  "external_independent_gate_required": true,
+  "external_transport_preflight_required_before_live_gate": true,
+  "fail_fast_classes": [
+    "inline_transport_preflight",
+    "transport_or_response_protocol"
+  ],
+  "failed_k1_diagnosis_artifacts": {
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_k1_not_evaluated_diagnosis.json": "8105a843c101476012122db8c3b42ffda10b1e1706740ad56dadccd188f1120d",
+    "/opt/metnos/internal/tools/request_analysis_lab/candidates/v264/metnos_v264_k1_not_evaluated_diagnosis.md": "a16b47e024ed030736588cd3e55e0a3a5e436aa61ede692604454ee91bb51a3b"
+  },
+  "fixture_sha256": "1dfbc5d2a7a83308a0f414d1b2c0b395f096d034471930fbaa886627aa79d954",
+  "general_clause_coverage": "not_measured_by_controls34",
+  "independent_probe_result_sha256": "7b0ff821783d9f5d071b4da0ccaa7f562f57afd47136cfc73c863a12663fb62c",
+  "independent_probe_sha256": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+  "infra_mutation_probe_result_sha256": "f15fd3788f0763ebae05840be72f898de5ae41ad6725922b054c19f96b20d7fb",
+  "infra_mutation_probe_sha256": "9db8cb869160bc89a8655d3d2e1a003532a0d9bb605cf691b26f72ae8797ca0e",
+  "inline_transport_preflight_required_for_live": true,
+  "invariant_review_sha256": "001f834d67f0937173123c0fab7398957d6aefd0ea3f35d62f6219382dd21b41",
+  "model_invalid_continues_batch": true,
+  "mutation_proposal_sha256": "c3e6d50744237b98b6381a017cb4d7725d0b4ab01e708bb1fb36319ce624f790",
+  "mutations_sha256": "8c050ed42142b845089ab0fa35346189672088d31d3e71422971bd1076d74229",
+  "native_run_required": true,
+  "network_calls_before_freeze": 0,
+  "oracle_artifacts": {
+    "/tmp/metnos_phase1_oracle_audit_v1.freeze.json": "f2f5d6046a7fb0b6fead8f5ab27c35c230aebd928411d5d5a962bce90209a70f",
+    "/tmp/metnos_phase1_oracle_audit_v1.json": "b8443ad2e27a2d773b971147c1b3d37ee19beb1091b1d357c0a84e6aa0c98a77",
+    "/tmp/metnos_phase1_oracle_audit_v1.md": "538f24876768eb0e8612f3bb440c5f38a51a222122d5b34080e5a5c19ef9799a",
+    "/tmp/metnos_phase1_typed_oracle_v1.overlay.json": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af",
+    "/tmp/metnos_phase1_typed_oracle_v1.schema.json": "4929fbc4ac524491f452d11d0f2d4d032887dd423c7487233c3d89065f4e17f2"
+  },
+  "prior_lab_runner_dependencies": [],
+  "prompt_sha256": "2e60f19500b6d6193d53f483707533ca39ec1fee6a0256b18e6a96994f53406f",
+  "registry_canonical_sha256": "77c0d5f6c398243eb343e469506a140f1307253ee17a360776ee65c1dc8be40c",
+  "registry_sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+  "request_body_probe_sha256": "093ef172b58a81de826bbde0c99c013b68333ab6a2c012df0302a608b22063a3",
+  "retries": 0,
+  "runner_sha256": "6f215b04e6dd543b6de5193199957cb653599164f107177f7465fbef7dc95459",
+  "runtime_cutover_eligible": false,
+  "runtime_dependencies": [
+    "python",
+    "regex",
+    "jsonschema"
+  ],
+  "runtime_fingerprint": {
+    "jsonschema": "4.10.3",
+    "python": "3.12.3 (main, Jun 19 2026, 12:46:00) [GCC 13.3.0]",
+    "regex": "2026.3.32",
+    "unicode": "15.0.0"
+  },
+  "schema_prompt_bundle_sha256": "ddb5cb1db75520ed275bc1686b7ebb26f3203009fb2ef80f919200d74752e0f2",
+  "schema_sha256": "06452e75f0a1ec7a42c9bf87dfae3da4e1528fc07b02d9276272a1e9ff0c7fec",
+  "segmentation": "Unicode UAX#29 default word boundary via regex.WORD|VERSION1",
+  "segmenter_source_sha256": "4f21209070c9e4f97ed4dcbdb89cb400bcfbd11185f86407b15457e3b9524461",
+  "semantic_parent_artifacts": {
+    "/tmp/metnos_v2641_typed_phase1.prompt.txt": "2e60f19500b6d6193d53f483707533ca39ec1fee6a0256b18e6a96994f53406f",
+    "/tmp/metnos_v2641_typed_phase1.schema.json": "06452e75f0a1ec7a42c9bf87dfae3da4e1528fc07b02d9276272a1e9ff0c7fec",
+    "/tmp/metnos_v2641_typed_phase1_controls_frozen.json": "1dfbc5d2a7a83308a0f414d1b2c0b395f096d034471930fbaa886627aa79d954",
+    "/tmp/metnos_v2641_typed_registry.json": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+    "/tmp/metnos_v264_typed_phase1.freeze.json": "83d3b4441d83d8f90e5eb591f9eeaf052885150e6806cd3ceefd046d948ccde6"
+  },
+  "socket_attempts_per_case_max": 1,
+  "standalone_transport_preflight_separately_gated": true,
+  "status": "frozen_author_pre_inference",
+  "transport_diagnostic_source_sha256": "97e993298d50933d44dabc6fdf4ce9a97a5023404e946f773829b6ac32c02eae",
+  "transport_preflight_source_sha256": "af8342238741868e01c3f2cc89cdae26d70fcf55663e697b46b7783c30dae9c2",
+  "validator_bundle_sha256": "f7bd8511c3a2cc0527ecfcf01299fa728f931f222a5b8ac77aaee69a798f1ca8",
+  "version": "metnos.v26.4.1-typed-relational-phase1/1.0"
+}

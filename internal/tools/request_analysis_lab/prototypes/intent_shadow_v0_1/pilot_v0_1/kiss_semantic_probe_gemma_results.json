@@ -1,0 +1,159 @@
+{
+  "format": "metnos.intent-kiss-semantic-probe/0.1",
+  "prompt_delta_sha256": "18484aed2c2350ea779b428c347fcb44b7344ac02b8f8aa52f815ab8cc1b56b0",
+  "records": [
+    {
+      "case_id": "bp-007",
+      "elapsed_ms": 41611,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAicmVhZC9ldmVudHMiCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L2lucHV0cyIKICAgIH0KICBdCn0=",
+      "request_sha256": "a2bd19b35e5c5b28ee2cc88a82d213d25af24162772118893eac46ff04e14368",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "kind": "operation",
+            "route": "get/inputs"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-012",
+      "elapsed_ms": 38328,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoib3V0c2lkZV9yZWdpc3RyeSJ9",
+      "request_sha256": "301b37b6ab9a44ee2addbb9a6d0a8f51352717afa1554bf958a7e517f6b0ba42",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-013",
+      "elapsed_ms": 42565,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9wbGFjZXMiCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "5d68f5e765c9254c6639f15f5edc648fb828d01db10e4c513a4e23d308df5363",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 47751,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "raw_model_output_b64": "ewogICJzdGVwcyI6IFsKICAgIHsKICAgICAgIm5lZWRzX2FwcHJvdmFsIjogdHJ1ZSwKICAgICAgInJvdXRlIjogImdldC9ub3ciCiAgICB9LAogICAgewogICAgICAibmVlZHNfYXBwcm92YWwiOiB0cnVlLAogICAgICAicm91dGUiOiAicmVhZC9pc3N1ZXMiCiAgICB9LAogICAgewogICAgICAibmVlZHNfYXBwcm92YWwiOiB0cnVlLAogICAgICAicm91dGUiOiAiZGVsZXRlL2lzc3VlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDEKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "86c5edf6a8e8b34841ba14394049ee9564373631145ffda560fa0eec3c857987",
+      "semantic": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "get/now"
+                  },
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 1
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    }
+  ],
+  "summary": {
+    "exact": 2,
+    "valid": 4
+  }
+}

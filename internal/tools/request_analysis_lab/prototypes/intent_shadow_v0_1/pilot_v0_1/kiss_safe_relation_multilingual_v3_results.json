@@ -1,0 +1,391 @@
+{
+  "cases_sha256": "5ad0ffcaeb26933004418d0f44f324f60ed7a8ab0ba0383c5889fb7c968d8468",
+  "format": "metnos.intent-safe-relation-diagnostic-result/0.1",
+  "records": [
+    {
+      "case_id": "rel-en-01",
+      "elapsed_ms": 1274,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "en-GB",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-en-02",
+      "elapsed_ms": 1051,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": false
+      },
+      "language_tag": "en-GB",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-it-01",
+      "elapsed_ms": 1229,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "it-IT",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-it-02",
+      "elapsed_ms": 1053,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": false
+      },
+      "language_tag": "it-IT",
+      "observed": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "unknown"
+      }
+    },
+    {
+      "case_id": "rel-es-01",
+      "elapsed_ms": 1271,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "es-MX",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-es-02",
+      "elapsed_ms": 1097,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "language_tag": "es-MX",
+      "observed": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "target_expectation": {
+        "after_previous": false,
+        "target_source": "none"
+      }
+    },
+    {
+      "case_id": "rel-de-01",
+      "elapsed_ms": 1214,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "de-DE",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-de-02",
+      "elapsed_ms": 1066,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": false
+      },
+      "language_tag": "de-DE",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-tr-01",
+      "elapsed_ms": 1248,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "tr-TR",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-tr-02",
+      "elapsed_ms": 1197,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": false
+      },
+      "language_tag": "tr-TR",
+      "observed": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "unknown"
+      }
+    },
+    {
+      "case_id": "rel-sr-01",
+      "elapsed_ms": 1256,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "sr-Cyrl-RS",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-sr-02",
+      "elapsed_ms": 1051,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "language_tag": "sr-Cyrl-RS",
+      "observed": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "target_expectation": {
+        "after_previous": false,
+        "target_source": "none"
+      }
+    },
+    {
+      "case_id": "rel-ar-01",
+      "elapsed_ms": 1212,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "ar-EG",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-ar-02",
+      "elapsed_ms": 1048,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": false
+      },
+      "language_tag": "ar-EG",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-hi-01",
+      "elapsed_ms": 1290,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "hi-IN",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-hi-02",
+      "elapsed_ms": 1080,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "language_tag": "hi-IN",
+      "observed": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "target_expectation": {
+        "after_previous": false,
+        "target_source": "none"
+      }
+    },
+    {
+      "case_id": "rel-ja-01",
+      "elapsed_ms": 1251,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": false
+      },
+      "language_tag": "ja-JP",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-ja-02",
+      "elapsed_ms": 1068,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "ja-JP",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-zh-01",
+      "elapsed_ms": 1153,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "language_tag": "zh-Hant-TW",
+      "observed": {
+        "after_previous": true,
+        "uses_previous_result": true
+      },
+      "target_expectation": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-zh-02",
+      "elapsed_ms": 1097,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "language_tag": "zh-Hant-TW",
+      "observed": {
+        "after_previous": false,
+        "uses_previous_result": false
+      },
+      "target_expectation": {
+        "after_previous": false,
+        "target_source": "none"
+      }
+    }
+  ],
+  "summary": {
+    "exact": 14,
+    "total": 20,
+    "valid": 20
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "authorization": {
+    "endpoint": "http://127.0.0.1:8080",
+    "inference_calls": 0,
+    "method": "GET",
+    "no_clobber_required": true,
+    "output_must_be_absent": true,
+    "output_path": "/tmp/metnos_v26564_transport_preflight.json",
+    "post_calls": 0,
+    "python_executable": "/usr/bin/python3",
+    "python_flags": [
+      "-I",
+      "-B"
+    ],
+    "request_body_bytes": 0,
+    "request_path": "/v1/models",
+    "transport_attempt_limit": 1,
+    "url": "http://127.0.0.1:8080/v1/models"
+  },
+  "candidate_outputs_read": 0,
+  "dependencies": {
+    "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_python_dependency_tree.json": "248b6a6877ad98d361890b50eb91664e3fec477ab6a8376f5dd48c0cb3e9b156",
+    "internal/tools/request_analysis_lab/candidates/v26564/metnos_v26564_author.freeze.json": "d41a440551af5bfc430000e12bcdda2cbc89ca8c601b137d74b6e57f47f6cd56",
+    "internal/tools/request_analysis_lab/candidates/v26564/metnos_v26564_author_pre_gate.json": "365bc9637fb3c1d1d09812968b5ad85de0875b0b09fc3f21834c89fbca178236",
+    "internal/tools/request_analysis_lab/candidates/v26564/metnos_v26564_independent_static_review.json": "394d851559ee8b13e50c25a45681d37c2f04c04eabbf36d12bcd892aaf4f0636",
+    "internal/tools/request_analysis_lab/candidates/v26564/metnos_v26564_independent_static_review.md": "e4323dc28552768fcbbc88e952145f1abdd188b2172d02efb81c0171b1efdd06",
+    "internal/tools/request_analysis_lab/candidates/v26564/metnos_v26564_k1_runner.py": "6fb5785d32b73f9d7dad4e917b211fdcdc12d9ca05088cc6d8ed9c4b167b146a",
+    "internal/tools/request_analysis_lab/candidates/v26564/metnos_v26564_transport_preflight_gate_verifier.py": "de70f1610c3e6619e10fe267d6ff46199ed8d008317de59a67ca3dd5f501bbaa"
+  },
+  "dependency_contract": {
+    "artifact_pin_count": 20,
+    "artifact_pins_canonical_sha256": "f57f7e9f30c5da4921d5854be3563dbad3de09fcc1d992dd0368afc95bdb54ec",
+    "python_dependency_tree_sha256": "248b6a6877ad98d361890b50eb91664e3fec477ab6a8376f5dd48c0cb3e9b156",
+    "python_target_sha256": "1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+    "python_version": "3.12.3",
+    "unicode_version": "15.0.0"
+  },
+  "external_live_gate_authorization": false,
+  "live_authorization": false,
+  "network_calls_during_authorization": 0,
+  "preflight_authorization": true,
+  "runtime_cutover_authorization": false,
+  "status": "AUTHORIZE_ONE_TRANSPORT_PREFLIGHT_ONLY",
+  "verdict": "STATIC_PASS",
+  "version": "metnos.v26.5.6.4-transport-preflight-authorization-review/1.0"
+}

@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metnos.invalid/schemas/phase1-typed-oracle-v1.schema.json",
+  "title": "Metnos Phase 1 typed oracle overlay",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "frozen_at",
+    "scope",
+    "source_controls",
+    "relation_registry",
+    "separate_gate_contract",
+    "evidence_policy",
+    "templates",
+    "cases",
+    "diagnostic_only_fields"
+  ],
+  "properties": {
+    "version": {"const": "metnos.phase1-typed-oracle/1.0"},
+    "frozen_at": {"type": "string", "format": "date"},
+    "scope": {"type": "string", "minLength": 1},
+    "source_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "case_count", "positive_count", "negative_count", "raw_queries_copied"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "case_count": {"const": 34},
+        "positive_count": {"const": 9},
+        "negative_count": {"const": 25},
+        "raw_queries_copied": {"const": false}
+      }
+    },
+    "relation_registry": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/relation_signature"}
+    },
+    "separate_gate_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direct_binding", "dependency_binding", "semantic_coverage", "safety", "evidence", "general_clause_coverage"],
+      "properties": {
+        "direct_binding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required_result", "positive_iff"],
+          "properties": {
+            "required_result": {"type": "string"},
+            "positive_iff": {"$ref": "#/$defs/projection"}
+          }
+        },
+        "dependency_binding": {"$ref": "#/$defs/text_gate"},
+        "semantic_coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required_result", "forbidden_shortcuts"],
+          "properties": {
+            "required_result": {"type": "string"},
+            "forbidden_shortcuts": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+          }
+        },
+        "safety": {"$ref": "#/$defs/text_gate"},
+        "evidence": {"$ref": "#/$defs/text_gate"},
+        "general_clause_coverage": {"$ref": "#/$defs/text_gate"}
+      }
+    },
+    "evidence_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_fact_classes", "allowed_proof_families", "reference_specific_constraints", "structural_requirements", "not_exact_gold"],
+      "properties": {
+        "required_fact_classes": {"$ref": "#/$defs/nonempty_string_array"},
+        "allowed_proof_families": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/nonempty_string_array"}
+        },
+        "reference_specific_constraints": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"$ref": "#/$defs/nonempty_string_array"}
+        },
+        "structural_requirements": {"$ref": "#/$defs/nonempty_string_array"},
+        "not_exact_gold": {"$ref": "#/$defs/nonempty_string_array"}
+      }
+    },
+    "templates": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/expectation"}
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 34,
+      "maxItems": 34,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "template_ref", "source_adjudication"],
+        "properties": {
+          "case_id": {"type": "string", "pattern": "^(pos|neg)\\.[a-z0-9_.]+$"},
+          "template_ref": {"type": "string", "minLength": 1},
+          "source_adjudication": {
+            "enum": [
+              "unchanged",
+              "typed_conversion",
+              "corrected_mis_slotted_argument",
+              "corrected_stale_speech_act_and_mis_slotted_argument",
+              "typed_ambiguity_replaces_single_tuple"
+            ]
+          }
+        }
+      }
+    },
+    "diagnostic_only_fields": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "nonempty_string_array": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "text_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_result", "rule"],
+      "properties": {
+        "required_result": {"type": "string", "minLength": 1},
+        "rule": {"type": "string", "minLength": 1}
+      }
+    },
+    "relation_signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "arguments"],
+      "properties": {
+        "kind": {"enum": ["queryable_relation", "action_relation"]},
+        "arguments": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "value_type"],
+            "properties": {
+              "role": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+              "value_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.]*$"}
+            }
+          }
+        }
+      }
+    },
+    "argument": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role", "state", "value_type"],
+          "properties": {
+            "role": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+            "state": {"const": "unknown"},
+            "value_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.]*$"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role", "state", "ref", "value_type"],
+          "properties": {
+            "role": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+            "state": {"enum": ["bound", "derived"]},
+            "ref": {"type": "string", "pattern": "^[a-z][a-z0-9_.]*$"},
+            "value_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.]*$"}
+          }
+        }
+      ]
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clause_role", "speech_act", "relation", "arguments"],
+      "properties": {
+        "clause_role": {"enum": ["main_request", "main_assertion", "quoted_content", "condition_content", "relative_modifier"]},
+        "speech_act": {"enum": ["open_question", "polar_question", "imperative", "assertion", "none"]},
+        "relation": {"type": "string", "pattern": "^[a-z][a-z0-9_.]*$"},
+        "arguments": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/argument"}}
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["direct_current_location", "dependency_current_location", "coverage", "safety_obligations"],
+      "properties": {
+        "direct_current_location": {"enum": ["required", "forbidden"]},
+        "dependency_current_location": {"enum": ["required", "forbidden", "not_applicable", "context_resolution_required", "clarification_required"]},
+        "coverage": {"enum": ["exact_supported", "typed_ambiguity_required"]},
+        "safety_obligations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "external_subject_authority",
+              "current_only_capability_mismatch",
+              "effectful_outbound_consent",
+              "effectful_destination_clarification"
+            ]
+          }
+        }
+      }
+    },
+    "alternative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alternative_id", "projections"],
+      "properties": {
+        "alternative_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "projections": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/projection"}}
+      }
+    },
+    "expectation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["adjudication", "projections", "gates"],
+          "properties": {
+            "adjudication": {"const": "exact"},
+            "projections": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/projection"}},
+            "gates": {"$ref": "#/$defs/gates"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["adjudication", "alternatives", "gates"],
+          "properties": {
+            "adjudication": {"const": "typed_ambiguity"},
+            "alternatives": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/alternative"}},
+            "gates": {"$ref": "#/$defs/gates"}
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "authorization_format": "metnos.intent-prompt-style-live-authorization/0.1-run3",
+  "created_date": "2026-08-13",
+  "execution_environment": {
+    "hash_sentinel": 2769436454374240588,
+    "must_be_set_before_interpreter_start": true,
+    "python_hash_seed": 0,
+    "seed_range": [
+      0,
+      255
+    ],
+    "selection_report": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/live/run3_style/run2_anchor_hash_seed_matrix_v0_1.json",
+    "selection_report_sha256": "d776d3261f9e01b955be386a0a9329d446119fb217495749766319925fcdfac9",
+    "selection_rule": "smallest whole-anchor exact seed"
+  },
+  "independent_audits": [
+    {
+      "pass": true,
+      "report_path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/live/run3_style/reviews/semantic_a/semantic_a_run3_style_v0_1.json",
+      "report_sha256": "125a905c1b17ec891622cd4cddf884848b48e9dac48bfbbb55c803b1f247348a",
+      "reviewer": "semantic_a"
+    },
+    {
+      "pass": true,
+      "report_path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/functional_b/prompt_style_v0_1_run3_preflight_audit.md",
+      "report_sha256": "20b78793c683ae8edab2a3ed9b33176c6cefa29693f9c4573457c4436d14c0e3",
+      "reviewer": "reviewer_b_independent"
+    }
+  ],
+  "iteration_authorization": {
+    "authorization_scope": "automatic_iterative_cycle_after_style_only_change_green_suite_and_two_independent_audits",
+    "authorized_by": "Roberto",
+    "rigid_run_limit": null,
+    "this_run": 3
+  },
+  "manifest_file_sha256": "9226a3f62c3ef126b36975a31d2d47daf8cde123264fdda8e6d1815e95ee4d02",
+  "protocol_file_sha256": "31a265641b780cd5e2f0bf52352ac26281d10a422567a715dae816117086725c",
+  "protocol_freeze_file_sha256": "2dec09e3edce00b13e833c908df389a4425ff1c00db345ff26a014e41212dcad",
+  "protocol_payload_sha256": "541f2c391779238245474535d4daadc6b8b643ec3612895b6bf9b56f8f91867e",
+  "root_authorization": {
+    "authorization_id": "root.continuous.intent-shadow-prompt-style-v0.1-run3.20b78793.125a905c",
+    "authorized": true,
+    "authorized_by": "root"
+  },
+  "run_id": "intent-shadow-prompt-style-v0.1-run3",
+  "single_use_nonce_sha256": "0be955877f4d567497a7d10b95df440fc2a9ace28d21e9d2e4a232941f2d6a04"
+}

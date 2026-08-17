@@ -1,0 +1,200 @@
+{
+  "version": "metnos.v26.5.6.5-independent-static-review/1.0",
+  "review_date": "2026-08-09",
+  "verdict": "STATIC_BLOCK",
+  "scope": "offline bundle V26.5.6.5 clause-owned; conclusions of the author not inherited",
+  "live_authorization": false,
+  "transport_authorization": false,
+  "preflight_authorization": false,
+  "gate_created": false,
+  "gate_consumed": false,
+  "network_calls": 0,
+  "model_calls": 0,
+  "live_runs": 0,
+  "inference": false,
+  "gold_modified": false,
+  "overlay_modified": false,
+  "predecessor_modified": false,
+  "frozen_candidate_artifacts_modified": false,
+  "candidate_identity": {
+    "freeze_sha256": "b7b02367bba88c244dd772b0722f4925292e4e318eca80b5df0b0556f3638f90",
+    "registry_projection_sha256": "acdfe3e347f314037a733b784fa3978d4c96ced7f794b0d2868a17f4360eb939",
+    "expander_sha256": "693803b3863358aa652eb2e8dd7a849981842ffd6bc8b707d3195a3f74a21577",
+    "offline_pipeline_sha256": "2acd745373e8f518391d1b47099e73dd48f01ad6a4678a8c021e80e8bb5e4cd1",
+    "offline_selftest_sha256": "8a68394942e1e24eac3f98397330b209ef3cdd31abbbfc631dd7c57f2eb51f35",
+    "schema_sha256": "3cd2655474d30868090010feb6a21dc08ecfe03f059b99cf3bd85fde85f32b49",
+    "prompt_sha256": "0c798be9821a484e718b4c6a5ed8ebc623dee16c08fe8713d1723d22bada5cba",
+    "author_selftest_result_sha256": "51b53bc338daea8187f281a61c0ee83046b70f9e6175f013a992c40fb24bcb12",
+    "author_pre_gate_sha256": "d9bc4f13915e9e83e9f2b11267adc02f880ab255fc0d2983802fe1ac7dbe3add",
+    "contamination_audit_sha256": "b9ee5a25435fe9859ba7bdd333ab57b09f109ef6dea500b7b7922b7b42f5bea6"
+  },
+  "reproduction": {
+    "selftest": "42/42 PASS",
+    "selftest_result_json_regenerated": "byte-identical to the frozen artifact",
+    "freeze_artifacts_verified": "9/9 sha256 and byte length",
+    "reused_frozen_dependencies_verified": "5/5 sha256",
+    "candidate_readme_hash_table": "10/10",
+    "pyc_or_pycache_in_bundle": 0,
+    "declared_pycache_residue": "absent; the README instruction is already satisfied",
+    "runtime_imports": "none; stdlib plus pinned regex and jsonschema only",
+    "compile_exec_sites": 1,
+    "compile_exec_note": "frozen V26.5.3 validator, sha-pinned before execution"
+  },
+  "probe": {
+    "file": "metnos_v26565_independent_static_review_probe.py",
+    "result": "metnos_v26565_independent_static_review_probe_result.json",
+    "seed": 20260809,
+    "deterministic": true,
+    "probes": 26,
+    "findings": 14,
+    "confirmed": 9,
+    "context": 3
+  },
+  "confirmed": [
+    {
+      "id": "C1",
+      "claim": "clause identity in the document structure closes the four V26.5.6.4 killer codes",
+      "evidence": "4000 random SCHEMA-VALID frames out of 4501 generated; primary_cardinality, orphan_dependency, clause_span_consistency and projection_missing fired 0 times; 0 pipeline exceptions"
+    },
+    {
+      "id": "C2",
+      "claim": "an inter-clause edge is representable and valid",
+      "evidence": "clause 2 consuming clause 1's projection unknown: schema-valid, expansion clean, validator clean"
+    },
+    {
+      "id": "C4",
+      "claim": "Unicode metamorphic stability",
+      "evidence": "9 scripts x NFC/NFD/NFKC/NFKD produce exactly one fingerprint and are uniformly valid; the author probed the 9 scripts only"
+    },
+    {
+      "id": "C5",
+      "claim": "no query or gold contamination",
+      "evidence": "prompt AND schema: 0 verbatim queries, 0 shared 3-grams, 0 shared 4-grams; only shared 2-gram is 'in the'; 0 gold/fixture/overlay identifiers"
+    },
+    {
+      "id": "C6",
+      "claim": "no surface or source-language mapping in the request contract",
+      "evidence": "53 enum/const literals: 45 registry-derived, 8 structural, 0 unexplained; prompt is ASCII with no double-quoted example"
+    },
+    {
+      "id": "C6c",
+      "claim": "DERIVED_REFERENCE_BRIDGE is fixture-only",
+      "evidence": "present only in metnos_v26565_offline_selftest.py and the README; absent from prompt, schema, expander and pipeline; one entry, no source-language token, never used at runtime"
+    },
+    {
+      "id": "R0",
+      "claim": "freeze integrity and no bytecode",
+      "evidence": "9/9 artifacts, 5/5 dependencies, 10/10 README rows, 0 __pycache__ or .pyc"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "B1",
+      "severity": "blocking",
+      "title": "the expander is not total and stage 2 is unguarded, so a case can be lost before any stage is measured",
+      "claim_falsified": "README: 'l'espansore e totale: non solleva mai, su nessun input'; selftest: 'the expander is total over every probe frame'",
+      "sites": [
+        "metnos_v26565_expander.py::_expand_clause_array -> clause.get(KEY_DEPENDENCIES, []) or []",
+        "metnos_v26565_expander.py::expand_frame -> source.get(KEY_CLAUSES) or []",
+        "metnos_v26565_expander.py::expand_frame -> source.get(KEY_ALTERNATIVES) or []",
+        "metnos_v26565_expander.py::structural_fingerprint -> same idiom on all four containers",
+        "metnos_v26565_offline_pipeline.py::evaluate -> stage 2 has no try/except while stage 3 has one"
+      ],
+      "reproduction": [
+        "{\"status\":\"supported\",\"clauses\":5} -> TypeError: 'int' object is not iterable",
+        "clause with \"dependencies\": 5 -> TypeError: 'int' object is not iterable",
+        "{\"status\":\"typed_ambiguity\",\"alternatives\":5} -> TypeError",
+        "{\"status\":\"typed_ambiguity\",\"alternatives\":[5,6]} -> AttributeError: 'int' object has no attribute 'get'",
+        "{\"status\":\"unsupported\",\"clauses\":5} -> TypeError"
+      ],
+      "impact": "the raise escapes pipeline.evaluate; the record is written on zero of three stages, which is exactly the V26.5.6.4 failure mode, in the branch that exists to survive schema-invalid frames",
+      "fix": "isinstance(..., list) on the four containers plus a try/except around stage 2 symmetric to stage 3, reporting expander_exception:<Type>"
+    },
+    {
+      "id": "B2",
+      "severity": "blocking",
+      "title": "the structural fingerprint is query-free only for schema-valid frames",
+      "claim_falsified": "S4: 'ogni record porta un'impronta strutturale query-free, anche sui fallimenti'",
+      "sites": [
+        "metnos_v26565_expander.py::structural_fingerprint -> status, relations, clause_roles, speech_acts, binding_kinds, proof_kinds copied verbatim",
+        "metnos_v26565_offline_selftest.py::fingerprint_privacy -> every probed frame is built by build_frame_from_template, hence schema-valid"
+      ],
+      "reproduction": "a schema-invalid frame carrying a marker string in status, clause_role, relation, speech_act, binding kind and proof kind leaks all six into the fingerprint and into fingerprint_sha256",
+      "impact": "the fingerprint is what a batch declared query_material_included=false would persist for a failing case",
+      "fix": "filter every fingerprint string against the closed technical vocabulary inside structural_fingerprint and report out-of-vocabulary occurrences as a count"
+    },
+    {
+      "id": "B3",
+      "severity": "blocking",
+      "title": "typed_ambiguity carrying out-of-registry clauses gives an incoherent clause identity space across alternatives",
+      "sites": [
+        "metnos_v26565_expander.py::expand_frame -> typed_ambiguity branch keeps only alternative 1's unsupported clauses as common",
+        "metnos_v2653_injected_validator.py::validate_frame -> _clause_footprint(alternative atoms, GLOBAL unsupported) per alternative"
+      ],
+      "reproduction": [
+        "alternatives disagreeing on out-of-registry clauses: schema-valid; expansion alternatives_disagree_on_unsupported_clauses; validator alternative_coverage, clause_ids",
+        "the same out-of-registry clause at a different index in each alternative: identical outcome",
+        "4 out-of-registry + 4 projected against 8 projected, per-alternative arrays within the bound of 8: validator alternative_coverage, clause_ids, clause_limit"
+      ],
+      "impact": "clause_ids is the code family that killed V26.4.1 (20/34 cases); it becomes reachable again on a schema-valid frame through an expander projection artefact, and the out-of-registry clauses of alternatives 2..N are dropped from the normal form with no dedicated code; no test in the 42 covers this shape",
+      "fix": "either refuse to project when alternatives diverge, with an explicit code and no silent drop, or make clause identity global to the frame instead of per-alternative"
+    },
+    {
+      "id": "B4",
+      "severity": "blocking",
+      "title": "max_atoms_per_analysis is unenforced by the response schema, and stage 3 censors itself when its own schema fails",
+      "claim_falsified": "README: 'Le uniche invalidita fatali sono quelle che lo schema esprime'; S3 non-censoring diagnosis",
+      "sites": [
+        "metnos_v26565_registry_projection.py::build_schema -> dependencies maxItems = max_atoms - 1 per clause, clauses maxItems = max_clauses, no total atom bound",
+        "metnos_v2653_injected_validator.py::validate_frame -> 'if errors: return' right after the internal live_schema check"
+      ],
+      "reproduction": "8 clauses with 2 dependencies each: response schema errors 0, atoms after expansion 24, frozen bound 16, response-schema ceiling 128; validator stage codes are exactly ['schema'] and 0 semantic codes are measured while stages_measured still reports 3",
+      "impact": "a schema-valid frame is made invalid by an invariant the schema cannot express, and the semantic surface is censored; not reachable on the Phase-1 34, reachable on the intended 109 + 70 adversarial multi-action and multi-domain suite",
+      "fix": "derive an atom ceiling into the response schema from the frozen limits, and report validator semantic codes even when its internal schema fails"
+    }
+  ],
+  "non_blocking": [
+    {
+      "id": "N1",
+      "title": "source_ordinal is emitted against a derived order and is unbounded above",
+      "evidence": "schema constrains only minimum 1; on 4000 random schema-valid frames edge_source_ordinal_not_backward fired 6277 times and edge_source_ordinal_out_of_range 3637, the two most frequent codes overall",
+      "fix": "add maximum = max_atoms_per_analysis"
+    },
+    {
+      "id": "N2",
+      "title": "the prompt says source_ordinal counts 'from one across the whole analysis' while the expander restarts at 1 inside every alternative",
+      "evidence": "per-alternative atom ids [[1,2],[1,2]]; the literal reading yields a schema-valid frame with expansion edge_source_ordinal_not_backward + edge_source_ordinal_out_of_range and validator dependency_order + output_unconsumed",
+      "fix": "state in the prompt that the flattening is per alternative"
+    },
+    {
+      "id": "N3",
+      "title": "the declared fatal set is narrower than the real one",
+      "evidence": "of 4000 schema-valid frames 3322 are invalid and 678 valid; clause_source_order fired 1478 times and projection_source_order 1057, both prose-only rules of the frozen validator; invalid_from_expansion_only = 0, so the expander never invalidates alone",
+      "fix": "restate the README claim as scoped to the four post mortem codes"
+    },
+    {
+      "id": "N4",
+      "title": "structural validity is not a semantic oracle and the mutation group does not use one",
+      "evidence": "1934 independent single-scalar mutations over the 34 gold frames: 1680 rejected, 753 schema-blocked, 254 still valid, of which 53 change the gold semantics (for example speech_act open_question -> imperative, ref actor.current -> actor.quoted); 0 pipeline exceptions",
+      "fix": "use normalise_expanded vs normalise_gold, already present in the file, inside mutation_suite"
+    },
+    {
+      "id": "N5",
+      "title": "two materialisation checks are conditional on file existence",
+      "evidence": "if SCHEMA_PATH.exists() / if PROMPT_PATH.exists(); without those two files the suite reports 40/40 all green",
+      "fix": "make the total unconditional"
+    },
+    {
+      "id": "N6",
+      "title": "dead first disjunct in the numeric-label check",
+      "evidence": "prompt.replace(chr(10), chr(10)) is a no-op and the literal 'Do not \\nemit numeric labels' never matches; the check passes only through the second disjunct",
+      "fix": "remove the first disjunct"
+    }
+  ],
+  "not_verified": [
+    "semantic accuracy of the model: no live, no inference; 42/42 and 4000 random frames say nothing about analysis quality",
+    "the general 109 suite: the registry is Phase-1 with 10 relations",
+    "the frozen V26.5.3 validator and V26.4.1 registry were read to test the candidate's claims, not re-reviewed; their prose-only rules predate V26.5.6.5"
+  ],
+  "pass_condition": "close B1, B2, B3 and B4 offline without touching prompt, schema, registry, validator, fixture, overlay or gold; add tests for scalar containers on the four fields, fingerprint on a schema-invalid frame with a marker, typed_ambiguity with out-of-registry clauses in every index combination, and a frame above max_atoms_per_analysis; repair N5 and N6 and use the semantic oracle in the mutation suite (N4)"
+}

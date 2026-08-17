@@ -1,0 +1,157 @@
+{
+  "summary": {
+    "failed": 0,
+    "passed": 37,
+    "tests": 37
+  },
+  "tests": [
+    {
+      "id": "canonical_valid",
+      "pass": true
+    },
+    {
+      "id": "canonical_matches",
+      "pass": true
+    },
+    {
+      "id": "removed_answer_mode",
+      "pass": true
+    },
+    {
+      "id": "removed_focus_role",
+      "pass": true
+    },
+    {
+      "id": "removed_focus_type",
+      "pass": true
+    },
+    {
+      "id": "removed_subject_type",
+      "pass": true
+    },
+    {
+      "id": "removed_deixis_center",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_role",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_interpretation",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_speech_act",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_relation",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_subject_ref",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_time_scope",
+      "pass": true
+    },
+    {
+      "id": "person_not_duplicated_in_binding",
+      "pass": true
+    },
+    {
+      "id": "evidence_none_relation",
+      "pass": true
+    },
+    {
+      "id": "evidence_none_subject",
+      "pass": true
+    },
+    {
+      "id": "evidence_none_time",
+      "pass": true
+    },
+    {
+      "id": "unsupported_relation_assertion_invalid",
+      "pass": true
+    },
+    {
+      "id": "unsupported_none_valid",
+      "pass": true
+    },
+    {
+      "id": "out_of_clause_proof_invalid",
+      "pass": true
+    },
+    {
+      "id": "evidence_free_text_invalid",
+      "pass": true
+    },
+    {
+      "id": "all_relation_enum_values_documented",
+      "pass": true
+    },
+    {
+      "id": "all_role_values_documented",
+      "pass": true
+    },
+    {
+      "id": "all_speech_values_documented",
+      "pass": true
+    },
+    {
+      "id": "all_subject_values_documented",
+      "pass": true
+    },
+    {
+      "id": "all_person_values_documented",
+      "pass": true
+    },
+    {
+      "id": "all_time_values_documented",
+      "pass": true
+    },
+    {
+      "id": "all_evidence_values_documented",
+      "pass": true
+    },
+    {
+      "id": "nine_relation_arities",
+      "pass": true
+    },
+    {
+      "id": "uax29_zh",
+      "pass": true
+    },
+    {
+      "id": "uax29_ja",
+      "pass": true
+    },
+    {
+      "id": "runtime_gold_isolated",
+      "pass": true
+    },
+    {
+      "id": "one_call_no_retry",
+      "pass": true
+    },
+    {
+      "id": "schema_no_product_route",
+      "pass": true
+    },
+    {
+      "id": "prompt_no_surface_example_markers",
+      "pass": true
+    },
+    {
+      "id": "ambiguous_not_evaluated",
+      "pass": true
+    },
+    {
+      "id": "unsupported_not_evaluated",
+      "pass": true
+    }
+  ]
+}

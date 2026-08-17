@@ -1,0 +1,20 @@
+{
+ "author_inference_attempts": 0,
+ "external_gate_required": true,
+ "external_transport_preflight_required": true,
+ "independent_infrastructure_review": "pending_on_byte_stable_bundle",
+ "inference_allowed": false,
+ "live_runner_allowed": false,
+ "lock_version": "metnos.v26.5.7.1-author-pre-gate/1.0",
+ "model_calls_before_checkpoint": 0,
+ "network_calls_before_checkpoint": 0,
+ "offline_evaluator_in_bundle": true,
+ "preflight_gate_required": true,
+ "preflight_gate_status": "absent",
+ "required_external_gate_path": "internal/tools/request_analysis_lab/candidates/v26571/metnos_v26571_external_gate.lock.json",
+ "required_preflight_gate_path": "internal/tools/request_analysis_lab/candidates/v26571/metnos_v26571_preflight_gate.lock.json",
+ "scope": "typed-registry Phase-1 K1/34 infrastructure only",
+ "status": "PRE_INFRA_REVIEW_BLOCKED",
+ "transport_preflight_allowed": false,
+ "version": "metnos.v26.5.7.1-clause-owned-k1-runner/1.0"
+}

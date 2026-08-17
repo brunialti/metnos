@@ -1,0 +1,35 @@
+{
+  "batch_cap_bytes": 7609728,
+  "batch_serialized_bytes_with_newline": 78339,
+  "fake_transport_calls": {
+    "complete_batch_actual_opens": 35,
+    "complete_batch_get": 1,
+    "complete_batch_post": 34
+  },
+  "inherited_v2656_passed": 21,
+  "model_calls": 0,
+  "network_calls": 0,
+  "new_passed": 13,
+  "new_tests": 13,
+  "offline_evaluator_sha256": "6e2486fa37f7d083fdd92688af6d9421df5f15aa8136868ecb8836e07bc53852",
+  "runner_sha256": "443fd60f41fd664401c30733b9677b9310eded6f02d8a6039ce767eb9bf0cd16",
+  "selftest_total_ms": 13840.952999977162,
+  "status": "PASS",
+  "test_names": [
+    "inherited_v2656_21_of_21",
+    "author_freeze_pass_both_operational_gates_absent",
+    "native_no_proxy_no_redirect_static",
+    "literal_loopback_endpoint_only",
+    "fake_two_open_proxy_redirect_rejected",
+    "output_parent_openat_anchor_survives_path_swap",
+    "preflight_producer_requires_separate_gate_and_no_clobber",
+    "runner_and_evaluator_cli_errors_are_sanitized",
+    "fake_34_and_separate_evaluator_pass",
+    "pre_gold_exact_valid_and_two_invalid_status_shapes",
+    "pre_gold_exact_shape_and_full_frame_mutations_zero_gold_reads",
+    "exact_batch_cap_precedes_large_encoding",
+    "candidate_has_no_bytecode_cache"
+  ],
+  "total_asserted_tests": 34,
+  "version": "metnos.v26.5.6.1-offline-author-selftest/1.0"
+}

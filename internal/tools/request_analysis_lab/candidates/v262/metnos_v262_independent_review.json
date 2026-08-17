@@ -1,0 +1,95 @@
+{
+  "review_version": "metnos.v26.2-independent-static-review/1.0",
+  "review_scope": "static_only_no_inference",
+  "reviewed_candidate": {
+    "version": "metnos.v26.2-minimal-phase1/1.0",
+    "runner_sha256": "0b6ab465fc9cfd19ddd2a59c49d2ce0d5ff4e31867ebc8d0f1c2aa8e558b5cb8",
+    "freeze_sha256": "757f461e26cb39083c039d4a4f3871e56e94a3bc30e5c838ff8a1401d5e8ff9d",
+    "schema_sha256": "3a8963414f56c9d239a59ef010e76a330dea53f4838c7bb4fed6060698f4caf0",
+    "prompt_sha256": "dad168f1975a3ab96b3e70303efce939aaab464ba71f567ff9c691d11c862a60",
+    "mutations_sha256": "e5a8a45f44808e253f963aac4bbcf66ad1b3444b9392a31dc444bd5f4d89846c"
+  },
+  "comparison_candidate": {
+    "version": "metnos.v25.3.1-phase1-minimal/1.0",
+    "runner_sha256": "56f455e13bf0a52884f2118cc7bf28e06ae801d801a6e2ec2172a59422eb7971",
+    "freeze_sha256": "d4b08e676efbcb106fd173ee56ee713a9cb43a17096cfd96b82a99d5285fe36d"
+  },
+  "criteria": {
+    "irreducible_signature": {
+      "v262": "pass",
+      "v2531": "pass",
+      "reason": "Both remove answer_mode, focus role/type, subject type, and deixis. V26.2 also expresses evidence claims once by construction."
+    },
+    "tagged_proof": {
+      "v262": "pass_preferred",
+      "v2531": "partial",
+      "reason": "V26.2 requires an evidence object with relation/subject/time, each a closed tagged union. V25.3.1 uses parallel kind/id fields and canonicalizes anchors."
+    },
+    "unicode_segmentation": {
+      "v262": "pass",
+      "v2531": "pass",
+      "reason": "Both use the same frozen Unicode UAX #29 segmenter; ZH=4 and JA=9 in mutation tests."
+    },
+    "surface_contamination": {
+      "v262": "pass",
+      "v2531": "pass",
+      "reason": "V26.2 formal audit reports zero source/mixed lines, zero whole queries, and zero n-gram overlap >=3 on 109+34+70."
+    },
+    "semantic_retry": {
+      "v262": "pass_preferred",
+      "v2531": "fail",
+      "reason": "V26.2 makes exactly one call. V25.3.1 retains a second attempt path."
+    },
+    "validator_authority": {
+      "v262": "pass",
+      "v2531": "pass_with_normalization",
+      "reason": "V26.2 validates only schema, ids, spans, and proof references; it never changes semantic claims or routes. V25.3.1 canonicalizes proof anchors."
+    },
+    "not_evaluated_accounting": {
+      "v262": "pass",
+      "v2531": "pass",
+      "reason": "Transport/schema/span failures are NOT_EVALUATED; ambiguous is excluded. Binding, signature, and evaluable gates are separate."
+    },
+    "gold_isolation": {
+      "v262": "pass_preferred",
+      "v2531": "pass_runtime_only",
+      "reason": "V26.2 freezes an AST isolation check and uses opaque fixture ids; request_body/call_once/run_case cannot access fixture/gold symbols."
+    }
+  },
+  "independent_checks": {
+    "json_schema_draft_2020_12_valid": true,
+    "freeze_verification_passed": true,
+    "mutation_tests": 27,
+    "mutation_passed": 27,
+    "mutation_failed": 0,
+    "evidence_claims_required": ["relation", "subject", "time"],
+    "unknown_evidence_claim_rejected": true,
+    "free_text_evidence_rejected": true,
+    "one_model_call": true,
+    "retries": 0,
+    "action_ontology_present": false,
+    "product_route_present": false
+  },
+  "known_risks": [
+    "Every evidence tagged union keeps the none branch first; prior experiments showed branch-order/default collapse is possible. The native run must report evidence completeness separately.",
+    "Unsupported records remain binding-evaluable while ambiguous records are NOT_EVALUATED. This cannot hide failure from the required 34/34 signature-exact gate, but future reports should expose unsupported_count separately.",
+    "The tagged schema is larger than the V25.3.1 flat schema; live latency and grammar-compiler behavior remain unproven.",
+    "The 34/34 V25.3 post-hoc rescore proves signal only; it gives no acceptance credit to V26.2."
+  ],
+  "decision": {
+    "recommended_single_candidate": "metnos.v26.2-minimal-phase1/1.0",
+    "recommendation": "approve_one_native_k1_after_gate_flip",
+    "reject_parallel_v2531_live": true,
+    "runtime_cutover_eligible": false,
+    "acceptance_gates": {
+      "evaluable": "34/34",
+      "binding_exact": "34/34",
+      "signature_exact": "34/34",
+      "positive_hits": "9/9",
+      "negative_leakage": "0/25",
+      "evidence_complete": "34/34",
+      "model_calls": 34,
+      "retries": 0
+    }
+  }
+}

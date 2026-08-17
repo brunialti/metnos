@@ -1,0 +1,20 @@
+{
+ "author_inference_attempts": 0,
+ "external_gate_required": true,
+ "external_gate_status": "absent",
+ "gate_consumed": false,
+ "gold_modified": false,
+ "inference": false,
+ "inference_allowed": false,
+ "live_runner_allowed": false,
+ "live_runs": 0,
+ "model_calls": 0,
+ "network_calls": 0,
+ "next_gate": "independent offline review of this bundle; no transport may be authorized before it passes",
+ "predecessor_modified": false,
+ "runtime_cutover_authorized": false,
+ "scope": "typed-registry Phase-1 clause-owned successor closing B1-B4 of the independent V26.5.6.5 review, offline only",
+ "status": "OFFLINE_AUTHOR_CHECKPOINT",
+ "transport_preflight_allowed": false,
+ "version": "metnos.v26.5.6.6-author-pre-gate/1.0"
+}

@@ -1,0 +1,24 @@
+{
+  "author_gate_sha256": "b94906ffbe93ca700ce3f5eaa7adf325852afcbea8f1fce4110249786a6b7542",
+  "authority": "user_authorized_v26571_preflight_gate_verifier",
+  "authorized_endpoint": "http://127.0.0.1:8080",
+  "authorized_output_path": "/tmp/metnos_v26571_transport_preflight.json",
+  "freeze_sha256": "f9fe647c191bc4da41a1d33ebd70827dcdc25b76d344c7911e1847c8b4d7c827",
+  "gate_verification": {
+    "path": "internal/tools/request_analysis_lab/candidates/v26571/metnos_v26571_transport_preflight_gate_verification.json",
+    "sha256": "11f21ff26f12542c9e4976276531bc3880fea401cdcd06645d445c79c4126b1d"
+  },
+  "independent_review": {
+    "path": "internal/tools/request_analysis_lab/candidates/v26571/metnos_v26571_transport_preflight_authorization_review.json",
+    "sha256": "0d2a0b64a641d1d62ed1c4913173a01c9dd774f7afd5be5ead5df25aa2f5eb35"
+  },
+  "inference_allowed": false,
+  "inference_call_limit": 0,
+  "method": "GET",
+  "request_path": "/v1/models",
+  "runner_sha256": "4fb89a9aaeada188840e5f61c06ce22f68f5138e22463b8b8c1437080c8a21e1",
+  "status": "authorized_transport_preflight_only",
+  "transport_call_limit": 1,
+  "transport_preflight_allowed": true,
+  "version": "metnos.v26.5.7.1-preflight-gate/1.0"
+}

@@ -1,0 +1,536 @@
+{
+  "adjudication_format": "metnos.intent-shadow-divergence-adjudication/0.1",
+  "approved_decisions_applied": {
+    "case_113": "read/events -> create/files; selezione/rinomina di campi strutturati è proiezione",
+    "case_38": "outside_registry temporaneo con nota futura pipeline/PDF",
+    "case_84": "solo get/images",
+    "indispensable_outside_registry_clause": "intero composto unrepresentable/outside_registry; nessun sottografo parziale",
+    "mutation": "solo cambiamento reale o effetto esterno",
+    "near_miss": "semanticamente inesatto = errore di accuratezza",
+    "safe_stop": "può essere sicuro ma non accurato",
+    "wrong_read_or_search": "errore di accuratezza, non mutazione"
+  },
+  "binding": {
+    "contract_file_sha256": "3b82156a3a3d3414f211926a32ccd40593de1d6faa6adfcf76474c8d32717aa5",
+    "contract_path": "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md",
+    "judgment_choices_file_sha256": "6349439cbbde9f5ecbad5d9d9f6cf14264bf02b5d5c47baba565fecc595b8936",
+    "judgment_choices_path": "internal/design/scelte_oracolo_pendenti_12_8_2026.md",
+    "registry_file_sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8",
+    "registry_path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+    "registry_payload_sha256": "7a4f2916af8963d8d16fb79cb355d23e9739163f2241a84fa28bc6c070ed4a0a"
+  },
+  "cases": [
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.94,
+      "evidence": "L'identificazione di persone in una foto è get/persons; find/persons cerca fotografie corrispondenti nell'indice, non risponde direttamente a «chi».",
+      "evidence_refs": [
+        "runtime/prompts/it/intent_extractor_scaffold.j2",
+        "executors/find_persons_indices/manifest.toml"
+      ],
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/persons"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "id": "frozen-009",
+      "index": 9,
+      "new_policy_required": false,
+      "query": "a chi assomiglia la persona in questa foto?",
+      "query_sha256": "b160d8651e9ac103fb0c1681ec6964353958f72f15ed2a4d42a0f4efb8e46020",
+      "rules_applied": [
+        "exact_semantic_meaning",
+        "near_miss_is_accuracy_error"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.94,
+      "evidence": "Variante del caso 9: la foto è sorgente per identificare la persona; non viene richiesta una raccolta di fotografie della persona.",
+      "evidence_refs": [
+        "runtime/prompts/it/intent_extractor_scaffold.j2",
+        "executors/find_persons_indices/manifest.toml"
+      ],
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/persons"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "id": "frozen-011",
+      "index": 11,
+      "new_policy_required": false,
+      "query": "a chi assomiglia la persona in questa foto",
+      "query_sha256": "f2c45addf79f8b26c12320ac9e99fc2639a0783a87c5910f54bd69935a0702e8",
+      "rules_applied": [
+        "exact_semantic_meaning",
+        "near_miss_is_accuracy_error"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.96,
+      "evidence": "read_messages espone già entries e contatori; il contratto del planner usa direttamente il conteggio del producer per «quante mail», senza compute/entries ridondante.",
+      "evidence_refs": [
+        "executors/read_messages/manifest.toml",
+        "runtime/prompts/it/engine_proposer.j2",
+        "runtime/prompts/it/planner/_footer.j2"
+      ],
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "id": "frozen-022",
+      "index": 22,
+      "new_policy_required": false,
+      "query": "quante email di spam ho ricevuto nella mailbox knowcastle",
+      "query_sha256": "9c0d0e23054b787c596cccc3b29fba7ea6d5d595813b8fb010b8e4c3edeae82e",
+      "rules_applied": [
+        "producer_metadata_is_not_a_separate_operation",
+        "exact_semantic_meaning"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.99,
+      "evidence": "Uno store nominato è dominio entries. Le indispensabili lettura e scrittura dello store non hanno rotte nel registro; read/files e write/files sarebbero near miss.",
+      "evidence_refs": [
+        "runtime/prompts/en/intent_extractor_v4.j2",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-024",
+      "index": 24,
+      "new_policy_required": false,
+      "query": "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove non ancora presenti e dimmi quante issue nuove hai inserito.",
+      "query_sha256": "b2758cb06c46c2d0d866a7ff2a60a57721c14a2d7eeea6982766431646a7df69",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound",
+        "near_miss_is_accuracy_error"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 1.0,
+      "evidence": "Decisione esplicita di Roberto: outside_registry temporaneo. Estrarre data e importo è indispensabile e non ha rotta registrata; non si conserva un sottografo parziale.",
+      "evidence_refs": [
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+        "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "future_note": "Rivalutare quando sarà registrata una pipeline completa per reperire e leggere le fatture, inclusi PDF, estrarre data e importo e creare il foglio; fino ad allora non promuovere letture parziali.",
+      "id": "frozen-038",
+      "index": 38,
+      "new_policy_required": false,
+      "query": "cerca tutte fatture anthropic e metti data e importo su spreadsheet",
+      "query_sha256": "d43ca7b1a4a062addab2f5777a5fbbb6260ef4ea525fd010dd9d48a4685ba3fb",
+      "rules_applied": [
+        "roberto_case_38_temporary_outside_registry",
+        "indispensable_outside_registry_whole_compound"
+      ],
+      "temporary": true
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.98,
+      "evidence": "Catalogo e registro congelati non includono sorgenti GitHub per trovare o leggere file di repository. Il ramo web rappresentabile non può sopravvivere da solo.",
+      "evidence_refs": [
+        "tests/benchmarks/catalog_snapshot.json",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-039",
+      "index": 39,
+      "new_policy_required": false,
+      "query": "leggi i file readme su github brunialti/metnos e cerca sul web notizie su python",
+      "query_sha256": "3cc86097287a54fe740a4e92ab2ffc6cb4c0a7a36d3cdc22287c73ecd1970555",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.99,
+      "evidence": "Lettura e aggiornamento dello store github_issue_qa sono clausole indispensabili, ma le rotte store/entries corrispondenti non sono registrate.",
+      "evidence_refs": [
+        "runtime/prompts/en/intent_extractor_v4.j2",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-040",
+      "index": 40,
+      "new_policy_required": false,
+      "query": "Cerca nello store github_issue_qa le entries con campo status uguale a 'approved', poi posta su GitHub il campo accepted_reply come commento della rispettiva issue del repo brunialti/metnos, infine scrivi nello store github_issue_qa quelle entries con campo status uguale a 'posted'",
+      "query_sha256": "a28c35924994e5735fe8463e81184f178a24615fa2d1f5b3db64aa3d35b8cd2b",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.99,
+      "evidence": "find/issues è registrata, ma salvare nello store richiede una scrittura entries assente; la clausola indispensabile rende non rappresentabile l'intero composto.",
+      "evidence_refs": [
+        "runtime/prompts/en/intent_extractor_v4.j2",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-044",
+      "index": 44,
+      "new_policy_required": false,
+      "query": "Elenca le issue aperte di brunialti/metnos su github e salvale nello store github_issue_qa",
+      "query_sha256": "fcf916532baba973aee85de3dcfbea5ad68fad1754dc40a4e33ad7c17d0bde25",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.99,
+      "evidence": "La persistenza nel database locale come pending equivale a scrittura di entries ed è una parte indispensabile senza rotta registrata.",
+      "evidence_refs": [
+        "runtime/prompts/en/intent_extractor_v4.j2",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-076",
+      "index": 76,
+      "new_policy_required": false,
+      "query": "leggi le issue aperte su github di brunialti/metnos e salvale nel database locale come pending",
+      "query_sha256": "13fcd3952a1fb5c8f2fb34a267dad0ec7cf2cc747cd4d4bf04c65cf3003f36d4",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.99,
+      "evidence": "La barriera è registrata, ma lettura e aggiornamento dello store sono indispensabili e fuori registro; barriera e azioni GitHub non restano come verità parziale.",
+      "evidence_refs": [
+        "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-077",
+      "index": 77,
+      "new_policy_required": false,
+      "query": "Cerca nello store github_issue_qa le issue con status uguale a 'answered', chiedi la mia approvazione, pubblica il commento su github e aggiorna lo status a 'posted'",
+      "query_sha256": "3e436229e861143eff061926655ecb46c8b1cf986409670f37b3c25ca28af8cc",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound",
+        "no_partial_executable_subgraph"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 1.0,
+      "evidence": "Decisione esplicita di Roberto, confermata dall'implementazione: senza base_path get_images_indices enumera gli indici unificati materializzati e restituisce base_path e n_entries per corpus.",
+      "evidence_refs": [
+        "executors/get_images_indices/manifest.toml",
+        "executors/get_images_indices/get_images_indices.py",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "id": "frozen-084",
+      "index": 84,
+      "new_policy_required": false,
+      "query": "Elenca i corpus che hanno un indice immagini unificato e mostra quante foto contiene ciascuno",
+      "query_sha256": "367b0fb1dbd648f9e09e1fdf3922e17e24f733cc34271b402eed29698bb49486",
+      "rules_applied": [
+        "roberto_case_84_get_images_only",
+        "minimal_exact_graph"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.98,
+      "evidence": "Il registro congelato non include read_files_github sotto read/files; mappare la lettura remota sulla sorgente locale sarebbe un near miss.",
+      "evidence_refs": [
+        "tests/benchmarks/catalog_snapshot.json",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-085",
+      "index": 85,
+      "new_policy_required": false,
+      "query": "leggi il file README.md dal repo github brunialti/metnos",
+      "query_sha256": "49bb0f793f39c3070b942d51c7b904edc0a08e4fb36541045561b4bf6d246107",
+      "rules_applied": [
+        "closed_registry",
+        "near_miss_is_accuracy_error"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_a",
+      "confidence": 0.9,
+      "evidence": "Si chiede solo il contenuto della pagina web nominata, senza login o interazione. read/urls è la rotta registrata per leggere HTML; gli argomenti URL non appartengono al grafo.",
+      "evidence_refs": [
+        "executors/read_urls_html/manifest.toml",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "id": "frozen-097",
+      "index": 97,
+      "new_policy_required": false,
+      "query": "leggi la pagina di booking.com",
+      "query_sha256": "718b37e2bc483118969fc6b1947aeaecadde33da0571db4e12463fc73c55bc67",
+      "rules_applied": [
+        "exact_semantic_meaning",
+        "runtime_arguments_outside_intent_graph"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.98,
+      "evidence": "Leggere README in un repository GitHub richiede operazioni file-provider assenti dal catalogo congelato; la ricerca web separata non può essere conservata da sola.",
+      "evidence_refs": [
+        "tests/benchmarks/catalog_snapshot.json",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-100",
+      "index": 100,
+      "new_policy_required": false,
+      "query": "leggi i file readme su github e cerca sul web notizie su python",
+      "query_sha256": "4860e501daa2f606bf33344d128ebc493a12aebd4d5b4acd7d91110bc59f5a10",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.99,
+      "evidence": "Confrontare e salvare issue nello store richiede lettura/scrittura entries non registrate; find/issues da sola non rappresenta il significato completo.",
+      "evidence_refs": [
+        "runtime/prompts/en/intent_extractor_v4.j2",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-106",
+      "index": 106,
+      "new_policy_required": false,
+      "query": "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove con status new",
+      "query_sha256": "2f9a57e72d5580eed3337c7b10e63d9cd0ddc535c9c791099fe47096fd267256",
+      "rules_applied": [
+        "closed_registry",
+        "indispensable_outside_registry_whole_compound"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_b",
+      "confidence": 0.98,
+      "evidence": "L'enumerazione dell'albero file di un repository GitHub non ha sorgente nel catalogo congelato; list/dirs registrata deriva dal filesystem locale.",
+      "evidence_refs": [
+        "tests/benchmarks/catalog_snapshot.json",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "id": "frozen-109",
+      "index": 109,
+      "new_policy_required": false,
+      "query": "elenca tutti i file su github nel repo brunialti/metnos",
+      "query_sha256": "384a81ffd25667d888137deb4f7147aa86981de49b1b434d63bce5e04e964ac9",
+      "rules_applied": [
+        "closed_registry",
+        "near_miss_is_accuracy_error"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_a",
+      "confidence": 0.9,
+      "evidence": "Come il 97, chiede il testo della pagina pubblica nominata e non un'azione interattiva; read/urls copre la lettura HTML.",
+      "evidence_refs": [
+        "executors/read_urls_html/manifest.toml",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json"
+      ],
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "id": "frozen-112",
+      "index": 112,
+      "new_policy_required": false,
+      "query": "cosa c'e' scritto nella pagina di booking.com",
+      "query_sha256": "6a19c76960ad5f2b1b75c3daf0dfcd15ed3bfe1cd05ea4d322b208409d4ffe6e",
+      "rules_applied": [
+        "exact_semantic_meaning",
+        "runtime_arguments_outside_intent_graph"
+      ]
+    },
+    {
+      "candidate_relation": "matches_original_expected_a",
+      "confidence": 1.0,
+      "evidence": "Decisione esplicita di Roberto: read/events produce summary/start/end; selezionare o rinominare titolo e orario è proiezione, non extract. create/files dipende dalla lettura.",
+      "evidence_refs": [
+        "executors/read_events/manifest.toml",
+        "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+        "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md"
+      ],
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "create/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "id": "frozen-113",
+      "index": 113,
+      "new_policy_required": false,
+      "query": "leggi gli eventi di questa settimana, estrai titolo e orario e crea un foglio di calcolo",
+      "query_sha256": "f68547c6de41121277ed60c158be1b7356748aa13da42b3a9874099b7eb0ffbf",
+      "rules_applied": [
+        "roberto_case_113_structured_field_projection",
+        "data_dependency_order"
+      ]
+    }
+  ],
+  "contract_version": "metnos.intent-shadow/0.1",
+  "counts": {
+    "cases": 18,
+    "differs_from_both_original_expecteds": 0,
+    "matches_original_expected_a": 3,
+    "matches_original_expected_b": 15,
+    "new_policy_required": 0,
+    "operation_graph": 7,
+    "system_control": 0,
+    "unique_hashes": 18,
+    "unique_indices": 18,
+    "unrepresentable": 11
+  },
+  "created_date": "2026-08-12",
+  "integrity": {
+    "adjudication_payload_sha256": "510df204441bdf62ca1d5fd6c07a2d328a39410707f316225908ac7be4d02a3d",
+    "algorithm": "sha256",
+    "convention": "canonical UTF-8 JSON excluding root integrity"
+  },
+  "review": {
+    "human_review": false,
+    "new_reviewer_a_adjudication_consulted": false,
+    "original_oracles_modified": false,
+    "reviewer": "AI reviewer B",
+    "reviewer_type": "ai",
+    "status": "complete"
+  },
+  "scope": {
+    "comparison_file_sha256": "33a176f49e7f25aaf0845620333555ab60c2fa1fb9fb58a180e018a4dd0402ff",
+    "comparison_path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/reviewer_b/comparison_b.json",
+    "expected_indices": [
+      9,
+      11,
+      22,
+      24,
+      38,
+      39,
+      40,
+      44,
+      76,
+      77,
+      84,
+      85,
+      97,
+      100,
+      106,
+      109,
+      112,
+      113
+    ],
+    "kind": "all_and_only_mechanically_detected_expected_divergences"
+  },
+  "validation": {
+    "checks": [
+      "exactly_18_expected_divergence_indices",
+      "unique_index_query_hash",
+      "query_hash_binding_to_comparison",
+      "exclusive_root_shape",
+      "registered_routes_and_reasons",
+      "backward_data_dependencies",
+      "no_new_policy_required"
+    ],
+    "error_count": 0,
+    "status": "pass"
+  }
+}

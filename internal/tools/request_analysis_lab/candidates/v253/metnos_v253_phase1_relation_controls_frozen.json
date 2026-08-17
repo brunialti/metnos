@@ -1,0 +1,584 @@
+{
+  "cases": [
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.it.reflexive"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.it.nominal"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.en.copular"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.fr.inversion"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.es.prodrop"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.de.copular"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.tr.fused"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.ja.case_marked"
+    },
+    {
+      "expect_binding": true,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "pos.zh.wh_in_situ"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "identity",
+        "focus_type": "identity",
+        "grammatical_person": "first",
+        "relation": "identity.same_as",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.identity.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "identity",
+        "focus_type": "identity",
+        "grammatical_person": "first",
+        "relation": "identity.same_as",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.identity.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "identity",
+        "focus_type": "identity",
+        "grammatical_person": "first",
+        "relation": "identity.same_as",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.identity.fr"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "identity",
+        "focus_type": "identity",
+        "grammatical_person": "first",
+        "relation": "identity.same_as",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.identity.es"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "identity",
+        "focus_type": "identity",
+        "grammatical_person": "first",
+        "relation": "identity.same_as",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.identity.de"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "explicit_entity",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "third",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "explicit_entity",
+        "subject_type": "person",
+        "time_scope": "current"
+      },
+      "id": "neg.third_person.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "explicit_entity",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "third",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "explicit_entity",
+        "subject_type": "person",
+        "time_scope": "current"
+      },
+      "id": "neg.third_person.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "explicit_entity",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "third",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "explicit_entity",
+        "subject_type": "person",
+        "time_scope": "current"
+      },
+      "id": "neg.third_person.es"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "context",
+        "focus_role": "entity",
+        "focus_type": "person",
+        "grammatical_person": "third",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "unknown_entity",
+        "subject_type": "person",
+        "time_scope": "current"
+      },
+      "id": "neg.people_here.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "context",
+        "focus_role": "entity",
+        "focus_type": "person",
+        "grammatical_person": "third",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "unknown_entity",
+        "subject_type": "person",
+        "time_scope": "current"
+      },
+      "id": "neg.people_here.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "context",
+        "focus_role": "identity",
+        "focus_type": "place_identity",
+        "grammatical_person": "third",
+        "relation": "identity.same_as",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "deictic_context",
+        "subject_type": "place",
+        "time_scope": "current"
+      },
+      "id": "neg.place_identity.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "explicit_entity",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "third",
+        "relation": "filesystem.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "explicit_entity",
+        "subject_type": "file",
+        "time_scope": "current"
+      },
+      "id": "neg.file_location.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "explicit_entity",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "third",
+        "relation": "filesystem.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "explicit_entity",
+        "subject_type": "file",
+        "time_scope": "current"
+      },
+      "id": "neg.file_location.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "explicit_entity",
+        "focus_role": "host",
+        "focus_type": "host",
+        "grammatical_person": "third",
+        "relation": "runtime.host_of",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "explicit_entity",
+        "subject_type": "process",
+        "time_scope": "current"
+      },
+      "id": "neg.process_host.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "operation_result",
+        "deixis_center": "explicit_entity",
+        "focus_role": "entities",
+        "focus_type": "entity_collection",
+        "grammatical_person": "none",
+        "relation": "spatial.near",
+        "role": "request",
+        "speech_act": "imperative",
+        "subject_ref": "explicit_entity",
+        "subject_type": "collection",
+        "time_scope": "contextual"
+      },
+      "id": "neg.nearby_operand.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "operation_result",
+        "deixis_center": "explicit_entity",
+        "focus_role": "entities",
+        "focus_type": "entity_collection",
+        "grammatical_person": "none",
+        "relation": "spatial.near",
+        "role": "request",
+        "speech_act": "imperative",
+        "subject_ref": "explicit_entity",
+        "subject_type": "collection",
+        "time_scope": "contextual"
+      },
+      "id": "neg.nearby_operand.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "boolean",
+        "deixis_center": "speaker",
+        "focus_role": "truth_value",
+        "focus_type": "boolean",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "polar_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.polar.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "location",
+        "focus_type": "spatial_position",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "historical"
+      },
+      "id": "neg.historical.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "operation_result",
+        "deixis_center": "speaker",
+        "focus_role": "delivery_result",
+        "focus_type": "permission_result",
+        "grammatical_person": "first",
+        "relation": "acl.share",
+        "role": "request",
+        "speech_act": "imperative",
+        "subject_ref": "current_actor_location_operand",
+        "subject_type": "spatial_position",
+        "time_scope": "current"
+      },
+      "id": "neg.share.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "none",
+        "deixis_center": "quoted_speaker",
+        "focus_role": "none",
+        "focus_type": "none",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "quote",
+        "speech_act": "quote",
+        "subject_ref": "quoted_actor",
+        "subject_type": "actor",
+        "time_scope": "contextual"
+      },
+      "id": "neg.quote.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "none",
+        "deixis_center": "speaker",
+        "focus_role": "none",
+        "focus_type": "none",
+        "grammatical_person": "first",
+        "relation": "spatial.located_at",
+        "role": "condition",
+        "speech_act": "condition",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.condition.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "operation_result",
+        "deixis_center": "explicit_entity",
+        "focus_role": "destination",
+        "focus_type": "resource_locator",
+        "grammatical_person": "none",
+        "relation": "movement.destination",
+        "role": "request",
+        "speech_act": "imperative",
+        "subject_ref": "explicit_entity",
+        "subject_type": "collection",
+        "time_scope": "contextual"
+      },
+      "id": "neg.relative_clause.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "progress",
+        "focus_type": "workflow_progress",
+        "grammatical_person": "first",
+        "relation": "workflow.position",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.workflow_position.it"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "progress",
+        "focus_type": "workflow_progress",
+        "grammatical_person": "first",
+        "relation": "document.position",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.document_position.en"
+    },
+    {
+      "expect_binding": false,
+      "expected": {
+        "answer_mode": "open_variable",
+        "deixis_center": "speaker",
+        "focus_role": "progress",
+        "focus_type": "workflow_progress",
+        "grammatical_person": "first",
+        "relation": "workflow.position",
+        "role": "request",
+        "speech_act": "open_question",
+        "subject_ref": "current_actor",
+        "subject_type": "actor",
+        "time_scope": "current"
+      },
+      "id": "neg.progress.it"
+    }
+  ],
+  "source_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "version": "metnos.v25.3-phase1-relation/1.0"
+}

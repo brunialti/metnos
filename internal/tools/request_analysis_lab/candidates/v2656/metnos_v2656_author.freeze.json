@@ -1,0 +1,212 @@
+{
+  "artifact_pins": {
+    "compact_adapter": {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact_adapter.py",
+      "sha256": "3375207bd7bbf6d99098d0ec2066d0c9f3eb6b76b34f1ccd450abaf89abecef1",
+      "size": 5600
+    },
+    "compact_prompt": {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact.prompt.txt",
+      "sha256": "893db06f910acd48f8929251a89afaaaf630632b90589e0863948792643a7418",
+      "size": 8154
+    },
+    "compact_schema": {
+      "path": "internal/tools/request_analysis_lab/candidates/v265/metnos_v265_compact.schema.json",
+      "sha256": "76cd30411704c780e5866fd165f945bd3e773f0dab1b359e875d41f6eb54a921",
+      "size": 13751
+    },
+    "facade_v2655": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2655/metnos_v2655_facade.py",
+      "sha256": "fc34ffefc8c77c51a959a1fea5625ea896242afcfff0ed2a41e7f89c14d48d63",
+      "size": 15053
+    },
+    "injected_validator": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2653/metnos_v2653_injected_validator.py",
+      "sha256": "66760987f5d2335c79114632affa5c04ffecd9ffe5f8e1a7adec7bc50b4b793d",
+      "size": 31627
+    },
+    "oracle_audit_json": {
+      "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_oracle_audit_v1.json",
+      "sha256": "b8443ad2e27a2d773b971147c1b3d37ee19beb1091b1d357c0a84e6aa0c98a77",
+      "size": 2805
+    },
+    "oracle_audit_md": {
+      "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_oracle_audit_v1.md",
+      "sha256": "538f24876768eb0e8612f3bb440c5f38a51a222122d5b34080e5a5c19ef9799a",
+      "size": 11615
+    },
+    "oracle_freeze": {
+      "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_oracle_audit_v1.freeze.json",
+      "sha256": "f2f5d6046a7fb0b6fead8f5ab27c35c230aebd928411d5d5a962bce90209a70f",
+      "size": 1268
+    },
+    "oracle_overlay": {
+      "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_typed_oracle_v1.overlay.json",
+      "sha256": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af",
+      "size": 25627
+    },
+    "oracle_schema": {
+      "path": "internal/tools/request_analysis_lab/oracles/phase1_v1/metnos_phase1_typed_oracle_v1.schema.json",
+      "sha256": "4929fbc4ac524491f452d11d0f2d4d032887dd423c7487233c3d89065f4e17f2",
+      "size": 9073
+    },
+    "phase1_evaluator": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_phase1_evaluator.py",
+      "sha256": "fdee11190fe913f26069ff7627a62d7b143b28c911c2ea22a6afee91632126c7",
+      "size": 12154
+    },
+    "phase1_fixture": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_phase1_controls_frozen.json",
+      "sha256": "1dfbc5d2a7a83308a0f414d1b2c0b395f096d034471930fbaa886627aa79d954",
+      "size": 41888
+    },
+    "python_dependency_tree": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_python_dependency_tree.json",
+      "sha256": "248b6a6877ad98d361890b50eb91664e3fec477ab6a8376f5dd48c0cb3e9b156",
+      "size": 28187
+    },
+    "runtime_controls34": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2656/metnos_v2656_runtime_controls34.json",
+      "sha256": "23e6e39df4d697a36c81fd911a0f3aa17e3ccaeeb126fcb2bcd2bcd5b3a191e1",
+      "size": 8955
+    },
+    "source_controls34": {
+      "path": "internal/tools/request_analysis_lab/question_focus_controls_v1.json",
+      "sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+      "size": 8296
+    },
+    "typed_registry": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2641/metnos_v2641_typed_registry.json",
+      "sha256": "448c058d805e141c871580253e815849b24a9999d98c505cab970fcd55d1e46f",
+      "size": 9456
+    },
+    "v2655_review_json": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2655/metnos_v2655_independent_static_review.json",
+      "sha256": "47e73c4bd52664241e94b60680ffef95efee7a406d937d61405207bf3da40485",
+      "size": 4022
+    },
+    "v2655_review_md": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2655/metnos_v2655_independent_static_review.md",
+      "sha256": "048e488aa9c7f32cea0f72a8732690e8b4b55b56313c55b9c47eb9b6067e73e5",
+      "size": 1630
+    },
+    "worker_manifest_v2654": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2654/metnos_v2654_runtime_manifest.json",
+      "sha256": "88d7b0096ab2e0c76164c0c3c98705e68cadf06ef2bd5698d353f2139f552391",
+      "size": 1426
+    },
+    "worker_v2654": {
+      "path": "internal/tools/request_analysis_lab/candidates/v2654/metnos_v2654_worker.py",
+      "sha256": "c57c8ececdfffdc2380c7e318e1c9fe8070d074fadf641e0c458367704c20e22",
+      "size": 19601
+    }
+  },
+  "author_inference_allowed": false,
+  "author_model_calls": 0,
+  "author_network_calls": 0,
+  "author_pre_gate_sha256": "3a92d1b07c1c8d7eb78fc3441dd62ac3bbec0589dd839aabb04944cf3446aa1e",
+  "configured_cases": 34,
+  "dependency_inventory": {
+    "loaded_module_count": 51,
+    "loaded_modules_sha256": "8570935e15bd8b9b28c8821247773f66cd5e4059daeaa508264c5dbe96f74ddc",
+    "manifest_sha256": "248b6a6877ad98d361890b50eb91664e3fec477ab6a8376f5dd48c0cb3e9b156",
+    "package_trees": {
+      "jsonschema-4.10.3": "8ebd6bb8e3c13743365616c8d72d8323e7523a9f3d9049e4489970c073c6e28b",
+      "regex-2026.3.32": "793b0835c6e83fa69b3de1223817789cd497e3be5ff6b2f7b2d4ea44f53613ee"
+    }
+  },
+  "diagnostic_contract": {
+    "body_or_model_text_persisted": false,
+    "exception_text_persisted": false,
+    "hashes_bytes_status_types_errno_counters_only": true
+  },
+  "external_gate_required": true,
+  "external_gate_status": "absent",
+  "external_transport_preflight_max_age_seconds": 900,
+  "general_109_regression_certified": false,
+  "independent_infrastructure_review": "pending",
+  "live_contract": {
+    "fail_fast": [
+      "inline_transport_preflight",
+      "transport_or_outer_protocol",
+      "unexpected_local_case_exception"
+    ],
+    "model_invalid_continues": true,
+    "model_request_attempt_limit": 34,
+    "one_call_per_case": true,
+    "retries": 0
+  },
+  "model_batch_contract": {
+    "accuracy_claimed": false,
+    "atomic_exclusive_output": true,
+    "live_runner_opens_postbatch_evidence": false,
+    "partial_records_recoverable_on_normal_python_exception": true,
+    "query_material_included": false,
+    "separate_offline_evaluation_required": true
+  },
+  "offline_evaluator_sha256": "d2f027b00bc634bb53e85a4dfe622dc9f25d997d6d6490a3a37f798d22165803",
+  "postbatch_evidence_identities": [
+    "source_controls34",
+    "phase1_fixture",
+    "phase1_evaluator",
+    "oracle_freeze",
+    "oracle_audit_json",
+    "oracle_audit_md",
+    "oracle_overlay",
+    "oracle_schema"
+  ],
+  "python_executable": "/usr/bin/python3",
+  "python_executable_link_target": "python3.12",
+  "python_executable_sha256": "1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+  "python_executable_size": 8020928,
+  "python_flags": [
+    "-I",
+    "-B"
+  ],
+  "python_version": "3.12.3",
+  "request_body_probe_sha256": "000be71f5787983949abd25a83b33492cc10a315fb40aea09b9c45932e68781f",
+  "runner_sha256": "ffb55a27da2167dc1ecb3cf878bf4f949380b81ffff1890dbe7a5f7ee4adf225",
+  "runtime_artifact_identities": [
+    "facade_v2655",
+    "worker_v2654",
+    "worker_manifest_v2654",
+    "compact_adapter",
+    "injected_validator",
+    "typed_registry",
+    "compact_schema",
+    "compact_prompt",
+    "v2655_review_json",
+    "v2655_review_md",
+    "runtime_controls34",
+    "python_dependency_tree"
+  ],
+  "scope": {
+    "description": "typed-registry Phase-1 K1/34 infrastructure checkpoint",
+    "full_request_analysis_replacement": false,
+    "registry_relation_count": 10,
+    "registry_relations": [
+      "spatial.located_at",
+      "identity.same_as",
+      "filesystem.located_at",
+      "runtime.host_of",
+      "spatial.near",
+      "acl.share",
+      "communication.send",
+      "movement.destination",
+      "workflow.position",
+      "document.position"
+    ],
+    "successor_required": "catalog-derived complete registry plus compatible oracle before any 109-case/general cutover claim"
+  },
+  "segmentation": "Unicode UAX#29 default word boundary via regex.WORD|VERSION1",
+  "selftest_sha256": "7b3191542cace8c827e966e5cf787fecd99a821be58583845999ade1818abd3c",
+  "status": "PRE_INFRA_REVIEW",
+  "trust_roots_not_frozen": {
+    "kernel": "Linux 7.0.1-070001-generic",
+    "os_and_glibc": "Ubuntu userspace / glibc 2.39",
+    "same_uid_process_and_debugger": true,
+    "stdlib": "Python 3.12.3 standard library loaded from OS tree"
+  },
+  "unicode_version": "15.0.0",
+  "version": "metnos.v26.5.6-author-freeze/1.0"
+}

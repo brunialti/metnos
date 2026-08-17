@@ -1,0 +1,69 @@
+{
+  "version": "metnos.phase1-oracle-audit/1.0",
+  "date": "2026-08-08",
+  "independence": {
+    "server_calls": 0,
+    "candidate_outputs_read": 0,
+    "raw_queries_copied": 0,
+    "oracle_frozen_before_v263_field_comparison": true
+  },
+  "source": {
+    "path": "internal/tools/request_analysis_lab/question_focus_controls_v1.json",
+    "sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+    "cases": 34
+  },
+  "verdict": {
+    "source_binary_binding_oracle": "accepted_unchanged",
+    "source_seven_field_exact_oracle": "rejected_as_non_objective",
+    "v263_acceptance_credit": "not_authorized",
+    "v263_allowed_use": "offline_or_native_diagnostic_only_if_parent_authorizes"
+  },
+  "frozen_metrics": {
+    "direct_binding": {"required": "34/34", "positive": 9, "negative": 25},
+    "dependency_binding": {"required": "34/34", "definite": 3, "context_resolution": 3, "clarification": 1},
+    "semantic_coverage": {"required": "34/34", "exact": 31, "typed_ambiguity": 3},
+    "safety": {"required": "34/34"},
+    "evidence": {"required": "34/34_fact_obligations"},
+    "general_clause_coverage": {"status": "not_measured_by_focused_34"}
+  },
+  "typed_ambiguity_cases": [
+    "neg.polar.it",
+    "neg.share.it",
+    "neg.relative_clause.it"
+  ],
+  "field_classification": {
+    "clause_role": "acceptance",
+    "speech_act": "acceptance",
+    "relation": "acceptance",
+    "typed_arguments": "acceptance_required_missing_in_v263",
+    "temporal_argument": "acceptance",
+    "grammatical_person": "diagnostic_only",
+    "interpretation": "separate_coverage_gate",
+    "predicate_segment_id": "conditional_evidence_only",
+    "focus_role": "derived_from_unknown_argument",
+    "answer_type": "derived_from_unknown_argument_type",
+    "exact_evidence_kind": "not_gold",
+    "exact_evidence_span": "not_gold"
+  },
+  "v263_blockers": [
+    "semantic_exact still grades seven stale fields",
+    "typed argument states and unknown roles are absent",
+    "subject_ref overloads subject, resource and non-subject operand",
+    "correct typed ambiguities are declared not evaluable",
+    "evidence union is not restricted by claim and has no unknown-argument proof",
+    "first active relation is used instead of clause-aligned adjudication",
+    "dependency and safety gates are absent",
+    "author pre-gate has no external review-oracle-evaluator hash lock"
+  ],
+  "artifacts": {
+    "report": "/tmp/metnos_phase1_oracle_audit_v1.md",
+    "schema": {
+      "path": "/tmp/metnos_phase1_typed_oracle_v1.schema.json",
+      "sha256": "4929fbc4ac524491f452d11d0f2d4d032887dd423c7487233c3d89065f4e17f2"
+    },
+    "overlay": {
+      "path": "/tmp/metnos_phase1_typed_oracle_v1.overlay.json",
+      "sha256": "e62d0605622e5f2c71e329e63448d29ad27fbfd3dafc64b880d4240cda9846af"
+    }
+  }
+}

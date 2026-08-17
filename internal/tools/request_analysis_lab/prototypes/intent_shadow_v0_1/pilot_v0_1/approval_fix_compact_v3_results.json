@@ -1,0 +1,82 @@
+{
+  "format": "metnos.intent-approval-fix-pilot/0.1",
+  "records": [
+    {
+      "case_id": "bp-006",
+      "elapsed_ms": 9696,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "5a3bc96c9a6b2718028bbf351faa8102f4adb41a2f18d8163216d2ad5c9cc1cd",
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "case_id": "bp-018",
+      "elapsed_ms": 9866,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "request_sha256": "3b9abae4cd8ffcb7c3269b58d0d756b9f9036e4fa707d9e132fcc66ac8a5d951",
+      "semantic": null,
+      "status": "document_invalid"
+    }
+  ],
+  "state": "stopped_after_probe"
+}

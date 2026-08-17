@@ -1,0 +1,1393 @@
+{
+  "blueprint_freeze_sha256": "aa4ccaea6f2de5b5919f0556a8fb28d9367ea542fb591624f2f970ceb490fddb",
+  "cases_sha256": "0ecc2f4d686407c282b4e78819bec70de88356d50cd356eca0a38dbd7a3893a5",
+  "challenger_freeze_sha256": "91f7acb5b582f1ad064ed19e788207c8a0452e1a712d934a60f8e7e59463d966",
+  "format": "metnos.intent-pilot-result/0.1",
+  "records": [
+    {
+      "arm": "baseline",
+      "case_id": "bp-001",
+      "cell": "G1_SINGLE",
+      "elapsed_ms": 9107,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "fcb2e5ba5a5d16bbf38e780af88a954441a48c3c4a9300d7c168eac1a261c60e",
+      "language_tag": "en-GB",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "bcd7ef044eea20f4c2cc6310dff89ff349b65c33295dd93b1ee859054701d6cd",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-001",
+      "cell": "G1_SINGLE",
+      "elapsed_ms": 9056,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "cfdb759e38287261b35b5ce8da55413580b6268f8c25bb15abcba4d8115dc2e6",
+      "language_tag": "en-GB",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "bc78b2a3621da22c28a66f0519467194007f33225614ff08479817c28b4383fd",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-002",
+      "cell": "S3_CONDITIONAL_BRANCH",
+      "elapsed_ms": 1048,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "http_body_sha256": "4d867d759da162cc2f1c2683604f53372a56c68e2ae98f7146d0d25ae364bae9",
+      "language_tag": "en-GB",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAicmVhZC9tZXNzYWdlcyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJmaW5kL2ZpbGVzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMAogICAgICBdCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMAogICAgICBdCiAgICB9CiAgXQp9",
+      "request_sha256": "8f9ac81dd0bf7fca58f291789c31d7d39b67725437853d556a157e776a95a583",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-002",
+      "cell": "S3_CONDITIONAL_BRANCH",
+      "elapsed_ms": 860,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "http_body_sha256": "76eef93fef8919714c819a3d122e98186ff4dcde81797615d0c7096ee135684e",
+      "language_tag": "en-GB",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAicmVhZC9tZXNzYWdlcyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJmaW5kL2ZpbGVzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMAogICAgICBdCiAgICB9CiAgXQp9",
+      "request_sha256": "8b75e1ca0790fbd77af9d473c0417fe5d8a3592d3c2b6f8ef429375cdea4fa33",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-003",
+      "cell": "G2_COMPOUND_INDEPENDENT",
+      "elapsed_ms": 9245,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "658807a6c8b477b714fcfb9ed9781920e43550d01f1932afd2d1f7bc1efe7bc6",
+      "language_tag": "it-IT",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9jb250YWN0cyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJnZXQvbm93IgogICAgfQogIF0KfQ==",
+      "request_sha256": "9b67df8670f30d399b349d3c87e0e401cb56d594ce76738b4f2771fb501b0b21",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-003",
+      "cell": "G2_COMPOUND_INDEPENDENT",
+      "elapsed_ms": 9267,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "d3d8208852af0f06e600ddb1c059cf36418023260f2c3b525f5d01574705f5a0",
+      "language_tag": "it-IT",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9jb250YWN0cyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJnZXQvbm93IgogICAgfQogIF0KfQ==",
+      "request_sha256": "fbfbd18735a56c59712b92a0e4659d7250cdaa1d64e12d0f0e4ffcc701462abe",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/contacts"
+          },
+          {
+            "kind": "operation",
+            "route": "get/now"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-004",
+      "cell": "S4_UNDO",
+      "elapsed_ms": 451,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "http_body_sha256": "62faec0a926357281b0021c7a551747d0074b967687eb68953b422005d18918d",
+      "language_tag": "it-IT",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "4394a35513b3ce6a9b7a720e66574a1bef28ea6e1abcbf365bbbee42f99cc1ab",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-004",
+      "cell": "S4_UNDO",
+      "elapsed_ms": 403,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "control": "undo_last_turn",
+        "kind": "system_control"
+      },
+      "http_body_sha256": "4af6d08a88a257febacb72b2cc13f23cd277ca122d4f3afdde2aa9ec204622e3",
+      "language_tag": "it-IT",
+      "raw_model_output_b64": "eyJraW5kIjoidW5yZXByZXNlbnRhYmxlIiwicmVhc29uIjoibm9fYWN0aW9uYWJsZV9pbnRlbnQifQ==",
+      "request_sha256": "5ce26ef686ddea64ba605e87ce51149806631a1090d22fe995ba700eb2b7a93a",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "no_actionable_intent"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-005",
+      "cell": "G3_COMPOUND_DEPENDENT",
+      "elapsed_ms": 9791,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "e6f1fd6617f1d848cf2321c1dada15e0eeaa76bb1785cf35410394a1b7ab81ac",
+      "language_tag": "es-MX",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJjb21wcmVzcy9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "f98deb0bb1d7abd7b5d6594ffd268ad9287dc5c5f5554e474b85981bf80c4f0d",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-005",
+      "cell": "G3_COMPOUND_DEPENDENT",
+      "elapsed_ms": 9429,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "c4f675df3b47ea2d026f9a7a482203533d161bfe7454d2afb09f706135cb4f9d",
+      "language_tag": "es-MX",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJjb21wcmVzcy9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "47b04acb8ff75197c20d74fead1db2c7a124c225f6e3edeb189ecb211f8b6f54",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "compress/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-006",
+      "cell": "S1_APPROVAL",
+      "elapsed_ms": 1035,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "6e1c24c0e748803b7a295af3e41976ac3538c55f7d07fcc3508dca54eb225e60",
+      "language_tag": "es-MX",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJnZXQvaW5wdXRzIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImRlbGV0ZS9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "9c77b5bb36c4d0d6c31ff87c9524a7eba60af132e8306e73215e5877daebb272",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "kind": "operation",
+            "route": "get/inputs"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "delete/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-006",
+      "cell": "S1_APPROVAL",
+      "elapsed_ms": 1448,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/files"
+          },
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/files"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "5973c778946da3113eaee3eaf2e0e9eb2f2936c0d29ae29ebda19420757da314",
+      "language_tag": "es-MX",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9maWxlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImdldC9pbnB1dHMiLAogICAgICAiZnJvbSI6IFsKICAgICAgICAwCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJkZWxldGUvZmlsZXMiLAogICAgICAiZnJvbSI6IFsKICAgICAgICAwLAogICAgICAgIDEKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "9f05ada881c0fa379af161bfefa79ce9e2e44f016bd84cb9196276d353411c78",
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-007",
+      "cell": "G4_COVERAGE_BOUNDARY",
+      "elapsed_ms": 9015,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "http_body_sha256": "722edeb3dc0d5b447cf3d9412641ce90f120fbb49dc1a251eda6468d75e77c91",
+      "language_tag": "de-DE",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "request_sha256": "e4f7c7fbb68e9d1366903cd6482fae1169cbcc2b7d0e1265f7c2abe41341dec9",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-007",
+      "cell": "G4_COVERAGE_BOUNDARY",
+      "elapsed_ms": 9076,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "http_body_sha256": "1ef2045f6bd11aef7f69cb94e5abb887ed5b4e5db212fff04e868e5cc8db5c1d",
+      "language_tag": "de-DE",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJtaXNzaW5nX3JlcXVpcmVkX2luZm9ybWF0aW9uIgp9",
+      "request_sha256": "c5875d5485c0b63d552138d753a0b971f7f93a8ea09d5593495258590b77fa94",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "missing_required_information"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-008",
+      "cell": "S2_NEGATION",
+      "elapsed_ms": 531,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "13d1b83eeb88e2d2b5b77fac1c6109f8511d7c9cf62f5e4732c11fdc6f51df0f",
+      "language_tag": "de-DE",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAicmVhZC9tZXNzYWdlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "5b28d40e5e4d3389131994c8d329485725c715952533bf751a4abbf887084568",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-008",
+      "cell": "S2_NEGATION",
+      "elapsed_ms": 586,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "027d7dba39199832100dbd2a93dab2ffb35d41e4957e9223490c7a9fba3a593e",
+      "language_tag": "de-DE",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAicmVhZC9tZXNzYWdlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "b3d626e01e23078138fb35e4e4ecc0357b865feebad8c27b7bdcd5a8bacbfb30",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-009",
+      "cell": "G5_LINGUISTIC_VARIATION",
+      "elapsed_ms": 9151,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "3f4263f02371e3a8ed60481be10069fcd1b26e3efb404ab1907a402cd98d57cf",
+      "language_tag": "tr-TR",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfQogIF0KfQ==",
+      "request_sha256": "1e37153374063f4bf4002c9b01a5495b55bc5909a47957144dacc1ce64562810",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-009",
+      "cell": "G5_LINGUISTIC_VARIATION",
+      "elapsed_ms": 10012,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "f0affcd6bf9f62b508bd3540f6c259bd1f82ab2441a9c1244701ee6032f61ac4",
+      "language_tag": "tr-TR",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfQogIF0KfQ==",
+      "request_sha256": "bcd0ecd342613b9ea3bd9fa3d695ac16f77a65ddd8efa166b3d50a17c85eb621",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-010",
+      "cell": "S5_MIXED_CONTROL",
+      "elapsed_ms": 1041,
+      "error": "FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "http_body_sha256": "4db53cc21dca677e1001399363f4726a0771bf6f2af6a91e57a03078ce451605",
+      "language_tag": "tr-TR",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2ZpbGVzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMAogICAgICBdCiAgICB9CiAgXQp9",
+      "request_sha256": "bba8d3f5c231523fcbf354d7dc8ed25e42d5523af06deca6a0e09947df0f7273",
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-010",
+      "cell": "S5_MIXED_CONTROL",
+      "elapsed_ms": 1014,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "http_body_sha256": "4df73c1b15fb2190df85b95f23f444ac4d612fd4caa2b117cf74b0abe5712c44",
+      "language_tag": "tr-TR",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZGVsZXRlL2NyZWRlbnRpYWxzIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImZpbmQvZmlsZXMiLAogICAgICAiZnJvbSI6IFsKICAgICAgICAwCiAgICAgIF0KICAgIH0KICBdCn0=",
+      "request_sha256": "3144b1a2559ed502b7f868934ae80c64bc57a394557ef95ef575327c355f0ba6",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "delete/credentials"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "find/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-011",
+      "cell": "G1_SINGLE",
+      "elapsed_ms": 9413,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "a4482d35e245c3bd967e1696b6c6e977e7bce6bcb82006b92d06eb9d095dde53",
+      "language_tag": "sr-Cyrl-RS",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "e5411ba8ac9e76bffc4612e801c21ba1dbd4fee63bedcbe9f3886ac28e3fccf1",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-011",
+      "cell": "G1_SINGLE",
+      "elapsed_ms": 12285,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "284cfd739a9187421af7818bd8a0affecbb17e4caecc06eae3048662a0fa948d",
+      "language_tag": "sr-Cyrl-RS",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "9a33fc9fc8655b5ef419d0908645c6c1e6dffadf609496639f68ade65a577888",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-012",
+      "cell": "S6_FALSE_ACTION_TRAP",
+      "elapsed_ms": 606,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "http_body_sha256": "d319cdb672652a2d49d9a606c9114bcd1b7eaecc861cf5a31837e07acb4554c8",
+      "language_tag": "sr-Cyrl-RS",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "f5d5e4cdc9ffab51d99ff05c2eb50c42bcb3d2e5099c925276143d5b000e5596",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-012",
+      "cell": "S6_FALSE_ACTION_TRAP",
+      "elapsed_ms": 651,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "http_body_sha256": "e61ac23801b95cf37bdcfd1a005ef70995139b511159eba9ab4cda5ca17ebbe4",
+      "language_tag": "sr-Cyrl-RS",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "97ae2d58a072f17608921fd93dd3a8e1f66fd4c8d5463cde016e7c2062063c9b",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-013",
+      "cell": "G2_COMPOUND_INDEPENDENT",
+      "elapsed_ms": 10344,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "6f537bd79b983af92f28fbf0f434b471d6aff3ce9689d7e7f1543b2e66b7df08",
+      "language_tag": "ar-EG",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImZpbmQvcGxhY2VzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMAogICAgICBdCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "28d259733bed09e883fa0d6460c850515b9cfbdf93211873cc1da3e7eac9ce9a",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-013",
+      "cell": "G2_COMPOUND_INDEPENDENT",
+      "elapsed_ms": 10384,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "dfb06951b51cfff324cfa4411ac1e2b6224356d6d8f61c9f61a193c75af80312",
+      "language_tag": "ar-EG",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImZpbmQvcGxhY2VzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMAogICAgICBdCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAiZ2V0L3Byb2Nlc3NlcyIKICAgIH0KICBdCn0=",
+      "request_sha256": "79ec5ade1c99690cad925754ea35085960e13102ccfbfa72bd0cca74fb3e6123",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "find/places"
+          },
+          {
+            "kind": "operation",
+            "route": "get/processes"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-014",
+      "cell": "S3_CONDITIONAL_BRANCH",
+      "elapsed_ms": 1710,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "http_body_sha256": "4066ec4009ff69f47c54c7246418c34be20e0598d72a2484f2f97674ac1f8b2b",
+      "language_tag": "ar-EG",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L25vdyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJyZWFkL2V2ZW50cyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogImdldC9pbnB1dHMiLAogICAgICAiZnJvbSI6IFsKICAgICAgICAxCiAgICAgIF0KICAgIH0KICBdCn0=",
+      "request_sha256": "a343d85a913673467acf4668a1f80416503827c5d19056312853a414db0afe21",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/now"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "data_from": [
+              {
+                "from": 1
+              }
+            ],
+            "kind": "operation",
+            "route": "get/inputs"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-014",
+      "cell": "S3_CONDITIONAL_BRANCH",
+      "elapsed_ms": 1310,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "unsupported_dependency"
+      },
+      "http_body_sha256": "7fa8a532d152091a7b455bae8c2783ea2968b54b172cb8fe4463e327278ef4e0",
+      "language_tag": "ar-EG",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L25vdyIKICAgIH0sCiAgICB7CiAgICAgICJyb3V0ZSI6ICJyZWFkL2V2ZW50cyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "a1302a36cf5c34bcfff9ec07b7b4886f6d2fcaecc1a2f80ca9900ab1c7181b9b",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/now"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/events"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-015",
+      "cell": "G3_COMPOUND_DEPENDENT",
+      "elapsed_ms": 10564,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "1ebc2e08371da154298a4c66000822952d2a0c07d2871bb37052262904c72e3f",
+      "language_tag": "hi-IN",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC91cmxzIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogInJlYWQvdXJscyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "955f6f673b1aa3c0a3742eacab7b888cb099b909744c9461c1df18481fb9f44a",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-015",
+      "cell": "G3_COMPOUND_DEPENDENT",
+      "elapsed_ms": 10268,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "58745d891cc9ec0959a8dbef6dc64a32296be25a4413b61bf12eaf3191fd6509",
+      "language_tag": "hi-IN",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC91cmxzIgogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogInJlYWQvdXJscyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "4b6f53bf3e907fc92e1eecf544c790b63118f514cb9e32f002c21bdf8c7cdb0f",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/urls"
+          },
+          {
+            "data_from": [
+              {
+                "from": 0
+              }
+            ],
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-016",
+      "cell": "S2_NEGATION",
+      "elapsed_ms": 922,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "835a039c39035cd5c45b635dd09a37d7a4929499b3276cf18bc525527ce6ab03",
+      "language_tag": "hi-IN",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9pbWFnZXMiCiAgICB9CiAgXQp9",
+      "request_sha256": "5a2eb42b75720d15f2e6921f5a1f6c4f711b94660f5023ae18c0930b7472ce1a",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-016",
+      "cell": "S2_NEGATION",
+      "elapsed_ms": 856,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "945677c7896e50343e1be4f93a34d4f2a237f1d3a83f31f121e5c39911c821b7",
+      "language_tag": "hi-IN",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZmluZC9pbWFnZXMiCiAgICB9CiAgXQp9",
+      "request_sha256": "26d81cc9c8508344bede774309c8c76c399fe1f045228cd9767826160c74ee4c",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/images"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-017",
+      "cell": "G4_COVERAGE_BOUNDARY",
+      "elapsed_ms": 9541,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "http_body_sha256": "92d73e9f054e2af92ac788d0dd4860359a234281561e6623ca2336dce2e3b9a7",
+      "language_tag": "ja-JP",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "cb46f16a6c8838985b0c679e6c56861662a05dccdd64a882ac2175e96043db9f",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-017",
+      "cell": "G4_COVERAGE_BOUNDARY",
+      "elapsed_ms": 9552,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "http_body_sha256": "d7154c9888f2365eb5188bf7f3dad9e67d92bf4f5912bfdbaf945fe0fa1eba17",
+      "language_tag": "ja-JP",
+      "raw_model_output_b64": "ewogICJraW5kIjogInVucmVwcmVzZW50YWJsZSIsCiAgInJlYXNvbiI6ICJvdXRzaWRlX3JlZ2lzdHJ5Igp9",
+      "request_sha256": "5e07d2ad789d4a07fdfaa63c525bb947a3dd73fd15abe799354c819f3379d07c",
+      "semantic": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-018",
+      "cell": "S1_APPROVAL",
+      "elapsed_ms": 2248,
+      "error": "FROM_SELF_OR_FORWARD;FROM_SELF_OR_FORWARD;FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "5e69a05437e9189ea9b5a01e7728ff15dc984dc286d9112ccd17317e7c7f8e8c",
+      "language_tag": "ja-JP",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2lucHV0cyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogInJlYWQvaXNzdWVzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMQogICAgICBdCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAic2V0L2lzc3VlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDIKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "3c48e1b15eac98e7c6908e92efa4846f7666e37ea248fcb334e0f472e18064b5",
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-018",
+      "cell": "S1_APPROVAL",
+      "elapsed_ms": 2338,
+      "error": "FROM_SELF_OR_FORWARD;FROM_SELF_OR_FORWARD;FROM_SELF_OR_FORWARD",
+      "exact": false,
+      "expected": {
+        "body": [
+          {
+            "barrier": "get/approval",
+            "cases": [
+              {
+                "body": [
+                  {
+                    "kind": "operation",
+                    "route": "read/issues"
+                  },
+                  {
+                    "data_from": [
+                      {
+                        "from": 0
+                      }
+                    ],
+                    "kind": "operation",
+                    "route": "delete/issues"
+                  }
+                ],
+                "outcome": "approved"
+              }
+            ],
+            "kind": "barrier"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "44921a2a7e84569929e201b856521476c95331a975cf5521d6add2f2913bfaf3",
+      "language_tag": "ja-JP",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2lucHV0cyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDAKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgInJvdXRlIjogInJlYWQvaXNzdWVzIiwKICAgICAgImZyb20iOiBbCiAgICAgICAgMQogICAgICBdCiAgICB9LAogICAgewogICAgICAicm91dGUiOiAic2V0L2lzc3VlcyIsCiAgICAgICJmcm9tIjogWwogICAgICAgIDIKICAgICAgXQogICAgfQogIF0KfQ==",
+      "request_sha256": "b28e9641912c693daff1f07f8efdb0b5ff4d0be03021d377a6cb09daff818fdc",
+      "semantic": null,
+      "status": "document_invalid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-019",
+      "cell": "G5_LINGUISTIC_VARIATION",
+      "elapsed_ms": 17256,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "eb0c281e2c40ba641596ff4c2dd0a26d8e44bc72f3932bb4b4821d01bc424f7d",
+      "language_tag": "zh-Hant-TW",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2ZpbGVzIgogICAgfQogIF0KfQ==",
+      "request_sha256": "88799abca484db9c0b057a2dc6f6d6e4e6957bab2d218df68639bf9349ebe632",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-019",
+      "cell": "G5_LINGUISTIC_VARIATION",
+      "elapsed_ms": 29349,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "http_body_sha256": "a3f4b21c43c36e4fd11dcae1590332a83055af5ae4867248527b78d3c86ee853",
+      "language_tag": "zh-Hant-TW",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2ZpbGVzIgogICAgfQogIF0KfQ==",
+      "request_sha256": "bf73c9d7c44317e7634a79e11673e36545449b3e6540505707dbb52d98d5d6ce",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/files"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "challenger",
+      "case_id": "bp-020",
+      "cell": "S5_MIXED_CONTROL",
+      "elapsed_ms": 1051,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "http_body_sha256": "edc0f1720598dc4e06473344495fb8f08a54c7150f40824c61f10a72bd007eb7",
+      "language_tag": "zh-Hant-TW",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfQogIF0KfQ==",
+      "request_sha256": "0daae47584694f056a778034a5dca579947ff1378f565eabf77f0809f0849e21",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    },
+    {
+      "arm": "baseline",
+      "case_id": "bp-020",
+      "cell": "S5_MIXED_CONTROL",
+      "elapsed_ms": 1183,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "mixed_root_kinds"
+      },
+      "http_body_sha256": "1aacff0afa929b2049d0c4877a2be7072abc168916b78556be8f236c4e9815bf",
+      "language_tag": "zh-Hant-TW",
+      "raw_model_output_b64": "ewogICJraW5kIjogIm9wZXJhdGlvbl9ncmFwaCIsCiAgInN0ZXBzIjogWwogICAgewogICAgICAicm91dGUiOiAiZ2V0L2xvY2F0aW9uIgogICAgfQogIF0KfQ==",
+      "request_sha256": "718c6bd9a4925c24ed2aa1ad2d883a190052cfb18da536001cc9209a70a23470",
+      "semantic": {
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/location"
+          }
+        ],
+        "kind": "operation_graph"
+      },
+      "status": "valid"
+    }
+  ],
+  "request_count": 40,
+  "retry_count": 0,
+  "state": "complete",
+  "summary": {
+    "baseline": {
+      "document_invalid": 2,
+      "exact": 11,
+      "median_elapsed_ms": 9015,
+      "technical_invalid": 0,
+      "valid": 18
+    },
+    "challenger": {
+      "document_invalid": 2,
+      "exact": 11,
+      "median_elapsed_ms": 9056,
+      "technical_invalid": 0,
+      "valid": 18
+    }
+  }
+}

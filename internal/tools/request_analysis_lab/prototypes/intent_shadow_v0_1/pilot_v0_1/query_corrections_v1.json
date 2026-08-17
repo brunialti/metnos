@@ -1,0 +1,7 @@
+{
+  "format": "metnos.intent-pilot-query-corrections/0.1",
+  "corrections": {
+    "bp-013": "ابحث عن صيدلية في الزمالك واعرض حالة النظام الحالية.",
+    "bp-018": "リポジトリの Issue 42 を読む前に確認を求め、承認された場合だけその Issue を読んで削除してください。"
+  }
+}

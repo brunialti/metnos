@@ -1,0 +1,449 @@
+{
+  "adjudication_format": "metnos.intent-shadow-divergence-adjudication/0.1",
+  "created_date": "2026-08-12",
+  "review": {
+    "adjudicator": "Reviewer A",
+    "authorship": "non-human AI adjudication",
+    "new_reviewer_b_adjudication_consulted": false,
+    "new_semantic_policy_introduced": false,
+    "oracle_files_modified": false
+  },
+  "scope": {
+    "case_count": 18,
+    "indices": [
+      9,
+      11,
+      22,
+      24,
+      38,
+      39,
+      40,
+      44,
+      76,
+      77,
+      84,
+      85,
+      97,
+      100,
+      106,
+      109,
+      112,
+      113
+    ],
+    "selection_rule": "All and only the expected-document disagreements recorded in comparison_a.json."
+  },
+  "sources": {
+    "comparison": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/reviews/reviewer_a/comparison_a.json",
+      "sha256": "5c87d35948d76e407aa84263c24bb9d1a63096d425d403628cd6b1bcb692dff3"
+    },
+    "contract": {
+      "path": "internal/design/contratto_ombra_prototipo_intento_12_8_2026.md",
+      "sha256": "3b82156a3a3d3414f211926a32ccd40593de1d6faa6adfcf76474c8d32717aa5"
+    },
+    "registry": {
+      "path": "internal/tools/request_analysis_lab/prototypes/intent_shadow_v0_1/intent_shadow_registry_v0_1.json",
+      "sha256": "4808bfe8b971ee8839c715f7aac91c6473d865724540890e4ec43dba136243d8"
+    },
+    "sample_sha256": "36aba12b9ec0f366569498bba0fa4dd876f4d2354f736058791182ca41e37af4"
+  },
+  "decisions_applied": {
+    "exact_meaning": "A broadly related route is inaccurate when it does not preserve the requested source, object or effect.",
+    "full_compound_outside_registry": "If an indispensable clause is outside the frozen registry, the whole request is unrepresentable/outside_registry; no partial executable subgraph is retained as gold.",
+    "producer_count": "A producer that enumerates the requested matching entries already exposes their count; no redundant compute/entries node is part of the intent graph.",
+    "case_038": "Temporarily outside_registry; reconsider only after a reviewed invoice/PDF discovery, reading and structured-extraction pipeline exists.",
+    "case_084": "The complete graph is the single get/images operation.",
+    "case_113": "Selecting or renaming fields already present in structured records is projection, not a separate extraction operation."
+  },
+  "summary": {
+    "adjudicated_case_count": 18,
+    "root_counts": {
+      "operation_graph": 7,
+      "system_control": 0,
+      "unrepresentable": 11
+    },
+    "unrepresentable_reason_counts": {
+      "outside_registry": 11
+    },
+    "resolution_authority_counts": {
+      "approved_rule_application": 15,
+      "explicit_roberto_decision": 3
+    }
+  },
+  "cases": [
+    {
+      "sample_index": 9,
+      "case_id": "frozen_sample.009",
+      "query_sha256": "b160d8651e9ac103fb0c1681ec6964353958f72f15ed2a4d42a0f4efb8e46020",
+      "query_text": "a chi assomiglia la persona in questa foto?",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/persons"
+          }
+        ]
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning"
+        ],
+        "evidence": "find/persons maps to find_persons_indices, whose reference_images mode performs face similarity; get/persons only lists or looks up records in the enrolled-person registry."
+      }
+    },
+    {
+      "sample_index": 11,
+      "case_id": "frozen_sample.011",
+      "query_sha256": "f2c45addf79f8b26c12320ac9e99fc2639a0783a87c5910f54bd69935a0702e8",
+      "query_text": "a chi assomiglia la persona in questa foto",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "find/persons"
+          }
+        ]
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning"
+        ],
+        "evidence": "This is the punctuation variant of case 9: the request is a similarity search from a photo, not a registry listing or name lookup."
+      }
+    },
+    {
+      "sample_index": 22,
+      "case_id": "frozen_sample.022",
+      "query_sha256": "9c0d0e23054b787c596cccc3b29fba7ea6d5d595813b8fb010b8e4c3edeae82e",
+      "query_text": "quante email di spam ho ricevuto nella mailbox knowcastle",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/messages"
+          }
+        ]
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "producer_count",
+          "exact_meaning"
+        ],
+        "evidence": "read/messages enumerates the messages matching account and folder criteria and exposes the resulting entry count. compute/entries would redundantly recount the producer output rather than add requested meaning."
+      }
+    },
+    {
+      "sample_index": 24,
+      "case_id": "frozen_sample.024",
+      "query_sha256": "b2758cb06c46c2d0d866a7ff2a60a57721c14a2d7eeea6982766431646a7df69",
+      "query_text": "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove non ancora presenti e dimmi quante issue nuove hai inserito.",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "The registry has no operation for the named github_issue_qa store. read/files and write/files are local-filesystem operations and cannot stand in for a logical store; persistence and delta comparison are indispensable, so the whole compound is outside_registry."
+      }
+    },
+    {
+      "sample_index": 38,
+      "case_id": "frozen_sample.038",
+      "query_sha256": "d43ca7b1a4a062addab2f5777a5fbbb6260ef4ea525fd010dd9d48a4685ba3fb",
+      "query_text": "cerca tutte fatture anthropic e metti data e importo su spreadsheet",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "explicit_roberto_decision",
+        "rules": [
+          "case_038",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "The indispensable extraction of invoice date and amount is not represented by a reviewed route, so the temporary classification is outside_registry even though the source is also underspecified.",
+        "future_note": "Revisit after a reviewed end-to-end pipeline exists for locating invoices, including PDF invoices, reading them, extracting date and amount, and creating the spreadsheet."
+      }
+    },
+    {
+      "sample_index": 39,
+      "case_id": "frozen_sample.039",
+      "query_sha256": "3cc86097287a54fe740a4e92ab2ffc6cb4c0a7a36d3cdc22287c73ecd1970555",
+      "query_text": "leggi i file readme su github brunialti/metnos e cerca sul web notizie su python",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "The registered find/files and read/files implementations cover the local filesystem, not repository contents on GitHub. The web-news clause is representable, but the indispensable GitHub README clause is not, so no partial graph is retained."
+      }
+    },
+    {
+      "sample_index": 40,
+      "case_id": "frozen_sample.040",
+      "query_sha256": "a28c35924994e5735fe8463e81184f178a24615fa2d1f5b3db64aa3d35b8cd2b",
+      "query_text": "Cerca nello store github_issue_qa le entries con campo status uguale a 'approved', poi posta su GitHub il campo accepted_reply come commento della rispettiva issue del repo brunialti/metnos, infine scrivi nello store github_issue_qa quelle entries con campo status uguale a 'posted'",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "send/messages covers posting GitHub comments, but the required read and state update of github_issue_qa have no store operation in the registry. Local read/files and write/files do not preserve that object, so the whole compound is outside_registry."
+      }
+    },
+    {
+      "sample_index": 44,
+      "case_id": "frozen_sample.044",
+      "query_sha256": "fcf916532baba973aee85de3dcfbea5ad68fad1754dc40a4e33ad7c17d0bde25",
+      "query_text": "Elenca le issue aperte di brunialti/metnos su github e salvale nello store github_issue_qa",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "find/issues covers the source, but the named store sink is not registered and is not equivalent to write/files. Because saving is indispensable, the complete request is outside_registry."
+      }
+    },
+    {
+      "sample_index": 76,
+      "case_id": "frozen_sample.076",
+      "query_sha256": "13fcd3952a1fb5c8f2fb34a267dad0ec7cf2cc747cd4d4bf04c65cf3003f36d4",
+      "query_text": "leggi le issue aperte su github di brunialti/metnos e salvale nel database locale come pending",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "The registry can find GitHub issues but has no operation for inserting or updating records in a local database. write/files is a filesystem write, not a database mutation, so the indispensable sink makes the compound outside_registry."
+      }
+    },
+    {
+      "sample_index": 77,
+      "case_id": "frozen_sample.077",
+      "query_sha256": "3e436229e861143eff061926655ecb46c8b1cf986409670f37b3c25ca28af8cc",
+      "query_text": "Cerca nello store github_issue_qa le issue con status uguale a 'answered', chiedi la mia approvazione, pubblica il commento su github e aggiorna lo status a 'posted'",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "The approval barrier and GitHub comment are registered, but reading and updating github_issue_qa are indispensable unregistered store operations. A barrier cannot make an outside-registry object representable; the whole request is outside_registry."
+      }
+    },
+    {
+      "sample_index": 84,
+      "case_id": "frozen_sample.084",
+      "query_sha256": "367b0fb1dbd648f9e09e1fdf3922e17e24f733cc34271b402eed29698bb49486",
+      "query_text": "Elenca i corpus che hanno un indice immagini unificato e mostra quante foto contiene ciascuno",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "get/images"
+          }
+        ]
+      },
+      "resolution": {
+        "authority": "explicit_roberto_decision",
+        "rules": [
+          "case_084",
+          "exact_meaning"
+        ],
+        "evidence": "get/images maps to get_images_indices, whose current contract discovers every materialized unified corpus index when base_path is omitted and returns base_path plus n_entries per corpus. find/dirs is neither needed nor specific to indexed corpora."
+      }
+    },
+    {
+      "sample_index": 85,
+      "case_id": "frozen_sample.085",
+      "query_sha256": "49bb0f793f39c3070b942d51c7b904edc0a08e4fb36541045561b4bf6d246107",
+      "query_text": "leggi il file README.md dal repo github brunialti/metnos",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning"
+        ],
+        "evidence": "read/files reads local filesystem paths and exposes only the local client. The frozen registry has no GitHub repository-file reader, so provider qualification cannot be treated as an argument to this route."
+      }
+    },
+    {
+      "sample_index": 97,
+      "case_id": "frozen_sample.097",
+      "query_sha256": "718b37e2bc483118969fc6b1947aeaecadde33da0571db4e12463fc73c55bc67",
+      "query_text": "leggi la pagina di booking.com",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ]
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning"
+        ],
+        "evidence": "The user names a public web page and asks only to read it. read/urls covers deterministic HTML reading of a known public URL; no login, persistent browser session or interactive site action is requested."
+      }
+    },
+    {
+      "sample_index": 100,
+      "case_id": "frozen_sample.100",
+      "query_sha256": "4860e501daa2f606bf33344d128ebc493a12aebd4d5b4acd7d91110bc59f5a10",
+      "query_text": "leggi i file readme su github e cerca sul web notizie su python",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "The registry has no operation for finding and reading repository files on GitHub; local find/files and read/files cannot substitute for it. The web-search clause is representable, but the indispensable GitHub clause makes the complete compound outside_registry."
+      }
+    },
+    {
+      "sample_index": 106,
+      "case_id": "frozen_sample.106",
+      "query_sha256": "2f9a57e72d5580eed3337c7b10e63d9cd0ddc535c9c791099fe47096fd267256",
+      "query_text": "trova le issue aperte di brunialti/metnos su GitHub, salva nello store github_issue_qa quelle nuove con status new",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning",
+          "full_compound_outside_registry"
+        ],
+        "evidence": "The issue discovery is registered, but comparison with and persistence into github_issue_qa, including setting status new, require an unregistered named-store operation. Filesystem routes do not preserve that meaning, so the whole compound is outside_registry."
+      }
+    },
+    {
+      "sample_index": 109,
+      "case_id": "frozen_sample.109",
+      "query_sha256": "384a81ffd25667d888137deb4f7147aa86981de49b1b434d63bce5e04e964ac9",
+      "query_text": "elenca tutti i file su github nel repo brunialti/metnos",
+      "expected": {
+        "kind": "unrepresentable",
+        "reason": "outside_registry"
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning"
+        ],
+        "evidence": "list/dirs lists a local directory and has no GitHub provider. The registry contains issue and pull-request routes for GitHub but no repository-tree or repository-file listing route."
+      }
+    },
+    {
+      "sample_index": 112,
+      "case_id": "frozen_sample.112",
+      "query_sha256": "6a19c76960ad5f2b1b75c3daf0dfcd15ed3bfe1cd05ea4d322b208409d4ffe6e",
+      "query_text": "cosa c'e' scritto nella pagina di booking.com",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/urls"
+          }
+        ]
+      },
+      "resolution": {
+        "authority": "approved_rule_application",
+        "rules": [
+          "exact_meaning"
+        ],
+        "evidence": "Like case 97, this asks for public page content at a named domain. read/urls preserves that read-only meaning; nothing requests authentication, navigation state or interaction."
+      }
+    },
+    {
+      "sample_index": 113,
+      "case_id": "frozen_sample.113",
+      "query_sha256": "f68547c6de41121277ed60c158be1b7356748aa13da42b3a9874099b7eb0ffbf",
+      "query_text": "leggi gli eventi di questa settimana, estrai titolo e orario e crea un foglio di calcolo",
+      "expected": {
+        "kind": "operation_graph",
+        "body": [
+          {
+            "kind": "operation",
+            "route": "read/events"
+          },
+          {
+            "kind": "operation",
+            "route": "create/files",
+            "data_from": [
+              {
+                "from": 0
+              }
+            ]
+          }
+        ]
+      },
+      "resolution": {
+        "authority": "explicit_roberto_decision",
+        "rules": [
+          "case_113",
+          "exact_meaning"
+        ],
+        "evidence": "read/events already returns structured event records containing title and time fields. Selecting or renaming those fields is projection into create/files, not a missing extraction operation; the spreadsheet consumes the upstream records."
+      }
+    }
+  ],
+  "verification": {
+    "all_and_only_18_disagreements_present": true,
+    "unique_indices": true,
+    "unique_query_hashes": true,
+    "queries_and_hashes_match_comparison": true,
+    "roots_and_reasons_in_registry": true,
+    "operation_routes_in_registry": true,
+    "data_dependencies_backward_and_valid": true,
+    "summary_counts_match": true,
+    "errors": []
+  }
+}

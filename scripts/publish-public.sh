@@ -102,7 +102,7 @@ echo "== 3. pubblico su $REPO (mode=$MODE) =="
 if [ "$MODE" = "snapshot" ]; then
   rm -rf "$DEST/.git"; write_pub_gitignore "$DEST"
   git -C "$DEST" init -q -b main
-  git -C "$DEST" config user.name "Roberto Brunialti"
+  git -C "$DEST" config user.name "brunialti"
   git -C "$DEST" config user.email "brunialti@users.noreply.github.com"
   git -C "$DEST" add -A
   git -C "$DEST" commit -q -m "$MSG"
@@ -113,7 +113,7 @@ else
   if [ ! -d "$WC/.git" ]; then
     rm -rf "$WC"
     git "${GIT_AUTH[@]}" clone -q "https://github.com/$REPO.git" "$WC"
-    git -C "$WC" config user.name "Roberto Brunialti"
+    git -C "$WC" config user.name "brunialti"
     git -C "$WC" config user.email "brunialti@users.noreply.github.com"
   fi
   # sostituisci il contenuto tracciato col nuovo export (preserva .git)

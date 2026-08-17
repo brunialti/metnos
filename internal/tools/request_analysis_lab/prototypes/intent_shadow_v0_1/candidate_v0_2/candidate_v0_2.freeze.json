@@ -1,0 +1,46 @@
+{
+  "freeze_format": "metnos.intent-ir-candidate-freeze/0.2",
+  "status": "offline_candidate_not_runtime",
+  "contract": {
+    "contract_version": "metnos.intent-ir/0.2",
+    "registry_sha256": "7895f6c12040d0d5b3963170645b8c4899611ce80b082dbeb224ec3686cc46bb",
+    "schema_sha256": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+    "schema_semantic_sha256": "de86d0a70a9c966f39c74ed046a1a45452de93a1e548bab1152da94c47f69ff2",
+    "prompt_sha256": "a975386b06d58e6e806f51b9919493931f60869cac7d7ef02eecc77ddfbbe554"
+  },
+  "files": {
+    "README.md": "45f7dbc3ed92a601bd8ee87564e210ea09fd7d306770892044132ff774f126ed",
+    "__init__.py": "9dded94d3083a096aab49a40441f7375cf8ba866b10e12b514c9d5b8fa3d4246",
+    "api.py": "ff94ddfe790a85a13d57e0b5092feb50b38053d36de04339cfd11b2c98207f73",
+    "build_artifacts.py": "308aed73ff8ee6f8d731e61db804ec02d1977b2a255b5cf37a037bc827cb7e08",
+    "canonical.py": "2de9d0ae11a4691d8e7aea6cb33e284c4e727994a288361d09923b227e96d71c",
+    "compiler.py": "aa1c40b5200e64f9a12acea0dd4e445ffee2d89baf93fac2782c21b06bb64cca",
+    "critic.py": "324a32d5a96a58416ae04012fbbaea3396a39683bbd127626041ca53e8945c26",
+    "intent_ir_registry_projection_v0_2.json": "64e887728f5c14b05243fa5032471d146d9a0dfa2889c8784e651044b7860316",
+    "intent_ir_v0_2.prompt.txt": "a975386b06d58e6e806f51b9919493931f60869cac7d7ef02eecc77ddfbbe554",
+    "intent_ir_v0_2.schema.json": "f40a9c974bcce773247ea203f5a4d63c14a0579ddefddf6bcc43430d0ea98f10",
+    "language_tag.py": "5f197f4bb501bd88d1363a58aae57adf006f66a4c5d5e3452156814f2ecacd14",
+    "projection.py": "b37f89643bc22e6b7c8022c523d2ed5cf38ff12c00060195f069124f099c08cd",
+    "registry_projection.py": "e99c4bba16c9a1756119b98c8638aeb9b9209db24eb304317cd0fd00f15564f4",
+    "self_review.md": "25e4eddcc57ae7b5074469842a075e914dd07d7df395fcacbf3c77395822a560",
+    "structured_client.py": "40ebf22f02086a5cf40fb86eaf41168ff611ce801ecb09593cd5772c46c9ddca",
+    "tests/__init__.py": "24601f91b68337cecd7cf56b1ffc92e8eae71593e4b44d695ee625b8b9176a88",
+    "tests/oracle_adapter.py": "02899d4b3fdafb253d0f250597956dc23bc9ac9ed5efb9a84f7d474f7e64efc6",
+    "tests/test_artifacts.py": "0a9d53209b291c1c87d1773ade00ef4de1fa8d06d984b62e6f91ab92f4283f38",
+    "tests/test_mutations.py": "1d6c4463ac5169e6ccdde5a38ff3f3d72f6e1e83737ed5cec30a253a5c9b7ab4",
+    "tests/test_roundtrip.py": "51488e0f93b428b659738e9bf9143d887cfa9a98365adf24e5613ed62c568054",
+    "types.py": "70209bc79f8e0c6d97b31794ef1bf37e72340dfeb927dff4fb001a7680d9822b",
+    "validator.py": "a1fb8ecb16051880478d459206a85fd5c9cde7858f23f17a76342b5d06321adf"
+  },
+  "constraints": {
+    "gpu_calls": 0,
+    "network_calls": 0,
+    "production_writes": 0,
+    "oracle_in_runner": false,
+    "model_facing_ports": false
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "freeze_payload_sha256": "383a4ad0dfdefd6a5bfe4a65d19d02daada7c4b9bfb4cbba360810f6a0389dc8"
+  }
+}

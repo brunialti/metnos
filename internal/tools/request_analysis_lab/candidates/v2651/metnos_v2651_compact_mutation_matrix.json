@@ -1,0 +1,647 @@
+{
+  "classification_counts": {
+    "obsolete": 3,
+    "replacement": 9,
+    "retained": 56
+  },
+  "entries": [
+    {
+      "classification": "retained",
+      "compact_case_id": "M059_dependency_depth_five",
+      "historical_id": "M059_dependency_depth_five",
+      "historical_validator_codes": [
+        "dependency_depth"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M001_unknown_top_field",
+      "historical_id": "M001_unknown_top_field",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M002_focus_reintroduced",
+      "historical_id": "M002_focus_reintroduced",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M003_grammatical_person_reintroduced",
+      "historical_id": "M003_grammatical_person_reintroduced",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M004_supported_zero_atoms",
+      "historical_id": "M004_supported_zero_atoms",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M005_unsupported_with_atom",
+      "historical_id": "M005_unsupported_with_atom",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M006_ambiguity_one_alternative",
+      "historical_id": "M006_ambiguity_one_alternative",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M007_ambiguity_five_alternatives",
+      "historical_id": "M007_ambiguity_five_alternatives",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M008_ambiguity_duplicate_semantics",
+      "historical_id": "M008_ambiguity_duplicate_semantics",
+      "historical_validator_codes": [
+        "duplicate_alternative"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R009_alternative_local_source_ordinal",
+      "historical_id": "M009_cross_alternative_atom_ref",
+      "historical_validator_codes": [
+        "alternative_coverage",
+        "dependency_not_output"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "obsolete",
+      "compact_case_id": "O_M011_duplicate_clause_id",
+      "historical_id": "M011_duplicate_clause_id",
+      "historical_validator_codes": [
+        "clause_ids",
+        "clause_span_consistency",
+        "primary_cardinality"
+      ],
+      "reason": "clause identifiers are derived from distinct source spans"
+    },
+    {
+      "classification": "obsolete",
+      "compact_case_id": "O_M012_clause_id_reverse",
+      "historical_id": "M012_clause_id_reverse",
+      "historical_validator_codes": [
+        "atom_clause_order",
+        "clause_source_order"
+      ],
+      "reason": "clause order is derived from source-span order"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M013_clause_span_out_of_bounds",
+      "historical_id": "M013_clause_span_out_of_bounds",
+      "historical_validator_codes": [
+        "clause_span"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M015_atom_unknown_relation",
+      "historical_id": "M015_atom_unknown_relation",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M016_relation_missing_arg",
+      "historical_id": "M016_relation_missing_arg",
+      "historical_validator_codes": [
+        "relation_arity"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M017_relation_extra_arg",
+      "historical_id": "M017_relation_extra_arg",
+      "historical_validator_codes": [
+        "relation_arity"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M018_swap_arg_order",
+      "historical_id": "M018_swap_arg_order",
+      "historical_validator_codes": [
+        "reference_type"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M021_bound_unknown_ref",
+      "historical_id": "M021_bound_unknown_ref",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M022_bound_ref_wrong_slot_type",
+      "historical_id": "M022_bound_ref_wrong_slot_type",
+      "historical_validator_codes": [
+        "reference_type"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M023_derived_into_slot_without_allowlist",
+      "historical_id": "M023_derived_into_slot_without_allowlist",
+      "historical_validator_codes": [
+        "dependency_type"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M024_derived_wrong_output_type",
+      "historical_id": "M024_derived_wrong_output_type",
+      "historical_validator_codes": [
+        "dependency_type"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M025_silent_output_type_rewrite",
+      "historical_id": "M025_silent_output_type_rewrite",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M026_bound_with_source_fields",
+      "historical_id": "M026_bound_with_source_fields",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M027_unknown_with_ref",
+      "historical_id": "M027_unknown_with_ref",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M028_from_output_with_bound_ref",
+      "historical_id": "M028_from_output_with_bound_ref",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M029_duplicate_supplied_type_disagrees",
+      "historical_id": "M029_duplicate_supplied_type_disagrees",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M030_main_request_assertion",
+      "historical_id": "M030_main_request_assertion",
+      "historical_validator_codes": [
+        "closed_proposition_unknown",
+        "role_speech"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M031_assertion_open_question",
+      "historical_id": "M031_assertion_open_question",
+      "historical_validator_codes": [
+        "queryable_unknown",
+        "role_speech"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M032_quote_imperative",
+      "historical_id": "M032_quote_imperative",
+      "historical_validator_codes": [
+        "role_speech"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M033_condition_open_question",
+      "historical_id": "M033_condition_open_question",
+      "historical_validator_codes": [
+        "role_speech"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M034_relative_assertion",
+      "historical_id": "M034_relative_assertion",
+      "historical_validator_codes": [
+        "closed_proposition_unknown",
+        "role_speech"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M035_action_open_question",
+      "historical_id": "M035_action_open_question",
+      "historical_validator_codes": [
+        "action_speech"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M036_action_polar",
+      "historical_id": "M036_action_polar",
+      "historical_validator_codes": [
+        "action_speech"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M037_two_primary_atoms_one_clause",
+      "historical_id": "M037_two_primary_atoms_one_clause",
+      "historical_validator_codes": [
+        "clause_ids",
+        "primary_cardinality"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M038_open_question_zero_unknown",
+      "historical_id": "M038_open_question_zero_unknown",
+      "historical_validator_codes": [
+        "queryable_unknown"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M039_open_question_two_unknowns",
+      "historical_id": "M039_open_question_two_unknowns",
+      "historical_validator_codes": [
+        "queryable_unknown"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M040_polar_one_unknown",
+      "historical_id": "M040_polar_one_unknown",
+      "historical_validator_codes": [
+        "closed_proposition_unknown"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M041_primary_action_unknown",
+      "historical_id": "M041_primary_action_unknown",
+      "historical_validator_codes": [
+        "action_unknown",
+        "output_unconsumed"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R044_source_without_output",
+      "historical_id": "M044_auxiliary_zero_output",
+      "historical_validator_codes": [
+        "dependency_not_output",
+        "dependency_output_count"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R045_source_with_two_outputs",
+      "historical_id": "M045_auxiliary_two_outputs",
+      "historical_validator_codes": [
+        "dependency_output_count",
+        "dependency_output_slot",
+        "output_unconsumed"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M046_auxiliary_unconsumed",
+      "historical_id": "M046_auxiliary_unconsumed",
+      "historical_validator_codes": [
+        "orphan_dependency",
+        "output_unconsumed",
+        "projection_missing"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R049_source_ordinal_out_of_range",
+      "historical_id": "M049_source_missing",
+      "historical_validator_codes": [
+        "dependency_order",
+        "output_unconsumed"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R050_source_ordinal_self",
+      "historical_id": "M050_self_reference",
+      "historical_validator_codes": [
+        "dependency_order",
+        "output_unconsumed"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M051_future_reference",
+      "historical_id": "M051_future_reference",
+      "historical_validator_codes": [
+        "dependency_order",
+        "output_unconsumed"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M052_two_node_cycle",
+      "historical_id": "M052_two_node_cycle",
+      "historical_validator_codes": [
+        "dependency_order"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M053_three_node_cycle",
+      "historical_id": "M053_three_node_cycle",
+      "historical_validator_codes": [
+        "dependency_order"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R054_atom_id_reintroduced",
+      "historical_id": "M054_duplicate_atom_id",
+      "historical_validator_codes": [
+        "atom_order",
+        "dependency_order",
+        "output_unconsumed"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R055_atom_id_array_disagreement_reintroduced",
+      "historical_id": "M055_atom_array_id_disagree",
+      "historical_validator_codes": [
+        "atom_order"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R056_output_index_reintroduced_out_of_range",
+      "historical_id": "M056_source_role_missing",
+      "historical_validator_codes": [
+        "dependency_output_index",
+        "output_unconsumed"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "replacement",
+      "compact_case_id": "R057_output_index_reintroduced_bound_slot",
+      "historical_id": "M057_source_role_bound",
+      "historical_validator_codes": [
+        "dependency_not_output",
+        "output_unconsumed"
+      ],
+      "reason": "removed identifier/invariant is exercised on the compact surface"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M061_missing_clause_role_proof",
+      "historical_id": "M061_missing_clause_role_proof",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M062_missing_relation_proof",
+      "historical_id": "M062_missing_relation_proof",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M063_missing_argument_proof",
+      "historical_id": "M063_missing_argument_proof",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M064_tense_proves_relation",
+      "historical_id": "M064_tense_proves_relation",
+      "historical_validator_codes": [
+        "proof_family"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M065_interrogative_proves_recipient",
+      "historical_id": "M065_interrogative_proves_recipient",
+      "historical_validator_codes": [
+        "proof_family"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M066_actor_current_wrong_proof",
+      "historical_id": "M066_actor_current_wrong_proof",
+      "historical_validator_codes": [
+        "proof_family"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M067_explicit_span_zero",
+      "historical_id": "M067_explicit_span_zero",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M068_explicit_span_reverse",
+      "historical_id": "M068_explicit_span_reverse",
+      "historical_validator_codes": [
+        "proof_span"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M069_explicit_span_outside_clause",
+      "historical_id": "M069_explicit_span_outside_clause",
+      "historical_validator_codes": [
+        "proof_span"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M070_nonexplicit_fake_span",
+      "historical_id": "M070_nonexplicit_fake_span",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M071_from_output_noncomposition_proof",
+      "historical_id": "M071_from_output_noncomposition_proof",
+      "historical_validator_codes": [
+        "proof_family"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M073_bound_with_composition_proof",
+      "historical_id": "M073_bound_with_composition_proof",
+      "historical_validator_codes": [
+        "proof_family"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M074_proof_cross_atom",
+      "historical_id": "M074_proof_cross_atom",
+      "historical_validator_codes": [
+        "proof_span"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M076_supported_none_proof",
+      "historical_id": "M076_supported_none_proof",
+      "historical_validator_codes": [
+        "schema"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "M089_reorder_independent_actions",
+      "historical_id": "M089_reorder_independent_actions",
+      "historical_validator_codes": [
+        "atom_clause_order",
+        "projection_source_order"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "X002_alternative_clause_drop",
+      "historical_id": "X002_alternative_clause_drop",
+      "historical_validator_codes": [
+        "alternative_coverage"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    },
+    {
+      "classification": "obsolete",
+      "compact_case_id": "O_X003_supported_unsupported_clause_collision",
+      "historical_id": "X003_supported_unsupported_clause_collision",
+      "historical_validator_codes": [
+        "clause_ids"
+      ],
+      "reason": "numeric clause identifiers no longer exist on decoder input"
+    },
+    {
+      "classification": "retained",
+      "compact_case_id": "X009_unsupported_wrong_proof",
+      "historical_id": "X009_unsupported_wrong_proof",
+      "historical_validator_codes": [
+        "proof_family"
+      ],
+      "reason": "same semantic or structural fault remains representable in compact form"
+    }
+  ],
+  "historical_mutations": 68,
+  "source_probe_sha256": "9116a851241c5d1c03385a81a2eff23bb830599ea57e46abb2f6ddd1fd15e29a",
+  "source_result_sha256": "7b0ff821783d9f5d071b4da0ccaa7f562f57afd47136cfc73c863a12663fb62c",
+  "version": "metnos.v26.5.1-compact-mutation-matrix/0.1"
+}

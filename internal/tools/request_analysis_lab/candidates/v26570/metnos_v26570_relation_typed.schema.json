@@ -1,0 +1,5170 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "type": "object",
+ "$defs": {
+  "projection_binding_spatial_located_at_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "person.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "from_prior_atom"
+      },
+      "source_ordinal": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 16
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      }
+     },
+     "required": [
+      "kind",
+      "source_ordinal",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_spatial_located_at_2": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "context.current_spatial"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "place.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_spatial_located_at_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_spatial_located_at": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_spatial_located_at_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_spatial_located_at_2"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_spatial_located_at_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "dependency_binding_spatial_located_at_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "person.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "from_prior_atom"
+      },
+      "source_ordinal": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 16
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      }
+     },
+     "required": [
+      "kind",
+      "source_ordinal",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_binding_spatial_located_at_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "output"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_relation_composition"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "dependency_binding_spatial_located_at_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_arguments_spatial_located_at": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/dependency_binding_spatial_located_at_1"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_spatial_located_at_2"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_spatial_located_at_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "projection_binding_identity_same_as_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "context.current_place"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_identity_same_as_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "unknown"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "projection_arguments_identity_same_as": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_identity_same_as_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_identity_same_as_2"
+    }
+   ],
+   "minItems": 2,
+   "maxItems": 2
+  },
+  "dependency_binding_identity_same_as_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "context.current_place"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_binding_identity_same_as_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "output"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_relation_composition"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "dependency_arguments_identity_same_as": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/dependency_binding_identity_same_as_1"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_identity_same_as_2"
+    }
+   ],
+   "minItems": 2,
+   "maxItems": 2
+  },
+  "projection_binding_filesystem_located_at_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "artifact.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_filesystem_located_at_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "unknown"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "projection_binding_filesystem_located_at_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_filesystem_located_at": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_filesystem_located_at_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_filesystem_located_at_2"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_filesystem_located_at_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "dependency_binding_filesystem_located_at_1": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "bound"
+    },
+    "ref": {
+     "const": "artifact.explicit"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "ref",
+    "proof"
+   ]
+  },
+  "dependency_binding_filesystem_located_at_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "output"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_relation_composition"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "dependency_binding_filesystem_located_at_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_arguments_filesystem_located_at": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/dependency_binding_filesystem_located_at_1"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_filesystem_located_at_2"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_filesystem_located_at_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "projection_binding_runtime_host_of_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "process.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_runtime_host_of_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "unknown"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "projection_binding_runtime_host_of_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_runtime_host_of": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_runtime_host_of_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_runtime_host_of_2"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_runtime_host_of_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "dependency_binding_runtime_host_of_1": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "bound"
+    },
+    "ref": {
+     "const": "process.explicit"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "ref",
+    "proof"
+   ]
+  },
+  "dependency_binding_runtime_host_of_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "output"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_relation_composition"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "dependency_binding_runtime_host_of_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_arguments_runtime_host_of": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/dependency_binding_runtime_host_of_1"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_runtime_host_of_2"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_runtime_host_of_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "projection_binding_spatial_near_1": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "unknown"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "projection_binding_spatial_near_2": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "context.current_spatial"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "place.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "from_prior_atom"
+      },
+      "source_ordinal": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 16
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      }
+     },
+     "required": [
+      "kind",
+      "source_ordinal",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_spatial_near_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_spatial_near": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_spatial_near_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_spatial_near_2"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_spatial_near_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "dependency_binding_spatial_near_1": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "output"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_relation_composition"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "dependency_binding_spatial_near_2": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "context.current_spatial"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "place.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "from_prior_atom"
+      },
+      "source_ordinal": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 16
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      }
+     },
+     "required": [
+      "kind",
+      "source_ordinal",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_binding_spatial_near_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_arguments_spatial_near": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/dependency_binding_spatial_near_1"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_spatial_near_2"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_spatial_near_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "projection_binding_acl_share_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "from_prior_atom"
+      },
+      "source_ordinal": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 16
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      }
+     },
+     "required": [
+      "kind",
+      "source_ordinal",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_acl_share_2": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "principal.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_acl_share": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_acl_share_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_acl_share_2"
+    }
+   ],
+   "minItems": 2,
+   "maxItems": 2
+  },
+  "projection_binding_communication_send_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "from_prior_atom"
+      },
+      "source_ordinal": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 16
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      }
+     },
+     "required": [
+      "kind",
+      "source_ordinal",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_communication_send_2": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "principal.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_communication_send": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_communication_send_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_communication_send_2"
+    }
+   ],
+   "minItems": 2,
+   "maxItems": 2
+  },
+  "projection_binding_movement_destination_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "files.explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_movement_destination_2": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "files.current_position"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "from_prior_atom"
+      },
+      "source_ordinal": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 16
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      }
+     },
+     "required": [
+      "kind",
+      "source_ordinal",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_movement_destination": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_movement_destination_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_movement_destination_2"
+    }
+   ],
+   "minItems": 2,
+   "maxItems": 2
+  },
+  "projection_binding_workflow_position_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_workflow_position_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "unknown"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "projection_binding_workflow_position_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_workflow_position": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_workflow_position_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_workflow_position_2"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_workflow_position_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "dependency_binding_workflow_position_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_binding_workflow_position_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "output"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_relation_composition"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "dependency_binding_workflow_position_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_arguments_workflow_position": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/dependency_binding_workflow_position_1"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_workflow_position_2"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_workflow_position_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "projection_binding_document_position_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_binding_document_position_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "unknown"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "projection_binding_document_position_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "unknown"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "projection_arguments_document_position": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/projection_binding_document_position_1"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_document_position_2"
+    },
+    {
+     "$ref": "#/$defs/projection_binding_document_position_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "dependency_binding_document_position_1": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_predicate_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "actor.quoted"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_quotation_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_binding_document_position_2": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "output"
+    },
+    "proof": {
+     "$ref": "#/$defs/proof_of_relation_composition"
+    }
+   },
+   "required": [
+    "kind",
+    "proof"
+   ]
+  },
+  "dependency_binding_document_position_3": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.current"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.historical_explicit"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_explicit_segment_or_tense_morphology"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "bound"
+      },
+      "ref": {
+       "const": "time.quoted_context"
+      },
+      "proof": {
+       "$ref": "#/$defs/proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context"
+      }
+     },
+     "required": [
+      "kind",
+      "ref",
+      "proof"
+     ]
+    }
+   ]
+  },
+  "dependency_arguments_document_position": {
+   "type": "array",
+   "prefixItems": [
+    {
+     "$ref": "#/$defs/dependency_binding_document_position_1"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_document_position_2"
+    },
+    {
+     "$ref": "#/$defs/dependency_binding_document_position_3"
+    }
+   ],
+   "minItems": 3,
+   "maxItems": 3
+  },
+  "dependency": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      },
+      "arguments": {
+       "$ref": "#/$defs/dependency_arguments_spatial_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "identity.same_as"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      },
+      "arguments": {
+       "$ref": "#/$defs/dependency_arguments_identity_same_as"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "filesystem.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      },
+      "arguments": {
+       "$ref": "#/$defs/dependency_arguments_filesystem_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "runtime.host_of"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      },
+      "arguments": {
+       "$ref": "#/$defs/dependency_arguments_runtime_host_of"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.near"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      },
+      "arguments": {
+       "$ref": "#/$defs/dependency_arguments_spatial_near"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "workflow.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      },
+      "arguments": {
+       "$ref": "#/$defs/dependency_arguments_workflow_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "document.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_relation_composition"
+      },
+      "arguments": {
+       "$ref": "#/$defs/dependency_arguments_document_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "arguments"
+     ]
+    }
+   ]
+  },
+  "projection_for_main_request": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "identity.same_as"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_identity_same_as"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "filesystem.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_filesystem_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "runtime.host_of"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_runtime_host_of"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.near"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_near"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "acl.share"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_acl_share"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "communication.send"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_communication_send"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "movement.destination"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_movement_destination"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "workflow.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_workflow_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "document.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "type": "string",
+       "enum": [
+        "open_question",
+        "polar_question",
+        "imperative"
+       ]
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_document_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    }
+   ]
+  },
+  "projection_for_main_assertion": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "identity.same_as"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_identity_same_as"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "filesystem.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_filesystem_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "runtime.host_of"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_runtime_host_of"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.near"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_near"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "acl.share"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_acl_share"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "communication.send"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_communication_send"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "movement.destination"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_movement_destination"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "workflow.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_workflow_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "document.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "assertion"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_document_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    }
+   ]
+  },
+  "projection_for_quoted_content": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "identity.same_as"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_identity_same_as"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "filesystem.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_filesystem_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "runtime.host_of"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_runtime_host_of"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.near"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_near"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "acl.share"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_acl_share"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "communication.send"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_communication_send"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "movement.destination"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_movement_destination"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "workflow.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_workflow_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "document.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_document_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    }
+   ]
+  },
+  "projection_for_condition_content": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "identity.same_as"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_identity_same_as"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "filesystem.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_filesystem_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "runtime.host_of"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_runtime_host_of"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.near"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_near"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "acl.share"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_acl_share"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "communication.send"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_communication_send"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "movement.destination"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_movement_destination"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "workflow.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_workflow_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "document.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_document_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    }
+   ]
+  },
+  "projection_for_relative_modifier": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "identity.same_as"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_identity_same_as"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "filesystem.located_at"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_filesystem_located_at"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "runtime.host_of"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_runtime_host_of"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "spatial.near"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_spatial_near"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "acl.share"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_acl_share"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "communication.send"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_communication_send"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "movement.destination"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_movement_destination"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "workflow.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_workflow_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "relation": {
+       "const": "document.position"
+      },
+      "relation_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_explicit_segment_or_predicate_morphology"
+      },
+      "speech_act": {
+       "const": "none"
+      },
+      "speech_act_proof": {
+       "$ref": "#/$defs/proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology"
+      },
+      "arguments": {
+       "$ref": "#/$defs/projection_arguments_document_position"
+      }
+     },
+     "required": [
+      "relation",
+      "relation_proof",
+      "speech_act",
+      "speech_act_proof",
+      "arguments"
+     ]
+    }
+   ]
+  },
+  "analysis_main_request": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_role": {
+     "const": "main_request"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_main_request"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "projected_clause_main_request": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_start_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_end_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_role": {
+     "const": "main_request"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_main_request"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_start_segment_id",
+    "clause_end_segment_id",
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "analysis_main_assertion": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_role": {
+     "const": "main_assertion"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_main_assertion"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "projected_clause_main_assertion": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_start_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_end_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_role": {
+     "const": "main_assertion"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_main_assertion"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_start_segment_id",
+    "clause_end_segment_id",
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "analysis_quoted_content": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_role": {
+     "const": "quoted_content"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_quoted_content"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "projected_clause_quoted_content": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_start_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_end_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_role": {
+     "const": "quoted_content"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_quoted_content"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_start_segment_id",
+    "clause_end_segment_id",
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "analysis_condition_content": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_role": {
+     "const": "condition_content"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_condition_content"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "projected_clause_condition_content": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_start_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_end_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_role": {
+     "const": "condition_content"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_condition_content"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_start_segment_id",
+    "clause_end_segment_id",
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "analysis_relative_modifier": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_role": {
+     "const": "relative_modifier"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_relative_modifier"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "projected_clause_relative_modifier": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_start_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_end_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_role": {
+     "const": "relative_modifier"
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "projection": {
+     "$ref": "#/$defs/projection_for_relative_modifier"
+    },
+    "dependencies": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 15,
+     "items": {
+      "$ref": "#/$defs/dependency"
+     }
+    }
+   },
+   "required": [
+    "clause_start_segment_id",
+    "clause_end_segment_id",
+    "clause_role",
+    "clause_role_proof",
+    "projection"
+   ]
+  },
+  "analysis": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/analysis_main_request"
+    },
+    {
+     "$ref": "#/$defs/analysis_main_assertion"
+    },
+    {
+     "$ref": "#/$defs/analysis_quoted_content"
+    },
+    {
+     "$ref": "#/$defs/analysis_condition_content"
+    },
+    {
+     "$ref": "#/$defs/analysis_relative_modifier"
+    }
+   ]
+  },
+  "projected_clause": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/projected_clause_main_request"
+    },
+    {
+     "$ref": "#/$defs/projected_clause_main_assertion"
+    },
+    {
+     "$ref": "#/$defs/projected_clause_quoted_content"
+    },
+    {
+     "$ref": "#/$defs/projected_clause_condition_content"
+    },
+    {
+     "$ref": "#/$defs/projected_clause_relative_modifier"
+    }
+   ]
+  },
+  "ambiguous_clause": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_start_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_end_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "readings": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 4,
+     "items": {
+      "$ref": "#/$defs/analysis"
+     }
+    }
+   },
+   "required": [
+    "clause_start_segment_id",
+    "clause_end_segment_id",
+    "readings"
+   ]
+  },
+  "unsupported_clause": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "clause_start_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_end_segment_id": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "clause_role": {
+     "type": "string",
+     "enum": [
+      "main_request",
+      "main_assertion",
+      "quoted_content",
+      "condition_content",
+      "relative_modifier"
+     ]
+    },
+    "clause_role_proof": {
+     "$ref": "#/$defs/proof_of_clause_boundary_or_discourse_structure"
+    },
+    "reason": {
+     "const": "out_of_registry"
+    }
+   },
+   "required": [
+    "clause_start_segment_id",
+    "clause_end_segment_id",
+    "clause_role",
+    "clause_role_proof",
+    "reason"
+   ]
+  },
+  "clause_array": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 8,
+   "items": {
+    "oneOf": [
+     {
+      "$ref": "#/$defs/projected_clause"
+     },
+     {
+      "$ref": "#/$defs/unsupported_clause"
+     }
+    ]
+   },
+   "contains": {
+    "type": "object",
+    "required": [
+     "projection"
+    ]
+   },
+   "minContains": 1
+  },
+  "ambiguous_clause_array": {
+   "type": "array",
+   "minItems": 1,
+   "maxItems": 8,
+   "items": {
+    "oneOf": [
+     {
+      "$ref": "#/$defs/ambiguous_clause"
+     },
+     {
+      "$ref": "#/$defs/unsupported_clause"
+     }
+    ]
+   },
+   "contains": {
+    "type": "object",
+    "required": [
+     "readings"
+    ]
+   },
+   "minContains": 1
+  },
+  "proof_of_explicit_segment_or_predicate_morphology": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "predicate_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    }
+   ]
+  },
+  "proof_of_explicit_segment_or_quotation_context": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "quotation_context"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    }
+   ]
+  },
+  "proof_of_discourse_context_or_explicit_segment_or_predicate_morphology": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "predicate_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "discourse_context"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  },
+  "proof_of_explicit_segment_or_interrogative_construction_or_predicate_morphology": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "predicate_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "interrogative_construction"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  },
+  "proof_of_relation_composition": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "relation_composition"
+    }
+   },
+   "required": [
+    "kind"
+   ]
+  },
+  "proof_of_discourse_context_or_explicit_segment": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "discourse_context"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  },
+  "proof_of_explicit_segment_or_tense_morphology_or_utterance_context": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "tense_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "utterance_context"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  },
+  "proof_of_explicit_segment_or_tense_morphology": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "tense_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    }
+   ]
+  },
+  "proof_of_discourse_context_or_explicit_segment_or_tense_morphology_or_utterance_context": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "tense_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "utterance_context"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "discourse_context"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  },
+  "proof_of_clause_construction_or_explicit_segment_or_predicate_morphology": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "predicate_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "clause_construction"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  },
+  "proof_of_clause_construction_or_discourse_structure_or_explicit_segment_or_predicate_morphology": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "explicit_segment"
+      },
+      "start_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "end_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "start_segment_id",
+      "end_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "predicate_morphology"
+      },
+      "predicate_segment_id": {
+       "type": "integer",
+       "minimum": 1
+      }
+     },
+     "required": [
+      "kind",
+      "predicate_segment_id"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "clause_construction"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "discourse_structure"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  },
+  "proof_of_clause_boundary_or_discourse_structure": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "discourse_structure"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "clause_boundary"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    }
+   ]
+  }
+ },
+ "oneOf": [
+  {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "status": {
+     "const": "supported"
+    },
+    "clauses": {
+     "$ref": "#/$defs/clause_array"
+    }
+   },
+   "required": [
+    "status",
+    "clauses"
+   ]
+  },
+  {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "status": {
+     "const": "typed_ambiguity"
+    },
+    "clauses": {
+     "$ref": "#/$defs/ambiguous_clause_array"
+    }
+   },
+   "required": [
+    "status",
+    "clauses"
+   ]
+  },
+  {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "status": {
+     "const": "unsupported"
+    },
+    "clauses": {
+     "type": "array",
+     "minItems": 1,
+     "maxItems": 8,
+     "items": {
+      "$ref": "#/$defs/unsupported_clause"
+     }
+    }
+   },
+   "required": [
+    "status",
+    "clauses"
+   ]
+  }
+ ]
+}

@@ -1,0 +1,207 @@
+{
+ "all_green": true,
+ "by_group": {
+  "contract_hygiene": {
+   "passed": 7,
+   "total": 7
+  },
+  "inherited_v26566": {
+   "passed": 1,
+   "total": 1
+  },
+  "live_failure_families_closed": {
+   "passed": 2,
+   "total": 2
+  },
+  "materialisation": {
+   "passed": 4,
+   "total": 4
+  },
+  "registry_derived": {
+   "passed": 2,
+   "total": 2
+  },
+  "representability": {
+   "passed": 2,
+   "total": 2
+  },
+  "structural_closure": {
+   "passed": 4,
+   "total": 4
+  }
+ },
+ "contamination_audit": {
+  "controls_sha256": "22dac65689f720e07022ac204ba0fd25feebdf5e8db98a9d89f5bf00c120dcbf",
+  "prompt_sha256": "19c7a5e811319b39cff3c2c8cef6e6eb0ffe3f2cc2e67daf68b83f1eeb4cd3e4",
+  "queries_audited": 34,
+  "schema_sha256": "2c788bedcfcfe45207f5f315858eaf98c4ff8535905ae40fcc76e918b3a34520",
+  "shared_3gram_queries": 0,
+  "shared_4gram_queries": 0,
+  "verbatim_query_matches": 0
+ },
+ "inference": false,
+ "live_runs": 0,
+ "measures": {
+  "closed_codes": 20,
+  "inherited_v26566": "71/71 PASS",
+  "live_families_closed": 6,
+  "previous_schema_bytes": 7650,
+  "random_generated": 1310,
+  "random_schema_valid": 1200,
+  "random_valid": 241,
+  "random_validator_codes": {
+   "action_assertion": 100,
+   "action_unknown": 334,
+   "clause_source_order": 390,
+   "closed_proposition_unknown": 306,
+   "dependency_order": 297,
+   "embedded_unknown": 313,
+   "output_unconsumed": 506,
+   "projection_source_order": 162,
+   "proof_predicate": 627,
+   "proof_span": 668
+  },
+  "schema_bytes": 76469,
+  "schema_definitions": 97
+ },
+ "model_calls": 0,
+ "network_calls": 0,
+ "passed": 22,
+ "results": [
+  {
+   "detail": "71/71 PASS",
+   "group": "inherited_v26566",
+   "label": "the V26.5.6.6 suite still passes unchanged",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "schema is a valid 2020-12 schema",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "materialised schema equals the generated schema",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "materialised prompt equals the generated prompt",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "materialisation",
+   "label": "registry hash is pinned",
+   "passed": true
+  },
+  {
+   "detail": "34/34",
+   "group": "representability",
+   "label": "34/34 gold cases are representable and validate",
+   "passed": true
+  },
+  {
+   "detail": "34/34",
+   "group": "representability",
+   "label": "34/34 expanded frames carry exactly the gold semantics",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "live_failure_families_closed",
+   "label": "every live failure family is now unrepresentable",
+   "passed": true
+  },
+  {
+   "detail": "5/6 newly closed",
+   "group": "live_failure_families_closed",
+   "label": "at least the five families the live run hit are newly closed",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "structural_closure",
+   "label": "no closed code fires on 1200 random schema-valid frames",
+   "passed": true
+  },
+  {
+   "detail": "1200/1310",
+   "group": "structural_closure",
+   "label": "the generator produced schema-valid frames at a high rate",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "structural_closure",
+   "label": "the random sweep raised nothing",
+   "passed": true
+  },
+  {
+   "detail": "241/1200",
+   "group": "structural_closure",
+   "label": "the random sweep still produces both valid and invalid frames",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contract_hygiene",
+   "label": "the response schema never asks for clause_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contract_hygiene",
+   "label": "the response schema never asks for atom_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contract_hygiene",
+   "label": "the response schema never asks for alternative_id",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contract_hygiene",
+   "label": "the response schema never asks for output_index",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contract_hygiene",
+   "label": "the prompt forbids numeric labels",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "contract_hygiene",
+   "label": "no control query appears verbatim in prompt or schema",
+   "passed": true
+  },
+  {
+   "detail": "3-gram 0, 4-gram 0",
+   "group": "contract_hygiene",
+   "label": "no 3-token or 4-token n-gram is shared with a control query",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "registry_derived",
+   "label": "every schema const/enum is registry-derived or structural",
+   "passed": true
+  },
+  {
+   "detail": "",
+   "group": "registry_derived",
+   "label": "the prompt carries no example between quotes",
+   "passed": true
+  }
+ ],
+ "seed": 20260810,
+ "total": 22,
+ "version": "metnos.v26.5.6.8-offline-selftest/1.0"
+}

@@ -1,0 +1,51 @@
+{
+  "overlay_version": "metnos.intent-gold-adjudication/1.0-proposed",
+  "status": "proposed_pending_human_review",
+  "created_at": "2026-08-08",
+  "source_fixture": {
+    "path": "tests/benchmarks/intent_compound_bench.py",
+    "sha256": "85ef748c5384e72bfeacf018b9e7fdb3f6c74fcc5d64abe518303d4e96657cd0"
+  },
+  "independent_contract_sources": [
+    {
+      "path": "tests/benchmarks/catalog_snapshot.json",
+      "sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d"
+    },
+    {
+      "path": "tests/benchmarks/intent_compound_bench.py",
+      "evidence": "Line 79 states that create/files does not exist and a foglio maps to create/files_spreadsheet; the XL gold uses that qualified route."
+    },
+    {
+      "path": "tests/benchmarks/compound_extract_create_bench.py",
+      "evidence": "Multiple independently maintained extract-to-sheet cases require create_files_spreadsheet."
+    }
+  ],
+  "entries": [
+    {
+      "case_fingerprint_sha256": "1b17226735977812a17fc60d45582441211e3c490f2667f67600e85539f7fbcf",
+      "query_sha256": "a049f499f6d470e5c621a1924001d7cda7d3839da149437e5acba71f603621b0",
+      "old_expected": [
+        "read/messages",
+        "extract/entries",
+        "create/files"
+      ],
+      "new_expected": [
+        "read/messages",
+        "extract/entries",
+        "create/files_spreadsheet"
+      ],
+      "reason_code": "stale_expected_violates_frozen_catalog_qualifier",
+      "candidate_independent": true,
+      "runtime_visible": false
+    }
+  ],
+  "freeze_policy": {
+    "apply_to_all_systems": true,
+    "preserve_original_scores": true,
+    "freeze_before_final_k_runs": true,
+    "no_runtime_access": true,
+    "no_post_run_edits": true,
+    "new_revision_invalidates_acceptance_run": true,
+    "required_human_reviewers": 2
+  }
+}

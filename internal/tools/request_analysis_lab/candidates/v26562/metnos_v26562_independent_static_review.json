@@ -1,0 +1,113 @@
+{
+  "version": "metnos.v26.5.6.2-independent-infrastructure-review/1.0",
+  "review_date": "2026-08-09",
+  "verdict": "STATIC_BLOCK",
+  "live_authorization": false,
+  "preflight_authorization": false,
+  "network_calls": 0,
+  "server_calls": 0,
+  "model_calls": 0,
+  "live_candidate_outputs_read": false,
+  "gate_created": false,
+  "preflight_created": false,
+  "frozen_candidate_artifacts_modified": false,
+  "candidate_identity": {
+    "runner_sha256": "fe33701bcb5483b8881fef2bd56428434e626142e6128e3a39d3bdfc6a71832b",
+    "offline_evaluator_sha256": "0265597e01677a4d0f5d0a23bad9f6683ed53c8f9c6d636ccbe2ef076594bc9b",
+    "selftest_sha256": "dc62849c891b5b7fec01378c6f20d9b154d258d84ad72126835e293dd1f69bc2",
+    "freeze_sha256": "da2ccdf5f04f22916fec8bd066cad5f01ba2fccb005cb21437767b209b2a5e88",
+    "author_pre_gate_sha256": "dd85c20617ba130c30ef9f413539e9c5b059d36dd81d4853e6fe2941212eb9d7",
+    "author_selftest_result_sha256": "d41e70a835f5949dcdf20cdec4ff0c75a50f8f2ae51be53f8f8d543655abf8a2"
+  },
+  "fresh_replays": {
+    "selftest": "50/50 PASS",
+    "verify_freeze": "PASS",
+    "fake_complete_batch_get": 1,
+    "fake_complete_batch_post": 34,
+    "fake_complete_batch_opens": 35,
+    "real_network_calls": 0,
+    "real_model_calls": 0
+  },
+  "semantic_parent_identity": {
+    "checked": 8,
+    "byte_identical": 8,
+    "identities": [
+      "facade_v2655",
+      "worker_v2654",
+      "worker_manifest_v2654",
+      "compact_adapter",
+      "injected_validator",
+      "typed_registry",
+      "compact_schema",
+      "compact_prompt"
+    ]
+  },
+  "freeze_dependency_audit": {
+    "artifact_pins": 20,
+    "artifact_pin_failures": 0,
+    "jsonschema_tree_files": 38,
+    "regex_tree_files": 11,
+    "tree_membership_or_hash_failures": 0,
+    "loaded_nonstdlib_modules": 51,
+    "inventory_failures": 0,
+    "candidate_bytecode_entries": 0
+  },
+  "three_fix_assessment": {
+    "author_bytes_gate_absence_split": {
+      "status": "PASS",
+      "evidence": "Both operational verifier call graphs use _verify_author_bytes and then the fixed gate snapshot; only verify_freeze reaches _verify_author_gates_absent. No gate or function replacement was used for this gate-reachability finding."
+    },
+    "pre_gold_closure_typing_derivation": {
+      "status": "BLOCK",
+      "first_gold_identity_opened": "source_controls34",
+      "mutated_batches_evaluated": 8
+    },
+    "execution_context_and_dependency_membership": {
+      "status": "PASS",
+      "missing_I_exit": 2,
+      "missing_B_exit": 2,
+      "tracebacks": 0,
+      "forged_same_count_membership_rejected_before_compile": true
+    }
+  },
+  "independent_regression_probes": {
+    "canonical_json_utf8_differentials": 1000,
+    "canonical_json_utf8_mismatches": 0,
+    "native_proxy_disabled": true,
+    "redirects_denied": true,
+    "literal_loopback_runner_boundary": true,
+    "actual_open_counters_enforced": true,
+    "output_anchor_retained": true,
+    "batch_cap_bytes": 7609728,
+    "oversize_rejected_before_json_dumps": true
+  },
+  "blockers": [
+    {
+      "id": "PRE_GOLD_EXACT_CLOSURE_INCOMPLETE",
+      "classification": "FAIL_OPEN_PRE_GOLD_BLOCKER",
+      "cause": "Several integer proofs and summary copies use Python equality without exact JSON type validation; inline endpoint validation is prefix-based; derivable diagnostic evidence is not reconciled.",
+      "mutations_that_reached_first_gold_and_phase1_evaluated": [
+        "records[0].ordinal=true",
+        "records[0].result.model_request_attempts=true",
+        "summary.inference_counters.invalid_cases=false",
+        "summary.inline_preflight_counters.socket_attempts=true",
+        "inline preflight integer proofs replaced by equal booleans",
+        "request-body size/hash proof replaced by arbitrary typed values",
+        "transport/facade latencies made inconsistent with total latency",
+        "inline endpoint changed to http://127.0.0.1:8080@192.0.2.1"
+      ],
+      "first_gold_identity_opened": "source_controls34",
+      "observed_terminal_status": "PHASE1_EVALUATED",
+      "minimal_fix": "Before any gold read, require exact JSON scalar types for every proof and identity field, validate both summary counter maps independently, parse the inline endpoint with the runner's literal-loopback contract, and recompute or remove every derivable request-body/latency proof."
+    }
+  ],
+  "passed_properties": [
+    "The author-byte verifier is separate from the author-time operational-gate absence policy.",
+    "The evaluator enforces the pinned executable, Python 3.12.3, isolated/no-bytecode flags and Unicode 15.0.0 before batch work.",
+    "Complete jsonschema and regex tree membership and hashes are checked before dependency import and validator compile/exec.",
+    "Frozen parent semantic bytes are unchanged.",
+    "Proxy, redirect, counted-open, output-anchor and pre-dump batch-cap controls remain effective.",
+    "No candidate bytecode, gate, preflight, real transport, model call or live artifact was created."
+  ],
+  "next_step": "Create a byte-distinct successor that closes the remaining exact-type, endpoint and derivation holes, then repeat independent offline review. Do not create either V26.5.6.2 gate."
+}

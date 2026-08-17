@@ -1,0 +1,52 @@
+{
+  "summary": {
+    "passed": 11,
+    "tests": 11
+  },
+  "tests": [
+    {
+      "id": "base_positive",
+      "pass": true
+    },
+    {
+      "id": "mutate_speech_act",
+      "pass": true
+    },
+    {
+      "id": "mutate_relation",
+      "pass": true
+    },
+    {
+      "id": "mutate_focus_role",
+      "pass": true
+    },
+    {
+      "id": "mutate_focus_type",
+      "pass": true
+    },
+    {
+      "id": "mutate_subject_ref",
+      "pass": true
+    },
+    {
+      "id": "mutate_subject_type",
+      "pass": true
+    },
+    {
+      "id": "mutate_time_scope",
+      "pass": true
+    },
+    {
+      "id": "mutate_focus_evidence_kind",
+      "pass": true
+    },
+    {
+      "id": "mutate_subject_evidence_kind",
+      "pass": true
+    },
+    {
+      "id": "mutate_role",
+      "pass": true
+    }
+  ]
+}

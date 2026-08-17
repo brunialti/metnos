@@ -1,0 +1,308 @@
+{
+  "cases_sha256": "d3e63e0711c14fe683955757ccb6ecc845821e555450a988bc5ff91a8b155d09",
+  "format": "metnos.intent-safe-relation-diagnostic-result/0.1",
+  "records": [
+    {
+      "case_id": "rel-en-01",
+      "elapsed_ms": 1621,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "en-GB",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-en-02",
+      "elapsed_ms": 1296,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "direct"
+      },
+      "language_tag": "en-GB",
+      "observed": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-it-01",
+      "elapsed_ms": 1527,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "it-IT",
+      "observed": {
+        "after_previous": false,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-it-02",
+      "elapsed_ms": 1161,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "target_source": "unknown"
+      },
+      "language_tag": "it-IT",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-es-01",
+      "elapsed_ms": 1474,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "es-MX",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-es-02",
+      "elapsed_ms": 1396,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": false,
+        "target_source": "none"
+      },
+      "language_tag": "es-MX",
+      "observed": {
+        "after_previous": false,
+        "target_source": "none"
+      }
+    },
+    {
+      "case_id": "rel-de-01",
+      "elapsed_ms": 1605,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "de-DE",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-de-02",
+      "elapsed_ms": 1303,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "direct"
+      },
+      "language_tag": "de-DE",
+      "observed": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-tr-01",
+      "elapsed_ms": 1554,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "tr-TR",
+      "observed": {
+        "after_previous": false,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-tr-02",
+      "elapsed_ms": 1266,
+      "error": null,
+      "exact": false,
+      "expected": {
+        "after_previous": true,
+        "target_source": "unknown"
+      },
+      "language_tag": "tr-TR",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-sr-01",
+      "elapsed_ms": 1606,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "sr-Cyrl-RS",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-sr-02",
+      "elapsed_ms": 1249,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": false,
+        "target_source": "none"
+      },
+      "language_tag": "sr-Cyrl-RS",
+      "observed": {
+        "after_previous": false,
+        "target_source": "none"
+      }
+    },
+    {
+      "case_id": "rel-ar-01",
+      "elapsed_ms": 1520,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "ar-EG",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-ar-02",
+      "elapsed_ms": 1479,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "direct"
+      },
+      "language_tag": "ar-EG",
+      "observed": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-hi-01",
+      "elapsed_ms": 1638,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "hi-IN",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-hi-02",
+      "elapsed_ms": 1442,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": false,
+        "target_source": "none"
+      },
+      "language_tag": "hi-IN",
+      "observed": {
+        "after_previous": false,
+        "target_source": "none"
+      }
+    },
+    {
+      "case_id": "rel-ja-01",
+      "elapsed_ms": 1496,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "direct"
+      },
+      "language_tag": "ja-JP",
+      "observed": {
+        "after_previous": true,
+        "target_source": "direct"
+      }
+    },
+    {
+      "case_id": "rel-ja-02",
+      "elapsed_ms": 1433,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "ja-JP",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-zh-01",
+      "elapsed_ms": 1601,
+      "error": null,
+      "exact": true,
+      "expected": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      },
+      "language_tag": "zh-Hant-TW",
+      "observed": {
+        "after_previous": true,
+        "target_source": "previous_step"
+      }
+    },
+    {
+      "case_id": "rel-zh-02",
+      "elapsed_ms": 1279,
+      "error": "ValueError",
+      "exact": false,
+      "expected": {
+        "after_previous": false,
+        "target_source": "none"
+      },
+      "language_tag": "zh-Hant-TW",
+      "observed": null
+    }
+  ],
+  "summary": {
+    "exact": 15,
+    "total": 20,
+    "valid": 19
+  }
+}

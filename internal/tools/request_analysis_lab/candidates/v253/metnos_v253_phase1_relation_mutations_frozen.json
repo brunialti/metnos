@@ -1,0 +1,92 @@
+{
+  "summary": {
+    "passed": 14,
+    "tests": 14
+  },
+  "tests": [
+    {
+      "id": "base_valid_current",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_speech_act",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_answer_mode",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_relation",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_focus_role",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_focus_type",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_subject_ref",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_subject_type",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_grammatical_person",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_deixis_center",
+      "pass": true
+    },
+    {
+      "id": "binding_mutation_time_scope",
+      "pass": true
+    },
+    {
+      "id": "incoherent_subject_rejected",
+      "pass": true
+    },
+    {
+      "id": "historical_without_evidence_rejected",
+      "pass": true
+    },
+    {
+      "id": "unicode_word_boundaries",
+      "pass": true,
+      "segments": {
+        "neredeyim": [
+          "neredeyim"
+        ],
+        "où suis-je": [
+          "où",
+          "suis",
+          "-",
+          "je"
+        ],
+        "我在哪里": [
+          "我",
+          "在",
+          "哪",
+          "里"
+        ],
+        "私はどこにいますか": [
+          "私",
+          "は",
+          "ど",
+          "こ",
+          "に",
+          "い",
+          "ま",
+          "す",
+          "か"
+        ]
+      }
+    }
+  ]
+}

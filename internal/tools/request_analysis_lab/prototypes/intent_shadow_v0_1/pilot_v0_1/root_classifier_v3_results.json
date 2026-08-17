@@ -1,0 +1,61 @@
+{
+  "count": 6,
+  "exact": 3,
+  "format": "metnos.root-decision-probe/0.1",
+  "records": [
+    {
+      "case_id": "bp-002",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 1246,
+      "error": null,
+      "exact": false,
+      "expected": "unrepresentable:unsupported_dependency",
+      "request_sha256": "fde283fe2f0545329f447f97a764901c036504013094d90973e7e35d84b2aa8d"
+    },
+    {
+      "case_id": "bp-004",
+      "decision": "system_control:undo_last_turn",
+      "elapsed_ms": 1183,
+      "error": null,
+      "exact": true,
+      "expected": "system_control:undo_last_turn",
+      "request_sha256": "a822c9835cc74a846a914bdd3d7c6d1875a8e1cb3f38de70ecdf3a19ed69aef3"
+    },
+    {
+      "case_id": "bp-007",
+      "decision": "unrepresentable:missing_required_information",
+      "elapsed_ms": 1239,
+      "error": null,
+      "exact": false,
+      "expected": "unrepresentable:outside_registry",
+      "request_sha256": "2b848567523b01f43a8a828501f8285079534b210bd5b3a39db54c5458322b6c"
+    },
+    {
+      "case_id": "bp-010",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 1213,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "request_sha256": "20903b152b0d902196a64e0c375d3baf2132e5c699c2c32bd1dc2db12d827bc8"
+    },
+    {
+      "case_id": "bp-014",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 1399,
+      "error": null,
+      "exact": false,
+      "expected": "unrepresentable:unsupported_dependency",
+      "request_sha256": "b27734e6a005fa06613c4abff253a83199d4c4287d972c918511705161ebd5d0"
+    },
+    {
+      "case_id": "bp-020",
+      "decision": "unrepresentable:mixed_root_kinds",
+      "elapsed_ms": 1199,
+      "error": null,
+      "exact": true,
+      "expected": "unrepresentable:mixed_root_kinds",
+      "request_sha256": "96f3c905d4212c84fdccf61ef940841ba3efb9a87b9e7e1c61e7ff0862ae3cf2"
+    }
+  ]
+}

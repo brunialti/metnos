@@ -1,0 +1,33 @@
+{
+  "metrics_format": "metnos.intent-prompt-style-metrics/0.1",
+  "measurement": "static UTF-8 bytes, lines, and whitespace-token proxy; live tokenizer usage is measured separately",
+  "styles": {
+    "S0_CURRENT": {
+      "utf8_bytes": 22868,
+      "lines": 114,
+      "whitespace_tokens": 3167
+    },
+    "S1_METNOS_SHORT": {
+      "utf8_bytes": 22301,
+      "lines": 105,
+      "whitespace_tokens": 3110
+    },
+    "S2_PROCEDURAL": {
+      "utf8_bytes": 22323,
+      "lines": 105,
+      "whitespace_tokens": 3122
+    }
+  },
+  "delta_from_s0": {
+    "S1_METNOS_SHORT": {
+      "utf8_bytes": -567,
+      "lines": -9,
+      "whitespace_tokens": -57
+    },
+    "S2_PROCEDURAL": {
+      "utf8_bytes": -545,
+      "lines": -9,
+      "whitespace_tokens": -45
+    }
+  }
+}
