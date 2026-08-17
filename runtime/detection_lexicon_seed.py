@@ -205,6 +205,23 @@ def register_all() -> None:
           "without duplicate rows", "remove duplicate rows",
           "deduplicate rows", "each pair once"])
 
+    # ── DIREZIONE DI UN'OPERAZIONE SUI PACCHETTI (ADR 0209, 17/8/2026) ──
+    # `install_packages` porta la direzione in un argomento booleano, e il
+    # modello la sbagliava in modo costante e riproducibile: «installa X»
+    # produceva `uninstall=true` su 12 prove su 12, con tre riscritture
+    # diverse della descrizione. La direzione e' ricavabile dalla richiesta
+    # in modo deterministico, quindi non e' il modello a doverla decidere
+    # (§7.9). Le forme vivono qui perche' sono traducibili: una lista
+    # cablata nel codice funzionerebbe solo in italiano e inglese.
+    R("packages.uninstall_request", "phrases", match_mode="substring",
+      it=["disinstalla", "disinstallare", "disinstallazione",
+          "rimuovi il programma", "rimuovere il programma",
+          "togli il programma", "elimina il programma",
+          "cancella il programma", "rimuovi l'applicazione",
+          "togli l'applicazione", "elimina l'applicazione"],
+      en=["uninstall", "remove the program", "remove the app",
+          "delete the program", "delete the app", "get rid of the program"])
+
     # ── SYSTEM STATUS (intent_extractor bypass → get_processes+health) ──
     # «stato del server / come sta il server / server status» = l'INSIEME dei
     # dati di stato del sistema (Roberto 9/7) = get_processes(include_health).
