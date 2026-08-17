@@ -1,45 +1,60 @@
 # Manifest synthesized — Metnos synt multistage 2026-04-30
+# Riscritto 17/8/2026 (ADR 0209, parte B): la domanda e' «e' installato»,
+# non «c'e' un eseguibile con questo nome nel PATH».
 
 manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_packages"
-version     = "0.2.0"
+version     = "0.3.0"
 platforms   = ["linux", "windows"]
 author      = "synt-multistage <synt@metnos.com>"
-affinity    = ["find", "cerca", "package", "pacchetto", "comando", "command", "installato", "installed", "percorso", "path"]
+affinity    = ["installato", "installed", "e' installato", "is installed",
+               "programma", "program", "applicazione", "application",
+               "pacchetto", "package", "software", "versione", "version",
+               "ho installato", "do i have"]
 revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: cerca un comando eseguibile nel PATH del sistema. PATTERN: find_packages(package_name='ffmpeg'). NON: interrogare il database del package manager; leggere file (-> read_files). OUT: entries=[{package_name,path}], lista vuota se non trovato."
-en = "SCOPO: finds an executable command in the system PATH. PATTERN: find_packages(package_name='ffmpeg'). NON: querying a package-manager database; reading files (-> read_files). OUT: entries=[{package_name,path}], empty if not found."
+it = "SCOPO: dice se dei programmi sono installati qui, e in che versione. PATTERN: find_packages(packages=['7zip.7zip','git']). NON: installare o togliere (-> install_packages); cercare file (-> find_files); eseguire comandi (-> admin). OUT: entries=[{package_id,installed,name,version,source}], una riga per ogni pacchetto chiesto, anche quelli assenti."
+en = "SCOPO: tells whether programs are installed here, and at which version. PATTERN: find_packages(packages=['7zip.7zip','git']). NON: installing or removing (-> install_packages); finding files (-> find_files); running commands (-> admin). OUT: entries=[{package_id,installed,name,version,source}], one row per requested package, absent ones included."
 
 [code]
 files  = ["find_packages.py"]
-digest = "sha256:e23a9b7f65f640d7f8145c579c2b656c467c3b0896684477a37f634ffa75f31c"
+digest = "sha256:19b5cc37457e5c9d821b3e7cef4485844b5b99cc4e841c23d00dd2e106b9bb1d"
 
 [args]
 type     = "object"
-required = ["package_name"]
+required = ["packages"]
 
-[args.properties.package_name]
-type = "string"
-maxLength = 128
+[args.properties.packages]
+type = "array"
+uniqueItems = true
+items = { type = "string", maxLength = 128 }
 
-[args.properties.package_name.description]
-it = "Nome semplice del comando da cercare nel PATH (es. 'ffmpeg', 'git'); non un percorso."
-en = "Simple command name to search for in PATH (e.g., 'ffmpeg', 'git'); not a path."
+[args.properties.packages.description]
+it = "Programmi da controllare, come lista. Va bene il nome comune ('outlook', 'git') oppure l'identificativo esatto ('Microsoft.VisualStudioCode', 'python3-pip'): si prova prima l'identificativo, poi il nome. NON servono '*' o '?': la ricerca per nome li fa gia'. Un solo elemento va bene."
+en = "Programs to check, as a list. A common name ('outlook', 'git') works, and so does an exact identifier ('Microsoft.VisualStudioCode', 'python3-pip'): the identifier is tried first, the name second. No '*' or '?' needed: the name search already covers them. A single element is fine."
 
 [output]
 schema_inline = """
 {
   ok: bool,
-  found?: bool,
-  entries: Array<{package_name: str, path: str}>,
-  failed: Array<{package_name?: str, error: str, error_class: str, error_code: str}>,
+  entries: Array<{package_id: str, installed: bool, match: str, name: str,
+                  version: str, source: str, resolved_id?: str,
+                  also_matched?: Array<str>, path?: str}>,
+  failed: Array<{package_id?: str, error: str, error_class: str, error_code: str}>,
   ok_count: int,
   fail_count: int,
+  partial?: bool,
+  source_primary: str,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
+  cap_field?: str,
+  cap_value?: int,
   error?: str,
   error_class?: str,
   error_code?: str
@@ -52,34 +67,51 @@ default_view = "list"
 [presentation.list]
 mode = "table"
 columns = [
-  { key = "package_name", source = "package_name", cell_max = 160 },
-  { key = "path", source = "path", cell_max = 240 },
+  { key = "package_id", source = "package_id", cell_max = 120 },
+  { key = "installed", source = "installed", cell_max = 12 },
+  { key = "version", source = "version", cell_max = 60 },
+  { key = "source", source = "source", cell_max = 24 },
 ]
 max_rows = 200
 max_chars = 16000
 overflow = "notice"
+
 [[capabilities]]
 name = "system:read"
-hint = ["executables"]
+hint = ["installed_software", "package_database"]
+
+# Interrogare il gestore dei pacchetti VUOL DIRE eseguire un programma: e' il
+# meccanismo, non il privilegio. Dichiararlo e' la stessa scelta gia' fatta da
+# `get_processes` (ps/tasklist). Conseguenza nota e accettata: su Windows il
+# client declassa da AppContainer a job-object, perche' il token ristretto
+# nega a winget l'accesso che gli serve — declassamento dichiarato nel result.
+[[capabilities]]
+name = "code:exec"
+hint = ["winget", "dpkg-query", "rpm", "pacman"]
 
 [placement]
-# C7 Area-2 estensione (5/7 sera): read-only fs-puro, chiusura già nello shim.
-# scope="any" = server di default; device SOLO se la chat lo nomina.
+# Read-only: nessuna modifica alla macchina. Il device SOLO se la chat lo
+# nomina — «e' installato X sul mio PC» va interrogato su QUEL PC, non qui.
 scope    = "any"
 device_ok = true
-min_sandbox = "appcontainer"
+min_sandbox = "job-object"
 
 [[tests]]
-name   = "trova_python3_nel_path"
-input  = { package_name = "python3" }
-expect = { ok = true, metadata_field_eq = { found = true, ok_count = 1 } }
+name   = "un_pacchetto_di_sistema_risulta_installato"
+input  = { packages = ["bash"] }
+expect = { ok = true, metadata_field_eq = { ok_count = 1, fail_count = 0 } }
 
 [[tests]]
-name   = "comando_assente_e_risultato_vuoto"
-input  = { package_name = "metnos-command-that-does-not-exist-7f09" }
-expect = { ok = true, metadata_field_eq = { found = false, ok_count = 0, fail_count = 0 } }
+name   = "un_pacchetto_assente_non_e_un_errore"
+input  = { packages = ["metnos-package-that-does-not-exist-7f09"] }
+expect = { ok = true, metadata_field_eq = { ok_count = 1, fail_count = 0 } }
 
 [[tests]]
-name   = "rifiuta_percorso_al_posto_del_nome"
-input  = { package_name = "/usr/bin/python3" }
-expect = { ok = false, error_contains = "package_name" }
+name   = "lista_vuota_e_un_errore_di_argomento"
+input  = { packages = [] }
+expect = { ok = false, error_contains = "packages" }
+
+[[tests]]
+name   = "un_identificativo_malformato_non_affonda_gli_altri"
+input  = { packages = ["bash", "../etc/passwd"] }
+expect = { ok = false, metadata_field_eq = { ok_count = 1, fail_count = 1 } }
