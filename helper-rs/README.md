@@ -35,7 +35,7 @@ accettata ignorandolo (c'e' un test che lo prova).
 
 ## Stato (17 agosto 2026)
 
-**Fatto e provato** — 69 test, compila per Windows:
+**Fatto e provato** — 80 test, compila per Windows:
 
 - `protocol.rs` — vocabolario chiuso, validazione della forma, costruzione
   della riga di comando, corpo canonico della firma. Logica pura: si prova su
@@ -88,13 +88,19 @@ componente piu' privilegiato come effetto collaterale), e un aiutante gia'
 appaiato non cambia proprietario rilanciando l'installatore — si disinstalla e
 si reinstalla, cosi' il passaggio e' un atto esplicito.
 
+- `cli.rs` — tre verbi e nient'altro. Un'opzione sconosciuta e' un ERRORE, non
+  qualcosa da ignorare: ignorarla vorrebbe dire che un comando scritto male fa
+  una cosa diversa da quella che sembra. Niente abbreviazioni, niente prefissi:
+  «unin» non e' «uninstall».
+- `win_setup.rs` — l'aggancio a Windows. Copia, registra il servizio, scrive le
+  voci fra i programmi installati. Se quest'ultima fallisce l'installazione si
+  ANNULLA: un componente privilegiato presente e invisibile e' peggio di uno
+  assente, perche' il proprietario non saprebbe che c'e' ne' come toglierlo.
+
 **Da costruire**:
 
-1. il collegamento fra i pezzi e Windows: copiare l'eseguibile, registrare il
-   servizio, scrivere le voci fra i programmi installati (la logica c'e', le
-   chiamate al sistema no);
-2. il ciclo del servizio che serve la pipe;
-3. il lato client: aprire la pipe verificando di parlare con l'aiutante VERO
+1. il ciclo del servizio che serve la pipe;
+2. il lato client: aprire la pipe verificando di parlare con l'aiutante VERO
    prima di scrivere (l'altra meta' di D2), e firmare le richieste.
 
 ## Come si prova
