@@ -21,6 +21,13 @@ _BUILDS_TEMPLATE = _RUNTIME / "templates" / "builds.html"
 _SERVICES_TEMPLATE = _RUNTIME / "templates" / "services.html"
 _SERVICE_HEALTH_MONITOR = _RUNTIME / "service_health_monitor.py"
 
+_REQUIRED_FROM_STEP_KEYS = (
+    "ERR_FROM_STEP_TYPE",
+    "ERR_FROM_STEP_RANGE",
+    "ERR_FROM_STEP_RESULT_INVALID",
+    "ERR_FROM_STEP_LIST_MISSING",
+)
+
 # La chat e' una superficie i18n completa: il gate ricava le chiavi dal
 # template, quindi ogni nuova label Jinja/JavaScript diventa automaticamente
 # obbligatoria in IT+EN sul fresh install. Le chiavi d'errore delle API di
@@ -138,6 +145,7 @@ _REQUIRED_KEYS = (
     "MSG_DIALOG_TEMPORARILY_UNAVAILABLE",
     "MSG_CONSENT_GATE_MASS_MUTATION",
     "MSG_CONSENT_GATE_MASS_MUTATION_GENERIC",
+    "MSG_REQUIRED_ACTION_NOT_PLANNED",
     "MSG_ACTION_DELETE",
     "MSG_ACTION_MOVE",
     "MSG_LOCAL_HERE",
@@ -512,6 +520,24 @@ _REQUIRED_UI_VIRT_KEYS = (
 
 
 class TestSeedHasGateKeys(unittest.TestCase):
+    def test_from_step_errors_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(key, lang): (text, pending) for key, lang, text, pending
+                    in conn.execute(
+                        "SELECT key, lang, text, needs_translation FROM i18n "
+                        "WHERE key IN ({})".format(
+                            ",".join("?" * len(_REQUIRED_FROM_STEP_KEYS))),
+                        _REQUIRED_FROM_STEP_KEYS)}
+        finally:
+            conn.close()
+        for key in _REQUIRED_FROM_STEP_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    text, pending = rows.get((key, lang), (None, None))
+                    self.assertTrue(text and "<missing" not in text)
+                    self.assertEqual(pending, 0)
+
     def test_seed_file_exists(self):
         self.assertTrue(_SEED_DB.is_file(), f"seed mancante: {_SEED_DB}")
 

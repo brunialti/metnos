@@ -71,3 +71,43 @@ def test_text_credentials_passthrough():
     from channels.daemon import parse_step_value
     assert parse_step_value("hello", {"kind": "text"}) == (True, "hello", "")
     assert parse_step_value("hunter2", {"kind": "credentials"}) == (True, "hunter2", "")
+
+
+def test_yes_no_legge_le_forme_dal_lessico(monkeypatch):
+    """Autorita' unica: il parser di dialogo NON deve tenere un proprio elenco.
+
+    La prova non e' che accetti le forme di oggi — le accetterebbe anche una
+    lista congelata nel codice, ed e' esattamente il modo in cui questo test
+    passava pur non verificando nulla (mutante M3b della revisione 16/8).
+    La prova e' che SEGUA il lessico: si sostituisce il lessico a runtime e il
+    parser deve cambiare comportamento senza che nessuno tocchi `daemon.py`.
+
+    I letterali tecnici (`true`/`1`/`false`/`0`) restano nel codice perche'
+    non sono lingua e non si traducono.
+
+    Uguaglianza esatta, non contenimento: la risposta a un passo di dialogo
+    e' una parola, e una frase intera che contiene «si» non e' una conferma.
+    """
+    from channels import daemon as _daemon
+    from channels.daemon import parse_step_value
+    import detection_lexicon as _dl
+
+    for forma in _dl.forms("confirm.yes"):
+        assert parse_step_value(forma, {"kind": "yes_no"})[:2] == (True, True), forma
+    for forma in _dl.forms("confirm.no"):
+        assert parse_step_value(forma, {"kind": "yes_no"})[:2] == (True, False), forma
+    for tecnico, atteso in (("true", True), ("1", True),
+                            ("false", False), ("0", False)):
+        assert parse_step_value(tecnico, {"kind": "yes_no"})[:2] == (True, atteso)
+    assert parse_step_value("va bene si", {"kind": "yes_no"})[0] is False
+
+    # La prova vera: cambio il lessico, non il codice.
+    finto = {"confirm.yes": ["zzyes"], "confirm.no": ["zzno"]}
+    monkeypatch.setattr(_daemon, "_dl",
+                        type("_L", (), {"forms": staticmethod(
+                            lambda c: finto.get(c, []))})())
+    assert parse_step_value("zzyes", {"kind": "yes_no"})[:2] == (True, True)
+    assert parse_step_value("zzno", {"kind": "yes_no"})[:2] == (True, False)
+    assert parse_step_value("si", {"kind": "yes_no"})[0] is False
+    # I letterali tecnici non dipendono dal lessico e restano.
+    assert parse_step_value("true", {"kind": "yes_no"})[:2] == (True, True)

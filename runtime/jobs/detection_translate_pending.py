@@ -82,6 +82,15 @@ _MAPPING_TMPL = (
 )
 
 
+def _human_review_concepts() -> frozenset:
+    """Concepts a model must never localize on its own (consent gates)."""
+    try:
+        from detection_lexicon_seed import HUMAN_REVIEW_CONCEPTS
+        return HUMAN_REVIEW_CONCEPTS
+    except Exception:  # noqa: BLE001 — better translate less than translate badly
+        return frozenset({"confirm.yes", "confirm.no"})
+
+
 def _extract_json(raw: str):
     if not raw:
         return None
@@ -147,7 +156,25 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
     auto-generati: vengono contati in `skipped_regex` e restano pending.
     """
     _dl.ensure_seeded()
-    pending = _dl.list_pending(limit=_cap_per_fire())
+    # Exclude in SQL, not in the loop: the window is bounded, and the rows
+    # that can never be translated are as many as the window itself (18 regex
+    # concepts + the consent gates, against a default CAP of 20). Skipping
+    # them after reading lets them occupy every slot at every fire, and the
+    # daemon converges on doing nothing while the work it could do waits
+    # behind them. The loop keeps its own checks as a backstop.
+    _excluded_kinds = ("regex",)
+    _excluded_concepts = tuple(sorted(_human_review_concepts()))
+    pending = _dl.list_pending(limit=_cap_per_fire(),
+                               exclude_concepts=_excluded_concepts,
+                               exclude_kinds=_excluded_kinds)
+    # Excluding in SQL would also hide HOW MANY rows are permanently out of
+    # reach, and «nothing to do» and «everything is blocked by hand-work» are
+    # not the same report (§2.8). Count them once, without a window.
+    _held = _dl.list_pending(limit=0)
+    held_regex = sum(1 for r in _held if r["kind"] in _excluded_kinds)
+    held_consent = sum(1 for r in _held
+                       if r["concept"] in _excluded_concepts
+                       and r["kind"] not in _excluded_kinds)
     ok = err = skipped = 0
     events: list[dict] = []
     tier = _tier()
@@ -160,6 +187,16 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
             skipped += 1
             events.append({"ts": _now_iso(), "concept": concept, "lang": tgt,
                            "kind": kind, "result": "skip_regex_manual"})
+            continue
+        if concept in _human_review_concepts():
+            # These concepts decide whether a consent was given. A form
+            # invented by a model and never read back by anyone does not
+            # produce a missed recognition here: it produces a yes the user
+            # never said. They stay with a person; the union with it/en keeps
+            # the new language usable through loanwords («ok», «yes», «no»).
+            skipped += 1
+            events.append({"ts": _now_iso(), "concept": concept, "lang": tgt,
+                           "kind": kind, "result": "skip_consent_manual"})
             continue
         try:
             source_payload = json.loads(row["source_payload"]) \
@@ -194,7 +231,14 @@ def task_detection_translate_pending(payload: dict | None = None) -> dict:
         "ok_count": ok,
         "error_count": err,
         "metadata": {"pending_seen": len(pending), "translated": ok,
-                     "skipped_regex": skipped, "tier_used": tier},
+                     # `skipped_*` = rows this fire READ and set aside (the
+                     # loop backstop); `held_*` = rows permanently out of a
+                     # model's reach, excluded before the window. The two are
+                     # different facts and a single number would hide one.
+                     "skipped_regex": skipped,
+                     "held_regex": held_regex,
+                     "held_consent": held_consent,
+                     "tier_used": tier},
     }
 
 

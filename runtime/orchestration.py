@@ -875,8 +875,13 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     confirm = values.get("confirm")
     # Tolerant: yes_no parser ritorna bool; difensivamente, accetta
     # stringhe ("si"/"no") nel caso il caller bypassi parse_step_value.
+    # Language forms come from the lexicon, as for `parse_step_value` and
+    # `_classify_yes_no`: this was the third copy of the list, and it was
+    # missing «okay», which the other two accepted.
     if isinstance(confirm, str):
-        confirm = confirm.strip().lower() in ("si", "sì", "yes", "y", "ok", "true", "1")
+        from channels.daemon import _dialog_forms
+        low = confirm.strip().lower()
+        confirm = low in ("true", "1") or low in _dialog_forms("confirm.yes")
     if not confirm:
         return _msg("MSG_CAP_EXPAND_DECLINED")
 

@@ -241,18 +241,87 @@ def _media_group_sweep_expired(now: float | None = None) -> list[tuple[str, str,
     return out
 
 
+# Punctuation a reply may carry around the word without changing it. Used
+# both to trim the form and to read the trailing run back as a question mark.
+_REPLY_PUNCTUATION = " \t\r\n.,;:!?…\"'«»()[]{}*>-_"
+
+
+def _fold_reply(text: str) -> str:
+    """NFKC + lowercase + trim: one canonical form for every reply.
+
+    NFKC first, so the Turkish dotted capital, the fullwidth characters and
+    the decomposed accents collapse onto the same forms the lexicon lists:
+    without it «Sİ» and «sìstema» were a yes.
+    """
+    import unicodedata
+    return unicodedata.normalize("NFKC", text or "").strip().lower()
+
+
+def _normalize_reply(text: str) -> str:
+    """Strip punctuation and spacing so a reply can be compared as a word."""
+    return _fold_reply(text).strip(_REPLY_PUNCTUATION)
+
+
+def _asks_instead_of_answering(text: str) -> bool:
+    """True when the reply ends its punctuation run with a question mark.
+
+    Read on the ALREADY normalized text, not on the raw one: the fullwidth
+    «？» only becomes «?» after NFKC, and a tail like «?!» or «?»» hides the
+    mark behind other punctuation that the form-trim then removes anyway.
+    """
+    folded = _fold_reply(text)
+    return "?" in folded[len(folded.rstrip(_REPLY_PUNCTUATION)):]
+
+
 def _classify_yes_no(text: str) -> str:
-    """Classifica una risposta come 'yes', 'no', o 'other'.
-    Match su tutta la stringa, case-insensitive. Solo risposte CORTE
-    (≤ 30 char) sono considerate conferma; query lunghe sono nuove
-    richieste anche se contengono 'sì'/'no'."""
+    """Classify a reply as 'yes', 'no' or 'other'.
+
+    The whole reply, stripped of punctuation, must BE a confirmation form.
+    Not containment, not "starts with": consent is not something one reads
+    between the lines of a sentence.
+
+    Two weaker rules were tried and measured before this one. Containment
+    made «come si fa?» a yes, because Italian writes the impersonal «si»
+    everywhere. Anchoring to the first word fixed that family and left three
+    more open — «ok mostrami i file» (starts the pending privileged command
+    instead of the request), «si può fare?», «ok aspetta» — and the attempt
+    to patch them with a list of negators was a blacklist over an open
+    domain: objection and deferral in natural language have no end, and every
+    gap in the list is a consent that was never given.
+
+    The strict rule costs nothing, and this is measured rather than assumed:
+    over the 1473 short replies of the real turn history it differs from the
+    anchored rule on three unique strings, and on all three the anchored rule
+    was the one that was wrong — «annulla ultima azione» is an undo request,
+    read as a refusal to something else. Zero real confirmations lost.
+
+    It is also the rule `parse_step_value` already applies to a dialog step:
+    one door, one criterion.
+    """
     if not text or len(text) > 30:
         return "other"
-    if _dl.search("confirm.yes", text):
+    if _asks_instead_of_answering(text):
+        # A question is not an answer: «ok?» and «si?» ask, they do not
+        # confirm. Punctuation, not vocabulary — a closed rule that does not
+        # grow with the language.
+        return "other"
+    norm = _normalize_reply(text)
+    if not norm:
+        return "other"
+    yes = norm in _dialog_forms("confirm.yes")
+    no = norm in _dialog_forms("confirm.no")
+    if yes and no:
+        # A form claimed by both lists carries no decision. The lists are
+        # translated per language, so the overlap is a localization defect,
+        # and the safe reading of a defect is "ask again", never "consent
+        # granted".
+        return "other"
+    if yes:
         return "yes"
-    if _dl.search("confirm.no", text):
+    if no:
         return "no"
     return "other"
+
 
 PAIR_COMMAND = "/pair "
 START_COMMAND = "/start "  # Multi-user pairing token (ADR 0083, 4/5/2026)
@@ -292,6 +361,42 @@ def _format_turn_result(result) -> str:
     return str(result)
 
 
+# Safety net, not a fourth list: read ONLY when the lexicon does not answer
+# (missing DB, aborted seed, sandbox without the file). Without it an
+# unreachable lexicon would leave the user unable to confirm anything, and an
+# open dialog that cannot be closed is worse than a reduced vocabulary (§2.8).
+#
+# It is deliberately a SUBSET of the seeded forms, never a superset: a safety
+# net on consent must be stricter than the normal path, not wider. A test
+# pins that property, because the first version of this net was wider and
+# silently re-opened cases the lexicon had closed.
+_EMERGENCY_CONFIRMATIONS = {
+    "confirm.yes": frozenset({"si", "sì", "yes", "ok"}),
+    "confirm.no": frozenset({"no", "n"}),
+}
+
+
+def _dialog_forms(concept: str) -> frozenset:
+    """Lowercase surface forms of a lexicon concept, for exact comparison.
+
+    Reads the same concept `_classify_yes_no` matches on, so the two never
+    drift apart. The lexicon caches per (concept, language) and invalidates
+    itself on write, so this stays a dictionary lookup after the first call.
+
+    An unreachable lexicon falls back to the emergency set above and says so:
+    a silent empty set would make every confirmation invalid.
+    """
+    try:
+        forme = frozenset(f.lower() for f in _dl.forms(concept))
+    except Exception:  # noqa: BLE001 — il lessico non deve bloccare un dialogo
+        forme = frozenset()
+    if forme:
+        return forme
+    log.warning("lessico non disponibile per %r: uso le forme di emergenza",
+                concept)
+    return _EMERGENCY_CONFIRMATIONS.get(concept, frozenset())
+
+
 def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
     """Parser deterministico di una risposta utente secondo `schema.kind`
     (ADR 0090). Ritorna `(ok, value, error)`. Niente LLM.
@@ -315,10 +420,22 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
     if kind in ("text", "credentials", "file_path", "location"):
         return True, s, ""
     if kind == "yes_no":
-        low = s.lower()
-        if low in ("si", "sì", "yes", "y", "ok", "okay", "true", "1"):
+        # Language forms come from the lexicon, single authority together
+        # with `_classify_yes_no`; the technical literals stay here because
+        # they are not language and are not translated. Exact equality, not
+        # containment: the answer to a dialog step is one word, and a whole
+        # sentence containing «si» is not a confirmation.
+        #
+        # Same normalization and same question rule as `_classify_yes_no`:
+        # one door, one criterion. Before this the two diverged on nine real
+        # forms («si.», «ok...», «(si)», the fullwidth «Ｏｋ»), where the
+        # dialog re-asked a question the user had already answered.
+        if _asks_instead_of_answering(s):
+            return False, None, _msg("ERR_DIALOG_PARSE_YESNO")
+        low = _normalize_reply(s)
+        if low in ("true", "1") or low in _dialog_forms("confirm.yes"):
             return True, True, ""
-        if low in ("no", "n", "false", "0", "annulla"):
+        if low in ("false", "0") or low in _dialog_forms("confirm.no"):
             return True, False, ""
         return False, None, _msg("ERR_DIALOG_PARSE_YESNO")
     if kind == "number":
@@ -570,7 +687,13 @@ class ChannelDaemon:
         kind = proposal.get("kind")
         if kind in {"admin_approval", "approval_required"}:
             answer = _classify_yes_no(msg.text)
-            if answer is None:
+            # `_classify_yes_no` returns "yes" | "no" | "other", never None:
+            # the `is None` guard never fired, so "other" — that is, ANY
+            # sentence that was not a no — fell into the executing branch.
+            # With an `admin_approval` card open, answering «boh» started the
+            # privileged command with the consent already signed. An approval
+            # is granted by saying yes, not by failing to say no.
+            if answer not in ("yes", "no"):
                 return None
             _cap_pending_clear(msg.sender_id)
             if answer == "no":

@@ -47,6 +47,16 @@ _PROVIDER_MARKERS_EN = {
 }
 
 
+# Concepts that decide a CONSENT, and therefore are never localized on their
+# own. A wrong form here does not produce a missed recognition: it produces a
+# consent that was never given. The daemon skips them and leaves them to a
+# person; meanwhile the union with it/en still covers a new language, because
+# «ok», «yes», «no» and «stop» are loanwords written almost everywhere.
+HUMAN_REVIEW_CONCEPTS = frozenset({
+    "confirm.yes", "confirm.no",
+})
+
+
 def register_all() -> None:
     R = _dl.register
 
@@ -182,6 +192,19 @@ def register_all() -> None:
       it=[r"\b(mostra|mostrami|fammi vedere|vedi|visualizz\w*|guarda)\b"],
       en=[r"\b(show|show me|display|view|let me see)\b"])
 
+    # Richiesta ESPLICITA di unicita' delle righe tabellari. Non include
+    # "file duplicati" / "duplicate files": quello descrive il dominio dei
+    # dati, non la cardinalita' dell'output. Il resolver che usa il concept
+    # verifica inoltre che lo schema del consumer esponga `unique_rows`.
+    R("tabular.unique_rows_request", "phrases", match_mode="substring",
+      it=["una sola riga per", "una riga per ogni", "una riga per coppia",
+          "righe uniche", "riga unica", "senza righe duplicate",
+          "rimuovi le righe duplicate", "elimina le righe duplicate",
+          "deduplica le righe", "ogni coppia una sola volta"],
+      en=["one row per", "a single row per", "unique rows", "unique row",
+          "without duplicate rows", "remove duplicate rows",
+          "deduplicate rows", "each pair once"])
+
     # ── SYSTEM STATUS (intent_extractor bypass → get_processes+health) ──
     # «stato del server / come sta il server / server status» = l'INSIEME dei
     # dati di stato del sistema (Roberto 9/7) = get_processes(include_health).
@@ -309,12 +332,32 @@ def register_all() -> None:
       en=["this site uses cookies", "we use cookies", "accept cookies",
           "cookie policy", "by continuing to browse", "privacy policy"])
 
-    # ── CONFERME DIALOGO (channels/daemon._YES_PATTERN/_NO_PATTERN) ─────
-    R("confirm.yes", "regex",
-      it=[r"\b(s[iì]|alza|aumenta|rilancia|più)\b"],
-      en=[r"\b(yes|y|ok|okay)\b"])
-    R("confirm.no", "regex",
-      it=[r"\b(no|annulla|lascia|niente)\b"], en=[r"\b(n|stop)\b"])
+    # ── DIALOG CONFIRMATIONS ───────────────────────────────────────────
+    # Consumed by `channels/daemon._classify_yes_no` (free reply in chat,
+    # whole-word match) and by `channels/daemon.parse_step_value` (answer to a
+    # `yes_no` step, exact equality). SINGLE authority: neither of them keeps
+    # a list of its own.
+    #
+    # BOUNDARY, and it is worth more than the list: only the affirmation and
+    # only the negation belong here. Until 2026-08-16 `confirm.yes` also held
+    # «alza | aumenta | rilancia | piu'», left over from the result-widening
+    # dialog — made non-blocking on 3/6 and never opened since
+    # (`_orchestrate_cap_expand_dialog` has no caller in production). They
+    # stayed alive on the approval cards, though: answering «aumenta» to «do I
+    # approve this privileged command?» counted as YES. Removed.
+    # Do NOT bring them back: if a «more» is ever needed it is another
+    # concept, with another name, and whoever translates it will know what
+    # they are translating.
+    #
+    # `word`: «sinistra» does not contain a yes, «yesterday» does not contain
+    # a yes. Accented and unaccented variants are BOTH listed, because people
+    # write «piu» and «si» as much as «piu'» and «si'».
+    R("confirm.yes", "phrases", match_mode="word",
+      it=["si", "sì"],
+      en=["yes", "y", "ok", "okay"])
+    R("confirm.no", "phrases", match_mode="word",
+      it=["no", "annulla", "lascia", "niente"],
+      en=["n", "stop"])
 
     # ── OBJECT CLASSIFICATION (store sink) ─────────────────────────────
     # dispatch._normalize_store_clauses (D2-c, 18/6): riferimento a uno
@@ -464,6 +507,22 @@ def register_all() -> None:
           r"visualizz|riassum|descriv|fatemi|famm|vogl|vorre|voglio|ved)\w*"],
       en=[r"\b(?:show|list|tell|give|find|search|read|look|display|summar|"
           r"describ|see|want|would like)\w*"])
+    # Verbs that carry no content of their own: to be and to have, plus the
+    # forms that build a compound tense around another verb. They are the
+    # grammar of a request ("which mails HAVE I received", "which accounts DO
+    # you HAVE"), never the thing being looked for, and no page attests them.
+    # Irregular by nature, so these are forms and not roots: a root exists only
+    # where inflection preserves it, and here it does not.
+    # A form that is also a common noun stays OUT of the family: "stato" is the
+    # state of the server far more often than a participle of "essere", and
+    # "done" is the label of a tab before it is an auxiliary. A family member
+    # that erases a noun costs more than the noise it removes.
+    R("text.auxiliary_verb", "regex",
+      it=[r"\b(?:sono|sei|siamo|siete|e'|era|erano|eri|eravamo|eravate|"
+          r"essere|ho|hai|ha|abbiamo|avete|hanno|avevo|avevi|"
+          r"aveva|avevamo|avevate|avevano|avere|avut[oi])\b"],
+      en=[r"\b(?:is|are|am|was|were|be|been|have|has|had|having|"
+          r"do|does|did)\b"])
     R("sites.goal_term_alias", "mapping", match_mode="word",
       it={"booking": ["prenotazione", "prenotazioni", "viaggio", "viaggi",
                        "booking", "bookings", "trip", "trips"]},
@@ -522,6 +581,23 @@ def register_all() -> None:
           "nel", "nello", "nella", "nei", "negli", "nelle",
           "sul", "sullo", "sulla", "sui", "sugli", "sulle"],
       en=[])
+    # Connettivi che introducono l'oggetto di una relazione: descrivono il
+    # legame grammaticale, non un termine che debba comparire nella pagina.
+    # Tenerli separati dalle preposizioni rende l'estensione i18n additiva.
+    R("text.relation_connector", "phrases", match_mode="word",
+      it=["riguardo", "riguarda", "riguardano", "riguardante",
+          "riguardanti", "relativo", "relativa", "relativi", "relative",
+          "concernente", "concernenti", "inerente", "inerenti"],
+      en=["regarding", "concerning", "related", "about"])
+    # The words with which a question is BUILT: they say that something is
+    # being asked, never what is being asked for, and no page control is named
+    # after them. Additive like the articulated prepositions above, and general
+    # like the request verbs: a question has the same shape in every domain.
+    R("text.interrogative", "phrases", match_mode="word",
+      it=["che", "chi", "cosa", "quale", "quali", "quanto", "quanta",
+          "quanti", "quante", "come", "dove", "quando", "perche"],
+      en=["what", "which", "who", "whom", "whose", "how", "where", "when",
+          "why"])
     R("sites.goal_scope_quantifier", "phrases", match_mode="word",
       it=["tutto", "tutta", "tutti", "tutte", "ogni", "intero", "intera",
           "interi", "intere"],

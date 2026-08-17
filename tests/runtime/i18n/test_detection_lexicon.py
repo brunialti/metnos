@@ -154,3 +154,166 @@ def test_union_keeps_it_en_on_foreign_lang(monkeypatch):
     finally:
         monkeypatch.setattr(i18n, "_lang_cache", "it")
         dl._invalidate()
+
+
+# ── confirm.yes / confirm.no: autorita' unica, e niente forme estranee ─────
+#
+# Migrazione del 16/8/2026 (kind `regex` -> `phrases`). I due concetti sono
+# la porta da cui passano TUTTE le conferme dell'utente: una regressione qui
+# significa o che non si riesce a confermare, o che una frase qualunque viene
+# letta come un si'. Questi test fissano il contratto misurato.
+
+def test_conferme_sono_phrases_a_parola_intera():
+    """Non regex: elenchi di forme, traducibili dal daemon per ogni lingua."""
+    import detection_lexicon as _dl
+    for concept in ("confirm.yes", "confirm.no"):
+        risolto = _dl._resolve(concept)
+        assert risolto is not None, concept
+        assert risolto[0] == "phrases", f"{concept}: kind={risolto[0]}"
+        assert risolto[1] == "word", f"{concept}: match_mode={risolto[1]}"
+
+
+def test_conferme_riconoscono_le_forme_reali():
+    """NB: `match` e' la primitiva del lessico e cerca la forma OVUNQUE nel
+    testo. Non e' il criterio di conferma: quello lo decide
+    `channels/daemon._classify_yes_no`, che ancora la forma all'INIZIO della
+    risposta proprio perche' «come si fa?» contiene un «si» e non e' un si'."""
+    import detection_lexicon as _dl
+    for forma in ("si", "sì", "SI", "ok", "OK", "okay", "yes", "y"):
+        assert _dl.match("confirm.yes", forma), forma
+    for forma in ("no", "NO", "annulla", "lascia", "niente", "n", "stop",
+                  "no grazie"):
+        assert _dl.match("confirm.no", forma), forma
+
+
+def test_conferme_non_scattano_dentro_altre_parole():
+    """`word` e non `substring`: la ragione per cui il match_mode e' fissato."""
+    import detection_lexicon as _dl
+    for testo in ("sinistra", "asino", "yesterday", "okkupato", "nord",
+                  "stopwords", "annullalo"):
+        assert not _dl.match("confirm.yes", testo), testo
+        assert not _dl.match("confirm.no", testo), testo
+
+
+def test_confirm_yes_non_contiene_le_forme_di_allargamento():
+    """REGRESSIONE, ed era un rischio di sicurezza.
+
+    Fino al 16/8/2026 `confirm.yes` conteneva «alza|aumenta|rilancia|piu'»,
+    residuo del dialogo di allargamento dei risultati — reso non bloccante il
+    3/6 e da allora mai piu' aperto. Restavano pero' vive sulle carte di
+    approvazione: rispondere «aumenta» a «approvo questo comando
+    privilegiato?» valeva SI'. Se qualcuno le reintroduce, questo test cade.
+    """
+    import detection_lexicon as _dl
+    for forma in ("alza", "aumenta", "rilancia", "più", "piu"):
+        assert not _dl.match("confirm.yes", forma), forma
+
+
+def test_il_seed_riallinea_una_riga_divergente():
+    """Il seed e' l'autorita' sulle lingue che dichiara.
+
+    Senza questo, cambiare il KIND di un concetto raggiungerebbe solo le
+    installazioni NUOVE: quelle esistenti terrebbero la riga vecchia per
+    sempre, e le due divergerebbero in silenzio.
+    """
+    import json
+    import detection_lexicon as _dl
+    import detection_lexicon_seed as _seed
+    conn = _dl._open()
+    try:
+        conn.execute(
+            "UPDATE detection_lexicon SET kind='regex', "
+            "match_mode='substring', payload=? "
+            "WHERE concept='confirm.yes' AND lang='it'",
+            (json.dumps([r"\bmai\b"]),))
+        conn.commit()
+        _dl._invalidate("confirm.yes")
+        _seed.register_all()
+        _dl._invalidate("confirm.yes")
+        risolto = _dl._resolve("confirm.yes")
+        assert risolto[0] == "phrases"
+        assert risolto[1] == "word"
+        assert _dl.match("confirm.yes", "si")
+        assert not _dl.match("confirm.yes", "mai")
+    finally:
+        # Il DB del lessico e' condiviso da tutta la sessione di test: se
+        # questo test cade a meta', senza ripristino corrompe ogni file
+        # raccolto dopo.
+        _seed.register_all()
+        _dl._invalidate("confirm.yes")
+
+
+def test_unione_prende_la_forma_dalla_lingua_dell_istanza():
+    """La PRIMA lingua della catena detta kind e severita' del match.
+
+    Prima li dettava l'ULTIMA iterata, per puro ordine: una riga tradotta con
+    `match_mode='substring'` allentava il confronto di tutte le altre, e su
+    `confirm.*` significava che «sinistra» valeva un si'.
+    """
+    import detection_lexicon as _dl
+    import detection_lexicon_seed as _seed
+    conn = _dl._open()
+    try:
+        conn.execute(
+            "UPDATE detection_lexicon SET match_mode='substring' "
+            "WHERE concept='confirm.yes' AND lang='en'")
+        conn.commit()
+        _dl._invalidate("confirm.yes")
+        assert _dl._resolve("confirm.yes")[1] == "word"
+        assert not _dl.match("confirm.yes", "sinistra")
+    finally:
+        conn.execute(
+            "UPDATE detection_lexicon SET match_mode='word' "
+            "WHERE concept='confirm.yes' AND lang='en'")
+        conn.commit()
+        _seed.register_all()
+        _dl._invalidate("confirm.yes")
+
+
+def test_seed_su_db_non_scrivibile_non_abortisce_il_resto(monkeypatch, tmp_path):
+    """Una riga non scrivibile non deve fermare il seed a meta'.
+
+    Prima l'eccezione usciva da `register`: i concetti dichiarati DOPO non
+    venivano registrati, `ensure_seeded` la inghiottiva e non riprovava mai
+    piu' nel processo, e la connessione globale restava in transazione
+    bloccando ogni altro scrittore.
+    """
+    import sqlite3
+    import detection_lexicon as _dl
+
+    # DB isolato: non si tocca il lessico condiviso della sessione.
+    percorso = tmp_path / "detection.sqlite"
+    conn = sqlite3.connect(str(percorso))
+    conn.executescript(_dl._SCHEMA)
+    conn.commit()
+    monkeypatch.setattr(_dl, "_conn", conn)
+    monkeypatch.setattr(_dl, "_seeded", True)   # niente ri-seed automatico
+
+    assert _dl.register("prova.concetto", "phrases",
+                        it=["alfa"], en=["alpha"], match_mode="word") is True
+
+    class _SolaLettura(sqlite3.Connection):
+        pass
+
+    def _ro_execute(sql, *a, **k):
+        if sql.lstrip().upper().startswith("UPDATE"):
+            raise sqlite3.OperationalError(
+                "attempt to write a readonly database")
+        return sqlite3.Connection.execute(conn, sql, *a, **k)
+
+    class _Proxy:
+        def __getattr__(self, nome):
+            return getattr(conn, nome)
+        execute = staticmethod(_ro_execute)
+
+    monkeypatch.setattr(_dl, "_conn", _Proxy())
+    # Riga presente ma divergente: entra nel ramo UPDATE, che ora fallisce.
+    assert _dl.register("prova.concetto", "phrases",
+                        it=["beta"], en=["beta"], match_mode="word") is False
+    # La connessione reale NON deve essere rimasta in transazione.
+    assert not conn.in_transaction
+    # E il concetto e' rimasto quello di prima.
+    monkeypatch.setattr(_dl, "_conn", conn)
+    _dl._invalidate("prova.concetto")
+    assert _dl.match("prova.concetto", "alfa")
+    assert not _dl.match("prova.concetto", "beta")
