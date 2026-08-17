@@ -170,6 +170,8 @@ _AFFINITY_BY_VERB = {
     "login":    ["accedi", "autentica", "login", "sign in", "authenticate"],
     "act":      ["agisci", "interagisci", "esegui azione", "act",
                  "interact", "perform action"],
+    "install":  ["installa", "disinstalla", "metti su", "install",
+                 "uninstall", "set up"],
 }
 
 

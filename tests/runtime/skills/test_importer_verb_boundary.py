@@ -37,7 +37,8 @@ def test_share_verb_in_actions():
     """ACTIONS ha share come 23° verbo (post-ADR 0128)."""
     assert "share" in ACTIONS
     # 23 → 26: +open/login/act (dominio sites, RATIFICATO D-A 10/7/2026).
-    assert len(ACTIONS) == 26
+    # 26 → 27: +install (dominio packages, ADR 0209, 16/8/2026).
+    assert len(ACTIONS) == 27
 
 
 def test_share_in_destructive_verbs():

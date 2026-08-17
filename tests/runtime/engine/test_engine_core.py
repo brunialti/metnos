@@ -400,8 +400,11 @@ class TestExecutorPlaceholders(unittest.TestCase):
         self.assertEqual(_dropped_required_verbs(fw_single, "crea un evento domani"), set())
 
         # Una mutazione singola non può degradare a un lookup read-only.
-        install_intent = Intent(verb="write", object="packages", actions=[
-            {"verb": "write", "object": "packages"},
+        # 17/8/2026: `install` è verbo canonico (ADR 0209, parte A). Prima
+        # l'intento di «installa X» si scriveva `write` perché il verbo non
+        # esisteva; ora si scrive per quello che è, e il gate lo nomina.
+        install_intent = Intent(verb="install", object="packages", actions=[
+            {"verb": "install", "object": "packages"},
         ])
         check_only = Framework(steps=[
             StepSpec(tool="find_packages", args={"package_name": "tool-x"}),
@@ -410,7 +413,7 @@ class TestExecutorPlaceholders(unittest.TestCase):
         self.assertEqual(
             _dropped_required_verbs(
                 check_only, "installa tool-x", install_intent),
-            {"write"},
+            {"install"},
         )
         admin_plan = Framework(steps=[
             StepSpec(tool="admin", args={"intent": "install package tool-x"}),
@@ -423,11 +426,19 @@ class TestExecutorPlaceholders(unittest.TestCase):
         # Il live extractor usa il campo primario per una singola azione e può
         # lasciare actions vuoto. Il gate deve leggere entrambe le forme.
         install_primary_only = Intent(
-            verb="write", object="packages", actions=[])
+            verb="install", object="packages", actions=[])
         self.assertEqual(
             _dropped_required_verbs(
                 check_only, "installa tool-x", install_primary_only),
-            {"write"},
+            {"install"},
+        )
+
+        # La query nomina il verbo anche quando l'intento arriva vuoto: il
+        # gate legge la query, non solo il campo. Serve perché l'estrattore
+        # può fallire e il piano di ripiego non deve passare inosservato.
+        self.assertEqual(
+            _dropped_required_verbs(check_only, "installa tool-x", None),
+            {"install"},
         )
 
     def test_populated_create_satisfies_spurious_same_object_write_action(self):
