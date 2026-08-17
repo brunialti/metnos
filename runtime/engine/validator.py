@@ -108,6 +108,16 @@ class Validator:
         # Coerente con agent_runtime.validate_args (from_step → entries).
         for r in required:
             if r in args and not _is_placeholder(args.get(r)):
+                # Una lista OBBLIGATORIA vuota non e' un valore: e' la chiave
+                # senza il contenuto. Eseguire vuol dire chiamare lo strumento
+                # su niente, che puo' solo fallire — e il turno muore su un
+                # errore d'argomento invece di riproporre il piano. Se il vuoto
+                # fosse legittimo, l'argomento non starebbe fra i required.
+                # Difetto reale «ho outlook sul pc?» (17/8/2026): strumento
+                # giusto, `packages: []`, turno chiuso senza risposta.
+                if (isinstance(args.get(r), (list, tuple))
+                        and len(args.get(r)) == 0):
+                    return f"required arg '{r}' is an empty list"
                 continue  # valore concreto presente
             if r in args:
                 continue  # placeholder ${...}: risolto dall'Executor
