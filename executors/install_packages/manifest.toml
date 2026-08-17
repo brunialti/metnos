@@ -35,7 +35,7 @@ en = "SCOPO: installs a program on the machine. PATTERN: install_packages(packag
 
 [code]
 files  = ["install_packages.py"]
-digest = "sha256:ef60bbe52e00f5599682cfe877d3f40f1fa371be6da7327a32028972c45b0ac9"
+digest = "sha256:70e1d772ca7b2fee608b26b9a9a66465a10675af74bfa50089a4f3b6936d2455"
 
 [args]
 type     = "object"
@@ -163,7 +163,10 @@ remedy_prompt_key = "MSG_UNDO_INSTALL_ASK_UNINSTALL"
 # nomina il pacchetto irrisolto, perche' e' quello che la persona deve
 # correggere.
 name   = "un_pacchetto_non_risolto_ferma_la_chiamata"
-input  = { packages = ["metnos-package-che-non-esiste-7f09"] }
+input  = { packages = ["metnos-package-che-non-esiste-7f09"], scope = "user" }
+# scope="user": il test verifica la RISOLUZIONE, non i privilegi. Su una
+# macchina non elevata lo scope "machine" si ferma prima, e il test
+# misurerebbe il controllo sbagliato.
 expect = { ok = false, error_contains = "metnos-package-che-non-esiste-7f09" }
 
 [[tests]]

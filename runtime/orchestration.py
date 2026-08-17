@@ -327,7 +327,16 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
             lines.append(descr)
         lines.append("")
         lines.append(f"INLINE_FORM:{url}")
-        lines.append(_msg("MSG_ORCH_FORM_FIELDS_HINT", n=n))
+        # Un modulo di soli BOTTONI non ha campi da compilare, e dirlo
+        # contraddice cio' che la persona ha davanti: «1 campi da compilare;
+        # rispondi annulla» sotto due pulsanti Si'/No manda a cercare una
+        # casella che non c'e' (turno 989c8826, 17/8/2026). Il criterio e'
+        # strutturale — che cosa dichiara lo schema — non un elenco di casi.
+        _tutto_a_scelte = bool(dialog) and all(
+            (step.get("schema") or {}).get("kind") in ("choice", "yes_no")
+            for step in dialog)
+        lines.append(_msg("MSG_ORCH_FORM_CHOICE_HINT") if _tutto_a_scelte
+                     else _msg("MSG_ORCH_FORM_FIELDS_HINT", n=n))
         return "\n".join(lines)
     # dialogue (default)
     first = dialog[0]
@@ -966,8 +975,21 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
     """
     approve_value = on_complete.get("approve_value", "approve")
     decision = next(iter(values.values()), None) if values else None
-    branch = on_complete.get("on_approve") if decision == approve_value \
-        else on_complete.get("on_reject")
+
+    # Un consenso puo' avere piu' di due esiti. «Installo per tutti gli utenti
+    # o solo per te?» e' una domanda sola con tre risposte, e farla scegliere
+    # a BOTTONI e' piu' sicuro che farla scrivere: una scelta premuta non si
+    # puo' fraintendere, una frase si' (Roberto, 17/8/2026).
+    #
+    # `branches` mappa il valore della scelta al ramo da eseguire. Il vecchio
+    # contratto binario resta valido e non cambia comportamento: un gate che
+    # dichiara solo `on_approve`/`on_reject` si comporta come prima.
+    branches = on_complete.get("branches")
+    if isinstance(branches, dict) and decision in branches:
+        branch = branches.get(decision)
+    else:
+        branch = on_complete.get("on_approve") if decision == approve_value \
+            else on_complete.get("on_reject")
     if not isinstance(branch, dict):
         # Rifiuto (o scelta non mappata) senza azione dichiarata: onesto, no-op.
         return _msg("MSG_GATE_NO_ACTION")

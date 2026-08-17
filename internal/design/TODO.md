@@ -386,6 +386,31 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   d'azione assorbita da `conversation`; risposte RAG con fonte verificabile;
   comportamento onesto quando indice, LLM o stato live non sono disponibili.
 
+### PKG-001 - La scheda di conferma non elenca le dipendenze
+
+- Priorita': media. Trovata dal vivo il 17/8/2026 (turni e563a5ab, 234daad8).
+- Sintomo: «installa LibreHardwareMonitor» mostra una scheda che dice
+  «1 programma», ma winget ne installerebbe DUE — il pacchetto dichiara la
+  dipendenza `namazso.PawnIO`. Chi approva sta autorizzando anche un secondo
+  componente che non ha letto, e la scheda esiste proprio per evitarlo.
+- Prova: `winget show --id LibreHardwareMonitor.LibreHardwareMonitor --exact`
+  espone una sezione `Dipendenze: > Dipendenze dei pacchetti: > namazso.PawnIO`.
+  Il dato c'e', non lo leggiamo.
+- Perche' non e' stato chiuso subito: l'uscita di `winget show` e' LOCALIZZATA
+  (le etichette sono tradotte) e non esiste un'uscita in JSON in
+  winget 1.29.280. `--locale en-US` NON cambia la lingua della riga di comando
+  e in piu' rende indisponibile la sezione del programma di installazione
+  (verificato). Serve quindi una lettura per STRUTTURA, come quella gia' usata
+  per le tabelle di `winget list`, e va validata su piu' lingue prima di
+  fidarsene: nella stessa giornata due assunzioni sulla forma dell'uscita si
+  sono rivelate sbagliate.
+- Done-gate: la scheda elenca ogni pacchetto che verra' realmente installato,
+  distinguendo quello chiesto dalle sue dipendenze; un test con l'uscita reale
+  di winget in almeno due lingue.
+- Nota collegata: la dipendenza di questo pacchetto e' un driver, che si
+  installa per tutti gli utenti. E' il caso in cui «solo per me» non basta e
+  serve l'aiutante amministrativo (ADR 0210, parte D).
+
 ### DEV-001 - «metnos» come nome di macchina: a volte il server, a volte il PC
 
 - Priorita': da assegnare. Segnalata da Roberto il 17/8/2026.

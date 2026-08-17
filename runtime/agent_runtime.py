@@ -6492,6 +6492,11 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
                     _caps = _dlg.get("expandable_caps")
                     if isinstance(_caps, list) and _caps:
                         log.expandable_caps = _caps
+                    # Un turno che si FERMA su una domanda e' girato dove e'
+                    # girato: senza l'etichetta il registro lo attribuiva al
+                    # server, e la conferma chiesta dal PC risultava
+                    # un'operazione del server (segnalato 17/8/2026).
+                    _apply_device_tag(log)
                     log.ts_end = time.time()
                     log.write()
                     return log
@@ -6515,6 +6520,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
         if isinstance(_gcaps, list) and _gcaps:
             log.expandable_caps = _gcaps
         log.intent_verb = _engine_v2_res.get("verb", "") or ""
+        _apply_device_tag(log)   # anche una pausa da gate ha una macchina
         log.ts_end = time.time()
         log.write()
         return log

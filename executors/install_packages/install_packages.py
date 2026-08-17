@@ -141,7 +141,41 @@ def _winget_show(package_id, tool_path):
             publisher = value
     return {"package_id": package_id, "version": version, "url": url,
             "digest": digest, "digest_algo": "SHA-256" if digest else "",
-            "publisher": publisher, "source": "winget"}
+            "publisher": publisher, "source": "winget",
+            "dependencies": _winget_dependencies(out, digest)}
+
+
+def _winget_dependencies(out, digest):
+    """Gli altri pacchetti che verranno installati insieme a questo.
+
+    Perche' e' una questione di consenso e non un dettaglio: la scheda diceva
+    «1 programma» mentre il gestore ne avrebbe installati DUE, e la persona
+    stava autorizzando anche il secondo senza averlo letto — che e' esattamente
+    cio' che la scheda esiste per evitare (turni 234daad8 e b7d63070,
+    17/8/2026).
+
+    Letta per STRUTTURA, non per etichetta: le intestazioni di winget sono
+    tradotte, e cercare «Dipendenze» funzionerebbe soltanto in italiano.
+    L'ancora e' l'impronta, che si riconosce dalla forma (64 cifre
+    esadecimali): le voci del blocco delle dipendenze vengono DOPO, mentre le
+    parole chiave del pacchetto vengono prima. Una riga di dipendenza porta un
+    identificativo nudo — niente due punti, quindi non e' un campo — nella
+    forma `Editore.Pacchetto`.
+    """
+    righe = out.splitlines()
+    if not digest:
+        return []
+    ancora = next((i for i, l in enumerate(righe) if digest in l.lower()), -1)
+    if ancora < 0:
+        return []
+    trovate = []
+    for riga in righe[ancora + 1:]:
+        valore = riga.strip()
+        if not valore or ":" in riga:
+            continue
+        if "." in valore and _ID_RE.match(valore) and valore not in trovate:
+            trovate.append(valore)
+    return trovate[:10]
 
 
 def _apt_show(package_id, tool_path):
@@ -235,13 +269,50 @@ def _winget_rows(out, term):
     return rows
 
 
+def _machine_name():
+    """Il nome di QUESTA macchina, chiesto alla macchina stessa.
+
+    La scheda deve dire su quale computer si sta per installare. Il runtime
+    conosce la destinazione, ma la annota sul risultato DOPO l'esecuzione:
+    l'executor non la riceve. Gira pero' proprio li', quindi il nome lo sa
+    per conto suo, ed e' il fatto piu' diretto che possa riportare.
+    """
+    import socket
+    try:
+        return socket.gethostname() or ""
+    except OSError:
+        return ""
+
+
+def _is_elevated():
+    """Se questo processo puo' installare per TUTTI gli utenti.
+
+    Su Windows il client Metnos gira senza privilegi per scelta (ADR 0210):
+    un'installazione a livello macchina fallisce, e va detto PRIMA di
+    chiedere un consenso che non potrebbe essere onorato. Su Linux vale
+    l'utente root.
+    """
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:  # noqa: BLE001 — assenza di prova = niente privilegi
+            return False
+    try:
+        return os.geteuid() == 0
+    except AttributeError:
+        return False
+
+
 def _context():
     is_windows = sys.platform.startswith("win")
     winget = _which("winget") if is_windows else ""
     apt = "" if is_windows else (_which("apt-get") or "")
     return {"os": "windows" if is_windows else "linux",
             "winget": winget, "apt": apt,
-            "manager": "winget" if winget else ("apt" if apt else "")}
+            "manager": "winget" if winget else ("apt" if apt else ""),
+            "machine": _machine_name(),
+            "elevated": _is_elevated()}
 
 
 def _resolve(package_id, ctx):
@@ -311,16 +382,31 @@ def _apply(package_id, ctx, uninstall, scope):
         return {"package_id": package_id, "ok": True,
                 "action": "uninstall" if uninstall else "install",
                 "source": ctx["manager"]}
-    # The manager's own words are the useful diagnosis, but they can be long
-    # and can carry paths: the first meaningful line is enough to act on.
-    detail = next((ln.strip() for ln in (err or out).splitlines()
-                   if ln.strip()), "")
+    # La diagnosi sta in FONDO, non in cima. La prima riga di winget e'
+    # l'insegna del pacchetto trovato («Trovato X [id] Versione 0.9.6»), che
+    # mostrata come errore dice l'opposto di cio' che e' successo: sembra un
+    # successo (§2.8). Il verdetto lo scrivono in fondo, tutti i gestori.
+    #
+    # Ultime righe, non parole-chiave: cercare «errore» o «failed»
+    # funzionerebbe solo nelle lingue in cui qualcuno le ha scritte, e
+    # l'uscita di winget e' localizzata come il resto.
+    _righe = [ln.strip() for ln in ((err or "") + "\n" + (out or "")).splitlines()
+              if ln.strip()]
+    # La prima riga e' l'insegna («Trovato X [id] Versione ...»): dice cosa il
+    # gestore ha TROVATO, non come e' andata. Si scarta quando c'e' dell'altro.
+    _utili = _righe[1:] if len(_righe) > 1 else _righe
+    detail = " · ".join(_utili[-3:]) if _utili else ""
+    if rc is not None:
+        # Il codice di uscita e' l'unico dato non localizzato, ed e' quello
+        # che si cerca in rete quando il testo non basta.
+        detail = f"{detail} [rc={rc}]" if detail else f"rc={rc}"
     return {"package_id": package_id, "ok": False,
             "action": "uninstall" if uninstall else "install",
             "error": _msg("ERR_PACKAGES_OPERATION_FAILED",
-                          package=package_id, detail=detail[:200]),
+                          package=package_id, detail=detail[:300]),
             "error_class": "resource_unavailable",
-            "error_code": "package_operation_failed"}
+            "error_code": "package_operation_failed",
+            "exit_code": rc}
 
 
 def _consent_token(resolved, uninstall, scope):
@@ -341,7 +427,7 @@ def _consent_token(resolved, uninstall, scope):
 
 
 # ── The card ──────────────────────────────────────────────────────────
-def _card(resolved, uninstall, scope):
+def _card(resolved, uninstall, scope, machine=""):
     """What the person is being asked to approve, in full.
 
     A missing fingerprint is stated, not hidden: the Microsoft Store serves
@@ -364,10 +450,94 @@ def _card(resolved, uninstall, scope):
                          + r["digest"])
         else:
             lines.append("   " + _msg("MSG_PACKAGES_CARD_HASH_UNKNOWN"))
-    head = _msg("MSG_PACKAGES_CARD_UNINSTALL_TITLE", n=len(resolved)) \
-        if uninstall else _msg("MSG_PACKAGES_CARD_INSTALL_TITLE",
-                               n=len(resolved), scope=scope)
+        # Cio' che viene installato INSIEME e' parte di cio' che si approva.
+        for dipendenza in r.get("dependencies") or []:
+            lines.append("   " + _msg("MSG_PACKAGES_CARD_DEPENDENCY",
+                                      package=dipendenza))
+    # Il capo della scheda dice DOVE e CHE COSA. «machine» da solo e' la
+    # portata (tutti gli utenti contro l'utente corrente) e si legge come il
+    # nome di un computer: chi approva non sapeva su quale macchina stesse
+    # per installare (segnalato da Roberto sul turno 762e0f20, 17/8/2026).
+    dove = machine or _msg("MSG_PACKAGES_CARD_MACHINE_UNKNOWN")
+    # La testa dice DOVE e CHE COSA. La portata non si annuncia qui: la
+    # sceglie chi conferma, premendo un bottone. Annunciarla prima della
+    # scelta significherebbe dichiarare una decisione non ancora presa.
+    head = (_msg("MSG_PACKAGES_CARD_UNINSTALL_TITLE", n=len(resolved),
+                 machine=dove)
+            if uninstall
+            else _msg("MSG_PACKAGES_CARD_INSTALL_TITLE", n=len(resolved),
+                      machine=dove))
+    del scope
     return head + "\n" + "\n".join(lines)
+
+
+def _approval_dialog(resolved, uninstall, scope, ctx):
+    """La domanda di consenso, con le sole risposte DAVVERO possibili.
+
+    A bottoni, non a parole: una scelta premuta non si puo' fraintendere,
+    una frase si' — ed e' stata la lezione della giornata, dal verbo
+    installa/disinstalla in giu' (Roberto, 17/8/2026). Chi conferma non deve
+    piu' ricordare nessuna formula.
+
+    Le opzioni sono quelle che la macchina puo' onorare adesso: dove manca
+    l'elevazione, «per tutti gli utenti» non compare, perche' offrirla
+    sarebbe far scegliere qualcosa che fallira'. Il perche' resta scritto
+    sulla scheda, cosi' l'assenza e' spiegata invece che silenziosa.
+    """
+    pacchetti = [r["package_id"] for r in resolved]
+
+    def ramo(portata):
+        return {"tool": "install_packages", "args": {
+            "packages": pacchetti, "uninstall": uninstall, "scope": portata,
+            # Il consenso e' stato dato a QUESTA scheda: nasce qui, viaggia
+            # solo nello stato pendente del runtime — che nessuno raggiunge
+            # senza rispondere — e torna soltanto sul ramo scelto.
+            "actor_consent_token": _consent_token(resolved, uninstall,
+                                                  portata),
+        }}
+
+    scelte, rami = [], {}
+    if uninstall:
+        # Rimuovere non ha portata: si toglie cio' che c'e'.
+        scelte.append({"label": _msg("MSG_BTN_APPROVE"), "value": "approve"})
+        rami["approve"] = ramo(scope)
+    else:
+        if ctx.get("elevated"):
+            scelte.append({"label": _msg("MSG_PACKAGES_BTN_ALL_USERS"),
+                           "value": "machine"})
+            rami["machine"] = ramo("machine")
+        scelte.append({"label": _msg("MSG_PACKAGES_BTN_ONLY_ME"),
+                       "value": "user"})
+        rami["user"] = ramo("user")
+    scelte.append({"label": _msg("MSG_BTN_REJECT"), "value": "reject"})
+
+    testo = _card(resolved, uninstall, scope, ctx.get("machine", ""))
+    if not uninstall and not ctx.get("elevated"):
+        testo += "\n\n" + _msg("MSG_PACKAGES_NO_ELEVATION_NOTE")
+        # Un pacchetto che ne trascina altri spesso non entra nella sola
+        # cartella dell'utente: le dipendenze sono componenti di sistema. Va
+        # detto PRIMA, perche' scoprirlo dopo aver confermato e' scoprirlo
+        # troppo tardi (turni 234daad8 e b7d63070, 17/8/2026).
+        if any(r.get("dependencies") for r in resolved):
+            testo += " " + _msg("MSG_PACKAGES_DEPENDENCY_WARNING")
+
+    return {
+        "title": _msg("MSG_PACKAGES_APPROVAL_TITLE"),
+        "description": testo,
+        "dialog": [{
+            "var": "decision",
+            "prompt": _msg("MSG_PACKAGES_APPROVAL_PROMPT"),
+            "schema": {"kind": "choice", "choices": scelte},
+        }],
+        "fmt": "auto",
+        # `gate_dispatch` esegue il ramo SOLO su una scelta dichiarata: su
+        # «rifiuta», o su qualunque valore non mappato, non invoca niente.
+        "on_complete": {
+            "type": "gate_dispatch",
+            "approve_value": "approve",
+            "branches": rami,
+        },
+    }
 
 
 def invoke(args: dict) -> dict:
@@ -405,6 +575,10 @@ def invoke(args: dict) -> dict:
         return _fail(_msg("ERR_PACKAGES_NO_MANAGER"), "no_package_manager",
                      error_class="capability_missing")
 
+    # Nessun rifiuto preventivo per i privilegi: la scheda offre soltanto le
+    # portate che la macchina puo' onorare, e spiega perche' l'altra non c'e'
+    # (`_approval_dialog`). Rifiutare prima di chiedere toglieva alla persona
+    # la strada che funziona, invece di mostrargliela.
     consent = str(args.get("actor_consent_token") or "").strip()
 
     # ── Phase 1: resolve, and ask ─────────────────────────────────────
@@ -443,45 +617,8 @@ def invoke(args: dict) -> dict:
             "results": [],
             "failed": [],
             "resolved": resolved,
-            "needs_inputs": {
-                "title": _msg("MSG_PACKAGES_APPROVAL_TITLE"),
-                "description": _card(resolved, uninstall, scope),
-                "dialog": [{
-                    "var": "decision",
-                    "prompt": _msg("MSG_PACKAGES_APPROVAL_PROMPT"),
-                    "schema": {"kind": "choice", "choices": [
-                        {"label": _msg("MSG_BTN_APPROVE"), "value": "approve"},
-                        {"label": _msg("MSG_BTN_REJECT"), "value": "reject"},
-                    ]},
-                }],
-                "fmt": "auto",
-                # `gate_dispatch` e' il cancello di consenso canonico: esegue
-                # il ramo SOLO su approvazione, e su un rifiuto non invoca
-                # niente. La prima stesura usava `resume_executor_with_values`,
-                # che serve a disambiguare (scegliere fra candidati) e invoca
-                # SEMPRE: un «No» avrebbe eseguito lo stesso, e nessun consenso
-                # sarebbe mai arrivato all'executor. Difetto trovato dal vivo
-                # sul turno dffe878b (17/8/2026).
-                "on_complete": {
-                    "type": "gate_dispatch",
-                    "approve_value": "approve",
-                    "on_approve": {
-                        "tool": "install_packages",
-                        "args": {
-                            "packages": [r["package_id"] for r in resolved],
-                            "uninstall": uninstall,
-                            "scope": scope,
-                            # Il consenso e' stato dato a QUESTA scheda. Il
-                            # token nasce qui, viaggia solo dentro lo stato
-                            # pendente del runtime — che nessuno raggiunge
-                            # senza rispondere — e torna soltanto sul ramo
-                            # «approvo». E' il percorso di `admin`.
-                            "actor_consent_token": _consent_token(
-                                resolved, uninstall, scope),
-                        },
-                    },
-                },
-            },
+            "needs_inputs": _approval_dialog(resolved, uninstall, scope,
+                                             ctx),
         }
 
     # ── Phase 2: the person approved ──────────────────────────────────

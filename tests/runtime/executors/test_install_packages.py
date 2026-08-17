@@ -65,7 +65,7 @@ def windows(monkeypatch):
     monkeypatch.setattr(install_packages, "_run", finto_run)
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget"})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True})
     return eseguiti
 
 
@@ -156,7 +156,7 @@ def test_un_impronta_assente_viene_dichiarata(monkeypatch) -> None:
                         lambda argv, t: (0, senza, ""))
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget"})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True})
     res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
     carta = res["needs_inputs"]["description"]
     assert "945fdf" not in carta
@@ -175,7 +175,7 @@ def test_un_pacchetto_non_risolto_ferma_tutta_la_chiamata(monkeypatch):
     monkeypatch.setattr(install_packages, "_run", finto_run)
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget"})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True})
 
     res = install_packages.invoke({
         "packages": ["Microsoft.PowerToys", "pacchetto-inventato-9f2c"]})
@@ -218,7 +218,7 @@ def _finto_winget(monkeypatch, search_out, show_id=None, show_out=None):
     monkeypatch.setattr(install_packages, "_run", run)
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget"})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True})
 
 
 def test_un_nome_con_un_solo_corrispondente_viene_risolto(monkeypatch):
@@ -258,7 +258,7 @@ def test_un_nome_ambiguo_non_installa_niente(monkeypatch):
     monkeypatch.setattr(install_packages, "_run", run)
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget"})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True})
     install_packages.invoke({"packages": ["python"]})
     assert not any("install" in a for a in eseguiti)
 
@@ -275,11 +275,83 @@ def test_l_identificativo_esatto_non_passa_dalla_ricerca(monkeypatch):
     monkeypatch.setattr(install_packages, "_run", run)
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget"})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True})
     res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
     assert res["decision"] == "needs_inputs"
     assert not any("search" in a for a in eseguiti)
     assert "asked_as" not in res["resolved"][0]
+
+
+# ── 3.ter Cio' che si installa INSIEME e' cio' che si approva ────────
+# Difetto reale, turni 234daad8 e b7d63070 (17/8/2026): la scheda diceva
+# «1 programma» mentre winget ne avrebbe installati due, e l'installazione
+# falliva proprio sulla dipendenza.
+
+_SHOW_CON_DIPENDENZA = _WINGET_SHOW + """  Distribuzione offline supportata: true
+  Dipendenze: 
+    - Dipendenze dei pacchetti: 
+        namazso.PawnIO
+"""
+
+
+def test_le_dipendenze_finiscono_sulla_scheda(monkeypatch):
+    """Chi approva stava autorizzando anche un secondo componente senza
+    averlo letto: e' esattamente cio' che la scheda esiste per evitare."""
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, _SHOW_CON_DIPENDENZA, ""))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC", "elevated": True})
+
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
+    assert res["resolved"][0]["dependencies"] == ["namazso.PawnIO"]
+    assert "namazso.PawnIO" in res["needs_inputs"]["description"]
+
+
+def test_un_pacchetto_senza_dipendenze_non_ne_inventa(windows):
+    """Zero falsi positivi: le parole chiave del pacchetto e le note di
+    versione non devono diventare dipendenze."""
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
+    assert res["resolved"][0]["dependencies"] == []
+
+
+def test_le_dipendenze_si_leggono_per_struttura_non_per_etichetta(monkeypatch):
+    """Le intestazioni di winget sono tradotte: cercare «Dipendenze»
+    funzionerebbe solo in italiano. L'ancora e' l'impronta, riconoscibile
+    dalla forma."""
+    inglese = (_SHOW_CON_DIPENDENZA
+               .replace("Dipendenze:", "Dependencies:")
+               .replace("Dipendenze dei pacchetti:", "Package Dependencies:")
+               .replace("SHA256 del programma di installazione:",
+                        "Installer SHA256:"))
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, inglese, ""))
+    r = install_packages._winget_show("X.Y", "winget")
+    assert r["dependencies"] == ["namazso.PawnIO"]
+
+
+def test_senza_impronta_non_si_indovinano_dipendenze(monkeypatch):
+    """L'ancora e' l'impronta: senza, ogni riga dopo sarebbe un candidato, e
+    si finirebbe per leggere le parole chiave come dipendenze."""
+    senza = _SHOW_CON_DIPENDENZA.replace(
+        "945fdf327e4d38e4ced61b0727b7ab8a1222958782982052989ddf7cb7096f62", "")
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, senza, ""))
+    r = install_packages._winget_show("X.Y", "winget")
+    assert r["dependencies"] == []
+
+
+def test_senza_privilegi_una_dipendenza_viene_annunciata(monkeypatch):
+    """Va detto PRIMA: scoprirlo dopo aver confermato e' scoprirlo tardi."""
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, _SHOW_CON_DIPENDENZA, ""))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC", "elevated": False})
+
+    testo = install_packages.invoke(
+        {"packages": ["X.Y"]})["needs_inputs"]["description"].lower()
+    assert "richiede altri" in testo or "requires others" in testo
 
 
 # ── 4. Nessun carattere jolly ─────────────────────────────────────────
@@ -349,7 +421,7 @@ def test_il_consenso_lo_inietta_il_runtime() -> None:
 
 
 def test_il_consenso_passa_dal_cancello_canonico(windows) -> None:
-    """`gate_dispatch` esegue il ramo SOLO su approvazione.
+    """`gate_dispatch` esegue il ramo SOLO su una scelta dichiarata.
 
     La prima stesura usava `resume_executor_with_values`, che serve a
     disambiguare fra candidati e invoca SEMPRE: un «No» avrebbe eseguito lo
@@ -359,32 +431,80 @@ def test_il_consenso_passa_dal_cancello_canonico(windows) -> None:
 
     assert oc["type"] == "gate_dispatch", (
         "un consenso non passa dal meccanismo di disambiguazione")
-    assert oc["approve_value"] == "approve"
-    assert "on_reject" not in oc, "un rifiuto non esegue niente"
-    assert oc["on_approve"]["tool"] == "install_packages"
-    assert oc["on_approve"]["args"]["packages"] == ["Microsoft.PowerToys"]
+    assert "reject" not in oc["branches"], "un rifiuto non esegue niente"
+    for ramo in oc["branches"].values():
+        assert ramo["tool"] == "install_packages"
+        assert ramo["args"]["packages"] == ["Microsoft.PowerToys"]
 
 
-def test_il_ramo_approvato_porta_il_consenso(windows) -> None:
+def test_la_portata_si_sceglie_a_bottoni(windows) -> None:
+    """Piu' sicuro che farla scrivere: una scelta premuta non si puo'
+    fraintendere, una frase si' (Roberto, 17/8/2026). Chi conferma non deve
+    ricordare nessuna formula."""
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
+    scelte = res["needs_inputs"]["dialog"][0]["schema"]["choices"]
+    valori = [c["value"] for c in scelte]
+
+    assert valori == ["machine", "user", "reject"]
+    assert all(c["label"] for c in scelte), "un bottone senza scritta"
+    rami = res["needs_inputs"]["on_complete"]["branches"]
+    assert rami["machine"]["args"]["scope"] == "machine"
+    assert rami["user"]["args"]["scope"] == "user"
+
+
+def test_senza_privilegi_non_si_offre_cio_che_fallirebbe(monkeypatch) -> None:
+    """Offrire «per tutti gli utenti» dove non si puo' vorrebbe dire far
+    scegliere qualcosa che fallira'. L'assenza e' spiegata sulla scheda,
+    non silenziosa."""
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, _WINGET_SHOW, ""))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": False})
+
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
+    valori = [c["value"]
+              for c in res["needs_inputs"]["dialog"][0]["schema"]["choices"]]
+    assert valori == ["user", "reject"]
+    assert "machine" not in res["needs_inputs"]["on_complete"]["branches"]
+    testo = res["needs_inputs"]["description"].lower()
+    assert "amministratore" in testo or "administrator" in testo
+
+
+def test_una_rimozione_non_ha_portata(windows) -> None:
+    """Si toglie cio' che c'e': chiedere «per tutti o solo per te» quando si
+    disinstalla sarebbe una domanda senza significato."""
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"],
+                                   "uninstall": True})
+    valori = [c["value"]
+              for c in res["needs_inputs"]["dialog"][0]["schema"]["choices"]]
+    assert valori == ["approve", "reject"]
+
+
+def test_ogni_ramo_porta_il_proprio_consenso(windows) -> None:
     """Senza token la ripresa ricadeva in fase 1 e mostrava di nuovo la
     scheda: l'installazione non partiva mai. E' cio' che ha visto Roberto."""
     res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
-    args = res["needs_inputs"]["on_complete"]["on_approve"]["args"]
-    assert args.get("actor_consent_token"), "il ramo approvato senza consenso"
+    rami = res["needs_inputs"]["on_complete"]["branches"]
+    for nome, ramo in rami.items():
+        assert ramo["args"].get("actor_consent_token"), f"ramo {nome} senza consenso"
+    assert (rami["machine"]["args"]["actor_consent_token"]
+            != rami["user"]["args"]["actor_consent_token"]), (
+        "due portate diverse non condividono un consenso")
 
 
 def test_il_consenso_e_legato_a_quella_scheda(windows) -> None:
     """Un consenso dato per un'installazione non vale per una rimozione,
     ne' per un altro pacchetto: l'impronta comprende cio' che si e' letto."""
-    def token(pkgs, uninstall=False, scope="machine"):
-        r = install_packages.invoke({"packages": pkgs, "uninstall": uninstall,
-                                     "scope": scope})
-        return r["needs_inputs"]["on_complete"]["on_approve"]["args"][
-            "actor_consent_token"]
+    def token(pkgs, uninstall=False, ramo="machine"):
+        r = install_packages.invoke({"packages": pkgs, "uninstall": uninstall})
+        rami = r["needs_inputs"]["on_complete"]["branches"]
+        chiave = "approve" if uninstall else ramo
+        return rami[chiave]["args"]["actor_consent_token"]
 
     base = token(["Microsoft.PowerToys"])
     assert base != token(["Microsoft.PowerToys"], uninstall=True)
-    assert base != token(["Microsoft.PowerToys"], scope="user")
+    assert base != token(["Microsoft.PowerToys"], ramo="user")
     assert base == token(["Microsoft.PowerToys"]), "stessa scheda, stesso token"
 
 
@@ -396,7 +516,7 @@ def test_il_giro_completo_installa_solo_alla_fase_due(windows) -> None:
 
     windows.clear()
     finale = install_packages.invoke(
-        dict(res["needs_inputs"]["on_complete"]["on_approve"]["args"]))
+        dict(res["needs_inputs"]["on_complete"]["branches"]["user"]["args"]))
     assert finale["ok"] is True
     assert finale["installed"] is True
     assert [a[1] for a in windows] == ["install"]
@@ -426,13 +546,35 @@ def test_la_direzione_arriva_dagli_argomenti(windows) -> None:
     assert "uninstall" in windows[0]
 
 
+def test_la_diagnosi_viene_dal_fondo_non_dall_insegna(monkeypatch):
+    """La prima riga di winget e' l'insegna del pacchetto trovato; mostrarla
+    come errore dice l'opposto di cio' che e' successo — sembra un successo.
+    Il verdetto sta in fondo (turno e563a5ab, 17/8/2026)."""
+    uscita = ("Trovato LibreHardwareMonitor [LibreHardwareMonitor] Versione 0.9.6\n"
+              "Download in corso...\n"
+              "Il programma di installazione ha riportato un errore.\n")
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (42, uscita, ""))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC", "elevated": True})
+
+    res = install_packages.invoke({"packages": ["X"],
+                                   "actor_consent_token": "tok"})
+    errore = res["failed"][0]["error"]
+    assert "errore" in errore.lower()
+    assert "Trovato LibreHardwareMonitor" not in errore, (
+        "l'insegna del pacchetto non e' una diagnosi")
+    assert "rc=42" in errore, "il codice di uscita e' l'unico dato non tradotto"
+
+
 def test_un_fallimento_del_gestore_non_diventa_un_successo(monkeypatch):
     """§2.8: `ok_count` conta cio' che e' stato REALMENTE applicato."""
     monkeypatch.setattr(install_packages, "_run",
                         lambda argv, t: (1, "", "installer failed rc=1"))
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget"})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True})
     res = install_packages.invoke({"packages": ["Microsoft.PowerToys"],
                                    "actor_consent_token": "token"})
     assert res["ok"] is False
