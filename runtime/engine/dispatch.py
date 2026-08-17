@@ -6563,6 +6563,19 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             payload = paused_input.result.get("needs_inputs") or {}
             callback = payload.get("on_complete") or {}
             paused_tool = str(getattr(paused_input, "tool", "") or "")
+            # Un'azione approvata torna DOVE appartiene. Il passo sospeso e'
+            # girato su una macchina precisa; la ripresa passa per
+            # `orchestration`, che invocava senza destinazione e quindi
+            # sempre sul server. «Installa X sul mio PC» chiedeva conferma al
+            # PC e poi provava a installare sul server, con il gestore di
+            # pacchetti sbagliato (turno a97056e1, 17/8/2026).
+            #
+            # La destinazione la sa il RUNTIME, non l'executor: la scrive qui,
+            # una volta, per qualunque dominio. Vale per il cancello di
+            # consenso come per la ripresa con valori.
+            _device = str(getattr(paused_input, "host", "") or "")
+            if isinstance(callback, dict) and _device and _device != "server":
+                callback.setdefault("target_device", _device)
             if (isinstance(callback, dict)
                     and callback.get("type") == "resume_executor_with_values"
                     and callback.get("executor") == paused_tool):

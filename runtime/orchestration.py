@@ -986,6 +986,10 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
         res = agent_runtime.invoke_executor(
             ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
             actor=actor, channel=channel,
+            # Un'azione approvata torna dove appartiene: senza destinazione
+            # ogni ripresa girava sul server, anche quando la domanda era
+            # stata posta su un altro computer (turno a97056e1, 17/8/2026).
+            target_device=str(on_complete.get("target_device") or "") or None,
             owner_user_id=str(on_complete.get("owner_user_id") or ""),
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
@@ -1342,6 +1346,7 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         res = agent_runtime.invoke_executor(
             ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
             actor=actor, channel=channel,
+            target_device=str(on_complete.get("target_device") or "") or None,
             owner_user_id=str(on_complete.get("owner_user_id") or ""),
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
