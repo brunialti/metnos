@@ -1199,7 +1199,8 @@ def _preprocessed_turn_data(
         user_id: str, conversation_id: str, sender_id: str,
         reference_images: list[str], original_query: str,
         credential_meta: list[dict] | None = None,
-        redacted_fields: int = 0, tutor_deferred: bool = False,
+        redacted_fields: int = 0, immediate_elapsed_ms: int = 0,
+        tutor_deferred: bool = False,
         deferred_query: str = "") -> dict:
     """Build the one internal hand-off shape used by both HTTP turn paths.
 
@@ -1214,6 +1215,7 @@ def _preprocessed_turn_data(
         "immediate_msg": immediate_msg,
         "immediate_source": immediate_source,
         "immediate_turn_id": immediate_turn_id,
+        "immediate_elapsed_ms": max(0, int(immediate_elapsed_ms or 0)),
         "actor": actor,
         "user_id": user_id,
         "conversation_id": conversation_id,
@@ -1263,6 +1265,7 @@ async def _resolve_open_http_turn(
             immediate_msg=tutor.answer_md,
             immediate_source="tutor",
             immediate_turn_id=tutor.turn_id or turn_id_hint or "tutor",
+            immediate_elapsed_ms=tutor.elapsed_ms,
             actor=actor, user_id=user_id,
             conversation_id=conversation_id, sender_id=sender_id,
             reference_images=reference_images,
@@ -1280,8 +1283,12 @@ async def _resolve_open_http_turn(
         # valid reply.  During a Tutor outage only an exact yes/no twin may
         # reach the capability consumer; arbitrary prose must preserve an
         # open dialog instead of being swallowed by it.
+        # `_classify_yes_no` returns "yes" | "no" | "other", never None: the
+        # comparison against None was always true and let arbitrary prose
+        # through to the capability consumer — the opposite of what the
+        # comment above states. The exact twin is a yes or a no, nothing else.
         from channels.daemon import _classify_yes_no
-        if _classify_yes_no(query) is not None:
+        if _classify_yes_no(query) in ("yes", "no"):
             query_for_run, _consumed_pending, immediate_msg = (
                 _apply_cap_pending(
                     sender_id, query, actor=actor,
@@ -1294,6 +1301,7 @@ async def _resolve_open_http_turn(
                 immediate_source="tutor",
                 immediate_turn_id=(
                     tutor_error.turn_id or turn_id_hint or "tutor"),
+                immediate_elapsed_ms=tutor_error.elapsed_ms,
                 actor=actor, user_id=user_id,
                 conversation_id=conversation_id, sender_id=sender_id,
                 reference_images=reference_images,
@@ -1583,6 +1591,7 @@ async def turn(request: web.Request) -> web.Response:
     query = data["original_query"]
     query_for_run = data["query_for_run"]
     immediate_msg = data["immediate_msg"]
+    immediate_elapsed_ms = int(data.get("immediate_elapsed_ms") or 0)
     immediate_source = data.get("immediate_source") or "pending"
     immediate_turn_id = data.get("immediate_turn_id") or immediate_source
     actor = data["actor"]
@@ -1614,7 +1623,7 @@ async def turn(request: web.Request) -> web.Response:
                 "final_message": immediate_http,
                 "final_message_html": _safe_final_html(immediate_http),
                 "final_kind": "answer",
-                "total_ms": 0,
+                "total_ms": immediate_elapsed_ms,
                 "expandable_caps": [],
                 "attachments": [],
                 "gallery_url": None,
@@ -1631,7 +1640,7 @@ async def turn(request: web.Request) -> web.Response:
             "final_message": immediate_http,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
-            "total_ms": 0,
+            "total_ms": immediate_elapsed_ms,
             "steps_summary": [],
             "conversation_id": conversation_id,
             "expandable_caps": [],
@@ -3125,6 +3134,7 @@ async def turn_submit(request: web.Request) -> web.Response:
         return err
     query_for_run = data["query_for_run"]
     immediate_msg = data["immediate_msg"]
+    immediate_elapsed_ms = int(data.get("immediate_elapsed_ms") or 0)
     actor = data["actor"]
     user_id = data["user_id"]
     conv_id = data["conversation_id"]
@@ -3154,7 +3164,7 @@ async def turn_submit(request: web.Request) -> web.Response:
             "final_message": immediate_http,
             "final_message_html": _safe_final_html(immediate_http),
             "final_kind": "answer",
-            "total_ms": 0,
+            "total_ms": immediate_elapsed_ms,
             "expandable_caps": [],
             "attachments": [],
             "gallery_url": None,
@@ -3217,7 +3227,8 @@ async def turn_submit(request: web.Request) -> web.Response:
                         "final_message": immediate_http,
                         "final_message_html": _safe_final_html(immediate_http),
                         "final_kind": "answer",
-                        "total_ms": 0,
+                        "total_ms": int(
+                            runtime_data.get("immediate_elapsed_ms") or 0),
                         "expandable_caps": [],
                         "attachments": [],
                         "gallery_url": None,
@@ -3599,8 +3610,18 @@ _STATIC_CT = {
 
 
 def _static_response(name: str) -> web.Response:
-    """Serve un file statico da `runtime/static/`. 404 se non esiste o
-    se il path tenta uscire dalla dir (path traversal)."""
+    """Serve un file statico da `runtime/static/`. 404 se non esiste, se il
+    path tenta uscire dalla dir (path traversal), o se il tipo non e' un
+    asset web.
+
+    `_STATIC_CT` is the ALLOWLIST, not a lookup table with a fallback. The
+    route is anonymous by design (`/static/` is exempt in `http_auth`), so
+    the directory publishes whatever it holds: a file whose type is not a web
+    asset is a document that landed in an asset directory, and answering
+    `application/octet-stream` would hand it out. Keeping the two facts in
+    one place means a new asset type is added deliberately, and a stray
+    document is a 404 rather than a disclosure.
+    """
     safe = (_STATIC_DIR / name).resolve()
     try:
         safe.relative_to(_STATIC_DIR.resolve())
@@ -3608,7 +3629,9 @@ def _static_response(name: str) -> web.Response:
         return web.Response(status=404, text="not found")
     if not safe.is_file():
         return web.Response(status=404, text="not found")
-    ct = _STATIC_CT.get(safe.suffix.lower(), "application/octet-stream")
+    ct = _STATIC_CT.get(safe.suffix.lower())
+    if ct is None:
+        return web.Response(status=404, text="not found")
     body = safe.read_bytes()
     headers = {"Cache-Control": "public, max-age=3600"}
     return web.Response(body=body, content_type=ct, headers=headers)
