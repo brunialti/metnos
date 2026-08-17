@@ -756,7 +756,9 @@ def _apply_dialog_pending(sender_id: str, query: str,
 
 def _apply_cap_pending(
         sender_id: str, query: str, actor: str = "host", *,
-        owner_user_id: str) -> tuple[str, dict | None, str | None]:
+        owner_user_id: str,
+        decision: str = "",
+        decision_turn_id: str = "") -> tuple[str, dict | None, str | None]:
     """Se c'e' un cap-expand pending e la query e' un sì, ritorna la
     query riscritta + il pending consumato. Altrimenti pulisce stato (su
     'no'/qualsiasi altro) e ritorna la query originale.
@@ -775,15 +777,41 @@ def _apply_cap_pending(
 
     Replica la logica di `channels/daemon.py:CAP EXPAND fase 2` per il
     canale HTTP che NON passa per ChannelDaemon.
+
+    `decision` (17/8/2026): quando la chat presenta i due bottoni, la
+    risposta non e' piu' una parola da interpretare ma una decisione
+    tipizzata (`yes`/`no`) legata alla proposta da `decision_turn_id`.
+    Nessuna classificazione di testo, quindi nessun fraintendimento
+    possibile. E' lo stesso contratto dei bottoni Telegram
+    (`cap:<turn_id>:yes|no`, `inline_ui`), su un altro trasporto — e passa
+    per QUESTA funzione, cosi' il consumo della proposta resta uno solo.
     """
     from channels.daemon import (
         _cap_pending_load, _cap_pending_clear, _classify_yes_no,
     )
+    # Il campo lo scrive il client: fuori dall'insieme chiuso non e' una
+    # decisione, e ricade sul percorso normale invece di aprire una strada
+    # propria. Normalizzato QUI, una volta, cosi' ogni ramo sotto legge la
+    # stessa cosa.
+    decision = decision if decision in ("yes", "no") else ""
     pending = _cap_pending_load(
         sender_id, owner_user_id=owner_user_id)
     if not pending:
+        if decision:
+            # Bottone premuto su una domanda che non c'e' piu' (scaduta,
+            # gia' risposta altrove, sessione ripresa su un altro device).
+            # Il bottone non deve far partire nulla al buio.
+            return query, None, _msg("MSG_CAP_PROPOSAL_EXPIRED")
         return query, None, None
     p = pending["proposal"]
+
+    if decision:
+        _open = str(pending.get("turn_id") or "")
+        if decision_turn_id and _open and decision_turn_id != _open:
+            # Tap su una bolla vecchia mentre ne e' aperta un'altra: la
+            # decisione vale per la domanda che l'utente stava guardando,
+            # non per quella corrente. Stessa regola dei bottoni Telegram.
+            return query, None, _msg("MSG_CAP_PROPOSAL_EXPIRED")
 
     # ── Branch get_inputs_response (ADR 0090, FIX 1 6/5/2026) ─────────
     # Il dialog persiste in dialog_pending (file 0600). Su HTTP +
@@ -799,7 +827,8 @@ def _apply_cap_pending(
             owner_user_id=owner_user_id,
         )
 
-    ans = _classify_yes_no(query)
+    # Una decisione tipizzata non si rilegge dal testo: e' gia' la risposta.
+    ans = decision if decision in ("yes", "no") else _classify_yes_no(query)
     if ans == "yes":
         if p.get("kind") == "admin_approval":
             _cap_pending_clear(sender_id)
@@ -1016,6 +1045,37 @@ def _save_cap_pending_if_any(sender_id: str, original: str, turn_log, *,
                           owner_user_id=owner_user_id)
 
 
+# Proposte che si chiudono con un si' o un no, e nient'altro. I dialoghi
+# strutturati (`get_inputs_response`) hanno gia' il loro modulo con i
+# bottoni: iscriverli qui darebbe due comandi per la stessa domanda.
+_DECIDABLE_PENDING_KINDS = frozenset({
+    "admin_approval", "approval_required", "cap_expand",
+})
+
+
+def _pending_decision_payload(turn_log) -> dict | None:
+    """Descrive la domanda aperta perche' la chat possa offrire due bottoni.
+
+    Un bottone non manda la parola «si'»: manda una decisione tipizzata
+    legata a QUESTA proposta (`turn_id`). E' il contratto dei bottoni
+    Telegram portato sul canale HTTP — dove finora la stessa domanda
+    arrivava come testo, e l'utente doveva scriverla."""
+    caps = getattr(turn_log, "expandable_caps", None) or []
+    if not caps:
+        return None
+    kind = str((caps[0] or {}).get("kind") or "")
+    if kind not in _DECIDABLE_PENDING_KINDS:
+        return None
+    return {
+        "turn_id": turn_log.turn_id,
+        "kind": kind,
+        "yes_label": _msg("MSG_BTN_APPROVE") if kind == "admin_approval"
+        else _msg("MSG_BTN_YES"),
+        "no_label": _msg("MSG_BTN_REJECT") if kind == "admin_approval"
+        else _msg("MSG_BTN_NO"),
+    }
+
+
 
 CHAT_INLINE_ATT_CAP = 20
 
@@ -1186,6 +1246,7 @@ def _build_final_event_payload(log_obj, admin_key: str) -> dict:
         "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
         "ts_end": float(log_obj.ts_end),
         "expandable_caps": getattr(log_obj, "expandable_caps", []) or [],
+        "pending_decision": _pending_decision_payload(log_obj),
         "attachments": _enrich_attachments(log_obj, admin_key),
         "gallery_url": gallery_url,
         "n_total_matches": n_total,
@@ -1479,6 +1540,35 @@ async def _preprocess_turn(request: web.Request):
     # them and no returned/prepared payload retains them.
     safe_original_query, sensitive_fields = scrub_sensitive_text(query)
 
+    # ── Decisione da bottone (17/8/2026) ─────────────────────────────
+    # Un tap non e' una richiesta nuova: e' la risposta a una domanda
+    # aperta. Entra prima del Tutor e degli altri intercettori, che
+    # esistono per interpretare del testo — e qui non c'e' testo da
+    # interpretare. Il valore arriva tipizzato dal client e viene
+    # comunque validato contro l'insieme chiuso: un campo arbitrario non
+    # apre questa strada.
+    # Solo dal corpo JSON: un turno multipart porta immagini, cioe' una
+    # intenzione nuova, e piu' sotto azzera comunque lo stato pendente.
+    _body = body if not ctype.startswith("multipart/") else {}
+    _decision = str((_body or {}).get("decision") or "").strip().lower()
+    if _decision in ("yes", "no"):
+        _q_run, _consumed, _immediate = _apply_cap_pending(
+            sender_id, query, actor=actor, owner_user_id=user_id,
+            decision=_decision,
+            decision_turn_id=str((_body or {}).get("decision_turn_id") or ""),
+        )
+        return None, _preprocessed_turn_data(
+            query_for_run=_q_run,
+            immediate_msg=_immediate,
+            immediate_source="pending" if _immediate is not None else "",
+            immediate_turn_id="",
+            actor=actor, user_id=user_id,
+            conversation_id=conversation_id, sender_id=sender_id,
+            reference_images=reference_images,
+            original_query=safe_original_query,
+            redacted_fields=sensitive_fields,
+        )
+
     # Universal §7.3: drag&drop con immagini + query = NUOVA intenzione
     # esplicita, mai una risposta a dialog precedenti. Skip TUTTI gli
     # interceptor (cancel, dialog_pending, cap_pending).
@@ -1710,6 +1800,7 @@ async def _turn_json(request: web.Request, agent_runtime, query: str, actor: str
         ],
         "conversation_id": conv_id,
         "expandable_caps": getattr(log_obj, "expandable_caps", []) or [],
+        "pending_decision": _pending_decision_payload(log_obj),
         "attachments": _enrich_attachments(log_obj, admin_key),
         "gallery_url": gallery_url,
         "n_total_matches": n_total,
