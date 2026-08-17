@@ -1,0 +1,62 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:1f4a32b7350fd7a06da2ed43310d0f4fca9373b2ff80e604ee15587b3abf7f03",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:69b2f6539361e4de3cb15ab3da9ca1f5645b0fa7f7d3fe730a7c6d7269713569",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.packages.description": {
+    "it": {
+      "version_hash": "sha256:27bac88e3148286a8723e5438f741b5326e1bec9cae408ef5085a19b6d4c9aeb",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:69bb47166a81fa70bcc818339696fbf1083cc9f24cb9c217647fa95131ab178d",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.uninstall.description": {
+    "it": {
+      "version_hash": "sha256:0280ee01b167bf9da6b1e75252a077af317394c1638961e9841819b83d4019f5",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:b4359ecdacff5e8c769b31fb21a517d93b8a7aec203f69b0a0cdfcc3894984b7",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.scope.description": {
+    "it": {
+      "version_hash": "sha256:fb3b21b585e1e63a15c98dd61f4b7193a89483d19c14d0ffb435edb44ff7c41a",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:abad47d933d476cefd86b14137100916df291ebff18c19f7415501210bb9d443",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.actor_consent_token.description": {
+    "it": {
+      "version_hash": "sha256:567f813c5dcf3191f70d575f3b5d7bf363e477f8b22f5e57b4389e5396608dd4",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:334b422103bc82727f4e97f1c4961750928236f4d413f4ae0020a391ed3d9ab5",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

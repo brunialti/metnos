@@ -178,6 +178,59 @@ def _reverse_with_module(ex, rec):
         return None, f"reverse() exception: {exc}"
 
 
+def _remedy_question(ex, rec):
+    """La domanda da porre quando l'operazione non si annulla ma si rimedia.
+
+    Ritorna il payload `needs_inputs`, oppure None quando l'executor non
+    dichiara nessun rimedio — allora resta il vecchio «non annullabile».
+
+    Il rimedio e' DICHIARATO nel manifest firmato, non dedotto: questo
+    modulo non conosce pacchetti, installazioni o alcun altro dominio.
+    """
+    spec = getattr(ex, "undo", None) or {}
+    remedy_executor = str(spec.get("remedy_executor") or "").strip()
+    if not remedy_executor:
+        return None
+
+    plan_args = dict((rec.get("plan") or {}).get("args") or {})
+    args_base = {k: plan_args[k] for k in (spec.get("remedy_args_from") or [])
+                 if k in plan_args}
+    fixed = spec.get("remedy_args_fixed")
+    if isinstance(fixed, dict):
+        args_base.update(fixed)
+    if not args_base:
+        # Senza gli argomenti dell'operazione originale la domanda sarebbe
+        # generica, e una domanda generica su un'azione che modifica una
+        # macchina non e' un consenso utilizzabile.
+        return None
+
+    prompt_key = str(spec.get("remedy_prompt_key") or "").strip()
+    return {
+        "ok": True,
+        "decision": "needs_inputs",
+        "undone_count": 0,
+        "skipped_count": 0,
+        "details": [],
+        "turn_id": rec.get("turn_id"),
+        "needs_inputs": {
+            "title": _msg("MSG_UNDO_NOT_REVERSIBLE_TITLE"),
+            "description": _msg(prompt_key) if prompt_key
+            else _msg("MSG_UNDO_NOT_REVERSIBLE_GENERIC"),
+            "dialog": [{
+                "var": "approved",
+                "prompt": _msg("MSG_UNDO_REMEDY_PROMPT"),
+                "schema": {"kind": "yes_no"},
+            }],
+            "fmt": "auto",
+            "on_complete": {
+                "type": "resume_executor_with_values",
+                "executor": remedy_executor,
+                "args_base": args_base,
+            },
+        },
+    }
+
+
 def invoke(args):
     log_path_arg = args.get("log_path")
     log = UndoLog(Path(log_path_arg)) if log_path_arg else UndoLog()
@@ -207,6 +260,15 @@ def invoke(args):
             skipped += 1
             continue
         if not ex.revertible:
+            # Un'operazione irreversibile puo' comunque avere un RIMEDIO, e
+            # l'executor lo dichiara nella sezione `[undo]` del suo manifest
+            # firmato (ADR 0209 D3). Rispondere soltanto «non annullabile» e
+            # fermarsi lascia la persona senza la strada; eseguire il rimedio
+            # da soli sarebbe peggio, perche' non e' cio' che ha chiesto.
+            # Si chiede, e basta. Nessun dominio e' nominato qui.
+            remedy = _remedy_question(ex, rec)
+            if remedy is not None:
+                return remedy
             details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": _msg("ERR_UNDO_NOT_REVERTIBLE")})
             skipped += 1
             continue

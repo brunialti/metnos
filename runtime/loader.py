@@ -237,6 +237,7 @@ def builtin_contract_executor(name: str, module_path: Path,
         deprecated_at=None,
         deprecation_ttl_hours=24,
         placement=dict(manifest.get("placement") or {}),
+        undo=dict(manifest.get("undo") or {}),
         platforms=list(manifest.get("platforms") or ["linux"]),
         digest=str((manifest.get("code") or {}).get("digest") or ""),
         executor_standard=str(manifest.get("executor_standard") or ""),
@@ -547,6 +548,13 @@ class Executor:
     # Vuoto = scope "any" (gira su .33 come oggi). Consumato da
     # placement.choose_placement nel hook di invoke_executor.
     placement: dict = field(default_factory=dict)
+    # Sezione `[undo]` del manifest (ADR 0209 D3): che cosa rispondere a un
+    # «annulla» quando l'operazione NON e' annullabile ma esiste un rimedio.
+    # Un'installazione non si ripercorre all'indietro; disinstallare e'
+    # un'altra operazione, che va chiesta. L'executor DICHIARA il rimedio,
+    # cosi' `undo_last_turn` non deve conoscere nessun dominio per nome.
+    # Vuoto = nessun rimedio: l'undo dice che non e' annullabile, e basta.
+    undo: dict = field(default_factory=dict)
     # Hint storico `[planning] complexity = "low|medium|high"`, mantenuto nel
     # modello dati per compatibilita' dei manifest. Non controlla piu' think,
     # temperature o budget: i consumer selezionano un workload e la relativa
@@ -1463,6 +1471,8 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             sandbox_profile=sandbox_profile,
             provenance=provenance,
             placement=_placement,
+            undo=dict(manifest.get("undo") or {})
+            if isinstance(manifest.get("undo"), dict) else {},
             complexity=_complexity,
             planning_companions=_companions,
             platforms=_platforms,
