@@ -11,12 +11,18 @@
 //!   poggia tutto il resto.
 //! - `journal` — le chiavi gia' consumate, perche' una richiesta catturata
 //!   non si possa rigiocare.
+//! - `channel` — come si chiama il canale locale e chi puo' parlarci. La
+//!   parte che si prova ovunque; quella che apre la pipe sta sotto
+//!   `cfg(windows)` e riceve da qui un nome gia' verificato.
 //!
 //! Cio' che tocca Windows (la pipe con ACL, la verifica del chiamante) vive
 //! separato e riceve da qui soltanto valori gia' verificati.
 
+mod channel;
 mod journal;
 mod protocol;
+#[cfg(windows)]
+mod win_pipe;
 
 fn main() {
     eprintln!(
