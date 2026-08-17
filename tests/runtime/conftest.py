@@ -81,6 +81,41 @@ _SAFE_CONFIG_FILES = (
 def _copy_if_present(source: Path, destination: Path) -> None:
     if source.is_file():
         destination.parent.mkdir(parents=True, exist_ok=True)
+        if source.suffix == ".sqlite":
+            _copy_sqlite_complete(source, destination)
+        else:
+            shutil.copy2(source, destination)
+
+
+def _copy_sqlite_complete(source: Path, destination: Path) -> None:
+    """Copia un SQLite COMPRESO cio' che sta ancora nel registro di scrittura.
+
+    In modalita' WAL una scrittura recente vive nel file `-wal` e non nel file
+    principale finche' qualcuno non la travasa. Copiare il solo file
+    principale produce quindi una fotografia VECCHIA, e in silenzio: i test
+    girano su uno stato che non e' quello della macchina.
+
+    E' costato mezz'ora il 17/8/2026 — un messaggio i18n riscritto risultava
+    ancora nella versione precedente dentro la suite e in quella nuova fuori,
+    con il test che diceva soltanto «disallineato».
+
+    `backup` di sqlite3 fa la cosa giusta: legge attraverso il registro e
+    scrive un file solo, coerente. Se il database non si apre (corrotto, o non
+    e' davvero SQLite) si ricade sulla copia semplice: un file inutilizzabile
+    e' un problema del test che lo usa, non di questa funzione.
+    """
+    import sqlite3
+    try:
+        sorgente = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+        try:
+            destinazione = sqlite3.connect(str(destination))
+            try:
+                sorgente.backup(destinazione)
+            finally:
+                destinazione.close()
+        finally:
+            sorgente.close()
+    except sqlite3.Error:
         shutil.copy2(source, destination)
 
 
