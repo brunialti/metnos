@@ -1,12 +1,12 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:1f4a32b7350fd7a06da2ed43310d0f4fca9373b2ff80e604ee15587b3abf7f03",
+      "version_hash": "sha256:2abf47c797a7fc03b0e603397e077d64b6192f523fdf77af89009446da68aecb",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:69b2f6539361e4de3cb15ab3da9ca1f5645b0fa7f7d3fe730a7c6d7269713569",
+      "version_hash": "sha256:e2b3dafad59bde72889d6c7821c88dd67ec9b524684e99d5e98157300d6b5710",
       "source_lang": null,
       "source_hash": null
     }
@@ -25,12 +25,12 @@
   },
   "args.uninstall.description": {
     "it": {
-      "version_hash": "sha256:0280ee01b167bf9da6b1e75252a077af317394c1638961e9841819b83d4019f5",
+      "version_hash": "sha256:af6f3d40975ae29e39ed09723797d0a4b8b69249ce11d6d251ee72f575b81ab4",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:b4359ecdacff5e8c769b31fb21a517d93b8a7aec203f69b0a0cdfcc3894984b7",
+      "version_hash": "sha256:dc6d3329274d1869bd7e6837fe2e3c93108225240ed8a1de19a7a87ee84dd4ae",
       "source_lang": null,
       "source_hash": null
     }
