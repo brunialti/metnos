@@ -104,9 +104,30 @@ si reinstalla, cosi' il passaggio e' un atto esplicito.
   secondi. Il ciclo non decide niente: legge, passa a `service::handle`,
   risponde.
 
-**Da costruire**: il lato client — aprire la pipe verificando di parlare con
-l'aiutante VERO prima di scrivere (l'altra meta' di D2), e firmare le
-richieste.
+### Il lato client
+
+Vive in `client-rs/src/helper_client.rs` — nell'altro progetto, perche' e' il
+client a parlare, non l'aiutante ad essere parlato.
+
+Prima di scrivere QUALUNQUE COSA verifica tre fatti, tutti chiesti al sistema
+operativo: dall'altro capo c'e' un processo che gira come `LocalSystem`, il suo
+eseguibile e' quello installato sotto Program Files, e la pipe e' locale. Se
+uno solo non regge non si scrive niente.
+
+Il motivo e' la meta' che si dimentica dell'autenticazione a due direzioni: il
+nome di una pipe non e' un segreto, e chi la crea PRIMA tiene il nome. Il danno
+non sarebbe l'esecuzione — un impostore senza privilegi non installa niente —
+sarebbe la RACCOLTA: richieste firmate valide, da rigiocare altrove.
+
+Il formato su cui si calcola la firma e' scritto due volte, in due linguaggi
+che non si parlano: e' il prezzo della separazione, e non e' evitabile senza
+far linkare all'aiutante del codice del client. Il vincolo lo presidia
+`tests/runtime/remote/test_helper_wire_contract.py`, l'unico posto che vede
+entrambi i progetti.
+
+**Da costruire**: l'apertura vera della pipe dal lato client (le chiamate
+Windows che raccolgono i tre fatti) e l'aggancio a `install_packages`, che oggi
+si ferma quando manca l'elevazione.
 
 ## Come si prova
 

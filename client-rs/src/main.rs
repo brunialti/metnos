@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 mod appcontainer;
 mod config;
 mod executors;
+mod helper_client;
 mod identity;
 mod pairing;
 mod proclock;
