@@ -146,6 +146,10 @@ proprietario si disinstalla e si reinstalla, cosi' il passaggio e' esplicito."
 
     println!("{}\n", setup::consent_text(owner_sid));
 
+    // Se c'e' gia' un aiutante in esecuzione, tiene aperto il proprio file e
+    // Windows non lo lascia sostituire. Installare sopra un'installazione viva
+    // e' il caso normale — un aggiornamento, o un secondo tentativo.
+    win_setup::ferma_servizio_se_gira();
     let eseguibile = match win_setup::installa_eseguibile() {
         Ok(p) => p,
         Err(e) => {

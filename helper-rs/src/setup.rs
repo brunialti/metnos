@@ -141,6 +141,16 @@ pub fn service_config_argv(exe: &Path) -> Vec<String> {
     ]
 }
 
+/// Gli argomenti per fermare il servizio.
+///
+/// Serve PRIMA di sostituire l'eseguibile: un servizio in esecuzione tiene
+/// aperto il proprio file, e Windows rifiuta di sovrascriverlo («il file e'
+/// utilizzato da un altro processo», errore 32). Installare sopra
+/// un'installazione viva e' il caso normale, non l'eccezione.
+pub fn service_stop_argv() -> Vec<String> {
+    vec!["sc.exe".into(), "stop".into(), SERVICE_NAME.into()]
+}
+
 /// Gli argomenti per avviare il servizio adesso.
 ///
 /// `start= auto` dice a Windows di avviarlo al PROSSIMO riavvio, non adesso.

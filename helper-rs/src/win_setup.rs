@@ -41,6 +41,30 @@ fn esegui(argv: &[String]) -> io::Result<(i32, String)> {
 /// Sotto Program Files, che un utente senza privilegi non puo' riscrivere.
 /// La copia avviene PRIMA di registrare il servizio: registrare un servizio
 /// che punta a un file non ancora presente lo lascerebbe rotto al primo avvio.
+/// Ferma il servizio, se c'e' e sta girando, e aspetta che abbia mollato il
+/// file.
+///
+/// Un servizio in esecuzione tiene aperto il proprio eseguibile: senza questo,
+/// installare sopra un'installazione viva fallisce con «il file e' utilizzato
+/// da un altro processo» (errore 32, macchina di Roberto, 19/8/2026). Non e'
+/// un errore se il servizio non c'e' o e' gia' fermo: e' il caso normale
+/// della prima installazione.
+pub fn ferma_servizio_se_gira() {
+    if esegui(&crate::setup::service_stop_argv()).is_err() {
+        return;
+    }
+    // Fermarsi non e' istantaneo: `sc stop` chiede, non impone. Si aspetta
+    // che il file sia davvero libero, fino a cinque secondi.
+    for _ in 0..10 {
+        if let Ok((_, stato)) = esegui(&crate::setup::service_query_argv()) {
+            if stato.contains("STOPPED") || stato.contains("ARRESTATO") {
+                return;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
 pub fn installa_eseguibile() -> io::Result<std::path::PathBuf> {
     let sorgente = std::env::current_exe()?;
     let cartella = install_dir();
