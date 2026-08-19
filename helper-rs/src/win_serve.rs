@@ -131,11 +131,56 @@ fn scrivi(pipe: &win_pipe::Handle, dati: &[u8]) -> io::Result<()> {
 ///
 /// `argv` non e' influenzabile da chi chiama: viene da `Request::argv`, che
 /// costruisce ogni pezzo da valori validati. Qui si lancia e basta.
+/// Dove sta davvero `winget` per un processo di sistema.
+///
+/// `winget` non e' un programma nel percorso di ricerca: e' un alias
+/// d'esecuzione installato PER UTENTE sotto `WindowsApps`. Un servizio che
+/// gira come sistema non ce l'ha, e lanciarlo per nome fallisce con «programma
+/// non trovato» — che sembra un guasto della macchina e invece e' un guasto di
+/// prospettiva (macchina di Roberto, 19/8/2026: l'aiutante funzionava, ma non
+/// trovava il gestore).
+///
+/// Il programma vero vive nella cartella del pacchetto DesktopAppInstaller,
+/// leggibile da chiunque. Fra piu' versioni si prende l'ultima in ordine di
+/// nome, che e' l'ordine delle versioni.
+fn percorso_del_gestore(nome: &str) -> String {
+    if !nome.eq_ignore_ascii_case("winget.exe") {
+        return nome.to_string();
+    }
+    let radice = std::env::var("ProgramFiles")
+        .map(|p| std::path::PathBuf::from(p).join("WindowsApps"))
+        .unwrap_or_else(|_| std::path::PathBuf::from(r"C:\Program Files\WindowsApps"));
+    let Ok(voci) = std::fs::read_dir(&radice) else {
+        return nome.to_string();
+    };
+    let mut candidati: Vec<std::path::PathBuf> = voci
+        .filter_map(|v| v.ok())
+        .map(|v| v.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("Microsoft.DesktopAppInstaller_")
+                     && n.ends_with("__8wekyb3d8bbwe"))
+                .unwrap_or(false)
+        })
+        .map(|p| p.join("winget.exe"))
+        .filter(|p| p.is_file())
+        .collect();
+    candidati.sort();
+    match candidati.pop() {
+        Some(p) => p.display().to_string(),
+        // Non trovato: si prova comunque per nome. Su una macchina dove
+        // l'alias c'e' funziona, e il messaggio d'errore resta quello vero.
+        None => nome.to_string(),
+    }
+}
+
 fn esegui_comando(argv: &[String]) -> service::Outcome {
     let Some((programma, resto)) = argv.split_first() else {
         return (None, String::new());
     };
-    match std::process::Command::new(programma)
+    let programma = percorso_del_gestore(programma);
+    match std::process::Command::new(&programma)
         .args(resto)
         // Nessuno guarda questo terminale: un gestore che si ferma a chiedere
         // resterebbe li' per sempre.
