@@ -337,6 +337,12 @@ def _helper_call(*argv, timeout):
     return None
 
 
+# L'ultimo motivo per cui l'aiutante non ha risposto. Una lista di un
+# elemento perche' `_helper_present` viene chiamata da `_context`, che non ha
+# dove metterlo: e' diagnostica, non stato.
+_MOTIVO_AIUTANTE = [""]
+
+
 def _helper_present():
     """Is the genuine elevated helper on this machine, right now?
 
@@ -359,7 +365,17 @@ def _helper_present():
     """
     answer = _helper_call("check", timeout=_HELPER_PROBE_TIMEOUT_S)
     if not answer or not answer.get("ok"):
+        # PERCHE' non risponde. Il client lo sa — «non e' il sistema», «non e'
+        # l'eseguibile che mi aspetto», «il canale non si apre» sono guasti
+        # diversi che si riparano in posti diversi — e fin qui questa funzione
+        # riduceva tutto a un «no» senza appiglio. E' la stessa forma di
+        # difetto incontrata tre volte il 19/8/2026: il dato c'e' e non arriva
+        # a chi deve agire.
+        _MOTIVO_AIUTANTE[0] = " · ".join(
+            str(answer.get(k)) for k in ("error_code", "detail")
+            if answer and answer.get(k)) if answer else "nessuna risposta"
         return False
+    _MOTIVO_AIUTANTE[0] = ""
     # «Allineato» lo decide il client, che le due lingue le conosce
     # entrambe. Una risposta senza quel campo viene da un client vecchio:
     # non e' una prova di allineamento, quindi non si assume.
@@ -444,7 +460,8 @@ def _context():
             "manager": "winget" if winget else ("apt" if apt else ""),
             "machine": _machine_name(),
             "elevated": elevated,
-            "helper": helper}
+            "helper": helper,
+            "helper_reason": _MOTIVO_AIUTANTE[0] if not helper else ""}
 
 
 # Which scopes each manager HAS. Not a preference: winget installs into the
@@ -790,6 +807,10 @@ def _approval_dialog(resolved, uninstall, scope, ctx):
         # troppo tardi (turni 234daad8 e b7d63070, 17/8/2026).
         if any(r.get("dependencies") for r in resolved):
             testo += " " + _msg("MSG_PACKAGES_DEPENDENCY_WARNING")
+        # Se l'aiutante c'e' ma non risponde, il perche' va detto: e' un guasto
+        # diverso dal non averlo, e si ripara altrove.
+        if ctx.get("helper_reason"):
+            testo += f"\n\n[{ctx['helper_reason']}]"
 
     return {
         "title": _msg("MSG_PACKAGES_APPROVAL_TITLE"),
