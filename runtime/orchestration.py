@@ -903,21 +903,12 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     if not executor:
         return _msg("MSG_ORCH_CAPEXPAND_MALFORMED")
 
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
-        import agent_runtime
-        res = agent_runtime.invoke_executor(
-            ex, args, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            owner_user_id=str(on_complete.get("owner_user_id") or ""),
-        )
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: expand_cap invoke fallito")
-        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
+    res = _esegui_ramo(
+        executor, args, actor=actor, channel=channel,
+        owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        contesto="expand_cap")
+    if res.get("orchestration_error"):
+        return str(res.get("error") or "")
 
     if not isinstance(res, dict) or not res.get("ok"):
         err = (res or {}).get("error", _msg("MSG_ERR_UNKNOWN")) if isinstance(res, dict) else _msg("MSG_ORCH_NO_RESULT")
@@ -962,6 +953,81 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     return head + "\n\n" + "\n\n".join(body_blocks)
 
 
+# Quanto si aspetta un ramo prima di rispondere «sta ancora lavorando».
+# Sta sotto il tetto dei proxy che possono stare in mezzo (100 s e' il valore
+# diffuso): oltre, una risposta non arriverebbe comunque a destinazione.
+_ATTESA_MASSIMA_RAMO_S = 25
+
+
+def _esegui_ramo(executor: str, args: dict, *, actor: str,
+                 channel: str | None, owner_user_id: str = "",
+                 target_device: str | None = None,
+                 contesto: str = "gate") -> dict:
+    """Esegue UN executor per conto di un dialogo. Ritorna sempre un result.
+
+    Punto unico. Prima questo blocco — carica il catalogo, cerca l'executor,
+    invoca, gestisce le stesse quattro eccezioni — viveva in quattro funzioni
+    diverse: una correzione applicata a una sola era una correzione a meta',
+    e nessuno se ne accorgeva finche' non capitava proprio sull'altra.
+
+    **L'attesa ha un tetto.** Un ramo approvato puo' durare minuti quando di
+    mezzo c'e' una persona: «installa per tutti gli utenti» apre una finestra
+    di conferma di Windows e resta li' finche' qualcuno non risponde.
+    Bloccare la risposta per tutto quel tempo la fa scadere a un proxy
+    intermedio, e chi ha premuto il bottone riceve una pagina d'errore grezza
+    invece di un messaggio — mentre l'operazione, dietro, riesce (turno
+    a243532766b14676, 19/8/2026: sette minuti, esito «done», utente senza
+    alcuna notizia).
+    Percio' si aspetta un tempo ragionevole e poi si dice cosa sta
+    succedendo. Il lavoro prosegue: gira in un filo suo, l'effetto sulla
+    macchina avviene lo stesso e l'esito resta nel registro delle
+    invocazioni. Cio' che si perde e' solo la possibilita' di raccontarlo
+    subito — ed e' meglio di una pagina d'errore.
+    """
+    if not executor:
+        return {"ok": False, "orchestration_error": True,
+                "error": _msg("MSG_ORCH_RESUME_EXEC_MISSING")}
+    try:
+        from loader import load_catalog
+        cat = load_catalog(verify=True, include_synth=True)
+        ex = cat.executors.get(executor)
+        if ex is None:
+            return {"ok": False, "orchestration_error": True, "error": _msg(
+                "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)}
+        import agent_runtime
+        import concurrent.futures as _cf
+
+        def _invoca():
+            return agent_runtime.invoke_executor(
+                ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+                actor=actor, channel=channel,
+                # Un'azione approvata torna dove appartiene: senza
+                # destinazione ogni ripresa girava sul server, anche quando la
+                # domanda era stata posta su un altro computer (turno
+                # a97056e1, 17/8/2026).
+                target_device=target_device,
+                owner_user_id=owner_user_id)
+
+        pool = _cf.ThreadPoolExecutor(max_workers=1)
+        try:
+            futuro = pool.submit(_invoca)
+            try:
+                return futuro.result(timeout=_ATTESA_MASSIMA_RAMO_S)
+            except _cf.TimeoutError:
+                log.info("orchestration: ramo %s ancora in corso dopo %ss, "
+                         "rispondo senza aspettarlo", executor,
+                         _ATTESA_MASSIMA_RAMO_S)
+                return {"ok": True, "pending": True,
+                        "final_message_hint": _msg("MSG_GATE_IN_CORSO")}
+        finally:
+            # Non si aspetta la chiusura: il filo deve poter finire da solo.
+            pool.shutdown(wait=False)
+    except (PermissionError, KeyError, RuntimeError, TypeError) as exc:
+        log.exception("orchestration: ramo %s fallito (%s)", executor, contesto)
+        return {"ok": False, "orchestration_error": True, "error": _msg(
+            "MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(exc).__name__}: {exc}")}
+
+
 def _process_gate_dispatch(on_complete: dict, values: dict,
                            *, actor: str = "host",
                            channel: str | None = None) -> str:
@@ -994,29 +1060,17 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
         # Rifiuto (o scelta non mappata) senza azione dichiarata: onesto, no-op.
         return _msg("MSG_GATE_NO_ACTION")
 
-    executor = branch.get("tool") or branch.get("executor") or ""
-    args_base = dict(branch.get("args") or {})
-    if not executor:
-        return _msg("MSG_ORCH_RESUME_EXEC_MISSING")
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
-        import agent_runtime
-        res = agent_runtime.invoke_executor(
-            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            # Un'azione approvata torna dove appartiene: senza destinazione
-            # ogni ripresa girava sul server, anche quando la domanda era
-            # stata posta su un altro computer (turno a97056e1, 17/8/2026).
-            target_device=str(on_complete.get("target_device") or "") or None,
-            owner_user_id=str(on_complete.get("owner_user_id") or ""),
-        )
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: gate_dispatch fallito")
-        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
+    res = _esegui_ramo(
+        branch.get("tool") or branch.get("executor") or "",
+        dict(branch.get("args") or {}),
+        actor=actor, channel=channel,
+        target_device=str(on_complete.get("target_device") or "") or None,
+        owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        contesto="gate_dispatch")
+    # Un guasto dell'orchestrazione si racconta com'e', senza la crocetta che
+    # segnala «l'operazione richiesta e' fallita»: non e' nemmeno partita.
+    if res.get("orchestration_error"):
+        return str(res.get("error") or "")
 
     if isinstance(res, dict):
         msg = res.get("final_message_hint") or res.get("summary")
@@ -1034,27 +1088,13 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
                                owner_user_id: str):
     """Esegue un branch dichiarativo e conserva il result strutturato."""
     if not isinstance(branch, dict):
-        return {"ok": False, "error": _msg("MSG_GATE_NO_ACTION")}
-    executor = branch.get("tool") or branch.get("executor") or ""
-    args_base = dict(branch.get("args") or {})
-    if not executor:
-        return {"ok": False, "error": _msg("MSG_ORCH_RESUME_EXEC_MISSING")}
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return {"ok": False, "error": _msg(
-                "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)}
-        import agent_runtime
-        return agent_runtime.invoke_executor(
-            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            owner_user_id=owner_user_id)
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: executor gate branch fallito")
-        return {"ok": False, "error": _msg(
-            "MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")}
+        return {"ok": False, "orchestration_error": True,
+                "error": _msg("MSG_GATE_NO_ACTION")}
+    return _esegui_ramo(
+        branch.get("tool") or branch.get("executor") or "",
+        dict(branch.get("args") or {}),
+        actor=actor, channel=channel, owner_user_id=owner_user_id,
+        contesto="executor gate branch")
 
 
 def _carry_executor_tail_to_nested_gate(
@@ -1358,22 +1398,13 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
     else:
         args_base.update(values)
 
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
-        import agent_runtime
-        res = agent_runtime.invoke_executor(
-            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            target_device=str(on_complete.get("target_device") or "") or None,
-            owner_user_id=str(on_complete.get("owner_user_id") or ""),
-        )
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: resume_executor_with_values fallito")
-        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
+    res = _esegui_ramo(
+        executor, args_base, actor=actor, channel=channel,
+        target_device=str(on_complete.get("target_device") or "") or None,
+        owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        contesto="resume_executor_with_values")
+    if res.get("orchestration_error"):
+        return str(res.get("error") or "")
 
     # Cattura scope-arg dal form: il valore confermato/inserito diventa default
     # per il giro dopo (§7.9). Resume bypassa Executor.run → cattura esplicita qui.
