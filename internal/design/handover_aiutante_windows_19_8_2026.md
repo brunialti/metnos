@@ -200,6 +200,50 @@ Lo stato sulla macchina, dal file: appaiamento presente e corretto — SID del
 proprietario, chiave del client, chiave del server, indirizzo
 `http://192.168.1.33:8765`. Quattro `paired` = quattro installazioni riuscite.
 
+## 19/8 NOTTE — il blocco del computer, e una lezione ripetuta tre volte
+
+Dopo la correzione della sonda, l'installazione ha smesso di arrivare
+all'aiutante: il client si rifiutava di eseguire QUALUNQUE cosa su quel
+computer. Non c'entrava l'aiutante.
+
+**Catena, dall'inizio.** Per leggere il registro dell'aiutante avevo chiesto a
+Metnos di leggere `C:\ProgramData\Metnos\helper\audit.log`. La lettura e'
+stata negata — quella cartella e' del SISTEMA — ma il client aveva gia'
+ANNOTATO di aver concesso alla sandbox l'accesso a quel percorso. Da li' il
+vicolo cieco: per togliere quel permesso servono gli stessi diritti che
+servivano per darlo; non avendoli, la revoca falliva; e il fail-closed fermava
+ogni esecuzione **per una concessione mai avvenuta**.
+
+**Correzioni, in ordine, e ognuna ha scoperto la successiva:**
+
+1. Il messaggio diceva «1 ACL non revocabile» — un numero, senza il percorso.
+   Ora lo nomina. Senza questo non si sarebbe trovato niente.
+2. «Accesso negato» in revoca ora SCARTA la voce: se non abbiamo diritti per
+   togliere, non li avevamo per dare, quindi non c'e' niente di vecchio da
+   temere. Ogni altro fallimento continua a bloccare, che e' giusto.
+3. La (2) non funzionava, pur essendo corretta: `check_win32` scriveva il
+   codice di Windows **dentro la stringa** del messaggio, e la condizione
+   cercava un codice che nell'errore non c'era. Ora l'errore lo porta davvero.
+
+### La lezione, incontrata TRE volte in un giorno
+
+«codice 3» senza il passo. «1 ACL non revocabile» senza il percorso. Un numero
+di Windows leggibile solo da un umano. Sempre la stessa forma:
+
+> **Un dato diagnostico che vive solo nella prosa e' un dato che nessun
+> programma puo' usare — e spesso nemmeno una persona.**
+
+Chi riprende: quando scrivi un errore, chiediti se chi lo riceve puo' AGIRE.
+Se la risposta e' «puo' solo mostrarlo», il dato e' nel posto sbagliato.
+
+### Rischio residuo, da tenere d'occhio
+
+Un executor che chiede un percorso su cui non ha diritti fa comunque
+ANNOTARE una concessione che non avviene. Oggi non blocca piu' la macchina,
+ma il registro dei permessi si sporca. La forma giusta sarebbe non annotare
+una concessione che non e' riuscita — cioe' verificare l'esito PRIMA di
+scrivere la voce. Non fatto.
+
 ## TRAPPOLE — leggile, non riscoprirle
 
 1. **ssh e ping verso il PC sono CHIUSI** (porta 22 e ICMP), pur essendo il
