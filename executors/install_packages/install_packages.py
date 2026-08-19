@@ -970,6 +970,13 @@ def invoke(args: dict) -> dict:
         "action": "uninstall" if uninstall else "install",
         "source": ctx["manager"],
     }
+    # Se non c'era niente da fare, dirlo. Senza, l'utente legge il generico
+    # «Operazione completata» e non sa se il programma e' stato installato
+    # adesso o c'era gia': due cose diverse, e la seconda e' quella che si
+    # voleva sapere (Roberto, 19/8/2026).
+    if results and not failed and all(r.get("already") for r in results):
+        out["summary"] = " · ".join(
+            str(r.get("note") or "") for r in results if r.get("note"))
     if results and failed:
         out["partial"] = True
     elif failed and not results:

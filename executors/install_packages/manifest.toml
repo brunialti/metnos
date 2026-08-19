@@ -35,7 +35,7 @@ en = "SCOPO: installs a program on the machine. PATTERN: install_packages(packag
 
 [code]
 files  = ["install_packages.py"]
-digest = "sha256:08fdcbcee1c74e456f55c0e70b2c3e75564ed058445169f1cf043d91f6615bcc"
+digest = "sha256:5c529a41617ade86171aa9eb51fe38a6cb893a3d23bdebb56509787998d634ed"
 
 [args]
 type     = "object"
