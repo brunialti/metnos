@@ -430,7 +430,10 @@ impl Runner {
                                    "pulizia ACL completata");
                     None
                 }
-                Ok(Ok(r)) => Some(format!("{} ACL AppContainer stale non revocabili", r.failed)),
+                Ok(Ok(r)) => Some(format!(
+                    "{} permessi della sandbox non si sono potuti togliere, e \
+finche' restano non eseguo niente su questo computer: {}",
+                    r.failed, r.failed_paths.join(" · "))),
                 Ok(Err(e)) => Some(format!("pulizia ACL non riuscita: {e:#}")),
                 Err(e) => Some(format!("pulizia ACL: il compito e' caduto: {e}")),
             };

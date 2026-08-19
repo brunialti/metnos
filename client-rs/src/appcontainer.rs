@@ -388,6 +388,13 @@ pub struct CleanupReport {
     pub revoked: usize,
     /// Voci NON revocate (mantenute nel registro per un retry, §2.8).
     pub failed: usize,
+    /// QUALI voci non si sono potute revocare.
+    ///
+    /// Il numero da solo non e' azionabile: un fallimento qui blocca ogni
+    /// esecuzione sul computer, e chi lo legge deve poter sapere su quale
+    /// cartella intervenire. «1 ACL non revocabile» manda a cercare ovunque
+    /// (successo il 19/8/2026: device fermo, nessun modo di sapere dove).
+    pub failed_paths: Vec<String>,
     /// Voci scartate perche' il path e' sparito (l'ACE e' morto con la dir):
     /// niente da revocare, non un fallimento retry-abile.
     pub dropped: usize,
@@ -441,6 +448,8 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
         }
     }
     let failed = remaining.len();
+    let failed_paths: Vec<String> =
+        remaining.iter().map(|r| r.path.clone()).take(5).collect();
 
     // Rimuovi il profilo (il SID resta derivabile per eventuali retry).
     let profile_removed = match delete_profile() {
@@ -467,7 +476,7 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
         }
     }
 
-    Ok(CleanupReport { total, revoked, failed, dropped, profile_removed })
+    Ok(CleanupReport { total, revoked, failed, failed_paths, dropped, profile_removed })
 }
 
 // --- ACL ---------------------------------------------------------------------
