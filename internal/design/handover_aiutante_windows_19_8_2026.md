@@ -6,13 +6,38 @@
 
 ## Stato in una riga
 
-Tutto committato e in esercizio; **l'installazione dell'aiutante non e' mai
-riuscita fino in fondo**, ed e' l'unica cosa che manca.
+**CHIUSO.** L'aiutante elevato si installa, parte, viene riconosciuto e serve
+le richieste. Provato sulla macchina vera, non in prova.
 
-- 20 commit su `session/detection-lexicon-i18n`, albero pulito.
-- Suite Python **6385 verde**; aiutante **115** prove, client **73**; zero
-  avvisi del compilatore sul bersaglio Windows.
-- Pubblicata la **0.2.31** (client + aiutante insieme); il PC ce l'ha gia'.
+Prova finale (19/8/2026, 22:33): la scheda di conferma offre «Per tutti gli
+utenti» SENZA il passaggio d'installazione — cioe' `_helper_present()` dice di
+si', cioe' il client parla con l'aiutante.
+
+## L'ultimo difetto, e perche' era invisibile
+
+Il client verificava chi c'era dall'altro capo del canale **aprendo il
+processo del servizio e leggendone il token**. Non poteva riuscire: il client
+gira senza privilegi, il servizio gira come sistema, e Windows non lascia a un
+processo utente aprire il token di un processo di SYSTEM. Falliva su qualunque
+macchina, sempre — e falliva PRIMA di scrivere una parola, quindi la
+connessione si chiudeva a vuoto e dall'altra parte restava solo «messaggio
+senza delimitatore: l'altro capo ha chiuso subito». Quella riga, ripetuta
+tutta la sera, non diceva la causa.
+
+Corretto in due passi, ed e' stato il secondo a chiudere:
+
+1. **Chiedere di chi e' l'OGGETTO, non chi lo serve.**
+   `GetSecurityInfo(OWNER_SECURITY_INFORMATION)` sulla pipe: un client che
+   l'ha appena aperta ha i diritti per leggerlo. Garanzia equivalente — un
+   oggetto di proprieta' privilegiata lo puo' creare solo chi ha i privilegi.
+2. **Accettare anche il gruppo amministratori** (`S-1-5-32-544`). Windows non
+   assegna sempre l'oggetto all'account che lo crea: con l'impostazione
+   predefinita del token, un processo elevato produce oggetti di proprieta'
+   del GRUPPO. Pretendere esattamente `S-1-5-18` rifiutava l'aiutante vero su
+   una macchina normale.
+
+Il confronto sull'eseguibile atteso resta un rafforzativo quando riesce:
+ottenerlo richiede proprio la cosa che da li' non si puo' fare.
 
 ## Che cosa funziona, PROVATO DAL VIVO (non in prova)
 
