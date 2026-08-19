@@ -1945,6 +1945,17 @@ function subscribeSessionEvents(token){
   try {
     const url = '/agent/session/events?device_token=' + encodeURIComponent(token);
     sessionSse = new EventSource(url);
+    // Esito di un'operazione che ha finito DOPO che le avevamo gia' risposto
+    // «sta lavorando». Senza questo, chi ha premuto un bottone su qualcosa di
+    // lento — un'installazione che apre una finestra di conferma sul computer
+    // e resta li' finche' non rispondi — non saprebbe mai com'e' finita.
+    // Il testo arriva gia' nella lingua dell'istanza: qui si mostra e basta.
+    sessionSse.addEventListener('operation_done', (ev) => {
+      let info = {};
+      try { info = JSON.parse(ev.data || '{}'); } catch(_){}
+      const testo = (info && info.message) ? String(info.message) : '';
+      if(testo) add('bot', testo, null, true);
+    });
     sessionSse.addEventListener('session_revoked', (ev) => {
       let info = {};
       try { info = JSON.parse(ev.data || '{}'); } catch(_){}

@@ -959,6 +959,43 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
 _ATTESA_MASSIMA_RAMO_S = 25
 
 
+def _consegna_esito_tardivo(futuro, *, channel: str | None,
+                            owner_user_id: str, executor: str) -> None:
+    """Racconta l'esito di un ramo che ha finito dopo il tetto d'attesa.
+
+    Chi ha premuto il bottone ha gia' ricevuto «sta lavorando»: senza questo,
+    non saprebbe MAI com'e' finita, e l'unico modo di scoprirlo sarebbe
+    chiedere. Un'operazione che produce un effetto sulla macchina e poi tace
+    e' peggio di una che fallisce dicendolo.
+
+    Va al PROPRIETARIO, non al collegamento che aveva chiesto: se
+    l'operazione e' durata tanto, la pagina potrebbe essere stata chiusa e
+    riaperta con un altro token. Nessuna eccezione esce di qui: una consegna
+    mancata non deve trasformarsi in un guasto del lavoro, che a quel punto
+    e' gia' avvenuto.
+
+    Solo canale HTTP, per ora: e' li' che l'utente vede la chat, ed e' li'
+    che si prova per primo cio' che e' delicato. Telegram dopo.
+    """
+    try:
+        if channel != "http" or not owner_user_id:
+            return
+        try:
+            res = futuro.result()
+        except Exception as exc:  # noqa: BLE001 — l'errore va raccontato, non perso
+            res = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        import active_sessions as _as
+        raggiunte = _as.publish_to_user(
+            owner_user_id, "operation_done",
+            {"message": _messaggio_da_result(res),
+             "ok": bool(isinstance(res, dict) and res.get("ok")),
+             "executor": executor})
+        log.info("orchestration: esito tardivo di %s consegnato a %d "
+                 "collegamenti", executor, raggiunte)
+    except Exception:  # noqa: BLE001
+        log.exception("orchestration: consegna dell'esito tardivo fallita")
+
+
 def _esegui_ramo(executor: str, args: dict, *, actor: str,
                  channel: str | None, owner_user_id: str = "",
                  target_device: str | None = None,
@@ -1017,6 +1054,12 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
                 log.info("orchestration: ramo %s ancora in corso dopo %ss, "
                          "rispondo senza aspettarlo", executor,
                          _ATTESA_MASSIMA_RAMO_S)
+                # L'esito arrivera' dopo, e deve arrivare comunque: si
+                # consegna da solo quando il lavoro finisce.
+                futuro.add_done_callback(
+                    lambda f: _consegna_esito_tardivo(
+                        f, channel=channel, owner_user_id=owner_user_id,
+                        executor=executor))
                 return {"ok": True, "pending": True,
                         "final_message_hint": _msg("MSG_GATE_IN_CORSO")}
         finally:
@@ -1026,6 +1069,25 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
         log.exception("orchestration: ramo %s fallito (%s)", executor, contesto)
         return {"ok": False, "orchestration_error": True, "error": _msg(
             "MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(exc).__name__}: {exc}")}
+
+
+def _messaggio_da_result(res) -> str:
+    """Il risultato di un ramo, detto a chi ha premuto il bottone.
+
+    Un posto solo: lo stesso esito deve leggersi allo stesso modo che arrivi
+    subito o che arrivi dopo, quando il lavoro era troppo lento per stare
+    dentro una risposta. Due formattatori diversi vorrebbero dire che la
+    stessa cosa si racconta in due modi a seconda di quanto ci ha messo.
+    """
+    if isinstance(res, dict):
+        msg = res.get("final_message_hint") or res.get("summary")
+        if msg:
+            return str(msg)
+        if res.get("ok") is False:
+            err = res.get("error") or res.get("error_class") or ""
+            return f"✗ {err}" if err else _msg("ERR_GENERIC")
+        return _msg("MSG_ACTION_DONE")
+    return str(res)
 
 
 def _process_gate_dispatch(on_complete: dict, values: dict,
@@ -1072,15 +1134,7 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
     if res.get("orchestration_error"):
         return str(res.get("error") or "")
 
-    if isinstance(res, dict):
-        msg = res.get("final_message_hint") or res.get("summary")
-        if msg:
-            return msg
-        if res.get("ok") is False:
-            err = res.get("error") or res.get("error_class") or ""
-            return f"✗ {err}" if err else _msg("ERR_GENERIC")
-        return _msg("MSG_ACTION_DONE")
-    return str(res)
+    return _messaggio_da_result(res)
 
 
 def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
