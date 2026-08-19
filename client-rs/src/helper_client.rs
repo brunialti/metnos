@@ -28,6 +28,24 @@ use anyhow::{anyhow, Result};
 /// Il SID del sistema locale. Non e' un valore configurabile: e' la costante
 /// con cui Windows identifica se stesso.
 const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
+/// Il gruppo amministratori predefinito di Windows.
+const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
+
+/// I proprietari che bastano a garantire che l'oggetto lo abbia creato
+/// qualcuno con privilegi.
+///
+/// Windows non assegna sempre l'oggetto all'account che lo crea: con
+/// l'impostazione predefinita del token, un processo elevato produce oggetti
+/// di proprieta' del GRUPPO amministratori. Pretendere esattamente l'account
+/// sistema significava rifiutare l'aiutante vero su una macchina normale
+/// (misurato: `S-1-5-32-544`, PC di Roberto, 19/8/2026).
+///
+/// La garanzia non cambia: un utente senza privilegi non puo' creare un
+/// oggetto di proprieta' ne' del sistema ne' degli amministratori — per
+/// assegnare un proprietario bisogna esserlo, o averne il privilegio. Chi
+/// volesse prendere il posto dell'aiutante dovrebbe gia' avere quei
+/// privilegi, e a quel punto non avrebbe bisogno di fingersi nessuno.
+const PROPRIETARI_PRIVILEGIATI: [&str; 2] = [LOCAL_SYSTEM_SID, ADMINISTRATORS_SID];
 
 /// Le tre operazioni, come le vede il client. Specchio del vocabolario chiuso
 /// dell'aiutante: se qui comparisse un quarto verbo, non avrebbe nessuno che
@@ -207,7 +225,7 @@ pub fn judge_peer(
     if !pipe_name.starts_with(r"\\.\pipe\") || pipe_name.len() <= r"\\.\pipe\".len() {
         return Err(ChannelRefusal::NotLocal);
     }
-    if peer_sid != LOCAL_SYSTEM_SID {
+    if !PROPRIETARI_PRIVILEGIATI.contains(&peer_sid) {
         return Err(ChannelRefusal::NotLocalSystem(peer_sid.to_string()));
     }
     // Confronto senza distinzione fra maiuscole e minuscole: i percorsi di
@@ -256,6 +274,35 @@ pub fn build_request(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn un_canale_di_proprieta_degli_amministratori_e_autentico() {
+        // Windows non assegna sempre l'oggetto all'account che lo crea: con
+        // l'impostazione predefinita del token, un processo elevato produce
+        // oggetti di proprieta' del GRUPPO amministratori. Pretendere
+        // esattamente l'account sistema rifiutava l'aiutante vero su una
+        // macchina normale — misurato sul PC di Roberto il 19/8/2026, ed e'
+        // il motivo per cui non e' mai stato riconosciuto.
+        for proprietario in ["S-1-5-18", "S-1-5-32-544"] {
+            assert_eq!(
+                judge_peer(r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001",
+                           proprietario, "C:\\x\\h.exe", "C:\\x\\h.exe"),
+                Ok(()),
+                "rifiutato un proprietario privilegiato: {proprietario}");
+        }
+    }
+
+    #[test]
+    fn un_canale_di_un_utente_qualunque_non_passa() {
+        // Il rovescio, ed e' cio' che il controllo esiste per fare: chi non ha
+        // privilegi non puo' possedere quell'oggetto, quindi se lo possiede
+        // qualcun altro non e' l'aiutante.
+        let esito = judge_peer(r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001",
+                               "S-1-5-21-1-2-3-1001", "C:\\x\\h.exe", "C:\\x\\h.exe");
+        assert!(matches!(esito, Err(ChannelRefusal::NotLocalSystem(_))),
+                "accettato un canale di un utente senza privilegi");
+    }
+
     use super::*;
 
     const ESEGUIBILE: &str = r"C:\Program Files\Metnos\metnos-helper.exe";
