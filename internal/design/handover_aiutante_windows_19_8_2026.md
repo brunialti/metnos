@@ -162,31 +162,43 @@ consegnato alla prima occasione utile, non buttato nell'etere sperando che
 qualcuno sia in ascolto. `publish_to_user` ritorna gia' quante code ha
 raggiunto: **zero e' il segnale che oggi viene ignorato.**
 
-## 19/8 SERA — la catena ha retto, ma resta una domanda
+## 19/8 SERA — risolto, col registro dell'aiutante in mano
 
-Dopo la correzione del protocollo dei servizi, l'installazione «per tutti gli
+Dopo la correzione del protocollo dei servizi l'installazione «per tutti gli
 utenti» e' arrivata **fino a winget**, che ha risposto «7zip c'e' gia' ed e'
-aggiornato» (rc=2316632107). Quindi: il servizio E' PARTITO, l'aiutante ha
-ricevuto la richiesta, l'ha eseguita. La causa radice era davvero quella.
+aggiornato». Il servizio era partito davvero.
 
-**MA**: subito dopo, la scheda offre ancora `machine_setup`, che compare solo
-quando l'aiutante NON risponde. Quindi si e' installato, ha lavorato, e poi ha
-smesso di rispondere.
+Restava che subito dopo l'aiutante non rispondesse. Il suo registro
+(`%ProgramData%\Metnos\helper\audit.log`, copiato a mano da Roberto perche'
+ssh e' chiuso e la sandbox non lo legge) ha chiuso la questione in due righe:
 
-Ipotesi da verificare, in ordine:
-1. `win_serve::run()` torna con un errore (per esempio la creazione della pipe
-   fallisce alla seconda passata, `FILE_FLAG_FIRST_PIPE_INSTANCE` con
-   un'istanza gia' viva): `service_main` riferisce STOPPED e il processo
-   finisce. La politica di riavvio riprova tre volte e poi si arrende.
-2. Il servizio gira ma il client non lo riconosce: `judge_peer` confronta
-   l'eseguibile all'altro capo con `C:\Program Files\Metnos\metnos-helper.exe`.
-3. Il servizio non e' mai stato avviato e l'installazione «per tutti» e'
-   passata dal winget locale (Roberto e' amministratore: potrebbe riuscire
-   senza aiutante). In questo caso il 1053 sarebbe ancora li'.
+    paired   S-1-5-21-...-1001
+    refused  connection_error: message without terminator: the other end closed early
+    refused  connection_error: message without terminator: the other end closed early
 
-**Come distinguere senza il PC**: il registro dell'aiutante e' in
-`%ProgramData%\Metnos\helper\audit.log` — chiederlo a Roberto. Se contiene
-una riga per la richiesta di 7zip, l'ipotesi 3 cade e siamo fra la 1 e la 2.
+Il servizio era **vivo e in ascolto**: accettava connessioni. Qualcuno si
+collegava e chiudeva senza mandare niente.
+
+**Causa**: il comando `check` del client apriva DUE connessioni — una sonda
+per guardare chi c'era dall'altro capo, chiusa subito, e poi quella per la
+richiesta vera. Ma il canale serve **un client alla volta**: la sonda si
+bruciava l'istanza della pipe, e la richiesta vera arrivava nel buco fra una
+istanza e la successiva. Il client riferiva «l'aiutante non risponde» mentre
+l'aiutante era li'.
+
+**Correzione**: sonda rimossa. Il controllo su CHI c'e' non si perde — `chiedi`
+giudica l'altro capo prima di scrivere una sola parola, ed e' sempre stato il
+suo mestiere. Era la sonda a essere di troppo. Guardia:
+`test_una_richiesta_apre_una_sola_connessione`.
+
+**Da qui**: pubblicare, far prendere la versione al PC, e riprovare
+l'installazione «per tutti gli utenti». Se il ragionamento regge, e' l'ultimo
+anello: servizio che parte (fatto), aiutante che risponde (questo), richiesta
+che passa.
+
+Lo stato sulla macchina, dal file: appaiamento presente e corretto — SID del
+proprietario, chiave del client, chiave del server, indirizzo
+`http://192.168.1.33:8765`. Quattro `paired` = quattro installazioni riuscite.
 
 ## TRAPPOLE — leggile, non riscoprirle
 

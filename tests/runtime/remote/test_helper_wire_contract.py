@@ -344,3 +344,30 @@ def test_l_aiutante_parla_il_protocollo_dei_servizi():
     principale = (ROOT / "helper-rs" / "src" / "main.rs").read_text(encoding="utf-8")
     assert "win_service::esegui_come_servizio()" in principale, (
         "`serve` non passa piu' dal gestore dei servizi")
+
+
+def test_una_richiesta_apre_una_sola_connessione():
+    """Il canale serve un client alla volta: le connessioni si contano.
+
+    Il comando `check` ne apriva DUE: una per guardare chi c'era dall'altro
+    capo, chiusa subito senza mandare niente, e una per la richiesta vera. Ma
+    l'aiutante crea un'istanza della pipe alla volta: la sonda se la bruciava
+    e la richiesta vera arrivava nel buco. Il client riferiva «l'aiutante non
+    risponde» mentre l'aiutante era li', in ascolto, e nel suo registro
+    restavano due righe «messaggio senza delimitatore: l'altro capo ha chiuso
+    subito» (macchina di Roberto, 19/8/2026).
+
+    Il controllo su CHI c'e' non si e' perso: `chiedi` giudica l'altro capo
+    prima di scrivere una sola parola. Era la sonda a essere di troppo.
+    """
+    win = (ROOT / "client-rs" / "src" / "helper_win.rs").read_text(encoding="utf-8")
+    assert "pub fn chiedi" in win
+    assert "judge_peer" in win, "il giudizio su chi risponde e' sparito"
+    assert "pub fn presente" not in win, (
+        "e' tornata la sonda che apre una connessione a vuoto")
+
+    principale = (ROOT / "client-rs" / "src" / "main.rs").read_text(encoding="utf-8")
+    codice = "\n".join(r for r in principale.splitlines()
+                       if not r.lstrip().startswith("//"))
+    assert "helper_win::presente" not in codice, (
+        "qualcuno apre di nuovo una connessione prima della richiesta")

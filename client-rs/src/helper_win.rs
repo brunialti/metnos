@@ -188,10 +188,6 @@ fn apri_e_verifica(
 /// Apre il canale, guarda chi c'e' e richiude senza mandare niente. E' la
 /// domanda che serve PRIMA di offrire a una persona una scelta che solo
 /// l'aiutante puo' onorare: offrirla senza sapere significherebbe far
-/// scegliere qualcosa che poi fallisce.
-pub fn presente(nome_pipe: &str, eseguibile_atteso: &str) -> Result<(), ChannelRefusal> {
-    apri_e_verifica(nome_pipe, eseguibile_atteso).map(|_| ())
-}
 
 /// Manda una richiesta all'aiutante e restituisce la sua risposta.
 ///

@@ -192,12 +192,23 @@ fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
         let (pipe, atteso) = helper_win::indirizzo()?;
         let (operazione, package_id, versione) = match what {
             HelperCmd::Check => {
-                // Non basta stabilire CHI c'e' dall'altro capo: si chiede
-                // anche «chi sei», cosi' la risposta dice la versione e prova
-                // che il canale funziona davvero. Un programma col nome
-                // giusto che non risponde e' un guasto diverso da un
-                // programma assente, e i due si devono poter distinguere.
-                helper_win::presente(&pipe, &atteso)?;
+                // «Chi sei»: la risposta dice la versione e prova che il
+                // canale funziona davvero. Un programma col nome giusto che
+                // non risponde e' un guasto diverso da un programma assente,
+                // e i due si devono poter distinguere.
+                //
+                // UNA connessione sola. Prima se ne apriva una in piu' per
+                // guardare chi c'era dall'altro capo, e la si chiudeva subito:
+                // ma il canale serve un client alla volta, quindi quella
+                // sonda si bruciava l'istanza e la richiesta vera arrivava
+                // nel buco — «l'aiutante non risponde» mentre l'aiutante
+                // c'era, in ascolto, e nel suo registro restavano due righe
+                // «messaggio senza delimitatore: l'altro capo ha chiuso
+                // subito» (macchina di Roberto, 19/8/2026).
+                //
+                // Il controllo su CHI c'e' non si e' perso: `chiedi` giudica
+                // l'altro capo prima di scrivere una sola parola. Era la
+                // sonda a essere di troppo.
                 (Operation::Version, String::new(), None)
             }
             HelperCmd::Query { package_id } => (Operation::Query, package_id, None),
