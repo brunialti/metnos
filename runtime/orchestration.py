@@ -1004,12 +1004,25 @@ def _consegna_esito_tardivo(futuro, *, channel: str | None,
         # sotto contesa puo' confondere la coda interna del ciclo. Si chiede
         # al ciclo di farlo lui, che e' il modo che il resto del runtime usa
         # gia' in quattro punti.
+        def _pubblica():
+            # Quante orecchie ha raggiunto, DETTO. «Affidato al ciclo» non e'
+            # una consegna: se in quel momento nessuno ascolta — pagina
+            # chiusa, riconnessione in corso, versione vecchia della pagina —
+            # l'esito sparisce e chi si era sentito promettere «ti dico com'e'
+            # andata» non lo sapra' mai. Zero e' il numero che va visto, ed e'
+            # esattamente quello che il 19/8/2026 non si e' potuto vedere.
+            raggiunte = _as.publish_to_user(
+                owner_user_id, "operation_done", payload)
+            if raggiunte:
+                log.info("orchestration: esito tardivo di %s consegnato a %d "
+                         "collegamenti", executor, raggiunte)
+            else:
+                log.warning("orchestration: esito tardivo di %s PERSO: nessuno "
+                            "in ascolto", executor)
+
         if loop is not None:
             try:
-                loop.call_soon_threadsafe(
-                    _as.publish_to_user, owner_user_id, "operation_done", payload)
-                log.info("orchestration: esito tardivo di %s affidato al ciclo",
-                         executor)
+                loop.call_soon_threadsafe(_pubblica)
                 return
             except RuntimeError:
                 # Ciclo gia' chiuso: non c'e' piu' nessuno in ascolto, e
@@ -1017,9 +1030,7 @@ def _consegna_esito_tardivo(futuro, *, channel: str | None,
                 log.info("orchestration: esito tardivo di %s non consegnato "
                          "(ciclo chiuso)", executor)
                 return
-        raggiunte = _as.publish_to_user(owner_user_id, "operation_done", payload)
-        log.info("orchestration: esito tardivo di %s consegnato a %d "
-                 "collegamenti", executor, raggiunte)
+        _pubblica()
     except Exception:  # noqa: BLE001
         log.exception("orchestration: consegna dell'esito tardivo fallita")
 
