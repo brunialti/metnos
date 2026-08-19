@@ -6,14 +6,23 @@
 
 ## Stato in una riga
 
-L'aiutante elevato **si installa, parte, viene riconosciuto e riceve le
-richieste** (provato sulla macchina vera). Manca la conferma di
-un'installazione VERA fino in fondo: l'ultimo difetto e' stato corretto ma non
-ancora riprovato.
+**CHIUSO E PROVATO DAL VIVO.** ADR 0210 parte D funziona per intero.
 
-Prova del riconoscimento (19/8/2026, 22:33): la scheda offre «Per tutti gli
-utenti» SENZA il passaggio d'installazione — cioe' `_helper_present()` dice di
-si', cioe' il client parla con l'aiutante.
+Prova finale, 19/8/2026 ore 22:51 su PC-ROBERTO — `LibreHardwareMonitor`,
+programma NON gia' presente:
+
+- scelta `machine` (non `machine_setup`): l'aiutante c'era ed e' stato
+  **riconosciuto**, nessuna installazione di componenti di mezzo;
+- portata **macchina**, cioe' per tutti gli utenti;
+- invocazione `inv-18cd5016bdf6348e2655a17b` → **done** in 27 secondi:
+  installazione vera, eseguita dall'aiutante come sistema;
+- superati i 25 secondi e' comparso il messaggio d'attesa, e l'esito e'
+  arrivato **da solo**: «esito tardivo consegnato a 1 collegamenti».
+
+Cioe': tutte e cinque le parti costruite in questi due giorni hanno funzionato
+insieme, sulla macchina vera — installazione dell'aiutante, avvio come
+servizio, riconoscimento, esecuzione privilegiata, consegna asincrona
+dell'esito.
 
 ## L'ultimo difetto — winget non esiste, per il sistema
 
