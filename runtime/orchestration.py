@@ -909,6 +909,13 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
         contesto="expand_cap")
     if res.get("orchestration_error"):
         return str(res.get("error") or "")
+    # Ancora in corso: si dice quello e basta. Proseguire produrrebbe
+    # «Rilancio con X=Y -> 0 risultati» — una fine dichiarata, con un conteggio,
+    # per un lavoro che non e' finito (§2.8). Che poi il testo seguente
+    # ammettesse il contrario non lo rimedia: la prima riga sarebbe falsa nel
+    # momento in cui viene letta.
+    if res.get("pending"):
+        return str(res.get("final_message_hint") or "")
 
     if not isinstance(res, dict) or not res.get("ok"):
         err = (res or {}).get("error", _msg("MSG_ERR_UNKNOWN")) if isinstance(res, dict) else _msg("MSG_ORCH_NO_RESULT")
@@ -960,7 +967,8 @@ _ATTESA_MASSIMA_RAMO_S = 25
 
 
 def _consegna_esito_tardivo(futuro, *, channel: str | None,
-                            owner_user_id: str, executor: str) -> None:
+                            owner_user_id: str, executor: str,
+                            loop=None) -> None:
     """Racconta l'esito di un ramo che ha finito dopo il tetto d'attesa.
 
     Chi ha premuto il bottone ha gia' ricevuto «sta lavorando»: senza questo,
@@ -985,11 +993,31 @@ def _consegna_esito_tardivo(futuro, *, channel: str | None,
         except Exception as exc:  # noqa: BLE001 — l'errore va raccontato, non perso
             res = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         import active_sessions as _as
-        raggiunte = _as.publish_to_user(
-            owner_user_id, "operation_done",
-            {"message": _messaggio_da_result(res),
-             "ok": bool(isinstance(res, dict) and res.get("ok")),
-             "executor": executor})
+        payload = {"message": _messaggio_da_result(res),
+                   "ok": bool(isinstance(res, dict) and res.get("ok")),
+                   "executor": executor}
+        # Qui siamo nel filo del lavoro, non in quello che gira l'attesa. Le
+        # code su cui poggia lo stream verso la chat appartengono a
+        # quest'ultimo e non si toccano da fuori: metterci dentro qualcosa
+        # direttamente puo' non svegliare chi ascolta — l'esito resterebbe
+        # in coda fino al battito successivo, fino a un minuto dopo — e
+        # sotto contesa puo' confondere la coda interna del ciclo. Si chiede
+        # al ciclo di farlo lui, che e' il modo che il resto del runtime usa
+        # gia' in quattro punti.
+        if loop is not None:
+            try:
+                loop.call_soon_threadsafe(
+                    _as.publish_to_user, owner_user_id, "operation_done", payload)
+                log.info("orchestration: esito tardivo di %s affidato al ciclo",
+                         executor)
+                return
+            except RuntimeError:
+                # Ciclo gia' chiuso: non c'e' piu' nessuno in ascolto, e
+                # provarci direttamente non cambierebbe niente.
+                log.info("orchestration: esito tardivo di %s non consegnato "
+                         "(ciclo chiuso)", executor)
+                return
+        raggiunte = _as.publish_to_user(owner_user_id, "operation_done", payload)
         log.info("orchestration: esito tardivo di %s consegnato a %d "
                  "collegamenti", executor, raggiunte)
     except Exception:  # noqa: BLE001
@@ -1045,6 +1073,15 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
                 target_device=target_device,
                 owner_user_id=owner_user_id)
 
+        # Il ciclo che sta girando adesso, se c'e': servira' al filo del
+        # lavoro per consegnare l'esito senza toccare da fuori cose che non
+        # gli appartengono.
+        try:
+            import asyncio as _asyncio
+            ciclo = _asyncio.get_running_loop()
+        except RuntimeError:
+            ciclo = None
+
         pool = _cf.ThreadPoolExecutor(max_workers=1)
         try:
             futuro = pool.submit(_invoca)
@@ -1059,7 +1096,7 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
                 futuro.add_done_callback(
                     lambda f: _consegna_esito_tardivo(
                         f, channel=channel, owner_user_id=owner_user_id,
-                        executor=executor))
+                        executor=executor, loop=ciclo))
                 return {"ok": True, "pending": True,
                         "final_message_hint": _msg("MSG_GATE_IN_CORSO")}
         finally:
@@ -1459,6 +1496,12 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         contesto="resume_executor_with_values")
     if res.get("orchestration_error"):
         return str(res.get("error") or "")
+    # In corso non e' riuscito: cio' che segue memorizza i valori del dialogo
+    # come default per le volte successive, e memorizzarli da un'operazione
+    # che potrebbe ancora fallire vorrebbe dire imparare da un esito che non
+    # c'e' stato.
+    if res.get("pending"):
+        return str(res.get("final_message_hint") or "")
 
     # Cattura scope-arg dal form: il valore confermato/inserito diventa default
     # per il giro dopo (§7.9). Resume bypassa Executor.run → cattura esplicita qui.

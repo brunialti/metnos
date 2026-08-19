@@ -171,3 +171,45 @@ def test_senza_proprietario_non_si_consegna_a_caso(catalogo, monkeypatch):
                                owner_user_id="")
     time.sleep(0.6)
     assert chiamate == []
+
+
+@pytest.mark.asyncio
+async def test_la_consegna_passa_dal_ciclo_e_sveglia_chi_ascolta(catalogo, monkeypatch):
+    """La frontiera fra i due fili, provata con una coda vera.
+
+    Le code su cui poggia lo stream verso la chat appartengono al ciclo che
+    gira l'attesa. Metterci dentro qualcosa dal filo del lavoro puo' non
+    svegliare chi ascolta: l'esito resterebbe in coda fino al battito
+    successivo — fino a un minuto — proprio per chi si e' gia' sentito dire
+    «sta lavorando». Qui si verifica che arrivi subito.
+
+    Le prove che sostituiscono `publish_to_user` per intero non vedono questa
+    frontiera: e' esattamente il punto che la revisione ha trovato scoperto.
+    """
+    import asyncio
+    import active_sessions as _as
+
+    coda: asyncio.Queue = asyncio.Queue(maxsize=8)
+    monkeypatch.setattr(
+        _as, "list_sessions_for_user",
+        lambda uid: [{"device_token": "t-1", "revoked_at": None}])
+    _as.subscribe("t-1", coda)
+
+    import agent_runtime
+    monkeypatch.setattr(agent_runtime, "invoke_executor",
+                        lambda *a, **k: (time.sleep(0.3),
+                                         {"ok": True, "summary": "fatto"})[1])
+    monkeypatch.setattr(orchestration, "_ATTESA_MASSIMA_RAMO_S", 0.1)
+
+    try:
+        res = orchestration._esegui_ramo(
+            "finto", {}, actor="host", channel="http", owner_user_id="u-1")
+        assert res.get("pending") is True
+
+        # Chi ascolta deve essere svegliato, non trovare l'evento per caso al
+        # controllo successivo: si aspetta poco, e deve bastare.
+        ev = await asyncio.wait_for(coda.get(), timeout=5.0)
+        assert ev["kind"] == "operation_done"
+        assert ev["message"] == "fatto"
+    finally:
+        _as.unsubscribe("t-1", coda)
