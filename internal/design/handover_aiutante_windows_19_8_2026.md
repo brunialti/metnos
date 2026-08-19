@@ -262,7 +262,38 @@ bottone che compare SOLO quando `_helper_present()` dice di no. Quindi:
 
 Non e' piu' un problema di installazione. E' la conversazione fra i due.
 
-### Ipotesi, in ordine, e come distinguerle
+### RISOLTO IL PERCHE' — e il controllo, com'e' scritto, non puo' funzionare
+
+Fatto arrivare il motivo fino alla scheda (era gia' noto al client e veniva
+buttato via — quarta volta nella stessa giornata). Dice:
+
+    peer_not_local_system · Dall'altro capo del canale non c'e' il servizio
+    di sistema ma «(non ispezionabile)»
+
+Il client non riesce a LEGGERE chi c'e' dall'altro capo. Non e' un caso
+particolare: `helper_win::chiedi` prende il PID del server della pipe, apre il
+processo e ne legge il token per ricavarne il SID. Ma il client gira **senza
+privilegi** e il servizio gira **come sistema**: Windows non lascia a un
+processo utente aprire il token di un processo di SYSTEM. **Il controllo, come
+e' scritto, non puo' riuscire mai** — su nessuna macchina.
+
+Ecco perche' l'aiutante non e' mai stato riconosciuto, nemmeno quando era
+installato, avviato e in ascolto: il giudizio falliva prima di scrivere una
+sola parola, `chiedi` usciva chiudendo la connessione, e nel registro
+dell'aiutante restava «messaggio senza delimitatore: l'altro capo ha chiuso
+subito» — la riga che si e' vista ripetersi tutta la sera.
+
+**La via corretta**: non ispezionare il processo, ma chiedere **di chi e' il
+canale**. `GetSecurityInfo(OWNER_SECURITY_INFORMATION)` sull'handle della pipe
+da' il SID del proprietario dell'oggetto, e un client senza privilegi puo'
+leggerlo. Un oggetto di proprieta' del sistema lo puo' creare solo il sistema:
+la garanzia e' equivalente, ed e' ottenibile.
+
+Il controllo sull'eseguibile atteso, invece, resta impossibile dallo stesso
+lato (richiede di aprire il processo): va tenuto come rafforzativo quando
+riesce, non come condizione.
+
+### Ipotesi superate (tenute per storia)
 
 1. **Il giudizio su chi risponde rifiuta.** `judge_peer` confronta
    l'eseguibile all'altro capo con `C:\Program Files\Metnos\metnos-helper.exe`.
