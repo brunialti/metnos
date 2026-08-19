@@ -64,7 +64,9 @@ fn main() -> ExitCode {
             public_key_hex,
             server_key_b64,
             server_url,
-        } => installa(&owner_sid, &public_key_hex, &server_key_b64, &server_url),
+            error_file,
+        } => installa(&owner_sid, &public_key_hex, &server_key_b64, &server_url,
+                      &error_file),
         cli::Command::Uninstall => disinstalla(),
         cli::Command::Serve => servi(),
     }
@@ -93,9 +95,22 @@ fn stato() -> ExitCode {
     }
 }
 
+/// Scrive il motivo del fallimento dove chi ci ha lanciato potra' leggerlo.
+///
+/// Stampare non basta: l'elevazione passa da Windows, che non gira l'uscita a
+/// nessuno. Chi ha premuto il bottone riceverebbe un numero, e un numero non
+/// dice quale passo e' andato storto. Best-effort: se il file non si scrive,
+/// l'installazione fallisce comunque per la sua ragione, non per questa.
+#[cfg(windows)]
+fn annota_motivo(error_file: &str, motivo: &str) {
+    if !error_file.is_empty() {
+        let _ = std::fs::write(error_file, motivo);
+    }
+}
+
 #[cfg(windows)]
 fn installa(owner_sid: &str, public_key_hex: &str, server_key_b64: &str,
-            server_url: &str) -> ExitCode {
+            server_url: &str, error_file: &str) -> ExitCode {
     let percorso_appaiamento = pairing::pairing_path();
     let adesso = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -114,6 +129,8 @@ fn installa(owner_sid: &str, public_key_hex: &str, server_key_b64: &str,
     ) {
         Ok(p) => p,
         Err(e) => {
+            annota_motivo(error_file,
+                          &format!("appaiamento rifiutato: {}", e.code()));
             eprintln!("Installazione non eseguita: {}", e.code());
             if e == setup::SetupRefusal::AlreadyPaired {
                 eprintln!(
@@ -130,23 +147,29 @@ proprietario si disinstalla e si reinstalla, cosi' il passaggio e' esplicito."
     let eseguibile = match win_setup::installa_eseguibile() {
         Ok(p) => p,
         Err(e) => {
+            annota_motivo(error_file,
+                          &format!("copia dell'eseguibile fallita: {e}"));
             eprintln!("Copia dell'eseguibile fallita: {e}");
             return ExitCode::from(3);
         }
     };
     if let Err(e) = win_setup::registra_servizio(&eseguibile) {
+        annota_motivo(error_file, &format!("registrazione del servizio: {e}"));
         eprintln!("{e}");
         return ExitCode::from(3);
     }
     // Un componente privilegiato presente e INVISIBILE e' peggio di uno
     // assente: il proprietario non saprebbe che c'e' ne' come toglierlo.
     if let Err(e) = win_setup::registra_fra_i_programmi(&eseguibile, env!("CARGO_PKG_VERSION")) {
+        annota_motivo(error_file,
+                      &format!("registrazione fra i programmi installati: {e}"));
         eprintln!("{e}");
         eprintln!("Annullo: un aiutante che non compare fra i programmi non si puo' togliere.");
         win_setup::disinstalla(&pairing::data_dir());
         return ExitCode::from(3);
     }
     if let Err(e) = appaiamento.save(&percorso_appaiamento) {
+        annota_motivo(error_file, &format!("appaiamento non scritto: {e}"));
         eprintln!("Appaiamento non scritto: {e}");
         win_setup::disinstalla(&pairing::data_dir());
         return ExitCode::from(3);
@@ -197,7 +220,7 @@ fn servi() -> ExitCode {
 
 #[cfg(not(windows))]
 fn installa(_owner_sid: &str, _public_key_hex: &str, _server_key_b64: &str,
-            _server_url: &str) -> ExitCode {
+            _server_url: &str, _error_file: &str) -> ExitCode {
     non_su_questa_piattaforma()
 }
 

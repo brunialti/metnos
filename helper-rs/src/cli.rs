@@ -27,6 +27,15 @@ pub enum Command {
         server_key_b64: String,
         /// L'indirizzo del server: a chi chiedere se c'e' una versione nuova.
         server_url: String,
+        /// Dove scrivere il motivo, se l'installazione non riesce.
+        ///
+        /// Chi ci lancia non puo' leggere quello che stampiamo: l'elevazione
+        /// passa da Windows, che non gira l'uscita a nessuno. Senza questo
+        /// file l'unica cosa che arriva a chi ha premuto il bottone e' un
+        /// numero, e un numero non dice quale passo e' andato storto — lo
+        /// abbiamo scoperto il 19/8/2026, con «codice 3» e nient'altro.
+        /// Facoltativo: se manca, si stampa e basta, come prima.
+        error_file: String,
     },
     /// Il ciclo del servizio. Lo lancia Windows, non una persona.
     Serve,
@@ -84,6 +93,7 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
             let mut public_key_hex = None;
             let mut server_key_b64 = None;
             let mut server_url = None;
+            let mut error_file = None;
             while let Some(opzione) = iter.next() {
                 match opzione.as_str() {
                     "--owner-sid" => {
@@ -113,6 +123,15 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
                                 .clone(),
                         );
                     }
+                    "--error-file" => {
+                        error_file = Some(
+                            iter.next()
+                                .ok_or_else(|| {
+                                    ParseError::MissingValue("--error-file".into())
+                                })?
+                                .clone(),
+                        );
+                    }
                     "--server-url" => {
                         server_url = Some(
                             iter.next()
@@ -133,6 +152,7 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
                     .ok_or(ParseError::MissingRequired("--server-key"))?,
                 server_url: server_url
                     .ok_or(ParseError::MissingRequired("--server-url"))?,
+                error_file: error_file.unwrap_or_default(),
             })
         }
         altro => Err(ParseError::UnknownCommand(altro.to_string())),
@@ -199,6 +219,7 @@ mod tests {
                 public_key_hex: "aabb".into(),
                 server_key_b64: "ssss".into(),
                 server_url: "https://s".into(),
+                error_file: String::new(),
             }
         );
     }

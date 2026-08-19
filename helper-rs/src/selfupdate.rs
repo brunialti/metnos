@@ -264,13 +264,34 @@ pub fn check_and_apply(
         Ok(d) => d,
         Err(motivo) => return Outcome::Refused(motivo),
     };
-    // Sono GIA' questo binario? La domanda si fa sull'impronta, non sul
-    // numero di versione, ed e' la differenza fra aggiornarsi e non
-    // fermarsi mai: se il numero pubblicato e quello compilato non
-    // coincidono — succede al primo rilascio, o se qualcuno dimentica di
-    // allinearli — il confronto fra numeri direbbe «sei indietro» per
-    // sempre, e ci si riscaricherebbe addosso lo stesso file ogni dieci
-    // minuti. L'impronta dice la verita' in ogni caso.
+    // LA FIRMA PRIMA DI TUTTO. Niente che venga dal descrittore puo'
+    // influenzare il comportamento finche' la firma non regge: quello che
+    // c'e' scritto dentro, impronta compresa, sono affermazioni di chiunque
+    // abbia potuto rispondere alla richiesta.
+    //
+    // Qui c'era il difetto: la scorciatoia sull'impronta stava PRIMA di
+    // questa riga. Chi sta in mezzo alla rete — e il canale in chiaro e'
+    // ammesso di proposito, perche' a proteggere e' la firma — poteva
+    // rispondere con un descrittore non firmato che dichiarava l'impronta
+    // del binario gia' installato: si tornava «sei aggiornato» senza mai
+    // verificare niente, e l'aiutante restava fermo alla sua versione per
+    // sempre. Non un'installazione falsa — quella la firma la impedisce —
+    // ma un aggiornamento impedito IN SILENZIO, che e' peggio di uno
+    // impedito rumorosamente (trovato dalla revisione, 19/8/2026).
+    if let Err(motivo) = verify(&descrittore, server_key_b64, own_version, own_target) {
+        return if motivo == "not_newer" {
+            Outcome::NotNewer
+        } else {
+            Outcome::Refused(motivo)
+        };
+    }
+
+    // Sono GIA' questo binario? Ora la domanda si fa su un descrittore
+    // VERIFICATO, e non e' piu' un confine di fiducia: serve solo a non
+    // riscaricarsi addosso lo stesso file quando il numero pubblicato e
+    // quello compilato non coincidono — succede al primo rilascio, o se
+    // qualcuno dimentica di allinearli. L'impronta dice la verita' dove il
+    // numero mentirebbe.
     if let Ok(mio) = std::env::current_exe().and_then(fs::read) {
         if hex::encode(Sha256::digest(&mio)).eq_ignore_ascii_case(&descrittore.sha256) {
             return Outcome::NotNewer;
@@ -278,7 +299,6 @@ pub fn check_and_apply(
     }
 
     let esito = (|| -> Result<String, &'static str> {
-        verify(&descrittore, server_key_b64, own_version, own_target)?;
         download(server_url, &descrittore, scaricato)?;
         replace(scaricato)?;
         Ok(descrittore.version.clone())
@@ -504,6 +524,7 @@ mod tests_applicazione {
 #[cfg(test)]
 mod tests_idempotenza {
     use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
 
     #[test]
     fn lo_stesso_binario_non_si_reinstalla_all_infinito() {
@@ -512,27 +533,68 @@ mod tests_idempotenza {
         // Il confronto fra NUMERI direbbe «sei indietro» per sempre; quello
         // fra IMPRONTE dice la verita': sono gia' io.
         //
-        // Si prova sul binario delle prove, che e' l'eseguibile corrente:
-        // basta pubblicare la sua impronta per essere «gia' aggiornati».
+        // Il descrittore e' FIRMATO per davvero. Prima non lo era, e la prova
+        // passava lo stesso: era il difetto a farla passare — la scorciatoia
+        // sull'impronta stava prima della verifica della firma, quindi una
+        // firma vuota non veniva mai guardata. Adesso la scorciatoia sta
+        // dopo, e questa prova verifica cio' che dice di verificare.
         let mio = std::env::current_exe().and_then(fs::read).unwrap();
         let mia_impronta = hex::encode(Sha256::digest(&mio));
+        let chiave = SigningKey::from_bytes(&[13u8; 32]);
+        let pubblica = URL_SAFE_NO_PAD.encode(chiave.verifying_key().to_bytes());
+
+        let corpo = canonical_payload(COMPONENT, &mia_impronta, TARGET_TRIPLE, "9.9.9");
+        let descrittore = Descriptor {
+            component: COMPONENT.into(),
+            version: "9.9.9".into(),
+            target: TARGET_TRIPLE.into(),
+            sha256: mia_impronta,
+            sig: URL_SAFE_NO_PAD.encode(chiave.sign(&corpo).to_bytes()),
+            url_path: "/x".into(),
+        };
 
         let esito = check_and_apply(
-            "https://server.esempio", "chiave-qualunque",
+            "https://server.esempio", &pubblica,
             // Numero volutamente indietro: se contasse il numero, si
             // aggiornerebbe.
-            "0.1.0", "x86_64-pc-windows-gnu", Path::new("/non/serve"),
-            |_, _| Ok(Descriptor {
-                component: COMPONENT.into(),
-                version: "9.9.9".into(),
-                target: "x86_64-pc-windows-gnu".into(),
-                sha256: mia_impronta.clone(),
-                sig: String::new(),
-                url_path: "/x".into(),
-            }),
+            "0.1.0", TARGET_TRIPLE, Path::new("/non/serve"),
+            move |_, _| Ok(descrittore.clone()),
             |_, _, _| panic!("non deve scaricare: e' gia' questo binario"),
             |_| panic!("non deve sostituire: e' gia' questo binario"),
         );
         assert_eq!(esito, Outcome::NotNewer);
+    }
+
+    #[test]
+    fn un_descrittore_non_firmato_non_passa_nemmeno_dalla_scorciatoia() {
+        // Il difetto trovato dalla revisione, fissato come prova. Chi sta in
+        // mezzo alla rete conosce l'impronta del binario installato — basta
+        // scaricarlo dal mirror — e puo' rispondere con un descrittore che la
+        // dichiara. Se la scorciatoia stesse prima della firma, si
+        // risponderebbe «sei aggiornato» senza verificare niente, e
+        // l'aggiornamento resterebbe bloccato IN SILENZIO: nessuna riga nel
+        // registro, perche' «non c'e' niente di nuovo» e' il caso normale.
+        let mio = std::env::current_exe().and_then(fs::read).unwrap();
+        let mia_impronta = hex::encode(Sha256::digest(&mio));
+        let vera = SigningKey::from_bytes(&[13u8; 32]);
+        let pubblica = URL_SAFE_NO_PAD.encode(vera.verifying_key().to_bytes());
+
+        let falso = Descriptor {
+            component: COMPONENT.into(),
+            version: "9.9.9".into(),
+            target: TARGET_TRIPLE.into(),
+            sha256: mia_impronta,           // l'impronta giusta...
+            sig: String::new(),             // ...ma nessuna firma
+            url_path: "/x".into(),
+        };
+        let esito = check_and_apply(
+            "https://server.esempio", &pubblica, "0.1.0", TARGET_TRIPLE,
+            Path::new("/non/serve"),
+            move |_, _| Ok(falso.clone()),
+            |_, _, _| panic!("non deve scaricare"),
+            |_| panic!("non deve sostituire"),
+        );
+        assert_eq!(esito, Outcome::Refused("malformed_signature"),
+                   "un descrittore non firmato ha superato la scorciatoia");
     }
 }
