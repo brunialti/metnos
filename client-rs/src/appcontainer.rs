@@ -440,8 +440,32 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
             Some(s) => match apply_acl(s.psid, Path::new(&rec.path), 0, REVOKE_ACCESS) {
                 Ok(()) => revoked += 1,
                 Err(e) => {
-                    tracing::warn!(path = %rec.path, "REVOKE ACL fallito, mantengo la voce: {e:#}");
-                    remaining.push(rec);
+                    // Accesso negato = non abbiamo diritti su quella cartella.
+                    // Ma allora non li avevamo NEMMENO quando avremmo dovuto
+                    // concedere: quel permesso non e' mai stato dato, e non
+                    // c'e' niente di vecchio da togliere. Tenere la voce
+                    // significherebbe bloccare per sempre ogni esecuzione su
+                    // questo computer per una concessione che non e' mai
+                    // esistita — successo il 19/8/2026 con
+                    // `C:\ProgramData\Metnos\helper`, cartella di proprieta'
+                    // del sistema che un executor aveva chiesto di leggere.
+                    //
+                    // Si scarta, ma rumorosamente: se un giorno accadesse per
+                    // un'altra ragione, la riga nel registro e' l'unica cosa
+                    // che lo direbbe.
+                    const ACCESSO_NEGATO: i32 = 5;
+                    if e.downcast_ref::<std::io::Error>()
+                        .and_then(|io| io.raw_os_error()) == Some(ACCESSO_NEGATO)
+                    {
+                        tracing::warn!(path = %rec.path,
+                            "REVOKE ACL: accesso negato, quindi la concessione \
+non era mai stata applicata. Scarto la voce invece di bloccare la macchina");
+                        dropped += 1;
+                    } else {
+                        tracing::warn!(path = %rec.path,
+                            "REVOKE ACL fallito, mantengo la voce: {e:#}");
+                        remaining.push(rec);
+                    }
                 }
             },
             None => remaining.push(rec),
