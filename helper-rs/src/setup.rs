@@ -113,6 +113,53 @@ pub fn service_recovery_argv() -> Vec<String> {
     ]
 }
 
+/// Gli argomenti per correggere un servizio che c'e' gia'.
+///
+/// Installare deve poter funzionare anche sopra un'installazione rimasta a
+/// meta'. Succede: il servizio viene registrato e un passo successivo
+/// fallisce, e da quel momento la macchina resta in un vicolo cieco —
+/// l'aiutante non risponde (senza consenso il servizio non si avvia), quindi
+/// Metnos propone di installarlo, e l'installazione sbatte contro il servizio
+/// di prima con «servizio specificato gia' esistente» (1073). Successo il
+/// 19/8/2026 su PC-ROBERTO.
+///
+/// `config` invece di `delete`+`create`: si corregge cio' che c'e' — il
+/// percorso del binario puo' essere cambiato — senza smontare e rimontare un
+/// servizio che potrebbe essere in uso.
+pub fn service_config_argv(exe: &Path) -> Vec<String> {
+    vec![
+        "sc.exe".into(),
+        "config".into(),
+        SERVICE_NAME.into(),
+        // Chiave e valore separati, come in `service_create_argv`.
+        "binPath=".into(),
+        format!("\"{}\" service", exe.display()),
+        "start=".into(),
+        "auto".into(),
+        "obj=".into(),
+        "LocalSystem".into(),
+    ]
+}
+
+/// Gli argomenti per avviare il servizio adesso.
+///
+/// `start= auto` dice a Windows di avviarlo al PROSSIMO riavvio, non adesso.
+/// Senza questo, un'installazione perfettamente riuscita lasciava l'aiutante
+/// spento: la richiesta che l'aveva fatto installare falliva subito dopo con
+/// «l'aiutante non risponde», e la macchina restava cosi' fino a un riavvio
+/// che nessuno aveva motivo di fare. Trovato il 19/8/2026.
+pub fn service_start_argv() -> Vec<String> {
+    vec!["sc.exe".into(), "start".into(), SERVICE_NAME.into()]
+}
+
+/// Gli argomenti per chiedere com'e' messo il servizio.
+pub fn service_query_argv() -> Vec<String> {
+    vec!["sc.exe".into(), "query".into(), SERVICE_NAME.into()]
+}
+
+/// Il codice con cui Windows dice «quel servizio c'e' gia'».
+pub const SERVICE_EXISTS: i32 = 1073;
+
 /// Gli argomenti per togliere il servizio.
 pub fn service_delete_argv() -> Vec<Vec<String>> {
     vec![
@@ -578,5 +625,33 @@ mod tests_argomenti_sc {
         for chiave in ["reset=", "actions="] {
             assert!(argv.iter().any(|a| a == chiave), "«{chiave}» attaccata: {argv:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_ciclo_di_vita_servizio {
+    use super::*;
+
+    #[test]
+    fn si_avvia_adesso_non_al_prossimo_riavvio() {
+        // `start= auto` dice a Windows «al prossimo avvio», e chi ha appena
+        // installato l'aiutante lo interroga fra due secondi: un servizio
+        // registrato e spento e', da fuori, un aiutante che non c'e'.
+        let argv = service_start_argv();
+        assert_eq!(argv, vec!["sc.exe", "start", SERVICE_NAME]);
+    }
+
+    #[test]
+    fn si_puo_correggere_un_servizio_gia_esistente() {
+        // Installare sopra un'installazione rimasta a meta' deve funzionare.
+        // Senza, la macchina resta in un vicolo cieco: il servizio c'e' ma non
+        // parte (manca il consenso), quindi l'aiutante non risponde, quindi si
+        // propone di installarlo, e l'installazione sbatte contro il servizio
+        // di prima. Successo il 19/8/2026, errore 1073.
+        let argv = service_config_argv(Path::new(r"C:\Program Files\Metnos\helper.exe"));
+        assert_eq!(argv[1], "config");
+        let i = argv.iter().position(|a| a == "binPath=").expect("manca binPath=");
+        assert!(argv[i + 1].contains(r#""C:\Program Files\Metnos\helper.exe""#));
+        assert_eq!(SERVICE_EXISTS, 1073);
     }
 }

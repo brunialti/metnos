@@ -16,8 +16,8 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::setup::{
-    arp_entries, files_to_remove, install_dir, service_create_argv, service_delete_argv,
-    service_recovery_argv, ARP_KEY,
+    arp_entries, files_to_remove, install_dir, service_config_argv, service_create_argv,
+    service_delete_argv, service_recovery_argv, ARP_KEY, SERVICE_EXISTS,
 };
 
 /// Esegue un comando di sistema e restituisce l'esito.
@@ -57,7 +57,21 @@ pub fn installa_eseguibile() -> io::Result<std::path::PathBuf> {
 /// Registra il servizio, avviato da solo come sistema.
 pub fn registra_servizio(exe: &Path) -> io::Result<()> {
     let (codice, uscita) = esegui(&service_create_argv(exe))?;
-    if codice != 0 {
+    if codice == SERVICE_EXISTS {
+        // Il servizio c'e' gia': resto di un'installazione rimasta a meta'.
+        // Non e' un motivo per fermarsi — anzi, fermarsi qui e' proprio cio'
+        // che lasciava la macchina in un vicolo cieco, con un servizio che
+        // non parte e un'installazione che non puo' ripararlo. Si corregge
+        // dove punta e si prosegue.
+        let (rc, out) = esegui(&service_config_argv(exe))?;
+        if rc != 0 {
+            return Err(io::Error::other(format!(
+                "il servizio esisteva gia' e non si e' potuto correggere \
+(rc={rc}): {}",
+                out.trim()
+            )));
+        }
+    } else if codice != 0 {
         return Err(io::Error::other(format!(
             "registrazione del servizio fallita (rc={codice}): {}",
             uscita.trim()
@@ -183,4 +197,36 @@ pub fn sostituisci_eseguibile(nuovo: &Path) -> Result<(), &'static str> {
         return Err("copy_failed");
     }
     Ok(())
+}
+
+/// Avvia il servizio e aspetta che sia davvero in piedi.
+///
+/// Non basta chiederne l'avvio: `sc start` torna subito, col servizio ancora
+/// in partenza. Chi ha appena installato l'aiutante lo interroga nei secondi
+/// successivi, e trovarlo non ancora pronto e' indistinguibile, da fuori, dal
+/// non averlo affatto. Si aspetta che risponda «RUNNING», con un tetto: se
+/// non parte entro il tetto, lo si dice invece di dichiarare un'installazione
+/// riuscita che non serve a niente.
+pub fn avvia_servizio() -> io::Result<()> {
+    let (codice, uscita) = esegui(&crate::setup::service_start_argv())?;
+    // 1056 = «e' gia' in esecuzione»: non e' un errore, e' cio' che volevamo.
+    const GIA_IN_ESECUZIONE: i32 = 1056;
+    if codice != 0 && codice != GIA_IN_ESECUZIONE {
+        return Err(io::Error::other(format!(
+            "avvio del servizio fallito (rc={codice}): {}",
+            uscita.trim()
+        )));
+    }
+    // Fino a dieci secondi, guardando ogni mezzo.
+    for _ in 0..20 {
+        if let Ok((0, stato)) = esegui(&crate::setup::service_query_argv()) {
+            if stato.contains("RUNNING") || stato.contains("IN ESECUZIONE") {
+                return Ok(());
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    Err(io::Error::other(
+        "il servizio e' stato registrato ma non e' partito entro dieci secondi",
+    ))
 }

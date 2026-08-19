@@ -180,6 +180,21 @@ proprietario si disinstalla e si reinstalla, cosi' il passaggio e' esplicito."
         "-",
         owner_sid,
     );
+    // Adesso, non al prossimo riavvio. Chi ha appena chiesto l'installazione
+    // interroga l'aiutante nei secondi successivi: un servizio registrato ma
+    // spento e', da fuori, indistinguibile da un aiutante che non c'e'.
+    //
+    // Se non parte NON si annulla niente: e' installato e appaiato
+    // correttamente, e partira' al riavvio. Si dice com'e' andata — meglio un
+    // «registrato ma non ancora in piedi» che un'installazione dichiarata
+    // riuscita e poi inservibile.
+    if let Err(e) = win_setup::avvia_servizio() {
+        annota_motivo(error_file, &format!("{e}"));
+        eprintln!("{e}");
+        eprintln!("L'aiutante e' installato e autorizzato: partira' al prossimo \
+riavvio del computer.");
+        return ExitCode::from(4);
+    }
     println!("Fatto. Le installazioni successive non chiederanno piu' questo permesso.");
     ExitCode::SUCCESS
 }
