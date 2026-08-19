@@ -161,14 +161,15 @@ async fn run_helper_setup(
         Ok(helper_setup::Outcome::Refused) => serde_json::json!({
             "ok": false, "error_code": "consent_refused", "installed": false
         }),
-        // Il codice d'uscita va anche in `detail`: e' l'unica cosa che si sa
-        // di un fallimento dell'aiutante, e chi legge il messaggio finale
-        // vede quel campo, non gli altri. Lasciarlo solo in `exit_code`
-        // significava mostrare «Dettaglio tecnico:» seguito dal nulla —
-        // successo il 19/8/2026, ed e' costato un giro intero di indagine.
-        Ok(helper_setup::Outcome::Failed(code)) => serde_json::json!({
+        // Il MOTIVO, non il numero. Chi legge il messaggio finale vede
+        // `detail` e nient'altro: mostrargli «uscito con codice 3» era
+        // riprodurre in altre parole lo stesso vicolo cieco del 19/8/2026 —
+        // si sapeva che aveva fallito, non dove. Il numero resta accanto,
+        // per chi legge i registri.
+        Ok(helper_setup::Outcome::Failed(code, motivo)) => serde_json::json!({
             "ok": false, "error_code": "install_failed", "exit_code": code,
-            "detail": format!("l'aiutante e' partito ed e' uscito con codice {code}")
+            "detail": motivo.unwrap_or_else(
+                || format!("uscito con codice {code}, senza dire perche'"))
         }),
         Err(e) => serde_json::json!({
             "ok": false, "error_code": "elevation_failed",

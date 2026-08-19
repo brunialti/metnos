@@ -164,8 +164,9 @@ pub enum Outcome {
     Installed,
     /// The person said no to the Windows prompt. Not a failure: an answer.
     Refused,
-    /// It ran, and it failed. The code is the helper's own.
-    Failed(u32),
+    /// It ran, and it failed. The code is the helper's own; the string is
+    /// the reason it wrote down, when it managed to write one.
+    Failed(u32, Option<String>),
 }
 
 /// Install the fetched helper, raising exactly one Windows consent prompt.
@@ -245,11 +246,29 @@ pub fn install_elevated(
         s.encode_wide().chain(std::iter::once(0)).collect()
     }
 
+    // Dove l'aiutante scrivera' il motivo, se fallisce. Senza, l'unica cosa
+    // che torna a chi ha premuto il bottone e' un numero d'uscita — e un
+    // numero non dice quale passo e' andato storto. L'elevazione passa da
+    // Windows, che non gira a nessuno cio' che il programma stampa: un file
+    // e' l'unico canale di ritorno che resta.
+    //
+    // Sta accanto al binario appena scaricato, in una cartella che solo
+    // questo utente scrive.
+    let motivo_path = fetched
+        .path
+        .with_file_name(format!("helper-install-{}.err", std::process::id()));
+    let _ = std::fs::remove_file(&motivo_path);
+
     let verb = wide(std::ffi::OsStr::new("runas"));
     let file = wide(fetched.path.as_os_str());
+    // Il percorso va fra virgolette: una cartella con spazi diventerebbe due
+    // argomenti, e l'aiutante scriverebbe il motivo altrove — o da nessuna
+    // parte.
     let params = wide(std::ffi::OsStr::new(&format!(
         "install --owner-sid {owner_sid} --public-key {public_key_hex} \
---server-key {server_key_b64} --server-url {server_url}"
+--server-key {server_key_b64} --server-url {server_url} \
+--error-file \"{}\"",
+        motivo_path.display()
     )));
 
     let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
@@ -306,11 +325,18 @@ pub fn install_elevated(
     if read == 0 {
         bail!("the helper ran but its outcome could not be read");
     }
-    Ok(if code == 0 {
-        Outcome::Installed
-    } else {
-        Outcome::Failed(code)
-    })
+    if code == 0 {
+        let _ = std::fs::remove_file(&motivo_path);
+        return Ok(Outcome::Installed);
+    }
+    // Il motivo scritto dall'aiutante, se c'e'. Se manca resta il numero, che
+    // e' meglio di niente ma non di molto.
+    let motivo = std::fs::read_to_string(&motivo_path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let _ = std::fs::remove_file(&motivo_path);
+    Ok(Outcome::Failed(code, motivo))
 }
 
 /// Outside Windows there is no elevated helper, and that is not a fault.

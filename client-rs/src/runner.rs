@@ -416,15 +416,23 @@ impl Runner {
     #[cfg(windows)]
     async fn attendi_pulizia_acl(&mut self) -> Result<()> {
         if let Some(attesa) = self.pulizia_acl.take() {
-            let esito = attesa.await.context("attesa della pulizia ACL")?;
-            self.acl_errore = match esito {
-                Ok(r) if r.failed == 0 => {
+            // L'esito si SCRIVE sempre, prima di uscire. Qui c'era il
+            // difetto: se il compito cadeva (panico, runtime in chiusura),
+            // l'errore usciva con `?` prima di essere registrato — e siccome
+            // l'attesa era gia' stata consumata, l'esecuzione SUCCESSIVA non
+            // trovava nulla da aspettare ne' nulla da rimproverare, e
+            // proseguiva. Fallire apriva la porta invece di chiuderla, che e'
+            // l'esatto contrario di cio' che questa funzione promette
+            // (trovato dalla revisione, 19/8/2026).
+            self.acl_errore = match attesa.await {
+                Ok(Ok(r)) if r.failed == 0 => {
                     tracing::info!(revocati = r.revoked, scartati = r.dropped,
                                    "pulizia ACL completata");
                     None
                 }
-                Ok(r) => Some(format!("{} ACL AppContainer stale non revocabili", r.failed)),
-                Err(e) => Some(format!("pulizia ACL non riuscita: {e:#}")),
+                Ok(Ok(r)) => Some(format!("{} ACL AppContainer stale non revocabili", r.failed)),
+                Ok(Err(e)) => Some(format!("pulizia ACL non riuscita: {e:#}")),
+                Err(e) => Some(format!("pulizia ACL: il compito e' caduto: {e}")),
             };
         }
         match &self.acl_errore {
