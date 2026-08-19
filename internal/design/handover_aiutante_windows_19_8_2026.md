@@ -6,12 +6,35 @@
 
 ## Stato in una riga
 
-**CHIUSO.** L'aiutante elevato si installa, parte, viene riconosciuto e serve
-le richieste. Provato sulla macchina vera, non in prova.
+L'aiutante elevato **si installa, parte, viene riconosciuto e riceve le
+richieste** (provato sulla macchina vera). Manca la conferma di
+un'installazione VERA fino in fondo: l'ultimo difetto e' stato corretto ma non
+ancora riprovato.
 
-Prova finale (19/8/2026, 22:33): la scheda di conferma offre «Per tutti gli
+Prova del riconoscimento (19/8/2026, 22:33): la scheda offre «Per tutti gli
 utenti» SENZA il passaggio d'installazione — cioe' `_helper_present()` dice di
 si', cioe' il client parla con l'aiutante.
+
+## L'ultimo difetto — winget non esiste, per il sistema
+
+Trovato da Roberto scegliendo un programma NON gia' installato
+(`LibreHardwareMonitor`): tutti i tentativi precedenti finivano su 7zip, che
+c'era gia', e non arrivavano mai a lanciare davvero il gestore.
+
+    package_operation_failed · spawn_failed: program not found
+
+`winget` non e' un programma nel percorso di ricerca: e' un **alias
+d'esecuzione installato PER UTENTE** sotto `WindowsApps`. L'aiutante gira come
+sistema, e per il sistema quell'alias non esiste. Sembra un guasto della
+macchina; e' un guasto di prospettiva.
+
+Corretto risolvendo il percorso vero nella cartella del pacchetto
+`Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe`, leggibile da chiunque; fra
+piu' versioni si prende l'ultima. Se non lo si trova si prova comunque per
+nome, cosi' dove l'alias c'e' il comportamento non cambia.
+
+**Da riprovare**: installare un programma non ancora presente, «per tutti gli
+utenti». E' l'unica cosa che manca per dire chiuso.
 
 ## L'ultimo difetto, e perche' era invisibile
 
