@@ -420,6 +420,40 @@ sceglie fra «temporaneo» e «permanente», ma fra «fino al riavvio» e «da q
 poi». Stesso principio dei bottoni «solo per me» / «per tutti gli utenti», che
 il 19/8 ha funzionato bene.
 
+### Il potere di AVVIARE non esiste, ed e' una scelta
+
+Verificato il 19/8 sera prima di scrivere codice, e il risultato ha fermato
+l'implementazione:
+
+- **Il vocabolario lo permette gia'**: `processes` e' un oggetto e `create` un
+  verbo, quindi «avvia un programma» si direbbe `create_processes`. Nessuna
+  estensione da chiedere a Roberto (§2.2).
+- **Ma la capacita' non c'e', e non e' una dimenticanza.** Metnos non sa
+  avviare programmi su un dispositivo. E' esattamente cio' che ADR 0210 vieta
+  all'aiutante: «quattro operazioni, e nessuna significa esegui». Aggiungere
+  «avvia questo» all'aiutante smonterebbe il confine che quella parte esiste
+  per difendere. **NON FARLO.**
+- **Aggravante specifico**: LibreHardwareMonitor legge i sensori solo con
+  privilegi di amministratore. Quindi «avvialo» non e' «lancia un programma»,
+  e' «lancia un programma elevato, ogni volta o all'accensione» — cioe'
+  un'attivita' pianificata con privilegi massimi. Stessa classe di potere
+  dell'aiutante, stesso trattamento.
+
+### La forma proposta, quando Roberto decidera'
+
+- un executor `create_processes` che accetta **solo un identificativo di
+  pacchetto**, mai un percorso libero: puo' avviare cio' che il gestore ha
+  installato, e nient'altro. E' il vincolo che impedisce a «avvia» di
+  diventare «esegui qualsiasi cosa»;
+- consenso esplicito come per l'installazione, coi due bottoni gia' decisi
+  («fino al riavvio» / «da qui in poi»);
+- l'elevazione, se serve, dalla strada gia' collaudata — **senza** allargare
+  il vocabolario chiuso dell'aiutante.
+
+Non implementato di proposito: e' una decisione di Roberto su dove vive un
+potere nuovo, e la giornata ha insegnato che le cose costruite a meta' su
+percorsi privilegiati costano ore.
+
 ## TRAPPOLE — leggile, non riscoprirle
 
 1. **ssh e ping verso il PC sono CHIUSI** (porta 22 e ICMP), pur essendo il
