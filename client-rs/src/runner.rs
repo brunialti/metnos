@@ -101,6 +101,15 @@ pub struct Runner {
     shim_dir: Option<PathBuf>,
     shim_sha: Option<String>,
     python: Option<PathBuf>,
+    /// La pulizia ACL in corso, finche' non e' stata attesa.
+    #[cfg(windows)]
+    pulizia_acl: Option<tokio::task::JoinHandle<Result<crate::appcontainer::CleanupReport>>>,
+    /// Perche' la pulizia ACL non e' riuscita, se non e' riuscita.
+    ///
+    /// Si conserva: un fallimento vale per OGNI esecuzione successiva, non
+    /// solo per la prima che l'ha scoperto.
+    #[cfg(windows)]
+    acl_errore: Option<String>,
 }
 
 impl Runner {
@@ -113,17 +122,23 @@ impl Runner {
             "server_public_key assente in state: ri-esegui `register` \
              (il server deve fornirla per verificare le invocazioni)",
         )?;
+        // Revoca fail-closed degli ACL lasciati da un giro precedente finito
+        // male, prima di riusare il SID AppContainer stabile.
+        //
+        // Parte in disparte e non davanti alla rete. Il vincolo da rispettare
+        // e' «nessun executor gira con permessi vecchi addosso», e quel
+        // vincolo riguarda l'ESECUZIONE, non il collegamento: metterlo prima
+        // del primo contatto col server significava che un debito arretrato
+        // rendeva il computer invisibile per minuti — e, peggio, che un
+        // client appena aggiornato non faceva in tempo a confermarsi e veniva
+        // riportato indietro. Misurato dal vivo il 18/8/2026: 75 cartelle da
+        // ripulire, fra cui Documenti e Download, oltre venti minuti, e
+        // l'aggiornamento annullato per questo.
+        //
+        // L'attesa e' spostata dove il vincolo vive davvero: `execute`.
         #[cfg(windows)]
-        {
-            // Nessun executor e' ancora attivo (il process lock e' gia'
-            // detenuto): revoca fail-closed di eventuali ACL lasciati da un
-            // crash precedente prima di riusare il SID AppContainer stabile.
-            let cleanup = crate::appcontainer::cleanup_all_grants()
-                .context("pulizia ACL AppContainer al boot")?;
-            if cleanup.failed > 0 {
-                bail!("{} ACL AppContainer stale non revocabili", cleanup.failed);
-            }
-        }
+        let pulizia_acl = Some(tokio::task::spawn_blocking(
+            crate::appcontainer::cleanup_all_grants));
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(POLL_BLOCK_MS / 1000 + 15))
             .build()?;
@@ -156,6 +171,10 @@ impl Runner {
             shim_dir: None,
             shim_sha: None,
             python: None,
+            #[cfg(windows)]
+            pulizia_acl,
+            #[cfg(windows)]
+            acl_errore: None,
         })
     }
 
@@ -384,7 +403,40 @@ impl Runner {
         Ok(())
     }
 
+    /// Nessun executor gira con addosso permessi lasciati da un giro
+    /// precedente. Il vincolo e' questo, e questo e' il punto in cui vale.
+    ///
+    /// Aspetta la pulizia partita all'avvio. Di norma e' finita da un pezzo e
+    /// non costa niente; quando c'e' un debito arretrato, si aspetta qui —
+    /// dove ferma UN'esecuzione — invece che all'avvio, dove fermava il
+    /// collegamento al server e faceva sembrare spento il computer.
+    ///
+    /// Fallire e' definitivo: se i permessi vecchi non si sono potuti
+    /// togliere, non si esegue niente, adesso e da adesso in poi.
+    #[cfg(windows)]
+    async fn attendi_pulizia_acl(&mut self) -> Result<()> {
+        if let Some(attesa) = self.pulizia_acl.take() {
+            let esito = attesa.await.context("attesa della pulizia ACL")?;
+            self.acl_errore = match esito {
+                Ok(r) if r.failed == 0 => {
+                    tracing::info!(revocati = r.revoked, scartati = r.dropped,
+                                   "pulizia ACL completata");
+                    None
+                }
+                Ok(r) => Some(format!("{} ACL AppContainer stale non revocabili", r.failed)),
+                Err(e) => Some(format!("pulizia ACL non riuscita: {e:#}")),
+            };
+        }
+        match &self.acl_errore {
+            Some(motivo) => bail!("{motivo}"),
+            None => Ok(()),
+        }
+    }
+
     async fn execute(&mut self, inv: &Invocation) -> Result<InvocationResult> {
+        #[cfg(windows)]
+        self.attendi_pulizia_acl().await?;
+
         // Il gate fail-closed pre-W3.1 (rifiuta salvo METNOS_SANDBOX=off) e'
         // stato RIMOSSO 3/7: era corretto SOLO nella finestra in cui
         // sandbox_windows.rs non esisteva ancora (nessun sandbox reale su
@@ -448,6 +500,15 @@ impl Runner {
         // shimdata: un solo grant sulla radice copre tutto l'albero creato da
         // ensure_dirs.
         extra_env.push(("METNOS_WORKSPACE".into(), shimdata.join("workspace").display().to_string()));
+        // Il percorso di QUESTO binario. Serve agli executor che devono
+        // parlare con l'aiutante elevato di Windows (ADR 0210 D): il giudizio
+        // su chi c'e' dall'altro capo del canale sta in Rust, in un posto
+        // solo, e chi ne ha bisogno lo chiede qui invece di riscriverlo.
+        // Un secondo esemplare di un controllo di sicurezza e' quello che
+        // diverge.
+        if let Ok(exe) = std::env::current_exe() {
+            extra_env.push(("METNOS_CLIENT_EXE".into(), exe.display().to_string()));
+        }
         let limits = sandbox::Limits {
             wall: Duration::from_millis(inv.deadline_ms.max(1000)),
         };

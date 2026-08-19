@@ -404,6 +404,15 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
     let path = registry_path()?;
     let records = AclRegistry::load(&path).take_all();
     let total = records.len();
+    // Dirlo prima di cominciare, non dopo: revocare un permesso su una
+    // cartella ne riscrive i permessi in tutto cio' che contiene, quindi con
+    // un arretrato grosso questa funzione puo' durare minuti senza produrre
+    // una riga. Chi guarda vede solo un processo che consuma e tace, e va a
+    // cercare la causa ovunque tranne che qui (successo il 18/8/2026: 75
+    // cartelle, fra cui Documenti e Download, oltre venti minuti).
+    if total > 0 {
+        tracing::info!(voci = total, "pulizia ACL: comincio; su cartelle grandi puo' durare minuti");
+    }
 
     // SID del container (derivato, non ri-crea il profilo). Se non derivabile,
     // non possiamo revocare nulla: manteniamo tutte le voci.
