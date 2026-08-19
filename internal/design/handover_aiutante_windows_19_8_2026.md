@@ -376,6 +376,50 @@ L'esito «era gia' come lo volevi» imposta un campo `note` che **nessuno
 mostra**: l'utente legge il generico «Operazione completata». Il messaggio c'e'
 e non arriva.
 
+## PROSSIMO LAVORO — «installato» non basta: serve «attivo»
+
+Deciso con Roberto il 19/8/2026 sera, dopo che l'installazione di
+LibreHardwareMonitor e' riuscita e la temperatura ha continuato a non
+leggersi: quel programma espone i sensori **solo mentre gira**. Chi ha chiesto
+«installa X» non deve dover sapere questo genere di dettagli.
+
+### La forma scelta: lo dichiara CHI NE HA BISOGNO
+
+Non `install_packages`. La conoscenza «mi serve LibreHardwareMonitor attivo»
+appartiene a chi legge le temperature: e' li' che e' vera e che restera' vera.
+Se entrasse nell'installatore, fra sei mesi l'installatore conoscerebbe le
+esigenze di dieci funzioni diverse e non si toccherebbe piu'.
+
+Scartate:
+- **elenco di «programmi da avviare»**: nomi cablati, vale finche' qualcuno lo
+  aggiorna (§7.3);
+- **chiederlo al modello**: risponderebbe plausibilmente e talvolta sbagliato,
+  su un'azione che tocca la macchina (§7.9);
+- **farlo in silenzio**: cio' che gira su un computer lo decide chi lo
+  possiede. Una funzione che si auto-installa i prerequisiti fa scoprire DOPO
+  cosa c'e' dentro casa.
+
+### Come si comporta
+
+La capacita' dichiara il bisogno; quando non e' soddisfatto **si offre**, dalla
+stessa scheda di consenso dell'installazione. Due bottoni distinti, perche'
+sono due impegni diversi:
+
+- **«avvialo ora»** — parte adesso e RESTA ACCESO. Al prossimo riavvio del
+  computer sparisce, e con lui la temperatura.
+- **«avvialo sempre»** — parte anche a ogni accensione. Un programma in piu'
+  sempre attivo.
+
+**Verificato: «ora» non si richiude da solo.** L'alternativa «accendi, leggi,
+spegni» e' stata scartata: quel programma impiega secondi a inizializzare i
+sensori, quindi ogni controllo di stato diventerebbe lento e traballante, e un
+programma acceso e spento di continuo e' peggio di uno che sta acceso.
+
+Le etichette devono dire la conseguenza, non il meccanismo: chi legge non
+sceglie fra «temporaneo» e «permanente», ma fra «fino al riavvio» e «da qui in
+poi». Stesso principio dei bottoni «solo per me» / «per tutti gli utenti», che
+il 19/8 ha funzionato bene.
+
 ## TRAPPOLE — leggile, non riscoprirle
 
 1. **ssh e ping verso il PC sono CHIUSI** (porta 22 e ICMP), pur essendo il
