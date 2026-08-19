@@ -244,6 +244,50 @@ ma il registro dei permessi si sporca. La forma giusta sarebbe non annotare
 una concessione che non e' riuscita — cioe' verificare l'esito PRIMA di
 scrivere la voce. Non fatto.
 
+## 19/8 NOTTE TARDI — l'installazione RIESCE, ma il client non vede l'aiutante
+
+**L'installazione e' completata**: «✓ Operazione completata» su
+`install_packages`, PC-ROBERTO. Prima falliva con «il file e' utilizzato da un
+altro processo» (errore 32) — e quell'errore era esso stesso la prova che
+l'aiutante era VIVO: teneva aperto il proprio eseguibile. Corretto fermando il
+servizio prima di sostituirlo.
+
+**MA il difetto vero e' ancora li'**, e adesso e' isolato: dopo
+l'installazione riuscita, la scheda continua a offrire `machine_setup` — il
+bottone che compare SOLO quando `_helper_present()` dice di no. Quindi:
+
+- il servizio si installa (provato),
+- il servizio parte e gira (provato: tiene aperto il file),
+- **il client non riesce a parlarci** (aperto).
+
+Non e' piu' un problema di installazione. E' la conversazione fra i due.
+
+### Ipotesi, in ordine, e come distinguerle
+
+1. **Il giudizio su chi risponde rifiuta.** `judge_peer` confronta
+   l'eseguibile all'altro capo con `C:\Program Files\Metnos\metnos-helper.exe`.
+   Se il percorso reale differisce anche solo per la forma (maiuscole, nome
+   corto 8.3, un collegamento), il client rifiuta un aiutante autentico.
+2. **La versione in esecuzione non capisce la domanda.** Il `check` manda
+   ormai una richiesta `Version`; un aiutante installato prima che quel verbo
+   esistesse la rifiuterebbe come malformata.
+3. **Il canale non si apre affatto** (nome della pipe, SID, tempi).
+
+**Come si distingue, ed e' gia' funzionato una volta:** il registro
+dell'aiutante, `%ProgramData%\Metnos\helper\audit.log`. Roberto puo'
+copiarlo (ssh e' chiuso, la sandbox non lo legge — e chiederlo via executor
+ha bloccato la macchina, vedi sopra: NON rifarlo).
+
+- una riga `refused` con un motivo → siamo nella (1) o (2), e il motivo lo
+  dice;
+- nessuna riga nuova → il client non arriva nemmeno a connettersi, ipotesi (3).
+
+### Piccolo debito trovato adesso
+
+L'esito «era gia' come lo volevi» imposta un campo `note` che **nessuno
+mostra**: l'utente legge il generico «Operazione completata». Il messaggio c'e'
+e non arriva.
+
 ## TRAPPOLE — leggile, non riscoprirle
 
 1. **ssh e ping verso il PC sono CHIUSI** (porta 22 e ICMP), pur essendo il
