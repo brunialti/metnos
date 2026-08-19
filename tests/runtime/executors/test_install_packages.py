@@ -1050,3 +1050,38 @@ def test_una_risposta_senza_verdetto_non_e_una_prova_di_allineamento(monkeypatch
     monkeypatch.setattr(install_packages, "_helper_call",
                         lambda *a, **k: {"ok": True})
     assert install_packages._helper_present() is False
+
+
+def test_nella_rimozione_il_verdetto_dell_aiutante_arriva_all_utente(monkeypatch):
+    """Chi legge deve sapere QUALE dei due tentativi e' fallito, e perche'.
+
+    La rimozione prova prima senza privilegi; se fallisce e l'aiutante c'e',
+    riprova da li'. Tenendo il verdetto dell'aiutante solo quando era
+    positivo, un «non riesco a parlare col client» o un «hai detto no»
+    venivano sostituiti, all'uscita, dall'errore del PRIMO tentativo: la
+    persona leggeva «accesso negato» e non sapeva nemmeno che la seconda
+    strada fosse stata tentata (§2.8).
+    """
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, _WINGET_SHOW, "") if "show" in argv
+                        else (1, "", "accesso negato"))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": False,
+        "helper": True})
+    monkeypatch.setattr(
+        install_packages, "_apply_via_helper",
+        lambda pid, uninstall: {"package_id": pid, "ok": False,
+                                "error": "il componente non risponde",
+                                "error_class": "capability_missing",
+                                "error_code": "helper_unreachable"})
+
+    res = install_packages.invoke({
+        "packages": ["Microsoft.PowerToys"], "uninstall": True,
+        "actor_consent_token": install_packages._consent_token(
+            [{"package_id": "Microsoft.PowerToys"}], True, "machine")})
+
+    assert res["ok"] is False
+    assert res["error_code"] == "helper_unreachable", \
+        f"e' tornato l'errore del primo tentativo: {res.get('error')}"
+    assert "accesso negato" not in str(res.get("error") or "")

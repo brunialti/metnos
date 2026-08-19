@@ -566,10 +566,15 @@ def _apply(package_id, ctx, uninstall, scope):
             # same reach that installing it needed. This is not a guess about
             # where the package lives: the unprivileged attempt has already
             # failed, and the helper is the only other road that could have
-            # put it there. One retry, and its verdict is the final one.
-            via = _apply_via_helper(package_id, uninstall=True)
-            if via.get("ok"):
-                return via
+            # put it there. One retry, and its verdict is the final one —
+            # whether it says yes or no.
+            #
+            # Returning it only on success meant that «the helper could not be
+            # reached» and «you said no» were both replaced, on their way out,
+            # by the ORIGINAL winget error: the person read «access denied»
+            # and never learnt that the second road had been tried at all,
+            # let alone why it failed (§2.8).
+            return _apply_via_helper(package_id, uninstall=True)
     elif ctx["manager"] == "apt":
         verb = "remove" if uninstall else "install"
         argv = [ctx["apt"], verb, "-y", package_id]
@@ -917,9 +922,14 @@ def invoke(args: dict) -> dict:
     if results and failed:
         out["partial"] = True
     elif failed and not results:
-        out["error"] = failed[0]["error"]
-        out["error_class"] = failed[0]["error_class"]
-        out["error_code"] = failed[0]["error_code"]
+        # Con `.get`: un record di fallimento a cui manca un campo deve poter
+        # essere RIFERITO, non far cadere l'executor. Cadere qui
+        # trasformerebbe «l'operazione e' fallita, ecco perche'» in un errore
+        # interno senza spiegazione, che e' il modo peggiore di fallire.
+        primo = failed[0]
+        out["error"] = primo.get("error") or ""
+        out["error_class"] = primo.get("error_class") or "unknown"
+        out["error_code"] = primo.get("error_code") or "unknown"
     unhandled = len(requested) - done - len(failed)
     if unhandled > 0:
         out["truncated"] = True
