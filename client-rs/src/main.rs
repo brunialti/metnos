@@ -5,7 +5,18 @@ use clap::{Parser, Subcommand};
 mod appcontainer;
 mod config;
 mod executors;
+// Fuori Windows non c'e' nessun aiutante elevato con cui parlare, ma i due
+// moduli restano compilati e PROVATI anche qui: sono meta' di un contratto
+// fra due programmi separati, e la meta' che si puo' provare ovunque e'
+// quella che deve essere giusta. Senza il permesso, sedici avvisi di codice
+// inutilizzato seppellirebbero quelli veri.
+#[cfg_attr(not(windows), allow(dead_code))]
+mod frame;
+#[cfg_attr(not(windows), allow(dead_code))]
 mod helper_client;
+mod helper_setup;
+#[cfg(windows)]
+mod helper_win;
 mod identity;
 mod pairing;
 mod proclock;
@@ -31,7 +42,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Print the device fingerprint (creates a key on first call).
+    /// Who this device is: fingerprint, public key and — on Windows —
+    /// the owner SID. The last two are what installing the elevated
+    /// helper asks for (creates a key on first call).
     Whoami,
     /// Pair this device with a Metnos server using a one-shot token.
     Register {
@@ -45,10 +58,211 @@ enum Cmd {
         #[arg(long)]
         server: Option<String>,
     },
+    /// Talk to the elevated Windows helper (ADR 0210 D).
+    ///
+    /// Prints exactly one JSON line on the last line of stdout. It exists so
+    /// the judgment about WHO is on the other end of the channel lives in one
+    /// place, in Rust: an executor that opened the pipe itself would be a
+    /// second copy of a security check, and the second copy is the one that
+    /// drifts.
+    Helper {
+        #[command(subcommand)]
+        what: HelperCmd,
+    },
     /// Unpair this device: forget the server pairing and (on Windows) clean up
     /// the AppContainer sandbox — revoke every ACL grant recorded on user
     /// directories and delete the container profile (W4.4).
     Unpair,
+}
+
+#[derive(Subcommand)]
+enum HelperCmd {
+    /// Is the genuine helper there, right now? Nothing is sent to it.
+    Check,
+    /// Is this package installed, and in which version? Changes nothing.
+    Query {
+        #[arg(long)]
+        package_id: String,
+    },
+    Install {
+        #[arg(long)]
+        package_id: String,
+        #[arg(long)]
+        version: Option<String>,
+    },
+    Uninstall {
+        #[arg(long)]
+        package_id: String,
+    },
+    /// Bring the helper onto this machine and install it. Windows asks for
+    /// confirmation once; from then on nothing asks again.
+    Setup,
+}
+
+/// Bring the helper onto this machine, and install it.
+///
+/// One JSON line, like every other helper command: whoever called needs to
+/// tell «installed» from «the person said no» from «it never got here», and a
+/// refusal is an answer, not a crash.
+async fn run_helper_setup(
+    id: &identity::Identity,
+    st: &state::State,
+) -> serde_json::Value {
+    let (server, pubkey) = match (st.server_url.as_deref(), st.server_public_key.as_deref()) {
+        (Some(s), Some(k)) if !s.is_empty() && !k.is_empty() => (s, k),
+        // Without the pinned key there is no way to tell the real artifact
+        // from any other, and installing the most privileged component of the
+        // system on a guess is not a thing to do.
+        _ => {
+            return serde_json::json!({
+                "ok": false, "error_code": "not_paired",
+                "detail": "no paired server to fetch a signed helper from"
+            })
+        }
+    };
+
+    let dir = match config::Paths::resolve() {
+        Ok(p) => p.data_dir.join("staging"),
+        Err(e) => {
+            return serde_json::json!({
+                "ok": false, "error_code": "no_data_dir", "detail": e.to_string()
+            })
+        }
+    };
+
+    let fetched = match helper_setup::fetch(server, pubkey, &dir).await {
+        Ok(f) => f,
+        Err(e) => {
+            return serde_json::json!({
+                "ok": false, "error_code": "fetch_failed",
+                "detail": format!("{e:#}")
+            })
+        }
+    };
+
+    #[cfg(windows)]
+    let sid = match helper_win::sid_corrente() {
+        Ok(s) => s,
+        Err(e) => {
+            return serde_json::json!({
+                "ok": false, "error_code": "no_owner_sid",
+                "detail": e.to_string()
+            })
+        }
+    };
+    #[cfg(not(windows))]
+    let sid = String::new();
+
+    match helper_setup::install_elevated(&fetched, &sid, &id.fingerprint(), pubkey, server) {
+        Ok(helper_setup::Outcome::Installed) => serde_json::json!({
+            "ok": true, "installed": true, "version": fetched.version
+        }),
+        // Non e' un guasto: e' la risposta che la persona ha dato a Windows.
+        Ok(helper_setup::Outcome::Refused) => serde_json::json!({
+            "ok": false, "error_code": "consent_refused", "installed": false
+        }),
+        // Il codice d'uscita va anche in `detail`: e' l'unica cosa che si sa
+        // di un fallimento dell'aiutante, e chi legge il messaggio finale
+        // vede quel campo, non gli altri. Lasciarlo solo in `exit_code`
+        // significava mostrare «Dettaglio tecnico:» seguito dal nulla —
+        // successo il 19/8/2026, ed e' costato un giro intero di indagine.
+        Ok(helper_setup::Outcome::Failed(code)) => serde_json::json!({
+            "ok": false, "error_code": "install_failed", "exit_code": code,
+            "detail": format!("l'aiutante e' partito ed e' uscito con codice {code}")
+        }),
+        Err(e) => serde_json::json!({
+            "ok": false, "error_code": "elevation_failed",
+            "detail": format!("{e:#}")
+        }),
+    }
+}
+
+/// Runs one helper command and produces the JSON line to print.
+///
+/// The refusal is an answer, not a crash: whoever asked needs to know that the
+/// helper is missing as clearly as it needs to know that an install failed,
+/// and both travel on the same shape.
+#[cfg(windows)]
+
+fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
+    use helper_client::Operation;
+
+    let esito = (|| -> Result<serde_json::Value, helper_client::ChannelRefusal> {
+        let (pipe, atteso) = helper_win::indirizzo()?;
+        let (operazione, package_id, versione) = match what {
+            HelperCmd::Check => {
+                // Non basta stabilire CHI c'e' dall'altro capo: si chiede
+                // anche «chi sei», cosi' la risposta dice la versione e prova
+                // che il canale funziona davvero. Un programma col nome
+                // giusto che non risponde e' un guasto diverso da un
+                // programma assente, e i due si devono poter distinguere.
+                helper_win::presente(&pipe, &atteso)?;
+                (Operation::Version, String::new(), None)
+            }
+            HelperCmd::Query { package_id } => (Operation::Query, package_id, None),
+            HelperCmd::Install { package_id, version } => {
+                (Operation::Install, package_id, version)
+            }
+            HelperCmd::Uninstall { package_id } => (Operation::Uninstall, package_id, None),
+            // `setup` non e' un'operazione DELL'aiutante: e' come l'aiutante
+            // arriva. Lo smistamento lo prende prima, e questo ramo esiste
+            // perche' il compilatore non lo sappia per caso: se domani
+            // qualcuno chiama qui, deve leggerlo, non scoprirlo.
+            HelperCmd::Setup => {
+                return Ok(serde_json::json!({
+                    "ok": false, "error_code": "wrong_entry_point",
+                    "detail": "helper setup is installed, not requested over the channel"
+                }))
+            }
+        };
+        let richiesta =
+            helper_client::build_request(id, operazione, &package_id, versione.as_deref())
+                // Una richiesta che non si riesce nemmeno a comporre non e' un
+                // problema del canale: si dichiara per quello che e'.
+                .map_err(|_| helper_client::ChannelRefusal::NotAvailable)?;
+        let risposta = helper_win::chiedi(&pipe, &atteso, &richiesta)?;
+        // La risposta dell'aiutante passa cosi' com'e': riscriverla qui
+        // vorrebbe dire poterla addolcire (§2.8).
+        let mut esito: serde_json::Value =
+            serde_json::from_str(&risposta).unwrap_or_else(|_| {
+                serde_json::json!({"ok": false, "error_code": "malformed_response"})
+            });
+        // Chi legge deve poter distinguere «non funziona» da «non ci
+        // capiamo». La seconda si ripara riallineando i due programmi, la
+        // prima no, e trattarle allo stesso modo manderebbe a cercare nel
+        // posto sbagliato.
+        if let Some(oggetto) = esito.as_object_mut() {
+            let parlata = oggetto
+                .get("protocol_version")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            oggetto.insert("client_protocol_version".into(),
+                           serde_json::json!(helper_client::PROTOCOL_VERSION));
+            oggetto.insert("aligned".into(),
+                           serde_json::json!(parlata == helper_client::PROTOCOL_VERSION));
+        }
+        Ok(esito)
+    })();
+
+    esito.unwrap_or_else(|rifiuto| {
+        serde_json::json!({
+            "ok": false,
+            "error_code": rifiuto.code(),
+            "detail": rifiuto.message(),
+        })
+    })
+}
+
+/// Fuori Windows non c'e' nessun aiutante elevato, e non e' un guasto: e' la
+/// stessa assenza che il canale dichiara quando non e' installato.
+#[cfg(not(windows))]
+fn run_helper(_what: HelperCmd, _id: &identity::Identity) -> serde_json::Value {
+    let rifiuto = helper_client::ChannelRefusal::NotAvailable;
+    serde_json::json!({
+        "ok": false,
+        "error_code": rifiuto.code(),
+        "detail": rifiuto.message(),
+    })
 }
 
 /// Log ANCHE su file (`<data_dir>/client.log`): in Scheduled Task / unit di
@@ -117,6 +331,22 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
     match cli.cmd {
         Cmd::Whoami => {
             println!("device fingerprint: {}", id.fingerprint());
+            // I due valori che l'installazione dell'aiutante elevato
+            // richiede (ADR 0210 D). Stanno qui perche' «chi sono io» e'
+            // esattamente la domanda: chiederli a due comandi diversi, uno
+            // dei quali non esisteva, e' il motivo per cui la parte D era
+            // completa nel codice e non eseguibile da nessuno.
+            // Il valore che l'installazione dell'aiutante elevato richiede
+            // (ADR 0210 D): e' l'impronta qui sopra, che E' la chiave. Si
+            // ripete sotto il nome con cui la chiede l'altro programma,
+            // perche' chi installa non debba indovinare che sono la stessa
+            // cosa.
+            println!("public key:         {}", id.fingerprint());
+            #[cfg(windows)]
+            match helper_win::sid_corrente() {
+                Ok(sid) => println!("owner SID:          {sid}"),
+                Err(e) => println!("owner SID:          non leggibile ({e})"),
+            }
             println!("data dir:           {}", paths.data_dir.display());
             println!("cache dir:          {}", paths.cache_dir.display());
             if st.is_paired() {
@@ -188,6 +418,17 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
             let r = runner::Runner::new(url, &st, id, paths)
                 .context("init runner")?;
             r.run().await?;
+        }
+        Cmd::Helper { what } => {
+            // Ultima riga di stdout, sempre e comunque: chi legge non deve
+            // distinguere fra «e' andata» e «non c'e' l'aiutante».
+            let esito = match what {
+                // `setup` non parla col canale: lo mette al mondo. Ed e'
+                // l'unico che va in rete, quindi l'unico asincrono.
+                HelperCmd::Setup => run_helper_setup(&id, &st).await,
+                altro => run_helper(altro, &id),
+            };
+            println!("{esito}");
         }
         Cmd::Unpair => {
             // 1. Pulizia sandbox (solo Windows, W4.4): revoca gli ACE concessi

@@ -32,11 +32,27 @@ const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
 /// Le tre operazioni, come le vede il client. Specchio del vocabolario chiuso
 /// dell'aiutante: se qui comparisse un quarto verbo, non avrebbe nessuno che
 /// lo esegue.
+/// La versione del protocollo parlato su questo canale.
+///
+/// Copia byte-identica della costante dell'aiutante: i due programmi sono
+/// separati apposta e nessuno dei due puo' leggere il codice dell'altro. E'
+/// la LINGUA, non la build: due versioni diverse dei due programmi si
+/// capiscono benissimo se questa combacia, e non si capiscono affatto se non
+/// combacia — che e' esattamente la differenza da saper dire.
+pub const PROTOCOL_VERSION: u32 = 1;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
     Query,
     Install,
     Uninstall,
+    /// Quale versione dell'aiutante c'e'. Non tocca niente e non nomina
+    /// nessun pacchetto: e' l'unica voce che non parla di pacchetti.
+    ///
+    /// Serve a rendere il disallineamento fra i due programmi un fatto che
+    /// si puo' CHIEDERE. Senza, si scopre come un guasto — una richiesta che
+    /// l'altro capo non capisce, e nessun modo di dire perche'.
+    Version,
 }
 
 impl Operation {
@@ -45,6 +61,7 @@ impl Operation {
             Operation::Query => "query",
             Operation::Install => "install",
             Operation::Uninstall => "uninstall",
+            Operation::Version => "version",
         }
     }
 }
@@ -73,6 +90,60 @@ pub fn canonical_body(
         version.unwrap_or(""),
         idempotency_key,
     )
+}
+
+/// Il prefisso delle pipe locali. `.` e' la macchina corrente: una pipe su
+/// un'altra macchina sarebbe rete travestita da pipe.
+const LOCAL_PIPE_PREFIX: &str = r"\\.\pipe\";
+
+/// La radice del nome della pipe. SPECCHIO di `channel::PIPE_ROOT`
+/// dell'aiutante: stessa ragione della duplicazione di `canonical_body`, e
+/// stesso presidio (il test che confronta i due sorgenti).
+const PIPE_ROOT: &str = "metnos-helper";
+
+/// Il nome dell'eseguibile installato. SPECCHIO di `win_setup`.
+const HELPER_EXECUTABLE: &str = "metnos-helper.exe";
+
+/// Vero quando la stringa e' un SID nella forma testuale di Windows.
+///
+/// Il SID arriva dal sistema operativo, quindi e' valido per costruzione. Si
+/// controlla lo stesso perche' finisce dentro il NOME di un oggetto di
+/// sistema, e un nome costruito con un valore non verificato e' un modo di
+/// farlo puntare altrove. Specchio di `channel::is_valid_sid`.
+pub fn is_valid_sid(value: &str) -> bool {
+    let mut parti = value.split('-');
+    if parti.next() != Some("S") {
+        return false;
+    }
+    let numeriche: Vec<&str> = parti.collect();
+    if numeriche.len() < 2 || numeriche.len() > 16 {
+        return false;
+    }
+    numeriche
+        .iter()
+        .all(|p| !p.is_empty() && p.len() <= 20 && p.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// Il nome della pipe di questo proprietario. SPECCHIO di
+/// `channel::pipe_name_for_owner`: se le due formule divergessero, il client
+/// aprirebbe un nome che non esiste e leggerebbe «aiutante assente» quando
+/// l'aiutante c'e'.
+pub fn pipe_name_for_owner(owner_sid: &str) -> Option<String> {
+    if !is_valid_sid(owner_sid) {
+        return None;
+    }
+    Some(format!("{LOCAL_PIPE_PREFIX}{PIPE_ROOT}-{owner_sid}"))
+}
+
+/// Dove deve stare l'aiutante perche' sia l'aiutante. SPECCHIO di
+/// `setup::install_dir` + `win_setup::installa_eseguibile`.
+///
+/// Non e' una preferenza configurabile: e' la cartella che un utente senza
+/// privilegi non puo' riscrivere. Prenderla da una configurazione
+/// significherebbe che chi puo' modificare quella configurazione decide chi
+/// e' l'aiutante.
+pub fn helper_executable_in(program_files: &str) -> String {
+    format!("{}\\Metnos\\{}", program_files.trim_end_matches('\\'), HELPER_EXECUTABLE)
 }
 
 /// Perche' non si e' potuto parlare con l'aiutante.
@@ -262,6 +333,64 @@ mod tests {
             assert!(!r.code().is_empty());
             assert!(r.message().len() > 20, "{}", r.code());
         }
+    }
+
+    // ── L'indirizzo dell'aiutante ──
+    #[test]
+    fn il_nome_della_pipe_porta_il_sid_del_proprietario() {
+        // Deve combaciare parola per parola con quello che l'aiutante crea:
+        // un nome diverso non e' un errore visibile, e' un «aiutante assente»
+        // quando l'aiutante c'e'.
+        assert_eq!(
+            pipe_name_for_owner("S-1-5-21-1-2-3-1001").as_deref(),
+            Some(r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001")
+        );
+    }
+
+    #[test]
+    fn due_utenti_non_condividono_un_canale() {
+        assert_ne!(
+            pipe_name_for_owner("S-1-5-21-1-2-3-1001"),
+            pipe_name_for_owner("S-1-5-21-1-2-3-1002")
+        );
+    }
+
+    #[test]
+    fn un_sid_che_non_e_un_sid_non_diventa_un_nome() {
+        // Il valore finisce dentro il nome di un oggetto di sistema: uno
+        // qualunque potrebbe portarci dentro un separatore.
+        for cattivo in ["", "S", "S-1", "X-1-5-18", "s-1-5-18", r"S-1-5-18\..\altro",
+                        "S-1-5-18-", "S-1-5-1a"] {
+            assert_eq!(pipe_name_for_owner(cattivo), None, "accettato: {cattivo:?}");
+        }
+    }
+
+    #[test]
+    fn un_nome_costruito_qui_passa_il_giudizio_sulla_localita() {
+        // Le due meta' — costruzione e verifica — devono essere d'accordo.
+        let nome = pipe_name_for_owner("S-1-5-21-1-2-3-1001").unwrap();
+        assert_eq!(judge_peer(&nome, "S-1-5-18", ESEGUIBILE, ESEGUIBILE), Ok(()));
+    }
+
+    #[test]
+    fn laiutante_atteso_sta_sotto_program_files() {
+        assert_eq!(
+            helper_executable_in(r"C:\Program Files"),
+            r"C:\Program Files\Metnos\metnos-helper.exe"
+        );
+        // Una barra di troppo in coda non deve produrre un percorso diverso:
+        // il confronto con l'eseguibile vero e' testuale.
+        assert_eq!(
+            helper_executable_in(r"C:\Program Files\"),
+            r"C:\Program Files\Metnos\metnos-helper.exe"
+        );
+    }
+
+    #[test]
+    fn il_percorso_atteso_e_quello_che_il_giudizio_accetta() {
+        let atteso = helper_executable_in(r"C:\Program Files");
+        let nome = pipe_name_for_owner("S-1-5-21-1-2-3-1001").unwrap();
+        assert_eq!(judge_peer(&nome, "S-1-5-18", &atteso, &atteso), Ok(()));
     }
 
     // ── Il corpo canonico deve combaciare con quello dell'aiutante ──

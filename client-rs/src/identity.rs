@@ -58,6 +58,14 @@ impl Identity {
         self.signing.verifying_key()
     }
 
+    /// The public key as hex — which is also what identifies this device to a
+    /// person, because it IS the key and not a digest of it.
+    ///
+    /// One representation, deliberately. The elevated helper stores this exact
+    /// string at install time (ADR 0210 D) and refuses anything that is not 64
+    /// hex characters; a second, prettier encoding living next to it would be
+    /// a second thing to pass by mistake, and the mistake would only show up
+    /// after the person had already answered the Windows prompt.
     pub fn fingerprint(&self) -> String {
         let bytes = self.verifying().to_bytes();
         let mut hex = String::with_capacity(64);
