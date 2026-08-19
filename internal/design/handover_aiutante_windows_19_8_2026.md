@@ -25,7 +25,43 @@ riuscita fino in fondo**, ed e' l'unica cosa che manca.
 4. **Consegna asincrona dell'esito**: `21:22:37 esito tardivo affidato al
    ciclo`. Arriva in chat da solo.
 
-## IL DIFETTO APERTO
+## LA CAUSA RADICE — trovata il 19/8 sera
+
+**L'aiutante non parla il protocollo dei servizi di Windows.** Zero
+occorrenze di `StartServiceCtrlDispatcher` / `RegisterServiceCtrlHandler` /
+`SetServiceStatus` in tutto `helper-rs`.
+
+`win_serve::run()` e' un ciclo normale: crea la pipe e aspetta. Ma un
+programma registrato come servizio DEVE presentarsi al gestore dei servizi
+entro 30 secondi e dichiararsi in esecuzione. Non facendolo, Windows si
+arrende con **1053** («il servizio non ha risposto alla richiesta di avvio nel
+tempo previsto»), e il servizio non parte MAI.
+
+Conseguenza: l'aiutante non puo' rispondere sul canale, quindi la funzione non
+poteva riuscire — nemmeno con tutto il resto perfetto. Tutti i difetti
+corretti oggi erano reali, ma stavano davanti a questo.
+
+Testo arrivato a Roberto in chat: `avvio del servizio fallito (rc=1053):
+[SC] StartService OPERAZIONI NON RIUSCITE 1053`.
+
+### Due strade, da far scegliere a Roberto
+
+**(a) Parlare il protocollo.** `StartServiceCtrlDispatcherW` + una
+`ServiceMain` che registra il gestore dei controlli, dichiara
+`SERVICE_RUNNING`, gira il ciclo e risponde a `SERVICE_CONTROL_STOP`. Circa
+ottanta righe, forma corretta per un componente di sistema, tiene la politica
+di riavvio gia' impostata. Va scritta bene: si prova solo su Windows.
+
+**(b) Non essere un servizio.** Un'attivita' pianificata che gira come SYSTEM
+all'avvio, come fa gia' il client (`MetnosClient`). Nessun protocollo da
+implementare, pattern gia' nel repo, parte subito. Si perde la politica di
+riavvio del gestore dei servizi e la voce in `services.msc`.
+
+Raccomandazione: **(a)** — un componente privilegiato sempre attivo e' un
+servizio, e ci si aspetta di trovarlo dove si cercano i servizi. Ma (b) e'
+difendibile e molto piu' corto. Decide Roberto.
+
+## Il difetto che ha permesso di trovarla
 
 Ultimo tentativo: **55 secondi, nessuna finestra di conferma, fallito**.
 
