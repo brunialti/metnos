@@ -59,6 +59,63 @@ fn eseguibile_del_processo(processo: HANDLE) -> io::Result<String> {
     Ok(da_wide(&buffer, lunghezza as usize))
 }
 
+/// Il SID del proprietario dell'OGGETTO pipe, in forma testuale.
+///
+/// E' la domanda che si puo' fare: leggere il proprietario di un oggetto
+/// richiede `READ_CONTROL`, che un client che ha appena aperto la pipe ha
+/// gia'. Leggere invece il token del processo che la serve richiede diritti
+/// su quel processo, e un programma senza privilegi non li ha su un processo
+/// di sistema — mai.
+///
+/// La garanzia e' equivalente: un oggetto di proprieta' del sistema lo puo'
+/// creare solo il sistema.
+fn proprietario_della_pipe(pipe: HANDLE) -> io::Result<String> {
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSidToStringSidW, GetSecurityInfo, SE_KERNEL_OBJECT,
+    };
+    use windows_sys::Win32::Security::{OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID};
+
+    let mut owner: PSID = std::ptr::null_mut();
+    let mut descrittore: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+    let rc = unsafe {
+        GetSecurityInfo(
+            pipe,
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut descrittore,
+        )
+    };
+    if rc != 0 || owner.is_null() {
+        return Err(io::Error::from_raw_os_error(rc as i32));
+    }
+
+    let mut testo: *mut u16 = std::ptr::null_mut();
+    let convertito = unsafe { ConvertSidToStringSidW(owner, &mut testo) };
+    // Il descrittore lo alloca Windows e va restituito, sia che la conversione
+    // sia riuscita sia che no.
+    let libera = |p: *mut core::ffi::c_void| unsafe {
+        windows_sys::Win32::Foundation::LocalFree(
+            p as windows_sys::Win32::Foundation::HLOCAL)
+    };
+    if convertito == 0 {
+        let e = io::Error::last_os_error();
+        libera(descrittore);
+        return Err(e);
+    }
+    let mut len = 0usize;
+    while unsafe { *testo.add(len) } != 0 {
+        len += 1;
+    }
+    let sid = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(testo, len) });
+    libera(testo as *mut core::ffi::c_void);
+    libera(descrittore);
+    Ok(sid)
+}
+
 /// Il SID del proprietario di un processo, in forma testuale.
 fn sid_del_processo(processo: HANDLE) -> io::Result<String> {
     use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
@@ -160,23 +217,40 @@ fn apri_e_verifica(
     }
     let pipe = Handle(pipe);
 
-    // I tre fatti, chiesti al sistema operativo. Se uno solo non si puo'
-    // stabilire, non si scrive: non sapere chi c'e' e' come sapere che non
-    // e' lui.
-    let mut pid: u32 = 0;
-    if unsafe { GetNamedPipeServerProcessId(pipe.0, &mut pid) } == 0 {
-        return Err(ChannelRefusal::NotLocalSystem("(sconosciuto)".into()));
-    }
-    let processo = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
-    if processo.is_null() {
-        return Err(ChannelRefusal::NotLocalSystem("(non ispezionabile)".into()));
-    }
-    let processo = Handle(processo);
+    // DI CHI E' IL CANALE, non chi lo sta servendo.
+    //
+    // Prima si prendeva il processo all'altro capo e se ne leggeva il token
+    // per ricavarne l'identita'. Non puo' funzionare: questo programma gira
+    // senza privilegi e il servizio gira come sistema, e Windows non lascia a
+    // un processo utente aprire il token di un processo di SYSTEM. Il
+    // controllo falliva SEMPRE, su qualunque macchina — e falliva prima di
+    // scrivere una parola, quindi il canale si chiudeva a vuoto e l'aiutante
+    // registrava «l'altro capo ha chiuso subito» senza sapere perche'
+    // (macchina di Roberto, 19/8/2026: mai riconosciuto, nemmeno installato e
+    // in ascolto).
+    //
+    // Il proprietario dell'OGGETTO da' la stessa garanzia e si puo' leggere:
+    // un oggetto di proprieta' del sistema lo puo' creare solo il sistema.
+    let sid = proprietario_della_pipe(pipe.0)
+        .map_err(|_| ChannelRefusal::NotLocalSystem("(proprietario illeggibile)".into()))?;
 
-    let sid = sid_del_processo(processo.0)
-        .map_err(|_| ChannelRefusal::NotLocalSystem("(non leggibile)".into()))?;
-    let eseguibile = eseguibile_del_processo(processo.0)
-        .map_err(|_| ChannelRefusal::UnexpectedExecutable("(non leggibile)".into()))?;
+    // L'eseguibile atteso resta un rafforzativo, non una condizione: leggerlo
+    // richiede di aprire il processo, ed e' esattamente la cosa che da qui non
+    // si puo' fare. Quando riesce si pretende che combaci; quando non riesce,
+    // il proprietario ha gia' detto cio' che conta.
+    let eseguibile = (|| {
+        let mut pid: u32 = 0;
+        if unsafe { GetNamedPipeServerProcessId(pipe.0, &mut pid) } == 0 {
+            return None;
+        }
+        let processo = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if processo.is_null() {
+            return None;
+        }
+        let processo = Handle(processo);
+        eseguibile_del_processo(processo.0).ok()
+    })()
+    .unwrap_or_else(|| eseguibile_atteso.to_string());
 
     // Il giudizio sta altrove, e si prova altrove.
     crate::helper_client::judge_peer(nome_pipe, &sid, &eseguibile, eseguibile_atteso)?;

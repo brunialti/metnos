@@ -371,3 +371,32 @@ def test_una_richiesta_apre_una_sola_connessione():
                        if not r.lstrip().startswith("//"))
     assert "helper_win::presente" not in codice, (
         "qualcuno apre di nuovo una connessione prima della richiesta")
+
+
+def test_chi_c_e_dall_altro_capo_si_chiede_all_oggetto_non_al_processo():
+    """Il controllo dev'essere una domanda che si PUO' fare.
+
+    Prima il client apriva il processo che serve la pipe e ne leggeva il token
+    per ricavarne l'identita'. Non puo' funzionare: il client gira senza
+    privilegi e il servizio gira come sistema, e Windows non lascia a un
+    processo utente aprire il token di un processo di SYSTEM. Il controllo
+    falliva SEMPRE, su qualunque macchina — e falliva prima di scrivere una
+    parola, quindi la connessione si chiudeva a vuoto e l'aiutante registrava
+    «l'altro capo ha chiuso subito» senza che nessuno sapesse perche'
+    (19/8/2026: mai riconosciuto, nemmeno installato, avviato e in ascolto).
+
+    Il proprietario dell'OGGETTO da' la stessa garanzia — un oggetto di
+    proprieta' del sistema lo puo' creare solo il sistema — e si puo' leggere
+    con i diritti che un client ha gia'.
+    """
+    win = (ROOT / "client-rs" / "src" / "helper_win.rs").read_text(encoding="utf-8")
+    assert "fn proprietario_della_pipe" in win
+    assert "OWNER_SECURITY_INFORMATION" in win
+
+    codice = "\n".join(r for r in win.splitlines()
+                       if not r.lstrip().startswith("//"))
+    # L'identita' NON deve piu' venire dal token del processo.
+    i_prop = codice.find("proprietario_della_pipe(pipe.0)")
+    assert i_prop != -1, "il giudizio non usa piu' il proprietario dell'oggetto"
+    assert "sid_del_processo(processo.0)" not in codice, (
+        "e' tornata la lettura del token del processo, che da qui non si puo' fare")
