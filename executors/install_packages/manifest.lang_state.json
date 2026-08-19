@@ -37,12 +37,12 @@
   },
   "args.scope.description": {
     "it": {
-      "version_hash": "sha256:fb3b21b585e1e63a15c98dd61f4b7193a89483d19c14d0ffb435edb44ff7c41a",
+      "version_hash": "sha256:e8c701761528edb285759a3018307db1f18327c3880897952abb99def4efed1b",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:abad47d933d476cefd86b14137100916df291ebff18c19f7415501210bb9d443",
+      "version_hash": "sha256:c19e3487e10e477a32f27dc13fe0346ce9754bb7211cd0021493bac7f3aa4191",
       "source_lang": null,
       "source_hash": null
     }
@@ -55,6 +55,18 @@
     },
     "en": {
       "version_hash": "sha256:334b422103bc82727f4e97f1c4961750928236f4d413f4ae0020a391ed3d9ab5",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.install_helper.description": {
+    "it": {
+      "version_hash": "sha256:5e49083cbc5e7bff8dcff2591a5165530ab3cd4c67c113fe3f78dd854179fcfb",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:60e08c2ee38f27ac78e07192c0eff965388da3a244414fc72f10e7eb4ea8af4d",
       "source_lang": null,
       "source_hash": null
     }

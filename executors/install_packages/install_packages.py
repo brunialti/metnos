@@ -34,11 +34,13 @@ invocation choke-point and the consent gate — an executor that decides who
 may call it is an executor you get around by calling it differently.
 """
 
+import json
 import os
 import re
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
@@ -57,6 +59,14 @@ _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:@-]{0,127}$")
 # database, and an install slower still. Neither may hold a turn open forever.
 _RESOLVE_TIMEOUT_S = 60
 _INSTALL_TIMEOUT_S = 900
+
+# Asking whether the elevated helper is there opens a channel and closes it.
+# It must not be able to hold the card back: if it does not answer at once,
+# the answer is no.
+_HELPER_PROBE_TIMEOUT_S = 10
+# Uno scaricamento, poi una finestra a cui una persona deve rispondere:
+# il tempo lo detta lei, non la rete.
+_HELPER_SETUP_TIMEOUT_S = 600
 
 # How many packages one call may carry. Not a performance limit: a card the
 # person cannot read through is a card they approve without reading.
@@ -99,8 +109,13 @@ def _run(argv, timeout_s):
 
 
 def _fail(error, code, error_class="invalid_input"):
+    # `installed` is declared non-optional in the output schema, and it is the
+    # field a reader checks first. Leaving it out of the failure shape made
+    # every refusal answer «I don't know» to the one question that always has
+    # an answer here: nothing was installed.
     return {"ok": False, "error": error, "error_class": error_class,
-            "error_code": code, "ok_count": 0, "fail_count": 1,
+            "error_code": code, "installed": False,
+            "ok_count": 0, "fail_count": 1,
             "results": [], "failed": [{"error": error,
                                        "error_class": error_class,
                                        "error_code": code}]}
@@ -201,7 +216,10 @@ def _apt_show(package_id, tool_path):
     version = ""
     m = re.search(r"_([0-9][^_]*)_", line)
     if m:
-        version = m.group(1)
+        # Il pezzo arriva da un URL, dove `+` e' scritto `%2b`: mostrato cosi'
+        # sulla scheda, «3.03%2bdfsg2-8» non e' la versione che la persona
+        # trovera' scritta da nessun'altra parte.
+        version = urllib.parse.unquote(m.group(1))
     return {"package_id": package_id, "version": version, "url": url,
             "digest": digest, "digest_algo": digest_algo or "SHA-256",
             "publisher": "", "source": "apt"}
@@ -284,13 +302,112 @@ def _machine_name():
         return ""
 
 
-def _is_elevated():
-    """Se questo processo puo' installare per TUTTI gli utenti.
+def _helper_call(*argv, timeout):
+    """Ask the elevated Windows helper, through the Metnos client (ADR 0210 D).
 
-    Su Windows il client Metnos gira senza privilegi per scelta (ADR 0210):
-    un'installazione a livello macchina fallisce, e va detto PRIMA di
-    chiedere un consenso che non potrebbe essere onorato. Su Linux vale
-    l'utente root.
+    The client is the one that opens the channel, because opening it is not
+    the hard part: the hard part is establishing WHO is on the other end
+    before sending anything, and that judgment is written once, in Rust. A
+    second copy here would be a second copy of a security check, and the
+    second copy is the one that drifts.
+
+    Returns the helper's answer as a dictionary, or None when the helper
+    cannot be reached at all — which is not the same as a refusal, and the
+    caller keeps them apart.
+    """
+    exe = os.environ.get("METNOS_CLIENT_EXE") or ""
+    if not exe or not sys.platform.startswith("win"):
+        return None
+    try:
+        proc = subprocess.run([exe, "helper", *argv], capture_output=True,
+                              text=True, timeout=timeout, shell=False,
+                              stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    # The answer is the LAST line: the client also writes its own log to
+    # standard output, and a line of log ahead of the answer must not be
+    # mistaken for a malformed answer.
+    for line in reversed((proc.stdout or "").splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                return json.loads(line)
+            except ValueError:
+                return None
+    return None
+
+
+def _helper_present():
+    """Is the genuine elevated helper on this machine, right now?
+
+    Asked before the card is built: the question is whether «for every user»
+    is a choice this machine can honour. Offering it without knowing would
+    mean letting a person choose something that then fails.
+
+    It asks the one question that changes nothing — «who are you» — which is
+    also the only way to learn whether the two programs still understand each
+    other. It goes through the same checks as any other request, and leaves
+    the same line in the helper's own log: a privileged component with a
+    quiet side door would have a side door.
+
+    Two things can be wrong and they are not the same thing. The helper may
+    not be there, or it may be there speaking a language this client no
+    longer speaks — two programs installed at different moments drift apart.
+    The second is repairable by bringing the current one; the first is too,
+    by the same road. What must never happen is sending a request to a
+    component that cannot understand it and reading the silence as a fault.
+    """
+    answer = _helper_call("check", timeout=_HELPER_PROBE_TIMEOUT_S)
+    if not answer or not answer.get("ok"):
+        return False
+    # «Allineato» lo decide il client, che le due lingue le conosce
+    # entrambe. Una risposta senza quel campo viene da un client vecchio:
+    # non e' una prova di allineamento, quindi non si assume.
+    return bool(answer.get("aligned"))
+
+
+def _apply_via_helper(package_id, uninstall):
+    """Hand one operation to the elevated helper and report what happened.
+
+    The helper accepts three typed operations on a package identity, never a
+    command line: what comes back is its own verdict, and it travels here as
+    it is (§2.8).
+    """
+    verb = "uninstall" if uninstall else "install"
+    answer = _helper_call(verb, "--package-id", package_id,
+                          timeout=_INSTALL_TIMEOUT_S)
+    if answer is None:
+        return {"package_id": package_id, "ok": False,
+                "action": verb, "via": "helper",
+                "error": _msg("ERR_PACKAGES_OPERATION_FAILED",
+                              package=package_id, detail="helper_unreachable"),
+                "error_class": "capability_missing",
+                "error_code": "helper_unreachable"}
+    if answer.get("ok"):
+        return {"package_id": package_id, "ok": True, "action": verb,
+                "source": "winget", "via": "helper"}
+    codice = str(answer.get("error_code") or "helper_refused")
+    dettaglio = str(answer.get("detail") or "")
+    uscita = answer.get("exit_code")
+    if uscita is not None:
+        dettaglio = f"{dettaglio} [rc={uscita}]" if dettaglio else f"rc={uscita}"
+    return {"package_id": package_id, "ok": False, "action": verb,
+            "via": "helper",
+            "error": _msg("ERR_PACKAGES_OPERATION_FAILED", package=package_id,
+                          detail=(f"{codice} · {dettaglio}" if dettaglio
+                                  else codice)[:300]),
+            "error_class": "resource_unavailable",
+            "error_code": codice,
+            "exit_code": uscita}
+
+
+def _is_elevated():
+    """Whether THIS process already has the privileges to install for everyone.
+
+    On Windows the Metnos client runs unprivileged by design (ADR 0210), so
+    this is normally false there — and machine-wide installs travel through
+    the helper instead (`_helper_present`). On Linux it is the root user, and
+    there is no helper: the answer here is the whole answer.
     """
     if sys.platform.startswith("win"):
         try:
@@ -305,14 +422,93 @@ def _is_elevated():
 
 
 def _context():
+    """What this machine can actually do, asked of the machine itself.
+
+    Machine-wide scope has two roads and they are kept apart. `elevated` is
+    this process already having the privileges; `helper` is the elevated
+    component being there to be asked (ADR 0210 D). They stay two keys and
+    not one because the second road runs somewhere else, and a failure on it
+    means something different. What the card needs — whether to offer «for
+    every user» at all — is the two together, and that is asked once, in
+    `_machine_scope_possible`.
+    """
     is_windows = sys.platform.startswith("win")
     winget = _which("winget") if is_windows else ""
     apt = "" if is_windows else (_which("apt-get") or "")
+    elevated = _is_elevated()
+    # Asked only when it could matter: there is no helper without winget, and
+    # none at all outside Windows.
+    helper = bool(winget) and not elevated and _helper_present()
     return {"os": "windows" if is_windows else "linux",
             "winget": winget, "apt": apt,
             "manager": "winget" if winget else ("apt" if apt else ""),
             "machine": _machine_name(),
-            "elevated": _is_elevated()}
+            "elevated": elevated,
+            "helper": helper}
+
+
+# Which scopes each manager HAS. Not a preference: winget installs into the
+# user's own profile or machine-wide, while apt only ever writes system
+# directories — «just for me» is not a smaller version of the same act there,
+# it does not exist. A manager added later declares its own row.
+_MANAGER_SCOPES = {"winget": ("machine", "user"), "apt": ("machine",)}
+
+
+def _helper_installable(ctx):
+    """Whether the elevated helper could be BROUGHT here, not whether it is.
+
+    Metnos installs its own privileged component the same way it installs
+    anything else: through the signed channel, with the person consenting
+    once. The alternative — someone copying a file and running it as
+    administrator — would make the most privileged piece of the system the
+    only one that arrives by hand.
+
+    Windows only, and only where there is something for it to drive.
+    """
+    return (ctx.get("os") == "windows"
+            and bool(ctx.get("winget"))
+            and not ctx.get("elevated")
+            and not ctx.get("helper"))
+
+
+def _setup_helper():
+    """Ask the client to fetch and install the helper. Windows asks once.
+
+    Returns the client's answer, or None when the client could not be
+    reached at all.
+    """
+    return _helper_call("setup", timeout=_HELPER_SETUP_TIMEOUT_S)
+
+
+def _machine_scope_possible(ctx):
+    """Whether «for every user» is a choice this machine can honour at all.
+
+    Either road will do, and the card does not care which: a person chooses
+    WHERE to install, not by what mechanism. The mechanism comes back in the
+    result, where it helps whoever reads a failure.
+    """
+    return bool(ctx.get("elevated") or ctx.get("helper"))
+
+
+def _scopes_available(ctx):
+    """The scopes this machine can honour right now, widest first.
+
+    Two limits meet here and neither is negotiable: what the manager HAS
+    (`_MANAGER_SCOPES`) and what this process can REACH — its own privileges,
+    or the elevated helper. Offering anything outside the intersection is
+    offering a choice that will fail, which is the one thing a confirmation
+    card must never do.
+
+    An empty list is an answer too: on this machine, with this manager, from
+    here, nothing can be installed at all.
+    """
+    supportate = _MANAGER_SCOPES.get(ctx.get("manager") or "", ())
+    portate = []
+    if "machine" in supportate and _machine_scope_possible(ctx):
+        portate.append("machine")
+    if "user" in supportate:
+        portate.append("user")
+    return portate
 
 
 def _resolve(package_id, ctx):
@@ -351,6 +547,13 @@ def _apply(package_id, ctx, uninstall, scope):
     arguments — nothing the caller wrote reaches the manager as an option."""
     if ctx["manager"] == "winget":
         verb = "uninstall" if uninstall else "install"
+        # Installing for every user is the one thing an unprivileged client
+        # cannot do by itself. It goes to the elevated helper, which takes
+        # three typed operations on a package identity and never a command
+        # line: that boundary is the whole reason it may hold privileges at
+        # all (ADR 0210 D1).
+        if ctx.get("helper") and not uninstall and scope == "machine":
+            return _apply_via_helper(package_id, uninstall=False)
         argv = [ctx["winget"], verb, "--id", package_id, "--exact",
                 "--accept-source-agreements", "--disable-interactivity",
                 "--silent"]
@@ -358,6 +561,15 @@ def _apply(package_id, ctx, uninstall, scope):
             argv += ["--accept-package-agreements",
                      "--scope", "user" if scope == "user" else "machine"]
         rc, out, err = _run(argv, _INSTALL_TIMEOUT_S)
+        if rc != 0 and uninstall and ctx.get("helper"):
+            # Removing something that was installed for every user needs the
+            # same reach that installing it needed. This is not a guess about
+            # where the package lives: the unprivileged attempt has already
+            # failed, and the helper is the only other road that could have
+            # put it there. One retry, and its verdict is the final one.
+            via = _apply_via_helper(package_id, uninstall=True)
+            if via.get("ok"):
+                return via
     elif ctx["manager"] == "apt":
         verb = "remove" if uninstall else "install"
         argv = [ctx["apt"], verb, "-y", package_id]
@@ -479,10 +691,15 @@ def _approval_dialog(resolved, uninstall, scope, ctx):
     installa/disinstalla in giu' (Roberto, 17/8/2026). Chi conferma non deve
     piu' ricordare nessuna formula.
 
-    Le opzioni sono quelle che la macchina puo' onorare adesso: dove manca
-    l'elevazione, «per tutti gli utenti» non compare, perche' offrirla
-    sarebbe far scegliere qualcosa che fallira'. Il perche' resta scritto
-    sulla scheda, cosi' l'assenza e' spiegata invece che silenziosa.
+    Le opzioni sono quelle che la macchina puo' onorare adesso: dove non c'e'
+    ne' l'elevazione ne' l'aiutante elevato (ADR 0210 D), «per tutti gli
+    utenti» non compare, perche' offrirla sarebbe far scegliere qualcosa che
+    fallira'. Il perche' resta scritto sulla scheda, cosi' l'assenza e'
+    spiegata invece che silenziosa.
+
+    Quale delle due strade porti la portata «macchina» non cambia la domanda:
+    la persona sceglie DOVE installare, non con quale meccanismo. Il
+    meccanismo torna nel risultato, dove serve a chi legge un fallimento.
     """
     pacchetti = [r["package_id"] for r in resolved]
 
@@ -496,24 +713,42 @@ def _approval_dialog(resolved, uninstall, scope, ctx):
                                                   portata),
         }}
 
+    portate = _scopes_available(ctx)
+    etichette = {"machine": "MSG_PACKAGES_BTN_ALL_USERS",
+                 "user": "MSG_PACKAGES_BTN_ONLY_ME"}
     scelte, rami = [], {}
     if uninstall:
         # Rimuovere non ha portata: si toglie cio' che c'e'.
         scelte.append({"label": _msg("MSG_BTN_APPROVE"), "value": "approve"})
         rami["approve"] = ramo(scope)
     else:
-        if ctx.get("elevated"):
-            scelte.append({"label": _msg("MSG_PACKAGES_BTN_ALL_USERS"),
-                           "value": "machine"})
-            rami["machine"] = ramo("machine")
-        scelte.append({"label": _msg("MSG_PACKAGES_BTN_ONLY_ME"),
-                       "value": "user"})
-        rami["user"] = ramo("user")
+        for portata in portate:
+            scelte.append({"label": _msg(etichette[portata]), "value": portata})
+            rami[portata] = ramo(portata)
+        # «Per tutti» manca perche' manca l'aiutante elevato — ma l'aiutante
+        # lo porta Metnos, non un amministratore con un file in mano. Il
+        # bottone lo dice: Windows chiedera' conferma UNA volta, e da li' in
+        # poi nulla chiedera' piu'. Resta separato da «per tutti» semplice
+        # perche' promette una cosa diversa, e prometterne una sola sarebbe
+        # far scoprire la finestra di Windows dopo aver premuto.
+        if "machine" not in portate and _helper_installable(ctx):
+            ramo_aiutante = ramo("machine")
+            ramo_aiutante["args"]["install_helper"] = True
+            scelte.append({"label": _msg("MSG_PACKAGES_BTN_ALL_USERS_SETUP"),
+                           "value": "machine_setup"})
+            rami["machine_setup"] = ramo_aiutante
     scelte.append({"label": _msg("MSG_BTN_REJECT"), "value": "reject"})
 
     testo = _card(resolved, uninstall, scope, ctx.get("machine", ""))
-    if not uninstall and not ctx.get("elevated"):
-        testo += "\n\n" + _msg("MSG_PACKAGES_NO_ELEVATION_NOTE")
+    if not uninstall and "machine" not in portate:
+        # PERCHE' quella portata manca dipende da dove si e'. Su Windows
+        # l'aiutante elevato la restituisce, e la nota dice come averlo;
+        # altrove non esiste nessun aiutante da installare (ADR 0210 D8) e la
+        # strada e' chi amministra la macchina. Promettere l'aiutante dove non
+        # c'e' manderebbe una persona a cercare un programma inesistente.
+        testo += "\n\n" + _msg("MSG_PACKAGES_NO_ELEVATION_NOTE"
+                                if ctx.get("os") == "windows"
+                                else "MSG_PACKAGES_NO_ELEVATION_ADMIN")
         # Un pacchetto che ne trascina altri spesso non entra nella sola
         # cartella dell'utente: le dipendenze sono componenti di sistema. Va
         # detto PRIMA, perche' scoprirlo dopo aver confermato e' scoprirlo
@@ -575,11 +810,25 @@ def invoke(args: dict) -> dict:
         return _fail(_msg("ERR_PACKAGES_NO_MANAGER"), "no_package_manager",
                      error_class="capability_missing")
 
-    # Nessun rifiuto preventivo per i privilegi: la scheda offre soltanto le
-    # portate che la macchina puo' onorare, e spiega perche' l'altra non c'e'
-    # (`_approval_dialog`). Rifiutare prima di chiedere toglieva alla persona
-    # la strada che funziona, invece di mostrargliela.
+    # Dove QUALCHE portata regge non si rifiuta niente in anticipo: la scheda
+    # offre quelle che la macchina puo' onorare e spiega perche' l'altra non
+    # c'e' (`_approval_dialog`). Rifiutare prima di chiedere toglieva alla
+    # persona la strada che funziona, invece di mostrargliela.
+    #
+    # Dove NESSUNA regge e' un'altra cosa. Un gestore che scrive solo cartelle
+    # di sistema non ha una portata piu' piccola da offrire: senza privilegi
+    # non fa niente, ne' installare ne' togliere. Si dice subito e senza
+    # risolvere il catalogo: far leggere una scheda con indirizzo e impronta
+    # per poi fallire e' far approvare qualcosa che non poteva avvenire.
     consent = str(args.get("actor_consent_token") or "").strip()
+    # Un ramo approvato che porta con se' l'aiutante e' l'unico caso in cui
+    # «nessuna portata regge» non e' la fine: la portata che manca sta per
+    # arrivare, e la persona ha gia' detto di si' a quella specifica scheda.
+    porta_aiutante = bool(consent) and bool(args.get("install_helper"))
+    if not _scopes_available(ctx) and not porta_aiutante:
+        return _fail(_msg("ERR_PACKAGES_NEEDS_ADMIN",
+                          machine=ctx.get("machine") or "?"),
+                     "needs_administrator", error_class="capability_missing")
 
     # ── Phase 1: resolve, and ask ─────────────────────────────────────
     if not consent:
@@ -622,6 +871,28 @@ def invoke(args: dict) -> dict:
         }
 
     # ── Phase 2: the person approved ──────────────────────────────────
+    #
+    # Se il ramo approvato era «per tutti, portando l'aiutante», l'aiutante
+    # arriva ADESSO: scaricato dal canale firmato e installato dopo la
+    # conferma che mostra Windows. Nessuno copia file a mano, e nessuno
+    # amministra la macchina al posto di Metnos.
+    if porta_aiutante and not _machine_scope_possible(ctx):
+        esito = _setup_helper()
+        if esito is None:
+            return _fail(_msg("ERR_PACKAGES_HELPER_UNREACHABLE"),
+                         "helper_unreachable", error_class="capability_missing")
+        if not esito.get("ok"):
+            # «Ho detto di no alla finestra» non e' un guasto, ed e' l'unico
+            # esito che si racconta con parole sue.
+            codice = str(esito.get("error_code") or "helper_setup_failed")
+            chiave = ("ERR_PACKAGES_HELPER_REFUSED"
+                      if codice == "consent_refused"
+                      else "ERR_PACKAGES_HELPER_SETUP_FAILED")
+            return _fail(_msg(chiave, detail=str(esito.get("detail") or "")[:200]),
+                         codice, error_class="capability_missing")
+        # Da qui in poi la macchina e' un'altra: l'aiutante c'e'.
+        ctx = _context()
+
     results, failed = [], []
     deadline = time.monotonic() + _INSTALL_TIMEOUT_S * len(requested)
     for raw in requested:

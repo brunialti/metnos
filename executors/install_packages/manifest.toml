@@ -35,7 +35,7 @@ en = "SCOPO: installs a program on the machine. PATTERN: install_packages(packag
 
 [code]
 files  = ["install_packages.py"]
-digest = "sha256:70e1d772ca7b2fee608b26b9a9a66465a10675af74bfa50089a4f3b6936d2455"
+digest = "sha256:28ca3a76f104f18975610ba6fa216f77e5053cb1ecdd716541d9b21742dab4e3"
 
 [args]
 type     = "object"
@@ -65,8 +65,8 @@ enum        = ["machine", "user"]
 default     = "machine"
 
 [args.properties.scope.description]
-it = "'machine' = per tutti gli utenti del computer (di norma serve l'amministratore); 'user' = solo per l'utente corrente. Ignorato quando uninstall=true."
-en = "'machine' = for every user of the computer (usually needs an administrator); 'user' = current user only. Ignored when uninstall=true."
+it = "'machine' = per tutti gli utenti del computer; 'user' = solo per l'utente corrente. Su Windows la portata 'machine' passa dall'aiutante amministrativo di Metnos: dove non e' installato, la scheda offre solo 'user' e spiega come aggiungerlo. Ignorato quando uninstall=true."
+en = "'machine' = for every user of the computer; 'user' = current user only. On Windows the 'machine' scope goes through the Metnos administrative helper: where it is not installed the card offers only 'user' and says how to add it. Ignored when uninstall=true."
 
 [args.properties.actor_consent_token]
 type        = "string"
@@ -75,6 +75,14 @@ runtime_resolved = true
 [args.properties.actor_consent_token.description]
 it = "Lo inietta il RUNTIME dopo l'approvazione umana. Il planner non lo vede e non lo scrive mai: senza, la chiamata si ferma alla scheda di conferma."
 en = "Injected by the RUNTIME after human approval. The planner never sees it and never writes it: without it the call stops at the approval card."
+
+[args.properties.install_helper]
+type        = "boolean"
+runtime_resolved = true
+
+[args.properties.install_helper.description]
+it = "Lo mette il RUNTIME sul ramo che la persona ha approvato, quando ha scelto «per tutti gli utenti» su un computer dove l'aiutante amministrativo non c'e' ancora. Il planner non lo vede e non lo scrive mai: da solo non fa niente, vale unicamente insieme al consenso di quella scheda."
+en = "Set by the RUNTIME on the branch the person approved, when they chose «for every user» on a computer where the administrative helper is not there yet. The planner never sees it and never writes it: on its own it does nothing, it counts only together with that card's consent."
 
 [output]
 schema_inline = """
@@ -87,7 +95,7 @@ schema_inline = """
   resolved?: Array<{package_id: str, version: str, url: str, digest: str, digest_algo: str,
                     publisher: str, source: str}>,
   needs_inputs?: object,
-  results: Array<{package_id: str, ok: bool, action: str, source?: str}>,
+  results: Array<{package_id: str, ok: bool, action: str, source?: str, via?: str}>,
   failed: Array<{package_id?: str, error: str, error_class: str, error_code: str}>,
   ok_count: int,
   fail_count: int,
@@ -120,7 +128,10 @@ overflow = "notice"
 
 # Esecuzione privilegiata mediata dal vaglio: l'installazione modifica la
 # macchina per tutti i suoi utenti. Sul solo scope utente resta comunque
-# un'operazione che scrive fuori dai dati dell'utente.
+# un'operazione che scrive fuori dai dati dell'utente. Su Windows i privilegi
+# non li prende questo executor: la portata macchina va all'aiutante elevato
+# attraverso il client, che verifica CON CHI sta parlando prima di scrivere
+# (ADR 0210 D2).
 [[capabilities]]
 name = "system:admin"
 hint = ["winget", "apt-get"]
@@ -159,15 +170,15 @@ remedy_args_fixed = { uninstall = true }
 remedy_prompt_key = "MSG_UNDO_INSTALL_ASK_UNINSTALL"
 
 [[tests]]
-# Un identificativo che il catalogo non conosce ferma tutta la chiamata: si
-# nomina il pacchetto irrisolto, perche' e' quello che la persona deve
-# correggere.
-name   = "un_pacchetto_non_risolto_ferma_la_chiamata"
+# Un identificativo che il catalogo non conosce non installa niente.
+#
+# CHE COSA ferma la chiamata dipende dalla macchina: dove nessuna portata
+# regge — un gestore che scrive solo cartelle di sistema, senza privilegi —
+# il rifiuto arriva prima della risoluzione, ed e' quello giusto. Il test si
+# tiene sull'invariante che vale ovunque: la chiamata fallisce e non installa.
+name   = "un_pacchetto_non_risolto_non_installa_niente"
 input  = { packages = ["metnos-package-che-non-esiste-7f09"], scope = "user" }
-# scope="user": il test verifica la RISOLUZIONE, non i privilegi. Su una
-# macchina non elevata lo scope "machine" si ferma prima, e il test
-# misurerebbe il controllo sbagliato.
-expect = { ok = false, error_contains = "metnos-package-che-non-esiste-7f09" }
+expect = { ok = false, metadata_field_eq = { installed = false, ok_count = 0 } }
 
 [[tests]]
 name   = "un_jolly_e_rifiutato"

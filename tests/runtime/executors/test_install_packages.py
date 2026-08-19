@@ -452,23 +452,51 @@ def test_la_portata_si_sceglie_a_bottoni(windows) -> None:
     assert rami["user"]["args"]["scope"] == "user"
 
 
-def test_senza_privilegi_non_si_offre_cio_che_fallirebbe(monkeypatch) -> None:
-    """Offrire «per tutti gli utenti» dove non si puo' vorrebbe dire far
-    scegliere qualcosa che fallira'. L'assenza e' spiegata sulla scheda,
-    non silenziosa."""
+def test_senza_privilegi_si_offre_la_strada_che_metnos_puo_percorrere(monkeypatch) -> None:
+    """«Per tutti gli utenti» senza privilegi non e' un no: e' un'altra strada.
+
+    L'aiutante elevato lo porta Metnos, sul canale firmato e con UNA conferma
+    di Windows. Il bottone resta distinto da «per tutti» semplice perche'
+    promette una cosa diversa — e scoprire la finestra di Windows dopo aver
+    premuto sarebbe scoprirla troppo tardi.
+    """
     monkeypatch.setattr(install_packages, "_run",
                         lambda argv, t: (0, _WINGET_SHOW, ""))
     monkeypatch.setattr(install_packages, "_context", lambda: {
         "os": "windows", "winget": "winget.exe", "apt": "",
-        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": False})
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": False,
+        "helper": False})
 
     res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
     valori = [c["value"]
               for c in res["needs_inputs"]["dialog"][0]["schema"]["choices"]]
-    assert valori == ["user", "reject"]
-    assert "machine" not in res["needs_inputs"]["on_complete"]["branches"]
-    testo = res["needs_inputs"]["description"].lower()
-    assert "amministratore" in testo or "administrator" in testo
+    assert valori == ["user", "machine_setup", "reject"]
+    rami = res["needs_inputs"]["on_complete"]["branches"]
+    # La portata «macchina» esiste solo sul ramo che porta anche l'aiutante:
+    # un ramo «machine» nudo fallirebbe, ed e' quello che non deve esserci.
+    assert "machine" not in rami
+    assert rami["machine_setup"]["args"]["scope"] == "machine"
+    assert rami["machine_setup"]["args"]["install_helper"] is True
+
+
+def test_dove_l_aiutante_non_puo_arrivare_l_assenza_resta_spiegata(monkeypatch) -> None:
+    """Fuori da Windows non c'e' nessun aiutante da portare.
+
+    Il bottone non deve comparire: manderebbe una persona ad aspettare una
+    finestra che non arrivera' mai. Al suo posto resta la spiegazione — chi
+    amministra la macchina puo' farlo, Metnos no.
+    """
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, _WINGET_SHOW, ""))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "linux", "winget": "", "apt": "/usr/bin/apt-get",
+        "manager": "apt", "machine": "server-di-prova", "elevated": True,
+        "helper": False})
+
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
+    valori = [c["value"]
+              for c in res["needs_inputs"]["dialog"][0]["schema"]["choices"]]
+    assert "machine_setup" not in valori
 
 
 def test_una_rimozione_non_ha_portata(windows) -> None:
@@ -614,3 +642,411 @@ def test_uno_scope_sconosciuto_ricade_sul_piu_stretto(windows) -> None:
                              "scope": "qualcosa-di-inventato",
                              "actor_consent_token": "token"})
     assert "machine" in windows[0]
+
+
+# ── L'aiutante elevato di Windows (ADR 0210 D) ────────────────────────
+#
+# Il client Metnos gira senza privilegi per scelta. «Per tutti gli utenti»
+# non e' quindi qualcosa che questo processo possa fare: o lo fa l'aiutante,
+# o non e' una scelta da offrire. Queste prove tengono ferme le due meta' —
+# che cosa si offre, e dove va davvero a finire.
+
+@pytest.fixture
+def windows_senza_privilegi(monkeypatch):
+    """Windows con winget, senza elevazione e senza aiutante: il caso di
+    partenza, che e' anche quello di tutti i PC su cui l'aiutante non e'
+    stato installato."""
+    eseguiti = []
+
+    def finto_run(argv, timeout_s):
+        eseguiti.append(argv)
+        if "show" in argv:
+            return 0, _WINGET_SHOW, ""
+        return 0, "", ""
+
+    monkeypatch.setattr(install_packages, "_run", finto_run)
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC-DI-PROVA",
+        "elevated": False, "helper": False})
+    return eseguiti
+
+
+def _con_aiutante(monkeypatch, risposta, eseguiti=None):
+    """Un aiutante presente che risponde `risposta` a ogni operazione.
+
+    Registra le chiamate ricevute, cosi' si puo' verificare non solo l'esito
+    ma DOVE e' andata a finire l'operazione — che e' la meta' che conta.
+    """
+    chiamate = eseguiti if eseguiti is not None else []
+
+    def finta_chiamata(*argv, timeout):
+        chiamate.append(argv)
+        return risposta
+
+    monkeypatch.setattr(install_packages, "_helper_call", finta_chiamata)
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC-DI-PROVA",
+        "elevated": False, "helper": True})
+    return chiamate
+
+
+def test_senza_aiutante_per_tutti_gli_utenti_non_si_offre(
+        windows_senza_privilegi) -> None:
+    """Offrire una portata che fallira' e' far scegliere nel vuoto."""
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
+    rami = res["needs_inputs"]["on_complete"]["branches"]
+    assert "machine" not in rami
+    assert "user" in rami
+
+
+def test_con_l_aiutante_per_tutti_gli_utenti_torna_a_essere_una_scelta(
+        monkeypatch) -> None:
+    """L'aiutante e' l'unica strada verso quella portata su un client senza
+    privilegi: dove c'e', la scelta va offerta."""
+    _con_aiutante(monkeypatch, {"ok": True})
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (0, _WINGET_SHOW, ""))
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"]})
+    rami = res["needs_inputs"]["on_complete"]["branches"]
+    assert "machine" in rami
+    assert rami["machine"]["args"]["scope"] == "machine"
+
+
+def test_l_installazione_per_tutti_va_all_aiutante_non_a_winget(
+        monkeypatch) -> None:
+    """Il fatto che conta: la portata macchina NON viene tentata dal
+    processo senza privilegi. Verificato su dove e' andata la chiamata."""
+    chiamate = _con_aiutante(monkeypatch, {"ok": True})
+    eseguiti = []
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (eseguiti.append(argv), (0, "", ""))[1])
+
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"],
+                                   "scope": "machine",
+                                   "actor_consent_token": "token"})
+    assert res["ok"] is True
+    assert res["ok_count"] == 1
+    assert res["results"][0]["via"] == "helper"
+    assert chiamate == [("install", "--package-id", "Microsoft.PowerToys")]
+    assert eseguiti == [], "winget e' stato lanciato lo stesso"
+
+
+def test_la_portata_utente_resta_a_winget(monkeypatch) -> None:
+    """L'aiutante non e' una scorciatoia per tutto: cio' che il processo puo'
+    fare da solo continua a farlo da solo, senza privilegi."""
+    chiamate = _con_aiutante(monkeypatch, {"ok": True})
+    eseguiti = []
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (eseguiti.append(argv), (0, "", ""))[1])
+
+    install_packages.invoke({"packages": ["Microsoft.PowerToys"],
+                             "scope": "user", "actor_consent_token": "token"})
+    assert chiamate == []
+    assert eseguiti and "user" in eseguiti[0]
+
+
+def test_un_rifiuto_dell_aiutante_non_diventa_un_successo(monkeypatch) -> None:
+    """§2.8: cio' che l'aiutante rifiuta non e' installato, e il risultato lo
+    dice — col codice che l'aiutante ha usato, non con uno inventato qui."""
+    _con_aiutante(monkeypatch, {"ok": False, "error_code": "replayed_request",
+                                "exit_code": None})
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"],
+                                   "scope": "machine",
+                                   "actor_consent_token": "token"})
+    assert res["ok"] is False
+    assert res["ok_count"] == 0
+    assert res["installed"] is False
+    assert res["error_code"] == "replayed_request"
+
+
+def test_un_aiutante_irraggiungibile_e_una_capacita_assente(monkeypatch) -> None:
+    """Non risponde e' diverso da ha detto no: il primo e' una capacita' che
+    manca, e chi legge deve poterli distinguere."""
+    _con_aiutante(monkeypatch, None)
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"],
+                                   "scope": "machine",
+                                   "actor_consent_token": "token"})
+    assert res["ok"] is False
+    assert res["error_class"] == "capability_missing"
+    assert res["error_code"] == "helper_unreachable"
+
+
+def test_una_rimozione_fallita_ritenta_con_l_aiutante(monkeypatch) -> None:
+    """Togliere cio' che e' stato installato per tutti richiede la stessa
+    portata che e' servita a metterlo: il tentativo senza privilegi ha gia'
+    fallito, quindi non si sta indovinando niente."""
+    chiamate = _con_aiutante(monkeypatch, {"ok": True})
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (1, "", "accesso negato"))
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"],
+                                   "uninstall": True,
+                                   "actor_consent_token": "token"})
+    assert res["ok"] is True
+    assert res["results"][0]["via"] == "helper"
+    assert chiamate == [("uninstall", "--package-id", "Microsoft.PowerToys")]
+
+
+def test_una_rimozione_riuscita_non_disturba_l_aiutante(monkeypatch) -> None:
+    """Il ritentativo nasce da un fallimento vero, non dalla presenza
+    dell'aiutante: dove la strada senza privilegi basta, si ferma li'."""
+    chiamate = _con_aiutante(monkeypatch, {"ok": True})
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (0, "", ""))
+    res = install_packages.invoke({"packages": ["Microsoft.PowerToys"],
+                                   "uninstall": True,
+                                   "actor_consent_token": "token"})
+    assert res["ok"] is True
+    assert chiamate == []
+
+
+def test_fuori_windows_nessun_aiutante_viene_cercato(monkeypatch) -> None:
+    """Su Linux non c'e' nessun aiutante elevato, e cercarlo lancerebbe un
+    processo per niente a ogni chiamata."""
+    monkeypatch.setattr(install_packages.sys, "platform", "linux")
+    monkeypatch.setenv("METNOS_CLIENT_EXE", "/non/deve/essere/lanciato")
+    lanciati = []
+    monkeypatch.setattr(install_packages.subprocess, "run",
+                        lambda *a, **k: lanciati.append(a))
+    assert install_packages._helper_call("check", timeout=1) is None
+    assert lanciati == []
+
+
+def test_senza_il_percorso_del_client_non_si_chiama_nessuno(monkeypatch) -> None:
+    """L'executor puo' girare anche dove il client non l'ha lanciato: senza
+    quel percorso non c'e' niente da interrogare, e non e' un errore."""
+    monkeypatch.setattr(install_packages.sys, "platform", "win32")
+    monkeypatch.delenv("METNOS_CLIENT_EXE", raising=False)
+    assert install_packages._helper_call("check", timeout=1) is None
+
+
+def test_la_risposta_e_l_ultima_riga_non_la_prima(monkeypatch) -> None:
+    """Il client scrive anche il proprio registro su stdout: una riga di log
+    davanti alla risposta non deve diventare «risposta malformata»."""
+    monkeypatch.setattr(install_packages.sys, "platform", "win32")
+    monkeypatch.setenv("METNOS_CLIENT_EXE", "metnos-client.exe")
+
+    class Esito:
+        stdout = ('2026-08-18T10:00:00Z INFO metnos_client: avvio\n'
+                  '{"ok": true, "executable": "C:\\\\x\\\\metnos-helper.exe"}\n')
+
+    monkeypatch.setattr(install_packages.subprocess, "run",
+                        lambda *a, **k: Esito())
+    assert install_packages._helper_call("check", timeout=1)["ok"] is True
+
+
+def test_un_client_che_non_parte_non_e_un_aiutante_presente(monkeypatch) -> None:
+    """Fail-closed: se non si riesce nemmeno a chiedere, la risposta e' no."""
+    monkeypatch.setattr(install_packages.sys, "platform", "win32")
+    monkeypatch.setenv("METNOS_CLIENT_EXE", "metnos-client.exe")
+
+    def esplode(*a, **k):
+        raise OSError("non eseguibile")
+
+    monkeypatch.setattr(install_packages.subprocess, "run", esplode)
+    assert install_packages._helper_call("check", timeout=1) is None
+    assert install_packages._helper_present() is False
+
+
+def test_dove_nessuna_portata_regge_non_si_fa_approvare_niente(monkeypatch) -> None:
+    """Un gestore che scrive solo cartelle di sistema non ha una portata «solo
+    per me» piu' piccola: senza privilegi non fa niente.
+
+    Far leggere una scheda con indirizzo e impronta per poi fallire sarebbe
+    far approvare qualcosa che non poteva avvenire. Si dice subito, e non si
+    risolve nemmeno il catalogo."""
+    eseguiti = []
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (eseguiti.append(argv),
+                                                 (0, _APT_URIS, ""))[1])
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "linux", "winget": "", "apt": "/usr/bin/apt-get",
+        "manager": "apt", "machine": "server", "elevated": False,
+        "helper": False})
+    res = install_packages.invoke({"packages": ["ripgrep"]})
+
+    assert res["ok"] is False
+    assert res["error_class"] == "capability_missing"
+    assert res["error_code"] == "needs_administrator"
+    assert "server" in res["error"]
+    assert eseguiti == [], "ha interrogato il catalogo per niente"
+
+
+def test_con_i_privilegi_apt_torna_a_essere_installabile(monkeypatch) -> None:
+    """Lo stesso gestore, con root, ha la sua unica portata e la usa."""
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (0, _APT_URIS, ""))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "linux", "winget": "", "apt": "/usr/bin/apt-get",
+        "manager": "apt", "machine": "server", "elevated": True,
+        "helper": False})
+    rami = install_packages.invoke(
+        {"packages": ["ripgrep"]})["needs_inputs"]["on_complete"]["branches"]
+    assert set(rami) == {"machine"}, rami
+
+
+def test_apt_non_offre_mai_solo_per_me(monkeypatch) -> None:
+    """Il confine e' una proprieta' del GESTORE, non dei privilegi: apt scrive
+    in cartelle di sistema anche quando li ha tutti."""
+    for elevato in (True, False):
+        ctx = {"os": "linux", "winget": "", "apt": "/usr/bin/apt-get",
+               "manager": "apt", "machine": "server", "elevated": elevato,
+               "helper": False}
+        assert "user" not in install_packages._scopes_available(ctx)
+
+
+def test_la_nota_non_promette_un_aiutante_che_non_esiste(monkeypatch) -> None:
+    """Su Windows l'aiutante elevato restituisce la portata «per tutti», e la
+    nota dice come averlo (ADR 0210 D8: altrove non c'e' nessun aiutante da
+    installare)."""
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (0, _WINGET_SHOW, ""))
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC", "elevated": False,
+        "helper": False})
+    testo = install_packages.invoke(
+        {"packages": ["Microsoft.PowerToys"]})["needs_inputs"]["description"]
+    assert install_packages._msg("MSG_PACKAGES_NO_ELEVATION_NOTE") in testo
+    assert install_packages._msg("MSG_PACKAGES_NO_ELEVATION_ADMIN") not in testo
+
+
+def test_la_versione_apt_non_e_un_pezzo_di_url(monkeypatch) -> None:
+    """`+` viaggia nell'URL come `%2b`: mostrata cosi' sulla scheda, la
+    versione non e' quella che la persona trova scritta altrove."""
+    # Uscita reale di `apt-get download --print-uris cowsay` su .33,
+    # 18/8/2026: la versione porta un `+`, e l'URL lo scrive `%2b`.
+    riga = ("'http://it.archive.ubuntu.com/ubuntu/pool/universe/c/cowsay/"
+            "cowsay_3.03%2bdfsg2-8_all.deb' cowsay_3.03+dfsg2-8_all.deb 18572 "
+            "SHA512:" + "8e" * 64)
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, timeout_s: (0, riga, ""))
+    dati = install_packages._apt_show("cowsay", "/usr/bin/apt-get")
+    assert dati["version"] == "3.03+dfsg2-8", dati["version"]
+
+
+# ── L'aiutante elevato lo porta Metnos, non un amministratore ─────────
+def _contesto_senza_aiutante():
+    return {"os": "windows", "winget": "winget.exe", "apt": "",
+            "manager": "winget", "machine": "PC-DI-PROVA", "elevated": False,
+            "helper": False}
+
+
+def _consenso_per_tutti(pacchetto="Microsoft.PowerToys"):
+    """Il token della scheda «per tutti gli utenti», come lo produce il ramo."""
+    risolto = [{"package_id": pacchetto}]
+    return install_packages._consent_token(risolto, False, "machine")
+
+
+def test_un_no_alla_finestra_di_windows_non_installa_niente(monkeypatch) -> None:
+    """Rifiutare la conferma di Windows e' una risposta, non un guasto.
+
+    E soprattutto: NIENTE deve essere installato dopo un no. Il messaggio
+    dice anche la strada che resta aperta — solo per te, che non chiede
+    nulla — perche' un vicolo cieco non e' una risposta utile.
+    """
+    eseguiti = []
+
+    def finto_run(argv, t):
+        eseguiti.append(argv)
+        return (0, _WINGET_SHOW, "") if "show" in argv else (0, "", "")
+
+    monkeypatch.setattr(install_packages, "_run", finto_run)
+    monkeypatch.setattr(install_packages, "_context", _contesto_senza_aiutante)
+    monkeypatch.setattr(install_packages, "_setup_helper",
+                        lambda: {"ok": False, "error_code": "consent_refused"})
+
+    res = install_packages.invoke({
+        "packages": ["Microsoft.PowerToys"], "scope": "machine",
+        "install_helper": True,
+        "actor_consent_token": _consenso_per_tutti()})
+
+    assert res["ok"] is False
+    assert res["error_code"] == "consent_refused"
+    assert not any("install" in a for a in eseguiti), \
+        f"ha installato dopo un rifiuto: {eseguiti}"
+
+
+def test_se_il_client_non_risponde_non_si_installa_alla_cieca(monkeypatch) -> None:
+    """«Non riesco a parlare col client» e' diverso da «hai detto no», e
+    diverso da «e' andata». Sono tre esiti, e restano tre."""
+    monkeypatch.setattr(install_packages, "_run",
+                        lambda argv, t: (0, _WINGET_SHOW, ""))
+    monkeypatch.setattr(install_packages, "_context", _contesto_senza_aiutante)
+    monkeypatch.setattr(install_packages, "_setup_helper", lambda: None)
+
+    res = install_packages.invoke({
+        "packages": ["Microsoft.PowerToys"], "scope": "machine",
+        "install_helper": True,
+        "actor_consent_token": _consenso_per_tutti()})
+    assert res["ok"] is False
+    assert res["error_code"] == "helper_unreachable"
+
+
+def test_quando_l_aiutante_arriva_l_installazione_prosegue(monkeypatch) -> None:
+    """Il caso felice: portato l'aiutante, la macchina e' un'altra e la
+    portata «per tutti» adesso regge davvero."""
+    eseguiti = []
+
+    def finto_run(argv, t):
+        eseguiti.append(argv)
+        return (0, _WINGET_SHOW, "") if "show" in argv else (0, "", "")
+
+    stato = {"aiutante": False}
+
+    def contesto():
+        c = _contesto_senza_aiutante()
+        c["helper"] = stato["aiutante"]
+        return c
+
+    def porta_aiutante():
+        stato["aiutante"] = True
+        return {"ok": True, "installed": True, "version": "0.2.26"}
+
+    monkeypatch.setattr(install_packages, "_run", finto_run)
+    monkeypatch.setattr(install_packages, "_context", contesto)
+    monkeypatch.setattr(install_packages, "_setup_helper", porta_aiutante)
+    # Con l'aiutante presente l'operazione passa di li', non da winget locale.
+    monkeypatch.setattr(install_packages, "_apply_via_helper",
+                        lambda pid, uninstall: {"package_id": pid, "ok": True,
+                                                "action": "install",
+                                                "via": "helper"})
+
+    res = install_packages.invoke({
+        "packages": ["Microsoft.PowerToys"], "scope": "machine",
+        "install_helper": True,
+        "actor_consent_token": _consenso_per_tutti()})
+
+    assert res["ok"] is True
+    assert res["ok_count"] == 1
+    assert res["results"][0]["via"] == "helper"
+
+
+def test_un_aiutante_che_parla_unaltra_lingua_non_conta_come_presente(monkeypatch):
+    """Due programmi installati in momenti diversi si disallineano.
+
+    Un aiutante che risponde ma non parla la stessa lingua non puo' eseguire
+    la richiesta: contarlo come presente vorrebbe dire offrire «per tutti gli
+    utenti» e poi fallire su un messaggio che l'altro capo non capisce — un
+    guasto che non somiglia alla causa.
+    """
+    monkeypatch.setattr(install_packages, "_helper_call",
+                        lambda *a, **k: {"ok": True, "aligned": False,
+                                         "helper_version": "0.0.9"})
+    assert install_packages._helper_present() is False
+
+
+def test_un_aiutante_allineato_conta_come_presente(monkeypatch) -> None:
+    monkeypatch.setattr(install_packages, "_helper_call",
+                        lambda *a, **k: {"ok": True, "aligned": True,
+                                         "helper_version": "0.2.26"})
+    assert install_packages._helper_present() is True
+
+
+def test_una_risposta_senza_verdetto_non_e_una_prova_di_allineamento(monkeypatch):
+    """Un client vecchio non sa dire se i due si capiscono. L'assenza di una
+    risposta non e' una risposta affermativa."""
+    monkeypatch.setattr(install_packages, "_helper_call",
+                        lambda *a, **k: {"ok": True})
+    assert install_packages._helper_present() is False
