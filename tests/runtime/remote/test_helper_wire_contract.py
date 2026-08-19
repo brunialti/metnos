@@ -24,6 +24,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 AIUTANTE = ROOT / "helper-rs" / "src" / "protocol.rs"
 CLIENT = ROOT / "client-rs" / "src" / "helper_client.rs"
+CANALE = ROOT / "helper-rs" / "src" / "channel.rs"
+INSTALLAZIONE = ROOT / "helper-rs" / "src" / "win_setup.rs"
+DELIMITAZIONE = (ROOT / "helper-rs" / "src" / "frame.rs",
+                 ROOT / "client-rs" / "src" / "frame.rs")
 
 # Il corpo canonico di una richiesta d'esempio. I campi sono separati da un
 # carattere di controllo che non puo' comparire in un identificativo: nel
@@ -80,17 +84,232 @@ def _operazioni_dichiarate(percorso: Path) -> tuple:
     return tuple(re.findall(r"^\s{4}(\w+),", corpo.group(1), re.M))
 
 
-def test_i_due_progetti_conoscono_le_stesse_tre_operazioni():
+def test_i_due_progetti_conoscono_le_stesse_operazioni():
     """Un verbo in piu' da una parte sola sarebbe un'operazione che nessuno
-    esegue, o peggio una che nessuno si aspetta."""
-    assert _operazioni_dichiarate(AIUTANTE) == ("Query", "Install", "Uninstall")
+    esegue, o peggio una che nessuno si aspetta.
+
+    L'elenco e' scritto per esteso di proposito: e' il vocabolario CHIUSO del
+    componente piu' privilegiato che Metnos installa, e allungarlo deve
+    costare una modifica deliberata a questa riga. `Version` e' entrata il
+    18/8/2026 e non tocca niente: serve a poter CHIEDERE se i due programmi
+    sono allineati, invece di scoprirlo come un guasto.
+    """
+    assert _operazioni_dichiarate(AIUTANTE) == (
+        "Query", "Install", "Uninstall", "Version")
     assert _operazioni_dichiarate(CLIENT) == _operazioni_dichiarate(AIUTANTE)
 
 
 def test_nessuna_operazione_significa_esegui():
-    """Il confine dell'intero disegno: tre operazioni su un pacchetto, e
-    nessuna e' «esegui questo»."""
+    """Il confine dell'intero disegno: nessuna operazione e' «esegui
+    questo». Tre riguardano un pacchetto, la quarta dice solo chi si e'."""
     for percorso in (AIUTANTE, CLIENT):
         for vietata in ("Exec", "Run", "Shell", "Command"):
             assert vietata not in _operazioni_dichiarate(percorso), (
                 f"{percorso.name} dichiara l'operazione «{vietata}»")
+
+
+def test_la_delimitazione_dei_messaggi_e_la_stessa_parola_per_parola():
+    """Dove finisce un messaggio lo devono sapere allo stesso modo.
+
+    Il canale e' bidirezionale e nessuno dei due capi lo chiude: se uno dei
+    due leggesse fino a fine-flusso, aspetterebbe l'altro che sta aspettando
+    lui. Il sintomo sarebbe un blocco senza messaggi — il piu' difficile da
+    ricondurre alla causa. Qui i due file si confrontano per intero, byte per
+    byte: una differenza di un carattere basta a produrlo.
+    """
+    aiutante, client = DELIMITAZIONE
+    assert aiutante.is_file(), aiutante
+    assert client.is_file(), client
+    assert aiutante.read_bytes() == client.read_bytes(), (
+        "helper-rs/src/frame.rs e client-rs/src/frame.rs sono diversi: "
+        "vanno tenuti identici (copiare l'uno sull'altro)")
+
+
+def test_la_delimitazione_non_e_il_fine_flusso():
+    """Una guardia sul MODO, non solo sul contenuto.
+
+    Rendere di nuovo identici i due file dopo averli rotti entrambi allo
+    stesso modo passerebbe il confronto qui sopra. Questa dice che il
+    meccanismo e' un delimitatore esplicito, che e' la ragione per cui i due
+    file esistono.
+    """
+    testo = DELIMITAZIONE[0].read_text(encoding="utf-8")
+    assert "pub const TERMINATOR" in testo
+    assert "read_to_end" not in testo.split("mod tests")[0], (
+        "leggere fino a fine-flusso e' esattamente il blocco che questo "
+        "modulo esiste per evitare")
+
+
+# ── Dove ci si trova: il nome del canale e il programma installato ────────
+#
+# Il client deve ARRIVARE all'aiutante prima ancora di poterlo giudicare. Il
+# nome della pipe e il percorso dell'eseguibile sono scritti due volte, come
+# il corpo della firma, e per la stessa ragione.
+
+_NOME_PIPE = re.compile(r'r"(\\\\\.\\pipe\\metnos-helper-[^"]+)"')
+
+
+def _nome_pipe_atteso(percorso: Path) -> str:
+    testo = percorso.read_text(encoding="utf-8")
+    trovati = sorted(set(_NOME_PIPE.findall(testo)))
+    assert trovati, f"nessun nome di pipe scritto per esteso in {percorso.name}"
+    assert len(trovati) == 1, (
+        f"{percorso.name} dichiara {len(trovati)} nomi attesi: "
+        "il contratto deve avere una sola fonte per progetto")
+    return trovati[0]
+
+
+def test_il_nome_del_canale_combacia():
+    """Il client apre il nome che l'aiutante crea, o non lo trova.
+
+    Una divergenza qui non somiglia a un errore di scrittura: il client
+    riferisce «l'aiutante non e' installato» mentre l'aiutante e' installato,
+    in ascolto, e sta aspettando. Chi indaga va a guardare il servizio, che
+    sta benissimo.
+    """
+    assert _nome_pipe_atteso(CANALE) == _nome_pipe_atteso(CLIENT)
+
+
+def test_il_nome_del_canale_porta_il_sid_di_chi_lo_possiede():
+    """Senza il SID nel nome, due utenti della stessa macchina si
+    troverebbero sullo stesso canale — e il consenso di uno varrebbe per
+    l'altro."""
+    assert re.search(r"-S-\d+(-\d+)+$", _nome_pipe_atteso(CANALE))
+
+
+def test_i_due_progetti_nominano_lo_stesso_programma_installato():
+    """Il client rifiuta chi non e' l'eseguibile installato: deve sapere
+    quale, e saperlo allo stesso modo di chi lo installa.
+
+    Piu' leggera delle altre di proposito. Una divergenza qui si annuncia da
+    sola — «il programma all'altro capo non e' quello installato», col
+    percorso trovato scritto dentro — mentre le altre due si presentano
+    travestite da qualcos'altro.
+    """
+    installa = INSTALLAZIONE.read_text(encoding="utf-8")
+    decide = (ROOT / "helper-rs" / "src" / "setup.rs").read_text(encoding="utf-8")
+    cerca = CLIENT.read_text(encoding="utf-8")
+    for pezzo, dove in (('"metnos-helper.exe"', installa), ('"Metnos"', decide)):
+        assert pezzo in dove, f"l'installazione non nomina piu' {pezzo}"
+    assert '"metnos-helper.exe"' in cerca, "il client non nomina l'eseguibile atteso"
+    assert "Metnos" in cerca, "il client non nomina la cartella d'installazione"
+
+
+def test_la_chiave_che_il_client_consegna_e_quella_che_l_aiutante_accetta():
+    """La forma della chiave pubblica e' un contratto fra due programmi.
+
+    L'aiutante conserva la chiave come 64 cifre esadecimali e rifiuta tutto
+    il resto. Il client gliela passa al momento dell'installazione. Una
+    divergenza qui non si vede subito: si vede DOPO che la persona ha gia'
+    risposto alla finestra di conferma di Windows, che e' il momento peggiore
+    per scoprire un errore di formato — e succede una volta sola, quindi
+    nessuno la incontra due volte abbastanza da capirla.
+
+    Trovato il 18/8/2026: il client passava base64, l'aiutante voleva
+    esadecimale.
+    """
+    decide = (ROOT / "helper-rs" / "src" / "setup.rs").read_text(encoding="utf-8")
+    # La regola dell'aiutante, letta da dove vive.
+    assert "public_key_hex.len() != 64" in decide, (
+        "l'aiutante non chiede piu' 64 cifre: il contratto e' cambiato")
+    assert "is_ascii_hexdigit" in decide
+
+    # Il client deve produrre ESATTAMENTE quella forma, e da un posto solo.
+    identita = (ROOT / "client-rs" / "src" / "identity.rs").read_text(encoding="utf-8")
+    assert "pub fn fingerprint(&self) -> String" in identita
+    # Una seconda rappresentazione della NOSTRA chiave e' cio' che ha causato
+    # lo scambio: se torna, questa prova deve accorgersene. La chiave del
+    # SERVER e' un'altra cosa e vive davvero in base64 (`verify_b64`): il
+    # controllo guarda i produttori, non ogni occorrenza della parola.
+    assert "fn public_key_b64" not in identita, (
+        "e' tornata una seconda forma della chiave pubblica del device")
+
+    principale = (ROOT / "client-rs" / "src" / "main.rs").read_text(encoding="utf-8")
+    assert "&id.fingerprint()" in principale, (
+        "il client non consegna piu' la chiave in esadecimale")
+
+    # E il controllo preventivo, che rifiuta la forma sbagliata PRIMA della
+    # finestra di Windows invece che dopo.
+    setup = (ROOT / "client-rs" / "src" / "helper_setup.rs").read_text(encoding="utf-8")
+    assert "public_key_hex.len() != 64" in setup
+
+
+def test_i_due_progetti_parlano_la_stessa_versione_di_protocollo():
+    """La lingua del canale e' scritta in due file che non si vedono.
+
+    E' il numero che decide se i due programmi si capiscono. Se divergesse,
+    ogni scambio verrebbe dichiarato disallineato — o peggio, allineato
+    quando non lo e' — e la diagnosi manderebbe a riallineare due programmi
+    che erano gia' allineati.
+    """
+    import re as _re
+    numeri = {}
+    for nome, percorso in (
+        ("aiutante", ROOT / "helper-rs" / "src" / "protocol.rs"),
+        ("client", ROOT / "client-rs" / "src" / "helper_client.rs"),
+    ):
+        testo = percorso.read_text(encoding="utf-8")
+        trovato = _re.search(r"pub const PROTOCOL_VERSION: u32 = (\d+);", testo)
+        assert trovato, f"{nome} non dichiara piu' la versione di protocollo"
+        numeri[nome] = trovato.group(1)
+    assert numeri["aiutante"] == numeri["client"], (
+        f"la lingua del canale e' divergente: {numeri}")
+
+
+def test_la_forma_firmata_dell_aggiornamento_e_la_stessa_in_tre_linguaggi():
+    """Il server firma, il client verifica, l'aiutante riverifica.
+
+    Tre programmi in tre linguaggi devono produrre gli STESSI byte, o la
+    firma non regge da nessuna parte. Qui si confronta quello che il server
+    produce davvero con la stringa scritta per esteso nella prova
+    dell'aiutante: non due sorgenti fra loro, ma il fatto contro la
+    dichiarazione.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "runtime"))
+    import invocations
+
+    prodotta = invocations.canonical_bytes(
+        {"component": "helper", "sha256": "abc", "target": "t",
+         "version": "1.2.3"}).decode("utf-8")
+    assert prodotta == (
+        '{"component":"helper","sha256":"abc","target":"t","version":"1.2.3"}')
+
+    # E la stessa stringa deve essere quella che l'aiutante si aspetta.
+    aiutante = (ROOT / "helper-rs" / "src" / "selfupdate.rs").read_text(encoding="utf-8")
+    assert prodotta in aiutante, (
+        "la forma canonica dell'aiutante non e' quella che il server produce: "
+        "le firme degli aggiornamenti non verificherebbero")
+
+
+def test_ogni_pezzo_si_aggiorna_da_se():
+    """Una regola sola per tutti i pezzi, e nessuno che dipenda da un altro.
+
+    Il client chiede al server per se'; l'aiutante chiede al server per se'.
+    Se fosse il client a portare l'aggiornamento all'aiutante, un client
+    fermo o vecchio lascerebbe l'aiutante indietro per sempre e in silenzio —
+    proprio il guasto che questo meccanismo esiste per evitare.
+
+    E c'e' un confine che non si puo' attraversare: il client gira senza
+    privilegi, l'aiutante come sistema. Un programma senza privilegi che
+    sostituisce un binario di sistema sarebbe la chiave della macchina.
+    """
+    def codice(percorso):
+        """Il sorgente senza i commenti: si guarda cosa fa, non cosa spiega."""
+        testo = percorso.read_text(encoding="utf-8")
+        return "\n".join(r for r in testo.splitlines()
+                         if not r.lstrip().startswith(("//", "///", "//!")))
+
+    client = codice(ROOT / "client-rs" / "src" / "helper_setup.rs")
+    # Il client porta l'aiutante la prima volta, e li' finisce il suo ruolo.
+    assert "pub fn install_elevated" in client
+    for vietato in ("stage_for_helper", "sostituisci_eseguibile", "Program Files"):
+        assert vietato not in client, (
+            f"il client tocca «{vietato}»: aggiornare l'aiutante non e' compito suo")
+
+    # L'aiutante chiede al server per conto proprio, e sostituisce se stesso.
+    aggiorna = codice(ROOT / "helper-rs" / "src" / "selfupdate.rs")
+    assert "pub fn fetch_descriptor" in aggiorna
+    assert "pub fn check_and_apply" in aggiorna
+    assert "pub fn sostituisci_eseguibile" in codice(
+        ROOT / "helper-rs" / "src" / "win_setup.rs")
