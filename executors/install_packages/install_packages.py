@@ -542,6 +542,28 @@ def _resolve(package_id, ctx):
 
 
 # ── Doing it ──────────────────────────────────────────────────────────
+def _gia_come_lo_volevi(package_id, ctx, uninstall):
+    """Il mondo e' gia' come lo si voleva?
+
+    Installare qualcosa che c'e' gia', o togliere qualcosa che non c'e', non
+    e' un fallimento: l'obiettivo e' raggiunto. Presentarlo come errore manda
+    una persona a cercare un guasto che non esiste (Roberto, 19/8/2026).
+
+    Si CHIEDE al gestore invece di riconoscere codici d'uscita: una tabella di
+    codici andrebbe indovinata, e indovinare male qui significa dichiarare
+    riuscita un'operazione fallita — l'errore peggiore possibile (§2.8). La
+    domanda «c'e' o non c'e'» ha una risposta sola e non si presta a
+    interpretazioni.
+    """
+    if ctx.get("manager") != "winget":
+        return False
+    rc, out, _ = _run([ctx["winget"], "list", "--id", package_id, "--exact",
+                       "--accept-source-agreements", "--disable-interactivity"],
+                      _RESOLVE_TIMEOUT_S)
+    presente = rc == 0 and package_id.lower() in (out or "").lower()
+    return (not presente) if uninstall else presente
+
+
 def _apply(package_id, ctx, uninstall, scope):
     """Run the operation. The command line is built HERE, from the typed
     arguments — nothing the caller wrote reaches the manager as an option."""
@@ -617,6 +639,14 @@ def _apply(package_id, ctx, uninstall, scope):
         # Il codice di uscita e' l'unico dato non localizzato, ed e' quello
         # che si cerca in rete quando il testo non basta.
         detail = f"{detail} [rc={rc}]" if detail else f"rc={rc}"
+    # Prima di dichiarare un fallimento: il mondo e' per caso gia' come lo si
+    # voleva? Un pacchetto gia' installato, o gia' assente, non e' un guasto —
+    # e' l'obiettivo, raggiunto prima che arrivassimo noi.
+    if _gia_come_lo_volevi(package_id, ctx, uninstall):
+        return {"package_id": package_id, "ok": True,
+                "action": "uninstall" if uninstall else "install",
+                "source": ctx["manager"], "already": True,
+                "note": _msg("MSG_PACKAGES_ALREADY_DONE", package=package_id)}
     return {"package_id": package_id, "ok": False,
             "action": "uninstall" if uninstall else "install",
             "error": _msg("ERR_PACKAGES_OPERATION_FAILED",

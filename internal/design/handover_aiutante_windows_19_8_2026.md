@@ -162,6 +162,32 @@ consegnato alla prima occasione utile, non buttato nell'etere sperando che
 qualcuno sia in ascolto. `publish_to_user` ritorna gia' quante code ha
 raggiunto: **zero e' il segnale che oggi viene ignorato.**
 
+## 19/8 SERA — la catena ha retto, ma resta una domanda
+
+Dopo la correzione del protocollo dei servizi, l'installazione «per tutti gli
+utenti» e' arrivata **fino a winget**, che ha risposto «7zip c'e' gia' ed e'
+aggiornato» (rc=2316632107). Quindi: il servizio E' PARTITO, l'aiutante ha
+ricevuto la richiesta, l'ha eseguita. La causa radice era davvero quella.
+
+**MA**: subito dopo, la scheda offre ancora `machine_setup`, che compare solo
+quando l'aiutante NON risponde. Quindi si e' installato, ha lavorato, e poi ha
+smesso di rispondere.
+
+Ipotesi da verificare, in ordine:
+1. `win_serve::run()` torna con un errore (per esempio la creazione della pipe
+   fallisce alla seconda passata, `FILE_FLAG_FIRST_PIPE_INSTANCE` con
+   un'istanza gia' viva): `service_main` riferisce STOPPED e il processo
+   finisce. La politica di riavvio riprova tre volte e poi si arrende.
+2. Il servizio gira ma il client non lo riconosce: `judge_peer` confronta
+   l'eseguibile all'altro capo con `C:\Program Files\Metnos\metnos-helper.exe`.
+3. Il servizio non e' mai stato avviato e l'installazione «per tutti» e'
+   passata dal winget locale (Roberto e' amministratore: potrebbe riuscire
+   senza aiutante). In questo caso il 1053 sarebbe ancora li'.
+
+**Come distinguere senza il PC**: il registro dell'aiutante e' in
+`%ProgramData%\Metnos\helper\audit.log` — chiederlo a Roberto. Se contiene
+una riga per la richiesta di 7zip, l'ipotesi 3 cade e siamo fra la 1 e la 2.
+
 ## TRAPPOLE — leggile, non riscoprirle
 
 1. **ssh e ping verso il PC sono CHIUSI** (porta 22 e ICMP), pur essendo il

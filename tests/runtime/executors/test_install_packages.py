@@ -1085,3 +1085,58 @@ def test_nella_rimozione_il_verdetto_dell_aiutante_arriva_all_utente(monkeypatch
     assert res["error_code"] == "helper_unreachable", \
         f"e' tornato l'errore del primo tentativo: {res.get('error')}"
     assert "accesso negato" not in str(res.get("error") or "")
+
+
+def test_installare_qualcosa_che_ce_gia_non_e_un_fallimento(monkeypatch) -> None:
+    """L'obiettivo raggiunto prima che arrivassimo non e' un guasto.
+
+    winget risponde «non sono disponibili versioni piu' recenti» quando il
+    pacchetto c'e' gia'. Presentarlo come errore manda una persona a cercare
+    un guasto che non esiste (Roberto, 19/8/2026).
+
+    La domanda si fa al gestore — «c'e' o non c'e'» — invece di riconoscere
+    codici d'uscita: una tabella di codici andrebbe indovinata, e indovinare
+    male qui vorrebbe dire dichiarare riuscita un'operazione fallita.
+    """
+    def finto_run(argv, t):
+        if "show" in argv:
+            return 0, _WINGET_SHOW, ""
+        if "list" in argv:
+            return 0, "Nome  Id  Versione\n7-Zip  Microsoft.PowerToys  0.100", ""
+        return 1, "", "Non sono disponibili versioni piu' recenti"
+
+    monkeypatch.setattr(install_packages, "_run", finto_run)
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True,
+        "helper": False})
+    res = install_packages.invoke({
+        "packages": ["Microsoft.PowerToys"], "scope": "user",
+        "actor_consent_token": install_packages._consent_token(
+            [{"package_id": "Microsoft.PowerToys"}], False, "user")})
+    assert res["ok"] is True, f"dichiarato fallimento: {res.get('error')}"
+    assert res["results"][0].get("already") is True
+
+
+def test_ma_un_fallimento_vero_resta_un_fallimento(monkeypatch) -> None:
+    """Il rovescio, e conta di piu': se il pacchetto NON c'e', l'operazione e'
+    fallita e va detto. Sbagliare in questa direzione significherebbe
+    dichiarare fatto cio' che non e' stato fatto (§2.8)."""
+    def finto_run(argv, t):
+        if "show" in argv:
+            return 0, _WINGET_SHOW, ""
+        if "list" in argv:
+            return 1, "", "nessun pacchetto trovato"
+        return 1, "", "accesso negato"
+
+    monkeypatch.setattr(install_packages, "_run", finto_run)
+    monkeypatch.setattr(install_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "apt": "",
+        "manager": "winget", "machine": "PC-DI-PROVA", "elevated": True,
+        "helper": False})
+    res = install_packages.invoke({
+        "packages": ["Microsoft.PowerToys"], "scope": "user",
+        "actor_consent_token": install_packages._consent_token(
+            [{"package_id": "Microsoft.PowerToys"}], False, "user")})
+    assert res["ok"] is False
+    assert res["error_code"] == "package_operation_failed"
