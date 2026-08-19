@@ -279,7 +279,14 @@ fn check_bool(op: &str, ok: BOOL) -> Result<()> {
 
 fn check_win32(op: &str, code: WIN32_ERROR) -> Result<()> {
     if code != 0 {
-        bail!("{op} → WIN32_ERROR {code}");
+        // Il codice viaggia DENTRO l'errore, non dentro il testo. Scritto solo
+        // nel messaggio, chi lo riceve puo' soltanto mostrarlo: non puo'
+        // distinguere «accesso negato» da qualunque altro guasto, e quindi non
+        // puo' reagire diversamente. E' lo stesso difetto che oggi ha prodotto
+        // «codice 3» e «1 ACL non revocabile» — un numero senza appiglio
+        // (19/8/2026, terza volta nella stessa giornata).
+        return Err(std::io::Error::from_raw_os_error(code as i32))
+            .with_context(|| op.to_string());
     }
     Ok(())
 }
