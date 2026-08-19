@@ -54,6 +54,25 @@ pairing.json` esista dopo il tentativo.
 - L'aiutante **non risponde** sul canale (la scheda mostra `machine_setup`,
   che compare solo quando l'aiutante manca).
 
+## Un difetto scoperto mentre scrivevo questa consegna
+
+**L'esito consegnato puo' sparire in silenzio.** Il 19/8 il registro diceva
+`esito tardivo affidato al ciclo`, e in chat non e' comparso niente: il
+browser aveva la pagina CARICATA PRIMA che l'ascoltatore di `operation_done`
+esistesse, e uno `EventSource` scarta senza dire niente gli eventi per cui non
+ha un ascoltatore.
+
+Nell'immediato basta ricaricare la pagina. Ma la consegna e' «spara e
+dimentica»: se in quel momento nessuno ascolta — pagina chiusa, riconnessione
+in corso, versione vecchia — **l'esito e' perso per sempre**, e chi aveva
+ricevuto «ti dico com'e' andata» non lo sapra' mai. E' esattamente il difetto
+che quella funzione doveva chiudere, spostato di un metro.
+
+Forma giusta: l'esito va CONSERVATO (un turno, o una coda per proprietario) e
+consegnato alla prima occasione utile, non buttato nell'etere sperando che
+qualcuno sia in ascolto. `publish_to_user` ritorna gia' quante code ha
+raggiunto: **zero e' il segnale che oggi viene ignorato.**
+
 ## TRAPPOLE — leggile, non riscoprirle
 
 1. **ssh e ping verso il PC sono CHIUSI** (porta 22 e ICMP), pur essendo il
