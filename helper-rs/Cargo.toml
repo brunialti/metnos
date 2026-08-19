@@ -46,6 +46,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_IO",
     "Win32_System_Memory",
     "Win32_Storage_FileSystem",
+    # Il protocollo del gestore dei servizi: senza, un programma registrato
+    # come servizio non riesce a dire «eccomi» e Windows lo dichiara caduto
+    # dopo trenta secondi (errore 1053).
+    "Win32_System_Services",
 ] }
 
 [profile.release]

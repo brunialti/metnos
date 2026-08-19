@@ -313,3 +313,34 @@ def test_ogni_pezzo_si_aggiorna_da_se():
     assert "pub fn check_and_apply" in aggiorna
     assert "pub fn sostituisci_eseguibile" in codice(
         ROOT / "helper-rs" / "src" / "win_setup.rs")
+
+
+def test_l_aiutante_parla_il_protocollo_dei_servizi():
+    """Un programma registrato come servizio deve presentarsi al gestore.
+
+    Il gestore lo lancia e aspetta che sia LUI a farsi vivo: chi non lo fa
+    viene dichiarato caduto dopo trenta secondi (errore 1053) e non parte
+    mai. E' il difetto per cui l'aiutante non ha mai potuto rispondere a
+    nessuno — trovato sulla macchina vera il 19/8/2026, dopo che tutto il
+    resto era gia' corretto e inutile.
+
+    Le tre chiamate sono la sequenza obbligata: chi tiene il filo, chi riceve
+    i comandi, e il «eccomi» senza il quale non esiste servizio.
+    """
+    servizio = ROOT / "helper-rs" / "src" / "win_service.rs"
+    assert servizio.is_file(), "il modulo del protocollo dei servizi non c'e' piu'"
+    testo = servizio.read_text(encoding="utf-8")
+    for chiamata in ("StartServiceCtrlDispatcherW",
+                     "RegisterServiceCtrlHandlerW",
+                     "SetServiceStatus"):
+        assert chiamata in testo, f"manca {chiamata}: il servizio non partira'"
+    # Lo stato «in esecuzione» e' il «eccomi»; quello «fermato» evita che un
+    # arresto voluto venga scambiato per una caduta e faccia scattare la
+    # politica di riavvio.
+    assert "SERVICE_RUNNING" in testo
+    assert "SERVICE_STOPPED" in testo
+
+    # E il comando `serve` deve passare di li', non girare il ciclo a mano.
+    principale = (ROOT / "helper-rs" / "src" / "main.rs").read_text(encoding="utf-8")
+    assert "win_service::esegui_come_servizio()" in principale, (
+        "`serve` non passa piu' dal gestore dei servizi")

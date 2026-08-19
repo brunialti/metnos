@@ -44,7 +44,39 @@ corretti oggi erano reali, ma stavano davanti a questo.
 Testo arrivato a Roberto in chat: `avvio del servizio fallito (rc=1053):
 [SC] StartService OPERAZIONI NON RIUSCITE 1053`.
 
-### Due strade, da far scegliere a Roberto
+### Analisi — che cosa vuole esattamente Windows
+
+Un programma registrato come servizio non e' un programma normale: il gestore
+dei servizi (SCM) lo lancia e poi **aspetta che sia lui a farsi vivo**. La
+sequenza obbligata:
+
+1. `StartServiceCtrlDispatcherW` con una tabella che associa il nome del
+   servizio a una `ServiceMain`. Questa chiamata NON torna finche' il servizio
+   non finisce: e' lei che tiene il filo principale.
+2. Dentro `ServiceMain`: `RegisterServiceCtrlHandlerW` per ottenere il
+   riferimento con cui riferire lo stato, e per ricevere i comandi (arresto,
+   spegnimento).
+3. `SetServiceStatus(SERVICE_RUNNING)` — **e' questo il «eccomi»**. Senza,
+   dopo 30 secondi Windows dichiara 1053.
+4. Il ciclo di lavoro.
+5. All'arresto: `SetServiceStatus(SERVICE_STOPPED)` prima di uscire, o il
+   gestore lo considera caduto.
+
+Cosa c'e' oggi: il punto 4 e basta. Gli altri quattro mancano tutti.
+
+**Un dettaglio che conta**: se il programma NON e' stato lanciato dal gestore
+(qualcuno lo esegue a mano per capirci qualcosa), il punto 1 fallisce con
+1063. Trattarlo come un errore renderebbe impossibile provarlo a mano; e'
+invece il segnale «non sei sotto il gestore», e la cosa giusta e' girare il
+ciclo direttamente.
+
+**Come si ferma un ciclo che aspetta**: il ciclo sta fermo su una pipe, in
+attesa di un client, e potrebbe restarci giorni. Interromperlo dall'esterno
+in modo pulito richiederebbe I/O asincrono; per un componente che non tiene
+stato in memoria — il registro delle chiavi consumate si scrive subito — la
+via semplice e corretta e' dichiarare l'arresto al gestore e terminare.
+
+### Scelta di Roberto: strada (a) — FATTA il 19/8 sera
 
 **(a) Parlare il protocollo.** `StartServiceCtrlDispatcherW` + una
 `ServiceMain` che registra il gestore dei controlli, dichiara
@@ -57,9 +89,30 @@ all'avvio, come fa gia' il client (`MetnosClient`). Nessun protocollo da
 implementare, pattern gia' nel repo, parte subito. Si perde la politica di
 riavvio del gestore dei servizi e la voce in `services.msc`.
 
-Raccomandazione: **(a)** — un componente privilegiato sempre attivo e' un
-servizio, e ci si aspetta di trovarlo dove si cercano i servizi. Ma (b) e'
-difendibile e molto piu' corto. Decide Roberto.
+Fatta la **(a)**: `helper-rs/src/win_service.rs`. La sequenza per intero,
+piu' due scelte che vale la pena conoscere.
+
+**Se non ci lancia il gestore non e' un errore.** `StartServiceCtrlDispatcherW`
+fallisce con 1063 quando qualcuno esegue il programma a mano per capirci
+qualcosa: si gira il ciclo direttamente. Trattarlo come guasto renderebbe
+impossibile provarlo fuori dal gestore, che e' proprio quando serve.
+
+**Fermarsi termina il processo.** Il ciclo sta su una pipe ad aspettare un
+client e puo' restarci giorni; interromperlo dall'esterno vorrebbe dire I/O
+asincrono su tutto il canale. Il componente non tiene stato in memoria — il
+registro delle chiavi consumate si scrive subito — quindi all'arresto si
+dichiara `SERVICE_STOPPED` e si esce. Dichiararlo PRIMA di uscire non e' un
+dettaglio: uscire in silenzio farebbe considerare il servizio caduto, e la
+politica di riavvio lo rimetterebbe in piedi subito dopo averlo fermato
+apposta.
+
+Guardia: `test_l_aiutante_parla_il_protocollo_dei_servizi` in
+`tests/runtime/remote/test_helper_wire_contract.py`.
+
+**MAI PROVATO SU WINDOWS.** Compila per il bersaglio, 115 prove verdi, ma la
+sequenza col gestore si verifica solo su una macchina vera: il prossimo
+tentativo di installazione e' anche la sua prima prova. Se fallisce ancora, il
+motivo arriva in chat da solo — quella catena funziona.
 
 ## Il difetto che ha permesso di trovarla
 

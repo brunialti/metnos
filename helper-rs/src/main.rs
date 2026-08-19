@@ -42,6 +42,8 @@ mod win_pipe;
 #[cfg(windows)]
 mod win_serve;
 #[cfg(windows)]
+mod win_service;
+#[cfg(windows)]
 mod win_setup;
 
 use std::process::ExitCode;
@@ -219,10 +221,25 @@ fn disinstalla() -> ExitCode {
 
 #[cfg(windows)]
 fn servi() -> ExitCode {
-    match win_serve::run() {
-        Ok(()) => ExitCode::SUCCESS,
+    // Prima si prova a presentarsi al gestore dei servizi: e' cosi' che
+    // Windows si aspetta di essere trattato quando e' lui a lanciarci, e non
+    // farlo significa essere dichiarati caduti dopo trenta secondi (1053) —
+    // il difetto per cui questo aiutante non e' mai partito.
+    match win_service::esegui_come_servizio() {
+        // Il gestore ci ha portati fin dentro il lavoro e ne siamo usciti.
+        Ok(true) => ExitCode::SUCCESS,
+        // Non ci ha lanciati il gestore: qualcuno sta eseguendo il programma a
+        // mano per capirci qualcosa. Si gira il ciclo direttamente, che e'
+        // esattamente cio' che serve in quel caso.
+        Ok(false) => match win_serve::run() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("Il servizio si e' fermato: {e}");
+                ExitCode::from(3)
+            }
+        },
         Err(e) => {
-            eprintln!("Il servizio si e' fermato: {e}");
+            eprintln!("Non riesco a presentarmi al gestore dei servizi: {e}");
             ExitCode::from(3)
         }
     }
