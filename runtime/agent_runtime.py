@@ -4049,7 +4049,7 @@ class TurnLog:
             label = str(it.get("path") or it.get("src") or it.get("id")
                         or it.get("event_id") or it.get("uid")
                         or it.get("to") or it.get("recipient")
-                        or it.get("account") or "?")
+                        or it.get("account") or it.get("package_id") or "")
             reason = ""
             code = it.get("error_code") or ""
             if code:
@@ -4063,7 +4063,14 @@ class TurnLog:
                     reason = cand
             if not reason:
                 reason = str(it.get("error") or code or "")
-            if label != "?" and label in reason:
+            # Senza identita' non si stampa un segnaposto: «?» davanti a un
+            # motivo gia' completo aggiunge rumore e non informa. Un dominio
+            # il cui fallimento non riguarda un singolo elemento (la
+            # risoluzione di un catalogo, per dire) non ne ha una, ed e'
+            # normale.
+            if not label:
+                return reason or ""
+            if label in reason:
                 return reason
             return f"«{label}»: {reason}" if reason else f"«{label}»"
 
