@@ -33,7 +33,8 @@ impl Source {
     }
 }
 
-/// Che cosa si chiede all'aiutante. Tre voci, e nessuna significa «esegui».
+/// Che cosa si chiede all'aiutante. Quattro voci, e nessuna significa
+/// «esegui».
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Operation {
@@ -41,7 +42,24 @@ pub enum Operation {
     Query,
     Install,
     Uninstall,
+    /// Quale versione dell'aiutante c'e'. Non tocca niente, non guarda
+    /// nemmeno un pacchetto: e' l'unica voce che non parla di pacchetti.
+    ///
+    /// Esiste perche' due programmi installati in momenti diversi possono
+    /// trovarsi disallineati, e un disallineamento che non si puo' CHIEDERE
+    /// si scopre come un guasto: una richiesta che l'altro capo non capisce,
+    /// senza modo di dire perche'. Chiedere «chi sei» e' meno potente di
+    /// qualunque altra voce — non legge nemmeno il catalogo — e rende la
+    /// differenza un fatto invece che un sintomo.
+    Version,
 }
+
+/// La versione del protocollo parlato su questo canale.
+///
+/// Distinta dalla versione del programma: due build diverse possono parlare
+/// la stessa lingua, ed e' la lingua che decide se si capiscono. Cambia solo
+/// quando cambia la forma dei messaggi.
+pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Una richiesta completa. Ogni campo e' tipizzato: non esiste un campo
 /// «argomenti liberi», e non puo' esistere senza cambiare questo file.
@@ -150,6 +168,7 @@ impl Request {
                 Operation::Query => "query",
                 Operation::Install => "install",
                 Operation::Uninstall => "uninstall",
+                Operation::Version => "version",
             },
             match self.source {
                 Source::Winget => "winget",
@@ -168,7 +187,16 @@ impl Request {
     /// passare per primi: un valore malformato non deve nemmeno raggiungere
     /// il confronto di una firma.
     pub fn check_shape(&self) -> Result<(), Refusal> {
-        if !is_valid_package_id(&self.package_id) {
+        if self.operation == Operation::Version {
+            // «Chi sei» non riguarda un pacchetto, e portarne uno sarebbe una
+            // contraddizione: la richiesta dice una cosa e ne trasporta
+            // un'altra. Si pretende che i due campi siano vuoti invece di
+            // ignorarli — un campo ignorato e' un campo che qualcuno prima o
+            // poi riempie aspettandosi che serva a qualcosa.
+            if !self.package_id.is_empty() || self.version.is_some() {
+                return Err(Refusal::MalformedPackageId);
+            }
+        } else if !is_valid_package_id(&self.package_id) {
             return Err(Refusal::MalformedPackageId);
         }
         if let Some(v) = &self.version {
@@ -206,6 +234,11 @@ impl Request {
             Operation::Uninstall => {
                 argv.push("uninstall".into());
             }
+            // Non c'e' niente da eseguire: la risposta e' una proprieta' di
+            // questo programma, non di una macchina da interrogare. Il
+            // servizio la prende prima di arrivare qui; la lista vuota fa si'
+            // che, anche se ci arrivasse, non parta comunque nulla.
+            Operation::Version => return Vec::new(),
         }
         argv.push("--id".into());
         argv.push(self.package_id.clone());
@@ -242,15 +275,46 @@ pub struct Response {
     /// Le ultime righe utili dell'uscita: il verdetto lo scrivono in fondo.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub detail: String,
+    /// La versione dell'aiutante che ha risposto, sempre.
+    ///
+    /// Su OGNI risposta, non solo su quella che la chiede: chi riceve un
+    /// esito strano deve poter vedere con chi ha parlato senza dover fare
+    /// una seconda domanda — e un rifiuto e' proprio il momento in cui la
+    /// seconda domanda potrebbe non arrivare mai.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub helper_version: String,
+    /// La lingua parlata, per distinguere «non ci capiamo» da «non funziona».
+    #[serde(default)]
+    pub protocol_version: u32,
+}
+
+/// La versione di QUESTO programma, come la dichiara al mondo.
+pub fn helper_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
 }
 
 impl Response {
-    pub fn refused(refusal: Refusal) -> Self {
+    /// Una risposta vuota, gia' firmata con chi la scrive.
+    ///
+    /// Ogni risposta esce da qui. Non e' una comodita': i campi di versione
+    /// servono proprio quando qualcosa e' andato storto, cioe' nei rami che
+    /// si scrivono di fretta, ed e' li' che ci si dimentica di riempirli.
+    /// Cosi' non c'e' un ramo che possa dimenticarsene.
+    pub fn stamped() -> Self {
         Response {
             ok: false,
-            error_code: Some(refusal.code().to_string()),
+            error_code: None,
             exit_code: None,
             detail: String::new(),
+            helper_version: helper_version().to_string(),
+            protocol_version: PROTOCOL_VERSION,
+        }
+    }
+
+    pub fn refused(refusal: Refusal) -> Self {
+        Response {
+            error_code: Some(refusal.code().to_string()),
+            ..Response::stamped()
         }
     }
 }

@@ -14,6 +14,9 @@
 //! - `channel` — come si chiama il canale locale e chi puo' parlarci. La
 //!   parte che si prova ovunque; quella che apre la pipe sta sotto
 //!   `cfg(windows)` e riceve da qui un nome gia' verificato.
+//! - `frame` — dove finisce un messaggio. Copia byte-identica nel client:
+//!   e' l'unica cosa che i due programmi devono sapere allo stesso modo
+//!   per non aspettarsi a vicenda.
 //! - `pairing` — chi puo' chiedere, e con quale prova.
 //! - `audit` — il registro proprio, separato da quello del client.
 //! - `service` — il ciclo: autorizza, consuma, esegue, registra.
@@ -27,9 +30,11 @@
 mod audit;
 mod channel;
 mod cli;
+mod frame;
 mod journal;
 mod pairing;
 mod protocol;
+mod selfupdate;
 mod service;
 mod setup;
 #[cfg(windows)]
@@ -57,7 +62,9 @@ fn main() -> ExitCode {
         cli::Command::Install {
             owner_sid,
             public_key_hex,
-        } => installa(&owner_sid, &public_key_hex),
+            server_key_b64,
+            server_url,
+        } => installa(&owner_sid, &public_key_hex, &server_key_b64, &server_url),
         cli::Command::Uninstall => disinstalla(),
         cli::Command::Serve => servi(),
     }
@@ -87,7 +94,8 @@ fn stato() -> ExitCode {
 }
 
 #[cfg(windows)]
-fn installa(owner_sid: &str, public_key_hex: &str) -> ExitCode {
+fn installa(owner_sid: &str, public_key_hex: &str, server_key_b64: &str,
+            server_url: &str) -> ExitCode {
     let percorso_appaiamento = pairing::pairing_path();
     let adesso = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -99,6 +107,8 @@ fn installa(owner_sid: &str, public_key_hex: &str) -> ExitCode {
     let appaiamento = match setup::prepare_pairing(
         owner_sid,
         public_key_hex,
+        server_key_b64,
+        server_url,
         &percorso_appaiamento,
         adesso,
     ) {
@@ -186,7 +196,8 @@ fn servi() -> ExitCode {
 // binario che finge di installarsi dove non puo' e' un binario che mente.
 
 #[cfg(not(windows))]
-fn installa(_owner_sid: &str, _public_key_hex: &str) -> ExitCode {
+fn installa(_owner_sid: &str, _public_key_hex: &str, _server_key_b64: &str,
+            _server_url: &str) -> ExitCode {
     non_su_questa_piattaforma()
 }
 

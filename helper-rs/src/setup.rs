@@ -67,12 +67,49 @@ pub fn service_create_argv(exe: &Path) -> Vec<String> {
         "sc.exe".into(),
         "create".into(),
         SERVICE_NAME.into(),
-        // Le virgolette servono: un percorso con spazi (Program Files) senza
-        // di esse verrebbe letto come piu' argomenti.
-        format!("binPath= \"{}\" service", exe.display()),
-        "start= auto".into(),
-        "obj= LocalSystem".into(),
-        format!("DisplayName= Metnos helper"),
+        // Chiave e valore sono due argomenti SEPARATI, e il segno di uguale
+        // sta attaccato alla chiave. Non e' un vezzo: `sc.exe` si legge la
+        // riga di comando per conto suo, e un `binPath= valore` passato come
+        // un'unica parola gli arriva richiuso fra virgolette e non lo capisce
+        // — risponde con la sua schermata d'aiuto e non crea niente.
+        //
+        // Misurato sul PC il 19/8/2026: la forma unita fallisce con «campo
+        // start= non valido», quella separata crea il servizio. L'aiutante
+        // finiva in Program Files e poi si fermava li', senza servizio e
+        // senza appaiamento, con un codice d'uscita che nessuno leggeva.
+        "binPath=".into(),
+        // Le virgolette interne restano: un percorso con spazi (Program
+        // Files) senza di esse verrebbe letto come piu' argomenti.
+        format!("\"{}\" service", exe.display()),
+        "start=".into(),
+        "auto".into(),
+        "obj=".into(),
+        "LocalSystem".into(),
+        "DisplayName=".into(),
+        "Metnos helper".into(),
+    ]
+}
+
+/// Gli argomenti che dicono a Windows di rimettere in piedi il servizio.
+///
+/// Serve all'aggiornamento: dopo essersi sostituito, il programma esce, e
+/// deve tornare su da solo — girando il binario nuovo. Senza questa
+/// politica un aggiornamento spegnerebbe l'aiutante fino al riavvio della
+/// macchina, che e' un modo di aggiornare peggiore del non aggiornare.
+///
+/// `reset= 0` perche' il contatore dei guasti non deve azzerarsi: se il
+/// programma nuovo non sta in piedi, i tentativi devono restare tre e poi
+/// smettere, invece di ripartire all'infinito.
+pub fn service_recovery_argv() -> Vec<String> {
+    vec![
+        "sc.exe".into(),
+        "failure".into(),
+        SERVICE_NAME.into(),
+        // Chiave e valore separati, come sopra e per la stessa ragione.
+        "reset=".into(),
+        "0".into(),
+        "actions=".into(),
+        "restart/5000/restart/15000/restart/60000".into(),
     ]
 }
 
@@ -122,6 +159,10 @@ pub enum SetupRefusal {
     MalformedOwnerSid,
     /// La chiave pubblica non e' una chiave.
     MalformedPublicKey,
+    /// La chiave del server non e' una chiave.
+    MalformedServerKey,
+    /// L'indirizzo del server non e' un indirizzo cifrato.
+    MalformedServerUrl,
     /// C'e' gia' un appaiamento: installare di nuovo cambierebbe il
     /// proprietario in silenzio.
     AlreadyPaired,
@@ -132,6 +173,8 @@ impl SetupRefusal {
         match self {
             SetupRefusal::MalformedOwnerSid => "malformed_owner_sid",
             SetupRefusal::MalformedPublicKey => "malformed_public_key",
+            SetupRefusal::MalformedServerKey => "malformed_server_key",
+            SetupRefusal::MalformedServerUrl => "malformed_server_url",
             SetupRefusal::AlreadyPaired => "already_paired",
         }
     }
@@ -146,6 +189,8 @@ impl SetupRefusal {
 pub fn prepare_pairing(
     owner_sid: &str,
     public_key_hex: &str,
+    server_key_b64: &str,
+    server_url: &str,
     pairing_path: &Path,
     now: u64,
 ) -> Result<Pairing, SetupRefusal> {
@@ -155,12 +200,67 @@ pub fn prepare_pairing(
     if public_key_hex.len() != 64 || !public_key_hex.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(SetupRefusal::MalformedPublicKey);
     }
-    if Pairing::load(pairing_path).is_some() {
+    // Una chiave Ed25519 in base64url senza riempimento: 43 caratteri, e
+    // niente che non appartenga a quell'alfabeto. Si valida qui perche' da
+    // qui in poi e' cio' che decide se un aggiornamento e' autentico.
+    // Un indirizzo, e nient'altro: e' l'unico posto con cui questo programma
+    // parlera'.
+    //
+    // In chiaro va bene, e non e' una concessione: a proteggere un
+    // aggiornamento e' la FIRMA del server, non il canale. Il server di casa
+    // sta sulla rete locale in chiaro, ed e' il caso normale — pretendere un
+    // canale cifrato qui non aggiungerebbe una difesa, toglierebbe la
+    // possibilita' di installare.
+    //
+    // Cosa resta scoperto, detto chiaro: chi ascolta la rete vede quale
+    // versione gira. Chi la controlla puo' impedire un aggiornamento, non
+    // provocarne uno falso — la firma e il divieto di tornare indietro
+    // bastano a quello.
+    if !(server_url.starts_with("http://") || server_url.starts_with("https://"))
+        || server_url.len() > 300
+        || server_url.bytes().any(|b| b <= b' ' || b == b'"')
+    {
+        return Err(SetupRefusal::MalformedServerUrl);
+    }
+    if server_key_b64.len() != 43
+        || !server_key_b64
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(SetupRefusal::MalformedServerKey);
+    }
+    let chiave = public_key_hex.to_ascii_lowercase();
+    if let Some(esistente) = Pairing::load(pairing_path) {
+        // Reinstallare la STESSA installazione sopra se stessa e' come si
+        // aggiorna: i due programmi viaggiano insieme e devono restare
+        // allineati, e chiedere di nuovo il consenso a ogni versione
+        // significherebbe che l'utente lo concede molte volte invece di una
+        // — l'opposto di cio' che gli e' stato promesso.
+        //
+        // Il consenso originale sopravvive con la sua data: e' quello che
+        // l'utente ha dato, e non lo si riscrive perche' e' passato del
+        // tempo.
+        if esistente.owner_sid == owner_sid && esistente.public_key_hex == chiave {
+            // La chiave del server puo' essere cambiata (o mancare del tutto,
+            // su un aiutante installato prima che gli aggiornamenti
+            // esistessero): la si aggiorna, perche' viene dalla stessa
+            // installazione che aveva gia' il consenso.
+            return Ok(Pairing {
+                server_public_key_b64: server_key_b64.to_string(),
+                server_url: server_url.to_string(),
+                ..esistente
+            });
+        }
+        // Un proprietario diverso, o una chiave diversa, non e' un
+        // aggiornamento: e' qualcun altro che prova a subentrare. Il consenso
+        // si toglie disinstallando, non sovrascrivendo.
         return Err(SetupRefusal::AlreadyPaired);
     }
     Ok(Pairing {
         owner_sid: owner_sid.to_string(),
-        public_key_hex: public_key_hex.to_ascii_lowercase(),
+        public_key_hex: chiave,
+        server_public_key_b64: server_key_b64.to_string(),
+        server_url: server_url.to_string(),
         consented_at: now,
     })
 }
@@ -170,21 +270,16 @@ pub fn prepare_pairing(
 /// L'appaiamento se ne va con l'aiutante: lasciarlo significherebbe che una
 /// reinstallazione riprende un consenso che il proprietario aveva revocato
 /// togliendo il programma.
+/// Il registro (`audit.log`) NON e' in questa lista, e non e' una svista:
+/// e' la traccia di cio' che e' stato fatto sulla macchina mentre l'aiutante
+/// c'era. Cancellarla insieme al programma darebbe a chiunque possa
+/// disinstallare anche il potere di far sparire le proprie tracce, e un
+/// registro che si puo' cancellare non e' un registro.
 pub fn files_to_remove(data_dir: &Path) -> Vec<PathBuf> {
     vec![
         data_dir.join("pairing.json"),
         data_dir.join("consumed.log"),
     ]
-}
-
-/// Il registro NON si cancella con la disinstallazione.
-///
-/// E' la traccia di cio' che e' stato fatto sulla macchina mentre l'aiutante
-/// c'era. Cancellarla insieme al programma darebbe a chiunque possa
-/// disinstallare anche il potere di far sparire le proprie tracce, e un
-/// registro che si puo' cancellare non e' un registro.
-pub fn audit_survives_removal() -> bool {
-    true
 }
 
 #[cfg(test)]
@@ -202,13 +297,15 @@ mod tests {
     }
 
     const CHIAVE: &str = "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899";
+    const URL_SERVER: &str = "https://metnos.esempio";
+    const CHIAVE_SERVER: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
     const SID: &str = "S-1-5-21-1-2-3-1001";
 
     // ── L'appaiamento al consenso ──
     #[test]
     fn un_appaiamento_valido_si_prepara() {
         let d = temporanea("valido");
-        let p = prepare_pairing(SID, CHIAVE, &d.join("pairing.json"), 1_786_000_000).unwrap();
+        let p = prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &d.join("pairing.json"), 1_786_000_000).unwrap();
         assert_eq!(p.owner_sid, SID);
         assert_eq!(p.consented_at, 1_786_000_000);
         let _ = std::fs::remove_dir_all(&d);
@@ -220,13 +317,78 @@ mod tests {
         // privilegiato: non deve poter succedere rilanciando un installatore.
         let d = temporanea("gia-appaiato");
         let percorso = d.join("pairing.json");
-        prepare_pairing(SID, CHIAVE, &percorso, 1)
+        prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 1)
             .unwrap()
             .save(&percorso)
             .unwrap();
 
         assert_eq!(
-            prepare_pairing("S-1-5-21-9-9-9-9999", CHIAVE, &percorso, 2),
+            prepare_pairing("S-1-5-21-9-9-9-9999", CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 2),
+            Err(SetupRefusal::AlreadyPaired)
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn un_server_in_chiaro_sulla_rete_di_casa_va_bene() {
+        // Il caso reale: il server di Metnos sta sulla rete locale in
+        // chiaro. A proteggere un aggiornamento e' la firma, non il canale;
+        // pretendere un canale cifrato renderebbe impossibile installare
+        // senza aggiungere una difesa.
+        let d = temporanea("server-in-chiaro");
+        assert!(prepare_pairing(SID, CHIAVE, CHIAVE_SERVER,
+                                "http://192.168.1.33:8765",
+                                &d.join("pairing.json"), 1).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn cio_che_non_e_un_indirizzo_non_diventa_un_indirizzo() {
+        let d = temporanea("server-non-indirizzo");
+        for cattivo in ["", "192.168.1.33", "file:///etc/passwd",
+                        "http://a b", "http://a\"b"] {
+            assert_eq!(
+                prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, cattivo,
+                                &d.join("pairing.json"), 1),
+                Err(SetupRefusal::MalformedServerUrl),
+                "accettato {cattivo:?}");
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn reinstallare_la_stessa_installazione_e_un_aggiornamento() {
+        // I due programmi viaggiano insieme e vanno tenuti allineati. Se
+        // aggiornare richiedesse un nuovo consenso, l'utente lo darebbe a
+        // ogni versione: gli e' stato promesso UNA volta sola.
+        let d = temporanea("aggiornamento");
+        let percorso = d.join("pairing.json");
+        let primo = prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 1_000).unwrap();
+        primo.save(&percorso).unwrap();
+
+        let secondo = prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 9_999).unwrap();
+        // La data del consenso e' quella originale: e' quando l'utente ha
+        // detto di si', e non lo si riscrive perche' e' passato del tempo.
+        assert_eq!(secondo.consented_at, 1_000);
+        assert_eq!(secondo.owner_sid, SID);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn unaltra_installazione_non_subentra_aggiornando() {
+        // Il rovescio, ed e' il motivo per cui il controllo non e' solo sul
+        // SID: stesso utente, ma un'altra installazione Metnos. Aggiornare
+        // non e' una porta per subentrare a un consenso dato a qualcun altro.
+        let d = temporanea("subentro");
+        let percorso = d.join("pairing.json");
+        prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 1_000)
+            .unwrap()
+            .save(&percorso)
+            .unwrap();
+
+        let altra_chiave = "b".repeat(64);
+        assert_eq!(
+            prepare_pairing(SID, &altra_chiave, CHIAVE_SERVER, URL_SERVER, &percorso, 2_000),
             Err(SetupRefusal::AlreadyPaired)
         );
         let _ = std::fs::remove_dir_all(&d);
@@ -237,7 +399,7 @@ mod tests {
         let d = temporanea("sid-rotto");
         for cattivo in ["", "amministratore", "S-1-5-abc", r"S-1-5-18\..\x"] {
             assert_eq!(
-                prepare_pairing(cattivo, CHIAVE, &d.join("pairing.json"), 1),
+                prepare_pairing(cattivo, CHIAVE, CHIAVE_SERVER, URL_SERVER, &d.join("pairing.json"), 1),
                 Err(SetupRefusal::MalformedOwnerSid)
             );
         }
@@ -249,7 +411,7 @@ mod tests {
         let d = temporanea("chiave-rotta");
         for cattiva in ["", "zz", &"aa".repeat(31), &"aa".repeat(33), &"g".repeat(64)] {
             assert_eq!(
-                prepare_pairing(SID, cattiva, &d.join("pairing.json"), 1),
+                prepare_pairing(SID, cattiva, CHIAVE_SERVER, URL_SERVER, &d.join("pairing.json"), 1),
                 Err(SetupRefusal::MalformedPublicKey)
             );
         }
@@ -274,10 +436,12 @@ mod tests {
     #[test]
     fn il_percorso_del_servizio_regge_gli_spazi() {
         // «C:\Program Files\Metnos\...» senza virgolette diventerebbe due
-        // argomenti, e il servizio punterebbe a «C:\Program».
+        // argomenti, e il servizio punterebbe a «C:\Program». Il valore e'
+        // l'argomento SUBITO DOPO `binPath=`, non attaccato ad esso.
         let argv = service_create_argv(Path::new(r"C:\Program Files\Metnos\helper.exe"));
-        let bin = argv.iter().find(|a| a.starts_with("binPath=")).unwrap();
-        assert!(bin.contains(r#""C:\Program Files\Metnos\helper.exe""#));
+        let i = argv.iter().position(|a| a == "binPath=").expect("manca binPath=");
+        assert!(argv[i + 1].contains(r#""C:\Program Files\Metnos\helper.exe""#),
+                "valore inatteso: {}", argv[i + 1]);
     }
 
     #[test]
@@ -285,8 +449,9 @@ mod tests {
         // Un aiutante da avviare a mano fallirebbe alla prima installazione
         // dopo un riavvio, senza che nessuno capisca perche'.
         let argv = service_create_argv(Path::new(r"C:\x\helper.exe"));
-        assert!(argv.iter().any(|a| a.contains("start= auto")));
-        assert!(argv.iter().any(|a| a.contains("LocalSystem")));
+        let i = argv.iter().position(|a| a == "start=").expect("manca start=");
+        assert_eq!(argv[i + 1], "auto");
+        assert!(argv.iter().any(|a| a == "LocalSystem"));
     }
 
     // ── La rimozione ──
@@ -319,7 +484,6 @@ mod tests {
     fn la_rimozione_non_porta_via_il_registro() {
         // Chi puo' disinstallare non deve poter far sparire le proprie
         // tracce: un registro cancellabile non e' un registro.
-        assert!(audit_survives_removal());
         let da_togliere = files_to_remove(Path::new("/dati"));
         assert!(!da_togliere.iter().any(|p| p.ends_with("audit.log")));
     }
@@ -360,5 +524,59 @@ mod tests {
         let testo = dir.to_string_lossy().replace('\\', "/");
         assert!(!testo.starts_with("/usr"), "{testo}");
         assert!(!testo.starts_with("/opt"), "{testo}");
+    }
+}
+
+#[cfg(test)]
+mod tests_argomenti_sc {
+    use super::*;
+
+    /// Come `std::process::Command` rende una lista di argomenti sulla riga di
+    /// comando di Windows: quota chi contiene spazi o virgolette, e le
+    /// virgolette interne le fa precedere da una barra rovescia.
+    fn riga_di_comando(argv: &[String]) -> String {
+        argv.iter()
+            .map(|a| {
+                if a.contains(' ') || a.contains('"') {
+                    format!("\"{}\"", a.replace('"', "\\\""))
+                } else {
+                    a.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    #[test]
+    fn chiave_e_valore_sono_due_argomenti_separati() {
+        // `sc.exe` si legge la riga di comando per conto suo: un
+        // `start= auto` passato come UNA parola gli arriva richiuso fra
+        // virgolette e risponde «campo start= non valido». Misurato sul PC il
+        // 19/8/2026; l'aiutante finiva in Program Files e si fermava li'.
+        let argv = service_create_argv(Path::new(r"C:\Program Files\Metnos\metnos-helper.exe"));
+        for chiave in ["binPath=", "start=", "obj=", "DisplayName="] {
+            assert!(argv.iter().any(|a| a == chiave),
+                    "«{chiave}» non e' un argomento a se': {argv:?}");
+            assert!(!argv.iter().any(|a| a.starts_with(chiave) && a.len() > chiave.len()),
+                    "«{chiave}» ha il valore attaccato: {argv:?}");
+        }
+    }
+
+    #[test]
+    fn il_percorso_con_spazi_resta_una_cosa_sola() {
+        // «Program Files» ha uno spazio: senza virgolette interne il servizio
+        // verrebbe registrato su un percorso troncato.
+        let argv = service_create_argv(Path::new(r"C:\Program Files\Metnos\metnos-helper.exe"));
+        let riga = riga_di_comando(&argv);
+        assert!(riga.contains(r#"binPath= "\"C:\Program Files\Metnos\metnos-helper.exe\" service""#),
+                "riga di comando inattesa: {riga}");
+    }
+
+    #[test]
+    fn anche_la_politica_di_riavvio_separa_chiave_e_valore() {
+        let argv = service_recovery_argv();
+        for chiave in ["reset=", "actions="] {
+            assert!(argv.iter().any(|a| a == chiave), "«{chiave}» attaccata: {argv:?}");
+        }
     }
 }

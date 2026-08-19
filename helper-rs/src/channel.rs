@@ -38,8 +38,6 @@ const PIPE_ROOT: &str = "metnos-helper";
 pub enum NameError {
     /// Il SID non ha la forma di un SID.
     MalformedSid,
-    /// Il nome non punta alla macchina corrente.
-    NotLocal,
 }
 
 /// Vero quando la stringa e' un SID nella forma testuale di Windows:
@@ -73,15 +71,6 @@ pub fn pipe_name_for_owner(owner_sid: &str) -> Result<String, NameError> {
         return Err(NameError::MalformedSid);
     }
     Ok(format!("{LOCAL_PIPE_PREFIX}{PIPE_ROOT}-{owner_sid}"))
-}
-
-/// Vero quando il nome punta alla macchina corrente.
-///
-/// `\\.\pipe\` e' locale; `\\SERVER\pipe\` e' un'altra macchina, cioe' rete.
-/// Il controllo esiste perche' un nome puo' arrivare da una configurazione, e
-/// una configurazione si puo' modificare.
-pub fn is_local_pipe_name(name: &str) -> bool {
-    name.starts_with(LOCAL_PIPE_PREFIX) && name.len() > LOCAL_PIPE_PREFIX.len()
 }
 
 #[cfg(test)]
@@ -121,6 +110,20 @@ mod tests {
     }
 
     #[test]
+    fn il_nome_della_pipe_e_scritto_per_esteso() {
+        // Il client costruisce lo stesso nome per conto suo, in un progetto
+        // separato che non puo' linkare questo. Se le due formule divergono
+        // il client apre un nome che non esiste e riferisce «aiutante
+        // assente» proprio mentre l'aiutante c'e': un sintomo che manda a
+        // cercare nel posto sbagliato. La stringa e' scritta per esteso qui e
+        // li', e un test Python confronta le due.
+        assert_eq!(
+            pipe_name_for_owner("S-1-5-21-1-2-3-1001").unwrap(),
+            r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001"
+        );
+    }
+
+    #[test]
     fn il_nome_contiene_il_sid_del_proprietario() {
         // Due utenti della stessa macchina non condividono un canale.
         let a = pipe_name_for_owner("S-1-5-21-1-2-3-1001").unwrap();
@@ -145,22 +148,11 @@ mod tests {
 
     #[test]
     fn il_nome_prodotto_e_sempre_locale() {
+        // `\\.\pipe\` e' la macchina corrente. Un prefisso diverso
+        // (`\\SERVER\pipe\`) sarebbe rete travestita da canale locale, e il
+        // nome lo costruiamo noi proprio per non poterci arrivare.
         let nome = pipe_name_for_owner("S-1-5-21-1-2-3-1001").unwrap();
-        assert!(is_local_pipe_name(&nome));
-        assert!(nome.starts_with(r"\\.\pipe\"));
+        assert!(nome.starts_with(r"\\.\pipe\"), "nome non locale: {nome}");
     }
 
-    #[test]
-    fn un_nome_verso_unaltra_macchina_non_e_locale() {
-        // `\\SERVER\pipe\...` e' rete travestita da pipe.
-        for remoto in [
-            r"\\SERVER\pipe\metnos-helper",
-            r"\\192.168.1.9\pipe\metnos-helper",
-            r"\\.\pipe\",
-            "metnos-helper",
-            "",
-        ] {
-            assert!(!is_local_pipe_name(remoto), "accettato come locale: {remoto:?}");
-        }
-    }
 }

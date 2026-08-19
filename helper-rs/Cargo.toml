@@ -1,6 +1,6 @@
 [package]
 name = "metnos-helper"
-version = "0.1.0"
+version = "0.2.29"
 edition = "2021"
 description = "Metnos elevated helper for Windows package operations (ADR 0210)"
 license = "AGPL-3.0-only"
@@ -22,6 +22,13 @@ serde_json = "1"
 ed25519-dalek = "2"
 sha2 = "0.10"
 hex = "0.4"
+# La firma del descrittore d'aggiornamento arriva in base64url, come la
+# scrive il server. Si usa la stessa libreria del client invece di
+# scriverne una a mano: un decodificatore fatto in casa dentro il
+# componente privilegiato sarebbe la parte meno provata di tutto il
+# sistema, proprio dove serve il contrario.
+base64 = "0.22"
+ureq = { version = "3.4.0", default-features = false, features = ["rustls"] }
 
 [target.'cfg(windows)'.dependencies]
 # Solo cio' che serve alla pipe con ACL e alla verifica del chiamante:

@@ -17,6 +17,16 @@ pub enum Command {
     Install {
         owner_sid: String,
         public_key_hex: String,
+        /// La chiave pubblica del SERVER, in base64url.
+        ///
+        /// Un'ancora di fiducia DIVERSA da quella del proprietario, e con un
+        /// compito diverso: quella dice chi puo' chiedere, questa dice che
+        /// cosa ci si puo' installare sopra. Serve a poter aggiornare questo
+        /// programma senza disturbare nessuno — e a non poterlo fare con
+        /// qualcosa che il server non ha firmato.
+        server_key_b64: String,
+        /// L'indirizzo del server: a chi chiedere se c'e' una versione nuova.
+        server_url: String,
     },
     /// Il ciclo del servizio. Lo lancia Windows, non una persona.
     Serve,
@@ -72,6 +82,8 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
         "install" => {
             let mut owner_sid = None;
             let mut public_key_hex = None;
+            let mut server_key_b64 = None;
+            let mut server_url = None;
             while let Some(opzione) = iter.next() {
                 match opzione.as_str() {
                     "--owner-sid" => {
@@ -92,6 +104,24 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
                                 .clone(),
                         );
                     }
+                    "--server-key" => {
+                        server_key_b64 = Some(
+                            iter.next()
+                                .ok_or_else(|| {
+                                    ParseError::MissingValue("--server-key".into())
+                                })?
+                                .clone(),
+                        );
+                    }
+                    "--server-url" => {
+                        server_url = Some(
+                            iter.next()
+                                .ok_or_else(|| {
+                                    ParseError::MissingValue("--server-url".into())
+                                })?
+                                .clone(),
+                        );
+                    }
                     altro => return Err(ParseError::UnknownOption(altro.to_string())),
                 }
             }
@@ -99,6 +129,10 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
                 owner_sid: owner_sid.ok_or(ParseError::MissingRequired("--owner-sid"))?,
                 public_key_hex: public_key_hex
                     .ok_or(ParseError::MissingRequired("--public-key"))?,
+                server_key_b64: server_key_b64
+                    .ok_or(ParseError::MissingRequired("--server-key"))?,
+                server_url: server_url
+                    .ok_or(ParseError::MissingRequired("--server-url"))?,
             })
         }
         altro => Err(ParseError::UnknownCommand(altro.to_string())),
@@ -109,7 +143,8 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
 pub fn usage() -> String {
     "metnos-helper — il componente amministrativo di Metnos\n\
 \n\
-  install --owner-sid <SID> --public-key <chiave>\n\
+  install --owner-sid <SID> --public-key <chiave> --server-key <chiave> \\\n\
+          --server-url <indirizzo>\n\
       Installa e concede il permesso. Si esegue UNA volta sola: da quel\n\
       momento le installazioni di programmi non chiederanno piu' niente.\n\
       Windows chiede la conferma da amministratore.\n\
@@ -142,13 +177,19 @@ mod tests {
     }
 
     #[test]
-    fn linstallazione_vuole_proprietario_e_chiave() {
+    fn linstallazione_vuole_proprietario_e_due_chiavi() {
+        // Tre valori, tre cose diverse: chi possiede l'aiutante, chi puo'
+        // chiedergli qualcosa, e da chi accetta di farsi sostituire.
         let c = parse(&a(&[
             "install",
             "--owner-sid",
             "S-1-5-21-1-2-3-1001",
             "--public-key",
             "aabb",
+            "--server-key",
+            "ssss",
+            "--server-url",
+            "https://s",
         ]))
         .unwrap();
         assert_eq!(
@@ -156,14 +197,31 @@ mod tests {
             Command::Install {
                 owner_sid: "S-1-5-21-1-2-3-1001".into(),
                 public_key_hex: "aabb".into(),
+                server_key_b64: "ssss".into(),
+                server_url: "https://s".into(),
             }
         );
     }
 
     #[test]
+    fn senza_la_chiave_del_server_non_si_installa() {
+        // Un aiutante senza ancora di fiducia non potrebbe mai aggiornarsi,
+        // e resterebbe indietro in silenzio: meglio non nascere.
+        assert_eq!(
+            parse(&a(&[
+                "install", "--owner-sid", "S-1-5-21-1-2-3-1001",
+                "--public-key", "aabb",
+            ])),
+            Err(ParseError::MissingRequired("--server-key"))
+        );
+    }
+
+    #[test]
     fn lordine_delle_opzioni_non_conta() {
-        let a1 = parse(&a(&["install", "--owner-sid", "S", "--public-key", "K"]));
-        let a2 = parse(&a(&["install", "--public-key", "K", "--owner-sid", "S"]));
+        let a1 = parse(&a(&["install", "--owner-sid", "S", "--public-key", "K",
+                            "--server-key", "V", "--server-url", "U"]));
+        let a2 = parse(&a(&["install", "--server-url", "U", "--server-key", "V", "--public-key", "K",
+                            "--owner-sid", "S"]));
         assert_eq!(a1, a2);
     }
 

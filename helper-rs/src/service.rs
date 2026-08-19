@@ -26,7 +26,7 @@ use std::path::Path;
 use crate::audit::{self, Event};
 use crate::journal::Journal;
 use crate::pairing::{authorize, Pairing};
-use crate::protocol::{Request, Response};
+use crate::protocol::{self, Operation, Request, Response};
 
 /// L'esito grezzo di un comando: codice d'uscita e uscita testuale.
 pub type Outcome = (Option<i32>, String);
@@ -49,10 +49,8 @@ pub fn handle(
         // e' esattamente il genere di cosa che si vuole poter contare.
         let _ = audit::record(audit_path, Event::Refused, &request.package_id, "not_paired");
         return Response {
-            ok: false,
             error_code: Some("not_paired".into()),
-            exit_code: None,
-            detail: String::new(),
+            ..Response::stamped()
         };
     };
 
@@ -69,10 +67,8 @@ pub fn handle(
                 "journal_unavailable",
             );
             return Response {
-                ok: false,
                 error_code: Some("journal_unavailable".into()),
-                exit_code: None,
-                detail: String::new(),
+                ..Response::stamped()
             };
         }
     };
@@ -95,11 +91,20 @@ pub fn handle(
             "journal_write_failed",
         );
         return Response {
-            ok: false,
             error_code: Some("journal_write_failed".into()),
-            exit_code: None,
-            detail: String::new(),
+            ..Response::stamped()
         };
+    }
+
+    // «Chi sei» non esegue niente: la risposta e' una proprieta' di questo
+    // programma. Arriva pero' DOPO gli stessi controlli di tutte le altre —
+    // consenso, chiamante, firma, chiave consumata — perche' un componente
+    // privilegiato con due strade e' un componente con una strada sicura e
+    // una da trovare. Si registra come tutto il resto.
+    if request.operation == Operation::Version {
+        let _ = audit::record(audit_path, Event::Executed, &request.package_id,
+                              protocol::helper_version());
+        return Response { ok: true, ..Response::stamped() };
     }
 
     let (exit_code, output) = run(&request.argv());
@@ -119,6 +124,7 @@ pub fn handle(
         },
         exit_code,
         detail,
+        ..Response::stamped()
     }
 }
 
@@ -159,7 +165,9 @@ mod tests {
             let pairing = Pairing {
                 owner_sid: sid.clone(),
                 public_key_hex: hex::encode(chiave.verifying_key().to_bytes()),
-                consented_at: 1_786_000_000,
+                server_public_key_b64: String::new(),
+                server_url: String::new(),
+            consented_at: 1_786_000_000,
             };
             pairing.save(&radice.join("pairing.json")).unwrap();
             Banco { radice, chiave, sid }
@@ -174,6 +182,15 @@ mod tests {
                 idempotency_key: chiave_idem.into(),
                 signature: String::new(),
             };
+            r.signature =
+                hex::encode(self.chiave.sign(r.canonical_body().as_bytes()).to_bytes());
+            r
+        }
+
+        fn chi_sei(&self, chiave_idem: &str) -> Request {
+            let mut r = self.richiesta("Segnaposto", chiave_idem);
+            r.operation = Operation::Version;
+            r.package_id = String::new();
             r.signature =
                 hex::encode(self.chiave.sign(r.canonical_body().as_bytes()).to_bytes());
             r
@@ -304,5 +321,46 @@ mod tests {
             b.applica(&r, &b.sid, (Some(0), "".into()));
         }
         assert_eq!(b.registro().lines().count(), 2);
+    }
+
+    #[test]
+    fn chiedere_chi_sei_non_esegue_niente() {
+        // Il punto del verbo: risponde senza toccare la macchina. Se un
+        // giorno eseguisse qualcosa, la voce piu' innocua del vocabolario
+        // sarebbe diventata una strada per eseguire.
+        let banco = Banco::nuovo("versione-non-esegue");
+        let (risposta, eseguiti) =
+            banco.applica(&banco.chi_sei("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"), &banco.sid, (Some(0), String::new()));
+        assert!(risposta.ok, "rifiutata: {:?}", risposta.error_code);
+        assert!(eseguiti.is_empty(), "ha eseguito {eseguiti:?}");
+        assert_eq!(risposta.helper_version, protocol::helper_version());
+        assert_eq!(risposta.protocol_version, protocol::PROTOCOL_VERSION);
+    }
+
+    #[test]
+    fn ogni_risposta_dice_chi_l_ha_scritta() {
+        // Anche i rifiuti: e' quando qualcosa non va che serve sapere con
+        // chi si stava parlando, ed e' li' che una seconda domanda potrebbe
+        // non arrivare mai.
+        let banco = Banco::nuovo("versione-anche-nei-rifiuti");
+        let (risposta, eseguiti) = banco.applica(
+            &banco.richiesta("Qualcosa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2"), "S-1-5-21-9-9-9-9999",
+            (Some(0), String::new()));
+        assert!(!risposta.ok);
+        assert!(eseguiti.is_empty());
+        assert_eq!(risposta.helper_version, protocol::helper_version());
+    }
+
+    #[test]
+    fn chiedere_chi_sei_passa_dagli_stessi_controlli() {
+        // Non e' una porta di servizio: senza consenso non risponde nemmeno
+        // «chi sono».
+        let banco = Banco::nuovo("versione-stessi-controlli");
+        std::fs::remove_file(banco.radice.join("pairing.json")).unwrap();
+        let (risposta, eseguiti) =
+            banco.applica(&banco.chi_sei("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3"), &banco.sid, (Some(0), String::new()));
+        assert!(!risposta.ok);
+        assert_eq!(risposta.error_code.as_deref(), Some("not_paired"));
+        assert!(eseguiti.is_empty());
     }
 }

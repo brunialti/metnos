@@ -38,6 +38,25 @@ pub struct Pairing {
     pub owner_sid: String,
     /// La chiave pubblica dell'installazione, in esadecimale.
     pub public_key_hex: String,
+    /// La chiave pubblica del SERVER, in base64url.
+    ///
+    /// Ancora di fiducia distinta da quella qui sopra, con un compito
+    /// distinto: `public_key_hex` dice CHI puo' chiedere, questa dice CHE
+    /// COSA ci si puo' installare sopra. Tenerle separate significa che
+    /// nessuna delle due eredita i poteri dell'altra — chi puo' chiedere
+    /// un'installazione non puo' per questo sostituire il programma.
+    ///
+    /// Vuota su un aiutante installato prima che gli aggiornamenti
+    /// esistessero: senza ancora non si aggiorna, il che e' il modo giusto
+    /// di sbagliare.
+    #[serde(default)]
+    pub server_public_key_b64: String,
+    /// L'indirizzo del server a cui chiedere se c'e' una versione nuova.
+    ///
+    /// Fissato al momento del consenso e non piu' cambiato: e' l'unico posto
+    /// con cui questo programma parla, e non lo decide una richiesta.
+    #[serde(default)]
+    pub server_url: String,
     /// Quando e' stato dato il consenso, in secondi dall'epoca.
     ///
     /// Non serve a scadere niente — un consenso dato una volta resta, ed e'
@@ -122,6 +141,12 @@ pub fn journal_path() -> PathBuf {
     data_dir().join("consumed.log")
 }
 
+/// Dove si scarica il programma nuovo prima di metterlo al suo posto.
+/// Qui scrive solo il sistema.
+pub fn download_path() -> PathBuf {
+    data_dir().join("metnos-helper.new")
+}
+
 /// La decisione completa su una richiesta: si esegue, o non si esegue e
 /// perche'.
 ///
@@ -161,6 +186,8 @@ mod tests {
         let pairing = Pairing {
             owner_sid: "S-1-5-21-1-2-3-1001".into(),
             public_key_hex: hex::encode(signing.verifying_key().to_bytes()),
+            server_public_key_b64: String::new(),
+                server_url: String::new(),
             consented_at: 1_786_000_000,
         };
         (signing, pairing)

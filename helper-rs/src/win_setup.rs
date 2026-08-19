@@ -16,7 +16,8 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::setup::{
-    arp_entries, files_to_remove, install_dir, service_create_argv, service_delete_argv, ARP_KEY,
+    arp_entries, files_to_remove, install_dir, service_create_argv, service_delete_argv,
+    service_recovery_argv, ARP_KEY,
 };
 
 /// Esegue un comando di sistema e restituisce l'esito.
@@ -61,6 +62,20 @@ pub fn registra_servizio(exe: &Path) -> io::Result<()> {
             "registrazione del servizio fallita (rc={codice}): {}",
             uscita.trim()
         )));
+    }
+    // La politica di riavvio serve all'aggiornamento: dopo essersi
+    // sostituito il programma esce, e deve tornare su col binario nuovo.
+    // Non e' un motivo per fermare l'installazione se non riesce: si
+    // otterrebbe un aiutante che non c'e' invece di uno che non si aggiorna
+    // da solo.
+    match esegui(&service_recovery_argv()) {
+        Ok((0, _)) => {}
+        Ok((codice, uscita)) => eprintln!(
+            "Avvertenza: politica di riavvio non impostata (rc={codice}): {}. \
+L'aiutante funziona, ma un aggiornamento richiedera' un riavvio del computer.",
+            uscita.trim()
+        ),
+        Err(e) => eprintln!("Avvertenza: politica di riavvio non impostata: {e}"),
     }
     Ok(())
 }
@@ -146,4 +161,26 @@ pub fn disinstalla(data_dir: &Path) -> Vec<String> {
     }
 
     problemi
+}
+
+/// Mette il file nuovo al posto dell'eseguibile in esecuzione.
+///
+/// Su Windows un eseguibile in esecuzione non si puo' sovrascrivere, ma si
+/// puo' RINOMINARE: e' il trucco su cui poggia ogni aggiornamento di un
+/// programma vivo, ed e' lo stesso che usa il client.
+///
+/// Se qualcosa va storto a meta', il vecchio torna al suo posto. Un servizio
+/// di sistema senza eseguibile non riparte, e non riparte in un modo che
+/// nessuno sa spiegare guardando i registri.
+pub fn sostituisci_eseguibile(nuovo: &Path) -> Result<(), &'static str> {
+    let corrente = std::env::current_exe().map_err(|_| "current_exe_unknown")?;
+    let vecchio = corrente.with_extension("old");
+    let _ = std::fs::remove_file(&vecchio);
+    std::fs::rename(&corrente, &vecchio).map_err(|_| "rename_failed")?;
+    if std::fs::copy(nuovo, &corrente).is_err() {
+        // Torna indietro: meglio la versione di prima che nessuna.
+        let _ = std::fs::rename(&vecchio, &corrente);
+        return Err("copy_failed");
+    }
+    Ok(())
 }
