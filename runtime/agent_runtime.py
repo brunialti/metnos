@@ -3464,12 +3464,25 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                                      actor=actor, channel=channel,
                                      device=str(_target))
             from executor_scheduler import assigned_worker_environment
+            _remote_kwargs = {}
+            if execution_context is not None:
+                _attempt_id = str(getattr(
+                    execution_context, "attempt_id", "") or "")
+                _dispatch_id = uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"metnos:durable-attempt:{_attempt_id}:{_target}",
+                ).hex
+                _remote_kwargs = {
+                    "invocation_id": f"inv-durable-{_dispatch_id}",
+                    "dispatch_key": f"durable:{_dispatch_id}",
+                    "execution_context": execution_context,
+                }
             _obs = _remote.invoke_remote(
                 executor, remote_args, _target, timeout_s=timeout_s,
                 turn_id=turn_id,
                 env_injections=assigned_worker_environment(
                     executor, execution_context) or None,
-                actor=actor or "", channel=channel or "")
+                actor=actor or "", channel=channel or "", **_remote_kwargs)
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:

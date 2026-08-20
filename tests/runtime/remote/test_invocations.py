@@ -100,6 +100,83 @@ class InvocationQueueTests(unittest.TestCase):
         server_pub = invocations.server_public_key_b64()
         self.assertTrue(invocations.verify_payload(server_pub, sig, wire))
 
+    def test_durable_dispatch_is_idempotent_across_reopen_and_signs_context(self):
+        context = {
+            "owner_user_id": "owner-f7",
+            "workload_id": "wrk-f7",
+            "revision_id": "rev-f7",
+            "stage_id": "stg-f7",
+            "unit_key": "unit-f7",
+            "attempt_id": "att-f7",
+            "priority": "normal",
+            "resource_claims": [
+                ["cpu", 0], ["device", 0], ["llm", 0],
+                ["local_io", 0], ["network_io", 0], ["vlm", 0],
+            ],
+            "deadline_at": None,
+        }
+        first = invocations.enqueue_invocation(
+            self.device_id,
+            "find_packages",
+            {"package_name": "git"},
+            invocation_id="inv-durable-f7-test",
+            dispatch_key="durable:f7-test",
+            execution_context=context,
+            db_path=self.db,
+        )
+        replay = invocations.enqueue_invocation(
+            self.device_id,
+            "find_packages",
+            {"package_name": "git"},
+            invocation_id="inv-durable-f7-test",
+            dispatch_key="durable:f7-test",
+            execution_context=context,
+            db_path=self.db,
+        )
+        self.assertEqual(replay, first)
+        wire = invocations.next_invocation(self.device_id, db_path=self.db)
+        self.assertEqual(wire["execution_context"]["attempt_id"], "att-f7")
+        signature = wire.pop("server_sig")
+        self.assertTrue(invocations.verify_payload(
+            invocations.server_public_key_b64(), signature, wire,
+        ))
+        connection = invocations._open_db(self.db)
+        try:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM invocations"
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(count, 1)
+
+    def test_durable_dispatch_rejects_payload_conflict(self):
+        common = {
+            "invocation_id": "inv-durable-f7-conflict",
+            "dispatch_key": "durable:f7-conflict",
+            "execution_context": {
+                "owner_user_id": "owner-f7",
+                "workload_id": "wrk-f7",
+                "revision_id": "rev-f7",
+                "stage_id": "stg-f7",
+                "unit_key": "unit-f7",
+                "attempt_id": "att-f7",
+                "priority": "normal",
+                "resource_claims": [
+                    ["cpu", 0], ["device", 0], ["llm", 0],
+                    ["local_io", 0], ["network_io", 0], ["vlm", 0],
+                ],
+                "deadline_at": None,
+            },
+            "db_path": self.db,
+        }
+        invocations.enqueue_invocation(
+            self.device_id, "find_packages", {"package_name": "git"}, **common,
+        )
+        with self.assertRaises(invocations.InvocationConflictError):
+            invocations.enqueue_invocation(
+                self.device_id, "find_packages", {"package_name": "curl"}, **common,
+            )
+
     def test_provider_grant_is_manifest_derived_and_server_signed(self):
         manifest_path = _RUNTIME.parent / "executors/get_processes/manifest.toml"
         # Runtime tests use a fresh server author key but preserve repository
