@@ -25,6 +25,7 @@ DIALOG_SWEEPER_TASK = web.AppKey("dialog_sweeper_task", asyncio.Task)
 TUTOR_BOOTSTRAP_TASK = web.AppKey("tutor_bootstrap_task", asyncio.Task)
 TURN_POOL = web.AppKey("turn_pool", object)
 TUTOR_GATE = web.AppKey("tutor_gate", asyncio.Semaphore)
+DURABLE_WORKLOAD_STORE_FACTORY = web.AppKey("durable_workload_store_factory", Callable)
 
 _LEGACY_NAMES = {
     STARTED_AT: "started_at",
@@ -39,6 +40,7 @@ _LEGACY_NAMES = {
     TUTOR_BOOTSTRAP_TASK: "tutor_bootstrap_task",
     TURN_POOL: "turn_pool",
     TUTOR_GATE: "tutor_gate",
+    DURABLE_WORKLOAD_STORE_FACTORY: "durable_workload_store_factory",
 }
 
 
