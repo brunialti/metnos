@@ -437,10 +437,13 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 ### JOB-001 - Motore generico per lavori lunghi, persistenti e paralleli
 
 - Priorita': da assegnare.
-- Stato: mandato scritto, nessuna progettazione. Ha una roadmap propria:
-  **`internal/roadmap/RM-0004-motore-workload-durevoli.md`**, che riporta il
-  mandato integrale (365 righe) e va letta prima di qualunque valutazione,
-  perche' fissa anche i confini di cio' che NON va costruito.
+- Stato: F0-F2 completate il 2026-08-20. Il nucleo interno inattivo comprende
+  contratti versionati, schema e migrazione SQLite, repository transazionale e
+  macchine a stati; F3 (claim, lease e fencing) non è iniziata. La ricognizione,
+  le fasi F0-F13 e le istruzioni per agenti esecutivi sono nella roadmap propria:
+  **`internal/roadmap/RM-0004-motore-workload-durevoli.md`**. Il mandato
+  originale resta in calce, integro, e va letto insieme all'analisi prima di
+  qualunque modifica.
 - Obiettivo: eseguire carichi lunghi o molto grandi **senza perdere il lavoro
   gia' svolto e senza duplicare gli effetti** dopo errori, interruzioni o
   riavvii. L'utente formula soltanto il risultato voluto; il sistema ne
@@ -456,12 +459,14 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   deterministica) governano il parallelismo **dentro** una invocazione, che
   vive quanto il turno. Qui serve durevolezza **attraverso** i riavvii, che
   nessuno dei due copre. Verificato prima di aprire la voce.
-- Primo passo: analisi che dica cosa dei meccanismi esistenti (scheduler v2,
-  `executor_scheduler`, spool dei risultati remoti, journal di undo) fornisce
-  gia' la semantica richiesta, e cosa manca davvero.
+- Prossimo passo: F3 della roadmap. Provare con processi concorrenti claim,
+  lease, heartbeat, fencing del commit e ripresa, senza ancora collegare
+  executor reali o superfici pubbliche. ADR 0213 mantiene rinviato il nome
+  pubblico e vieta di attivare il worker prima dei gate successivi.
 - Done-gate: un lavoro interrotto a meta' e ripreso non ripete un effetto
   gia' prodotto, e non dichiara completamento finche' ogni unita' d'ingresso
-  non e' contabilizzata.
+  non e' contabilizzata. Le prove complete e i gate intermedi sono in
+  RM-0004 §18.
 
 ### I18N-DEDUP-001 - Controllo duplicati di chiavi e stringhe i18n
 

@@ -52,6 +52,15 @@
 - **`*_tasks` conditional injection**: iniettati nel pool PLANNER solo se query ha marker scheduling (`_TASKS_MARKERS` in `tool_grammar.py`).
 
 **Planner / Praxis / runtime flow**
+- **Nucleo inattivo dei lavori durevoli** (ADR 0213, RM-0004 F0-F2):
+  `runtime/durable_workloads/` apre lo store soltanto su chiamata esplicita e
+  non è collegato a boot, HTTP, agent runtime, scheduler o executor. SQLite v1
+  usa chiavi owner-scoped, migrazione atomica, CAS, eventi e outbox nella stessa
+  transazione; solo `storage.evaluate_completion` può produrre
+  `completed[_with_errors]` dopo i nove controlli. Guard:
+  `tests/runtime/durable_workloads/` e fixture normative in
+  `tests/fixtures/durable_workloads/`. Claim, lease e fencing restano vietati
+  fino a F3.
 - **Tutor F2 pre-planner senza contaminazione** (ADR 0197-0198, RM-0003):
   `runtime/tutor_boundary.py` è l'unico adapter HTTP/Telegram; il detector
   richiede due segnali dal `detection_lexicon`, esclude allegati/segreti e

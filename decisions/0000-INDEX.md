@@ -129,3 +129,6 @@ for format and discipline; see `_template.md` for the template.
 > (`fast`, `middle`, `wise`, `creative`, `frontier`) and three centrally
 > configured `fast` levels (`micro`, `procedural`, `fidelity`); provider,
 > model and decoding policy now belong only to the configured tier.
+> Latest: `0213` freezes the internal durable-workload contracts and completes
+> dormant F0-F2 storage foundations. It adds no public noun, route, worker or
+> executor; claim, lease, fencing and activation remain later gates.
