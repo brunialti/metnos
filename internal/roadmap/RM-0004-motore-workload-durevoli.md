@@ -47,8 +47,8 @@ il ciclo di vita supervisionato, ma il gate distribuito resta disattivato e i
 binding eseguibili non sono ancora configurati. F9 ha congelato il contratto
 owner-scoped e le route sottili; nessuna route accetta il proprietario dal body
 o restituisce piano, risultati o istantanee interne. F10 ha aggiunto la console
-web sulla stessa facciata, con timeline SSE riletta dal database, capabilities
-di download owner-bound e notifiche durevoli; non carica le unità nella vista
+web sulla stessa facciata, con timeline SSE riletta dal database, autorizzazioni
+temporanee di download legate al proprietario e notifiche durevoli; non carica le unità nella vista
 iniziale né espone percorsi, payload di risultato o link pubblici. I pacchetti
 F11-F13 restano circoscritti per agenti esecutivi, secondo §16-17, e non
 possono anticipare i rispettivi gate.
@@ -1865,9 +1865,8 @@ reconcile_expired(now, batch_size)
   chiusi di piano, budget, fasi, errori e avvisi. La timeline parte dalla
   finestra recente e prosegue da un ID persistente; la route supporta
   `Last-Event-ID`, heartbeat non persistenti e blocchi limitati. Gli artefatti
-  sono scaricati solo mediante autorizzazione temporanea, legata al
-  proprietario e revocabile,
-  ricontrollata nel registro prima dell'apertura sicura del blob. L'outbox
+  sono scaricati solo mediante autorizzazione temporanea, legata al proprietario
+  e revocabile, ricontrollata nel registro prima dell'apertura sicura del blob. L'outbox
   inserisce accettazione, attenzione, fallimento e completamento nella stessa
   transazione di stato, poi Telegram risolve l'associazione al momento
   dell'invio e conferma soltanto dopo l'ack. Nessun messaggio contiene allegati,
