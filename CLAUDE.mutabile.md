@@ -20,20 +20,20 @@
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
 - **ADR registry**: `0001-0213` (skipped: `0055`/`0115`/`0116`/`0121`).
-- **Lavori durevoli F0-F4 chiusi, nucleo inattivo** (20/8, ADR 0213,
-  RM-0004): `runtime/durable_workloads/` contiene contratti, schema SQLite,
-  repository owner-scoped e il protocollo fittizio di acquisizione, lease,
-  heartbeat, fencing, ritentativo e ripresa. Il deposito privato degli
-  artefatti è circoscritto al proprietario, indirizzato per contenuto e dotato
-  di pubblicazione interna riconciliabile, raccolta prudente degli orfani e
-  cancellazione selettiva. Il worker non si avvia da solo, non possiede pool e
-  accetta soltanto callable fittizi `pure`; nessun import all'avvio, servizio,
-  route, executor reale, Tutor o vocabolo pubblico. Il DB resta autorevole:
-  un replay identico è idempotente, un fence vecchio non modifica lo stato e
-  una pubblicazione diventa definitiva soltanto dopo la rilettura del digest.
-  Prove: `tests/runtime/durable_workloads/test_fencing_and_recovery.py` e
-  `test_artifacts.py`; suite runtime completa: 6380 test superati, 46 saltati e
-  1074 subtest.
+- **Lavori durevoli F0-F10 chiusi, attivazione ancora spenta** (21/8, ADR
+  0213, RM-0004): `runtime/durable_workloads/` contiene contratti, schema
+  SQLite, repository owner-scoped, acquisizione, lease, heartbeat, fencing,
+  ritentativo e ripresa; il worker supervisionato resta separato da HTTP e
+  privo dei binding reali F11. Il deposito privato degli artefatti è
+  circoscritto al proprietario, indirizzato per contenuto e dotato di
+  pubblicazione interna riconciliabile, raccolta prudente degli orfani e
+  cancellazione selettiva. La facciata e la console owner-scoped espongono
+  solo dati redatti, eventi SSE persistenti e download con autorizzazione
+  temporanea revocabile; l'outbox Telegram conserva la consegna fino all'ack.
+  Il DB resta autorevole: un replay identico è idempotente, un fence vecchio
+  non modifica lo stato e una pubblicazione diventa definitiva soltanto dopo
+  la rilettura del digest. Nessun vocabolo, comando naturale, Tutor o
+  documentazione pubblica annuncia la funzione prima dei gate F11-F13.
 
 ## 3. Synth pipeline (6 stadi)
 
