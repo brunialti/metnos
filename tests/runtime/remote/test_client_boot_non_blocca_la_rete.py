@@ -23,6 +23,7 @@ Run: `python3 -m pytest tests/runtime/remote/test_client_boot_non_blocca_la_rete
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -39,11 +40,15 @@ def _senza_commenti(percorso: Path) -> str:
 
 def test_la_pulizia_dei_permessi_non_e_attesa_all_avvio():
     codice = _senza_commenti(RUNNER)
+    codice_compatto = "".join(codice.split())
     # Parte in disparte: il collegamento al server non la aspetta.
-    assert "spawn_blocking(\n            crate::appcontainer::cleanup_all_grants)" in codice \
-        or "spawn_blocking(crate::appcontainer::cleanup_all_grants)" in codice, (
-            "la pulizia ACL non parte piu' in disparte: se torna davanti alla "
-            "rete, il computer risulta spento mentre lavora")
+    assert re.search(
+        r"spawn_blocking\(crate::appcontainer::cleanup_all_grants,?\)",
+        codice_compatto,
+    ), (
+        "la pulizia ACL non parte piu' in disparte: se torna davanti alla "
+        "rete, il computer risulta spento mentre lavora"
+    )
     # E non viene chiamata direttamente, che rimetterebbe l'attesa all'avvio.
     assert "cleanup_all_grants()" not in codice, (
         "la pulizia ACL e' di nuovo chiamata in linea: l'avvio torna a "
