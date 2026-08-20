@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "get_processes"
-version     = "0.3.0"
+version     = "0.3.1"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = ["processi", "ps", "stato server", "server status",
@@ -19,12 +19,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge processi e salute del sistema. PATTERN: get_processes(top=5, include_health=true). NON: task schedulati (-> list_tasks), metadati file (-> get_files), ora o posizione (-> get_now/get_location). OUT: entries e health attestato."
-en = "SCOPO: reads processes and system health. PATTERN: get_processes(top=5, include_health=true). NON: scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location). OUT: attested entries and health."
+it = "SCOPO: legge processi e salute del sistema. PATTERN: temperatura CPU -> get_processes(top=5, sensor_domains=[\"cpu\"], sensor_types=[\"temperature\"]); stato generale -> get_processes(top=5, include_health=true). NON: task schedulati (-> list_tasks), metadati file (-> get_files), ora o posizione (-> get_now/get_location). OUT: entries e health attestato."
+en = "SCOPO: reads processes and system health. PATTERN: CPU temperature -> get_processes(top=5, sensor_domains=[\"cpu\"], sensor_types=[\"temperature\"]); general status -> get_processes(top=5, include_health=true). NON: scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location). OUT: attested entries and health."
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:0a1030e11d06ac45346f65e73cbdea8d347474a2d5f9189a948cee953e4af256"
+digest = "sha256:e24233c8a21b01d31d91f31b36c0b89c61ce2e4a9ca70ea00edc460d4c8f3d9f"
 
 [args]
 type     = "object"
@@ -60,12 +60,34 @@ default     = false
 [args.properties.include_health.description]
 it = """bool. Se true aggiunge dict health.{load,memory,thermal,disk,network,services}.
 USO: stato/salute/uptime/carico/IP/rete/temperatura del server.
-Su Windows thermal usa, nell'ordine, WMI Libre/OpenHardwareMonitor già attivo, una DLL LibreHardwareMonitor configurata localmente, quindi zone ACPI; una zona ACPI non viene presentata come temperatura CPU.
+Su Windows sensor_domains+sensor_types abilitano selettivamente il provider registrato; WMI e zone ACPI restano ripieghi locali per la temperatura. Una zona ACPI non viene presentata come temperatura CPU.
 NON DEVI usare health/with_health/system/status."""
 en = """bool. If true adds dict health.{load,memory,thermal,disk,network,services}.
 USE: status/health/uptime/load/IP/network/temperature of server.
-On Windows, thermal data comes, in order, from a running Libre/OpenHardwareMonitor WMI provider, a locally configured LibreHardwareMonitor DLL, then ACPI zones; an ACPI zone is never presented as an attested CPU temperature.
+On Windows, sensor_domains+sensor_types selectively enable the registered provider; WMI and ACPI zones remain local temperature fallbacks. An ACPI zone is never presented as an attested CPU temperature.
 MUST NOT use health/with_health/system/status."""
+
+[args.properties.sensor_domains]
+type        = "array"
+default     = []
+uniqueItems = true
+maxItems    = 10
+items = { type = "string", enum = ["cpu", "gpu", "storage", "motherboard", "controller", "memory", "network", "battery", "power_supply", "power_monitor"] }
+
+[args.properties.sensor_domains.description]
+it = "Domini hardware richiesti. Usa soltanto quelli necessari: CPU=[\"cpu\"], GPU=[\"gpu\"], disco/NVMe=[\"storage\"]. Richiede anche sensor_types."
+en = "Requested hardware domains. Use only those required: CPU=[\"cpu\"], GPU=[\"gpu\"], disk/NVMe=[\"storage\"]. Also requires sensor_types."
+
+[args.properties.sensor_types]
+type        = "array"
+default     = []
+uniqueItems = true
+maxItems    = 16
+items = { type = "string", enum = ["temperature", "fan", "voltage", "current", "power", "clock", "load", "frequency", "flow", "control", "level", "factor", "data", "small_data", "throughput", "time_span", "timing", "energy", "noise", "conductivity", "humidity"] }
+
+[args.properties.sensor_types.description]
+it = "Misure hardware richieste, abbinate a sensor_domains. Esempi: [\"temperature\"], [\"fan\"], [\"clock\",\"load\"]. Nessuna scansione completa implicita."
+en = "Requested hardware measurements, paired with sensor_domains. Examples: [\"temperature\"], [\"fan\"], [\"clock\",\"load\"]. No implicit full scan."
 
 [args.properties.services_extra]
 type        = "array"
@@ -98,10 +120,13 @@ schema_inline = """
   failed?: Array<{error:str}>,
   truncated: bool, truncated_what: str|null, truncated_intentional: bool,
   used: int, available_total: int, cap_field: str|null, cap_value: int|null,
+  partial?: bool, error?: str, error_code?: str, error_class?: str,
+  managed_dependency?: str,
   health?: {
     load: {available:bool, "1m":float, "5m":float, "15m":float, uptime_s:int, reason?:str},
     memory: {available:bool, total_mb:int, used_mb:int, free_mb:int, pct:float, swap_total_mb:int, swap_used_mb:int, swap_pct:float, reason?:str},
     thermal: {available:bool, source?:str, quality?:str, reason_code?:str, cpu_c?:float, gpu_c?:float, nvme_c?:float, sensors?:Array<{kind:str, name:str, identifier:str, value_c:float}>},
+    hardware_sensors?: {available:bool, source:str, reason_code?:str, sensors:Array<{domain:str, kind:str, name:str, identifier:str, value:float, unit:str}>},
     disk: Array<{mount:str, device:str, fstype:str, total_gb:float, used_gb:float, free_gb:float, pct:float}>,
     network: Array<{iface:str, ipv4:Array<str>, ipv6:Array<str>, up:bool}>,
     services: Array<{name:str, status:str, key?:str, scope?:str, installed?:bool, healthy?:bool, reason_code?:str, cohost?:str, heartbeat_at?:str, heartbeat_age_s?:float|null, jobs_total?:int, jobs_enabled?:int, jobs_running?:int, last_run_at?:str, last_run_status?:str, error_class?:str, error_summary?:str, active_since_s_mono?:int}>,
@@ -109,6 +134,16 @@ schema_inline = """
   }
 }
 """
+
+[[managed_dependencies]]
+key        = "hardware_sensor_provider"
+package_id = "LibreHardwareMonitor.LibreHardwareMonitor"
+mode       = "provider"
+interface  = "hardware_sensors_v1"
+domains_arg = "sensor_domains"
+sensor_types_arg = "sensor_types"
+assembly   = "LibreHardwareMonitorLib.dll"
+entry_type = "LibreHardwareMonitor.Hardware.Computer"
 
 [presentation]
 default_view = "list"

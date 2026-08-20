@@ -42,7 +42,7 @@ _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import managed_provider_result, run_stdio  # noqa: E402
 
 
 _VALID_ATTRS = {
@@ -51,6 +51,17 @@ _VALID_ATTRS = {
 _NUMERIC_ATTRS = {"pid", "ppid", "cpu_pct", "mem_pct"}
 _VALID_OPS = {"=", "!=", ">", ">=", "<", "<=",
               "contains", "startswith", "endswith", "regex", "in"}
+
+_SENSOR_DOMAINS = frozenset({
+    "battery", "controller", "cpu", "gpu", "memory", "motherboard",
+    "network", "power_monitor", "power_supply", "storage",
+})
+_SENSOR_TYPES = frozenset({
+    "clock", "conductivity", "control", "current", "data", "energy",
+    "factor", "fan", "flow", "frequency", "humidity", "level", "load",
+    "noise", "power", "small_data", "temperature", "throughput",
+    "time_span", "timing", "voltage",
+})
 
 # Mapping di attribute "errati" → campo health corrispondente. Quando il
 # planner prova a filtrare su un concetto che non e' attributo di processo
@@ -774,10 +785,10 @@ def _read_services(
 
 
 def _thermal_sensor_kind(identifier: object) -> str:
-    """Classifica un sensore LHM dal suo identifier canonico.
+    """Classify a hardware sensor from its canonical identifier.
 
-    Non usa il nome visualizzato (localizzato e dipendente dal produttore):
-    gli identifier di Libre/OpenHardwareMonitor sono l'interfaccia stabile.
+    Display names are localized and vendor-dependent, while identifiers are
+    the stable interface supplied by the managed provider.
     """
     value = str(identifier or "").casefold().replace("\\", "/")
     segments = {part for part in value.split("/") if part}
@@ -792,8 +803,106 @@ def _thermal_sensor_kind(identifier: object) -> str:
     return "other"
 
 
+def _normalise_hardware_sensors(
+        provider: object, domains: tuple[str, ...],
+        sensor_types: tuple[str, ...]) -> dict:
+    """Validate the bounded provider result for the requested sensor slice."""
+
+    if not isinstance(provider, dict):
+        return {
+            "available": False, "source": "none", "sensors": [],
+            "reason_code": "provider_result_missing",
+        }
+    if provider.get("ok") is not True:
+        return {
+            "available": False, "source": "none", "sensors": [],
+            "reason_code": str(
+                provider.get("error_code") or "provider_failed")[:64],
+        }
+    payload = provider.get("payload")
+    rows = payload.get("sensors") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return {
+            "available": False, "source": "none", "sensors": [],
+            "reason_code": "provider_output_invalid",
+        }
+    allowed_domains = set(domains)
+    allowed_types = set(sensor_types)
+    sensors: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {
+                "domain", "kind", "name", "identifier", "value", "unit"}:
+            continue
+        domain = row.get("domain")
+        kind = row.get("kind")
+        name = row.get("name")
+        identifier = row.get("identifier")
+        unit = row.get("unit")
+        if (domain not in allowed_domains or kind not in allowed_types
+                or not isinstance(name, str) or not name
+                or not isinstance(identifier, str) or not identifier
+                or not isinstance(unit, str)
+                or len(name) > 160 or len(identifier) > 240
+                or len(unit) > 16):
+            continue
+        try:
+            value = float(row.get("value"))
+        except (TypeError, ValueError):
+            continue
+        if not (-1e15 < value < 1e15):
+            continue
+        sensors.append({
+            "domain": domain,
+            "kind": kind,
+            "name": name,
+            "identifier": identifier,
+            "value": value,
+            "unit": unit,
+        })
+    sensors.sort(key=lambda row: (
+        row["domain"], row["kind"], row["identifier"], row["name"],
+        row["value"], row["unit"],
+    ))
+    if not sensors:
+        return {
+            "available": False, "source": "none", "sensors": [],
+            "reason_code": "no_supported_sensor",
+        }
+    return {
+        "available": True,
+        "source": "managed_provider",
+        "sensors": sensors,
+    }
+
+
+def _thermal_from_hardware(payload: dict) -> dict:
+    """Project generic temperature rows onto the existing health summary."""
+
+    if not payload.get("available"):
+        return {
+            "available": False,
+            "source": "none",
+            "quality": "unavailable",
+            "reason_code": str(
+                payload.get("reason_code") or "no_supported_sensor")[:64],
+        }
+    sensors = []
+    for row in payload.get("sensors", []):
+        if row.get("kind") != "temperature" or row.get("unit") != "°C":
+            continue
+        sensors.append({
+            "name": row["name"],
+            "identifier": row["identifier"],
+            "value_c": round(float(row["value"]), 1),
+        })
+    return _normalise_windows_thermal({
+        "source": "managed_provider",
+        "sensors": sensors,
+    })
+
+
 def _normalise_windows_thermal(payload: object) -> dict:
-    """Valida e normalizza l'output del collector PowerShell Windows."""
+    """Validate and normalize the Windows thermal collector output."""
     if not isinstance(payload, dict):
         return {
             "available": False,
@@ -802,9 +911,7 @@ def _normalise_windows_thermal(payload: object) -> dict:
         }
     source = str(payload.get("source") or "none").casefold()
     allowed_sources = {
-        "librehardwaremonitor_wmi",
-        "openhardwaremonitor_wmi",
-        "librehardwaremonitor_dll",
+        "managed_provider",
         "windows_acpi",
         "none",
     }
@@ -827,8 +934,8 @@ def _normalise_windows_thermal(payload: object) -> dict:
                 value_c = round(float(row.get("value_c")), 1)
             except (TypeError, ValueError):
                 continue
-            # Esclude sentinel/valori palesemente corrotti senza imporre una
-            # soglia operativa al dispositivo.
+            # Reject sentinels and clearly corrupt values without imposing an
+            # operating limit on the device.
             if not -50.0 <= value_c <= 200.0:
                 continue
             identifier = str(row.get("identifier") or "")[:240]
@@ -858,10 +965,8 @@ def _normalise_windows_thermal(payload: object) -> dict:
         "quality": quality,
         "sensors": sensors,
     }
-    # Per CPU/GPU il valore sintetico e' il massimo corrente dei sensori
-    # pertinenti (package/hotspot/core): una scelta conservativa e ripetibile.
-    # Le zone ACPI NON diventano cpu_c: Windows non attesta a quale componente
-    # fisica corrispondano, quindi etichettarle "CPU" sarebbe un overclaim.
+    # CPU/GPU summaries use the current maximum of relevant sensors. ACPI
+    # zones never become cpu_c because Windows does not attest their component.
     for kind, key in (("cpu", "cpu_c"), ("gpu", "gpu_c"),
                       ("nvme", "nvme_c")):
         values = [row["value_c"] for row in sensors if row["kind"] == kind]
@@ -880,66 +985,8 @@ function Emit-ThermalResult([string]$source, [object[]]$sensors) {
   exit 0
 }
 
-# Via piu' leggera: se Libre/OpenHardwareMonitor e' gia' in esecuzione ed
-# espone il proprio namespace WMI, non carichiamo librerie e non chiediamo
-# privilegi ulteriori al client Metnos.
-$providers = @(
-  @{ Namespace = 'root\LibreHardwareMonitor'; Source = 'librehardwaremonitor_wmi' },
-  @{ Namespace = 'root\OpenHardwareMonitor';  Source = 'openhardwaremonitor_wmi' }
-)
-foreach ($provider in $providers) {
-  try {
-    $rows = @(
-      Get-CimInstance -Namespace $provider.Namespace -ClassName Sensor -Property Name,Identifier,SensorType,Value -ErrorAction Stop |
-      Where-Object { [string]$_.SensorType -eq 'Temperature' -and $null -ne $_.Value } |
-      ForEach-Object {
-        [pscustomobject]@{
-          name = [string]$_.Name
-          identifier = [string]$_.Identifier
-          value_c = [double]$_.Value
-        }
-      }
-    )
-    if ($rows.Count -gt 0) { Emit-ThermalResult $provider.Source $rows }
-  } catch { }
-}
-
-# Backend opzionale locale, senza pythonnet: l'amministratore del dispositivo
-# puo' indicare la DLL della distribuzione ufficiale gia' presente. Nessun
-# download o ricerca ricorsiva del filesystem avviene durante una richiesta.
-$dll = $env:METNOS_LIBREHARDWAREMONITOR_DLL
-if ($dll -and (Test-Path -LiteralPath $dll -PathType Leaf)) {
-  $computer = $null
-  try {
-    [void][System.Reflection.Assembly]::LoadFrom((Resolve-Path -LiteralPath $dll).Path)
-    $computer = New-Object LibreHardwareMonitor.Hardware.Computer
-    $computer.IsCpuEnabled = $true
-    $computer.IsGpuEnabled = $true
-    $computer.IsStorageEnabled = $true
-    $computer.IsMotherboardEnabled = $true
-    $computer.Open()
-    $rows = New-Object System.Collections.ArrayList
-    function Visit-Hardware([object]$hardware, [System.Collections.ArrayList]$result) {
-      $hardware.Update()
-      foreach ($sensor in @($hardware.Sensors)) {
-        if ([string]$sensor.SensorType -eq 'Temperature' -and $null -ne $sensor.Value) {
-          [void]$result.Add([pscustomobject]@{
-            name = [string]$sensor.Name
-            identifier = [string]$sensor.Identifier
-            value_c = [double]$sensor.Value
-          })
-        }
-      }
-      foreach ($sub in @($hardware.SubHardware)) { Visit-Hardware $sub $result }
-    }
-    foreach ($hardware in @($computer.Hardware)) { Visit-Hardware $hardware $rows }
-    if ($rows.Count -gt 0) { Emit-ThermalResult 'librehardwaremonitor_dll' $rows }
-  } catch { }
-  finally { if ($null -ne $computer) { try { $computer.Close() } catch { } } }
-}
-
-# Fallback built-in. MSAcpi_ThermalZoneTemperature espone zone ACPI, non una
-# temperatura CPU attestata: il server conservera' questa distinzione.
+# Built-in fallback. MSAcpi_ThermalZoneTemperature exposes generic ACPI zones,
+# not an attested CPU temperature; the result preserves that distinction.
 try {
   $rows = @(
     Get-CimInstance -Namespace 'root\wmi' -ClassName MSAcpi_ThermalZoneTemperature -Property InstanceName,CurrentTemperature -ErrorAction Stop |
@@ -961,13 +1008,17 @@ try {
 """
 
 
-def _read_thermal_windows() -> dict:
-    """Temperature Windows via un solo processo PowerShell, con timeout.
+def _read_thermal_windows(hardware_sensors: dict | None = None) -> dict:
+    """Read Windows temperatures through one bounded PowerShell process.
 
-    La raccolta avviene sul device: il server non apre WinRM, non usa
-    credenziali remote e non installa dipendenze. Il client contiene il
-    sottoprocesso nel proprio Job Object.
+    Collection stays on the device. The server opens no WinRM session, uses
+    no remote credentials, and installs nothing during the read.
     """
+    if isinstance(hardware_sensors, dict):
+        normalised = _thermal_from_hardware(hardware_sensors)
+        if normalised.get("available"):
+            return normalised
+
     powershell = (
         shutil.which("powershell.exe")
         or shutil.which("powershell")
@@ -1020,7 +1071,12 @@ def _read_thermal_windows() -> dict:
         except (json.JSONDecodeError, TypeError):
             continue
         if isinstance(payload, dict):
-            return _normalise_windows_thermal(payload)
+            result = _normalise_windows_thermal(payload)
+            if (not result.get("available")
+                    and isinstance(hardware_sensors, dict)
+                    and isinstance(hardware_sensors.get("reason_code"), str)):
+                result["reason_code"] = hardware_sensors["reason_code"][:64]
+            return result
     return {
         "available": False,
         "source": "none",
@@ -1029,7 +1085,7 @@ def _read_thermal_windows() -> dict:
     }
 
 
-def _read_thermal() -> dict:
+def _read_thermal(hardware_sensors: dict | None = None) -> dict:
     """Raccoglie temperature dalla sorgente nativa della piattaforma.
 
     Windows usa WMI/LHM/ACPI sul device. Linux delega a
@@ -1037,7 +1093,7 @@ def _read_thermal() -> dict:
     il runtime completo non e' presente nel bundle remoto.
     """
     if os.name == "nt":
-        return _read_thermal_windows()
+        return _read_thermal_windows(hardware_sensors)
     try:
         sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
             str(p / "runtime") for p in Path(__file__).resolve().parents
@@ -1413,7 +1469,9 @@ def _read_peripherals() -> dict:
 
 def _collect_health(
         services_extra: tuple[str, ...] | None = None, *,
-        scheduler_health: object = None) -> dict:
+        scheduler_health: object = None,
+        sensor_domains: tuple[str, ...] = (),
+        sensor_types: tuple[str, ...] = ()) -> dict:
     """Aggrega le sezioni descrittive+dinamiche. Nessuna chiamata LLM (§7.9).
     Raccolta SEMPRE completa (Roberto 9/7): la risposta poi usa la parte
     pertinente alla richiesta (blocco-status sintetico vs domande specifiche
@@ -1421,13 +1479,20 @@ def _collect_health(
     services = _read_services(scheduler_health=scheduler_health)
     if services_extra:
         services.extend(_read_services(tuple(services_extra)))
-    return {
+    hardware_sensors = None
+    if sensor_domains and sensor_types:
+        hardware_sensors = _normalise_hardware_sensors(
+            managed_provider_result("hardware_sensor_provider"),
+            sensor_domains,
+            sensor_types,
+        )
+    health = {
         "system": _read_system(),
         "cpu": _read_cpu(),
         "gpu": _read_gpu(),
         "load": _read_load(),
         "memory": _read_memory(),
-        "thermal": _read_thermal(),
+        "thermal": _read_thermal(hardware_sensors),
         "power": _read_power(),
         "disk": _read_disk(),
         "network": _read_network(),
@@ -1435,6 +1500,35 @@ def _collect_health(
         "services": services,
         "collected_at": int(time.time()),
     }
+    if hardware_sensors is not None:
+        health["hardware_sensors"] = hardware_sensors
+    return health
+
+
+def _sensor_selection(args: dict) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return one closed, deterministic hardware-sensor selection."""
+
+    values = []
+    for name, allowed in (
+            ("sensor_domains", _SENSOR_DOMAINS),
+            ("sensor_types", _SENSOR_TYPES)):
+        raw = args.get(name) or []
+        if (not isinstance(raw, list)
+                or any(not isinstance(item, str) or item not in allowed
+                       for item in raw)
+                or len(raw) != len(set(raw))):
+            raise ValueError(_msg(
+                "ERR_ARG_INVALID", arg=name,
+                reason="expected a unique list from the declared enum",
+            ))
+        values.append(tuple(sorted(raw)))
+    domains, sensor_types = values
+    if bool(domains) != bool(sensor_types):
+        raise ValueError(_msg(
+            "ERR_ARG_INVALID", arg="sensor_domains/sensor_types",
+            reason="both lists must be provided together",
+        ))
+    return domains, sensor_types
 
 
 def _rank_key(e: dict):
@@ -1468,7 +1562,15 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
                 "ok": False, "ok_count": 0, "fail_count": 1,
                 "entries": [], "failed": [{"error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top")}],
             }
-    include_health = bool(args.get("include_health"))
+    try:
+        sensor_domains, sensor_types = _sensor_selection(args)
+    except ValueError as error:
+        return {
+            "ok": False, "ok_count": 0, "fail_count": 1,
+            "entries": [], "failed": [{"error": str(error)}],
+        }
+    sensors_requested = bool(sensor_domains)
+    include_health = bool(args.get("include_health")) or sensors_requested
     services_extra_in = args.get("services_extra") or []
     if services_extra_in and not isinstance(services_extra_in, list):
         return {
@@ -1545,7 +1647,25 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         result["health"] = _collect_health(
             tuple(s for s in services_extra_in if isinstance(s, str)),
             scheduler_health=args.get("scheduler_health"),
+            sensor_domains=sensor_domains,
+            sensor_types=sensor_types,
         )
+        hardware_sensors = result["health"].get("hardware_sensors")
+        if (sensors_requested and os.name == "nt"
+                and isinstance(hardware_sensors, dict)
+                and not hardware_sensors.get("available")):
+            # The result names only the abstract requirement. The exact
+            # package is owned by the signed manifest and resolved by the
+            # runtime, never accepted from executor output.
+            result.update({
+                "ok": False,
+                "partial": True,
+                "fail_count": 1,
+                "error_class": "resource_unavailable",
+                "error_code": "hardware_sensor_provider_unavailable",
+                "error": _msg("ERR_HARDWARE_SENSOR_PROVIDER_UNAVAILABLE"),
+                "managed_dependency": "hardware_sensor_provider",
+            })
     return result
 
 

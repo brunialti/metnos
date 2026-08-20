@@ -185,7 +185,7 @@ def test_windows_thermal_lhm_identifiers_are_semantically_classified():
     from get_processes import _normalise_windows_thermal
 
     result = _normalise_windows_thermal({
-        "source": "librehardwaremonitor_wmi",
+        "source": "managed_provider",
         "sensors": [
             {"name": "Core 0", "identifier": "/intelcpu/0/temperature/0",
              "value_c": 51.2},
@@ -234,23 +234,63 @@ def test_windows_thermal_probe_is_one_bounded_powershell_call(monkeypatch):
         return subprocess.CompletedProcess(
             argv, 0,
             stdout=(
-                '{"source":"librehardwaremonitor_wmi","sensors":'
-                '[{"name":"Package","identifier":"/amdcpu/0/temperature/0",'
-                '"value_c":54.25}]}\n'
+                '{"source":"windows_acpi","sensors":'
+                '[{"name":"TZ00","identifier":"ACPI/TZ00",'
+                '"value_c":31.9}]}\n'
             ),
             stderr="",
         )
 
     monkeypatch.setattr(gp.shutil, "which", lambda name: "powershell.exe")
     monkeypatch.setattr(gp.subprocess, "run", fake_run)
+    monkeypatch.setattr(gp, "managed_provider_result", lambda key: None)
 
-    result = gp._read_thermal_windows()
+    hardware = gp._normalise_hardware_sensors(
+        gp.managed_provider_result("hardware_sensor_provider"),
+        ("cpu",),
+        ("temperature",),
+    )
+    result = gp._read_thermal_windows(hardware)
 
-    assert result["cpu_c"] == 54.2
+    assert result["available"] is True
+    assert "cpu_c" not in result
     assert observed["argv"][:4] == [
         "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive"]
     assert observed["kwargs"]["shell"] is False
     assert observed["kwargs"]["timeout"] == 6.0
+    assert "env" not in observed["kwargs"]
+
+
+def test_windows_thermal_uses_typed_provider_without_a_subprocess(monkeypatch):
+    import get_processes as gp
+
+    monkeypatch.setattr(gp, "managed_provider_result", lambda key: {
+        "ok": True,
+        "payload": {"sensors": [{
+            "domain": "cpu",
+            "kind": "temperature",
+            "name": "CPU Package",
+            "identifier": "/intelcpu/0/temperature/0",
+            "value": 55.5,
+            "unit": "°C",
+        }]},
+    })
+    monkeypatch.setattr(
+        gp.subprocess, "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("provider success must not spawn PowerShell")),
+    )
+
+    hardware = gp._normalise_hardware_sensors(
+        gp.managed_provider_result("hardware_sensor_provider"),
+        ("cpu",),
+        ("temperature",),
+    )
+    result = gp._read_thermal_windows(hardware)
+
+    assert result["available"] is True
+    assert result["source"] == "managed_provider"
+    assert result["cpu_c"] == 55.5
 
 
 def test_windows_thermal_probe_timeout_is_explicit(monkeypatch):
@@ -271,16 +311,86 @@ def test_windows_thermal_probe_timeout_is_explicit(monkeypatch):
     }
 
 
-def test_windows_thermal_backends_are_ordered_and_never_download():
+def test_required_windows_thermal_reports_only_abstract_dependency(monkeypatch):
+    import json
+    import get_processes as gp
+
+    monkeypatch.setattr(gp.os, "name", "nt")
+    monkeypatch.setattr(gp, "_ps_snapshot", lambda: [{
+        "pid": 1, "ppid": 0, "name": "System", "cmd": "System",
+        "user": "", "cpu_pct": 0.0, "mem_pct": 0.0,
+        "started_at": "",
+    }])
+    monkeypatch.setattr(gp, "_collect_health", lambda *args, **kwargs: {
+        "thermal": {
+            "available": False,
+            "source": "none",
+            "reason_code": "no_supported_sensor",
+        },
+        "hardware_sensors": {
+            "available": False,
+            "source": "none",
+            "sensors": [],
+            "reason_code": "no_supported_sensor",
+        },
+    })
+
+    result = gp.invoke({
+        "sensor_domains": ["cpu"],
+        "sensor_types": ["temperature"],
+        "top": 1,
+    })
+
+    assert result["ok"] is False
+    assert result["error_class"] == "resource_unavailable"
+    assert result["error_code"] == "hardware_sensor_provider_unavailable"
+    assert result["managed_dependency"] == "hardware_sensor_provider"
+    assert "LibreHardwareMonitor" not in json.dumps(result)
+
+
+def test_required_windows_thermal_succeeds_when_provider_is_available(monkeypatch):
+    import get_processes as gp
+
+    monkeypatch.setattr(gp.os, "name", "nt")
+    monkeypatch.setattr(gp, "_ps_snapshot", lambda: [{
+        "pid": 1, "ppid": 0, "name": "System", "cmd": "System",
+        "user": "", "cpu_pct": 0.0, "mem_pct": 0.0,
+        "started_at": "",
+    }])
+    monkeypatch.setattr(gp, "_collect_health", lambda *args, **kwargs: {
+        "thermal": {
+            "available": True,
+            "source": "managed_provider",
+            "cpu_c": 53.4,
+        },
+        "hardware_sensors": {
+            "available": True,
+            "source": "managed_provider",
+            "sensors": [],
+        },
+    })
+
+    result = gp.invoke({
+        "sensor_domains": ["cpu"],
+        "sensor_types": ["temperature"],
+        "top": 1,
+    })
+
+    assert result["ok"] is True
+    assert result["health"]["thermal"]["cpu_c"] == 53.4
+    assert "managed_dependency" not in result
+
+
+def test_windows_thermal_fallback_is_native_and_never_downloads():
     import get_processes as gp
 
     script = gp._WINDOWS_THERMAL_PS
-    assert script.index("root\\LibreHardwareMonitor") < script.index(
-        "METNOS_LIBREHARDWAREMONITOR_DLL")
-    assert script.index("METNOS_LIBREHARDWAREMONITOR_DLL") < script.index(
-        "MSAcpi_ThermalZoneTemperature")
+    assert "root\\OpenHardwareMonitor" not in script
+    assert "MSAcpi_ThermalZoneTemperature" in script
+    assert "LibreHardwareMonitorLib.dll" not in script
     assert "Invoke-WebRequest" not in script
     assert "Start-BitsTransfer" not in script
+    assert "winget" not in script.lower()
 
 
 def test_acpi_temperature_rendering_is_honest_and_i18n():
@@ -310,7 +420,7 @@ def test_acpi_temperature_rendering_is_honest_and_i18n():
     assert "PC-TEST status" in en
 
 
-def test_temperature_messages_are_bilingual_in_shipped_i18n_seed():
+def test_sensor_messages_are_bilingual_in_shipped_i18n_seed():
     import sqlite3
 
     seed = Path(__file__).resolve().parents[3] / "install/data/i18n_seed.sqlite"
@@ -322,6 +432,10 @@ def test_temperature_messages_are_bilingual_in_shipped_i18n_seed():
         headers = dict(conn.execute(
             "SELECT lang, text FROM i18n WHERE key='MSG_HEALTH_THERMAL'"
         ).fetchall())
+        provider_errors = dict(conn.execute(
+            "SELECT lang, text FROM i18n "
+            "WHERE key='ERR_HARDWARE_SENSOR_PROVIDER_UNAVAILABLE'"
+        ).fetchall())
     assert rows == {
         "it": "(sensori di temperatura non disponibili su questo sistema.)",
         "en": "(temperature sensors are not available on this system.)",
@@ -329,4 +443,8 @@ def test_temperature_messages_are_bilingual_in_shipped_i18n_seed():
     assert headers == {
         "it": "**Temperature**: {body}",
         "en": "**Temperatures**: {body}",
+    }
+    assert provider_errors == {
+        "it": "Nessun provider compatibile ha restituito i dati dei sensori hardware richiesti.",
+        "en": "No compatible provider returned the requested hardware sensor data.",
     }

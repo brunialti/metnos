@@ -1,17 +1,4 @@
-"""L'assenza di temperatura dice anche PERCHE' (6/8/2026).
-
-Turno reale `ec998e3e` — «temperatura cpu pc-roberto»: risposta onesta ma
-cieca, «sensori di temperatura non disponibili su questo sistema», che non
-distingue «questa macchina non puo'» da «manca il backend». Verificato sul PC
-quel giorno: LibreHardwareMonitor non installato, nessun namespace WMI, e le
-uniche zone ACPI esposte davano 0 K e 283 K (cioe' niente e 10 °C) — quindi
-nessuna temperatura CPU attestabile finche' non si installa il backend.
-
-Il confine e' la parte che conta: si nomina il backend SOLO quando il motivo
-dichiarato dall'executor e' «nessun sensore supportato» E il dispositivo e'
-Windows. Un probe fallito o un PowerShell assente hanno un'altra causa, e
-suggerire un'installazione sarebbe una diagnosi inventata (§2.8).
-"""
+"""Missing temperature uses one implementation-neutral i18n message."""
 from __future__ import annotations
 
 import pytest
@@ -23,24 +10,23 @@ def _salute(os_name: str = "Windows") -> dict:
     return {"system": {"os": os_name, "os_release": "11", "arch": "AMD64"}}
 
 
-def test_windows_senza_backend_dice_quale_installare() -> None:
+def test_windows_without_sensor_names_the_provider_contract_not_a_product() -> None:
     testo = _thermal_absence_message(
         {"available": False, "source": "none",
          "reason_code": "no_supported_sensor"}, _salute())
-    assert "LibreHardwareMonitor" in testo
+    assert "provider" in testo.casefold()
+    assert "LibreHardwareMonitor" not in testo
 
 
-def test_il_messaggio_dichiara_anche_che_metnos_non_installa() -> None:
-    """Nominare il programma senza dire «io non lo installo» lascerebbe
-    credere che il sistema possa arrangiarsi: il confine e' parte della
-    risposta (decisione di Roberto, 6/8). Verificato in ENTRAMBE le lingue —
-    un confine tradotto a meta' e' un confine perso."""
+def test_provider_message_is_bilingual_and_does_not_delegate_startup() -> None:
     import i18n
 
-    for lingua, frase in (("it", "non installa"), ("en", "does not install")):
+    for lingua, frase in (("it", "provider"), ("en", "provider")):
         with i18n.language_context(lingua):
             testo = i18n.get("MSG_HEALTH_THERMAL_NO_BACKEND_WINDOWS")
-        assert frase in testo, f"{lingua}: manca il confine di mandato"
+        assert frase in testo
+        assert "Avviarlo resta una cosa tua" not in testo
+        assert "Starting it stays up to you" not in testo
 
 
 @pytest.mark.parametrize("motivo", [
