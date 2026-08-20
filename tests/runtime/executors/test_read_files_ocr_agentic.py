@@ -63,3 +63,24 @@ def test_invoke_caps_files_and_reports_truncation(monkeypatch, tmp_path):
     assert result["available_total"] == 3
     assert result["cap_field"] == "max_files"
     assert result["cap_value"] == 2
+
+
+def test_durable_source_provenance_redacts_local_path(monkeypatch, tmp_path):
+    module = _module()
+    monkeypatch.setattr(module.shutil, "which", lambda _name: "/usr/bin/tool")
+    monkeypatch.setattr(
+        module, "_read_one", lambda _path, _lang: ("testo leggibile", None),
+    )
+
+    result = module.invoke({
+        "paths": [str(tmp_path / "source.png")],
+        "source": {"source_id": "source_00000000"},
+    })
+
+    assert result["source_id"] == "source_00000000"
+    assert result["entries"] == [{
+        "source_id": "source_00000000",
+        "content": "testo leggibile",
+        "char_count": len("testo leggibile"),
+        "lang": "ita+eng",
+    }]
