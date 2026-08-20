@@ -190,6 +190,7 @@ class WorkerCapabilities:
 
     runner_bindings: tuple[tuple[RunnerKind, str], ...]
     resource_limits: tuple[tuple[str, int], ...]
+    effect_profiles: tuple[DurableEffect, ...] = (DurableEffect.PURE,)
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.runner_bindings) <= 256:
@@ -207,6 +208,14 @@ class WorkerCapabilities:
             if not isinstance(name, str) or not _RUNNER_RE.fullmatch(name):
                 raise ValueError("runner binding name is invalid")
 
+        normalized_effects = tuple(sorted(self.effect_profiles, key=str))
+        if normalized_effects != self.effect_profiles or not normalized_effects:
+            raise ValueError("effect_profiles must be non-empty and canonical")
+        if len(normalized_effects) != len(set(normalized_effects)):
+            raise ValueError("effect_profiles must not contain duplicates")
+        if any(not isinstance(effect, DurableEffect) for effect in normalized_effects):
+            raise TypeError("effect_profiles must contain DurableEffect values")
+
         if tuple(key for key, _amount in self.resource_limits) != RESOURCE_KEYS:
             raise ValueError("resource_limits must contain every v1 key canonically")
         for key, amount in self.resource_limits:
@@ -222,6 +231,8 @@ class WorkerCapabilities:
         cls,
         runner_bindings: tuple[tuple[RunnerKind | str, str], ...],
         resource_limits: Mapping[str, int],
+        *,
+        effect_profiles: tuple[DurableEffect | str, ...] = (DurableEffect.PURE,),
     ) -> "WorkerCapabilities":
         bindings = tuple(sorted(
             ((RunnerKind(kind), name) for kind, name in runner_bindings),
@@ -233,10 +244,16 @@ class WorkerCapabilities:
             raise ValueError("resource_limits must contain exactly the v1 keys")
         supplied = dict(resource_limits)
         resources = tuple((key, supplied[key]) for key in RESOURCE_KEYS)
-        return cls(bindings, resources)
+        effects = tuple(sorted(
+            (DurableEffect(effect) for effect in effect_profiles), key=str,
+        ))
+        return cls(bindings, resources, effects)
 
     def resource_map(self) -> dict[str, int]:
         return dict(self.resource_limits)
+
+    def accepted_effects(self) -> tuple[str, ...]:
+        return tuple(effect.value for effect in self.effect_profiles)
 
 
 @dataclass(frozen=True, slots=True)

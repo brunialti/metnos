@@ -1,7 +1,8 @@
-"""Dormant persistence kernel for versioned, durable workloads.
+"""Dormant primitives for versioned, durable workloads.
 
-F0-F2 deliberately expose storage primitives only.  Importing this package
-does not open a database, start a worker, register a route or alter scheduling.
+F0-F7 deliberately leave lifecycle ownership outside this package. Importing
+it does not open a database, start a worker, register a route or alter
+scheduling.
 """
 
 from .migrations import CURRENT_SCHEMA_VERSION, migrate, open_db, schema_version

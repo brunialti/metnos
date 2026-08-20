@@ -1,4 +1,4 @@
-"""Cooperative F3 worker for dummy callables only.
+"""Cooperative worker for fenced durable execution adapters.
 
 This module is deliberately dormant: it starts no thread, process, timer or
 service.  A caller may drive ``run_once`` from an explicit test loop.  SQLite
@@ -47,12 +47,20 @@ class WorkerRunStatus(_ClosedString):
     LOST_LEASE = "lost_lease"
 
 
-class DummyExecutionAdapter(Protocol):
-    def __call__(self, lease: Lease) -> ValidatedResult: ...
+@dataclass(frozen=True, slots=True)
+class ExecutionResult:
+    """A validated payload plus the committed direct result lineage."""
+
+    result: ValidatedResult
+    dependency_result_ids: tuple[str, ...] = ()
 
 
-class DummyExecutionFailure(RuntimeError):
-    """A test adapter's bounded, already-redacted execution failure."""
+class ExecutionAdapter(Protocol):
+    def __call__(self, lease: Lease) -> ValidatedResult | ExecutionResult: ...
+
+
+class ExecutionFailure(RuntimeError):
+    """A bounded, already-redacted execution failure."""
 
     def __init__(self, error: StructuredAttemptError) -> None:
         if not isinstance(error, StructuredAttemptError):
@@ -203,9 +211,9 @@ class DurableWorker:
     def run_claimed(
         self,
         lease: Lease,
-        adapter: DummyExecutionAdapter,
+        adapter: ExecutionAdapter,
     ) -> WorkerRunOutcome:
-        """Run one dummy callable with no open storage transaction."""
+        """Run one adapter with no open storage transaction."""
         if self.stopping:
             status = self.store.abandon_attempt(
                 lease,
@@ -231,26 +239,32 @@ class DurableWorker:
             return WorkerRunOutcome(WorkerRunStatus.LOST_LEASE, lease=lease)
 
         if self.store._connection.in_transaction:
-            raise RuntimeError("dummy execution must run outside a DB transaction")
+            raise RuntimeError("durable execution must run outside a DB transaction")
         try:
-            result = adapter(lease)
-        except DummyExecutionFailure as exc:
+            adapter_result = adapter(lease)
+        except ExecutionFailure as exc:
             return self._record_failure(lease, exc.error)
         except Exception:
             error = StructuredAttemptError.create(
                 "executor_permanent",
-                code="dummy.execution_failed",
-                message_key="DURABLE_DUMMY_EXECUTION_FAILED",
+                code="execution.unhandled_exception",
+                message_key="DURABLE_EXECUTION_FAILED",
                 retry="never",
                 occurred_at=self._clock(),
                 details_redacted={"exception_redacted": True},
             )
             return self._record_failure(lease, error)
 
+        if isinstance(adapter_result, ExecutionResult):
+            result = adapter_result.result
+            dependency_result_ids = adapter_result.dependency_result_ids
+        else:
+            result = adapter_result
+            dependency_result_ids = ()
         if not isinstance(result, ValidatedResult):
             error = StructuredAttemptError.create(
                 "contract_violation",
-                code="result.invalid_dummy_adapter_type",
+                code="result.invalid_adapter_type",
                 message_key="DURABLE_RESULT_CONTRACT_VIOLATION",
                 retry="never",
                 occurred_at=self._clock(),
@@ -271,7 +285,12 @@ class DurableWorker:
             )
             return self._record_failure(lease, error)
 
-        commit = self.store.commit_result(lease, result, now=self._clock())
+        commit = self.store.commit_result(
+            lease,
+            result,
+            dependency_result_ids=dependency_result_ids,
+            now=self._clock(),
+        )
         if self._active_lease == lease:
             self._active_lease = None
         if commit.status is CommitStatus.COMMITTED:
@@ -282,7 +301,7 @@ class DurableWorker:
             status = WorkerRunStatus.LOST_LEASE
         return WorkerRunOutcome(status, lease=lease, commit=commit)
 
-    def run_once(self, adapter: DummyExecutionAdapter) -> WorkerRunOutcome:
+    def run_once(self, adapter: ExecutionAdapter) -> WorkerRunOutcome:
         if self.stopping:
             return WorkerRunOutcome(WorkerRunStatus.STOPPED)
         lease = self.claim_next()
@@ -292,8 +311,9 @@ class DurableWorker:
 
 
 __all__ = [
-    "DummyExecutionAdapter",
-    "DummyExecutionFailure",
+    "ExecutionAdapter",
+    "ExecutionFailure",
+    "ExecutionResult",
     "DurableWorker",
     "WorkerRunOutcome",
     "WorkerRunStatus",

@@ -12,6 +12,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from jsonschema import Draft202012Validator, ValidationError
+
 from .models import DurableEffect, RunnerKind
 from .reduction import DEFAULT_FAN_IN, ReductionPlanError, build_reduction_graph
 from .schema import (
@@ -45,58 +47,6 @@ def _require_digest(value: str | None, *, context: str) -> str:
     if not isinstance(value, str) or not _DIGEST_RE.fullmatch(value):
         raise CompilationError(f"{context} is not a SHA-256 digest")
     return value
-
-
-def _json_type_matches(value: Any, expected: str) -> bool:
-    if expected == "object":
-        return isinstance(value, Mapping)
-    if expected == "array":
-        return isinstance(value, list)
-    if expected == "string":
-        return isinstance(value, str)
-    if expected == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-    if expected == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-    if expected == "boolean":
-        return isinstance(value, bool)
-    if expected == "null":
-        return value is None
-    return False
-
-
-def _validate_json_subset(value: Any, schema: Mapping[str, Any], context: str) -> None:
-    expected = schema.get("type")
-    expected_types = (expected,) if isinstance(expected, str) else tuple(expected or ())
-    if expected_types and not any(_json_type_matches(value, item) for item in expected_types):
-        raise OutputValidationError(f"{context} has an incompatible JSON type")
-    if "enum" in schema and value not in schema["enum"]:
-        raise OutputValidationError(f"{context} is outside the approved enum")
-    if isinstance(value, Mapping):
-        properties = schema.get("properties") or {}
-        required = schema.get("required") or []
-        missing = sorted(set(required) - set(value))
-        if missing:
-            raise OutputValidationError(f"{context} misses required fields: {missing}")
-        if schema.get("additionalProperties") is False:
-            unknown = sorted(set(value) - set(properties))
-            if unknown:
-                raise OutputValidationError(f"{context} has unknown fields: {unknown}")
-        for name, item in value.items():
-            child = properties.get(name)
-            if isinstance(child, Mapping):
-                _validate_json_subset(item, child, f"{context}.{name}")
-    if isinstance(value, list):
-        minimum = schema.get("minItems")
-        maximum = schema.get("maxItems")
-        if isinstance(minimum, int) and len(value) < minimum:
-            raise OutputValidationError(f"{context} has too few items")
-        if isinstance(maximum, int) and len(value) > maximum:
-            raise OutputValidationError(f"{context} has too many items")
-        child = schema.get("items")
-        if isinstance(child, Mapping):
-            for index, item in enumerate(value):
-                _validate_json_subset(item, child, f"{context}[{index}]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +83,10 @@ class ApprovedOutputSchema:
         normalized = json.loads(
             canonical_json(schema, max_bytes=MAX_RESULT_JSON_BYTES)
         )
+        try:
+            Draft202012Validator.check_schema(normalized)
+        except Exception as exc:
+            raise CompilationError("approved output schema is invalid JSON Schema") from exc
         return cls(
             name=name,
             schema=normalized,
@@ -162,8 +116,13 @@ class ApprovedOutputSchema:
     def validate(self, value: Any) -> None:
         if self.validator is not None:
             self.validator(value)
-        else:
-            _validate_json_subset(value, self.schema, "result")
+        try:
+            Draft202012Validator(self.schema).validate(value)
+        except ValidationError as exc:
+            location = ".".join(str(item) for item in exc.absolute_path) or "result"
+            raise OutputValidationError(
+                f"{location} violates the approved output schema"
+            ) from exc
         canonical_json(value, max_bytes=MAX_RESULT_JSON_BYTES)
 
 

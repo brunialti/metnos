@@ -1633,25 +1633,42 @@ class DurableWorkloadStore:
             """
             SELECT
                 u.owner_user_id, u.id AS unit_id, u.revision_id, u.stage_id,
-                u.unit_key, u.state AS unit_state, u.attempt_count,
+                u.unit_key, u.source_row_id, u.shard_key,
+                u.expected_dependency_count, u.state AS unit_state, u.attempt_count,
                 u.lease_worker_id, u.active_attempt_id, u.fence,
                 u.lease_expires_at, u.committed_result_id,
-                r.workload_id,
+                r.workload_id, w.priority AS workload_priority,
+                r.plan_json, r.inventory_json, r.catalog_snapshot_json,
+                r.policy_snapshot_json,
                 s.stage_key, s.runner_kind, s.runner_name, s.effect_profile,
-                s.output_schema_json, s.retry_json, s.resources_json,
+                s.input_bindings_json, s.output_schema_json, s.retry_json,
+                s.resources_json, s.timeout_s,
+                src.source_id, src.ordinal AS source_ordinal,
+                src.device_id AS source_device_id,
+                src.locator_redacted AS source_locator_redacted,
+                src.kind AS source_kind, src.size_bytes AS source_size_bytes,
+                src.mtime_ns AS source_mtime_ns,
+                src.content_digest AS source_content_digest,
                 a.number AS attempt_number, a.fence AS attempt_fence,
                 a.worker_id AS attempt_worker_id,
                 a.state AS attempt_state, a.ended_at,
-                a.metrics_json
+                a.executor_snapshot_json, a.model_snapshot_json, a.metrics_json,
+                a.device_id AS attempt_device_id,
+                a.invocation_id AS attempt_invocation_id
             FROM units u
             JOIN revisions r
               ON r.owner_user_id=u.owner_user_id AND r.id=u.revision_id
+            JOIN workloads w
+              ON w.owner_user_id=r.owner_user_id AND w.id=r.workload_id
             JOIN stages s
               ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
              AND s.revision_id=u.revision_id
             LEFT JOIN attempts a
               ON a.owner_user_id=u.owner_user_id AND a.id=?
              AND a.unit_id=u.id
+            LEFT JOIN sources src
+              ON src.owner_user_id=u.owner_user_id AND src.id=u.source_row_id
+             AND src.revision_id=u.revision_id
             WHERE u.owner_user_id=? AND u.id=?
             """,
             (lease.attempt_id, lease.owner_user_id, lease.unit_id),
@@ -1727,7 +1744,7 @@ class DurableWorkloadStore:
         lease_duration: timedelta,
         capabilities: WorkerCapabilities,
     ) -> Lease | None:
-        """Atomically choose and fence one dummy-executable pure unit."""
+        """Atomically choose and fence one admitted unit."""
         worker = require_worker_id(worker_id)
         current = normalize_instant(now, name="now")
         current_text = instant_text(current, name="now")
@@ -1743,6 +1760,7 @@ class DurableWorkloadStore:
         runner_parameters: list[Any] = []
         for kind, name in capabilities.runner_bindings:
             runner_parameters.extend((kind.value, name))
+        effect_clause = ",".join("?" for _ in capabilities.effect_profiles)
         limits = capabilities.resource_map()
 
         with self._transaction() as connection:
@@ -1781,12 +1799,11 @@ class DurableWorkloadStore:
                      AND sc.workload_id=w.id
                     WHERE u.state='pending'
                       AND (u.next_attempt_at IS NULL OR u.next_attempt_at<=?)
-                      AND u.expected_dependency_count=0
                       AND u.attempt_count < CAST(
                           json_extract(s.retry_json, '$.max_attempts') AS INTEGER
                       )
                       AND w.state IN ('queued', 'running')
-                      AND s.effect_profile='pure'
+                      AND s.effect_profile IN ({effect_clause})
                       AND ({runner_clause})
                       AND CAST(json_extract(s.resources_json, '$.cpu') AS INTEGER)<=?
                       AND CAST(json_extract(s.resources_json, '$.device') AS INTEGER)<=?
@@ -1805,6 +1822,7 @@ class DurableWorkloadStore:
                 """,
                 (
                     current_text,
+                    *capabilities.accepted_effects(),
                     *runner_parameters,
                     limits["cpu"], limits["device"], limits["llm"],
                     limits["local_io"], limits["network_io"], limits["vlm"],
@@ -2045,17 +2063,522 @@ class DurableWorkloadStore:
                 raise DurableStoreError("heartbeat compare-and-set failed")
             return LeaseMutationStatus.APPLIED
 
+    def execution_inputs(self, lease: Lease) -> dict[str, Any]:
+        """Read the immutable execution facts for one fenced attempt.
+
+        This is the only repository read used by the real bridge.  It exposes
+        redacted source identity and already committed direct dependencies, not
+        paths, credentials or an unrestricted database connection.
+        """
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            if not self._lease_matches(row, lease):
+                raise DurableStoreError("execution inputs require the active fence")
+            assert row is not None
+            dependencies = connection.execute(
+                """
+                SELECT parent.stage_key, result.id AS result_id, result.digest,
+                       result.schema_version, result.payload_json,
+                       parent_unit.source_row_id,
+                       source.source_id, source.ordinal AS source_ordinal
+                FROM stage_dependencies declared
+                JOIN stages parent
+                  ON parent.owner_user_id=declared.owner_user_id
+                 AND parent.id=declared.depends_on_stage_id
+                 AND parent.revision_id=declared.revision_id
+                JOIN units parent_unit
+                  ON parent_unit.owner_user_id=parent.owner_user_id
+                 AND parent_unit.revision_id=parent.revision_id
+                 AND parent_unit.stage_id=parent.id
+                JOIN results result
+                  ON result.owner_user_id=parent_unit.owner_user_id
+                 AND result.id=parent_unit.committed_result_id
+                 AND result.revision_id=parent_unit.revision_id
+                LEFT JOIN sources source
+                  ON source.owner_user_id=parent_unit.owner_user_id
+                 AND source.id=parent_unit.source_row_id
+                 AND source.revision_id=parent_unit.revision_id
+                WHERE declared.owner_user_id=?
+                  AND declared.revision_id=?
+                  AND declared.stage_id=?
+                ORDER BY parent.position, source.ordinal, result.id
+                """,
+                (lease.owner_user_id, lease.revision_id, lease.stage_id),
+            ).fetchall()
+            source = None
+            if row["source_row_id"] is not None:
+                source = {
+                    "source_id": str(row["source_id"]),
+                    "ordinal": int(row["source_ordinal"]),
+                    "device_id": str(row["source_device_id"]),
+                    "locator_redacted": str(row["source_locator_redacted"]),
+                    "kind": str(row["source_kind"]),
+                    "size_bytes": int(row["source_size_bytes"]),
+                    "mtime_ns": int(row["source_mtime_ns"]),
+                    "content_digest": str(row["source_content_digest"]),
+                }
+            return {
+                "plan": json.loads(str(row["plan_json"])),
+                "inventory": json.loads(str(row["inventory_json"])),
+                "priority": str(row["workload_priority"]),
+                "catalog_snapshot": json.loads(str(row["catalog_snapshot_json"])),
+                "policy_snapshot": json.loads(str(row["policy_snapshot_json"])),
+                "stage": {
+                    "id": str(row["stage_id"]),
+                    "key": str(row["stage_key"]),
+                    "source_row_id": row["source_row_id"],
+                    "shard_key": row["shard_key"],
+                    "runner_kind": str(row["runner_kind"]),
+                    "runner_name": str(row["runner_name"]),
+                    "effect_profile": str(row["effect_profile"]),
+                    "input_bindings": json.loads(str(row["input_bindings_json"])),
+                    "output_schema": json.loads(str(row["output_schema_json"])),
+                    "timeout_s": int(row["timeout_s"]),
+                    "resource_claims": json.loads(str(row["resources_json"])),
+                    "expected_dependency_count": int(row["expected_dependency_count"]),
+                },
+                "source": source,
+                "dependencies": tuple({
+                    "stage_key": str(item["stage_key"]),
+                    "result_id": str(item["result_id"]),
+                    "digest": str(item["digest"]),
+                    "schema_version": str(item["schema_version"]),
+                    "payload": (
+                        json.loads(str(item["payload_json"]))
+                        if item["payload_json"] is not None else None
+                    ),
+                    "source_row_id": item["source_row_id"],
+                    "source_id": item["source_id"],
+                    "source_ordinal": item["source_ordinal"],
+                } for item in dependencies),
+            }
+
+    def record_execution_facts(
+        self,
+        lease: Lease,
+        *,
+        executor_snapshot: Mapping[str, Any],
+        model_snapshot: Mapping[str, Any],
+        device_id: str | None = None,
+        invocation_id: str | None = None,
+        now: datetime | None = None,
+    ) -> LeaseMutationStatus:
+        """Persist frozen real-runner facts before the universal invocation.
+
+        A retry or a stale worker cannot replace the snapshot of another
+        attempt.  Repeating the same call is idempotent; changing facts after
+        they have been recorded is rejected.
+        """
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        if not isinstance(executor_snapshot, Mapping) or not isinstance(
+            model_snapshot, Mapping
+        ):
+            raise TypeError("execution snapshots must be objects")
+        if device_id is not None and (
+            not isinstance(device_id, str) or not 1 <= len(device_id) <= 128
+        ):
+            raise ValueError("device_id is invalid")
+        if invocation_id is not None and (
+            not isinstance(invocation_id, str) or not 1 <= len(invocation_id) <= 128
+        ):
+            raise ValueError("invocation_id is invalid")
+        executor_json = canonical_json(
+            dict(executor_snapshot), max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+        )
+        model_json = canonical_json(
+            dict(model_snapshot), max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+        )
+        current, current_text = self._operation_now(now)
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            if not self._lease_matches(row, lease):
+                return LeaseMutationStatus.STALE_FENCE
+            assert row is not None
+            if row["unit_state"] != "running" or row["attempt_state"] != "running":
+                return LeaseMutationStatus.INVALID_STATE
+            if parse_instant(str(row["lease_expires_at"])) <= current:
+                return LeaseMutationStatus.LEASE_EXPIRED
+            existing_executor = str(row["executor_snapshot_json"])
+            existing_model = str(row["model_snapshot_json"])
+            try:
+                existing_mode = json.loads(existing_executor).get("mode")
+            except (TypeError, ValueError, AttributeError) as exc:
+                raise DurableStoreError("attempt executor snapshot is invalid") from exc
+            if existing_mode != "dummy" and (
+                existing_executor != executor_json or existing_model != model_json
+            ):
+                raise DurableStoreError("execution facts are already frozen")
+            existing_device_id = row["attempt_device_id"]
+            if (
+                existing_device_id is not None
+                and device_id is not None
+                and str(existing_device_id) != device_id
+            ):
+                raise DurableStoreError("attempt device is already frozen")
+            existing_invocation_id = row["attempt_invocation_id"]
+            if (
+                existing_invocation_id is not None
+                and invocation_id is not None
+                and str(existing_invocation_id) != invocation_id
+            ):
+                raise DurableStoreError("attempt invocation is already frozen")
+            metrics = self._attempt_metrics(
+                row,
+                execution_contract_recorded=True,
+                execution_contract_recorded_at=current_text,
+            )
+            updated = connection.execute(
+                """
+                UPDATE attempts
+                SET executor_snapshot_json=?, model_snapshot_json=?,
+                    device_id=COALESCE(device_id, ?),
+                    invocation_id=COALESCE(invocation_id, ?), metrics_json=?
+                WHERE owner_user_id=? AND id=? AND unit_id=? AND fence=?
+                  AND worker_id=? AND state='running' AND ended_at IS NULL
+                """,
+                (
+                    executor_json, model_json, device_id, invocation_id, metrics,
+                    lease.owner_user_id, lease.attempt_id, lease.unit_id,
+                    lease.fence, lease.worker_id,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise DurableStoreError("execution facts compare-and-set failed")
+            return LeaseMutationStatus.APPLIED
+
+    def record_attempt_usage(
+        self,
+        lease: Lease,
+        usage: Mapping[str, Any],
+        *,
+        now: datetime | None = None,
+    ) -> LeaseMutationStatus:
+        """Store bounded, content-free LLM accounting without affecting work."""
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        if not isinstance(usage, Mapping):
+            raise TypeError("usage must be an object")
+        usage_value = json.loads(canonical_json(
+            dict(usage), max_bytes=_MAX_ATTEMPT_METRICS_JSON_BYTES,
+        ))
+        current, _current_text = self._operation_now(now)
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            if not self._lease_matches(row, lease):
+                return LeaseMutationStatus.STALE_FENCE
+            assert row is not None
+            if row["unit_state"] != "running" or row["attempt_state"] != "running":
+                return LeaseMutationStatus.INVALID_STATE
+            if parse_instant(str(row["lease_expires_at"])) <= current:
+                return LeaseMutationStatus.LEASE_EXPIRED
+            metrics = self._attempt_metrics(
+                row,
+                llm_usage=usage_value,
+                usage_missing=bool(usage_value.get("usage_missing", True)),
+            )
+            updated = connection.execute(
+                """
+                UPDATE attempts SET metrics_json=?
+                WHERE owner_user_id=? AND id=? AND unit_id=? AND fence=?
+                  AND worker_id=? AND state='running' AND ended_at IS NULL
+                """,
+                (
+                    metrics, lease.owner_user_id, lease.attempt_id,
+                    lease.unit_id, lease.fence, lease.worker_id,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise DurableStoreError("attempt usage compare-and-set failed")
+            return LeaseMutationStatus.APPLIED
+
+    def materialize_ready_units(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+    ) -> int:
+        """Materialize admitted downstream units from committed parent results.
+
+        The procedure is domain-neutral: cardinality and input lineage are
+        taken solely from the frozen stage rows.  Repeating it after a crash is
+        safe because every unit has a stable semantic key and a database unique
+        constraint.
+        """
+        owner = _require_owner(owner_user_id)
+        created = 0
+        with self._transaction() as connection:
+            workload = self._select_workload(connection, owner, workload_id)
+            revision_id = workload["active_revision_id"]
+            if revision_id is None or workload["state"] not in {
+                WorkloadState.ADMITTED.value,
+                WorkloadState.QUEUED.value,
+                WorkloadState.RUNNING.value,
+            }:
+                return 0
+            stages = connection.execute(
+                """
+                SELECT id, stage_key, position, stage_type, cardinality, max_units
+                FROM stages
+                WHERE owner_user_id=? AND revision_id=?
+                ORDER BY position, stage_key
+                """,
+                (owner, revision_id),
+            ).fetchall()
+            by_id = {str(stage["id"]): stage for stage in stages}
+            dependencies = {
+                str(stage["id"]): tuple(
+                    str(item["depends_on_stage_id"])
+                    for item in connection.execute(
+                        """
+                        SELECT depends_on_stage_id FROM stage_dependencies
+                        WHERE owner_user_id=? AND revision_id=? AND stage_id=?
+                        ORDER BY ordinal
+                        """,
+                        (owner, revision_id, stage["id"]),
+                    ).fetchall()
+                )
+                for stage in stages
+            }
+            sources = tuple(connection.execute(
+                """
+                SELECT id, source_id, content_digest
+                FROM sources
+                WHERE owner_user_id=? AND revision_id=?
+                ORDER BY ordinal, id
+                """,
+                (owner, revision_id),
+            ).fetchall())
+            result_rows = tuple(connection.execute(
+                """
+                SELECT result.id AS result_id, result.digest, unit.stage_id,
+                       unit.source_row_id, unit.state AS unit_state
+                FROM results result
+                JOIN units unit
+                  ON unit.owner_user_id=result.owner_user_id
+                 AND unit.id=result.unit_id
+                 AND unit.revision_id=result.revision_id
+                WHERE result.owner_user_id=? AND result.revision_id=?
+                ORDER BY unit.stage_id, unit.source_row_id, result.id
+                """,
+                (owner, revision_id),
+            ).fetchall())
+            results_by_stage: dict[str, list[sqlite3.Row]] = {}
+            for result in result_rows:
+                results_by_stage.setdefault(str(result["stage_id"]), []).append(result)
+            terminal_by_stage = {
+                str(stage["id"]): int(connection.execute(
+                    """
+                    SELECT COUNT(*) FROM units
+                    WHERE owner_user_id=? AND revision_id=? AND stage_id=?
+                      AND state NOT IN ('committed', 'failed_permanent',
+                                        'needs_attention', 'cancelled', 'skipped')
+                    """,
+                    (owner, revision_id, stage["id"]),
+                ).fetchone()[0]) == 0
+                for stage in stages
+            }
+
+            for stage in stages:
+                stage_id = str(stage["id"])
+                if stage["stage_type"] == "inventory":
+                    continue
+                parent_ids = tuple(
+                    item for item in dependencies[stage_id]
+                    if by_id[item]["stage_type"] != "inventory"
+                )
+                # Root units and units depending only on the sealed inventory
+                # are materialized during admission.
+                if not parent_ids:
+                    continue
+                mode = str(stage["cardinality"])
+                candidates: list[tuple[sqlite3.Row | None, tuple[sqlite3.Row, ...], str | None]] = []
+                if mode == "singleton":
+                    if not all(terminal_by_stage[parent] for parent in parent_ids):
+                        continue
+                    parents = tuple(
+                        result
+                        for parent in parent_ids
+                        for result in results_by_stage.get(parent, ())
+                    )
+                    parent_unit_count = sum(int(connection.execute(
+                        """
+                        SELECT COUNT(*) FROM units
+                        WHERE owner_user_id=? AND revision_id=? AND stage_id=?
+                        """,
+                        (owner, revision_id, parent),
+                    ).fetchone()[0]) for parent in parent_ids)
+                    if len(parents) != parent_unit_count:
+                        continue
+                    candidates.append((None, parents, None))
+                elif mode == "per_source":
+                    for source in sources:
+                        parents: list[sqlite3.Row] = []
+                        complete = True
+                        for parent in parent_ids:
+                            parent_stage = by_id[parent]
+                            parent_results = results_by_stage.get(parent, ())
+                            if parent_stage["cardinality"] == "singleton":
+                                if not terminal_by_stage[parent] or len(parent_results) != 1:
+                                    complete = False
+                                    break
+                                parents.extend(parent_results)
+                            else:
+                                matching = tuple(
+                                    result for result in parent_results
+                                    if result["source_row_id"] == source["id"]
+                                )
+                                if len(matching) != 1:
+                                    complete = False
+                                    break
+                                parents.extend(matching)
+                        if complete:
+                            candidates.append((source, tuple(parents), None))
+                else:  # per_dependency
+                    for parent in parent_ids:
+                        for result in results_by_stage.get(parent, ()):
+                            source = next((item for item in sources if item["id"] == result["source_row_id"]), None)
+                            candidates.append((source, (result,), f"result:{result['result_id']}"))
+
+                existing_count = int(connection.execute(
+                    """
+                    SELECT COUNT(*) FROM units
+                    WHERE owner_user_id=? AND revision_id=? AND stage_id=?
+                    """,
+                    (owner, revision_id, stage_id),
+                ).fetchone()[0])
+                now = utc_now()
+                for source, parents, shard_key in candidates:
+                    semantic = {
+                        "stage_key": str(stage["stage_key"]),
+                        "source_digest": (
+                            str(source["content_digest"]) if source is not None else None
+                        ),
+                        "source_id": (
+                            str(source["source_id"]) if source is not None else None
+                        ),
+                        "dependencies": [
+                            {"result_id": str(parent["result_id"]), "digest": str(parent["digest"])}
+                            for parent in parents
+                        ],
+                        "shard_key": shard_key,
+                    }
+                    unit_key = digest_json(
+                        "durable-unit-key", semantic, max_bytes=MAX_PLAN_JSON_BYTES,
+                    )
+                    exists = connection.execute(
+                        """
+                        SELECT 1 FROM units
+                        WHERE owner_user_id=? AND revision_id=? AND stage_id=?
+                          AND unit_key=?
+                        """,
+                        (owner, revision_id, stage_id, unit_key),
+                    ).fetchone()
+                    if exists is not None:
+                        continue
+                    if existing_count >= int(stage["max_units"]):
+                        raise DurableStoreError(
+                            "materialized units exceed the frozen stage cardinality cap"
+                        )
+                    inserted = connection.execute(
+                        """
+                        INSERT INTO units(
+                            owner_user_id, id, revision_id, stage_id, unit_key,
+                            source_row_id, shard_key, state,
+                            expected_dependency_count, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                        ON CONFLICT(owner_user_id, revision_id, stage_id, unit_key)
+                        DO NOTHING
+                        """,
+                        (
+                            owner, _new_id("unt"), revision_id, stage_id, unit_key,
+                            None if source is None else source["id"], shard_key,
+                            len(parents), now, now,
+                        ),
+                    )
+                    if inserted.rowcount == 1:
+                        created += 1
+                        existing_count += 1
+        return created
+
+    def materialize_all_ready_units(self, *, limit: int = 200) -> int:
+        """Run bounded, idempotent downstream materialization after recovery."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+            raise ValueError("limit must be an integer in 1..1000")
+        rows = self._connection.execute(
+            """
+            SELECT owner_user_id, id FROM workloads
+            WHERE state IN ('admitted', 'queued', 'running')
+            ORDER BY updated_at, owner_user_id, id
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return sum(
+            self.materialize_ready_units(str(row["owner_user_id"]), str(row["id"]))
+            for row in rows
+        )
+
+    def refresh_usage_complete(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+    ) -> bool:
+        """Materialize whether all model attempts have bounded usage facts."""
+        owner = _require_owner(owner_user_id)
+        with self._transaction() as connection:
+            workload = self._select_workload(connection, owner, workload_id)
+            revision_id = workload["active_revision_id"]
+            if revision_id is None:
+                return False
+            missing = int(connection.execute(
+                """
+                SELECT COUNT(*) FROM attempts attempt
+                JOIN units unit
+                  ON unit.owner_user_id=attempt.owner_user_id
+                 AND unit.id=attempt.unit_id
+                WHERE attempt.owner_user_id=? AND unit.revision_id=?
+                  AND json_extract(attempt.model_snapshot_json, '$.mode')='llm'
+                  AND (
+                    json_extract(attempt.metrics_json, '$.usage_missing') IS NOT 0
+                    OR json_type(attempt.metrics_json, '$.llm_usage') IS NULL
+                  )
+                """,
+                (owner, revision_id),
+            ).fetchone()[0])
+            complete = missing == 0
+            connection.execute(
+                """
+                UPDATE revisions SET usage_complete=?
+                WHERE owner_user_id=? AND id=? AND workload_id=?
+                """,
+                (int(complete), owner, revision_id, workload_id),
+            )
+            return complete
+
     def commit_result(
         self,
         lease: Lease,
         validated_result: ValidatedResult,
         *,
+        dependency_result_ids: Sequence[str] = (),
         now: datetime | None = None,
     ) -> CommitOutcome:
         if not isinstance(lease, Lease):
             raise TypeError("lease must be Lease")
         if not isinstance(validated_result, ValidatedResult):
             raise TypeError("validated_result must be ValidatedResult")
+        if isinstance(dependency_result_ids, (str, bytes)) or not isinstance(
+            dependency_result_ids, Sequence
+        ):
+            raise TypeError("dependency_result_ids must be a sequence")
+        dependency_ids = tuple(dependency_result_ids)
+        if any(
+            not isinstance(value, str) or not _ID_RE.fullmatch(value)
+            for value in dependency_ids
+        ) or len(dependency_ids) != len(set(dependency_ids)):
+            raise ResultContractError("result dependency identifiers are invalid")
         current, current_text = self._operation_now(now)
         with self._transaction() as connection:
             row = self._select_lease_row(connection, lease)
@@ -2105,8 +2628,59 @@ class DurableWorkloadStore:
                 raise ResultContractError(
                     "result schema does not match the frozen stage output schema"
                 )
+            expected_dependency_count = int(row["expected_dependency_count"])
+            if len(dependency_ids) != expected_dependency_count:
+                raise ResultContractError(
+                    "result dependencies do not match the materialized unit"
+                )
+            dependency_rows: tuple[sqlite3.Row, ...] = ()
+            if dependency_ids:
+                placeholders = ",".join("?" for _ in dependency_ids)
+                rows = connection.execute(
+                    f"""
+                    SELECT result.id AS result_id, parent.stage_key,
+                           parent.position, source.ordinal AS source_ordinal
+                    FROM results result
+                    JOIN units parent_unit
+                      ON parent_unit.owner_user_id=result.owner_user_id
+                     AND parent_unit.id=result.unit_id
+                     AND parent_unit.revision_id=result.revision_id
+                    JOIN stages parent
+                      ON parent.owner_user_id=parent_unit.owner_user_id
+                     AND parent.id=parent_unit.stage_id
+                     AND parent.revision_id=parent_unit.revision_id
+                    JOIN stage_dependencies declared
+                      ON declared.owner_user_id=parent.owner_user_id
+                     AND declared.revision_id=parent.revision_id
+                     AND declared.depends_on_stage_id=parent.id
+                    LEFT JOIN sources source
+                      ON source.owner_user_id=parent_unit.owner_user_id
+                     AND source.id=parent_unit.source_row_id
+                     AND source.revision_id=parent_unit.revision_id
+                    WHERE result.owner_user_id=? AND result.revision_id=?
+                      AND declared.stage_id=? AND result.id IN ({placeholders})
+                    ORDER BY parent.position, source.ordinal, result.id
+                    """,
+                    (
+                        lease.owner_user_id, lease.revision_id, lease.stage_id,
+                        *dependency_ids,
+                    ),
+                ).fetchall()
+                if len(rows) != len(dependency_ids):
+                    raise ResultContractError(
+                        "result dependencies are not committed direct parents"
+                    )
+                dependency_rows = tuple(rows)
 
             result_id = _new_id("res")
+            executor_snapshot = json.loads(str(row["executor_snapshot_json"]))
+            model_snapshot = json.loads(str(row["model_snapshot_json"]))
+            metrics_value = json.loads(str(row["metrics_json"]))
+            validation = (
+                "dummy_contract"
+                if executor_snapshot.get("mode") == "dummy"
+                else "approved_output_schema"
+            )
             provenance = canonical_json(
                 {
                     "schema_version": "metnos.durable-result-provenance/1",
@@ -2114,7 +2688,21 @@ class DurableWorkloadStore:
                     "fence": lease.fence,
                     "runner_kind": lease.runner_kind.value,
                     "runner_name": lease.runner_name,
-                    "validation": "dummy_contract",
+                    "validation": validation,
+                    "output_schema": validated_result.schema_version,
+                    "executor_snapshot_digest": digest_json(
+                        "durable-executor-snapshot", executor_snapshot,
+                        max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+                    ),
+                    "model_snapshot_digest": digest_json(
+                        "durable-model-snapshot", model_snapshot,
+                        max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+                    ),
+                    "metrics_digest": digest_json(
+                        "durable-attempt-metrics", metrics_value,
+                        max_bytes=_MAX_ATTEMPT_METRICS_JSON_BYTES,
+                    ),
+                    "usage_missing": bool(metrics_value.get("usage_missing", False)),
                 },
                 max_bytes=MAX_SNAPSHOT_JSON_BYTES,
             )
@@ -2133,10 +2721,28 @@ class DurableWorkloadStore:
                     validated_result.payload_json, provenance, current_text,
                 ),
             )
+            role_ordinals: dict[str, int] = {}
+            for dependency in dependency_rows:
+                role = str(dependency["stage_key"])
+                ordinal = role_ordinals.get(role, 0)
+                connection.execute(
+                    """
+                    INSERT INTO dependencies(
+                        owner_user_id, revision_id, child_result_id,
+                        source_result_id, role, ordinal
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        lease.owner_user_id, lease.revision_id, result_id,
+                        dependency["result_id"], role, ordinal,
+                    ),
+                )
+                role_ordinals[role] = ordinal + 1
             metrics = self._attempt_metrics(
                 row,
                 result_digest=validated_result.digest,
                 committed=True,
+                dependency_count=len(dependency_rows),
             )
             changed_attempt = connection.execute(
                 """
