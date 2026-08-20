@@ -659,15 +659,31 @@ class DurableExecutionBridge:
     def run_once(self, worker: DurableWorker) -> WorkerRunOutcome:
         """Recover, execute one unit, then materialize its generic descendants."""
         worker.coordinator.reconcile()
-        self.store.materialize_all_ready_units()
         outcome = worker.run_once(self)
         lease = outcome.lease
         if lease is None:
+            # A process may have stopped after committing a result and before
+            # materialising its descendants.  Recover that boundary only when
+            # no executable unit is available: scanning every historical
+            # result before every claim turns a long, serial map into
+            # quadratic control-plane work.  The store remains authoritative
+            # and this pass is idempotent across workers and restarts.
+            if self.store.materialize_all_ready_units():
+                outcome = worker.run_once(self)
+                lease = outcome.lease
+            else:
+                return outcome
+        if lease is None:
             return outcome
-        if outcome.commit is not None and outcome.commit.result_id is not None:
+        stage_terminal = (
+            outcome.commit.stage_terminal
+            if outcome.commit is not None and outcome.commit.result_id is not None
+            else self.store.stage_is_terminal(lease)
+        )
+        if stage_terminal:
             self.store.materialize_ready_units(lease.owner_user_id, lease.workload_id)
-        self.store.refresh_usage_complete(lease.owner_user_id, lease.workload_id)
-        self.store.evaluate_completion(lease.owner_user_id, lease.workload_id)
+            self.store.refresh_usage_complete(lease.owner_user_id, lease.workload_id)
+            self.store.evaluate_completion(lease.owner_user_id, lease.workload_id)
         return outcome
 
 

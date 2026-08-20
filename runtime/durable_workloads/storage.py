@@ -3019,6 +3019,10 @@ class DurableWorkloadStore:
                 """,
                 (owner, revision_id),
             ).fetchall())
+            source_by_id = {
+                str(source["id"]): source
+                for source in sources
+            }
             result_rows = tuple(connection.execute(
                 """
                 SELECT result.id AS result_id, result.digest, result.payload_json,
@@ -3046,6 +3050,24 @@ class DurableWorkloadStore:
                     """,
                     (owner, revision_id, stage["id"]),
                 ).fetchone()[0]) == 0
+                for stage in stages
+            }
+            # All candidate units are considered inside this one transaction.
+            # Keeping the already-admitted semantic keys in memory avoids one
+            # indexed SELECT per historical candidate on every recovery pass.
+            # The database unique constraint remains the cross-process
+            # authority; this is only a bounded read optimisation.
+            unit_keys_by_stage: dict[str, set[str]] = {
+                str(stage["id"]): {
+                    str(row["unit_key"])
+                    for row in connection.execute(
+                        """
+                        SELECT unit_key FROM units
+                        WHERE owner_user_id=? AND revision_id=? AND stage_id=?
+                        """,
+                        (owner, revision_id, stage["id"]),
+                    ).fetchall()
+                }
                 for stage in stages
             }
             # A stage with no rows is not necessarily complete: downstream
@@ -3125,7 +3147,12 @@ class DurableWorkloadStore:
                     )
                     for parent in parent_ids:
                         for result in results_by_stage.get(parent, ()):
-                            source = next((item for item in sources if item["id"] == result["source_row_id"]), None)
+                            source_row_id = result["source_row_id"]
+                            source = (
+                                source_by_id.get(str(source_row_id))
+                                if source_row_id is not None
+                                else None
+                            )
                             if entry_identity_field is None:
                                 candidates.append((source, (result,), f"result:{result['result_id']}"))
                                 continue
@@ -3196,15 +3223,8 @@ class DurableWorkloadStore:
                     unit_key = digest_json(
                         "durable-unit-key", semantic, max_bytes=MAX_PLAN_JSON_BYTES,
                     )
-                    exists = connection.execute(
-                        """
-                        SELECT 1 FROM units
-                        WHERE owner_user_id=? AND revision_id=? AND stage_id=?
-                          AND unit_key=?
-                        """,
-                        (owner, revision_id, stage_id, unit_key),
-                    ).fetchone()
-                    if exists is not None:
+                    known_unit_keys = unit_keys_by_stage[stage_id]
+                    if unit_key in known_unit_keys:
                         continue
                     if existing_count >= int(stage["max_units"]):
                         raise DurableStoreError(
@@ -3231,6 +3251,7 @@ class DurableWorkloadStore:
                         created += 1
                         existing_count += 1
                         inserted_for_stage += 1
+                    known_unit_keys.add(unit_key)
                 materialization_complete[stage_id] = inserted_for_stage == 0
         return created
 
@@ -3513,7 +3534,49 @@ class DurableWorkloadStore:
                 result_id,
                 validated_result.digest,
                 validated_result.digest,
+                stage_terminal=self._stage_is_terminal_in_connection(
+                    connection,
+                    lease.owner_user_id,
+                    lease.revision_id,
+                    lease.stage_id,
+                ),
             )
+
+    @staticmethod
+    def _stage_is_terminal_in_connection(
+        connection: sqlite3.Connection,
+        owner_user_id: str,
+        revision_id: str,
+        stage_id: str,
+    ) -> bool:
+        terminal_states = tuple(state.value for state in TERMINAL_UNIT_STATES)
+        placeholders = ",".join("?" for _state in terminal_states)
+        remaining = connection.execute(
+            f"""
+            SELECT 1 FROM units
+            WHERE owner_user_id=? AND revision_id=? AND stage_id=?
+              AND state NOT IN ({placeholders})
+            LIMIT 1
+            """,
+            (owner_user_id, revision_id, stage_id, *terminal_states),
+        ).fetchone()
+        return remaining is None
+
+    def stage_is_terminal(self, lease: Lease) -> bool:
+        """Return whether every unit in a lease's frozen stage is terminal.
+
+        This is intentionally a narrow indexed check, used by the execution
+        bridge to decide when a whole-workload materialisation or completion
+        scan is warranted after an unsuccessful attempt.
+        """
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        return self._stage_is_terminal_in_connection(
+            self._connection,
+            lease.owner_user_id,
+            lease.revision_id,
+            lease.stage_id,
+        )
 
     def fail_attempt(
         self,

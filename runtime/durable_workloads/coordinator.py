@@ -429,6 +429,7 @@ class CommitOutcome:
     result_id: str | None
     winning_digest: str | None
     proposed_digest: str
+    stage_terminal: bool = False
 
 
 @dataclass(frozen=True, slots=True)
