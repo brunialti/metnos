@@ -19,8 +19,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge processi e salute del sistema. PATTERN: temperatura CPU -> get_processes(top=5, sensor_domains=[\"cpu\"], sensor_types=[\"temperature\"]); stato generale -> get_processes(top=5, include_health=true). NON: task schedulati (-> list_tasks), metadati file (-> get_files), ora o posizione (-> get_now/get_location). OUT: entries e health attestato."
-en = "SCOPO: reads processes and system health. PATTERN: CPU temperature -> get_processes(top=5, sensor_domains=[\"cpu\"], sensor_types=[\"temperature\"]); general status -> get_processes(top=5, include_health=true). NON: scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location). OUT: attested entries and health."
+it = "SCOPO: processi e salute del sistema. PATTERN: temperatura CPU: sensor_domains=[\"cpu\"] con sensor_types=[\"temperature\"]; stato: include_health=true. NON: task -> list_tasks; file -> get_files; ora/posizione -> get_now/get_location. OUT: entries e health attestato."
+en = "SCOPO: processes and system health. PATTERN: CPU temperature: sensor_domains=[\"cpu\"] with sensor_types=[\"temperature\"]; status: include_health=true. NON: tasks -> list_tasks; files -> get_files; time/location -> get_now/get_location. OUT: attested entries and health."
 
 [code]
 files  = ["get_processes.py"]
