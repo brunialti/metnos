@@ -46,7 +46,8 @@ li { margin-bottom:4px; }
 .toc li { margin:3px 0; }
 footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:9.5pt; }
 </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="/assets/metnos.css?v=20260820-3">
+<script defer src="/assets/wiki-shell.js?v=20260820-3"></script>
 </head>
 <body>
 <nav class="lang-switch" aria-label="Language">
@@ -423,6 +424,32 @@ See <a href="sandbox.html#cap10">sandbox, ch. 10</a> for the per-OS detail.
 Remote results always report the containment actually applied. A separate watchdog
 terminates the client, leaving restart to its supervisor, if sandbox construction
 does not return within the deadline plus a bounded grace period.
+</p>
+
+<h3 id="managed-providers">Managed Read-only Providers</h3>
+
+<p>
+Some system data requires an installed component and local privileges, such as
+a hardware-sensor provider on Windows. An executor receives no generic
+privilege and supplies no command. It declares an abstract dependency in its
+signed manifest. For one invocation, the server and client sign a restricted
+grant; the local helper verifies both signatures, resolves the package from the
+device registry, and exposes only a typed read-only interface. The signed
+profile may identify one assembly directly inside the registered package and
+its entry type. Interface operations, limits, and output validation remain in
+the common helper: package IDs never select code, and paths, scripts, methods,
+properties, and free-form arguments cannot be supplied. A future package that
+implements an existing interface is installed from the normal UI. The person
+never writes a manifest or adapter: installation and generic start need no
+provider profile, while read integration consumes signed profile data supplied
+by Metnos or the package maintainer, not new Metnos code. If no supported machine-readable
+interface exists, Metnos reports incompatibility instead of guessing from a
+GUI. Provider failure never changes the lifetime of an installed process.
+The hardware-sensor interface receives closed domain and measurement-type
+selectors. A CPU-temperature request therefore opens only CPU temperature
+sensors: unrelated GPU and disk discovery cannot delay or block that read.
+Initialisation is never retried implicitly, and a timeout identifies the
+provider stage without accepting partial data.
 </p>
 
 <h2 id="failure">6. Failures, Duplicates and Revocation</h2>

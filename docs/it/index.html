@@ -4,8 +4,8 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
-<title>Metnos — Un'architettura per agenti governati</title>
-<meta name="description" content="Metnos è un'architettura documentata e ospitabile in proprio per agenti governati. L'insieme degli executor ammessi determina il dominio operativo; il nucleo offre pianificazione, giudizio indipendente, memoria, tracciabilità e autorità circoscritta.">
+<title>Metnos — Documentazione</title>
+<meta name="description" content="La documentazione pubblica di Metnos: da come iniziare a usare l'istanza ai contratti dell'architettura, ai domini operativi e al Tutor.">
 <meta name="keywords" content="Metnos, agenti governati, agenti ospitati in proprio, architettura executor, executor firmati, executor remoti, vocabolario chiuso, AI locale, indipendenza dal fornitore, astrazione LLM, AI costituzionale, sicurezza AI, teleologia, deontologia, dialogo galileiano, memoria distribuita, architettura software AI">
 <meta name="author" content="the owner">
 <meta name="robots" content="index, follow">
@@ -17,15 +17,15 @@
 
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/it/">
-<meta property="og:title" content="Metnos — un'architettura per agenti governati">
-<meta property="og:description" content="Un'architettura documentata e ospitabile in proprio, in cui gli executor ammessi definiscono il dominio operativo concreto.">
+<meta property="og:title" content="Metnos — documentazione">
+<meta property="og:description" content="La guida pubblica per usare Metnos, comprenderne l'architettura e consultare i suoi contratti verificabili.">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:site_name" content="Metnos">
 
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Metnos — un'architettura per agenti governati">
-<meta name="twitter:description" content="Un'architettura ospitabile in proprio, costruita su executor firmati, autorità circoscritta e piani sottoposti a giudizio indipendente.">
+<meta name="twitter:title" content="Metnos — documentazione">
+<meta name="twitter:description" content="La guida pubblica per usare Metnos, comprenderne l'architettura e consultare i suoi contratti verificabili.">
 
 <script type="application/ld+json">
 {
@@ -34,7 +34,7 @@
   "name": "Metnos",
   "alternateName": "Metnos",
   "url": "https://metnos.com/",
-  "description": "Un'architettura documentata e ospitabile in proprio per agenti governati, il cui dominio operativo è determinato dall'insieme degli executor ammessi.",
+  "description": "La documentazione pubblica di Metnos: uso dell'istanza, domini operativi, architettura e Tutor.",
   "author": { "@type": "Person", "name": "the owner" },
   "inLanguage": ["it", "en"],
   "keywords": "agenti governati, architettura executor, executor firmati, astrazione LLM, AI costituzionale, teleologia, dialogo galileiano, telos, hybris"
@@ -333,7 +333,8 @@ footer {
   .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 8px; }
 }
 </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="/assets/metnos.css?v=20260820-3">
+<script defer src="/assets/wiki-shell.js?v=20260820-3"></script>
 </head>
 <body>
 
@@ -344,29 +345,29 @@ footer {
 </nav>
 
 <div class="hero">
-  <div class="eyebrow">un progetto</div>
+  <div class="eyebrow">documentazione</div>
   <h1>Metnos</h1>
   <div class="byline" style="font-family:'Georgia','Cambria',serif; font-style:italic; font-size:13pt; color:var(--muted); margin:4px 0 18px; letter-spacing:0.2px;">by the owner</div>
-  <div class="subtitle">Un'architettura per agenti. E il tentativo di renderne governabile il potere.</div>
+  <div class="subtitle">La guida per usare Metnos e comprenderne l'architettura.</div>
   <div class="kleos">μῆτις + νοῦς &mdash; <em>m&ecirc;tis</em> (saggezza che si adatta) + <em>no&ucirc;s</em> (intelletto che ragiona): le due forme greche della mente, riunite in un nome. <span style="color:var(--muted); font-size:10.5pt;">&middot; nome tecnico del progetto: <code style="background:transparent; font-family:Consolas,monospace;">metnos</code></span></div>
 </div>
 
 <p style="text-align:center; color:var(--muted); font-size:11pt; font-style:italic; margin:30px 0 10px;">
-Se, dopo il <em>perché</em>, ti interessa il <em>come</em>, hai tre porte. La nota sul codice (<a href="code.html">Code</a>) mostra dove si trova la sostanza tecnica.
+La colonna a sinistra organizza tutte le pagine per argomento. Se preferisci iniziare da un compito concreto, scegli una delle tre porte qui sotto; per consultare un termine o un componente, usa la ricerca nell'albero.
 </p>
 
 <div class="secondary" style="margin:12px 0 46px;">
   <a href="Metnos_QuickTour.pdf">
-    <span class="label">Quick tour &amp; Survival kit</span>
+    <span class="label">Giro rapido</span>
     <span class="time">20 min · anche in PDF</span>
   </a>
   <a href="architecture/">
-    <span class="label">Guida all'architettura</span>
+    <span class="label">Capire l'architettura</span>
     <span class="time">guida illustrata</span>
   </a>
   <a href="code.html">
-    <span class="label">Code</span>
-    <span class="time">nota</span>
+    <span class="label">Consultare il codice</span>
+    <span class="time">repository e nota</span>
   </a>
 </div>
 
@@ -375,8 +376,8 @@ Se, dopo il <em>perché</em>, ti interessa il <em>come</em>, hai tre porte. La n
 </section>
 
 <section>
-  <h2>Cosa trovi qui</h2>
-  <p>La documentazione descrive il prodotto attuale: una guida introduttiva, la mappa dell'interfaccia, un riferimento dei domini con esempi in linguaggio naturale e la Guida all'architettura con i contratti dei componenti. I cataloghi tecnici e la pagina dell'interfaccia sono generati dai registri del runtime; il Tutor compila queste fonti insieme ai manifest ammessi in un catalogo firmato. Il repository pubblico contiene il codice e il programma di installazione necessari per verificare i contratti descritti.</p>
+  <h2>Come è organizzata questa guida</h2>
+  <p>La documentazione descrive il prodotto attuale: una guida introduttiva, la mappa dell'interfaccia, un riferimento dei domini con esempi in linguaggio naturale e la Guida all'architettura con i contratti dei componenti. L'albero a sinistra segue un percorso didattico: prima l'uso, poi i concetti fondamentali, l'architettura di esecuzione, il ragionamento, l'operatività e infine gli approfondimenti. I cataloghi tecnici e la pagina dell'interfaccia sono generati dai registri del runtime; il Tutor compila queste fonti insieme ai manifest ammessi in un catalogo firmato. Il repository pubblico contiene il codice e il programma di installazione necessari per verificare i contratti descritti.</p>
 </section>
 
 <section>
@@ -402,6 +403,13 @@ Se, dopo il <em>perché</em>, ti interessa il <em>come</em>, hai tre porte. La n
       <span class="d">Tutti i 27 domini canonici spiegati uno per uno, con confini, disponibilit&agrave; ed esempi di richieste in linguaggio naturale. Nomi e conteggi tecnici derivano dai manifest e dai contratti integrati.</span>
     </div>
     <span class="time">Riferimento · 15 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="webui.html">Aprire e usare Metnos &mdash; primo accesso e prime operazioni</a>
+      <span class="d">A che indirizzo si apre la chat web, come si entra la prima volta, che cosa si fa nella conversazione e i passi esatti per creare un nuovo utente e dargli accesso.</span>
+    </div>
+    <span class="time">Guida &middot; 6 min</span>
   </div>
   <div class="toc-item">
     <div>

@@ -34,44 +34,10 @@
  "about": "Metnos component: executor (didactic introduction)"
 }
  </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
-h1:first-of-type { page-break-before: avoid; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
-figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 12px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }.three-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.three-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 10pt; }.three-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }.four-cols { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.four-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 9.5pt; }.four-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; }.three-cols { grid-template-columns: 1fr 1fr 1fr; }.four-cols { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 720px) {.three-cols,.four-cols { grid-template-columns: 1fr; } }
-@media (max-width: 1024px) and (min-width: 721px) {.four-cols { grid-template-columns: 1fr 1fr; } }
- </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="/assets/metnos.css?v=20260820-3">
+<script defer src="/assets/wiki-shell.js?v=20260820-3"></script>
 </head>
-<body>
+<body class="executor-guide">
 <p class="lead">An executor is an operational unit whose arguments, effects,
 capabilities, and isolation profile are declared in a signed manifest. The system
 keeps shipped, generated, and imported executor provenance separate; the
@@ -84,10 +50,10 @@ domains, and status without duplicating them on this page.</p>
 <a href="/en/architecture/executor.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
-<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+<div style="background:var(--surface);border-bottom:1px solid var(--border);padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
- <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">executor</strong></span>
+ <a href="../index.html" style="color:var(--wiki-section);text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:var(--muted);">Architecture guide &rsaquo; <strong style="color:var(--ink);">executor</strong></span>
  </div>
 </div>
 
@@ -109,6 +75,7 @@ know executor names.</p>
 <h2>Contents</h2>
 <ol>
  <li><a href="#cap1">What an executor is (in thirty seconds)</a></li>
+ <li><a href="#types">How to read executor types: placement, intelligence, and parallelism</a></li>
  <li><a href="#cap2">Anatomy: manifest, signature, and implementation</a></li>
  <li><a href="#cap3">The manifest: the calling card</a></li>
  <li><a href="#cap4">The fence: what it can and cannot do</a></li>
@@ -136,32 +103,80 @@ In Metnos it is the same: every executor is a tool with a clear job. When the us
 asks for something, the planner picks the right tool and uses it.
 </p>
 
+<section class="executor-classification" aria-labelledby="types">
+<h2 id="types">Three dimensions, not confusing labels</h2>
+<p>The words <em>local</em>, <em>remote</em>, <em>intelligent</em>, and
+<em>parallel</em> do not describe four alternative families. They answer three
+independent questions. The same executor can, for example, be deterministic,
+eligible for a paired device, and still remain serial.</p>
+
+<div class="executor-axes">
+ <div class="executor-axis">
+  <div class="executor-axis-title">1. Placement<span>Where it can run</span></div>
+  <div class="executor-axis-options">
+   <span class="executor-chip"><strong>Server</strong><code>scope = "server"</code>: it runs only where Metnos is hosted.</span>
+   <span class="executor-chip"><strong>Paired device</strong><code>scope = "device"</code>: it runs on an eligible, recognised device.</span>
+   <span class="executor-chip"><strong>Server or device</strong><code>scope = "any"</code> with <code>device_ok = true</code>: it starts from the server and may be sent to the device named in the request.</span>
+  </div>
+ </div>
+ <div class="executor-axis">
+  <div class="executor-axis-title">2. Intelligence<span>How it approaches the task</span></div>
+  <div class="executor-axis-options">
+   <span class="executor-chip"><strong>Deterministic</strong>Applies code, rules, or an algorithm without an internal model.</span>
+   <span class="executor-chip"><strong>LLM</strong>Uses a model for part of the task while retaining the same contract, limits, and controls.</span>
+   <span class="executor-chip"><strong>Agentic</strong>Has a bounded internal observation-and-proposal loop; this is declared explicitly, never inferred from its name.</span>
+  </div>
+ </div>
+ <div class="executor-axis">
+  <div class="executor-axis-title">3. Parallelism<span>Whether it can run alongside others</span></div>
+  <div class="executor-axis-options">
+   <span class="executor-chip"><strong>Serial</strong><code>parallelism_class = 0</code>: the conservative default.</span>
+   <span class="executor-chip"><strong>Eligible for parallelism</strong>Classes <code>1&ndash;3</code> are an explicit opt-in: the central scheduler decides actual admission from verified equivalence, effect, resource, and limits.</span>
+   <span class="executor-chip"><strong>Same resource, same queue</strong>Invocations that are not read-only and share a concurrency identity remain serial.</span>
+  </div>
+ </div>
+</div>
+
+<p class="executor-reading-key"><strong>How to read this card.</strong>
+Placement grants no new permissions; intelligence grants no new authority;
+parallelism is not a promise of speed. These are facts declared by the contract
+and enforced by the runtime. For the protocol between server and PC, see
+<a href="remote_executors.html">remote executors</a>; for executors with an
+internal reasoning loop, see <a href="intelligent_executors.html">intelligent executors</a>.</p>
+
+<div class="executor-examples" aria-label="Examples from the current catalog">
+ <div class="executor-example"><code>get_processes</code><p>Server or device &middot; deterministic &middot; serial.</p></div>
+ <div class="executor-example"><code>find_files</code><p>Server or device &middot; deterministic &middot; verified class 3.</p></div>
+ <div class="executor-example"><code>act_sites</code><p>Server &middot; agentic &middot; serial.</p></div>
+</div>
+</section>
+
 <figure>
 <svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schema of an executor: input, sealed box with label, output">
  <defs>
  <marker id="arr1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
- <path d="M0,0 L10,5 L0,10 Z" fill="#1A477A"/>
+ <path d="M0,0 L10,5 L0,10 Z" fill="var(--diagram-primary)"/>
  </marker>
  </defs>
- <rect x="20" y="80" width="140" height="70" rx="6" fill="#f0f4f8" stroke="#1A477A" stroke-width="1.5"/>
- <text x="90" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="#1A477A" font-weight="600">arguments</text>
- <text x="90" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="11" fill="#444">{tz: "Europe/Rome"}</text>
- <line x1="160" y1="115" x2="245" y2="115" stroke="#1A477A" stroke-width="2" marker-end="url(#arr1)"/>
- <rect x="250" y="50" width="220" height="130" rx="10" fill="white" stroke="#548235" stroke-width="2.5"/>
- <text x="360" y="80" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="14" fill="#548235" font-weight="700">get_now</text>
- <text x="360" y="105" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="#666">one thing only:</text>
- <text x="360" y="125" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="#666">returns date and time</text>
- <rect x="270" y="145" width="80" height="22" rx="3" fill="#fef3c7" stroke="#A0522D" stroke-width="1"/>
- <text x="310" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="#A0522D" font-weight="600">manifest</text>
- <rect x="370" y="145" width="80" height="22" rx="3" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
- <text x="410" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="#14532d" font-weight="600">signature</text>
- <line x1="470" y1="115" x2="555" y2="115" stroke="#1A477A" stroke-width="2" marker-end="url(#arr1)"/>
- <rect x="560" y="80" width="140" height="70" rx="6" fill="#f0f4f8" stroke="#1A477A" stroke-width="1.5"/>
- <text x="630" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="#1A477A" font-weight="600">result</text>
- <text x="630" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="10" fill="#444">2026-05-06 16:45</text>
- <text x="90" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">what I ask</text>
- <text x="360" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">the tool that runs</text>
- <text x="630" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">what I get back</text>
+ <rect x="20" y="80" width="140" height="70" rx="6" fill="var(--diagram-soft)" stroke="var(--diagram-primary)" stroke-width="1.5"/>
+ <text x="90" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="var(--diagram-primary)" font-weight="600">arguments</text>
+ <text x="90" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="11" fill="var(--ink-dim)">{tz: "Europe/Rome"}</text>
+ <line x1="160" y1="115" x2="245" y2="115" stroke="var(--diagram-primary)" stroke-width="2" marker-end="url(#arr1)"/>
+ <rect x="250" y="50" width="220" height="130" rx="10" fill="white" stroke="var(--diagram-positive)" stroke-width="2.5"/>
+ <text x="360" y="80" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="14" fill="var(--diagram-positive)" font-weight="700">get_now</text>
+ <text x="360" y="105" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="var(--ink-dim)">one thing only:</text>
+ <text x="360" y="125" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="var(--ink-dim)">returns date and time</text>
+ <rect x="270" y="145" width="80" height="22" rx="3" fill="var(--diagram-attention-soft)" stroke="var(--diagram-attention)" stroke-width="1"/>
+ <text x="310" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="var(--diagram-attention)" font-weight="600">manifest</text>
+ <rect x="370" y="145" width="80" height="22" rx="3" fill="var(--diagram-positive-soft)" stroke="var(--diagram-positive)" stroke-width="1"/>
+ <text x="410" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="var(--diagram-positive-ink)" font-weight="600">signature</text>
+ <line x1="470" y1="115" x2="555" y2="115" stroke="var(--diagram-primary)" stroke-width="2" marker-end="url(#arr1)"/>
+ <rect x="560" y="80" width="140" height="70" rx="6" fill="var(--diagram-soft)" stroke="var(--diagram-primary)" stroke-width="1.5"/>
+ <text x="630" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="var(--diagram-primary)" font-weight="600">result</text>
+ <text x="630" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="10" fill="var(--ink-dim)">2026-05-06 16:45</text>
+ <text x="90" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="var(--diagram-muted)" font-style="italic">what I ask</text>
+ <text x="360" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="var(--diagram-muted)" font-style="italic">the tool that runs</text>
+ <text x="630" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="var(--diagram-muted)" font-style="italic">what I get back</text>
 </svg>
 <figcaption>An executor is a box with a precise job, an inbound contract, and an outbound contract.</figcaption>
 </figure>
@@ -192,23 +207,23 @@ separate from their implementations.
 
 <figure>
 <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="An executor's folder with its four files">
- <path d="M 30 30 L 90 30 L 110 50 L 250 50 L 250 80 L 30 80 Z" fill="#A0522D" stroke="#7B3F1F" stroke-width="1.5"/>
+ <path d="M 30 30 L 90 30 L 110 50 L 250 50 L 250 80 L 30 80 Z" fill="var(--diagram-attention)" stroke="var(--diagram-attention-ink)" stroke-width="1.5"/>
  <text x="60" y="70" font-family="Segoe UI, sans-serif" font-size="13" fill="white" font-weight="600">get_processes/</text>
- <g font-family="Segoe UI, sans-serif" font-size="12" fill="#1a1a1a">
- <rect x="60" y="100" width="600" height="38" rx="4" fill="#fef3c7" stroke="#A0522D" stroke-width="1"/>
- <text x="80" y="115" font-weight="700" fill="#A0522D">manifest.toml</text>
- <text x="80" y="131" font-size="10" fill="#555">the calling card: name, what it does, arguments, examples, output schema</text>
- <rect x="60" y="148" width="600" height="38" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
- <text x="80" y="163" font-weight="700" fill="#14532d">manifest.toml.sig</text>
- <text x="80" y="179" font-size="10" fill="#555">the cryptographic signature of the calling card: it proves who wrote it</text>
- <rect x="60" y="196" width="600" height="38" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
- <text x="80" y="211" font-weight="700" fill="#1A477A">get_processes.py</text>
- <text x="80" y="227" font-size="10" fill="#555">the actual code: an <tspan font-family="Consolas, monospace">invoke(args)</tspan> function that performs the task</text>
- <rect x="60" y="244" width="600" height="38" rx="4" fill="#f0f4f8" stroke="#64748B" stroke-width="1" stroke-dasharray="3,3"/>
- <text x="80" y="259" font-weight="700" fill="#64748B">manifest.lang_state.json</text>
- <text x="80" y="275" font-size="10" fill="#555">translation state (multilingual): only when descriptions exist in more than one language</text>
+ <g font-family="Segoe UI, sans-serif" font-size="12" fill="var(--ink)">
+ <rect x="60" y="100" width="600" height="38" rx="4" fill="var(--diagram-attention-soft)" stroke="var(--diagram-attention)" stroke-width="1"/>
+ <text x="80" y="115" font-weight="700" fill="var(--diagram-attention)">manifest.toml</text>
+ <text x="80" y="131" font-size="10" fill="var(--ink-dim)">the calling card: name, what it does, arguments, examples, output schema</text>
+ <rect x="60" y="148" width="600" height="38" rx="4" fill="var(--diagram-positive-soft)" stroke="var(--diagram-positive)" stroke-width="1"/>
+ <text x="80" y="163" font-weight="700" fill="var(--diagram-positive-ink)">manifest.toml.sig</text>
+ <text x="80" y="179" font-size="10" fill="var(--ink-dim)">the cryptographic signature of the calling card: it proves who wrote it</text>
+ <rect x="60" y="196" width="600" height="38" rx="4" fill="var(--diagram-soft)" stroke="var(--diagram-primary)" stroke-width="1"/>
+ <text x="80" y="211" font-weight="700" fill="var(--diagram-primary)">get_processes.py</text>
+ <text x="80" y="227" font-size="10" fill="var(--ink-dim)">the actual code: an <tspan font-family="Consolas, monospace">invoke(args)</tspan> function that performs the task</text>
+ <rect x="60" y="244" width="600" height="38" rx="4" fill="var(--diagram-soft)" stroke="var(--diagram-muted)" stroke-width="1" stroke-dasharray="3,3"/>
+ <text x="80" y="259" font-weight="700" fill="var(--diagram-muted)">manifest.lang_state.json</text>
+ <text x="80" y="275" font-size="10" fill="var(--ink-dim)">translation state (multilingual): only when descriptions exist in more than one language</text>
  </g>
- <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">common layout of the distributed catalog</text>
+ <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="var(--diagram-muted)" font-style="italic">common layout of the distributed catalog</text>
 </svg>
 <figcaption>The layout used by distributed executors: manifest, signature,
 entry point, and translation state. The manifest remains authoritative for
@@ -247,46 +262,46 @@ like, a few examples for orientation.
 
 <figure>
 <svg viewBox="0 0 720 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Annotated anatomy of the manifest">
- <rect x="20" y="20" width="480" height="380" rx="6" fill="white" stroke="#d0d7de" stroke-width="1.5"/>
- <text x="35" y="45" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">name = "get_now"</text>
- <text x="35" y="65" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">version = "0.1.0"</text>
- <text x="35" y="85" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">affinity = ["time", "date", "now", "ora"]</text>
- <text x="35" y="115" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[description]</text>
- <text x="35" y="135" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">en = "Returns the current date and time."</text>
- <text x="35" y="165" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[args.properties.tz]</text>
- <text x="35" y="185" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">type = "string"</text>
- <text x="35" y="205" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">default = "UTC"</text>
- <text x="35" y="235" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[output]</text>
- <text x="35" y="255" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">schema_inline = "{ ok: bool,... }"</text>
- <text x="35" y="285" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[code]</text>
- <text x="35" y="305" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">files = ["get_now.py"]</text>
- <text x="35" y="325" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">digest = "sha256:e6e609f6..."</text>
- <text x="35" y="355" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[[capabilities]]</text>
- <text x="35" y="375" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">name = "time:read"</text>
- <line x1="320" y1="55" x2="540" y2="55" stroke="#1A477A" stroke-width="1" stroke-dasharray="2,3"/>
- <text x="545" y="59" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">identity</text>
- <line x1="320" y1="90" x2="540" y2="90" stroke="#A0522D" stroke-width="1" stroke-dasharray="2,3"/>
- <text x="545" y="94" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#A0522D" font-weight="600">keywords</text>
- <text x="545" y="108" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">helps the planner</text>
- <text x="545" y="120" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">find this tool</text>
- <line x1="320" y1="155" x2="540" y2="155" stroke="#16a34a" stroke-width="1" stroke-dasharray="2,3"/>
- <text x="545" y="159" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#14532d" font-weight="600">what it does</text>
- <text x="545" y="173" font-family="Segoe UI, sans-serif" font-size="9" fill="#14532d">a clear sentence,</text>
- <text x="545" y="185" font-family="Segoe UI, sans-serif" font-size="9" fill="#14532d">translated per language</text>
- <line x1="320" y1="195" x2="540" y2="195" stroke="#6B21A8" stroke-width="1" stroke-dasharray="2,3"/>
- <text x="545" y="199" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#6B21A8" font-weight="600">arguments</text>
- <text x="545" y="213" font-family="Segoe UI, sans-serif" font-size="9" fill="#4c1280">type, default, description</text>
- <line x1="320" y1="245" x2="540" y2="245" stroke="#1A477A" stroke-width="1" stroke-dasharray="2,3"/>
- <text x="545" y="249" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">result shape</text>
- <text x="545" y="263" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">what comes out of the tool,</text>
- <text x="545" y="275" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">field by field</text>
- <line x1="320" y1="315" x2="540" y2="315" stroke="#64748B" stroke-width="1" stroke-dasharray="2,3"/>
- <text x="545" y="319" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">code + fingerprint</text>
- <text x="545" y="333" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">the digest changes if the</text>
- <text x="545" y="345" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">code is touched</text>
- <line x1="320" y1="365" x2="540" y2="365" stroke="#A0522D" stroke-width="1" stroke-dasharray="2,3"/>
- <text x="545" y="369" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#A0522D" font-weight="600">permissions</text>
- <text x="545" y="383" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">what it may touch</text>
+ <rect x="20" y="20" width="480" height="380" rx="6" fill="white" stroke="var(--border)" stroke-width="1.5"/>
+ <text x="35" y="45" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">name = "get_now"</text>
+ <text x="35" y="65" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">version = "0.1.0"</text>
+ <text x="35" y="85" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">affinity = ["time", "date", "now", "ora"]</text>
+ <text x="35" y="115" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[description]</text>
+ <text x="35" y="135" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">en = "Returns the current date and time."</text>
+ <text x="35" y="165" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[args.properties.tz]</text>
+ <text x="35" y="185" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">type = "string"</text>
+ <text x="35" y="205" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">default = "UTC"</text>
+ <text x="35" y="235" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[output]</text>
+ <text x="35" y="255" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">schema_inline = "{ ok: bool,... }"</text>
+ <text x="35" y="285" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[code]</text>
+ <text x="35" y="305" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">files = ["get_now.py"]</text>
+ <text x="35" y="325" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">digest = "sha256:e6e609f6..."</text>
+ <text x="35" y="355" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[[capabilities]]</text>
+ <text x="35" y="375" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">name = "time:read"</text>
+ <line x1="320" y1="55" x2="540" y2="55" stroke="var(--diagram-primary)" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="59" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-primary)" font-weight="600">identity</text>
+ <line x1="320" y1="90" x2="540" y2="90" stroke="var(--diagram-attention)" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="94" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-attention)" font-weight="600">keywords</text>
+ <text x="545" y="108" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--diagram-attention-ink)">helps the planner</text>
+ <text x="545" y="120" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--diagram-attention-ink)">find this tool</text>
+ <line x1="320" y1="155" x2="540" y2="155" stroke="var(--diagram-positive)" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="159" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-positive-ink)" font-weight="600">what it does</text>
+ <text x="545" y="173" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--diagram-positive-ink)">a clear sentence,</text>
+ <text x="545" y="185" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--diagram-positive-ink)">translated per language</text>
+ <line x1="320" y1="195" x2="540" y2="195" stroke="var(--diagram-plum)" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="199" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-plum)" font-weight="600">arguments</text>
+ <text x="545" y="213" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--diagram-plum)">type, default, description</text>
+ <line x1="320" y1="245" x2="540" y2="245" stroke="var(--diagram-primary)" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="249" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-primary)" font-weight="600">result shape</text>
+ <text x="545" y="263" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--ink-dim)">what comes out of the tool,</text>
+ <text x="545" y="275" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--ink-dim)">field by field</text>
+ <line x1="320" y1="315" x2="540" y2="315" stroke="var(--diagram-muted)" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="319" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-primary)" font-weight="600">code + fingerprint</text>
+ <text x="545" y="333" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--ink-dim)">the digest changes if the</text>
+ <text x="545" y="345" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--ink-dim)">code is touched</text>
+ <line x1="320" y1="365" x2="540" y2="365" stroke="var(--diagram-attention)" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="369" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-attention)" font-weight="600">permissions</text>
+ <text x="545" y="383" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--diagram-attention-ink)">what it may touch</text>
 </svg>
 <figcaption>A real manifest, simplified. Every block plays a clear role: identity, keywords for retrieval, description, arguments, result shape, code with fingerprint, permissions.</figcaption>
 </figure>
@@ -464,32 +479,32 @@ where they live, and which provenance is recorded.
 
 <div class="four-cols">
  <div>
- <h4 style="color:#A0522D;">Handwritten</h4>
- <p style="color:#444;">The author crafts them with care. They form the stable core, the <em>seed</em> from which everything else grows.</p>
+ <h4 style="color:var(--diagram-attention);">Handwritten</h4>
+ <p style="color:var(--ink-dim);">The author crafts them with care. They form the stable core, the <em>seed</em> from which everything else grows.</p>
  <p><strong>Folder</strong>: <code>executors/</code> in the installation.</p>
  <p><strong>Examples</strong>: <code>get_now</code>, <code>find_files</code>, <code>read_messages</code>, <code>send_messages</code>.</p>
- <p style="color:#64748B;font-style:italic;">Tight, robust, reviewed many times.</p>
+ <p style="color:var(--diagram-muted);font-style:italic;">Tight, robust, reviewed many times.</p>
  </div>
  <div>
- <h4 style="color:#3b82f6;">Generated on the fly</h4>
- <p style="color:#444;">When the catalog does not cover a request, the <a href="synt.html">Synt</a> composes a new executor in five steps (name, contract, tests, description, code).</p>
+ <h4 style="color:var(--diagram-primary);">Generated on the fly</h4>
+ <p style="color:var(--ink-dim);">When the catalog does not cover a request, the <a href="synt.html">Synt</a> composes a new executor in five steps (name, contract, tests, description, code).</p>
  <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/</code></p>
  <p><strong>Example</strong>: a narrow candidate prepared through a governed request when the catalog lacks a required capability.</p>
- <p style="color:#64748B;font-style:italic;">Kept apart: they can never overshadow handwritten seeds.</p>
+ <p style="color:var(--diagram-muted);font-style:italic;">Kept apart: they can never overshadow handwritten seeds.</p>
  </div>
  <div>
- <h4 style="color:#9333ea;">Imported from an external skill</h4>
- <p style="color:#444;">A public skill describes how to use a third-party service. Parsing and deterministic closed-vocabulary mapping turn it into one or more Metnos executors.</p>
+ <h4 style="color:var(--diagram-plum);">Imported from an external skill</h4>
+ <p style="color:var(--ink-dim);">A public skill describes how to use a third-party service. Parsing and deterministic closed-vocabulary mapping turn it into one or more Metnos executors.</p>
  <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/skills/</code></p>
  <p><strong>Examples</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (from a calendar skill).</p>
- <p style="color:#64748B;font-style:italic;">Same checks as a generated one: no special treatment for coming from outside.</p>
+ <p style="color:var(--diagram-muted);font-style:italic;">Same checks as a generated one: no special treatment for coming from outside.</p>
  </div>
  <div>
- <h4 style="color:#16a34a;">Builtin</h4>
- <p style="color:#444;">Internal services executed in process. Their implementations live in the runtime, separately from their signed contracts.</p>
+ <h4 style="color:var(--diagram-positive);">Builtin</h4>
+ <p style="color:var(--ink-dim);">Internal services executed in process. Their implementations live in the runtime, separately from their signed contracts.</p>
  <p><strong>Contracts</strong>: <code>runtime/builtin_executor_contracts/</code></p>
  <p><strong>Examples</strong>: <code>admin</code>, <code>create_tasks</code>, <code>list_skills</code>, <code>describe_images</code>.</p>
- <p style="color:#64748B;font-style:italic;">System services, not regular tools.</p>
+ <p style="color:var(--diagram-muted);font-style:italic;">System services, not regular tools.</p>
  </div>
 </div>
 

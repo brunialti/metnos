@@ -10,48 +10,48 @@
 # ===========================================================================
 
 # IT — vecchio prefisso "Myclaw_" → "Metnos_"
-/Myclaw_Architettura_Intro_v1.html       /it/Metnos_Architettura_Intro_v1.html       301
+/Myclaw_Architettura_Intro_v1.html       /it/architecture/                           301
 /Myclaw_Dialogo_v1.html                  /it/Metnos_Dialogo_v1.html                  301
 /Myclaw_Dialogo_Executor_v1.html         /it/Metnos_Dialogo_Executor_v1.html         301
 /Myclaw_Glossario_v1.html                /it/Metnos_Glossario_v1.html                301
-/Myclaw_Neuroni_Memoria_v1.html          /it/Metnos_Architettura_Intro_v1.html       301
+/Myclaw_Neuroni_Memoria_v1.html          /it/architecture/                           301
 /Myclaw_Prospettive_Estese_v1.html       /it/Metnos_Prospettive_Estese_v1.html       301
 /Myclaw_Prospettive_Giudizio_v1.html     /it/Metnos_Prospettive_Giudizio_v1.html     301
 /Myclaw_QuickTour_v1.html                /it/Metnos_QuickTour.html                   301
 
-/it/Myclaw_Architettura_Intro_v1.html       /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Architettura_Intro_v1.html       /it/architecture/                           301
 /it/Myclaw_Dialogo_v1.html                  /it/Metnos_Dialogo_v1.html                  301
 /it/Myclaw_Dialogo_Executor_v1.html         /it/Metnos_Dialogo_Executor_v1.html         301
 /it/Myclaw_Glossario_v1.html                /it/Metnos_Glossario_v1.html                301
-/it/Myclaw_Neuroni_Memoria_v1.html          /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Neuroni_Memoria_v1.html          /it/architecture/                           301
 /it/Myclaw_Prospettive_Estese_v1.html       /it/Metnos_Prospettive_Estese_v1.html       301
 /it/Myclaw_Prospettive_Giudizio_v1.html     /it/Metnos_Prospettive_Giudizio_v1.html     301
 /it/Myclaw_QuickTour_v1.html                /it/Metnos_QuickTour.html                   301
 
 # EN — vecchio prefisso "account_personal_" → "Metnos_"
-/en/account_personal_Architecture_Intro_v1.html      /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Architecture_Intro_v1.html      /en/architecture/                           301
 /en/account_personal_Dialogue_v1.html                /en/Metnos_Dialogue_v1.html                301
 /en/account_personal_Dialogue_Executors_v1.html      /en/Metnos_Dialogue_Executors_v1.html      301
 /en/account_personal_Glossary_v1.html                /en/Metnos_Glossary_v1.html                301
-/en/account_personal_Neurons_Memory_v1.html          /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Neurons_Memory_v1.html          /en/architecture/                           301
 /en/account_personal_Extended_Perspectives_v1.html   /en/Metnos_Extended_Perspectives_v1.html   301
 /en/account_personal_Perspectives_Judgement_v1.html  /en/Metnos_Perspectives_Judgement_v1.html  301
 /en/account_personal_QuickTour_v1.html               /en/Metnos_QuickTour.html                  301
 
 # Senza estensione
-/it/Myclaw_Architettura_Intro_v1       /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Architettura_Intro_v1       /it/architecture/                           301
 /it/Myclaw_Dialogo_v1                  /it/Metnos_Dialogo_v1.html                  301
 /it/Myclaw_Dialogo_Executor_v1         /it/Metnos_Dialogo_Executor_v1.html         301
 /it/Myclaw_Glossario_v1                /it/Metnos_Glossario_v1.html                301
-/it/Myclaw_Neuroni_Memoria_v1          /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Neuroni_Memoria_v1          /it/architecture/                           301
 /it/Myclaw_Prospettive_Estese_v1       /it/Metnos_Prospettive_Estese_v1.html       301
 /it/Myclaw_Prospettive_Giudizio_v1     /it/Metnos_Prospettive_Giudizio_v1.html     301
 /it/Myclaw_QuickTour_v1                /it/Metnos_QuickTour.html                   301
-/en/account_personal_Architecture_Intro_v1      /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Architecture_Intro_v1      /en/architecture/                           301
 /en/account_personal_Dialogue_v1                /en/Metnos_Dialogue_v1.html                301
 /en/account_personal_Dialogue_Executors_v1      /en/Metnos_Dialogue_Executors_v1.html      301
 /en/account_personal_Glossary_v1                /en/Metnos_Glossary_v1.html                301
-/en/account_personal_Neurons_Memory_v1          /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Neurons_Memory_v1          /en/architecture/                           301
 /en/account_personal_Extended_Perspectives_v1   /en/Metnos_Extended_Perspectives_v1.html   301
 /en/account_personal_Perspectives_Judgement_v1  /en/Metnos_Perspectives_Judgement_v1.html  301
 /en/account_personal_QuickTour_v1               /en/Metnos_QuickTour.html                  301
@@ -111,5 +111,5 @@
 /en/architecture/constitution.html  /en/architecture/vaglio.html         301
 /en/architecture/workspace          /en/architecture/                    301
 /en/architecture/workspace.html     /en/architecture/                    301
-/it/Metnos_Neuroni_Memoria_v1.html  /it/Metnos_Architettura_Intro_v1.html 301
-/en/Metnos_Neurons_Memory_v1.html   /en/Metnos_Architecture_Intro_v1.html 301
+/it/Metnos_Neuroni_Memoria_v1.html  /it/architecture/ 301
+/en/Metnos_Neurons_Memory_v1.html   /en/architecture/ 301

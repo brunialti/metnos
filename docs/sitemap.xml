@@ -95,6 +95,25 @@
   </url>
 
   <url>
+    <loc>https://metnos.com/en/webui</loc>
+    <lastmod>2026-08-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/webui"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/webui"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/webui"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/webui</loc>
+    <lastmod>2026-08-16</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/webui"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/webui"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/webui"/>
+  </url>
+
+  <url>
     <loc>https://metnos.com/en/interface</loc>
     <lastmod>2026-07-25</lastmod>
     <changefreq>weekly</changefreq>

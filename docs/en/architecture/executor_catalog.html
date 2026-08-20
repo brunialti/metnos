@@ -7,11 +7,12 @@
 <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_catalog"/>
 <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_catalog"/>
 <style>:root{--n:#1A477A;--b:#2B6CB0;--g:#548235;--bg:#FAFBFC;--t:#1a1a1a;--bd:#d0d7de;--c:#f6f8fa}*{box-sizing:border-box}body{font-family:'Segoe UI',Calibri,sans-serif;color:var(--t);background:var(--bg);max-width:1180px;margin:auto;padding:40px 30px;line-height:1.55;font-size:11pt}h1{color:var(--n);font-size:22pt;border-bottom:3px solid var(--n);padding-bottom:10px}h2{color:var(--b);font-size:14pt;margin-top:30px;border-bottom:1px solid var(--bd);padding-bottom:5px}a{color:var(--n)}code{background:var(--c);padding:1px 5px;border-radius:3px}.lead{font-size:12pt;color:var(--n);border-left:4px solid var(--g);padding-left:14px}.status{background:#dcfce7;color:#14532d;border-left:5px solid #16a34a;padding:14px 20px}table{width:100%;border-collapse:collapse;background:#fff}th{background:var(--n);color:#fff;text-align:left}th,td{padding:8px 10px;border-bottom:1px solid var(--bd);vertical-align:top}th:nth-child(1){width:22%}th:nth-child(3){width:18%}th:nth-child(4){width:23%}footer{margin-top:45px;border-top:1px solid var(--bd);padding-top:15px;color:#64748B}@media(max-width:760px){body{padding:24px 14px}table,thead,tbody,tr,th,td{display:block}thead{display:none}tr{border:1px solid var(--bd);margin-bottom:12px}td{border-bottom:0}}</style>
-<link rel="stylesheet" href="/assets/metnos.css"/></head>
+<link rel="stylesheet" href="/assets/metnos.css?v=20260820-3"/>
+<script defer src="/assets/wiki-shell.js?v=20260820-3"></script></head>
 <body><nav><a href="index.html">&larr; Architecture guide</a> &middot; <a href="/it/architecture/executor_catalog.html" hreflang="it">IT</a></nav>
 <h1>Distributed executor catalog by domain</h1>
 <p class="lead">This catalog inventories the file-based executors under <code>executors/</code>. A domain is derived from the canonical object in the name; it is not a manually maintained editorial classification.</p>
-<div class="status">This document is deterministically generated from 83 signed manifests under <code>executors/</code>. It excludes in-process executors, skill-installed executors, and executors synthesized in an instance's data directory. The complete live catalog is available in the web chat under Settings → Lifecycle → Executors.</div>
+<div class="status">This document is deterministically generated from 85 signed manifests under <code>executors/</code>. It excludes in-process executors, skill-installed executors, and executors synthesized in an instance's data directory. The complete live catalog is available in the web chat under Settings → Lifecycle → Executors.</div>
 <p>An executor may implement a direct procedure or be a <a href="intelligent_executors.html">narrow-mandate intelligent executor</a>; its public contract and domain placement do not change.</p>
 <h2 id="domain-files">Domain: <code>files</code> (20)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
@@ -43,9 +44,10 @@
 <tr><td><code>find_dirs</code></td><td>find directories and compute aggregate metadata with a parallel recursive walk.</td><td>standard; any; linux, windows</td><td><code>executors/find_dirs/</code></td></tr>
 <tr><td><code>list_dirs</code></td><td>lists directories and files; recursive mode walks subdirectories in parallel.</td><td>standard; any; linux, windows</td><td><code>executors/list_dirs/</code></td></tr>
 </tbody></table>
-<h2 id="domain-packages">Domain: <code>packages</code> (1)</h2>
+<h2 id="domain-packages">Domain: <code>packages</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
-<tr><td><code>find_packages</code></td><td>finds an executable command in the system PATH.</td><td>standard; any; linux, windows</td><td><code>executors/find_packages/</code></td></tr>
+<tr><td><code>find_packages</code></td><td>tells whether programs are installed here, and at which version.</td><td>standard; any; linux, windows</td><td><code>executors/find_packages/</code></td></tr>
+<tr><td><code>install_packages</code></td><td>installs a program on the machine.</td><td>critical; any; windows, linux</td><td><code>executors/install_packages/</code></td></tr>
 </tbody></table>
 <h2 id="domain-messages">Domain: <code>messages</code> (4)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
@@ -68,11 +70,12 @@
 </tbody></table>
 <h2 id="domain-places">Domain: <code>places</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
-<tr><td><code>find_places</code></td><td>find real-world places by text query or coordinates.</td><td>standard; server; linux</td><td><code>executors/find_places/</code></td></tr>
+<tr><td><code>find_places</code></td><td>find real-world places by text query.</td><td>standard; server; linux</td><td><code>executors/find_places/</code></td></tr>
 <tr><td><code>get_places</code></td><td>gets place name from GPS coordinates.</td><td>standard; server; linux</td><td><code>executors/get_places/</code></td></tr>
 </tbody></table>
-<h2 id="domain-processes">Domain: <code>processes</code> (1)</h2>
+<h2 id="domain-processes">Domain: <code>processes</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
+<tr><td><code>create_processes</code></td><td>starts packages already installed on the device.</td><td>critical; any; windows</td><td><code>executors/create_processes/</code></td></tr>
 <tr><td><code>get_processes</code></td><td>reads processes and system health.</td><td>standard; any; linux, windows</td><td><code>executors/get_processes/</code></td></tr>
 </tbody></table>
 <h2 id="domain-urls">Domain: <code>urls</code> (5)</h2>

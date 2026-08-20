@@ -39,6 +39,7 @@ TEXT = {
             "Com'è fatta l'interfaccia di Metnos: due canali di conversazione "
             "e le pagine di amministrazione dentro Settings."),
         "nav_home": "Metnos",
+        "nav_start": "Aprire e usare Metnos",
         "nav_manual": "Guida all'architettura",
         "nav_domains": "Riferimento dei domini",
         "nav_tutor": "Come funziona il Tutor",
@@ -140,6 +141,7 @@ TEXT = {
             "How the Metnos interface is arranged: two conversation "
             "channels, and the administration pages inside Settings."),
         "nav_home": "Metnos",
+        "nav_start": "Opening and using Metnos",
         "nav_manual": "Architecture guide",
         "nav_domains": "Domain reference",
         "nav_tutor": "How the Tutor works",
@@ -499,12 +501,13 @@ def render(lang: str) -> str:
 <link rel="alternate" hreflang="it" href="https://metnos.com/it/interface">
 <link rel="alternate" hreflang="en" href="https://metnos.com/en/interface">
 <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/interface">
-<link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="/assets/metnos.css?v=20260820-3">
+<script defer src="/assets/wiki-shell.js?v=20260820-3"></script>
 <style>
 {_STYLE}
 </style></head><body>
 <div class="shell">
-<nav><a href="index.html">← {text["nav_home"]}</a><a href="domains.html">{text["nav_domains"]}</a><a href="architecture/index.html">{text["nav_manual"]}</a><a href="architecture/tutor.html">{text["nav_tutor"]}</a><a href="/{other}/interface.html" hreflang="{other}">{other.upper()}</a></nav>
+<nav><a href="index.html">← {text["nav_home"]}</a><a href="webui.html">{text["nav_start"]}</a><a href="domains.html">{text["nav_domains"]}</a><a href="architecture/index.html">{text["nav_manual"]}</a><a href="architecture/tutor.html">{text["nav_tutor"]}</a><a href="/{other}/interface.html" hreflang="{other}">{other.upper()}</a></nav>
 <header class="hero"><div><div class="eyebrow">{text["eyebrow"]}</div><h1>{text["lead"]}</h1><p class="lead">{text["intro"]}</p></div><div class="hero-note"><strong>{pages}</strong><span>{text["count_pages"]}</span><strong>{sections}</strong><span>{text["count_sections"]}</span></div></header>
 <p class="contract">{text["contract"]}</p>
 <div class="jump"><a href="#channels">{html.escape(text["jump_channels"])}</a><a href="#settings">{html.escape(text["jump_settings"])}</a><a href="#access">{html.escape(text["jump_access"])}</a><a href="#ask">{html.escape(text["jump_ask"])}</a></div>
