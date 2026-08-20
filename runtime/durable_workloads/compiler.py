@@ -536,9 +536,13 @@ def _validate_binding_fields(
                 if entries is None:
                     raise CompilationError(
                         f"stage {stage['key']} expects entries from a schema without entries"
-                    )
+                )
                 if field is None:
                     provided_types = {"array"}
+                    if stage["cardinality"].get("entry_identity_field") is not None:
+                        # A typed entry fan-out selects exactly one entry before
+                        # invoking the runner, so the binding may be an object.
+                        provided_types.add("object")
                 else:
                     field_definition = schema.entry_field_schema(str(field))
                     if field_definition is None:

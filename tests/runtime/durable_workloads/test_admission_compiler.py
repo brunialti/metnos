@@ -280,18 +280,27 @@ def test_entry_identity_fanout_is_typed_and_requires_one_entries_dependency():
         "max_units": 50,
         "entry_identity_field": "entry_id",
     }
-    compiled = _compiled(candidate=candidate)
+    answer["input_bindings"] = {
+        "entries": {"ref": "dependency.entries", "stage": "map"},
+    }
+    resolver = _Resolver()
+    resolver.reduce = _contract(
+        "workload", "entries.describe", "metnos.test-reduce/1",
+        inputs=("entries",), input_types=(("entries", "object"),),
+        model="v1", prompt="v1",
+    )
+    compiled = _compiled(candidate=candidate, resolver=resolver)
     assert compiled.graph["stages"][-1]["key"] == "reduce"
 
     missing_identity = deepcopy(candidate)
     missing_identity["stages"][2]["cardinality"]["entry_identity_field"] = "missing"
     with pytest.raises(CompilationError, match="declared string entry field"):
-        _compiled(candidate=missing_identity)
+        _compiled(candidate=missing_identity, resolver=resolver)
 
     multiple_dependencies = deepcopy(candidate)
     multiple_dependencies["stages"][2]["depends_on"].append("inventory")
     with pytest.raises(CompilationError, match="exactly one dependency"):
-        _compiled(candidate=multiple_dependencies)
+        _compiled(candidate=multiple_dependencies, resolver=resolver)
 
 
 def test_executor_prompt_and_binding_mutations_invalidate_only_descendants():
