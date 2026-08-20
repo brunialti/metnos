@@ -2,17 +2,17 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F2 completate il 2026-08-20, F3 non iniziata |
+| Stato | `active`; F0-F3 completate il 2026-08-20 |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-20 |
-| Implementazione reale | Nucleo interno e inattivo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, migrazione atomica, repository owner-scoped, CAS, idempotenza, eventi, outbox e valutazione della completezza. Non esistono ancora claim, lease operative, fencing del commit, compilatore, worker, route, UI o notifiche attive |
+| Implementazione reale | Nucleo interno e inattivo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository owner-scoped, acquisizione atomica, lease, heartbeat, fencing del commit, retry deterministico, riconciliazione e worker esclusivamente fittizio. Non esistono ancora compilatore, executor durevole reale, servizio attivo, route, UI o notifiche |
 | Progettazione | Gate V1-V5 ratificati da ADR 0213. Il nome pubblico è rinviato per decisione; la topologia futura è congelata ma non installata |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro svolto e senza ripetere un effetto già prodotto; l'utente formula il risultato voluto, non il flusso |
-| Autorizzazione F0-F2 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo |
+| Autorizzazione F0-F3 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo e a callable fittizi |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | F3 deve provare claim, lease, heartbeat, fencing e ripresa con processi concorrenti prima che una unità possa essere eseguita |
+| Prossimo gate | F4 deve provare deposito content-addressed e pubblicazione riconciliabile soltanto nel deposito privato Metnos |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
 
 ## 0. Esito della verifica
@@ -37,7 +37,8 @@ La conclusione architetturale è netta:
 
 La direzione resta `active`, ma il suo fondamento non è più soltanto proposto.
 ADR 0213 ha chiuso F0; F1 e F2 hanno introdotto un archivio inattivo e
-verificabile senza collegarlo al runtime corrente. I pacchetti F3-F13 restano
+verificabile; F3 ha dimostrato acquisizione atomica, fencing e ripresa fra
+processi senza collegare il pacchetto al runtime corrente. I pacchetti F4-F13 restano
 circostanziati per agenti esecutivi, secondo §16-17, e non possono anticipare
 i rispettivi gate.
 
@@ -1483,6 +1484,19 @@ purge_owner(owner)
 - **Dipendenze:** F2.
 - **Scopo:** dimostrare che più processi non possono registrare definitivamente
   due risultati per la stessa unità.
+- **Stato:** completata il 2026-08-20. `storage.py` esegue selezione
+  deterministica, creazione del tentativo e incremento del fence in un solo
+  `BEGIN IMMEDIATE`; heartbeat, commit, fallimento e abbandono richiedono il
+  token completo. `coordinator.py` chiude capacità, risultato, errore i18n,
+  retry e jitter; `worker.py` guida soltanto callable fittizi, senza pool né
+  avvio autonomo. Il primo digest resta autorevole, il replay identico è
+  idempotente e un digest discordante non sovrascrive il risultato.
+  `test_fencing_and_recovery.py` verifica arresti controllati, due riavvii e
+  100 contese concorrenti sull'acquisizione più 100 contese fra fence vecchio
+  e nuovo con processi reali. La suite dedicata conta 64 test superati e un test saltato; nessun
+  servizio, route, executor reale o superficie pubblica è stato attivato. La
+  regressione runtime completa conta 6362 test superati, 46 saltati e 1074
+  subtest superati, senza fallimenti.
 
 - **File ammessi:** estensione di `storage.py`, nuovi `coordinator.py` e
   `worker.py` con adattatore di esecuzione fittizio, infrastruttura di prova
@@ -1532,7 +1546,7 @@ reconcile_expired(now, batch_size)
 ### F4 — Deposito degli artefatti e pubblicazione riconciliabile
 
 - **Assegnazione:** agente esecutivo per il filesystem.
-- **Dipendenze:** F2; usa lease fittizie finché F3 non è integrata.
+- **Dipendenze:** F2 e le lease fittizie di F3, ora integrate.
 - **Scopo:** implementare §8.5 nel solo deposito Metnos.
 
 - **File ammessi:** `artifacts.py`, repository degli artefatti conforme alle

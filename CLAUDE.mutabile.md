@@ -20,11 +20,15 @@
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
 - **ADR registry**: `0001-0213` (skipped: `0055`/`0115`/`0116`/`0121`).
-- **Lavori durevoli F0-F2 chiusi, nucleo inattivo** (20/8, ADR 0213,
-  RM-0004): `runtime/durable_workloads/` contiene soltanto contratti, schema
-  SQLite e repository owner-scoped. Nessun import al boot, worker, route,
-  executor, Tutor o vocabolo pubblico. Solo `evaluate_completion` può produrre
-  gli stati completati; claim, lease e fencing restano il gate F3.
+- **Lavori durevoli F0-F3 chiusi, nucleo inattivo** (20/8, ADR 0213,
+  RM-0004): `runtime/durable_workloads/` contiene contratti, schema SQLite,
+  repository owner-scoped e il protocollo fittizio di acquisizione, lease,
+  heartbeat, fencing, retry e ripresa. Il worker non si avvia da solo, non
+  possiede pool e accetta soltanto callable fittizi `pure`; nessun import al boot, servizio,
+  route, executor reale, Tutor o vocabolo pubblico. Il DB resta autorevole:
+  replay identico è idempotente e un fence vecchio non modifica lo stato.
+  Prove: `tests/runtime/durable_workloads/test_fencing_and_recovery.py`;
+  suite runtime completa: 6362 test superati, 46 saltati e 1074 subtest.
 
 ## 3. Synth pipeline (6 stadi)
 
