@@ -171,6 +171,12 @@ DB_DEVICES         = PATH_USER_STATE / "devices.db"
 DB_POLICY          = PATH_USER_STATE / "policy.db"
 # Observability (run history, dashboard data)
 DB_OBSERVABILITY   = PATH_USER_STATE / "observability.db"
+# Durable-workload kernel (ADR 0213).  The package remains dormant until a
+# later lifecycle phase installs its worker; merely importing config never
+# creates this directory or opens the database.
+PATH_DURABLE_WORKLOADS = PATH_USER_STATE / "durable_workloads"
+DB_DURABLE_WORKLOADS = PATH_DURABLE_WORKLOADS / "state.sqlite3"
+PATH_DURABLE_ARTIFACTS = PATH_USER_DATA / "durable_workloads"
 # Multi-tool fast-path memoization (ADR 0150): canonical_query → tools sequence
 # memoizzata, TTL N giorni di attivita' effettiva.
 DB_MULTI_TOOL_PATHS = PATH_USER_DATA / "multi_tool_paths.sqlite"
