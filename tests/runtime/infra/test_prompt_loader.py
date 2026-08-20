@@ -352,6 +352,23 @@ class TestKFallbackAndAutoPromote(unittest.TestCase):
         self.assertNotIn("CAND_", live)
         self.assertGreater(len(live), 100)
 
+    def test_identity_reports_effective_fallback_without_path_leakage(self):
+        import prompt_loader as pl
+        requested = "xx_identity_test"
+        pl._envs.pop(requested, None)
+        rendered, identity = pl.get_with_identity(
+            "intent_extractor_v4", requested, query="ciao",
+        )
+        self.assertEqual(
+            rendered,
+            pl.get("intent_extractor_v4", requested, query="ciao"),
+        )
+        self.assertEqual(identity.requested_lang, requested)
+        self.assertEqual(identity.effective_lang, "en")
+        self.assertEqual(identity.source_kind, "fallback_live")
+        self.assertNotIn("/", identity.source_name)
+        self.assertTrue(identity.digest.startswith("sha256:"))
+
 
 if __name__ == "__main__":
     unittest.main()

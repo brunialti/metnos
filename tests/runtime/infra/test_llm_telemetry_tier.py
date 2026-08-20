@@ -102,3 +102,43 @@ def test_fallback_chain_inherits_configured_tier_policy():
         "think": True, "temperature": 0.15,
         "reasoning_budget": 384,
     }
+
+
+def test_durable_attempt_context_is_bounded_content_free_and_fail_soft():
+    import llm_telemetry
+
+    sink = llm_telemetry.BoundedUsageSink(max_records=1)
+    result = type("Result", (), {
+        "in_tokens": 11, "out_tokens": 7, "latency_ms": 3,
+    })()
+    with llm_telemetry.attempt_context(
+        workload_id="wrk-test",
+        stage_id="stg-test",
+        unit_key="unit-test",
+        attempt_id="att-test",
+        sink=sink,
+    ):
+        llm_telemetry.record(
+            provider="fixture", model="private-model",
+            system="never persist this", user="or this", result=result,
+        )
+        llm_telemetry.record(
+            provider="fixture", model="private-model", result=result,
+        )
+
+    summary = sink.summary()
+    assert summary["dropped"] == 1
+    assert summary["usage_missing"] is False
+    record = summary["records"][0]
+    assert record["attempt_id"] == "att-test"
+    assert record["model_digest"].startswith("sha256:")
+    assert "system" not in record and "user" not in record
+
+    with llm_telemetry.attempt_context(
+        workload_id="wrk-test",
+        stage_id="stg-test",
+        unit_key="unit-test",
+        attempt_id="att-test",
+        sink=lambda _record: (_ for _ in ()).throw(RuntimeError("sink failed")),
+    ):
+        llm_telemetry.record(provider="fixture", result=result)
