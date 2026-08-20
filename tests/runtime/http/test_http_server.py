@@ -11,6 +11,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -87,6 +88,36 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertTrue(body["ok"])
         self.assertIn("version", body)
         self.assertIn("uptime_s", body)
+        self.assertIn(body["durable_workloads"]["state"], {
+            "ready", "recovering", "degraded",
+        })
+
+    async def test_health_stays_available_when_durable_worker_is_stopped(self):
+        """F8 must not move durable execution into the HTTP process."""
+        from durable_workloads.service import DurableWorkerService
+
+        root = Path(self._tmpdir.name) / "durable-worker-stopped"
+        service = DurableWorkerService(
+            enabled=False,
+            store_path=root / "state.sqlite3",
+            health_path=root / "service_health.json",
+        )
+        try:
+            self.assertTrue(service.start())
+        finally:
+            service.stop()
+        import durable_workloads.service as durable_service
+
+        with mock.patch.object(
+            durable_service, "default_health_path",
+            return_value=root / "service_health.json",
+        ):
+            response = await self.client.get("/agent/health")
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["durable_workloads"]["state"], "degraded")
+        self.assertEqual(payload["durable_workloads"]["reason_code"], "stopped")
 
     async def test_well_known_anonymous(self):
         """GET /.well-known/metnos.json -> 200 JSON con discovery descriptor."""
