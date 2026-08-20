@@ -2,17 +2,17 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F8 completate il 2026-08-21 |
+| Stato | `active`; F0-F9 completate il 2026-08-21 |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-21 |
-| Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/admission del piano v1, contesto fair nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato; i binding di runtime restano deliberatamente assenti fino a F11. Non esistono ancora contratti o route di controllo, UI o notifiche |
+| Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/admission del piano v1, contesto fair nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato; i binding di runtime restano deliberatamente assenti fino a F11. F9 aggiunge facciata e DTO owner-scoped, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. Non esistono ancora UI/SSE, comandi in linguaggio naturale o notifiche |
 | Progettazione | Gate V1-V5 ratificati da ADR 0213. Il nome pubblico è rinviato per decisione; la topologia futura è congelata ma non installata |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro svolto e senza ripetere un effetto già prodotto; l'utente formula il risultato voluto, non il flusso |
 | Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | F9 deve congelare facciata, DTO e contratti di controllo circoscritti al proprietario, senza UI |
+| Prossimo gate | F10 deve aggiungere UI/SSE persistente e outbox/canali, senza duplicare la facciata F9 |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
 
 ## 0. Esito della verifica
@@ -44,9 +44,11 @@ F6 ha collegato il contesto fair allo scheduler centrale; F7 ha verificato il
 ponte universale locale, remoto e LLM, inclusa la provenienza durevole. Il
 pacchetto resta inattivo per nuovi invii nel runtime corrente. F8 ha aggiunto
 il ciclo di vita supervisionato, ma il gate distribuito resta disattivato e i
-binding eseguibili non sono ancora configurati. I pacchetti F9-F13 restano
-circoscritti per agenti esecutivi, secondo §16-17, e non possono anticipare i
-rispettivi gate.
+binding eseguibili non sono ancora configurati. F9 ha congelato il contratto
+owner-scoped e le route sottili; nessuna route accetta il proprietario dal body
+o restituisce piano, risultati o istantanee interne. I pacchetti F10-F13
+restano circoscritti per agenti esecutivi, secondo §16-17, e non possono
+anticipare i rispettivi gate.
 
 ### 0.1 Lessico di verifica
 
