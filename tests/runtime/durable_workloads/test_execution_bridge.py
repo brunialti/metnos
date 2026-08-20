@@ -18,6 +18,7 @@ from durable_workloads.coordinator import LeaseMutationStatus, WorkerCapabilitie
 from durable_workloads.execution import DurableExecutionBridge
 from durable_workloads.models import DurableEffect, RunnerKind, UnitState, WorkloadState
 from durable_workloads.schema import MAX_SNAPSHOT_JSON_BYTES, digest_json
+from durable_workloads.service import DurableWorkerService
 from durable_workloads.storage import DurableStoreError, DurableWorkloadStore
 from durable_workloads.worker import DurableWorker, WorkerRunStatus
 from helpers import inventory, plan, source
@@ -474,3 +475,72 @@ def test_execution_facts_never_replace_a_frozen_remote_identity(tmp_path):
                 device_id="device-a",
                 invocation_id="invoke-b",
             )
+
+
+def test_supervised_service_resumes_the_generic_f7_path_after_restart(tmp_path):
+    path = tmp_path / "durable" / "state.sqlite3"
+    health_path = tmp_path / "durable" / "service_health.json"
+    resolver = _Resolver()
+    with DurableWorkloadStore.open(path) as store:
+        workload_id, revision_id = _admit(store, resolver)
+
+    first: DurableWorkerService | None = None
+
+    def first_executor_invoker(*_args):
+        # This mirrors SIGTERM's handler: request a cooperative stop while an
+        # admitted attempt is active. The worker must finish its fenced commit
+        # before the next supervisor resumes the remaining unit.
+        assert first is not None
+        first.request_stop()
+        return {
+            "entries": [{"text": "Q"}], "source_id": "source_00000000",
+        }
+
+    def bridge_factory(store):
+        return DurableExecutionBridge(
+            store,
+            runners=resolver,
+            output_schemas=_schemas(),
+            source_resolver=lambda _item: "/authorized/source.png",
+            executor_loader=lambda _name: SimpleNamespace(name="read_files_ocr"),
+            executor_invoker=first_executor_invoker,
+            workload_invoker=lambda _name, _args, _context: (
+                record(
+                    provider="fixture",
+                    result=SimpleNamespace(in_tokens=1, out_tokens=1, latency_ms=1),
+                )
+                or {"summary": "ok"}
+            ),
+        )
+
+    def service() -> DurableWorkerService:
+        return DurableWorkerService(
+            enabled=True,
+            store_path=path,
+            health_path=health_path,
+            worker_factory=lambda store: _worker(store, resolver),
+            bridge_factory=bridge_factory,
+            poll_interval_s=0.05,
+        )
+
+    first = service()
+    try:
+        assert first.start() is True
+        first.run_cycle()
+        assert first.worker is not None and first.worker.stopping is True
+    finally:
+        first.stop()
+
+    second = service()
+    try:
+        assert second.start() is True
+        second.run_cycle()
+    finally:
+        second.stop()
+
+    with DurableWorkloadStore.open(path) as store:
+        assert store.get_workload("owner-f7", workload_id).state is WorkloadState.COMPLETED
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM results WHERE owner_user_id=? AND revision_id=?",
+            ("owner-f7", revision_id),
+        ).fetchone()[0] == 2

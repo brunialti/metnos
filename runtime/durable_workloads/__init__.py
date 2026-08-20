@@ -1,8 +1,9 @@
-"""Dormant primitives for versioned, durable workloads.
+"""Versioned primitives for durable workloads with an explicit lifecycle.
 
-F0-F7 deliberately leave lifecycle ownership outside this package. Importing
-it does not open a database, start a worker, register a route or alter
-scheduling.
+F0-F8 preserve this package's zero-I/O import boundary. The supervised
+lifecycle is an explicit ``durable_workloads.service`` entry point: importing
+the package does not open a database, start a worker, register a route or
+alter scheduling.
 """
 
 from .migrations import CURRENT_SCHEMA_VERSION, migrate, open_db, schema_version
