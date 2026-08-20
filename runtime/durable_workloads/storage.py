@@ -1,7 +1,8 @@
 """Owner-scoped transactional repository and explicit state machines.
 
 This module persists states but never executes a unit, calls an LLM, touches a
-provider or publishes a blob.  Lease/fence execution APIs begin in F3.
+provider or publishes a blob.  F3 lease/fence APIs accept only frozen dummy
+execution contracts; the callable remains outside every database transaction.
 """
 
 from __future__ import annotations
@@ -12,9 +13,32 @@ import sqlite3
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .coordinator import (
+    RESOURCE_KEYS,
+    CommitOutcome,
+    CommitStatus,
+    FailureOutcome,
+    FailureStatus,
+    Lease,
+    LeaseMutationStatus,
+    ReconcileOutcome,
+    RetryDecision,
+    RetryPolicy,
+    StructuredAttemptError,
+    ValidatedResult,
+    WorkerCapabilities,
+    decide_retry,
+    deterministic_retry_delay_ms,
+    instant_text,
+    normalize_instant,
+    parse_instant,
+    require_lease_duration,
+    require_worker_id,
+)
 from .migrations import (
     CURRENT_SCHEMA_VERSION,
     migrate,
@@ -24,9 +48,11 @@ from .migrations import (
 )
 from .models import (
     CompletionAssessment,
+    DurableEffect,
     EventRecord,
     EventType,
     RevisionRecord,
+    RunnerKind,
     TERMINAL_UNIT_STATES,
     UnitCounters,
     UnitState,
@@ -49,6 +75,7 @@ from .schema import (
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
+_MAX_ATTEMPT_METRICS_JSON_BYTES = 1_048_576
 _EVENT_BY_TARGET = {
     WorkloadState.ADMITTED: EventType.REVISION_ADMITTED,
     WorkloadState.QUEUED: EventType.QUEUED,
@@ -100,6 +127,14 @@ class InvalidTransitionError(DurableStoreError):
 
 class ReservedCompletionTransitionError(InvalidTransitionError):
     """Only evaluate_completion may produce a completed state."""
+
+
+class ResultContractError(DurableStoreError):
+    """A prevalidated result does not match the frozen stage output contract."""
+
+
+class RetryDecisionConflictError(DurableStoreError):
+    """A caller tried to override the retry decision derived from the plan."""
 
 
 def _require_owner(owner_user_id: str) -> str:
@@ -1567,6 +1602,929 @@ class DurableWorkloadStore:
                 workload_version=workload.version + 1,
             )
 
+    @staticmethod
+    def _operation_now(now: datetime | None) -> tuple[datetime, str]:
+        value = (
+            datetime.now(timezone.utc)
+            if now is None
+            else normalize_instant(now, name="now")
+        )
+        return value, instant_text(value, name="now")
+
+    @staticmethod
+    def _attempt_metrics(
+        row: sqlite3.Row,
+        **updates: Any,
+    ) -> str:
+        value = json.loads(str(row["metrics_json"]))
+        if not isinstance(value, dict):
+            raise DurableStoreError("attempt metrics are not an object")
+        value.update(updates)
+        return canonical_json(
+            value, max_bytes=_MAX_ATTEMPT_METRICS_JSON_BYTES,
+        )
+
+    @staticmethod
+    def _select_lease_row(
+        connection: sqlite3.Connection,
+        lease: Lease,
+    ) -> sqlite3.Row | None:
+        return connection.execute(
+            """
+            SELECT
+                u.owner_user_id, u.id AS unit_id, u.revision_id, u.stage_id,
+                u.unit_key, u.state AS unit_state, u.attempt_count,
+                u.lease_worker_id, u.active_attempt_id, u.fence,
+                u.lease_expires_at, u.committed_result_id,
+                r.workload_id,
+                s.stage_key, s.runner_kind, s.runner_name, s.effect_profile,
+                s.output_schema_json, s.retry_json, s.resources_json,
+                a.number AS attempt_number, a.fence AS attempt_fence,
+                a.worker_id AS attempt_worker_id,
+                a.state AS attempt_state, a.ended_at,
+                a.metrics_json
+            FROM units u
+            JOIN revisions r
+              ON r.owner_user_id=u.owner_user_id AND r.id=u.revision_id
+            JOIN stages s
+              ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
+             AND s.revision_id=u.revision_id
+            LEFT JOIN attempts a
+              ON a.owner_user_id=u.owner_user_id AND a.id=?
+             AND a.unit_id=u.id
+            WHERE u.owner_user_id=? AND u.id=?
+            """,
+            (lease.attempt_id, lease.owner_user_id, lease.unit_id),
+        ).fetchone()
+
+    @staticmethod
+    def _lease_matches(row: sqlite3.Row | None, lease: Lease) -> bool:
+        if row is None or row["attempt_number"] is None:
+            return False
+        output = json.loads(str(row["output_schema_json"]))
+        resources = json.loads(str(row["resources_json"]))
+        retry = RetryPolicy.from_mapping(json.loads(str(row["retry_json"])))
+        resource_claims = tuple((key, int(resources[key])) for key in RESOURCE_KEYS)
+        return (
+            row["owner_user_id"] == lease.owner_user_id
+            and row["workload_id"] == lease.workload_id
+            and row["revision_id"] == lease.revision_id
+            and row["stage_id"] == lease.stage_id
+            and row["stage_key"] == lease.stage_key
+            and row["unit_id"] == lease.unit_id
+            and row["unit_key"] == lease.unit_key
+            and row["active_attempt_id"] == lease.attempt_id
+            and int(row["attempt_number"]) == lease.attempt_number
+            and int(row["fence"]) == lease.fence
+            and int(row["attempt_fence"]) == lease.fence
+            and row["lease_worker_id"] == lease.worker_id
+            and row["attempt_worker_id"] == lease.worker_id
+            and row["runner_kind"] == lease.runner_kind.value
+            and row["runner_name"] == lease.runner_name
+            and row["effect_profile"] == lease.effect_profile.value
+            and output.get("name") == lease.output_schema_version
+            and resource_claims == lease.resource_claims
+            and retry == lease.retry_policy
+        )
+
+    @staticmethod
+    def _promote_due_retries_in_transaction(
+        connection: sqlite3.Connection,
+        now_text: str,
+        *,
+        limit: int,
+    ) -> int:
+        rows = connection.execute(
+            """
+            SELECT owner_user_id, id
+            FROM units
+            WHERE state='retry_wait' AND next_attempt_at<=?
+            ORDER BY next_attempt_at, owner_user_id, id
+            LIMIT ?
+            """,
+            (now_text, limit),
+        ).fetchall()
+        for row in rows:
+            updated = connection.execute(
+                """
+                UPDATE units
+                SET state='pending', next_attempt_at=NULL,
+                    error_class=NULL, partial_output=0,
+                    terminal_detail_json=NULL, updated_at=?
+                WHERE owner_user_id=? AND id=? AND state='retry_wait'
+                  AND next_attempt_at<=?
+                """,
+                (now_text, row["owner_user_id"], row["id"], now_text),
+            )
+            if updated.rowcount != 1:
+                raise DurableStoreError("retry promotion compare-and-set failed")
+        return len(rows)
+
+    def claim_next(
+        self,
+        worker_id: str,
+        now: datetime,
+        lease_duration: timedelta,
+        capabilities: WorkerCapabilities,
+    ) -> Lease | None:
+        """Atomically choose and fence one dummy-executable pure unit."""
+        worker = require_worker_id(worker_id)
+        current = normalize_instant(now, name="now")
+        current_text = instant_text(current, name="now")
+        duration = require_lease_duration(lease_duration)
+        expiry_text = instant_text(current + duration, name="lease expiry")
+        if not isinstance(capabilities, WorkerCapabilities):
+            raise TypeError("capabilities must be WorkerCapabilities")
+
+        runner_clause = " OR ".join(
+            "(s.runner_kind=? AND s.runner_name=?)"
+            for _binding in capabilities.runner_bindings
+        )
+        runner_parameters: list[Any] = []
+        for kind, name in capabilities.runner_bindings:
+            runner_parameters.extend((kind.value, name))
+        limits = capabilities.resource_map()
+
+        with self._transaction() as connection:
+            self._promote_due_retries_in_transaction(
+                connection, current_text, limit=1000,
+            )
+            row = connection.execute(
+                f"""
+                WITH ranked AS (
+                    SELECT
+                        u.owner_user_id, u.id AS unit_id, u.revision_id,
+                        u.stage_id, u.unit_key, u.attempt_count, u.fence,
+                        w.id AS workload_id, w.state AS workload_state,
+                        w.version AS workload_version, w.priority,
+                        w.created_at AS workload_created_at,
+                        s.stage_key, s.position, s.runner_kind, s.runner_name,
+                        s.effect_profile, s.output_schema_json, s.retry_json,
+                        s.resources_json,
+                        COALESCE(sc.last_selected_seq, 0) AS selected_seq,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY u.owner_user_id, w.id
+                            ORDER BY s.position, u.created_at, u.unit_key
+                        ) AS unit_rank
+                    FROM units u
+                    JOIN revisions r
+                      ON r.owner_user_id=u.owner_user_id AND r.id=u.revision_id
+                    JOIN workloads w
+                      ON w.owner_user_id=r.owner_user_id
+                     AND w.id=r.workload_id
+                     AND w.active_revision_id=r.id
+                    JOIN stages s
+                      ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
+                     AND s.revision_id=u.revision_id
+                    LEFT JOIN scheduler_credits sc
+                      ON sc.owner_user_id=w.owner_user_id
+                     AND sc.workload_id=w.id
+                    WHERE u.state='pending'
+                      AND (u.next_attempt_at IS NULL OR u.next_attempt_at<=?)
+                      AND u.expected_dependency_count=0
+                      AND u.attempt_count < CAST(
+                          json_extract(s.retry_json, '$.max_attempts') AS INTEGER
+                      )
+                      AND w.state IN ('queued', 'running')
+                      AND s.effect_profile='pure'
+                      AND ({runner_clause})
+                      AND CAST(json_extract(s.resources_json, '$.cpu') AS INTEGER)<=?
+                      AND CAST(json_extract(s.resources_json, '$.device') AS INTEGER)<=?
+                      AND CAST(json_extract(s.resources_json, '$.llm') AS INTEGER)<=?
+                      AND CAST(json_extract(s.resources_json, '$.local_io') AS INTEGER)<=?
+                      AND CAST(json_extract(s.resources_json, '$.network_io') AS INTEGER)<=?
+                      AND CAST(json_extract(s.resources_json, '$.vlm') AS INTEGER)<=?
+                )
+                SELECT * FROM ranked
+                WHERE unit_rank=1
+                ORDER BY selected_seq,
+                         CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+                         workload_created_at, owner_user_id, workload_id,
+                         position, unit_key
+                LIMIT 1
+                """,
+                (
+                    current_text,
+                    *runner_parameters,
+                    limits["cpu"], limits["device"], limits["llm"],
+                    limits["local_io"], limits["network_io"], limits["vlm"],
+                ),
+            ).fetchone()
+            if row is None:
+                return None
+
+            attempt_number = int(row["attempt_count"]) + 1
+            fence = int(row["fence"]) + 1
+            attempt_id = _new_id("att")
+            executor_snapshot = canonical_json(
+                {
+                    "schema_version": "metnos.durable-executor-snapshot/1",
+                    "mode": "dummy",
+                    "runner_kind": row["runner_kind"],
+                    "runner_name": row["runner_name"],
+                },
+                max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+            )
+            model_snapshot = canonical_json(
+                {
+                    "schema_version": "metnos.durable-model-snapshot/1",
+                    "binding": None,
+                },
+                max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+            )
+            metrics = canonical_json(
+                {
+                    "schema_version": "metnos.durable-attempt-metrics/1",
+                    "attempt_number": attempt_number,
+                    "execution_started": False,
+                },
+                max_bytes=_MAX_ATTEMPT_METRICS_JSON_BYTES,
+            )
+            connection.execute(
+                """
+                INSERT INTO attempts(
+                    owner_user_id, id, unit_id, number, fence, worker_id,
+                    state, started_at, executor_snapshot_json,
+                    model_snapshot_json, metrics_json
+                ) VALUES (?, ?, ?, ?, ?, ?, 'leased', ?, ?, ?, ?)
+                """,
+                (
+                    row["owner_user_id"], attempt_id, row["unit_id"],
+                    attempt_number, fence, worker, current_text,
+                    executor_snapshot, model_snapshot, metrics,
+                ),
+            )
+            updated = connection.execute(
+                """
+                UPDATE units
+                SET state='leased', attempt_count=?, lease_worker_id=?,
+                    active_attempt_id=?, fence=?, lease_expires_at=?,
+                    next_attempt_at=NULL, updated_at=?
+                WHERE owner_user_id=? AND id=? AND state='pending'
+                  AND attempt_count=? AND fence=?
+                """,
+                (
+                    attempt_number, worker, attempt_id, fence, expiry_text,
+                    current_text, row["owner_user_id"], row["unit_id"],
+                    row["attempt_count"], row["fence"],
+                ),
+            )
+            if updated.rowcount != 1:
+                raise DurableStoreError("claim compare-and-set failed")
+
+            if row["workload_state"] == WorkloadState.QUEUED.value:
+                started = connection.execute(
+                    """
+                    UPDATE workloads
+                    SET state='running', version=version+1, updated_at=?
+                    WHERE owner_user_id=? AND id=? AND state='queued' AND version=?
+                    """,
+                    (
+                        current_text, row["owner_user_id"], row["workload_id"],
+                        row["workload_version"],
+                    ),
+                )
+                if started.rowcount != 1:
+                    raise DurableStoreError("workload start compare-and-set failed")
+                self.append_event_in_transaction(
+                    connection,
+                    owner_user_id=row["owner_user_id"],
+                    workload_id=row["workload_id"],
+                    event_type=EventType.RUNNING,
+                    payload={
+                        "previous_state": WorkloadState.QUEUED.value,
+                        "new_state": WorkloadState.RUNNING.value,
+                        "new_version": int(row["workload_version"]) + 1,
+                        "reason_code": "first_unit_claimed",
+                    },
+                )
+
+            connection.execute(
+                """
+                INSERT INTO scheduler_credits(
+                    owner_user_id, workload_id, deficit,
+                    last_selected_seq, quota, updated_at
+                ) VALUES (?, ?, 0, 0, 1, ?)
+                ON CONFLICT(owner_user_id, workload_id) DO NOTHING
+                """,
+                (row["owner_user_id"], row["workload_id"], current_text),
+            )
+            connection.execute(
+                """
+                UPDATE scheduler_credits
+                SET last_selected_seq=(
+                        SELECT COALESCE(MAX(last_selected_seq), 0) + 1
+                        FROM scheduler_credits
+                    ),
+                    updated_at=?
+                WHERE owner_user_id=? AND workload_id=?
+                """,
+                (current_text, row["owner_user_id"], row["workload_id"]),
+            )
+
+            output = json.loads(str(row["output_schema_json"]))
+            resources = json.loads(str(row["resources_json"]))
+            return Lease(
+                owner_user_id=str(row["owner_user_id"]),
+                workload_id=str(row["workload_id"]),
+                revision_id=str(row["revision_id"]),
+                stage_id=str(row["stage_id"]),
+                stage_key=str(row["stage_key"]),
+                unit_id=str(row["unit_id"]),
+                unit_key=str(row["unit_key"]),
+                attempt_id=attempt_id,
+                attempt_number=attempt_number,
+                fence=fence,
+                worker_id=worker,
+                lease_expires_at=expiry_text,
+                runner_kind=RunnerKind(row["runner_kind"]),
+                runner_name=str(row["runner_name"]),
+                effect_profile=DurableEffect(row["effect_profile"]),
+                output_schema_version=str(output["name"]),
+                resource_claims=tuple(
+                    (key, int(resources[key])) for key in RESOURCE_KEYS
+                ),
+                retry_policy=RetryPolicy.from_mapping(
+                    json.loads(str(row["retry_json"]))
+                ),
+            )
+
+    def mark_running(
+        self,
+        lease: Lease,
+        *,
+        now: datetime | None = None,
+    ) -> LeaseMutationStatus:
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        current, current_text = self._operation_now(now)
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            if not self._lease_matches(row, lease):
+                return LeaseMutationStatus.STALE_FENCE
+            assert row is not None
+            if parse_instant(str(row["lease_expires_at"])) <= current:
+                return LeaseMutationStatus.LEASE_EXPIRED
+            if row["unit_state"] == "running" and row["attempt_state"] == "running":
+                return LeaseMutationStatus.ALREADY_APPLIED
+            if row["unit_state"] != "leased" or row["attempt_state"] != "leased":
+                return LeaseMutationStatus.INVALID_STATE
+            metrics = self._attempt_metrics(
+                row,
+                execution_started=True,
+                execution_started_at=current_text,
+            )
+            changed_attempt = connection.execute(
+                """
+                UPDATE attempts
+                SET state='running', metrics_json=?
+                WHERE owner_user_id=? AND id=? AND unit_id=? AND fence=?
+                  AND worker_id=? AND state='leased' AND ended_at IS NULL
+                """,
+                (
+                    metrics, lease.owner_user_id, lease.attempt_id,
+                    lease.unit_id, lease.fence, lease.worker_id,
+                ),
+            )
+            changed_unit = connection.execute(
+                """
+                UPDATE units SET state='running', updated_at=?
+                WHERE owner_user_id=? AND id=? AND active_attempt_id=?
+                  AND fence=? AND lease_worker_id=? AND state='leased'
+                """,
+                (
+                    current_text, lease.owner_user_id, lease.unit_id,
+                    lease.attempt_id, lease.fence, lease.worker_id,
+                ),
+            )
+            if changed_attempt.rowcount != 1 or changed_unit.rowcount != 1:
+                raise DurableStoreError("mark-running compare-and-set failed")
+            return LeaseMutationStatus.APPLIED
+
+    def heartbeat(
+        self,
+        lease: Lease,
+        new_expiry: datetime,
+        *,
+        now: datetime | None = None,
+    ) -> LeaseMutationStatus:
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        current, current_text = self._operation_now(now)
+        expiry = normalize_instant(new_expiry, name="new_expiry")
+        require_lease_duration(expiry - current)
+        expiry_text = instant_text(expiry, name="new_expiry")
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            if not self._lease_matches(row, lease):
+                return LeaseMutationStatus.STALE_FENCE
+            assert row is not None
+            if row["unit_state"] not in {"leased", "running"}:
+                return LeaseMutationStatus.INVALID_STATE
+            stored_expiry = parse_instant(str(row["lease_expires_at"]))
+            if stored_expiry <= current:
+                return LeaseMutationStatus.LEASE_EXPIRED
+            if expiry <= stored_expiry:
+                raise ValueError("new_expiry must extend the persisted lease")
+            updated = connection.execute(
+                """
+                UPDATE units
+                SET lease_expires_at=?, updated_at=?
+                WHERE owner_user_id=? AND id=? AND active_attempt_id=?
+                  AND fence=? AND lease_worker_id=?
+                  AND state IN ('leased', 'running')
+                  AND lease_expires_at>?
+                """,
+                (
+                    expiry_text, current_text, lease.owner_user_id,
+                    lease.unit_id, lease.attempt_id, lease.fence,
+                    lease.worker_id, current_text,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise DurableStoreError("heartbeat compare-and-set failed")
+            return LeaseMutationStatus.APPLIED
+
+    def commit_result(
+        self,
+        lease: Lease,
+        validated_result: ValidatedResult,
+        *,
+        now: datetime | None = None,
+    ) -> CommitOutcome:
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        if not isinstance(validated_result, ValidatedResult):
+            raise TypeError("validated_result must be ValidatedResult")
+        current, current_text = self._operation_now(now)
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            existing = connection.execute(
+                """
+                SELECT id, attempt_id, fence, digest
+                FROM results
+                WHERE owner_user_id=? AND unit_id=?
+                """,
+                (lease.owner_user_id, lease.unit_id),
+            ).fetchone()
+            if existing is not None:
+                same_attempt = (
+                    existing["attempt_id"] == lease.attempt_id
+                    and int(existing["fence"]) == lease.fence
+                )
+                if not same_attempt:
+                    status = CommitStatus.STALE_FENCE
+                elif existing["digest"] == validated_result.digest:
+                    status = CommitStatus.IDEMPOTENT_REPLAY
+                else:
+                    status = CommitStatus.DIGEST_CONFLICT
+                return CommitOutcome(
+                    status=status,
+                    result_id=str(existing["id"]),
+                    winning_digest=str(existing["digest"]),
+                    proposed_digest=validated_result.digest,
+                )
+            if not self._lease_matches(row, lease):
+                return CommitOutcome(
+                    CommitStatus.STALE_FENCE, None, None,
+                    validated_result.digest,
+                )
+            assert row is not None
+            if row["unit_state"] != "running" or row["attempt_state"] != "running":
+                return CommitOutcome(
+                    CommitStatus.INVALID_STATE, None, None,
+                    validated_result.digest,
+                )
+            if parse_instant(str(row["lease_expires_at"])) <= current:
+                return CommitOutcome(
+                    CommitStatus.LEASE_EXPIRED, None, None,
+                    validated_result.digest,
+                )
+            output = json.loads(str(row["output_schema_json"]))
+            if output.get("name") != validated_result.schema_version:
+                raise ResultContractError(
+                    "result schema does not match the frozen stage output schema"
+                )
+
+            result_id = _new_id("res")
+            provenance = canonical_json(
+                {
+                    "schema_version": "metnos.durable-result-provenance/1",
+                    "attempt_id": lease.attempt_id,
+                    "fence": lease.fence,
+                    "runner_kind": lease.runner_kind.value,
+                    "runner_name": lease.runner_name,
+                    "validation": "dummy_contract",
+                },
+                max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+            )
+            connection.execute(
+                """
+                INSERT INTO results(
+                    owner_user_id, id, revision_id, unit_id, attempt_id,
+                    fence, digest, schema_version, payload_json,
+                    provenance_json, committed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    lease.owner_user_id, result_id, lease.revision_id,
+                    lease.unit_id, lease.attempt_id, lease.fence,
+                    validated_result.digest, validated_result.schema_version,
+                    validated_result.payload_json, provenance, current_text,
+                ),
+            )
+            metrics = self._attempt_metrics(
+                row,
+                result_digest=validated_result.digest,
+                committed=True,
+            )
+            changed_attempt = connection.execute(
+                """
+                UPDATE attempts
+                SET state='succeeded', ended_at=?, metrics_json=?
+                WHERE owner_user_id=? AND id=? AND unit_id=? AND fence=?
+                  AND worker_id=? AND state='running' AND ended_at IS NULL
+                """,
+                (
+                    current_text, metrics, lease.owner_user_id,
+                    lease.attempt_id, lease.unit_id, lease.fence,
+                    lease.worker_id,
+                ),
+            )
+            changed_unit = connection.execute(
+                """
+                UPDATE units
+                SET state='committed', committed_result_id=?,
+                    lease_worker_id=NULL, active_attempt_id=NULL,
+                    lease_expires_at=NULL, next_attempt_at=NULL,
+                    error_class=NULL, partial_output=0,
+                    terminal_detail_json=NULL, updated_at=?
+                WHERE owner_user_id=? AND id=? AND state='running'
+                  AND active_attempt_id=? AND fence=? AND lease_worker_id=?
+                """,
+                (
+                    result_id, current_text, lease.owner_user_id,
+                    lease.unit_id, lease.attempt_id, lease.fence,
+                    lease.worker_id,
+                ),
+            )
+            if changed_attempt.rowcount != 1 or changed_unit.rowcount != 1:
+                raise DurableStoreError("result commit compare-and-set failed")
+            return CommitOutcome(
+                CommitStatus.COMMITTED,
+                result_id,
+                validated_result.digest,
+                validated_result.digest,
+            )
+
+    def fail_attempt(
+        self,
+        lease: Lease,
+        structured_error: StructuredAttemptError,
+        retry_decision: RetryDecision,
+        *,
+        now: datetime | None = None,
+    ) -> FailureOutcome:
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        if not isinstance(structured_error, StructuredAttemptError):
+            raise TypeError("structured_error must be StructuredAttemptError")
+        if not isinstance(retry_decision, RetryDecision):
+            raise TypeError("retry_decision must be RetryDecision")
+        current, current_text = self._operation_now(now)
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            if not self._lease_matches(row, lease):
+                return FailureOutcome(FailureStatus.STALE_FENCE)
+            assert row is not None
+            if row["unit_state"] != "running" or row["attempt_state"] != "running":
+                return FailureOutcome(FailureStatus.INVALID_STATE)
+            if parse_instant(str(row["lease_expires_at"])) <= current:
+                return FailureOutcome(FailureStatus.LEASE_EXPIRED)
+            policy = RetryPolicy.from_mapping(json.loads(str(row["retry_json"])))
+            derived = decide_retry(
+                effect_profile=lease.effect_profile,
+                retry_policy=policy,
+                attempt_number=lease.attempt_number,
+                error_class=structured_error.error_class,
+            )
+            if retry_decision is not derived:
+                raise RetryDecisionConflictError(
+                    "retry decision does not match the frozen stage policy"
+                )
+
+            next_attempt_at: str | None = None
+            if derived is RetryDecision.RETRY:
+                delay = deterministic_retry_delay_ms(
+                    lease.unit_key,
+                    lease.attempt_number,
+                    base_delay_ms=policy.base_delay_ms,
+                    max_delay_ms=policy.max_delay_ms,
+                )
+                next_attempt_at = instant_text(
+                    current + timedelta(milliseconds=delay),
+                    name="next_attempt_at",
+                )
+                unit_state = "retry_wait"
+                status = FailureStatus.RETRY_SCHEDULED
+            elif derived is RetryDecision.NEEDS_ATTENTION:
+                unit_state = "needs_attention"
+                status = FailureStatus.NEEDS_ATTENTION
+            else:
+                unit_state = "failed_permanent"
+                status = FailureStatus.FAILED_PERMANENT
+
+            metrics = self._attempt_metrics(
+                row,
+                failed=True,
+                error_class=structured_error.error_class,
+                retry_decision=derived.value,
+            )
+            changed_attempt = connection.execute(
+                """
+                UPDATE attempts
+                SET state='failed', ended_at=?, structured_error_json=?,
+                    metrics_json=?
+                WHERE owner_user_id=? AND id=? AND unit_id=? AND fence=?
+                  AND worker_id=? AND state='running' AND ended_at IS NULL
+                """,
+                (
+                    current_text, structured_error.payload_json, metrics,
+                    lease.owner_user_id, lease.attempt_id, lease.unit_id,
+                    lease.fence, lease.worker_id,
+                ),
+            )
+            changed_unit = connection.execute(
+                """
+                UPDATE units
+                SET state=?, next_attempt_at=?, lease_worker_id=NULL,
+                    active_attempt_id=NULL, lease_expires_at=NULL,
+                    error_class=?, terminal_detail_json=?, updated_at=?
+                WHERE owner_user_id=? AND id=? AND state='running'
+                  AND active_attempt_id=? AND fence=? AND lease_worker_id=?
+                """,
+                (
+                    unit_state, next_attempt_at, structured_error.error_class,
+                    structured_error.payload_json, current_text,
+                    lease.owner_user_id, lease.unit_id, lease.attempt_id,
+                    lease.fence, lease.worker_id,
+                ),
+            )
+            if changed_attempt.rowcount != 1 or changed_unit.rowcount != 1:
+                raise DurableStoreError("attempt failure compare-and-set failed")
+            return FailureOutcome(status, next_attempt_at)
+
+    def abandon_attempt(
+        self,
+        lease: Lease,
+        *,
+        now: datetime | None = None,
+        reason_code: str = "worker_shutdown",
+    ) -> LeaseMutationStatus:
+        """Relinquish a F3 pure lease without relying on an in-memory lock."""
+        if not isinstance(lease, Lease):
+            raise TypeError("lease must be Lease")
+        if reason_code not in {"worker_shutdown", "execution_not_started"}:
+            raise ValueError("reason_code is not a closed F3 abandonment reason")
+        current, current_text = self._operation_now(now)
+        with self._transaction() as connection:
+            row = self._select_lease_row(connection, lease)
+            if row is not None and (
+                int(row["attempt_fence"] or 0) == lease.fence
+                and row["attempt_state"] == "abandoned"
+            ):
+                return LeaseMutationStatus.ALREADY_APPLIED
+            if not self._lease_matches(row, lease):
+                return LeaseMutationStatus.STALE_FENCE
+            assert row is not None
+            if row["unit_state"] not in {"leased", "running"}:
+                return LeaseMutationStatus.INVALID_STATE
+            if lease.effect_profile.value != "pure":
+                return LeaseMutationStatus.INVALID_STATE
+            retry_available = (
+                lease.attempt_number < lease.retry_policy.max_attempts
+            )
+            if not retry_available:
+                target_state = "needs_attention"
+                next_attempt_at = None
+            elif row["unit_state"] == "leased":
+                target_state = "pending"
+                next_attempt_at = None
+            else:
+                target_state = "retry_wait"
+                next_attempt_at = current_text
+            error = StructuredAttemptError.create(
+                "cancelled",
+                code=f"attempt.{reason_code}",
+                message_key="DURABLE_ATTEMPT_ABANDONED",
+                retry="automatic" if retry_available else "manual",
+                occurred_at=current,
+                details_redacted={
+                    "retry_safe": True,
+                    "retry_budget_available": retry_available,
+                },
+            )
+            metrics = self._attempt_metrics(
+                row,
+                abandoned=True,
+                abandonment_reason=reason_code,
+            )
+            unit_error = None if retry_available else "cancelled"
+            unit_detail = None if retry_available else error.payload_json
+            changed_attempt = connection.execute(
+                """
+                UPDATE attempts
+                SET state='abandoned', ended_at=?, structured_error_json=?,
+                    metrics_json=?
+                WHERE owner_user_id=? AND id=? AND unit_id=? AND fence=?
+                  AND worker_id=? AND state IN ('leased', 'running')
+                  AND ended_at IS NULL
+                """,
+                (
+                    current_text, error.payload_json, metrics,
+                    lease.owner_user_id, lease.attempt_id, lease.unit_id,
+                    lease.fence, lease.worker_id,
+                ),
+            )
+            changed_unit = connection.execute(
+                """
+                UPDATE units
+                SET state=?, next_attempt_at=?,
+                    lease_worker_id=NULL, active_attempt_id=NULL,
+                    lease_expires_at=NULL, error_class=?,
+                    partial_output=0, terminal_detail_json=?, updated_at=?
+                WHERE owner_user_id=? AND id=?
+                  AND state IN ('leased', 'running')
+                  AND active_attempt_id=? AND fence=? AND lease_worker_id=?
+                """,
+                (
+                    target_state, next_attempt_at, unit_error, unit_detail,
+                    current_text,
+                    lease.owner_user_id, lease.unit_id,
+                    lease.attempt_id, lease.fence, lease.worker_id,
+                ),
+            )
+            if changed_attempt.rowcount != 1 or changed_unit.rowcount != 1:
+                raise DurableStoreError("attempt abandonment compare-and-set failed")
+            return LeaseMutationStatus.APPLIED
+
+    def reconcile_expired(
+        self,
+        now: datetime,
+        batch_size: int,
+    ) -> ReconcileOutcome:
+        current = normalize_instant(now, name="now")
+        current_text = instant_text(current, name="now")
+        if (
+            isinstance(batch_size, bool) or not isinstance(batch_size, int)
+            or not 1 <= batch_size <= 1000
+        ):
+            raise ValueError("batch_size must be an integer in 1..1000")
+        expired = returned = retrying = permanent = attention = 0
+        with self._transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    u.owner_user_id, u.id AS unit_id, u.unit_key,
+                    u.state AS unit_state, u.attempt_count,
+                    u.active_attempt_id, u.fence,
+                    u.lease_worker_id, u.lease_expires_at,
+                    s.effect_profile, s.retry_json,
+                    a.state AS attempt_state, a.metrics_json
+                FROM units u
+                JOIN stages s
+                  ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
+                 AND s.revision_id=u.revision_id
+                JOIN attempts a
+                  ON a.owner_user_id=u.owner_user_id
+                 AND a.id=u.active_attempt_id AND a.unit_id=u.id
+                 AND a.fence=u.fence
+                WHERE u.state IN ('leased', 'running')
+                  AND u.lease_expires_at<=?
+                ORDER BY u.lease_expires_at, u.owner_user_id, u.id
+                LIMIT ?
+                """,
+                (current_text, batch_size),
+            ).fetchall()
+            for row in rows:
+                expired += 1
+                attempt_number = int(row["attempt_count"])
+                policy = RetryPolicy.from_mapping(
+                    json.loads(str(row["retry_json"]))
+                )
+                before_execution = row["unit_state"] == "leased"
+                error_code = (
+                    "lease.expired_before_execution"
+                    if before_execution else "lease.expired_during_execution"
+                )
+                retry_mode = "automatic"
+                if not before_execution and row["effect_profile"] == "reconcilable":
+                    retry_mode = "reconcile"
+                elif not before_execution and row["effect_profile"] == "manual_only":
+                    retry_mode = "manual"
+                elif attempt_number >= policy.max_attempts:
+                    retry_mode = "manual" if before_execution else "never"
+                error = StructuredAttemptError.create(
+                    "lease_lost",
+                    code=error_code,
+                    message_key="DURABLE_LEASE_EXPIRED",
+                    retry=retry_mode,
+                    occurred_at=current,
+                    details_redacted={
+                        "execution_started": not before_execution,
+                        "attempt_number": attempt_number,
+                        "max_attempts": policy.max_attempts,
+                    },
+                )
+                metrics_value = json.loads(str(row["metrics_json"]))
+                metrics_value.update({
+                    "lease_expired": True,
+                    "reconciled_at": current_text,
+                })
+                metrics = canonical_json(
+                    metrics_value,
+                    max_bytes=_MAX_ATTEMPT_METRICS_JSON_BYTES,
+                )
+                attempt_terminal = "abandoned" if before_execution else "timed_out"
+                changed_attempt = connection.execute(
+                    """
+                    UPDATE attempts
+                    SET state=?, ended_at=?, structured_error_json=?, metrics_json=?
+                    WHERE owner_user_id=? AND id=? AND unit_id=? AND fence=?
+                      AND worker_id=? AND state=? AND ended_at IS NULL
+                    """,
+                    (
+                        attempt_terminal, current_text, error.payload_json, metrics,
+                        row["owner_user_id"], row["active_attempt_id"],
+                        row["unit_id"], row["fence"], row["lease_worker_id"],
+                        row["attempt_state"],
+                    ),
+                )
+                if before_execution:
+                    next_attempt_at = None
+                    if attempt_number < policy.max_attempts:
+                        target = "pending"
+                        returned += 1
+                    else:
+                        target = "needs_attention"
+                        attention += 1
+                else:
+                    effect = row["effect_profile"]
+                    if effect in {"reconcilable", "manual_only"}:
+                        target = "needs_attention"
+                        next_attempt_at = None
+                        attention += 1
+                    elif attempt_number < policy.max_attempts:
+                        delay = deterministic_retry_delay_ms(
+                            str(row["unit_key"]),
+                            attempt_number,
+                            base_delay_ms=policy.base_delay_ms,
+                            max_delay_ms=policy.max_delay_ms,
+                        )
+                        next_attempt_at = instant_text(
+                            parse_instant(str(row["lease_expires_at"]))
+                            + timedelta(milliseconds=delay),
+                            name="next_attempt_at",
+                        )
+                        target = "retry_wait"
+                        retrying += 1
+                    else:
+                        target = "failed_permanent"
+                        next_attempt_at = None
+                        permanent += 1
+                changed_unit = connection.execute(
+                    """
+                    UPDATE units
+                    SET state=?, next_attempt_at=?, lease_worker_id=NULL,
+                        active_attempt_id=NULL, lease_expires_at=NULL,
+                        error_class=?, terminal_detail_json=?, updated_at=?
+                    WHERE owner_user_id=? AND id=? AND state=?
+                      AND active_attempt_id=? AND fence=? AND lease_worker_id=?
+                    """,
+                    (
+                        target, next_attempt_at, "lease_lost",
+                        error.payload_json, current_text, row["owner_user_id"],
+                        row["unit_id"], row["unit_state"],
+                        row["active_attempt_id"], row["fence"],
+                        row["lease_worker_id"],
+                    ),
+                )
+                if changed_attempt.rowcount != 1 or changed_unit.rowcount != 1:
+                    raise DurableStoreError("expired lease compare-and-set failed")
+            promoted = self._promote_due_retries_in_transaction(
+                connection,
+                current_text,
+                limit=max(0, batch_size - len(rows)),
+            )
+        return ReconcileOutcome(
+            expired=expired,
+            returned_pending=returned,
+            retry_scheduled=retrying,
+            failed_permanent=permanent,
+            needs_attention=attention,
+            retry_promoted=promoted,
+        )
+
     def purge_owner(self, owner_user_id: str) -> int:
         """Delete only one owner's durable rows; repeating it returns zero."""
         owner = _require_owner(owner_user_id)
@@ -1602,7 +2560,9 @@ __all__ = [
     "IdempotencyConflictError",
     "InvalidTransitionError",
     "OwnerRequiredError",
+    "ResultContractError",
     "ReservedCompletionTransitionError",
+    "RetryDecisionConflictError",
     "RevisionNotFoundError",
     "StoreNotReadyError",
     "VersionConflictError",
