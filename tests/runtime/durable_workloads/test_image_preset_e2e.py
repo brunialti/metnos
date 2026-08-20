@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -91,8 +92,12 @@ def _raw_model(name: str, _prompt: str, args: dict) -> dict:
 
 
 def test_image_preset_processes_98_sources_and_reuses_duplicate_solutions(tmp_path):
+    source_count = int(os.environ.get("METNOS_DURABLE_IMAGE_E2E_SOURCES", "98"))
+    assert 1 <= source_count <= 1_000
     database = tmp_path / "private" / "durable.sqlite3"
     resolver = _resolver()
+    max_runs = 2 * source_count + 32
+    restart_points = {max_runs * 3 // 10, max_runs * 6 // 10}
     with DurableWorkloadStore.open(database) as store:
         draft = store.create_draft(
             "owner-images", "images-98", redacted_request={"summary": "synthetic corpus"},
@@ -102,7 +107,7 @@ def test_image_preset_processes_98_sources_and_reuses_duplicate_solutions(tmp_pa
             "owner-images",
             draft.workload_id,
             image_questions_plan(),
-            inventory([source(index) for index in range(98)]),
+            inventory([source(index) for index in range(source_count)]),
             expected_version=draft.version,
             runners=resolver,
             output_schemas=output_schemas(),
@@ -115,33 +120,44 @@ def test_image_preset_processes_98_sources_and_reuses_duplicate_solutions(tmp_pa
         try:
             artifact_store = ArtifactStore(tmp_path / "artifacts", repository)
             workload_invoker = ImagePresetWorkloadInvoker(_raw_model)
-            bridge = DurableExecutionBridge(
-                store,
-                runners=resolver,
-                output_schemas=output_schemas(),
-                source_resolver=lambda item: "/authorized/" + item["source_id"] + ".png",
-                executor_loader=lambda _name: SimpleNamespace(name="read_files_ocr"),
-                executor_invoker=lambda _executor, args, *_rest: {
-                    "ok": True,
-                    "ok_count": 1,
-                    "fail_count": 0,
-                    "source_id": args["source"]["source_id"],
-                    "entries": [{
+            def make_bridge(open_store, open_artifacts):
+                return DurableExecutionBridge(
+                    open_store,
+                    runners=resolver,
+                    output_schemas=output_schemas(),
+                    source_resolver=lambda item: "/authorized/" + item["source_id"] + ".png",
+                    executor_loader=lambda _name: SimpleNamespace(name="read_files_ocr"),
+                    executor_invoker=lambda _executor, args, *_rest: {
+                        "ok": True,
+                        "ok_count": 1,
+                        "fail_count": 0,
                         "source_id": args["source"]["source_id"],
-                        "content": "fixture",
-                        "char_count": 7,
-                        "lang": "ita+eng",
-                    }],
-                    "failed": [],
-                },
-                workload_invoker=workload_invoker,
-                internal_runners=approved_internal_runners(artifact_store),
-            )
+                        "entries": [{
+                            "source_id": args["source"]["source_id"],
+                            "content": "fixture",
+                            "char_count": 7,
+                            "lang": "ita+eng",
+                        }],
+                        "failed": [],
+                    },
+                    workload_invoker=workload_invoker,
+                    internal_runners=approved_internal_runners(open_artifacts),
+                )
+
+            bridge = make_bridge(store, artifact_store)
             worker = _worker(store)
             outcomes = []
-            for _ in range(400):
+            for _ in range(max_runs):
                 outcome = bridge.run_once(worker)
                 outcomes.append(outcome.status)
+                if len(outcomes) in restart_points:
+                    repository.close()
+                    store.close()
+                    store = DurableWorkloadStore.open(database)
+                    repository = ArtifactRepository.open(database)
+                    artifact_store = ArtifactStore(tmp_path / "artifacts", repository)
+                    bridge = make_bridge(store, artifact_store)
+                    worker = _worker(store)
                 if outcome.status is WorkerRunStatus.IDLE:
                     break
             else:
@@ -162,8 +178,8 @@ def test_image_preset_processes_98_sources_and_reuses_duplicate_solutions(tmp_pa
                 """,
                 ("owner-images", admitted.revision.revision_id),
             ).fetchall())
-            assert counts["ocr"] == 98
-            assert counts["questions"] == 98
+            assert counts["ocr"] == source_count
+            assert counts["questions"] == source_count
             assert counts["solutions"] == 2
             assert len(artifact_store.list_workload_artifacts("owner-images", draft.workload_id)) == 3
         finally:

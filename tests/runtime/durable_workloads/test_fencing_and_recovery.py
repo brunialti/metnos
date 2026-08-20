@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import multiprocessing
+import os
+import signal
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -305,6 +307,31 @@ def test_claim_heartbeat_commit_replay_and_digest_conflict(db_path):
         assert store._connection.execute(
             "SELECT COUNT(*) FROM results WHERE owner_user_id='owner-a'"
         ).fetchone()[0] == 1
+
+
+def test_commit_marks_only_the_last_unit_in_a_stage_as_terminal(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_many(store, "stage-terminal", 2)
+        for offset, expected_terminal in enumerate((False, True)):
+            lease = store.claim_next(
+                "worker-terminal",
+                BASE_TIME + timedelta(seconds=offset * 2),
+                timedelta(seconds=30),
+                _capabilities(),
+            )
+            assert lease is not None
+            assert store.mark_running(
+                lease,
+                now=BASE_TIME + timedelta(seconds=offset * 2 + 1),
+            ) is LeaseMutationStatus.APPLIED
+            outcome = store.commit_result(
+                lease,
+                _result(lease, f"terminal-{offset}"),
+                now=BASE_TIME + timedelta(seconds=offset * 2 + 1, microseconds=1),
+            )
+            assert outcome.status is CommitStatus.COMMITTED
+            assert outcome.stage_terminal is expected_terminal
+            assert store.stage_is_terminal(lease) is expected_terminal
 
 
 def test_capability_filter_and_full_lease_token_fail_closed(db_path):
@@ -853,6 +880,10 @@ def test_old_fence_never_changes_state_in_100_real_process_races(db_path):
         ("after_commit", "committed"),
     ],
 )
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGKILL"),
+    reason="controlled durable-crash tests require SIGKILL",
+)
 def test_real_process_crash_at_controlled_boundaries(
     db_path, mode, expected_state,
 ):
@@ -868,9 +899,11 @@ def test_real_process_crash_at_controlled_boundaries(
     try:
         assert parent.poll(10)
         assert parent.recv() == ("at_control_point", mode)
-        process.terminate()
+        assert process.pid is not None
+        os.kill(process.pid, signal.SIGKILL)
         process.join(timeout=10)
         assert not process.is_alive()
+        assert process.exitcode == -signal.SIGKILL
         with DurableWorkloadStore.open(db_path) as store:
             store.reconcile_expired(BASE_TIME + timedelta(seconds=11), 10)
             row = _unit_row(store, workload_id)

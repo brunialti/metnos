@@ -4,6 +4,7 @@ import io
 import hashlib
 import multiprocessing
 import os
+import signal
 import stat
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -131,7 +132,7 @@ def _crash_commit(
 
     def stop(name: str) -> None:
         if name == checkpoint:
-            os._exit(73)
+            os.kill(os.getpid(), signal.SIGKILL)
 
     artifacts = ArtifactStore(root, repository, checkpoint=stop)
     artifacts.commit(
@@ -181,7 +182,7 @@ def _crash_publication(
 
     def stop(name: str) -> None:
         if name == "publication_after_fsync":
-            os._exit(74)
+            os.kill(os.getpid(), signal.SIGKILL)
 
     artifacts = ArtifactStore(root, repository, checkpoint=stop)
     artifacts.publish(
@@ -389,6 +390,10 @@ def test_existing_blob_is_reused_only_after_digest_and_size_verification(
 
 
 @pytest.mark.parametrize("checkpoint", ["blob_after_fsync", "blob_after_install"])
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGKILL"),
+    reason="controlled durable-crash tests require SIGKILL",
+)
 def test_real_process_recovers_blob_crashes_without_partial_final(
     artifact_environment: ArtifactEnvironment,
     checkpoint: str,
@@ -407,7 +412,7 @@ def test_real_process_recovers_blob_crashes_without_partial_final(
             revision_id,
             checkpoint,
         ),
-        73,
+        -signal.SIGKILL,
     )
 
     output = context.Queue()
@@ -435,6 +440,10 @@ def test_real_process_recovers_blob_crashes_without_partial_final(
         repository.close()
 
 
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGKILL"),
+    reason="controlled durable-crash tests require SIGKILL",
+)
 def test_real_process_reconciles_crash_during_publication(
     artifact_environment: ArtifactEnvironment,
 ):
@@ -456,7 +465,7 @@ def test_real_process_reconciles_crash_during_publication(
             str(artifact_environment.root),
             artifact.artifact_id,
         ),
-        74,
+        -signal.SIGKILL,
     )
 
     output = context.Queue()
