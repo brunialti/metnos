@@ -219,6 +219,33 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         )
         self.assertEqual(sorted((left.status, right.status)), [200, 409])
 
+    async def test_attention_resolution_uses_closed_owner_scoped_routes(self):
+        from durable_workloads.models import WorkloadState
+        from durable_workloads.storage import DurableWorkloadStore
+
+        owner = self.owner()
+        workload = self._create_admitted(owner, 31)
+        with DurableWorkloadStore.open(self._store_path) as store:
+            attention = store.transition_workload(
+                owner,
+                workload.workload_id,
+                WorkloadState.NEEDS_ATTENTION,
+                expected_version=workload.version,
+            )
+        response = await self.client.post(
+            f"/agent/workloads/{workload.workload_id}/attention/retry",
+            headers=self.headers(),
+            json={
+                "expected_version": attention.version,
+                "idempotency_key": "http-attention-retry-31",
+            },
+        )
+        self.assertEqual(response.status, 200)
+        payload = await response.json()
+        self.assertEqual(payload["command"], "resolve_attention")
+        self.assertEqual(payload["decision"], "retry")
+        self.assertEqual(payload["workload"]["state"], "queued")
+
     async def test_error_message_is_localized_while_the_api_code_stays_stable(self):
         import users
 

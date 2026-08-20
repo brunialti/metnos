@@ -478,6 +478,50 @@ class DurableWorkloadControl:
             expected_version=expected_version, idempotency_key=idempotency_key,
         )
 
+    def resolve_attention(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        decision: str,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Resolve an owner-visible manual stop without accepting free text.
+
+        The durable store already records the audit decision transactionally.
+        Keeping the boundary to the two closed decisions avoids persisting a
+        browser-supplied note in the workload audit trail.
+        """
+
+        if decision not in {"retry", "cancel"}:
+            raise DurableControlError("durable_workload.invalid_request", 400)
+
+        def operation() -> dict[str, Any]:
+            record = self._store.record_attention_resolution(
+                owner_user_id,
+                workload_id,
+                decision=decision,
+                expected_version=expected_version,
+                idempotency_key=idempotency_key,
+            )
+            log.info(
+                "durable_workload_control command=resolve_attention decision=%s state=%s version=%d",
+                decision,
+                record.state.value,
+                record.version,
+            )
+            return {
+                "schema_version": DTO_SCHEMA_VERSION,
+                "command": "resolve_attention",
+                "decision": decision,
+                "workload": _workload_dto(
+                    record, self._store.unit_counters(owner_user_id, workload_id),
+                ).to_dict(),
+            }
+
+        return self._read(operation)
+
 
 __all__ = [
     "DTO_SCHEMA_VERSION",

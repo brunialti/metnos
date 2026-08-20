@@ -165,6 +165,47 @@ def test_commands_have_versioned_idempotency_and_closed_state_matrix(store, cont
     )
 
 
+def test_attention_resolution_is_owner_scoped_idempotent_and_closed(store, control):
+    draft, _revision = _admitted(store, OWNER, 31)
+    admitted = store.get_workload(OWNER, draft.workload_id)
+    attention = store.transition_workload(
+        OWNER,
+        draft.workload_id,
+        WorkloadState.NEEDS_ATTENTION,
+        expected_version=admitted.version,
+    )
+
+    resolved = control.resolve_attention(
+        OWNER,
+        draft.workload_id,
+        decision="retry",
+        expected_version=attention.version,
+        idempotency_key="attention-retry-31",
+    )
+    replay = control.resolve_attention(
+        OWNER,
+        draft.workload_id,
+        decision="retry",
+        expected_version=attention.version,
+        idempotency_key="attention-retry-31",
+    )
+    assert replay == resolved
+    assert resolved["workload"]["state"] == "queued"
+    assert "note" not in resolved
+
+    with pytest.raises(DurableControlError) as foreign:
+        control.resolve_attention(
+            OTHER_OWNER,
+            draft.workload_id,
+            decision="cancel",
+            expected_version=attention.version,
+            idempotency_key="foreign-attention",
+        )
+    assert (foreign.value.code, foreign.value.status) == (
+        "durable_workload.not_found", 404,
+    )
+
+
 def test_control_operation_matrix_covers_every_workload_state():
     expected = {
         "pause": {

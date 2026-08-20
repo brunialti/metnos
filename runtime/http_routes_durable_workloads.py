@@ -197,6 +197,18 @@ async def workload_cancel(request: web.Request) -> web.Response:
     return await _command(request, "cancel", DurableWorkloadControl.cancel)
 
 
+async def workload_attention_retry(request: web.Request) -> web.Response:
+    """POST /agent/workloads/{workload_id}/attention/retry — closed decision."""
+
+    return await _resolve_attention(request, "retry")
+
+
+async def workload_attention_cancel(request: web.Request) -> web.Response:
+    """POST /agent/workloads/{workload_id}/attention/cancel — closed decision."""
+
+    return await _resolve_attention(request, "cancel")
+
+
 async def _command(
     request: web.Request,
     command: str,
@@ -221,6 +233,26 @@ async def _command(
         return _error_response(error)
 
 
+async def _resolve_attention(request: web.Request, decision: str) -> web.Response:
+    try:
+        owner = await _owner(request)
+        expected_version, idempotency_key = await _command_body(request)
+        workload_id = request.match_info["workload_id"]
+        payload = await _invoke(
+            request,
+            lambda control: control.resolve_attention(
+                owner,
+                workload_id,
+                decision=decision,
+                expected_version=expected_version,
+                idempotency_key=idempotency_key,
+            ),
+        )
+        return web.json_response(payload, headers={"Cache-Control": "no-store"})
+    except DurableControlError as error:
+        return _error_response(error)
+
+
 ROUTES = (
     ("GET", "/agent/workloads", workloads),
     ("GET", "/agent/workloads/{workload_id}", workload_detail),
@@ -229,6 +261,8 @@ ROUTES = (
     ("POST", "/agent/workloads/{workload_id}/pause", workload_pause),
     ("POST", "/agent/workloads/{workload_id}/resume", workload_resume),
     ("POST", "/agent/workloads/{workload_id}/cancel", workload_cancel),
+    ("POST", "/agent/workloads/{workload_id}/attention/retry", workload_attention_retry),
+    ("POST", "/agent/workloads/{workload_id}/attention/cancel", workload_attention_cancel),
 )
 
 
