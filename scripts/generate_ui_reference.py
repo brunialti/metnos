@@ -501,7 +501,8 @@ def render(lang: str) -> str:
 <link rel="alternate" hreflang="it" href="https://metnos.com/it/interface">
 <link rel="alternate" hreflang="en" href="https://metnos.com/en/interface">
 <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/interface">
-<link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="/assets/metnos.css?v=20260820-3">
+<script defer src="/assets/wiki-shell.js?v=20260820-3"></script>
 <style>
 {_STYLE}
 </style></head><body>

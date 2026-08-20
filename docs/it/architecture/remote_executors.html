@@ -46,7 +46,8 @@ li { margin-bottom:4px; }
 .toc li { margin:3px 0; }
 footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:9.5pt; }
 </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="/assets/metnos.css?v=20260820-3">
+<script defer src="/assets/wiki-shell.js?v=20260820-3"></script>
 </head>
 <body>
 <nav class="lang-switch" aria-label="Language">
@@ -431,6 +432,35 @@ Vedi <a href="sandbox.html#cap10">sandbox, cap. 10</a> per il dettaglio
 per-OS. Il risultato remoto riporta sempre il contenimento realmente applicato;
 un controllo separato termina il client, affidandone il riavvio al supervisore,
 se la sandbox non restituisce il controllo entro la scadenza pi&ugrave; un margine limitato.
+</p>
+
+<h3 id="provider-gestiti">Provider gestiti in sola lettura</h3>
+
+<p>
+Alcuni dati di sistema richiedono un componente installato e privilegi locali,
+per esempio un provider di sensori hardware su Windows. Un executor non riceve
+privilegi generici e non avvia comandi: dichiara una dipendenza astratta nel
+proprio manifest firmato. Per la singola invocazione il server e il client
+firmano un mandato ristretto; l'aiutante locale verifica entrambe le firme,
+risolve il pacchetto dal registro del dispositivo ed espone soltanto
+un'interfaccia tipizzata in sola lettura. Il profilo firmato pu&ograve; indicare
+un assembly posto direttamente nel pacchetto registrato e il relativo tipo
+d'ingresso. Operazioni, limiti e validazione dell'uscita restano nell'aiutante
+comune: l'identificativo del pacchetto non seleziona codice e non si possono
+fornire percorsi, script, metodi, propriet&agrave; o argomenti liberi. Un programma
+futuro che implementa un'interfaccia gi&agrave; supportata si installa dalla normale
+UI. La persona non scrive mai manifest o adapter: installazione e avvio generico
+non richiedono un profilo provider, mentre l'integrazione di lettura usa dati di
+profilo firmati forniti da Metnos o dal manutentore del pacchetto, non nuovo
+codice Metnos. Se manca
+un'interfaccia leggibile supportata, Metnos dichiara l'incompatibilit&agrave; invece
+di indovinare dalla GUI. Un errore di lettura non modifica la durata dei
+processi installati.
+L'interfaccia dei sensori hardware riceve selettori chiusi per dominio e tipo
+di misura. Una richiesta della temperatura CPU apre quindi soltanto quei
+sensori: la scoperta di GPU e dischi non pu&ograve; rallentare o bloccare la lettura.
+L'inizializzazione non viene mai ritentata implicitamente e un timeout indica
+lo stadio del provider senza accettare dati parziali.
 </p>
 
 <h2 id="guasti">6. Guasti, duplicati e revoca</h2>
