@@ -3335,7 +3335,8 @@ def _fill_runtime_sourced_args(executor, args: dict) -> dict:
 
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
                           turn_id=None, actor=None, channel=None,
-                          target_device=None, owner_user_id=None):
+                          target_device=None, owner_user_id=None,
+                          execution_context=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
 
     Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
@@ -3466,7 +3467,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             _obs = _remote.invoke_remote(
                 executor, remote_args, _target, timeout_s=timeout_s,
                 turn_id=turn_id,
-                env_injections=assigned_worker_environment(executor) or None,
+                env_injections=assigned_worker_environment(
+                    executor, execution_context) or None,
                 actor=actor or "", channel=channel or "")
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
@@ -3541,7 +3543,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # runtime-owned item-worker budget. Legacy/handcrafted manifests without
     # [execution] keep their exact historical internal-concurrency behavior.
     from executor_scheduler import assigned_worker_environment
-    env.update(assigned_worker_environment(executor))
+    env.update(assigned_worker_environment(executor, execution_context))
     runtime_path = str(Path(__file__).resolve().parent)
     existing_pp = env.get("PYTHONPATH", "")
     dependency_pp = os.pathsep.join(
@@ -3607,9 +3609,16 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     return parsed_result
 
 
+def _invoke_executor_impl_optional_context(
+        executor, args, *, execution_context=None, **kwargs):
+    if execution_context is not None:
+        kwargs["execution_context"] = execution_context
+    return _invoke_executor_impl(executor, args, **kwargs)
+
+
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None, target_device=None,
-                    owner_user_id=None):
+                    owner_user_id=None, execution_context=None):
     """Universal scheduled choke-point for local and remote executors.
 
     The scheduler is synchronous and serial-first by default, so this wrapper
@@ -3618,21 +3627,27 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     """
     from executor_scheduler import concurrency_identity_for, invoke_scheduled
 
-    return invoke_scheduled(
-        executor,
-        lambda: _invoke_executor_impl(
+    def call():
+        return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
             target_device=target_device, owner_user_id=owner_user_id,
-        ),
-        concurrency_identity=concurrency_identity_for(
+            execution_context=execution_context,
+        )
+
+    schedule_kwargs = {
+        "concurrency_identity": concurrency_identity_for(
             executor, args, target_device=target_device),
-    )
+    }
+    if execution_context is not None:
+        schedule_kwargs["execution_context"] = execution_context
+    return invoke_scheduled(executor, call, **schedule_kwargs)
 
 
 def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None,
-                    target_device=None, owner_user_id=None):
+                    target_device=None, owner_user_id=None,
+                    execution_context=None):
     """Submit one admitted executor call to the single central pool.
 
     This is deliberately the asynchronous twin of :func:`invoke_executor`:
@@ -3642,16 +3657,21 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     """
     from executor_scheduler import concurrency_identity_for, submit_scheduled
 
-    return submit_scheduled(
-        executor,
-        lambda: _invoke_executor_impl(
+    def call():
+        return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
             target_device=target_device, owner_user_id=owner_user_id,
-        ),
-        concurrency_identity=concurrency_identity_for(
+            execution_context=execution_context,
+        )
+
+    schedule_kwargs = {
+        "concurrency_identity": concurrency_identity_for(
             executor, args, target_device=target_device),
-    )
+    }
+    if execution_context is not None:
+        schedule_kwargs["execution_context"] = execution_context
+    return submit_scheduled(executor, call, **schedule_kwargs)
 
 
 # --- Step + Turn log -------------------------------------------------------
