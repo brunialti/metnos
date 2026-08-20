@@ -2,17 +2,17 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F3 completate il 2026-08-20 |
+| Stato | `active`; F0-F4 completate il 2026-08-20 |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-20 |
-| Implementazione reale | Nucleo interno e inattivo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository owner-scoped, acquisizione atomica, lease, heartbeat, fencing del commit, retry deterministico, riconciliazione e worker esclusivamente fittizio. Non esistono ancora compilatore, executor durevole reale, servizio attivo, route, UI o notifiche |
+| Implementazione reale | Nucleo interno e inattivo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, worker esclusivamente fittizio e deposito privato degli artefatti con pubblicazione interna riconciliabile. Non esistono ancora compilatore, executor durevole reale, servizio attivo, route, UI o notifiche |
 | Progettazione | Gate V1-V5 ratificati da ADR 0213. Il nome pubblico è rinviato per decisione; la topologia futura è congelata ma non installata |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro svolto e senza ripetere un effetto già prodotto; l'utente formula il risultato voluto, non il flusso |
-| Autorizzazione F0-F3 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo e a callable fittizi |
+| Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | F4 deve provare deposito content-addressed e pubblicazione riconciliabile soltanto nel deposito privato Metnos |
+| Prossimo gate | F5 deve compilare e ammettere il piano v1 con inventario sigillato e invalidazione deterministica, senza eseguire unità |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
 
 ## 0. Esito della verifica
@@ -38,9 +38,10 @@ La conclusione architetturale è netta:
 La direzione resta `active`, ma il suo fondamento non è più soltanto proposto.
 ADR 0213 ha chiuso F0; F1 e F2 hanno introdotto un archivio inattivo e
 verificabile; F3 ha dimostrato acquisizione atomica, fencing e ripresa fra
-processi senza collegare il pacchetto al runtime corrente. I pacchetti F4-F13 restano
-circostanziati per agenti esecutivi, secondo §16-17, e non possono anticipare
-i rispettivi gate.
+processi. F4 ha aggiunto il deposito privato content-addressed e la
+pubblicazione interna riconciliabile, sempre senza collegare il pacchetto al
+runtime corrente. I pacchetti F5-F13 restano circostanziati per agenti
+esecutivi, secondo §16-17, e non possono anticipare i rispettivi gate.
 
 ### 0.1 Lessico di verifica
 
@@ -1548,6 +1549,26 @@ reconcile_expired(now, batch_size)
 - **Assegnazione:** agente esecutivo per il filesystem.
 - **Dipendenze:** F2 e le lease fittizie di F3, ora integrate.
 - **Scopo:** implementare §8.5 nel solo deposito Metnos.
+- **Stato:** completata il 2026-08-20. `artifacts.py` separa in modo netto il
+  repository SQLite dalle operazioni sul filesystem, senza introdurre una
+  facciata duplicata. Il deposito deriva la radice da un hash del proprietario,
+  conserva i blob per contenuto senza condividerli fra proprietari e accetta
+  soltanto byte o flussi binari già autorizzati. Scrittura, verifica,
+  installazione senza sovrascrittura, registrazione e pubblicazione convergono
+  su un solo protocollo; la riga `published` viene committata esclusivamente
+  dopo la rilettura del file finale. La riconciliazione tratta i record
+  `prepared` come checkpoint persistenti e produce soltanto `committed`,
+  `retryable` o `needs_attention`. La raccolta degli orfani è limitata per
+  lotto, applica un periodo di grazia e ricontrolla il riferimento sotto lo
+  stesso lock di scrittura usato dalla registrazione. La cancellazione percorre
+  soltanto l'albero atteso del proprietario e rifiuta collegamenti simbolici,
+  tipi inattesi e sostituzioni di directory. I 18 test dedicati includono tre
+  arresti controllati con processi reali e un secondo processo di recupero,
+  collisioni di digest, isolamento fra proprietari, raccolta selettiva ed
+  errori di `fsync`. Il deposito resta privato e dormiente: non è importato dal
+  worker, non registra route e non espone una UI. La regressione runtime
+  completa conta 6380 test superati, 46 saltati e 1074 subtest superati, senza
+  fallimenti.
 
 - **File ammessi:** `artifacts.py`, repository degli artefatti conforme alle
   porte congelate in F2 e `tests/runtime/durable_workloads/test_artifacts.py`.
