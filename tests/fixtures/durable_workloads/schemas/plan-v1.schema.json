@@ -255,8 +255,18 @@
       "required": ["mode", "max_units"],
       "properties": {
         "mode": {"enum": ["singleton", "per_source", "per_dependency"]},
-        "max_units": {"type": "integer", "minimum": 1, "maximum": 10000000}
-      }
+        "max_units": {"type": "integer", "minimum": 1, "maximum": 10000000},
+        "entry_identity_field": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        }
+      },
+      "allOf": [
+        {
+          "if": {"required": ["entry_identity_field"]},
+          "then": {"properties": {"mode": {"const": "per_dependency"}}}
+        }
+      ]
     },
     "reference": {
       "type": "object",

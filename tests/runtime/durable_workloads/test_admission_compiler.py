@@ -49,7 +49,16 @@ def _schemas() -> OutputSchemaRegistry:
             {
                 "type": "object",
                 "properties": {
-                    "entries": {"type": "array", "items": {"type": "object"}},
+                    "entries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "entry_id": {"type": "string"},
+                                "text": {"type": "string"},
+                            },
+                        },
+                    },
                     "source_id": {"type": "string"},
                 },
                 "required": ["entries", "source_id"],
@@ -260,6 +269,29 @@ def test_missing_dependency_field_and_effect_authority_are_rejected():
     )
     with pytest.raises(CompilationError, match="incompatible reference type"):
         _compiled(resolver=wrong_type)
+
+
+def test_entry_identity_fanout_is_typed_and_requires_one_entries_dependency():
+    candidate = _pipeline()
+    answer = candidate["stages"][2]
+    answer["type"] = "map"
+    answer["cardinality"] = {
+        "mode": "per_dependency",
+        "max_units": 50,
+        "entry_identity_field": "entry_id",
+    }
+    compiled = _compiled(candidate=candidate)
+    assert compiled.graph["stages"][-1]["key"] == "reduce"
+
+    missing_identity = deepcopy(candidate)
+    missing_identity["stages"][2]["cardinality"]["entry_identity_field"] = "missing"
+    with pytest.raises(CompilationError, match="declared string entry field"):
+        _compiled(candidate=missing_identity)
+
+    multiple_dependencies = deepcopy(candidate)
+    multiple_dependencies["stages"][2]["depends_on"].append("inventory")
+    with pytest.raises(CompilationError, match="exactly one dependency"):
+        _compiled(candidate=multiple_dependencies)
 
 
 def test_executor_prompt_and_binding_mutations_invalidate_only_descendants():

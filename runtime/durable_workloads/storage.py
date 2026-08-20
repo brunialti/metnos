@@ -2980,6 +2980,21 @@ class DurableWorkloadStore:
                 """,
                 (owner, revision_id),
             ).fetchall()
+            plan_row = connection.execute(
+                """
+                SELECT plan_json FROM revisions
+                WHERE owner_user_id=? AND id=? AND workload_id=?
+                """,
+                (owner, revision_id, workload_id),
+            ).fetchone()
+            if plan_row is None:
+                raise DurableStoreError("active revision is missing its frozen plan")
+            frozen_plan = json.loads(str(plan_row["plan_json"]))
+            entry_identity_fields = {
+                str(item["key"]): str(item["cardinality"]["entry_identity_field"])
+                for item in frozen_plan["stages"]
+                if item["cardinality"].get("entry_identity_field") is not None
+            }
             by_id = {str(stage["id"]): stage for stage in stages}
             dependencies = {
                 str(stage["id"]): tuple(
@@ -3006,8 +3021,8 @@ class DurableWorkloadStore:
             ).fetchall())
             result_rows = tuple(connection.execute(
                 """
-                SELECT result.id AS result_id, result.digest, unit.stage_id,
-                       unit.source_row_id, unit.state AS unit_state
+                SELECT result.id AS result_id, result.digest, result.payload_json,
+                       unit.stage_id, unit.source_row_id, unit.state AS unit_state
                 FROM results result
                 JOIN units unit
                   ON unit.owner_user_id=result.owner_user_id
@@ -3089,11 +3104,55 @@ class DurableWorkloadStore:
                                 parents.extend(matching)
                         if complete:
                             candidates.append((source, tuple(parents), None))
-                else:  # per_dependency
+                else:  # per_dependency, optionally expanded by a typed entry identity
+                    entry_identity_field = entry_identity_fields.get(
+                        str(stage["stage_key"])
+                    )
                     for parent in parent_ids:
                         for result in results_by_stage.get(parent, ()):
                             source = next((item for item in sources if item["id"] == result["source_row_id"]), None)
-                            candidates.append((source, (result,), f"result:{result['result_id']}"))
+                            if entry_identity_field is None:
+                                candidates.append((source, (result,), f"result:{result['result_id']}"))
+                                continue
+                            try:
+                                payload = json.loads(str(result["payload_json"]))
+                            except (TypeError, ValueError) as exc:
+                                raise DurableStoreError(
+                                    "committed dependency payload is not valid JSON"
+                                ) from exc
+                            entries = payload.get("entries") if isinstance(payload, Mapping) else None
+                            if not isinstance(entries, list):
+                                raise DurableStoreError(
+                                    "entry identity fan-out requires dependency entries"
+                                )
+                            seen_entry_digests: set[str] = set()
+                            for entry in entries:
+                                identity = (
+                                    entry.get(entry_identity_field)
+                                    if isinstance(entry, Mapping) else None
+                                )
+                                if not isinstance(identity, str) or not identity:
+                                    raise DurableStoreError(
+                                        "entry identity fan-out found an invalid identity"
+                                    )
+                                entry_digest = digest_json(
+                                    "durable-entry-shard",
+                                    {
+                                        "field": entry_identity_field,
+                                        "value": identity,
+                                    },
+                                    max_bytes=MAX_EVENT_JSON_BYTES,
+                                )
+                                if entry_digest in seen_entry_digests:
+                                    raise DurableStoreError(
+                                        "entry identity fan-out found a duplicate identity"
+                                    )
+                                seen_entry_digests.add(entry_digest)
+                                candidates.append((
+                                    source,
+                                    (result,),
+                                    f"entry:{result['result_id']}:{entry_identity_field}:{entry_digest}",
+                                ))
 
                 existing_count = int(connection.execute(
                     """

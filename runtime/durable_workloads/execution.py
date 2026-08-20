@@ -24,6 +24,7 @@ from .compiler import (
 )
 from .coordinator import Lease, LeaseMutationStatus, StructuredAttemptError, ValidatedResult
 from .models import DurableEffect, ExecutionContext, RunnerKind
+from .schema import MAX_EVENT_JSON_BYTES, digest_json
 from .storage import DurableWorkloadStore
 from .worker import (
     DurableWorker,
@@ -83,6 +84,16 @@ def _field(value: object, dotted: str) -> object:
             raise KeyError(dotted)
         current = current[name]
     return current
+
+
+def _entry_shard(value: object) -> tuple[str, str, str] | None:
+    """Decode the opaque identity selector of one per-entry unit."""
+    if not isinstance(value, str) or not value.startswith("entry:"):
+        return None
+    parts = value.split(":", 3)
+    if len(parts) != 4 or not parts[1] or not parts[2] or not parts[3]:
+        return None
+    return parts[1], parts[2], parts[3]
 
 
 class DurableExecutionBridge:
@@ -259,6 +270,14 @@ class DurableExecutionBridge:
                 item for item in selected
                 if item.get("result_id") == shard_key.removeprefix("result:")
             ]
+        elif isinstance(shard_key, str) and shard_key.startswith("entry:"):
+            entry_shard = _entry_shard(shard_key)
+            if entry_shard is None:
+                return ()
+            selected = [
+                item for item in selected
+                if item.get("result_id") == entry_shard[0]
+            ]
         elif isinstance(source, Mapping):
             selected = [
                 item for item in selected
@@ -301,6 +320,18 @@ class DurableExecutionBridge:
         field = reference.get("field")
         if reference_kind == "dependency.entries":
             values: list[object] = []
+            shard_key = _mapping(facts["stage"], context="stage").get("shard_key")
+            entry_selector: tuple[str, str] | None = None
+            if isinstance(shard_key, str) and shard_key.startswith("entry:"):
+                parsed_shard = _entry_shard(shard_key)
+                if parsed_shard is None:
+                    raise self._failure(
+                        "contract_violation",
+                        code="execution.entry_shard_invalid",
+                        message_key="DURABLE_DEPENDENCIES_UNAVAILABLE",
+                        retry="never",
+                    )
+                entry_selector = (parsed_shard[1], parsed_shard[2])
             for payload in payloads:
                 entries = payload.get("entries") if isinstance(payload, Mapping) else None
                 if not isinstance(entries, list):
@@ -311,7 +342,30 @@ class DurableExecutionBridge:
                         retry="never",
                         details={"dependency_stage": stage_key},
                     )
-                values.extend(entries)
+                if entry_selector is None:
+                    values.extend(entries)
+                    continue
+                identity_field, expected_digest = entry_selector
+                matching = [
+                    entry
+                    for entry in entries
+                    if isinstance(entry, Mapping)
+                    and isinstance(entry.get(identity_field), str)
+                    and digest_json(
+                        "durable-entry-shard",
+                        {"field": identity_field, "value": entry[identity_field]},
+                        max_bytes=MAX_EVENT_JSON_BYTES,
+                    ) == expected_digest
+                ]
+                if len(matching) != 1:
+                    raise self._failure(
+                        "contract_violation",
+                        code="execution.entry_shard_unavailable",
+                        message_key="DURABLE_DEPENDENCIES_UNAVAILABLE",
+                        retry="never",
+                        details={"dependency_stage": stage_key},
+                    )
+                values.extend(matching)
         else:
             values = payloads
         if field is not None:

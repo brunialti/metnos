@@ -210,11 +210,27 @@ def _validate_stage(stage: Any, index: int) -> Mapping[str, Any]:
 
     cardinality = _object(
         item["cardinality"], context=f"{context}.cardinality",
-        required={"mode", "max_units"}, allowed={"mode", "max_units"},
+        required={"mode", "max_units"},
+        allowed={"mode", "max_units", "entry_identity_field"},
     )
     if cardinality["mode"] not in {"singleton", "per_source", "per_dependency"}:
         raise SchemaValidationError(f"{context}.cardinality.mode is unknown")
     _integer(cardinality["max_units"], context=f"{context}.cardinality.max_units", minimum=1, maximum=10_000_000)
+    entry_identity_field = cardinality.get("entry_identity_field")
+    if entry_identity_field is not None:
+        if cardinality["mode"] != "per_dependency":
+            raise SchemaValidationError(
+                f"{context}.cardinality.entry_identity_field requires per_dependency"
+            )
+        identity_name = _string(
+            entry_identity_field,
+            context=f"{context}.cardinality.entry_identity_field",
+            maximum=64,
+        )
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", identity_name):
+            raise SchemaValidationError(
+                f"{context}.cardinality.entry_identity_field is invalid"
+            )
 
     bindings = item["input_bindings"]
     if not isinstance(bindings, Mapping) or len(bindings) > 64:

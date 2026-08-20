@@ -113,6 +113,25 @@ class ApprovedOutputSchema:
             current = child
         return current
 
+    def entry_field_schema(self, dotted_name: str) -> Mapping[str, Any] | None:
+        """Return one field declared by the items of the ``entries`` array."""
+        entries = self.field_schema("entries")
+        if not isinstance(entries, Mapping) or entries.get("type") != "array":
+            return None
+        items = entries.get("items")
+        if not isinstance(items, Mapping) or items.get("type") != "object":
+            return None
+        current: Mapping[str, Any] = items
+        for part in dotted_name.split("."):
+            properties = current.get("properties")
+            if not isinstance(properties, Mapping) or part not in properties:
+                return None
+            child = properties[part]
+            if not isinstance(child, Mapping):
+                return None
+            current = child
+        return current
+
     def validate(self, value: Any) -> None:
         if self.validator is not None:
             self.validator(value)
@@ -512,7 +531,23 @@ def _validate_binding_fields(
                 raise CompilationError(
                     f"stage {stage['key']} references an unresolved dependency: {dependency}"
                 )
-            if field is not None:
+            if ref == "dependency.entries":
+                entries = schema.field_schema("entries")
+                if entries is None:
+                    raise CompilationError(
+                        f"stage {stage['key']} expects entries from a schema without entries"
+                    )
+                if field is None:
+                    provided_types = {"array"}
+                else:
+                    field_definition = schema.entry_field_schema(str(field))
+                    if field_definition is None:
+                        raise CompilationError(
+                            f"stage {stage['key']} binding {argument} references a missing field in entries"
+                        )
+                    field_type = field_definition.get("type")
+                    provided_types = {str(field_type)} if isinstance(field_type, str) else set()
+            elif field is not None:
                 field_definition = schema.field_schema(str(field))
                 if field_definition is None:
                     raise CompilationError(
@@ -520,13 +555,6 @@ def _validate_binding_fields(
                     )
                 field_type = field_definition.get("type")
                 provided_types = {str(field_type)} if isinstance(field_type, str) else set()
-            elif ref == "dependency.entries":
-                entries = schema.field_schema("entries")
-                if entries is None:
-                    raise CompilationError(
-                        f"stage {stage['key']} expects entries from a schema without entries"
-                    )
-                provided_types = {"array"}
             else:
                 provided_types = {"object"}
         else:
@@ -621,8 +649,11 @@ def compile_plan(
 
         mode = str(stage["cardinality"]["mode"])
         stage_type = str(stage["type"])
-        if stage_type == "map" and mode != "per_source":
-            raise CompilationError("map stages must use per_source cardinality")
+        entry_identity_field = stage["cardinality"].get("entry_identity_field")
+        if stage_type == "map" and mode not in {"per_source", "per_dependency"}:
+            raise CompilationError("map stages need per_source or per_dependency cardinality")
+        if stage_type == "map" and mode == "per_dependency" and entry_identity_field is None:
+            raise CompilationError("per_dependency map stages require an entry identity field")
         if stage_type == "reduce" and mode not in {"per_dependency", "singleton"}:
             raise CompilationError("reduce stages need per_dependency or singleton cardinality")
         if mode == "per_source" and not any(
@@ -630,6 +661,28 @@ def compile_plan(
             for reference in stage["input_bindings"].values()
         ):
             raise CompilationError(f"per_source stage {key} has no source binding")
+        if entry_identity_field is not None:
+            if stage_type != "map":
+                raise CompilationError("entry identity fan-out is only valid for map stages")
+            dependencies = tuple(map(str, stage["depends_on"]))
+            if len(dependencies) != 1:
+                raise CompilationError("entry identity fan-out needs exactly one dependency")
+            dependency_key = dependencies[0]
+            entry_schema = schemas_by_stage[dependency_key].entry_field_schema(
+                str(entry_identity_field)
+            )
+            if entry_schema is None or entry_schema.get("type") != "string":
+                raise CompilationError(
+                    "entry identity field must be a declared string entry field"
+                )
+            if not any(
+                reference["ref"] == "dependency.entries"
+                and reference.get("stage") == dependency_key
+                for reference in stage["input_bindings"].values()
+            ):
+                raise CompilationError(
+                    "entry identity fan-out needs a binding from dependency entries"
+                )
 
         invalidation_facts: dict[str, Any] = {}
         for invalidation_key in stage["invalidation_keys"]:
