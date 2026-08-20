@@ -342,6 +342,32 @@ class EventRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class OutboxRecord:
+    """One durable, channel-neutral delivery request.
+
+    ``recipient_key`` identifies the logical recipient, never a provider
+    address.  An adapter resolves any provider association only while it owns
+    the delivery lease.
+    """
+
+    owner_user_id: str
+    outbox_id: str
+    workload_id: str
+    event_id: int
+    channel: str
+    recipient_key: str
+    state: OutboxState
+    attempt_count: int
+    next_attempt_at: str | None
+    lease_worker_id: str | None
+    lease_expires_at: str | None
+    fence: int
+    coalesce_key: str | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True, slots=True)
 class UnitCounters:
     discovered: int = 0
     committed: int = 0

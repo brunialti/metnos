@@ -67,9 +67,9 @@ def test_empty_database_migrates_with_required_pragmas(tmp_path):
 def test_double_migration_is_idempotent_and_dump_is_stable():
     connection = open_db(":memory:")
     try:
-        assert migrate(connection) == 1
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
         first = schema_dump(connection)
-        assert migrate(connection) == 1
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
         assert schema_dump(connection) == first
         assert "CREATE TABLE workloads" in first
         assert "CREATE TRIGGER workloads_terminal_event_guard" in first
@@ -95,7 +95,7 @@ def test_migration_rolls_back_tables_and_version_on_injected_error():
         }
         assert "workloads" not in names
         assert "durable_schema" not in names
-        assert migrate(connection) == 1
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
     finally:
         connection.close()
 
@@ -151,7 +151,7 @@ def test_two_connections_can_migrate_the_same_new_database(tmp_path):
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda _index: open_and_migrate(), range(2)))
-    assert results == [(1, 1), (1, 1)]
+    assert results == [(CURRENT_SCHEMA_VERSION, CURRENT_SCHEMA_VERSION)] * 2
 
 
 def test_relational_owner_state_foreign_key_and_fence_constraints(store):
@@ -286,6 +286,19 @@ def test_published_target_requires_a_matching_observed_digest(store):
         )
 
 
-@pytest.mark.skip(reason="schema v1 has no predecessor fixture; enable when migration v2 is added")
 def test_upgrade_from_previous_schema_fixture():
-    pass
+    from durable_workloads.migrations import _V1_STATEMENTS, utc_now
+
+    connection = open_db(":memory:")
+    try:
+        applied_at = utc_now()
+        for statement in _V1_STATEMENTS:
+            connection.execute(statement.replace("__APPLIED_AT__", applied_at))
+        assert schema_version(connection) == 1
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(outbox)")
+        }
+        assert {"lease_expires_at", "coalesce_key"}.issubset(columns)
+    finally:
+        connection.close()

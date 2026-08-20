@@ -826,6 +826,29 @@ class ChannelDaemon:
             log.exception("_push_pending_notices fallita (non blocca il loop)")
         return sent
 
+    def _push_durable_workload_notices(self) -> int:
+        """Deliver a bounded F10 outbox batch through this Telegram daemon.
+
+        The durable feature gate keeps the established chat daemon completely
+        inert until the long-running engine is explicitly enabled.  The
+        adapter owns the lease protocol; this loop never drains or deletes a
+        notification before the provider confirms it.
+        """
+        if self.channel.name != "telegram":
+            return 0
+        try:
+            from durable_workloads.events import TelegramOutboxAdapter
+            from durable_workloads.service import feature_enabled
+            from durable_workloads.storage import DurableWorkloadStore
+
+            if not feature_enabled():
+                return 0
+            with DurableWorkloadStore.open() as store:
+                return TelegramOutboxAdapter(store, self.channel).deliver_once().sent
+        except Exception:
+            log.warning("durable_outbox_telegram_cycle_failed")
+            return 0
+
     def _consume_admin_approval(self, proposal: dict, *,
                                  actor: str = "host",
                                  owner_user_id: str = "") -> str:
@@ -2731,6 +2754,15 @@ class ChannelDaemon:
                              pushed, self.channel.name)
             except Exception:
                 log.debug("push notices skipped", exc_info=True)
+            try:
+                pushed_durable = self._push_durable_workload_notices()
+                if pushed_durable:
+                    log.info(
+                        "durable_outbox_telegram_delivered count=%d",
+                        pushed_durable,
+                    )
+            except Exception:
+                log.debug("durable outbox push skipped", exc_info=True)
             # Cleanup tmp uploads vecchi (TTL 1h) ogni N=15 iterazioni.
             if i % 15 == 0:
                 try:

@@ -256,7 +256,19 @@ def test_completion_creates_terminal_event_and_outbox_atomically(store):
         """,
         ("owner-a", draft.workload_id, assessment.event_id),
     ).fetchone()[0]
-    assert outbox == 1
+    assert outbox == 2
+    states = store._connection.execute(
+        """
+        SELECT channel, state FROM outbox
+        WHERE owner_user_id=? AND workload_id=? AND event_id=?
+        ORDER BY channel
+        """,
+        ("owner-a", draft.workload_id, assessment.event_id),
+    ).fetchall()
+    assert [(row["channel"], row["state"]) for row in states] == [
+        ("owner_event", "sent"),
+        ("telegram", "pending"),
+    ]
     event_count = len(store.list_events("owner-a", draft.workload_id))
     replay = store.evaluate_completion("owner-a", draft.workload_id)
     assert replay.target_state is WorkloadState.COMPLETED

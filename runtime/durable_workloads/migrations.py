@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Final
 
 
-CURRENT_SCHEMA_VERSION: Final[int] = 1
+CURRENT_SCHEMA_VERSION: Final[int] = 2
 BUSY_TIMEOUT_MS: Final[int] = 5_000
 
 
@@ -801,6 +801,33 @@ _V1_STATEMENTS: tuple[str, ...] = (
 )
 
 
+# F10 adds delivery leases and an optional coalescing key without changing the
+# immutable workload/event records introduced in v1.  A delivery row remains
+# present after a failed send; only its lease is released for a later worker.
+_V2_STATEMENTS: tuple[str, ...] = (
+    """
+    ALTER TABLE outbox ADD COLUMN lease_expires_at TEXT CHECK (
+        lease_expires_at IS NULL
+        OR lease_expires_at LIKE '____-__-__T__:__:__%Z'
+    )
+    """,
+    """
+    ALTER TABLE outbox ADD COLUMN coalesce_key TEXT CHECK (
+        coalesce_key IS NULL OR length(coalesce_key) BETWEEN 1 AND 128
+    )
+    """,
+    """
+    CREATE INDEX outbox_claim_idx
+    ON outbox(channel, state, next_attempt_at, lease_expires_at, created_at)
+    """,
+    """
+    CREATE UNIQUE INDEX outbox_pending_coalesce_idx
+    ON outbox(owner_user_id, workload_id, channel, recipient_key, coalesce_key)
+    WHERE coalesce_key IS NOT NULL AND state='pending'
+    """,
+)
+
+
 _REQUIRED_V1_TABLES = frozenset({
     "durable_schema",
     "workloads",
@@ -823,7 +850,7 @@ _REQUIRED_V1_TABLES = frozenset({
 
 
 def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None:
-    if version != 1:
+    if version < 1:
         return
     present = frozenset(
         str(row[0]) for row in connection.execute(
@@ -833,6 +860,15 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
     missing = sorted(_REQUIRED_V1_TABLES - present)
     if missing:
         raise MigrationError(f"schema v1 is missing required tables: {missing}")
+    if version >= 2:
+        columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(outbox)")
+        }
+        missing_columns = sorted({"lease_expires_at", "coalesce_key"} - columns)
+        if missing_columns:
+            raise MigrationError(
+                "schema v2 is missing outbox columns: " + repr(missing_columns)
+            )
 
 
 def migrate(
@@ -861,6 +897,16 @@ def migrate(
                     _before_statement(index, statement)
                 connection.execute(statement)
             current = 1
+        if current == 1:
+            for index, statement in enumerate(_V2_STATEMENTS, start=1):
+                if _before_statement is not None:
+                    _before_statement(index, statement)
+                connection.execute(statement)
+            connection.execute(
+                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
+                (2, utc_now()),
+            )
+            current = 2
         _validate_schema_shape(connection, current)
         violations = connection.execute("PRAGMA foreign_key_check").fetchall()
         if violations:

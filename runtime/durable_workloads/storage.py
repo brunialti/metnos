@@ -51,6 +51,8 @@ from .models import (
     DurableEffect,
     EventRecord,
     EventType,
+    OutboxRecord,
+    OutboxState,
     RevisionRecord,
     RunnerKind,
     TERMINAL_UNIT_STATES,
@@ -89,6 +91,8 @@ _EVENT_BY_TARGET = {
     WorkloadState.NEEDS_ATTENTION: EventType.NEEDS_ATTENTION,
     WorkloadState.FAILED: EventType.FAILED,
 }
+_OUTBOX_CHANNELS = frozenset({"owner_event", "telegram"})
+_MAX_OUTBOX_LEASE_SECONDS = 300
 
 
 class DurableStoreError(RuntimeError):
@@ -203,6 +207,26 @@ def _row_to_revision(row: sqlite3.Row) -> RevisionRecord:
         inventory_sealed=bool(row["inventory_sealed"]),
         expected_source_count=int(row["expected_source_count"]),
         admitted_at=row["admitted_at"],
+    )
+
+
+def _row_to_outbox(row: sqlite3.Row) -> OutboxRecord:
+    return OutboxRecord(
+        owner_user_id=str(row["owner_user_id"]),
+        outbox_id=str(row["id"]),
+        workload_id=str(row["workload_id"]),
+        event_id=int(row["event_id"]),
+        channel=str(row["channel"]),
+        recipient_key=str(row["recipient_key"]),
+        state=OutboxState(row["state"]),
+        attempt_count=int(row["attempt_count"]),
+        next_attempt_at=row["next_attempt_at"],
+        lease_worker_id=row["lease_worker_id"],
+        lease_expires_at=row["lease_expires_at"],
+        fence=int(row["fence"]),
+        coalesce_key=row["coalesce_key"],
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
     )
 
 
@@ -897,6 +921,337 @@ class DurableWorkloadStore:
             )
             for row in rows
         )
+
+    def get_event(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        event_id: int,
+    ) -> EventRecord:
+        """Read one owner-scoped persisted event for an internal dispatcher."""
+
+        owner = _require_owner(owner_user_id)
+        if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id < 1:
+            raise ValueError("event_id must be a positive integer")
+        row = self._connection.execute(
+            """
+            SELECT owner_user_id, workload_id, event_id, type, payload_json, created_at
+            FROM events
+            WHERE owner_user_id=? AND workload_id=? AND event_id=?
+            """,
+            (owner, workload_id, event_id),
+        ).fetchone()
+        if row is None:
+            raise WorkloadNotFoundError("event not found")
+        return EventRecord(
+            owner_user_id=str(row["owner_user_id"]),
+            workload_id=str(row["workload_id"]),
+            event_id=int(row["event_id"]),
+            event_type=EventType(row["type"]),
+            payload_json=str(row["payload_json"]),
+            created_at=str(row["created_at"]),
+        )
+
+    @staticmethod
+    def _outbox_row(
+        connection: sqlite3.Connection,
+        owner_user_id: str,
+        outbox_id: str,
+    ) -> sqlite3.Row:
+        row = connection.execute(
+            """
+            SELECT owner_user_id, id, workload_id, event_id, channel,
+                   recipient_key, state, attempt_count, next_attempt_at,
+                   lease_worker_id, lease_expires_at, fence, coalesce_key,
+                   created_at, updated_at
+            FROM outbox WHERE owner_user_id=? AND id=?
+            """,
+            (owner_user_id, outbox_id),
+        ).fetchone()
+        if row is None:
+            raise WorkloadNotFoundError("outbox record not found")
+        return row
+
+    @staticmethod
+    def _outbox_channel(value: str) -> str:
+        if value not in _OUTBOX_CHANNELS:
+            raise ValueError("outbox channel is not supported")
+        return value
+
+    def enqueue_outbox_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        owner_user_id: str,
+        workload_id: str,
+        event_id: int,
+        channel: str,
+        recipient_key: str,
+        coalesce_key: str | None = None,
+        next_attempt_at: datetime | None = None,
+        delivered: bool = False,
+    ) -> OutboxRecord:
+        """Insert one delivery row beside its event, or replace pending progress.
+
+        This low-level primitive deliberately requires the caller's active
+        workload transaction.  Therefore state, event and notification either
+        commit together or none of them does.  Coalescing can only replace an
+        unleased pending row, never a message a worker is already sending.
+        """
+
+        owner = _require_owner(owner_user_id)
+        if connection is not self._connection or not connection.in_transaction:
+            raise DurableStoreError(
+                "enqueue_outbox_in_transaction requires this store's active transaction"
+            )
+        if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id < 1:
+            raise ValueError("event_id must be a positive integer")
+        selected_channel = self._outbox_channel(channel)
+        recipient = _require_key(recipient_key, name="recipient_key")
+        if coalesce_key is not None:
+            coalesce_key = _require_key(
+                coalesce_key, name="coalesce_key", maximum=128,
+            )
+        if not isinstance(delivered, bool):
+            raise TypeError("delivered must be a boolean")
+        due = (
+            instant_text(next_attempt_at, name="next_attempt_at")
+            if next_attempt_at is not None else None
+        )
+        # The foreign key is authoritative, but this explicit owner-scoped
+        # check yields a stable repository failure before an opaque SQL error.
+        event = connection.execute(
+            """
+            SELECT 1 FROM events
+            WHERE owner_user_id=? AND workload_id=? AND event_id=?
+            """,
+            (owner, workload_id, event_id),
+        ).fetchone()
+        if event is None:
+            raise WorkloadNotFoundError("event not found for outbox delivery")
+        now = utc_now()
+        if coalesce_key is not None and not delivered:
+            existing = connection.execute(
+                """
+                SELECT id FROM outbox
+                WHERE owner_user_id=? AND workload_id=? AND channel=?
+                  AND recipient_key=? AND coalesce_key=? AND state='pending'
+                """,
+                (owner, workload_id, selected_channel, recipient, coalesce_key),
+            ).fetchone()
+            if existing is not None:
+                connection.execute(
+                    """
+                    UPDATE outbox
+                    SET event_id=?, next_attempt_at=?, updated_at=?
+                    WHERE owner_user_id=? AND id=? AND state='pending'
+                    """,
+                    (event_id, due, now, owner, existing["id"]),
+                )
+                return _row_to_outbox(self._outbox_row(
+                    connection, owner, str(existing["id"]),
+                ))
+        outbox_id = _new_id("obx")
+        state = OutboxState.SENT.value if delivered else OutboxState.PENDING.value
+        ack_json = (
+            canonical_json({"delivery": "recorded"}, max_bytes=MAX_EVENT_JSON_BYTES)
+            if delivered else None
+        )
+        connection.execute(
+            """
+            INSERT INTO outbox(
+                owner_user_id, id, workload_id, event_id, channel,
+                recipient_key, state, next_attempt_at, ack_json, coalesce_key,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                owner, outbox_id, workload_id, event_id, selected_channel,
+                recipient, state, due, ack_json, coalesce_key, now, now,
+            ),
+        )
+        return _row_to_outbox(self._outbox_row(connection, owner, outbox_id))
+
+    def enqueue_progress_outbox_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        owner_user_id: str,
+        workload_id: str,
+        event_id: int,
+        channel: str,
+        recipient_key: str,
+        minimum_interval_s: int,
+        now: datetime | None = None,
+    ) -> OutboxRecord:
+        """Coalesce progress and delay it until the configured send interval."""
+
+        if (
+            isinstance(minimum_interval_s, bool)
+            or not isinstance(minimum_interval_s, int)
+            or not 0 <= minimum_interval_s <= 86_400
+        ):
+            raise ValueError("minimum_interval_s must be an integer in 0..86400")
+        owner = _require_owner(owner_user_id)
+        current = normalize_instant(
+            now or datetime.now(timezone.utc), name="now"
+        )
+        previous = connection.execute(
+            """
+            SELECT updated_at FROM outbox
+            WHERE owner_user_id=? AND workload_id=? AND channel=?
+              AND recipient_key=? AND coalesce_key='progress' AND state='sent'
+            ORDER BY updated_at DESC LIMIT 1
+            """,
+            (owner, workload_id, self._outbox_channel(channel), recipient_key),
+        ).fetchone()
+        due = current
+        if previous is not None:
+            due = max(
+                due,
+                parse_instant(str(previous["updated_at"]), name="outbox updated_at")
+                + timedelta(seconds=minimum_interval_s),
+            )
+        return self.enqueue_outbox_in_transaction(
+            connection,
+            owner_user_id=owner,
+            workload_id=workload_id,
+            event_id=event_id,
+            channel=channel,
+            recipient_key=recipient_key,
+            coalesce_key="progress",
+            next_attempt_at=due,
+        )
+
+    def claim_outbox(
+        self,
+        *,
+        channel: str,
+        worker_id: str,
+        limit: int = 50,
+        lease_duration: timedelta = timedelta(seconds=60),
+        now: datetime | None = None,
+    ) -> tuple[OutboxRecord, ...]:
+        """Atomically lease bounded due rows; expired leases are recoverable."""
+
+        selected_channel = self._outbox_channel(channel)
+        worker = require_worker_id(worker_id)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer in 1..200")
+        duration = require_lease_duration(lease_duration)
+        if duration > timedelta(seconds=_MAX_OUTBOX_LEASE_SECONDS):
+            raise ValueError("outbox lease duration exceeds maximum")
+        current = normalize_instant(now or datetime.now(timezone.utc), name="now")
+        current_text = instant_text(current)
+        expiry = instant_text(current + duration, name="lease_expires_at")
+        with self._transaction() as connection:
+            candidates = connection.execute(
+                """
+                SELECT owner_user_id, id FROM outbox
+                WHERE channel=? AND (
+                    (state IN ('pending', 'failed')
+                     AND (next_attempt_at IS NULL OR next_attempt_at<=?))
+                    OR (state='leased' AND lease_expires_at IS NOT NULL
+                        AND lease_expires_at<=?)
+                )
+                ORDER BY created_at, id
+                LIMIT ?
+                """,
+                (selected_channel, current_text, current_text, limit),
+            ).fetchall()
+            records: list[OutboxRecord] = []
+            for candidate in candidates:
+                updated = connection.execute(
+                    """
+                    UPDATE outbox
+                    SET state='leased', attempt_count=attempt_count+1,
+                        lease_worker_id=?, lease_expires_at=?, fence=fence+1,
+                        updated_at=?
+                    WHERE owner_user_id=? AND id=? AND (
+                        (state IN ('pending', 'failed')
+                         AND (next_attempt_at IS NULL OR next_attempt_at<=?))
+                        OR (state='leased' AND lease_expires_at IS NOT NULL
+                            AND lease_expires_at<=?)
+                    )
+                    """,
+                    (
+                        worker, expiry, current_text,
+                        candidate["owner_user_id"], candidate["id"],
+                        current_text, current_text,
+                    ),
+                )
+                if updated.rowcount == 1:
+                    records.append(_row_to_outbox(self._outbox_row(
+                        connection,
+                        str(candidate["owner_user_id"]),
+                        str(candidate["id"]),
+                    )))
+            return tuple(records)
+
+    def confirm_outbox(
+        self,
+        record: OutboxRecord,
+        *,
+        worker_id: str,
+        acknowledgement: Mapping[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> bool:
+        """Confirm only the worker/fence that still owns the delivery lease."""
+
+        if not isinstance(record, OutboxRecord):
+            raise TypeError("record must be an OutboxRecord")
+        worker = require_worker_id(worker_id)
+        ack = canonical_json(
+            dict(acknowledgement or {"delivery": "sent"}),
+            max_bytes=MAX_EVENT_JSON_BYTES,
+        )
+        current = instant_text(normalize_instant(
+            now or datetime.now(timezone.utc), name="now"
+        ))
+        with self._transaction() as connection:
+            updated = connection.execute(
+                """
+                UPDATE outbox
+                SET state='sent', ack_json=?, lease_worker_id=NULL,
+                    lease_expires_at=NULL, next_attempt_at=NULL, updated_at=?
+                WHERE owner_user_id=? AND id=? AND state='leased'
+                  AND lease_worker_id=? AND fence=?
+                """,
+                (ack, current, record.owner_user_id, record.outbox_id,
+                 worker, record.fence),
+            )
+            return updated.rowcount == 1
+
+    def release_outbox(
+        self,
+        record: OutboxRecord,
+        *,
+        worker_id: str,
+        retry_at: datetime | None = None,
+        now: datetime | None = None,
+    ) -> bool:
+        """Release a failed/undeliverable lease without deleting its row."""
+
+        if not isinstance(record, OutboxRecord):
+            raise TypeError("record must be an OutboxRecord")
+        worker = require_worker_id(worker_id)
+        current = normalize_instant(now or datetime.now(timezone.utc), name="now")
+        retry = instant_text(retry_at or current, name="retry_at")
+        with self._transaction() as connection:
+            updated = connection.execute(
+                """
+                UPDATE outbox
+                SET state='pending', lease_worker_id=NULL, lease_expires_at=NULL,
+                    next_attempt_at=?, updated_at=?
+                WHERE owner_user_id=? AND id=? AND state='leased'
+                  AND lease_worker_id=? AND fence=?
+                """,
+                (
+                    retry, instant_text(current), record.owner_user_id,
+                    record.outbox_id, worker, record.fence,
+                ),
+            )
+            return updated.rowcount == 1
 
     def list_units(
         self,
@@ -1644,19 +1999,27 @@ class DurableWorkloadStore:
                     "partial_accepted": accepted_partial,
                 },
             )
-            now = utc_now()
-            connection.execute(
-                """
-                INSERT INTO outbox(
-                    owner_user_id, id, workload_id, event_id, channel,
-                    recipient_key, state, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, 'owner_event', ?, 'pending', ?, ?)
-                """,
-                (
-                    owner, _new_id("obx"), workload_id,
-                    terminal_event.event_id, owner, now, now,
-                ),
+            # The durable event marker satisfies the database completion
+            # guard immediately.  The Telegram row is the independently
+            # leased delivery request; a daemon restart can recover it.
+            self.enqueue_outbox_in_transaction(
+                connection,
+                owner_user_id=owner,
+                workload_id=workload_id,
+                event_id=terminal_event.event_id,
+                channel="owner_event",
+                recipient_key=owner,
+                delivered=True,
             )
+            self.enqueue_outbox_in_transaction(
+                connection,
+                owner_user_id=owner,
+                workload_id=workload_id,
+                event_id=terminal_event.event_id,
+                channel="telegram",
+                recipient_key=owner,
+            )
+            now = utc_now()
             updated = connection.execute(
                 """
                 UPDATE workloads
