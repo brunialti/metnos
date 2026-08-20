@@ -1,7 +1,7 @@
 """Durable notification delivery for workload events.
 
 The SQLite outbox is the source of truth.  This module resolves a Telegram
-association only while a row is leased, sends only a short localized terminal
+association only while a row is leased, sends only a short localized workload
 notice, and confirms the row afterwards.  It never accepts browser paths,
 artifact bytes or request text.
 """
@@ -74,13 +74,21 @@ def owner_language(owner_user_id: str) -> str | None:
 
 
 def terminal_notice(event: EventRecord, *, language: str | None = None) -> str | None:
-    """Render a closed, non-sensitive message for a terminal workload event."""
+    """Render a closed, non-sensitive message for a visible workload event.
 
-    if event.event_type is EventType.COMPLETED:
-        message_key = "MSG_DURABLE_WORKLOAD_COMPLETED"
-    elif event.event_type is EventType.COMPLETED_WITH_ERRORS:
-        message_key = "MSG_DURABLE_WORKLOAD_COMPLETED_WITH_ERRORS"
-    else:
+    The name is retained as the adapter's stable boundary while the initial
+    contract also covers admission and a request for owner attention.
+    """
+
+    message_keys = {
+        EventType.REVISION_ADMITTED: "MSG_DURABLE_WORKLOAD_ADMITTED",
+        EventType.NEEDS_ATTENTION: "MSG_DURABLE_WORKLOAD_NEEDS_ATTENTION",
+        EventType.FAILED: "MSG_DURABLE_WORKLOAD_FAILED",
+        EventType.COMPLETED: "MSG_DURABLE_WORKLOAD_COMPLETED",
+        EventType.COMPLETED_WITH_ERRORS: "MSG_DURABLE_WORKLOAD_COMPLETED_WITH_ERRORS",
+    }
+    message_key = message_keys.get(event.event_type)
+    if message_key is None:
         return None
     import i18n
     from messages import get as message

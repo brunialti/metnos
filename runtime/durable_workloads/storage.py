@@ -801,7 +801,7 @@ class DurableWorkloadStore:
             )
             if updated.rowcount != 1:
                 raise VersionConflictError("workload changed during admission")
-            self.append_event_in_transaction(
+            event = self.append_event_in_transaction(
                 connection,
                 owner_user_id=owner,
                 workload_id=workload_id,
@@ -814,6 +814,12 @@ class DurableWorkloadStore:
                     "source_count": len(sources),
                     "new_version": expected + 1,
                 },
+            )
+            self._enqueue_notification_in_transaction(
+                connection,
+                owner_user_id=owner,
+                workload_id=workload_id,
+                event_id=event.event_id,
             )
             row = connection.execute(
                 """
@@ -920,6 +926,42 @@ class DurableWorkloadStore:
                 created_at=row["created_at"],
             )
             for row in rows
+        )
+
+    def list_recent_events(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        limit: int = 200,
+    ) -> tuple[EventRecord, ...]:
+        """Return the newest bounded event window in chronological order."""
+
+        owner = _require_owner(owner_user_id)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+            raise ValueError("limit must be an integer in 1..500")
+        self._select_workload(self._connection, owner, workload_id)
+        rows = self._connection.execute(
+            """
+            SELECT owner_user_id, workload_id, event_id, type,
+                   payload_json, created_at
+            FROM events
+            WHERE owner_user_id=? AND workload_id=?
+            ORDER BY event_id DESC
+            LIMIT ?
+            """,
+            (owner, workload_id, limit),
+        ).fetchall()
+        return tuple(
+            EventRecord(
+                owner_user_id=row["owner_user_id"],
+                workload_id=row["workload_id"],
+                event_id=int(row["event_id"]),
+                event_type=EventType(row["type"]),
+                payload_json=row["payload_json"],
+                created_at=row["created_at"],
+            )
+            for row in reversed(rows)
         )
 
     def get_event(
@@ -1121,6 +1163,40 @@ class DurableWorkloadStore:
             recipient_key=recipient_key,
             coalesce_key="progress",
             next_attempt_at=due,
+        )
+
+    def _enqueue_notification_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        owner_user_id: str,
+        workload_id: str,
+        event_id: int,
+    ) -> None:
+        """Record one visible event and its durable Telegram delivery together.
+
+        The internal marker keeps the database invariant explicit; the pending
+        Telegram row is the independently leased delivery request.  Both rows
+        reference the immutable event, so a daemon restart cannot disconnect a
+        state change from its user-facing notification.
+        """
+
+        self.enqueue_outbox_in_transaction(
+            connection,
+            owner_user_id=owner_user_id,
+            workload_id=workload_id,
+            event_id=event_id,
+            channel="owner_event",
+            recipient_key=owner_user_id,
+            delivered=True,
+        )
+        self.enqueue_outbox_in_transaction(
+            connection,
+            owner_user_id=owner_user_id,
+            workload_id=workload_id,
+            event_id=event_id,
+            channel="telegram",
+            recipient_key=owner_user_id,
         )
 
     def claim_outbox(
@@ -1372,13 +1448,20 @@ class DurableWorkloadStore:
                 "new_state": target.value,
                 "new_version": updated.version,
             })
-            self.append_event_in_transaction(
+            event = self.append_event_in_transaction(
                 connection,
                 owner_user_id=owner,
                 workload_id=workload_id,
                 event_type=event_type,
                 payload=merged_payload,
             )
+            if target in {WorkloadState.NEEDS_ATTENTION, WorkloadState.FAILED}:
+                self._enqueue_notification_in_transaction(
+                    connection,
+                    owner_user_id=owner,
+                    workload_id=workload_id,
+                    event_id=event.event_id,
+                )
             return updated
 
     def _update_state_in_transaction(
@@ -1715,6 +1798,143 @@ class DurableWorkloadStore:
             pending=int(row["pending"] or 0),
         )
 
+    def execution_summary(
+        self, owner_user_id: str, workload_id: str,
+    ) -> dict[str, Any]:
+        """Return a bounded, redacted execution view for the control façade.
+
+        This deliberately projects the frozen plan instead of returning its
+        JSON.  It exposes only operational facts that a workload owner needs
+        to interpret progress: admitted limits, stages, aggregate outcomes and
+        policy warnings.  Inputs, prompts, locators, result payloads and
+        catalog snapshots remain private repository data.
+        """
+
+        owner = _require_owner(owner_user_id)
+        workload = self._select_workload(self._connection, owner, workload_id)
+        revision_id = workload["active_revision_id"]
+        if revision_id is None:
+            return {
+                "budget": {},
+                "stages": [],
+                "error_categories": [],
+                "warnings": [],
+            }
+        revision = self._connection.execute(
+            """
+            SELECT plan_json, caps_truncated, partial_output_accepted,
+                   failure_policy
+            FROM revisions
+            WHERE owner_user_id=? AND id=? AND workload_id=?
+            """,
+            (owner, revision_id, workload_id),
+        ).fetchone()
+        if revision is None:
+            raise DurableStoreError("active revision is missing")
+        try:
+            budget_source = json.loads(str(revision["plan_json"])).get("budgets", {})
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise DurableStoreError("frozen plan cannot be summarized") from exc
+        budget_keys = (
+            "max_units",
+            "max_attempts_per_unit",
+            "max_wall_time_s",
+            "max_bytes_read",
+            "max_bytes_written",
+            "max_tokens",
+            "max_cost_micros",
+            "max_artifacts",
+            "max_concurrency",
+        )
+        budget = {
+            key: value
+            for key in budget_keys
+            if isinstance((value := budget_source.get(key)), int) and not isinstance(value, bool)
+        }
+        rows = self._connection.execute(
+            """
+            SELECT s.stage_key, s.stage_type, s.runner_kind, s.runner_name,
+                   s.max_units, s.timeout_s, s.required_flag, s.resources_json,
+                   COUNT(u.id) AS total,
+                   SUM(CASE WHEN u.state='committed' THEN 1 ELSE 0 END) AS committed,
+                   SUM(CASE WHEN u.state IN ('failed_permanent', 'cancelled') THEN 1 ELSE 0 END) AS failed,
+                   SUM(CASE WHEN u.state='skipped' THEN 1 ELSE 0 END) AS skipped,
+                   SUM(CASE WHEN u.state='needs_attention' THEN 1 ELSE 0 END) AS attention,
+                   SUM(CASE WHEN u.state IN ('pending', 'leased', 'running', 'retry_wait') THEN 1 ELSE 0 END) AS pending
+            FROM stages s
+            LEFT JOIN units u
+              ON u.owner_user_id=s.owner_user_id
+             AND u.revision_id=s.revision_id
+             AND u.stage_id=s.id
+            WHERE s.owner_user_id=? AND s.revision_id=?
+            GROUP BY s.owner_user_id, s.id
+            ORDER BY s.position, s.stage_key
+            """,
+            (owner, revision_id),
+        ).fetchall()
+        stages: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                resource_source = json.loads(str(row["resources_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise DurableStoreError("frozen stage resources are invalid") from exc
+            stages.append({
+                "stage_key": str(row["stage_key"]),
+                "stage_type": str(row["stage_type"]),
+                "runner_kind": str(row["runner_kind"]),
+                "runner_name": str(row["runner_name"]),
+                "max_units": int(row["max_units"]),
+                "timeout_s": int(row["timeout_s"]),
+                "required": bool(row["required_flag"]),
+                "resources": {
+                    key: value
+                    for key in sorted(RESOURCE_KEYS)
+                    if isinstance((value := resource_source.get(key)), int)
+                    and not isinstance(value, bool)
+                    and value > 0
+                },
+                "counters": {
+                    key: int(row[key] or 0)
+                    for key in ("total", "committed", "failed", "skipped", "attention", "pending")
+                },
+            })
+        errors = self._connection.execute(
+            """
+            SELECT error_class, COUNT(*) AS count
+            FROM units
+            WHERE owner_user_id=? AND revision_id=? AND error_class IS NOT NULL
+            GROUP BY error_class
+            ORDER BY count DESC, error_class ASC
+            LIMIT 20
+            """,
+            (owner, revision_id),
+        ).fetchall()
+        warnings: list[str] = []
+        if bool(revision["caps_truncated"]):
+            warnings.append("inventory_truncated")
+        if bool(revision["partial_output_accepted"]):
+            warnings.append("partial_output_accepted")
+        if str(revision["failure_policy"]) == "declared":
+            warnings.append("declared_failures_allowed")
+        unavailable = self._connection.execute(
+            """
+            SELECT COUNT(*) FROM sources
+            WHERE owner_user_id=? AND revision_id=? AND state<>'ready'
+            """,
+            (owner, revision_id),
+        ).fetchone()[0]
+        if int(unavailable):
+            warnings.append("source_coverage_incomplete")
+        return {
+            "budget": budget,
+            "stages": stages,
+            "error_categories": [
+                {"error_code": str(row["error_class"]), "count": int(row["count"])}
+                for row in errors
+            ],
+            "warnings": warnings,
+        }
+
     def evaluate_completion(
         self, owner_user_id: str, workload_id: str,
     ) -> CompletionAssessment:
@@ -2000,24 +2220,13 @@ class DurableWorkloadStore:
                 },
             )
             # The durable event marker satisfies the database completion
-            # guard immediately.  The Telegram row is the independently
-            # leased delivery request; a daemon restart can recover it.
-            self.enqueue_outbox_in_transaction(
+            # guard immediately.  The Telegram row is independently leased;
+            # a daemon restart can recover the same immutable notification.
+            self._enqueue_notification_in_transaction(
                 connection,
                 owner_user_id=owner,
                 workload_id=workload_id,
                 event_id=terminal_event.event_id,
-                channel="owner_event",
-                recipient_key=owner,
-                delivered=True,
-            )
-            self.enqueue_outbox_in_transaction(
-                connection,
-                owner_user_id=owner,
-                workload_id=workload_id,
-                event_id=terminal_event.event_id,
-                channel="telegram",
-                recipient_key=owner,
             )
             now = utc_now()
             updated = connection.execute(

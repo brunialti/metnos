@@ -9,7 +9,7 @@ import pytest
 from durable_workloads.events import TelegramOutboxAdapter
 from durable_workloads.models import EventType, OutboxState, WorkloadState
 from durable_workloads.storage import DurableWorkloadStore
-from helpers import inventory, plan, source
+from helpers import inventory, plan
 
 
 OWNER = "owner-outbox-a"
@@ -139,6 +139,56 @@ def test_progress_coalesces_one_thousand_events_without_a_notification_storm(sto
     ).fetchone()[0]
     assert count == 1
     assert row.event_id == last.event_id
+
+
+def test_visible_state_events_enqueue_one_recoverable_notification(store):
+    draft = store.create_draft(
+        OWNER,
+        "outbox-visible-events",
+        redacted_request={"summary": "synthetic"},
+        workload_id="wrk_outbox_visible",
+    )
+    store.admit_revision(
+        OWNER,
+        draft.workload_id,
+        plan(),
+        inventory(),
+        expected_version=draft.version,
+    )
+    admitted = store.get_workload(OWNER, draft.workload_id)
+    attention = store.transition_workload(
+        OWNER,
+        draft.workload_id,
+        WorkloadState.NEEDS_ATTENTION,
+        expected_version=admitted.version,
+        payload={"reason": "fixture"},
+    )
+    store.transition_workload(
+        OWNER,
+        draft.workload_id,
+        WorkloadState.FAILED,
+        expected_version=attention.version,
+        payload={"reason": "fixture"},
+    )
+
+    rows = store._connection.execute(
+        """
+        SELECT e.type, o.channel, o.state
+        FROM events e
+        JOIN outbox o
+          ON o.owner_user_id=e.owner_user_id
+         AND o.workload_id=e.workload_id
+         AND o.event_id=e.event_id
+        WHERE e.owner_user_id=? AND e.workload_id=? AND o.channel='telegram'
+        ORDER BY e.event_id
+        """,
+        (OWNER, draft.workload_id),
+    ).fetchall()
+    assert [(row["type"], row["channel"], row["state"]) for row in rows] == [
+        ("revision_admitted", "telegram", "pending"),
+        ("needs_attention", "telegram", "pending"),
+        ("failed", "telegram", "pending"),
+    ]
 
 
 class _Sender:

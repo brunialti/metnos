@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -29,6 +30,7 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         os.environ["HOME"] = str(root)
         os.environ["METNOS_USERS_DB"] = str(root / "users.db")
         cls._store_path = root / "durable" / "state.sqlite3"
+        cls._artifact_root = root / "artifacts"
 
         import http_auth
         import http_routes_admin
@@ -50,13 +52,28 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
             os.environ["HOME"] = cls._old_home
 
     async def get_application(self):
+        from durable_workloads.artifacts import (
+            ArtifactDownloadRegistry,
+            ArtifactRepository,
+            ArtifactStore,
+        )
         from durable_workloads.storage import DurableWorkloadStore
-        from http_app_state import DURABLE_WORKLOAD_STORE_FACTORY
+        from http_app_state import (
+            DURABLE_ARTIFACT_DOWNLOADS,
+            DURABLE_ARTIFACT_STORE_FACTORY,
+            DURABLE_WORKLOAD_STORE_FACTORY,
+        )
 
         app = self._server.make_app(admin_key=ADMIN_KEY)
         app[DURABLE_WORKLOAD_STORE_FACTORY] = lambda: DurableWorkloadStore.open(
             self._store_path,
         )
+        app[DURABLE_ARTIFACT_STORE_FACTORY] = lambda: ArtifactStore(
+            self._artifact_root,
+            ArtifactRepository.open(self._store_path),
+        )
+        self._download_registry = ArtifactDownloadRegistry()
+        app[DURABLE_ARTIFACT_DOWNLOADS] = self._download_registry
         return app
 
     def headers(self) -> dict[str, str]:
@@ -103,6 +120,25 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
                 expected_version=current.version,
             )
 
+    def _create_artifact(self, owner: str, workload, artifact_id: str):
+        from durable_workloads.artifacts import ArtifactRepository, ArtifactStore
+
+        repository = ArtifactRepository.open(self._store_path)
+        artifacts = ArtifactStore(self._artifact_root, repository)
+        try:
+            return artifacts.commit(
+                owner,
+                workload.workload_id,
+                workload.active_revision_id,
+                "durable-report.txt",
+                "text/plain",
+                "metnos.test-artifact/1",
+                b"durable download bytes",
+                artifact_id=artifact_id,
+            )
+        finally:
+            artifacts.close()
+
     async def test_authentication_and_closed_read_dtos_match_the_facade(self):
         unauthorized = await self.client.get("/agent/workloads")
         self.assertEqual(unauthorized.status, 401)
@@ -117,6 +153,8 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         self.assertEqual(set(payload), {"schema_version", "workload", "revision"})
         self.assertNotIn("request_key", payload["workload"])
         self.assertNotIn("plan_json", payload["revision"])
+        self.assertIn("execution", payload["revision"])
+        self.assertNotIn("objective_redacted", payload["revision"])
 
         from durable_workloads.control import DurableWorkloadControl
         from durable_workloads.storage import DurableWorkloadStore
@@ -126,6 +164,22 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
                 store, cursor_secret=ADMIN_KEY,
             ).detail(owner, workload.workload_id)
         self.assertEqual(payload, direct)
+
+    async def test_html_control_surface_uses_the_same_api_without_page_local_css(self):
+        import users
+
+        users.set_pref(self.owner(), "lang", "it")
+        response = await self.client.get(
+            "/agent/workloads",
+            headers={**self.headers(), "Accept": "text/html"},
+        )
+        self.assertEqual(response.status, 200)
+        html = await response.text()
+        self.assertIn('id="durableWorkloads"', html)
+        self.assertIn("Lavori durevoli", html)
+        template = (RUNTIME / "templates" / "durable_workloads.html").read_text("utf-8")
+        self.assertNotIn("<style", template)
+        self.assertIn("EventSource", template)
 
     async def test_routes_enforce_owner_scope_pagination_and_body_authority(self):
         owner = self.owner()
@@ -245,6 +299,73 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         self.assertEqual(payload["command"], "resolve_attention")
         self.assertEqual(payload["decision"], "retry")
         self.assertEqual(payload["workload"]["state"], "queued")
+
+    async def test_sse_replays_persistent_events_from_last_event_id_owner_scoped(self):
+        owner = self.owner()
+        workload = self._create_admitted(owner, 41)
+        response = await self.client.get(
+            f"/agent/workloads/{workload.workload_id}/stream",
+            headers={**self.headers(), "Last-Event-ID": "1"},
+        )
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.content_type, "text/event-stream")
+        event_id = (await response.content.readline()).decode("utf-8").strip()
+        event_name = (await response.content.readline()).decode("utf-8").strip()
+        data_line = (await response.content.readline()).decode("utf-8").strip()
+        self.assertEqual(event_id, "id: 2")
+        self.assertEqual(event_name, "event: workload")
+        data = json.loads(data_line.removeprefix("data: "))
+        self.assertEqual(data["event"]["event_id"], 2)
+        self.assertNotIn("payload_json", data["event"])
+        response.close()
+
+        recent = await self.client.get(
+            f"/agent/workloads/{workload.workload_id}/events?recent=1&limit=1",
+            headers=self.headers(),
+        )
+        self.assertEqual(recent.status, 200)
+        self.assertEqual((await recent.json())["items"][-1]["event_id"], 2)
+
+        foreign = self._create_admitted("foreign-sse-owner", 42)
+        denied = await self.client.get(
+            f"/agent/workloads/{foreign.workload_id}/stream",
+            headers=self.headers(),
+        )
+        self.assertEqual(denied.status, 404)
+        invalid = await self.client.get(
+            f"/agent/workloads/{workload.workload_id}/stream",
+            headers={**self.headers(), "Last-Event-ID": "not-an-id"},
+        )
+        self.assertEqual(invalid.status, 400)
+
+    async def test_artifact_download_uses_an_expiring_revocable_registry_capability(self):
+        owner = self.owner()
+        workload = self._create_admitted(owner, 51)
+        artifact = self._create_artifact(owner, workload, "artifact_http_000051")
+        issued = await self.client.post(
+            f"/agent/workloads/{workload.workload_id}/artifacts/{artifact.artifact_id}/download",
+            headers=self.headers(),
+        )
+        self.assertEqual(issued.status, 200)
+        capability = await issued.json()
+        self.assertNotIn("path", capability)
+        download = await self.client.get(capability["download_url"], headers=self.headers())
+        self.assertEqual(download.status, 200)
+        self.assertEqual(await download.read(), b"durable download bytes")
+        token = capability["download_url"].rsplit("/", 1)[-1]
+        self.assertTrue(self._download_registry.revoke(token))
+        revoked = await self.client.get(capability["download_url"], headers=self.headers())
+        self.assertEqual(revoked.status, 404)
+
+        foreign_workload = self._create_admitted("foreign-artifact-owner", 52)
+        foreign = self._create_artifact(
+            "foreign-artifact-owner", foreign_workload, "artifact_http_000052",
+        )
+        denied = await self.client.post(
+            f"/agent/workloads/{foreign_workload.workload_id}/artifacts/{foreign.artifact_id}/download",
+            headers=self.headers(),
+        )
+        self.assertEqual(denied.status, 404)
 
     async def test_error_message_is_localized_while_the_api_code_stays_stable(self):
         import users

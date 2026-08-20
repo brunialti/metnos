@@ -15,6 +15,7 @@ import pytest
 from durable_workloads.artifacts import (
     ArtifactConflictError,
     ArtifactContractError,
+    ArtifactDownloadRegistry,
     ArtifactIntegrityError,
     ArtifactNotFoundError,
     ArtifactRepository,
@@ -222,6 +223,60 @@ def _queue_result(queue):
         return queue.get(timeout=10)
     except Empty:
         pytest.fail("artifact recovery process returned no result")
+
+
+def test_download_capability_is_owner_bound_expiring_and_revocable(
+    artifact_environment: ArtifactEnvironment,
+):
+    artifact = _commit(
+        artifact_environment,
+        "owner-a",
+        "download-report",
+        b"registered bytes",
+        artifact_id="artifact_download_01",
+    )
+    registry = ArtifactDownloadRegistry()
+    now = datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)
+    capability = registry.issue(
+        "owner-a", artifact.artifact_id, lifetime=timedelta(seconds=30), now=now,
+    )
+    assert registry.resolve(
+        capability.token, owner_user_id="owner-b", now=now,
+    ) is None
+    assert registry.resolve(
+        capability.token, owner_user_id="owner-a", now=now,
+    ) == capability
+    assert registry.resolve(
+        capability.token, owner_user_id="owner-a", now=now + timedelta(seconds=31),
+    ) is None
+
+    replacement = registry.issue("owner-a", artifact.artifact_id, now=now)
+    assert registry.revoke(replacement.token)
+    assert registry.resolve(replacement.token, owner_user_id="owner-a", now=now) is None
+
+
+def test_download_opens_only_the_registered_owner_blob(
+    artifact_environment: ArtifactEnvironment,
+):
+    artifact = _commit(
+        artifact_environment,
+        "owner-a",
+        "download-open",
+        b"registered bytes",
+        artifact_id="artifact_download_02",
+    )
+    opened, stream = artifact_environment.artifacts.open_registered_download(
+        "owner-a", artifact.artifact_id,
+    )
+    try:
+        assert opened.artifact_id == artifact.artifact_id
+        assert stream.read() == b"registered bytes"
+    finally:
+        stream.close()
+    with pytest.raises(ArtifactNotFoundError):
+        artifact_environment.artifacts.open_registered_download(
+            "owner-b", artifact.artifact_id,
+        )
 
 
 def test_same_owner_deduplicates_content_and_replays_logical_commit(

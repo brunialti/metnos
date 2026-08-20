@@ -7,6 +7,7 @@ import pytest
 from durable_workloads.control import DurableControlError, DurableWorkloadControl
 from durable_workloads.models import (
     CONTROL_STATE_MATRIX,
+    EventType,
     WorkloadState,
     control_transition,
 )
@@ -77,6 +78,12 @@ def test_read_dtos_are_closed_owner_scoped_and_cursor_paged(store, control):
     assert detail["revision"] is not None
     assert "request_key" not in detail["workload"]
     assert "plan_json" not in detail["revision"]
+    assert "objective_redacted" not in detail["revision"]
+    execution = detail["revision"]["execution"]
+    assert execution["budget"]["max_units"] == 1000
+    assert [stage["stage_key"] for stage in execution["stages"]] == ["inventory", "map"]
+    assert execution["stages"][1]["runner_name"] == "read_files_ocr"
+    assert execution["error_categories"] == []
 
     units = control.list_units(OWNER, first.workload_id, limit=1)
     assert len(units["items"]) == 1
@@ -87,6 +94,18 @@ def test_read_dtos_are_closed_owner_scoped_and_cursor_paged(store, control):
     events = control.list_events(OWNER, first.workload_id, limit=1)
     assert len(events["items"]) == 1
     assert set(events["items"][0]) == {"event_id", "event_type", "created_at"}
+    with store._transaction() as connection:
+        for number in range(3):
+            store.append_event_in_transaction(
+                connection,
+                owner_user_id=OWNER,
+                workload_id=first.workload_id,
+                event_type=EventType.QUEUED,
+                payload={"fixture": number},
+            )
+    recent = control.list_events(OWNER, first.workload_id, limit=2, recent=True)
+    assert [event["event_id"] for event in recent["items"]] == [4, 5]
+    assert recent["next_cursor"] is None
 
 
 def test_owner_scope_and_cursors_fail_closed(store, control):
@@ -115,6 +134,11 @@ def test_owner_scope_and_cursors_fail_closed(store, control):
         control.list_workloads(OWNER, limit=101)
     assert (error.value.code, error.value.status) == (
         "durable_workload.invalid_limit", 400,
+    )
+    with pytest.raises(DurableControlError) as error:
+        control.list_events(OWNER, workload.workload_id, cursor="not-used", recent=True)
+    assert (error.value.code, error.value.status) == (
+        "durable_workload.invalid_cursor", 400,
     )
 
 
@@ -204,6 +228,34 @@ def test_attention_resolution_is_owner_scoped_idempotent_and_closed(store, contr
     assert (foreign.value.code, foreign.value.status) == (
         "durable_workload.not_found", 404,
     )
+
+
+def test_sse_read_model_replays_ten_thousand_persistent_events(store, control):
+    draft = _draft(store, OWNER, 41)
+    with store._transaction() as connection:
+        for _ in range(10_000):
+            store.append_event_in_transaction(
+                connection,
+                owner_user_id=OWNER,
+                workload_id=draft.workload_id,
+                event_type=EventType.QUEUED,
+                payload={"version": draft.version},
+            )
+
+    after = 0
+    replayed = []
+    while True:
+        batch = control.stream_events(
+            OWNER, draft.workload_id, after_event_id=after,
+        )
+        if not batch:
+            break
+        assert len(batch) <= 500
+        replayed.extend(batch)
+        after = batch[-1].event_id
+    assert len(replayed) == 10_001  # draft_created plus the durable history
+    assert [event.event_id for event in replayed] == list(range(1, 10_002))
+    assert set(replayed[-1].to_dict()) == {"event_id", "event_type", "created_at"}
 
 
 def test_control_operation_matrix_covers_every_workload_state():

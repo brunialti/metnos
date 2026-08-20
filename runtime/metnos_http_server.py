@@ -48,7 +48,8 @@ import http_routes_durable_workloads
 import http_routes_stack
 from http_auth import auth_middleware, get_or_create_admin_key
 from http_app_state import (
-    ADMIN_KEY, CATALOG_PROVIDER, DURABLE_WORKLOAD_STORE_FACTORY, SCHEDULER_V2, SSE_RESPONSES, STARTED_AT,
+    ADMIN_KEY, CATALOG_PROVIDER, DURABLE_ARTIFACT_DOWNLOADS,
+    DURABLE_ARTIFACT_STORE_FACTORY, DURABLE_WORKLOAD_STORE_FACTORY, SCHEDULER_V2, SSE_RESPONSES, STARTED_AT,
     TURN_POOL, TUTOR_BOOTSTRAP_TASK, app_get,
 )
 from http_turn_pool import HttpTurnPool
@@ -142,7 +143,19 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
         admin_key if admin_key is not None else get_or_create_admin_key())
     app[CATALOG_PROVIDER] = _build_catalog_provider()
     from durable_workloads.storage import DurableWorkloadStore
+    from durable_workloads.artifacts import ArtifactDownloadRegistry, ArtifactRepository, ArtifactStore
     app[DURABLE_WORKLOAD_STORE_FACTORY] = DurableWorkloadStore.open
+
+    def _open_durable_artifact_store():
+        repository = ArtifactRepository.open()
+        try:
+            return ArtifactStore(_C.PATH_DURABLE_ARTIFACTS, repository)
+        except Exception:
+            repository.close()
+            raise
+
+    app[DURABLE_ARTIFACT_STORE_FACTORY] = _open_durable_artifact_store
+    app[DURABLE_ARTIFACT_DOWNLOADS] = ArtifactDownloadRegistry()
     turn_pool = HttpTurnPool()
     app[TURN_POOL] = turn_pool
 

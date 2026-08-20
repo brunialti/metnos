@@ -41,6 +41,7 @@ log = logging.getLogger("metnos.durable_workloads.control")
 
 DTO_SCHEMA_VERSION = "metnos.durable-control/1"
 MAX_PAGE_SIZE = 100
+MAX_STREAM_EVENTS = 500
 _CURSOR_VERSION = 1
 
 
@@ -331,10 +332,16 @@ class DurableWorkloadControl:
     def detail(self, owner_user_id: str, workload_id: str) -> dict[str, Any]:
         def operation() -> dict[str, Any]:
             record = self._store.get_workload(owner_user_id, workload_id)
-            revision = (
-                _revision_dto(self._store.get_revision(owner_user_id, record.active_revision_id)).to_dict()
-                if record.active_revision_id is not None else None
-            )
+            revision = None
+            if record.active_revision_id is not None:
+                revision = _revision_dto(
+                    self._store.get_revision(owner_user_id, record.active_revision_id)
+                ).to_dict()
+                # The execution summary is a closed projection, not the raw
+                # frozen plan or its catalog/policy snapshots.
+                revision["execution"] = self._store.execution_summary(
+                    owner_user_id, workload_id,
+                )
             return {
                 "schema_version": DTO_SCHEMA_VERSION,
                 "workload": _workload_dto(
@@ -351,8 +358,22 @@ class DurableWorkloadControl:
         *,
         cursor: str | None = None,
         limit: int | None = None,
+        recent: bool = False,
     ) -> dict[str, Any]:
         page_size = self._page_size(limit)
+        if not isinstance(recent, bool):
+            raise DurableControlError("durable_workload.invalid_request", 400)
+        if recent:
+            if cursor is not None:
+                raise DurableControlError("durable_workload.invalid_cursor", 400)
+            records = self._read(lambda: self._store.list_recent_events(
+                owner_user_id, workload_id, limit=page_size,
+            ))
+            return {
+                "schema_version": DTO_SCHEMA_VERSION,
+                "items": [_event_dto(record).to_dict() for record in records],
+                "next_cursor": None,
+            }
         position = self._decode_cursor(cursor, kind="events", state=None)
         after_event_id = 0
         if position is not None:
@@ -378,6 +399,35 @@ class DurableWorkloadControl:
             "items": [_event_dto(record).to_dict() for record in visible],
             "next_cursor": next_cursor,
         }
+
+    def stream_events(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        after_event_id: int,
+    ) -> tuple[EventDTO, ...]:
+        """Return the next bounded persistent event batch for an SSE adapter.
+
+        Unlike the paged JSON endpoint this method deliberately takes the
+        monotonic database ID used by ``Last-Event-ID``.  It remains internal
+        to the façade: no event payload, plan, source or result crosses the
+        transport boundary.
+        """
+
+        if (
+            isinstance(after_event_id, bool)
+            or not isinstance(after_event_id, int)
+            or after_event_id < 0
+        ):
+            raise DurableControlError("durable_workload.invalid_last_event_id", 400)
+        records = self._read(lambda: self._store.list_events(
+            owner_user_id,
+            workload_id,
+            after_event_id=after_event_id,
+            limit=MAX_STREAM_EVENTS,
+        ))
+        return tuple(_event_dto(record) for record in records)
 
     def list_units(
         self,
@@ -526,6 +576,7 @@ class DurableWorkloadControl:
 __all__ = [
     "DTO_SCHEMA_VERSION",
     "MAX_PAGE_SIZE",
+    "MAX_STREAM_EVENTS",
     "DurableControlError",
     "DurableWorkloadControl",
     "EventDTO",

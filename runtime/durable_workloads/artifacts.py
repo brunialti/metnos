@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import secrets
 import sqlite3
 import stat
 import uuid
@@ -146,6 +147,83 @@ class OwnerDeletionReport:
     database_rows: int
     files: int
     directories: int
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactDownloadCapability:
+    """Short-lived, owner-bound authorization for one registered artifact."""
+
+    token: str
+    owner_user_id: str
+    artifact_id: str
+    expires_at: datetime
+
+
+class ArtifactDownloadRegistry:
+    """In-memory capability registry with explicit expiration and revocation.
+
+    Capabilities are deliberately not derivable from a filesystem path and are
+    invalid after a process restart.  The artifact repository remains the
+    second, persistent authorization check when bytes are opened.
+    """
+
+    def __init__(self) -> None:
+        self._entries: dict[str, ArtifactDownloadCapability] = {}
+
+    @staticmethod
+    def _now(value: datetime | None) -> datetime:
+        current = value or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("capability time must be timezone-aware")
+        return current.astimezone(timezone.utc)
+
+    def issue(
+        self,
+        owner_user_id: str,
+        artifact_id: str,
+        *,
+        lifetime: timedelta = timedelta(minutes=5),
+        now: datetime | None = None,
+    ) -> ArtifactDownloadCapability:
+        owner = _require_owner(owner_user_id)
+        artifact = _require_id(artifact_id)
+        if not isinstance(lifetime, timedelta) or not timedelta(seconds=1) <= lifetime <= timedelta(minutes=15):
+            raise ArtifactContractError("artifact_download_lifetime_invalid")
+        current = self._now(now)
+        self._purge_expired(current)
+        capability = ArtifactDownloadCapability(
+            token=secrets.token_urlsafe(32),
+            owner_user_id=owner,
+            artifact_id=artifact,
+            expires_at=current + lifetime,
+        )
+        self._entries[capability.token] = capability
+        return capability
+
+    def resolve(
+        self,
+        token: str,
+        *,
+        owner_user_id: str,
+        now: datetime | None = None,
+    ) -> ArtifactDownloadCapability | None:
+        owner = _require_owner(owner_user_id)
+        if not isinstance(token, str) or not token:
+            return None
+        current = self._now(now)
+        self._purge_expired(current)
+        capability = self._entries.get(token)
+        if capability is None or capability.owner_user_id != owner:
+            return None
+        return capability
+
+    def revoke(self, token: str) -> bool:
+        return self._entries.pop(token, None) is not None
+
+    def _purge_expired(self, current: datetime) -> None:
+        for token, capability in tuple(self._entries.items()):
+            if capability.expires_at <= current:
+                self._entries.pop(token, None)
 
 
 def _require_owner(value: str) -> str:
@@ -466,6 +544,29 @@ class ArtifactRepository:
             raise ArtifactNotFoundError("artifact_not_found")
         return _artifact_from_row(row)
 
+    def list_workload_artifacts(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        limit: int = 100,
+    ) -> tuple[Artifact, ...]:
+        """List bounded registered metadata for one owner/workload pair."""
+
+        owner = _require_owner(owner_user_id)
+        workload = _require_id(workload_id)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise ArtifactContractError("artifact_list_limit_invalid")
+        rows = self._connection.execute(
+            """
+            SELECT * FROM artifacts
+            WHERE owner_user_id=? AND workload_id=?
+            ORDER BY created_at DESC, id DESC LIMIT ?
+            """,
+            (owner, workload, limit),
+        ).fetchall()
+        return tuple(_artifact_from_row(row) for row in rows)
+
     def prepare_publication(
         self,
         owner_user_id: str,
@@ -764,6 +865,11 @@ class ArtifactStore:
         with self._directory("owners", create=True):
             pass
 
+    def close(self) -> None:
+        """Close the explicitly-owned metadata repository, if any."""
+
+        self._repository.close()
+
     def _ensure_root(self) -> None:
         try:
             current = os.lstat(self._root)
@@ -1009,6 +1115,79 @@ class ArtifactStore:
             raise ArtifactIntegrityError("artifact_blob_missing") from exc
         if observed != (expected_digest, blob.size_bytes):
             raise ArtifactIntegrityError("artifact_blob_integrity_failed")
+
+    def open_registered_download(
+        self,
+        owner_user_id: str,
+        artifact_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[Artifact, BinaryIO]:
+        """Open bytes only after registry, retention and integrity checks.
+
+        The caller receives an already-open descriptor rather than a path, so
+        a browser-controlled value can never reach filesystem resolution.
+        """
+
+        owner = _require_owner(owner_user_id)
+        artifact = self.get_downloadable_artifact(owner, artifact_id, now=now)
+        # Verify first through the registered digest.  A referenced private
+        # blob cannot be reclaimed between this check and opening its inode.
+        self.verify_blob(
+            owner,
+            Blob(
+                digest=artifact.digest,
+                size_bytes=artifact.size_bytes,
+                blob_ref=artifact.blob_ref,
+            ),
+        )
+        with self._blob_directory(owner, create=False) as directory:
+            descriptor = self._open_regular(directory, artifact.digest[7:])
+        try:
+            return artifact, os.fdopen(descriptor, "rb", closefd=True)
+        except Exception:
+            os.close(descriptor)
+            raise
+
+    def get_downloadable_artifact(
+        self,
+        owner_user_id: str,
+        artifact_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> Artifact:
+        """Resolve one registered artifact without exposing its blob path."""
+
+        owner = _require_owner(owner_user_id)
+        artifact = self._repository.get_artifact(owner, artifact_id)
+        moment = now or datetime.now(timezone.utc)
+        if not isinstance(moment, datetime) or moment.tzinfo is None or moment.utcoffset() is None:
+            raise ArtifactContractError("artifact_download_time_invalid")
+        current = _require_instant(
+            moment.astimezone(timezone.utc).isoformat(
+                timespec="microseconds"
+            ).replace("+00:00", "Z")
+        )
+        assert current is not None
+        if artifact.state not in {ArtifactState.COMMITTED, ArtifactState.PUBLISHED}:
+            raise ArtifactNotFoundError("artifact_download_unavailable")
+        if artifact.retention_until is not None:
+            expires = _require_instant(artifact.retention_until)
+            assert expires is not None
+            if expires <= current:
+                raise ArtifactNotFoundError("artifact_download_expired")
+        return artifact
+
+    def list_workload_artifacts(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        limit: int = 100,
+    ) -> tuple[Artifact, ...]:
+        return self._repository.list_workload_artifacts(
+            owner_user_id, workload_id, limit=limit,
+        )
 
     def commit(
         self,
@@ -1496,6 +1675,8 @@ __all__ = [
     "Artifact",
     "ArtifactConflictError",
     "ArtifactContractError",
+    "ArtifactDownloadCapability",
+    "ArtifactDownloadRegistry",
     "ArtifactError",
     "ArtifactIntegrityError",
     "ArtifactNotFoundError",

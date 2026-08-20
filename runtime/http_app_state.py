@@ -26,6 +26,8 @@ TUTOR_BOOTSTRAP_TASK = web.AppKey("tutor_bootstrap_task", asyncio.Task)
 TURN_POOL = web.AppKey("turn_pool", object)
 TUTOR_GATE = web.AppKey("tutor_gate", asyncio.Semaphore)
 DURABLE_WORKLOAD_STORE_FACTORY = web.AppKey("durable_workload_store_factory", Callable)
+DURABLE_ARTIFACT_STORE_FACTORY = web.AppKey("durable_artifact_store_factory", Callable)
+DURABLE_ARTIFACT_DOWNLOADS = web.AppKey("durable_artifact_downloads", object)
 
 _LEGACY_NAMES = {
     STARTED_AT: "started_at",
@@ -41,6 +43,8 @@ _LEGACY_NAMES = {
     TURN_POOL: "turn_pool",
     TUTOR_GATE: "tutor_gate",
     DURABLE_WORKLOAD_STORE_FACTORY: "durable_workload_store_factory",
+    DURABLE_ARTIFACT_STORE_FACTORY: "durable_artifact_store_factory",
+    DURABLE_ARTIFACT_DOWNLOADS: "durable_artifact_downloads",
 }
 
 
