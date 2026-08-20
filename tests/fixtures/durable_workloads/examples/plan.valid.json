@@ -1,0 +1,149 @@
+{
+  "schema_version": "metnos.durable-plan/1",
+  "plan_id": "images.questions.v1",
+  "objective_redacted": "Analizzare un inventario sigillato di immagini, rispondere alle domande dichiarate e produrre artefatti interni verificabili.",
+  "inventory": {
+    "mode": "sealed",
+    "dynamic": false,
+    "max_sources": 50000,
+    "max_total_bytes": 1099511627776,
+    "max_depth": 64,
+    "symlink_policy": "ignore",
+    "unstable_policy": "reject",
+    "missing_policy": "needs_attention"
+  },
+  "terminal_criteria": {
+    "require_inventory_sealed": true,
+    "require_usage_complete": true,
+    "reject_unaccepted_truncation": true
+  },
+  "error_policy": {
+    "mode": "strict",
+    "allowed_error_classes": []
+  },
+  "budgets": {
+    "max_units": 350008,
+    "max_attempts_per_unit": 3,
+    "max_wall_time_s": 604800,
+    "max_bytes_read": 1099511627776,
+    "max_bytes_written": 10737418240,
+    "max_tokens": 25000000,
+    "max_cost_micros": 0,
+    "max_artifacts": 8,
+    "max_concurrency": 8
+  },
+  "stages": [
+    {
+      "key": "inventory",
+      "type": "inventory",
+      "depends_on": [],
+      "runner": {"kind": "internal", "name": "sealed_inventory"},
+      "effect_profile": "pure",
+      "cardinality": {"mode": "singleton", "max_units": 1},
+      "input_bindings": {"inventory": {"ref": "revision.inventory"}},
+      "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.inventory-seal/1"},
+      "retry": {"max_attempts": 1, "base_delay_ms": 0, "max_delay_ms": 0, "retryable_error_classes": []},
+      "timeout_s": 60,
+      "invalidation_keys": ["source.digest"],
+      "resources": {"cpu": 0, "local_io": 1, "network_io": 0, "llm": 0, "vlm": 0, "device": 0},
+      "required": true
+    },
+    {
+      "key": "ocr",
+      "type": "map",
+      "depends_on": ["inventory"],
+      "runner": {"kind": "executor", "name": "read_files_ocr"},
+      "effect_profile": "pure",
+      "cardinality": {"mode": "per_source", "max_units": 50000},
+      "input_bindings": {"paths": {"ref": "source.path"}},
+      "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.executor.read-files-ocr/1"},
+      "retry": {"max_attempts": 3, "base_delay_ms": 1000, "max_delay_ms": 30000, "retryable_error_classes": ["executor_transient"]},
+      "timeout_s": 1800,
+      "invalidation_keys": ["source.digest", "runner.contract_digest", "semantic_args.digest"],
+      "resources": {"cpu": 1, "local_io": 1, "network_io": 0, "llm": 0, "vlm": 1, "device": 1},
+      "required": true
+    },
+    {
+      "key": "observe",
+      "type": "map",
+      "depends_on": ["inventory"],
+      "runner": {"kind": "executor", "name": "describe_images"},
+      "effect_profile": "pure",
+      "cardinality": {"mode": "per_source", "max_units": 50000},
+      "input_bindings": {"paths": {"ref": "source.path"}},
+      "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.executor.describe-images/1"},
+      "retry": {"max_attempts": 3, "base_delay_ms": 2000, "max_delay_ms": 60000, "retryable_error_classes": ["executor_transient", "capability_unavailable"]},
+      "timeout_s": 300,
+      "invalidation_keys": ["source.digest", "runner.contract_digest", "model_binding.digest", "prompt.digest"],
+      "resources": {"cpu": 0, "local_io": 1, "network_io": 0, "llm": 0, "vlm": 1, "device": 0},
+      "required": true
+    },
+    {
+      "key": "answer",
+      "type": "map",
+      "depends_on": ["ocr", "observe"],
+      "runner": {"kind": "workload", "name": "durable.images.answer"},
+      "effect_profile": "pure",
+      "cardinality": {"mode": "per_source", "max_units": 50000},
+      "input_bindings": {
+        "ocr": {"ref": "dependency.result", "stage": "ocr"},
+        "visual": {"ref": "dependency.result", "stage": "observe"}
+      },
+      "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.image-answers/1"},
+      "retry": {"max_attempts": 3, "base_delay_ms": 2000, "max_delay_ms": 60000, "retryable_error_classes": ["executor_transient"]},
+      "timeout_s": 300,
+      "invalidation_keys": ["dependencies.digest", "model_binding.digest", "prompt.digest"],
+      "resources": {"cpu": 0, "local_io": 0, "network_io": 0, "llm": 1, "vlm": 0, "device": 0},
+      "required": true
+    },
+    {
+      "key": "reduce",
+      "type": "reduce",
+      "depends_on": ["answer"],
+      "runner": {"kind": "workload", "name": "durable.images.reduce"},
+      "effect_profile": "pure",
+      "cardinality": {"mode": "per_dependency", "max_units": 20000},
+      "input_bindings": {"entries": {"ref": "dependency.entries", "stage": "answer"}},
+      "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.image-reduction-node/1"},
+      "retry": {"max_attempts": 3, "base_delay_ms": 2000, "max_delay_ms": 60000, "retryable_error_classes": ["executor_transient"]},
+      "timeout_s": 300,
+      "invalidation_keys": ["dependencies.digest", "model_binding.digest", "prompt.digest", "reduction.order", "reduction.fan_in"],
+      "resources": {"cpu": 0, "local_io": 0, "network_io": 0, "llm": 1, "vlm": 0, "device": 0},
+      "required": true
+    },
+    {
+      "key": "validate",
+      "type": "validate",
+      "depends_on": ["answer", "reduce"],
+      "runner": {"kind": "internal", "name": "schema_and_coverage_validator"},
+      "effect_profile": "pure",
+      "cardinality": {"mode": "singleton", "max_units": 1},
+      "input_bindings": {"items": {"ref": "dependency.entries", "stage": "answer"}, "summary": {"ref": "dependency.result", "stage": "reduce"}},
+      "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.image-preset-output/1"},
+      "retry": {"max_attempts": 1, "base_delay_ms": 0, "max_delay_ms": 0, "retryable_error_classes": []},
+      "timeout_s": 300,
+      "invalidation_keys": ["dependencies.digest"],
+      "resources": {"cpu": 1, "local_io": 0, "network_io": 0, "llm": 0, "vlm": 0, "device": 0},
+      "required": true
+    },
+    {
+      "key": "publish",
+      "type": "publish",
+      "depends_on": ["validate"],
+      "runner": {"kind": "internal", "name": "artifact_store_publish"},
+      "effect_profile": "idempotent",
+      "cardinality": {"mode": "singleton", "max_units": 2},
+      "input_bindings": {"validated": {"ref": "dependency.result", "stage": "validate"}},
+      "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.internal-artifacts/1"},
+      "retry": {"max_attempts": 3, "base_delay_ms": 1000, "max_delay_ms": 30000, "retryable_error_classes": ["executor_transient"]},
+      "timeout_s": 300,
+      "invalidation_keys": ["dependencies.digest"],
+      "resources": {"cpu": 0, "local_io": 1, "network_io": 0, "llm": 0, "vlm": 0, "device": 0},
+      "required": true
+    }
+  ],
+  "required_artifacts": [
+    {"name": "analysis_json", "mime_type": "application/json", "schema_version": "metnos.image-preset-output/1", "publication": "internal_store"},
+    {"name": "report_markdown", "mime_type": "text/markdown", "schema_version": "metnos.image-preset-report/1", "publication": "internal_store"}
+  ]
+}

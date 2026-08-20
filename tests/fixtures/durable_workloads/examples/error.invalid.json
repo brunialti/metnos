@@ -1,0 +1,10 @@
+{
+  "schema_version": "metnos.durable-error/1",
+  "error_class": "unknown_magic",
+  "code": "X",
+  "message_key": "testo libero con un percorso personale",
+  "retry": "blind",
+  "scope": "server",
+  "details_redacted": {},
+  "occurred_at": "oggi"
+}

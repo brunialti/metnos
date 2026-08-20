@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metnos.local/schemas/durable-workloads/event-v1.schema.json",
+  "title": "Metnos durable event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workload_id",
+    "event_id",
+    "type",
+    "occurred_at",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {"const": "metnos.durable-event/1"},
+    "workload_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,128}$"},
+    "event_id": {"type": "integer", "minimum": 1},
+    "type": {
+      "enum": [
+        "draft_created",
+        "revision_admitted",
+        "queued",
+        "running",
+        "pause_requested",
+        "paused",
+        "resumed",
+        "cancel_requested",
+        "cancelled",
+        "needs_attention",
+        "attention_resolved",
+        "failed",
+        "completed_with_errors",
+        "completed"
+      ]
+    },
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "payload": {"type": "object", "maxProperties": 64}
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": "metnos.durable-event/1",
+  "workload_id": "wrk_7fd33e19",
+  "event_id": 4,
+  "type": "pause_requested",
+  "occurred_at": "2026-08-20T12:01:00Z",
+  "payload": {"expected_version": 6, "new_version": 7}
+}

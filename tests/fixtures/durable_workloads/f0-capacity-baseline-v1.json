@@ -1,0 +1,55 @@
+{
+  "schema_version": "metnos.durable-capacity-baseline/1",
+  "recorded_at": "2026-08-20T17:37:03Z",
+  "environment": {
+    "scope": "development_host",
+    "cpu_threads_visible": 32,
+    "sqlite_version": "3.45.1",
+    "personal_data_used": false
+  },
+  "measurements": {
+    "interactive_synthetic": {
+      "case": "64 independent 10 ms waits with 8 threads",
+      "elapsed_ms": 81,
+      "interpretation": "scheduler plumbing sanity check only; not a production latency SLO"
+    },
+    "ocr": {
+      "case": "8 generated 1600x1200 PNG files, Tesseract eng psm 3",
+      "elapsed_ms_by_parallelism": {"1": 911, "2": 456, "4": 230},
+      "interpretation": "parallelism helped this synthetic CPU-light sample; real documents and VLM fallback were not represented"
+    },
+    "vlm": {
+      "endpoint": "loopback",
+      "configured_model": "qwen3vl-2b",
+      "configured_timeout_s": 60,
+      "status": "unavailable",
+      "probe_result": "connection_refused",
+      "throughput_measured": false,
+      "interpretation": "absence of evidence cannot grant parallel execution"
+    },
+    "local_io": {
+      "case": "SHA-256 over 64 generated 1 MiB files",
+      "elapsed_ms_by_parallelism": {"1": 31, "2": 17, "4": 9, "8": 6},
+      "interpretation": "warm-cache synthetic upper bound; not evidence for arbitrary storage or remote devices"
+    },
+    "central_scheduler_limits": {
+      "class_1": 2,
+      "class_2": 8,
+      "class_3": 32,
+      "source": "ExecutorScheduler.parallelism_limit on the measured host"
+    }
+  },
+  "frozen_safe_defaults": {
+    "worker_processes": 1,
+    "coordinator_initial_claim_window": 1,
+    "durable_layer_creates_private_pool": false,
+    "resource_caps": {
+      "ocr": 2,
+      "vlm": 1,
+      "llm_binding": 1,
+      "local_io": 2
+    },
+    "authority": "all effective admission remains with the central executor scheduler; these values only restrict it",
+    "activation_gate": "repeat representative OCR, VLM and interactive coexistence measurements before enabling the worker"
+  }
+}

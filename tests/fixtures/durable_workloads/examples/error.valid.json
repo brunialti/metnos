@@ -1,0 +1,10 @@
+{
+  "schema_version": "metnos.durable-error/1",
+  "error_class": "source_missing",
+  "code": "source.disappeared_after_seal",
+  "message_key": "DURABLE_SOURCE_MISSING",
+  "retry": "manual",
+  "scope": "source",
+  "details_redacted": {"source_id": "src_7fd33e", "ordinal": 17},
+  "occurred_at": "2026-08-20T12:00:00Z"
+}

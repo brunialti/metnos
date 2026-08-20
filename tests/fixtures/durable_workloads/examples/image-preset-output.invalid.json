@@ -1,0 +1,26 @@
+{
+  "schema_version": "metnos.image-preset-output/1",
+  "inventory_digest": "not-a-digest",
+  "source_count": -1,
+  "items": [
+    {
+      "source_id": "x",
+      "source_digest": "sha256:bad",
+      "ordinal": -1,
+      "ocr_text": "",
+      "visual_description": "",
+      "answers": [{"question_id": "Q", "answer": "", "confidence": 4, "evidence": ["guess"]}],
+      "errors": []
+    }
+  ],
+  "aggregate": {"summary": "", "question_summaries": []},
+  "coverage": {
+    "discovered": 0,
+    "committed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "attention": 0,
+    "pending": 0,
+    "partial_accepted": false
+  }
+}

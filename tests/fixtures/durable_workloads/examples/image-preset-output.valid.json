@@ -1,0 +1,33 @@
+{
+  "schema_version": "metnos.image-preset-output/1",
+  "inventory_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "source_count": 1,
+  "items": [
+    {
+      "source_id": "src_7fd33e19",
+      "source_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "ordinal": 0,
+      "ocr_text": "Cartello: ingresso.",
+      "visual_description": "Una porta con un cartello.",
+      "answers": [
+        {"question_id": "accesso", "answer": "Il cartello indica l'ingresso.", "confidence": 0.93, "evidence": ["ocr", "visual"]}
+      ],
+      "errors": []
+    }
+  ],
+  "aggregate": {
+    "summary": "L'immagine documenta un ingresso.",
+    "question_summaries": [
+      {"question_id": "accesso", "summary": "Un ingresso identificato.", "source_ordinals": [0]}
+    ]
+  },
+  "coverage": {
+    "discovered": 1,
+    "committed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "attention": 0,
+    "pending": 0,
+    "partial_accepted": false
+  }
+}

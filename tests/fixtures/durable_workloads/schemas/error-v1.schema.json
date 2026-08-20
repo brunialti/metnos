@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metnos.local/schemas/durable-workloads/error-v1.schema.json",
+  "title": "Metnos durable error v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "error_class",
+    "code",
+    "message_key",
+    "retry",
+    "scope",
+    "details_redacted",
+    "occurred_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "metnos.durable-error/1"},
+    "error_class": {
+      "enum": [
+        "invalid_plan",
+        "inventory_unstable",
+        "source_missing",
+        "executor_transient",
+        "executor_permanent",
+        "contract_violation",
+        "budget_exhausted",
+        "lease_lost",
+        "publication_ambiguous",
+        "capability_unavailable",
+        "cancelled"
+      ]
+    },
+    "code": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,95}$"},
+    "message_key": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,95}$"},
+    "retry": {"enum": ["automatic", "reconcile", "manual", "never"]},
+    "scope": {"enum": ["workload", "stage", "source", "unit", "attempt", "artifact", "publication"]},
+    "details_redacted": {"type": "object", "maxProperties": 32},
+    "occurred_at": {"type": "string", "format": "date-time"}
+  }
+}

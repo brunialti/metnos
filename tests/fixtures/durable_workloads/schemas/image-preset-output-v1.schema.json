@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metnos.local/schemas/durable-workloads/image-preset-output-v1.schema.json",
+  "title": "Metnos image corpus preset output v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "inventory_digest",
+    "source_count",
+    "items",
+    "aggregate",
+    "coverage"
+  ],
+  "properties": {
+    "schema_version": {"const": "metnos.image-preset-output/1"},
+    "inventory_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "source_count": {"type": "integer", "minimum": 0},
+    "items": {
+      "type": "array",
+      "maxItems": 1000000,
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "question_summaries"],
+      "properties": {
+        "summary": {"type": "string", "maxLength": 200000},
+        "question_summaries": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {"$ref": "#/$defs/questionSummary"}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["discovered", "committed", "failed", "skipped", "attention", "pending", "partial_accepted"],
+      "properties": {
+        "discovered": {"type": "integer", "minimum": 0},
+        "committed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0},
+        "attention": {"type": "integer", "minimum": 0},
+        "pending": {"type": "integer", "minimum": 0},
+        "partial_accepted": {"type": "boolean"}
+      }
+    }
+  },
+  "$defs": {
+    "answer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "answer", "confidence", "evidence"],
+      "properties": {
+        "question_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+        "answer": {"type": "string", "maxLength": 50000},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "evidence": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {"type": "string", "pattern": "^(ocr|visual|metadata)(\\.[A-Za-z0-9_.-]+)?$"}
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "source_digest", "ordinal", "ocr_text", "visual_description", "answers", "errors"],
+      "properties": {
+        "source_id": {"type": "string", "minLength": 8, "maxLength": 160},
+        "source_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "ordinal": {"type": "integer", "minimum": 0},
+        "ocr_text": {"type": "string", "maxLength": 500000},
+        "visual_description": {"type": "string", "maxLength": 100000},
+        "answers": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/answer"}},
+        "errors": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{1,95}$"}
+        }
+      }
+    },
+    "questionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "summary", "source_ordinals"],
+      "properties": {
+        "question_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+        "summary": {"type": "string", "maxLength": 200000},
+        "source_ordinals": {
+          "type": "array",
+          "maxItems": 1000000,
+          "items": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}
