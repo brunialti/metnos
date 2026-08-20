@@ -47,6 +47,16 @@ _PROVIDER_MARKERS_EN = {
 }
 
 
+# Concepts that decide a CONSENT, and therefore are never localized on their
+# own. A wrong form here does not produce a missed recognition: it produces a
+# consent that was never given. The daemon skips them and leaves them to a
+# person; meanwhile the union with it/en still covers a new language, because
+# «ok», «yes», «no» and «stop» are loanwords written almost everywhere.
+HUMAN_REVIEW_CONCEPTS = frozenset({
+    "confirm.yes", "confirm.no",
+})
+
+
 def register_all() -> None:
     R = _dl.register
 
@@ -182,6 +192,36 @@ def register_all() -> None:
       it=[r"\b(mostra|mostrami|fammi vedere|vedi|visualizz\w*|guarda)\b"],
       en=[r"\b(show|show me|display|view|let me see)\b"])
 
+    # Richiesta ESPLICITA di unicita' delle righe tabellari. Non include
+    # "file duplicati" / "duplicate files": quello descrive il dominio dei
+    # dati, non la cardinalita' dell'output. Il resolver che usa il concept
+    # verifica inoltre che lo schema del consumer esponga `unique_rows`.
+    R("tabular.unique_rows_request", "phrases", match_mode="substring",
+      it=["una sola riga per", "una riga per ogni", "una riga per coppia",
+          "righe uniche", "riga unica", "senza righe duplicate",
+          "rimuovi le righe duplicate", "elimina le righe duplicate",
+          "deduplica le righe", "ogni coppia una sola volta"],
+      en=["one row per", "a single row per", "unique rows", "unique row",
+          "without duplicate rows", "remove duplicate rows",
+          "deduplicate rows", "each pair once"])
+
+    # ── DIREZIONE DI UN'OPERAZIONE SUI PACCHETTI (ADR 0209, 17/8/2026) ──
+    # `install_packages` porta la direzione in un argomento booleano, e il
+    # modello la sbagliava in modo costante e riproducibile: «installa X»
+    # produceva `uninstall=true` su 12 prove su 12, con tre riscritture
+    # diverse della descrizione. La direzione e' ricavabile dalla richiesta
+    # in modo deterministico, quindi non e' il modello a doverla decidere
+    # (§7.9). Le forme vivono qui perche' sono traducibili: una lista
+    # cablata nel codice funzionerebbe solo in italiano e inglese.
+    R("packages.uninstall_request", "phrases", match_mode="substring",
+      it=["disinstalla", "disinstallare", "disinstallazione",
+          "rimuovi il programma", "rimuovere il programma",
+          "togli il programma", "elimina il programma",
+          "cancella il programma", "rimuovi l'applicazione",
+          "togli l'applicazione", "elimina l'applicazione"],
+      en=["uninstall", "remove the program", "remove the app",
+          "delete the program", "delete the app", "get rid of the program"])
+
     # ── SYSTEM STATUS (intent_extractor bypass → get_processes+health) ──
     # «stato del server / come sta il server / server status» = l'INSIEME dei
     # dati di stato del sistema (Roberto 9/7) = get_processes(include_health).
@@ -256,6 +296,37 @@ def register_all() -> None:
           "folder size", "directory size", "disk usage", "size of the folder",
           "size of folder", "size of the directory", "space used"])
 
+    # ── GEO: proximity referred to THE ASKER (dispatch guard
+    # `ensure_proximity_center`) ───────────────────────────────────────
+    # "the pharmacy nearest to where I am" states two things: what to look
+    # for, and that the centre of the search is whoever is asking.  Without
+    # the second one the provider ranks by prominence and returns namesakes
+    # scattered across the country ("Farmacia" in Correzzola, Villasimius,
+    # Forte dei Marmi for someone in Rome).
+    #
+    # `phrases`, not `regex`: the translation daemon localizes phrase lists
+    # for any new language and deliberately refuses to synthesize regexes, so
+    # a regex here would be a permanently two-locale rule.  The inflections
+    # are therefore data, like every other phrase lexicon.
+    #
+    # The guard reads this concept ONLY on a step that declares a `near`
+    # argument and has none, so a form such as "where I am" cannot be
+    # mistaken for a filesystem question.  "in Padova" carries no proximity
+    # form, keeps its named centre and is left alone.
+    R("geo.self_proximity", "phrases", match_mode="substring",
+      it=["vicino a me", "vicina a me", "vicini a me", "vicine a me",
+          "qui vicino", "qua vicino", "qui intorno", "qua intorno",
+          "intorno a me", "attorno a me", "nelle vicinanze", "nei paraggi",
+          "nei dintorni", "in zona", "in questa zona", "qui in zona",
+          "da queste parti", "dove sono", "dove mi trovo", "dove siamo",
+          "dove ci troviamo", "piu vicino", "più vicino", "piu vicina",
+          "più vicina", "piu vicini", "più vicini", "piu vicine",
+          "più vicine"],
+      en=["near me", "near us", "near here", "close to me", "close to us",
+          "close by", "nearby", "around me", "around us", "around here",
+          "where i am", "where we are", "in the area", "in my area",
+          "nearest", "closest"])
+
     # ── MOVE «i file DA/IN una cartella» (dispatch._enrich_move_source_dir) ──
     # «sposta i file da X a Y»: X è un CONTENITORE, i file vanno enumerati
     # (find_files→move), non passati come singola dir-entry (che il safety-net
@@ -278,12 +349,32 @@ def register_all() -> None:
       en=["this site uses cookies", "we use cookies", "accept cookies",
           "cookie policy", "by continuing to browse", "privacy policy"])
 
-    # ── CONFERME DIALOGO (channels/daemon._YES_PATTERN/_NO_PATTERN) ─────
-    R("confirm.yes", "regex",
-      it=[r"\b(s[iì]|alza|aumenta|rilancia|più)\b"],
-      en=[r"\b(yes|y|ok|okay)\b"])
-    R("confirm.no", "regex",
-      it=[r"\b(no|annulla|lascia|niente)\b"], en=[r"\b(n|stop)\b"])
+    # ── DIALOG CONFIRMATIONS ───────────────────────────────────────────
+    # Consumed by `channels/daemon._classify_yes_no` (free reply in chat,
+    # whole-word match) and by `channels/daemon.parse_step_value` (answer to a
+    # `yes_no` step, exact equality). SINGLE authority: neither of them keeps
+    # a list of its own.
+    #
+    # BOUNDARY, and it is worth more than the list: only the affirmation and
+    # only the negation belong here. Until 2026-08-16 `confirm.yes` also held
+    # «alza | aumenta | rilancia | piu'», left over from the result-widening
+    # dialog — made non-blocking on 3/6 and never opened since
+    # (`_orchestrate_cap_expand_dialog` has no caller in production). They
+    # stayed alive on the approval cards, though: answering «aumenta» to «do I
+    # approve this privileged command?» counted as YES. Removed.
+    # Do NOT bring them back: if a «more» is ever needed it is another
+    # concept, with another name, and whoever translates it will know what
+    # they are translating.
+    #
+    # `word`: «sinistra» does not contain a yes, «yesterday» does not contain
+    # a yes. Accented and unaccented variants are BOTH listed, because people
+    # write «piu» and «si» as much as «piu'» and «si'».
+    R("confirm.yes", "phrases", match_mode="word",
+      it=["si", "sì"],
+      en=["yes", "y", "ok", "okay"])
+    R("confirm.no", "phrases", match_mode="word",
+      it=["no", "annulla", "lascia", "niente"],
+      en=["n", "stop"])
 
     # ── OBJECT CLASSIFICATION (store sink) ─────────────────────────────
     # dispatch._normalize_store_clauses (D2-c, 18/6): riferimento a uno
@@ -507,6 +598,14 @@ def register_all() -> None:
           "nel", "nello", "nella", "nei", "negli", "nelle",
           "sul", "sullo", "sulla", "sui", "sugli", "sulle"],
       en=[])
+    # Connettivi che introducono l'oggetto di una relazione: descrivono il
+    # legame grammaticale, non un termine che debba comparire nella pagina.
+    # Tenerli separati dalle preposizioni rende l'estensione i18n additiva.
+    R("text.relation_connector", "phrases", match_mode="word",
+      it=["riguardo", "riguarda", "riguardano", "riguardante",
+          "riguardanti", "relativo", "relativa", "relativi", "relative",
+          "concernente", "concernenti", "inerente", "inerenti"],
+      en=["regarding", "concerning", "related", "about"])
     # The words with which a question is BUILT: they say that something is
     # being asked, never what is being asked for, and no page control is named
     # after them. Additive like the articulated prepositions above, and general

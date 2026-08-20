@@ -1,0 +1,196 @@
+# Manifest — ADR 0209 parte C. Due fasi: la prima NON installa.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "install_packages"
+version     = "0.1.0"
+timeout_s   = 900
+platforms   = ["windows", "linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "installa", "install", "installare", "disinstalla", "uninstall",
+    "rimuovi il programma", "remove the program", "metti su", "set up",
+    "scarica e installa", "aggiorna il programma"
+            ]
+# Un'installazione non e' annullabile: l'ambiente cambia in un modo che
+# nessuno sa ripercorrere all'indietro. La disinstallazione e' un'altra
+# operazione, non un undo (ADR 0209 D3).
+revertible  = false
+critical    = true
+lifecycle   = "active"
+
+[execution]
+# Un'installazione modifica la macchina: seriale per costruzione, e il
+# gestore di pacchetti prende gia' il suo lucchetto di sistema.
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "local_io"
+concurrency_key   = "none"
+equivalence_gate  = "unverified"
+
+[description]
+it = "SCOPO: installa un programma sulla macchina. PATTERN: install_packages(packages=['Microsoft.PowerToys']). NON: scaricare e basta (-> get_urls); eseguire comandi (-> admin). OUT: prima una scheda da approvare con indirizzo e impronta, poi results=[{package_id,ok,action}]."
+en = "SCOPO: installs a program on the machine. PATTERN: install_packages(packages=['Microsoft.PowerToys']). NON: downloading only (-> get_urls); running commands (-> admin). OUT: first an approval card with address and fingerprint, then results=[{package_id,ok,action}]."
+
+[code]
+files  = ["install_packages.py"]
+digest = "sha256:5c529a41617ade86171aa9eb51fe38a6cb893a3d23bdebb56509787998d634ed"
+
+[args]
+type     = "object"
+required = ["packages"]
+
+[args.properties.packages]
+type        = "array"
+uniqueItems = true
+items       = { type = "string", maxLength = 128 }
+maxItems    = 10
+
+[args.properties.packages.description]
+it = "Identificativi ESATTI dei pacchetti, come lista (es. ['Microsoft.PowerToys'] su Windows, ['ripgrep'] su Linux). MATCH ESATTO: '*' e '?' sono RIFIUTATI — «installa qualunque cosa corrisponda» non e' approvabile. Un identificativo che non si risolve sul catalogo blocca tutta la chiamata."
+en = "EXACT package identifiers, as a list (e.g. ['Microsoft.PowerToys'] on Windows, ['ripgrep'] on Linux). EXACT MATCH: '*' and '?' are REFUSED — «install whatever matches» cannot be approved. An identifier that does not resolve against the catalogue stops the whole call."
+
+[args.properties.uninstall]
+type        = "boolean"
+default     = false
+
+[args.properties.uninstall.description]
+it = "Direzione dell'operazione. false (predefinito) = INSTALLA il pacchetto sulla macchina; true = lo RIMUOVE da una macchina dove e' gia' presente. «installa X» -> false. «disinstalla X», «rimuovi X», «togli X» -> true."
+en = "Direction of the operation. false (default) = INSTALLS the package on the machine; true = REMOVES it from a machine where it is already present. «install X» -> false. «uninstall X», «remove X» -> true."
+
+[args.properties.scope]
+type        = "string"
+enum        = ["machine", "user"]
+default     = "machine"
+
+[args.properties.scope.description]
+it = "'machine' = per tutti gli utenti del computer; 'user' = solo per l'utente corrente. Su Windows la portata 'machine' passa dall'aiutante amministrativo di Metnos: dove non e' installato, la scheda offre solo 'user' e spiega come aggiungerlo. Ignorato quando uninstall=true."
+en = "'machine' = for every user of the computer; 'user' = current user only. On Windows the 'machine' scope goes through the Metnos administrative helper: where it is not installed the card offers only 'user' and says how to add it. Ignored when uninstall=true."
+
+[args.properties.actor_consent_token]
+type        = "string"
+runtime_resolved = true
+
+[args.properties.actor_consent_token.description]
+it = "Lo inietta il RUNTIME dopo l'approvazione umana. Il planner non lo vede e non lo scrive mai: senza, la chiamata si ferma alla scheda di conferma."
+en = "Injected by the RUNTIME after human approval. The planner never sees it and never writes it: without it the call stops at the approval card."
+
+[args.properties.install_helper]
+type        = "boolean"
+runtime_resolved = true
+
+[args.properties.install_helper.description]
+it = "Lo mette il RUNTIME sul ramo che la persona ha approvato, quando ha scelto «per tutti gli utenti» su un computer dove l'aiutante amministrativo non c'e' ancora. Il planner non lo vede e non lo scrive mai: da solo non fa niente, vale unicamente insieme al consenso di quella scheda."
+en = "Set by the RUNTIME on the branch the person approved, when they chose «for every user» on a computer where the administrative helper is not there yet. The planner never sees it and never writes it: on its own it does nothing, it counts only together with that card's consent."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  decision?: str,
+  installed: bool,
+  action?: str,
+  source?: str,
+  resolved?: Array<{package_id: str, version: str, url: str, digest: str, digest_algo: str,
+                    publisher: str, source: str}>,
+  needs_inputs?: object,
+  results: Array<{package_id: str, ok: bool, action: str, source?: str, via?: str}>,
+  failed: Array<{package_id?: str, error: str, error_class: str, error_code: str}>,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
+  cap_field?: str,
+  cap_value?: int,
+  error?: str,
+  error_class?: str,
+  error_code?: str
+}
+"""
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "package_id", source = "package_id", cell_max = 120 },
+  { key = "ok", source = "ok", cell_max = 12 },
+  { key = "action", source = "action", cell_max = 24 },
+]
+max_rows = 20
+max_chars = 8000
+overflow = "notice"
+
+# Esecuzione privilegiata mediata dal vaglio: l'installazione modifica la
+# macchina per tutti i suoi utenti. Sul solo scope utente resta comunque
+# un'operazione che scrive fuori dai dati dell'utente. Su Windows i privilegi
+# non li prende questo executor: la portata macchina va all'aiutante elevato
+# attraverso il client, che verifica CON CHI sta parlando prima di scrivere
+# (ADR 0210 D2).
+[[capabilities]]
+name = "system:admin"
+hint = ["winget", "apt-get"]
+
+# Il meccanismo e' l'esecuzione del gestore di pacchetti, dichiarata come
+# tale (stessa coppia di find_packages e get_processes).
+[[capabilities]]
+name = "code:exec"
+hint = ["winget", "apt-get"]
+
+[placement]
+# Un'installazione appartiene alla macchina che la subisce: «installa X sul
+# mio PC» va eseguito su QUEL PC. Chi puo' farlo e dove lo decide il
+# choke-point di invocazione, non questo file (ADR 0209 D4).
+scope    = "any"
+device_ok = true
+min_sandbox = "job-object"
+
+# ADR 0209 D3 — che cosa rispondere a un «annulla».
+#
+# Un'installazione non si annulla: l'ambiente e' cambiato in un modo che
+# nessuno sa ripercorrere all'indietro. Ma dire soltanto «non annullabile» e
+# fermarsi lascia la persona senza la strada per rimediare. Qui l'executor
+# DICHIARA qual e' l'operazione che rimedia; `undo_last_turn` la propone come
+# domanda esplicita e non la esegue mai da solo.
+#
+# E' una dichiarazione, non un caso speciale nel codice dell'undo: qualunque
+# altro executor irreversibile con un rimedio puo' usarne la stessa forma.
+[undo]
+remedy_executor = "install_packages"
+# Gli argomenti del rimedio si ricavano da quelli dell'operazione originale,
+# piu' quelli fissati qui. `packages` viaggia invariato: si disinstalla cio'
+# che si era installato, non altro.
+remedy_args_from = ["packages", "scope"]
+remedy_args_fixed = { uninstall = true }
+remedy_prompt_key = "MSG_UNDO_INSTALL_ASK_UNINSTALL"
+
+[[tests]]
+# Un identificativo che il catalogo non conosce non installa niente.
+#
+# CHE COSA ferma la chiamata dipende dalla macchina: dove nessuna portata
+# regge — un gestore che scrive solo cartelle di sistema, senza privilegi —
+# il rifiuto arriva prima della risoluzione, ed e' quello giusto. Il test si
+# tiene sull'invariante che vale ovunque: la chiamata fallisce e non installa.
+name   = "un_pacchetto_non_risolto_non_installa_niente"
+input  = { packages = ["metnos-package-che-non-esiste-7f09"], scope = "user" }
+expect = { ok = false, metadata_field_eq = { installed = false, ok_count = 0 } }
+
+[[tests]]
+name   = "un_jolly_e_rifiutato"
+input  = { packages = ["micro*"] }
+expect = { ok = false, error_contains = "micro*" }
+
+[[tests]]
+name   = "lista_vuota_e_un_errore_di_argomento"
+input  = { packages = [] }
+expect = { ok = false, error_contains = "packages" }
+
+[[tests]]
+name   = "troppi_pacchetti_in_una_volta"
+input  = { packages = ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11"] }
+expect = { ok = false, error_contains = "11" }

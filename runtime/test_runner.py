@@ -39,10 +39,23 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_shell(cmd):
+def run_shell(cmd, test_env=None):
+    """Esegue setup/teardown nello STESSO ambiente dell'executor.
+
+    Senza `test_env` lo script non vedeva nessuna delle variabili dichiarate
+    dal test: un setup scritto `mkdir -p "$METNOS_USER_DATA"` diventava
+    `mkdir ''` e falliva. Setup ed executor devono vedere un ambiente solo,
+    altrimenti il test misura uno stato che nessuno ha preparato.
+    """
     if not cmd:
         return 0, "", ""
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    env = os.environ.copy()
+    runtime_path = str(Path(__file__).resolve().parent)
+    env.setdefault("METNOS_RUNTIME", runtime_path)
+    for k, v in (test_env or {}).items():
+        env[str(k)] = str(v).replace("{RUNTIME}", runtime_path)
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                            env=env)
     return result.returncode, result.stdout, result.stderr
 
 
@@ -475,7 +488,7 @@ def main():
             # concurrently would test pytest isolation, not executor semantics.
             continue
 
-        setup_rc, _, setup_err = run_shell(setup)
+        setup_rc, _, setup_err = run_shell(setup, test_env)
         if setup_rc != 0:
             print(f"  X {tname}")
             print(f"      SETUP FAIL rc={setup_rc} {setup_err.strip()}")
@@ -496,7 +509,7 @@ def main():
             if actual is None:
                 print(f"  X {tname}")
                 print(f"      INVOKE FAIL rc={rc} {stderr.strip()}")
-                run_shell(teardown)
+                run_shell(teardown, test_env)
                 failed += 1
                 continue
 
@@ -508,7 +521,7 @@ def main():
             else:
                 failures.extend(check_parallel_equivalence(
                     executor_path, args, test_env, actual, equivalence_runs))
-        run_shell(teardown)
+        run_shell(teardown, test_env)
 
         if failures:
             print(f"  X {tname}")

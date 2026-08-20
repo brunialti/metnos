@@ -726,7 +726,8 @@ def _resolve_from_step(args: dict, history: list[StepRun],
     out = {k: v for k, v in args.items() if k != "from_step"}
     # Manifest-driven projection shared with the legacy engine: vector payload
     # plus homogeneous scalar context (for example UID + mailbox account).
-    out, _ = _project_from_entries(out, entries, consumer_schema)
+    out, _ = _project_from_entries(
+        out, entries, consumer_schema, source_result=src)
     return out
 
 
@@ -1393,6 +1394,25 @@ ARG_TRANSFORM_PIPELINE: tuple = (
                  "query-det", reads=frozenset({"query", "dl:photo.metadata_fields"}),
                  writes=frozenset({"args.fields"}),
                  rationale="sinonimi NL metadata foto -> enum canonico via detection_lexicon (7/7/2026)"),
+    ArgTransform("unique_rows", "unique_rows_resolver", "resolve_unique_rows",
+                 "query-det", needs_schema=True,
+                 reads=frozenset({"query", "args_schema",
+                                  "dl:tabular.unique_rows_request"}),
+                 writes=frozenset({"args.unique_rows"}),
+                 rationale="vincolo esplicito di unicita' righe -> flag schema, indipendente dal planner"),
+    ArgTransform("install_direction", "install_direction_resolver",
+                 "resolve_install_direction",
+                 "query-det", needs_schema=True,
+                 reads=frozenset({"query", "args_schema",
+                                  "dl:packages.uninstall_request"}),
+                 writes=frozenset({"args.uninstall"}),
+                 rationale="direzione mettere/togliere dalla richiesta: misurata 12/12 sbagliata dal modello (ADR 0209, 17/8/2026)"),
+    ArgTransform("filter_field", "filter_field_resolver", "resolve_filter_field",
+                 "query-det", reads=frozenset({"args.entries",
+                                                "args.name_regex"}),
+                 writes=frozenset({"args.name_regex", "args.where_field",
+                                   "args.where_regex"}),
+                 rationale="name_regex su record senza name -> unico campo scalare compatibile, altrimenti fail-closed"),
     # ── execution-only: dipendono da runtime ctx/creds/actor -> NON riapplicabili
     #    al record L0 (resterebbero legati allo stato del turno).
     ArgTransform("backend_arg", "backend_resolver", "resolve_backend_arg",

@@ -81,7 +81,11 @@ pub struct HintGrant {
 impl HintGrant {
     /// Maschera ACL Win32 corrispondente (read-only vs read/write/delete).
     pub fn access_mask(&self) -> u32 {
-        if self.write { ACCESS_WRITE } else { ACCESS_READ }
+        if self.write {
+            ACCESS_WRITE
+        } else {
+            ACCESS_READ
+        }
     }
 }
 
@@ -156,7 +160,8 @@ pub fn hint_grants(caps: &[Capability]) -> (Vec<HintGrant>, bool) {
 
 fn deepest_existing_dir(candidate: &str) -> Option<PathBuf> {
     let expanded = if let Some(rest) = candidate
-        .strip_prefix("~/").or_else(|| candidate.strip_prefix("~\\"))
+        .strip_prefix("~/")
+        .or_else(|| candidate.strip_prefix("~\\"))
     {
         dirs::home_dir()?.join(rest)
     } else if candidate == "~" {
@@ -179,15 +184,15 @@ fn deepest_existing_dir(candidate: &str) -> Option<PathBuf> {
 /// Unica derivazione di autorita' filesystem per Linux e Windows: hint del
 /// manifest + target concreti firmati nell'invocazione, mai oltre la massima
 /// modalita' fs dichiarata dall'executor.
-pub fn invocation_grants(caps: &[Capability], args_json: &str)
-    -> (Vec<HintGrant>, bool)
-{
+pub fn invocation_grants(caps: &[Capability], args_json: &str) -> (Vec<HintGrant>, bool) {
     let (mut grants, want_net) = hint_grants(caps);
     let Some(write) = caps_fs_access(caps) else {
         return (grants, want_net);
     };
     for candidate in extract_path_args(args_json) {
-        let Some(root) = deepest_existing_dir(&candidate) else { continue };
+        let Some(root) = deepest_existing_dir(&candidate) else {
+            continue;
+        };
         if let Some(existing) = grants.iter_mut().find(|grant| grant.root == root) {
             existing.write |= write;
         } else {
@@ -213,7 +218,11 @@ pub fn caps_fs_access(caps: &[Capability]) -> Option<bool> {
             }
         }
     }
-    if any_fs { Some(any_write) } else { None }
+    if any_fs {
+        Some(any_write)
+    } else {
+        None
+    }
 }
 
 /// True se UNA QUALUNQUE capability dell'executor implica lo spawn di un
@@ -293,10 +302,19 @@ pub fn has_unanchored_path_args(args_json: &str) -> bool {
 
     fn path_key(key: &str) -> bool {
         let key = key.to_ascii_lowercase().replace('-', "_");
-        matches!(key.as_str(),
-                 "path" | "paths" | "base_path" | "root" | "dir" |
-                 "dirs" | "directory" | "directories" | "src" | "dst")
-            || key.ends_with("_path")
+        matches!(
+            key.as_str(),
+            "path"
+                | "paths"
+                | "base_path"
+                | "root"
+                | "dir"
+                | "dirs"
+                | "directory"
+                | "directories"
+                | "src"
+                | "dst"
+        ) || key.ends_with("_path")
             || key.ends_with("_paths")
             || key.ends_with("_dir")
             || key.ends_with("_directory")
@@ -306,17 +324,17 @@ pub fn has_unanchored_path_args(args_json: &str) -> bool {
         match value {
             serde_json::Value::String(raw) if is_path_value => {
                 let candidate = raw.split('{').next().unwrap_or(raw).trim();
-                !candidate.is_empty()
-                    && !candidate.contains("://")
-                    && !is_abs_pathish(candidate)
+                !candidate.is_empty() && !candidate.contains("://") && !is_abs_pathish(candidate)
             }
-            serde_json::Value::Array(values) =>
-                values.iter().any(|value| walk(value, is_path_value)),
+            serde_json::Value::Array(values) => {
+                values.iter().any(|value| walk(value, is_path_value))
+            }
             // Su un oggetto annidato il nome della chiave figlia e'
             // autoritativo: `files:[{path,content}]` non trasforma `content`
             // in un path soltanto perche' vive dentro la collezione `files`.
-            serde_json::Value::Object(values) => values.iter().any(
-                |(key, value)| walk(value, path_key(key))),
+            serde_json::Value::Object(values) => {
+                values.iter().any(|(key, value)| walk(value, path_key(key)))
+            }
             _ => false,
         }
     }
@@ -329,8 +347,7 @@ pub fn has_unanchored_path_args(args_json: &str) -> bool {
 /// backslash solo quando precedono una virgoletta (o la virgoletta di
 /// chiusura). Necessario perche' i path Windows contengono `\` e spazi.
 pub fn quote_win_arg(arg: &str) -> String {
-    let needs_quote = arg.is_empty()
-        || arg.chars().any(|c| c == ' ' || c == '\t' || c == '"');
+    let needs_quote = arg.is_empty() || arg.chars().any(|c| c == ' ' || c == '\t' || c == '"');
     if !needs_quote {
         return arg.to_string();
     }
@@ -369,7 +386,11 @@ pub fn quote_win_arg(arg: &str) -> String {
 /// Command line completa (`argv[0]` + argomenti) come UNA stringa quotata,
 /// pronta per il buffer mutabile passato a `CreateProcessW`.
 pub fn build_command_line(parts: &[String]) -> String {
-    parts.iter().map(|p| quote_win_arg(p)).collect::<Vec<_>>().join(" ")
+    parts
+        .iter()
+        .map(|p| quote_win_arg(p))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Blocco environment UTF-16 per `CreateProcessW` (con
@@ -441,8 +462,7 @@ impl AclRegistry {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let bytes = serde_json::to_vec_pretty(self)
-            .map_err(std::io::Error::other)?;
+        let bytes = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
         let tmp = path.with_extension("json.tmp");
         use std::io::Write as _;
         let mut file = std::fs::File::create(&tmp)?;
@@ -508,7 +528,10 @@ mod tests {
         // Su questa piattaforma (CI Linux) "/tmp" E' assoluto → ancorato. Su
         // Windows lo stesso hint NON e' assoluto e glob_root ritorna None (niente
         // grant spurio su \tmp): la logica e' `pb.is_absolute()`, delegata a std.
-        assert!(PathBuf::from("/tmp").is_absolute(), "precondizione del test (Linux)");
+        assert!(
+            PathBuf::from("/tmp").is_absolute(),
+            "precondizione del test (Linux)"
+        );
         assert_eq!(glob_root("/var/data/**"), Some(PathBuf::from("/var/data")));
     }
 
@@ -525,7 +548,13 @@ mod tests {
         for n in ["network.read", "network.write", "network:http", "net:read"] {
             assert!(cap_is_network(n), "{n} deve valere rete");
         }
-        for n in ["fs:read", "fs:write", "exec_subprocess", "exec_net", "metnos:read"] {
+        for n in [
+            "fs:read",
+            "fs:write",
+            "exec_subprocess",
+            "exec_net",
+            "metnos:read",
+        ] {
             assert!(!cap_is_network(n), "{n} NON deve valere rete");
         }
     }
@@ -539,8 +568,16 @@ mod tests {
         }
         // Tutte le altre famiglie: AppContainer-izzabili → NON system-exec.
         for n in [
-            "fs:read", "fs:write", "net:read", "network.read", "network:http",
-            "metnos:read", "metnos:write", "index.read", "mail:send", "time:read",
+            "fs:read",
+            "fs:write",
+            "net:read",
+            "network.read",
+            "network:http",
+            "metnos:read",
+            "metnos:write",
+            "index.read",
+            "mail:send",
+            "time:read",
         ] {
             assert!(!cap_is_system_exec(n), "{n} NON deve valere system-exec");
         }
@@ -551,12 +588,24 @@ mod tests {
         // get_processes reale: solo code:exec.
         assert!(needs_system_exec(&[cap("code:exec", &["ps", "/proc"])]));
         // find_contacts reale: exec_subprocess + exec_net.
-        assert!(needs_system_exec(&[cap("exec_subprocess", &[]), cap("exec_net", &[])]));
+        assert!(needs_system_exec(&[
+            cap("exec_subprocess", &[]),
+            cap("exec_net", &[])
+        ]));
         // Mista: basta UNA capability exec a saltare l'AppContainer.
-        assert!(needs_system_exec(&[cap("fs:write", &["~/x/**"]), cap("code:exec", &[])]));
+        assert!(needs_system_exec(&[
+            cap("fs:write", &["~/x/**"]),
+            cap("code:exec", &[])
+        ]));
         // Solo fs/net → AppContainer-izzabile.
-        assert!(!needs_system_exec(&[cap("fs:read", &["~/x/**"]), cap("network.read", &[])]));
-        assert!(!needs_system_exec(&[]), "nessuna capability → non system-exec");
+        assert!(!needs_system_exec(&[
+            cap("fs:read", &["~/x/**"]),
+            cap("network.read", &[])
+        ]));
+        assert!(
+            !needs_system_exec(&[]),
+            "nessuna capability → non system-exec"
+        );
     }
 
     #[test]
@@ -573,9 +622,18 @@ mod tests {
         assert_eq!(
             grants,
             vec![
-                HintGrant { root: home.join("notes"), write: false },
-                HintGrant { root: PathBuf::from("/tmp"), write: false },
-                HintGrant { root: home.join("Documents"), write: true },
+                HintGrant {
+                    root: home.join("notes"),
+                    write: false
+                },
+                HintGrant {
+                    root: PathBuf::from("/tmp"),
+                    write: false
+                },
+                HintGrant {
+                    root: home.join("Documents"),
+                    write: true
+                },
             ]
         );
         assert_eq!(grants[2].access_mask(), ACCESS_WRITE);
@@ -591,13 +649,17 @@ mod tests {
     #[test]
     fn relative_path_args_are_unanchored_but_content_is_not() {
         assert!(has_unanchored_path_args(
-            r#"{"base_path":"Documenti/Progetto Atlas","patterns":["*.pdf"]}"#));
+            r#"{"base_path":"Documenti/Progetto Atlas","patterns":["*.pdf"]}"#
+        ));
         assert!(has_unanchored_path_args(
-            r#"{"files":[{"path":"report.xlsx","content":"hello"}]}"#));
+            r#"{"files":[{"path":"report.xlsx","content":"hello"}]}"#
+        ));
         assert!(!has_unanchored_path_args(
-            r#"{"files":[{"path":"C:\\Atlas\\report.xlsx","content":"relative/text"}]}"#));
+            r#"{"files":[{"path":"C:\\Atlas\\report.xlsx","content":"relative/text"}]}"#
+        ));
         assert!(!has_unanchored_path_args(
-            r#"{"path":"C:\\Atlas","file_type":"pdf","source_name":"a.pdf"}"#));
+            r#"{"path":"C:\\Atlas","file_type":"pdf","source_name":"a.pdf"}"#
+        ));
     }
 
     #[test]
@@ -606,7 +668,9 @@ mod tests {
         assert!(is_broad_acl_root(&home, Some(&home)));
         assert!(is_broad_acl_root(Path::new("/"), Some(&home)));
         assert!(!is_broad_acl_root(
-            Path::new("/home/user/Documents/Atlas"), Some(&home)));
+            Path::new("/home/user/Documents/Atlas"),
+            Some(&home)
+        ));
     }
 
     #[test]
@@ -617,8 +681,11 @@ mod tests {
             Some(true),
             "una sola fs:write basta a promuovere a write"
         );
-        assert_eq!(caps_fs_access(&[cap("network.read", &[])]), None,
-                   "nessuna capability fs → nessun grant da arg");
+        assert_eq!(
+            caps_fs_access(&[cap("network.read", &[])]),
+            None,
+            "nessuna capability fs → nessun grant da arg"
+        );
         assert_eq!(caps_fs_access(&[]), None);
     }
 
@@ -633,8 +700,14 @@ mod tests {
         assert!(got.contains(&r"C:\Users\rober\Documents\nota.txt".to_string()));
         assert!(got.contains(&"/tmp/a.txt".to_string()));
         assert!(got.contains(&"D:/dati/b.csv".to_string()));
-        assert!(!got.iter().any(|s| s.contains("ciao")), "il contenuto non e' un target");
-        assert!(!got.iter().any(|s| s == "relativo/c"), "relativo non ancorabile");
+        assert!(
+            !got.iter().any(|s| s.contains("ciao")),
+            "il contenuto non e' un target"
+        );
+        assert!(
+            !got.iter().any(|s| s == "relativo/c"),
+            "relativo non ancorabile"
+        );
     }
 
     #[test]
@@ -642,8 +715,10 @@ mod tests {
         let j = r#"{"path_template":"/opt/metnos/issues/issue_{number}.json",
                    "home":"~/notes/scratch/x.txt"}"#;
         let got = extract_path_args(j);
-        assert!(got.contains(&"/opt/metnos/issues/issue_".to_string()),
-                "prefisso statico prima della graffa");
+        assert!(
+            got.contains(&"/opt/metnos/issues/issue_".to_string()),
+            "prefisso statico prima della graffa"
+        );
         assert!(got.contains(&"~/notes/scratch/x.txt".to_string()));
     }
 
@@ -666,7 +741,11 @@ mod tests {
         assert_eq!(quote_win_arg(r#"a"b"#), r#""a\"b""#);
         // backslash finale dentro un arg quotato: raddoppiato prima di ".
         assert_eq!(quote_win_arg(r"dir\ x\"), "\"dir\\ x\\\\\"");
-        assert_eq!(quote_win_arg(""), "\"\"", "arg vuoto = coppia di virgolette");
+        assert_eq!(
+            quote_win_arg(""),
+            "\"\"",
+            "arg vuoto = coppia di virgolette"
+        );
     }
 
     #[test]
@@ -706,7 +785,10 @@ mod tests {
     fn acl_registry_record_is_idempotent() {
         let mut r = AclRegistry::default();
         assert!(r.record(rec("/a", "S-1")), "prima aggiunta");
-        assert!(!r.record(rec("/a", "S-1")), "duplicato (path,sid) NON riaggiunto");
+        assert!(
+            !r.record(rec("/a", "S-1")),
+            "duplicato (path,sid) NON riaggiunto"
+        );
         assert!(r.record(rec("/a", "S-2")), "sid diverso = altra voce");
         assert!(r.record(rec("/b", "S-1")), "path diverso = altra voce");
         assert_eq!(r.grants.len(), 3);
@@ -716,8 +798,8 @@ mod tests {
 
     #[test]
     fn acl_registry_roundtrip_and_drain() {
-        let path = std::env::temp_dir()
-            .join(format!("metnos-acl-test-{}.json", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("metnos-acl-test-{}.json", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
         let mut r = AclRegistry::default();

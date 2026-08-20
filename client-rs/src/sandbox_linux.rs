@@ -43,14 +43,16 @@ pub struct SandboxOutput {
 /// `cargo build --target x86_64-pc-windows-gnu`), quindi e' la sede
 /// naturale — sandbox_windows.rs lo importa da qui.
 pub fn pythonpath_sep() -> char {
-    if cfg!(windows) { ';' } else { ':' }
+    if cfg!(windows) {
+        ';'
+    } else {
+        ':'
+    }
 }
 
 /// Path di sistema montati read-only in ogni sandbox (solo quelli esistenti).
 #[cfg(unix)]
-const SYSTEM_RO: &[&str] = &[
-    "/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32", "/etc",
-];
+const SYSTEM_RO: &[&str] = &["/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32", "/etc"];
 
 /// Esegue `exec` con `python` passando `args_json` su stdin, dentro la sandbox.
 /// `extra_env`: coppie (chiave, valore) iniettate (env_injections + PYTHONPATH).
@@ -89,9 +91,17 @@ pub async fn run_sandboxed(
 
     // PYTHONPATH: shim (executor_helpers + messages) + dir executor. METNOS_RUNTIME
     // = shim dir cosi' il bootstrap sys.path degli executor la trova.
-    let pythonpath = format!("{}{}{}", shim_dir.display(), pythonpath_sep(), exec.dir.display());
+    let pythonpath = format!(
+        "{}{}{}",
+        shim_dir.display(),
+        pythonpath_sep(),
+        exec.dir.display()
+    );
     cmd.env_clear();
-    cmd.env("PATH", std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into()));
+    cmd.env(
+        "PATH",
+        std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into()),
+    );
     cmd.env("PYTHONPATH", &pythonpath);
     cmd.env("METNOS_RUNTIME", shim_dir);
     cmd.env("PYTHONDONTWRITEBYTECODE", "1");
@@ -99,7 +109,10 @@ pub async fn run_sandboxed(
     // ambiguita' di encoding indipendentemente dal LANG del processo padre.
     cmd.env("PYTHONUTF8", "1");
     cmd.env("PYTHONIOENCODING", "utf-8");
-    cmd.env("LANG", std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()));
+    cmd.env(
+        "LANG",
+        std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()),
+    );
     // Home reale (0.2.13, come sandbox_windows): `~` e Path.home() nei moduli
     // shim; bwrap comunque limita i bind alle capabilities del manifest.
     if let Ok(v) = std::env::var("HOME") {
@@ -109,7 +122,9 @@ pub async fn run_sandboxed(
         cmd.env(k, v);
     }
 
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     // Kill REALE al timeout (§12), due strati:
     // - process group dedicato: kill(-pid) abbatte l'ALBERO anche senza bwrap
@@ -213,13 +228,17 @@ fn bwrap_args(
     // Capabilities → bind. fs:read → ro-bind; fs:write → bind (rw); network
     // → --share-net (default e' unshare). code:exec hint ["*"] = nessun bind
     // extra (l'executor usa PATH gia' montato read-only).
-    let (grants, share_net) = crate::sandbox_common::invocation_grants(
-        &exec.capabilities, args_json);
+    let (grants, share_net) =
+        crate::sandbox_common::invocation_grants(&exec.capabilities, args_json);
     for grant in grants {
         if !grant.root.exists() {
             continue;
         }
-        a.push(if grant.write { "--bind".into() } else { "--ro-bind".into() });
+        a.push(if grant.write {
+            "--bind".into()
+        } else {
+            "--ro-bind".into()
+        });
         a.push(grant.root.display().to_string());
         a.push(grant.root.display().to_string());
     }
@@ -262,7 +281,10 @@ pub fn bwrap_available() -> bool {
 
 pub fn sandbox_disabled() -> bool {
     matches!(
-        std::env::var("METNOS_SANDBOX").unwrap_or_default().to_lowercase().as_str(),
+        std::env::var("METNOS_SANDBOX")
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str(),
         "0" | "off" | "no" | "false"
     )
 }
@@ -274,7 +296,11 @@ pub fn sandbox_disabled() -> bool {
 /// "none".
 #[cfg(unix)]
 pub fn sandbox_level() -> &'static str {
-    if bwrap_available() && !sandbox_disabled() { "bwrap" } else { "none" }
+    if bwrap_available() && !sandbox_disabled() {
+        "bwrap"
+    } else {
+        "none"
+    }
 }
 
 #[cfg(unix)]
@@ -294,8 +320,8 @@ mod tests {
 
     #[test]
     fn bwrap_binds_client_owned_user_data_rw() {
-        let root = std::env::temp_dir().join(format!(
-            "metnos-shimdata-bind-test-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("metnos-shimdata-bind-test-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let exec = CachedExecutor {
             name: "bind_test".into(),
@@ -303,16 +329,15 @@ mod tests {
             entry: root.join("executor.py"),
             capabilities: vec![],
             min_sandbox: "job-object".into(),
+            managed_providers: vec![],
         };
-        let extra = vec![(
-            "METNOS_USER_DATA".to_string(), root.display().to_string())];
+        let extra = vec![("METNOS_USER_DATA".to_string(), root.display().to_string())];
 
-        let args = bwrap_args(
-            &exec, Path::new("/usr/bin/python3"), &root, "{}", &extra);
+        let args = bwrap_args(&exec, Path::new("/usr/bin/python3"), &root, "{}", &extra);
         let expected = root.display().to_string();
-        assert!(args.windows(3).any(|values| {
-            values == ["--bind", expected.as_str(), expected.as_str()]
-        }));
+        assert!(args
+            .windows(3)
+            .any(|values| { values == ["--bind", expected.as_str(), expected.as_str()] }));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -329,15 +354,18 @@ mod tests {
         }
         std::env::set_var("METNOS_SANDBOX", "off");
 
-        let dir = std::env::temp_dir().join(format!(
-            "metnos-kill-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("metnos-kill-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let beat = dir.join("beat.txt");
         let script = dir.join("sleeper.py");
-        std::fs::write(&script, format!(
+        std::fs::write(
+            &script,
+            format!(
             "import time\nwhile True:\n    open({beat:?}, 'a').write('x')\n    time.sleep(0.05)\n",
             beat = beat.to_str().unwrap(),
-        )).unwrap();
+        ),
+        )
+        .unwrap();
 
         let exec = CachedExecutor {
             name: "sleeper_test".into(),
@@ -345,11 +373,20 @@ mod tests {
             entry: script.clone(),
             capabilities: vec![],
             min_sandbox: "job-object".into(),
+            managed_providers: vec![],
         };
         let out = run_sandboxed(
-            &exec, &python, &dir, "{}", &[],
-            &Limits { wall: Duration::from_millis(400) },
-        ).await.expect("run_sandboxed");
+            &exec,
+            &python,
+            &dir,
+            "{}",
+            &[],
+            &Limits {
+                wall: Duration::from_millis(400),
+            },
+        )
+        .await
+        .expect("run_sandboxed");
         assert!(out.timed_out, "atteso timeout");
 
         // Il processo e' morto: il file heartbeat smette di crescere.
@@ -357,8 +394,10 @@ mod tests {
         let size_a = std::fs::metadata(&beat).map(|m| m.len()).unwrap_or(0);
         tokio::time::sleep(Duration::from_millis(500)).await;
         let size_b = std::fs::metadata(&beat).map(|m| m.len()).unwrap_or(0);
-        assert_eq!(size_a, size_b,
-                   "l'executor scrive ancora dopo il timeout: kill mancato");
+        assert_eq!(
+            size_a, size_b,
+            "l'executor scrive ancora dopo il timeout: kill mancato"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

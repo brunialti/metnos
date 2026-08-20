@@ -1,0 +1,60 @@
+[package]
+name = "metnos-helper"
+version = "0.2.55"
+edition = "2021"
+description = "Metnos elevated helper for Windows package operations (ADR 0210)"
+license = "AGPL-3.0-only"
+
+# Dipendenze RIDOTTE AL MINIMO, e la riduzione e' la scelta di sicurezza piu'
+# importante di questo progetto. L'aiutante e' il software piu' privilegiato
+# che Metnos installi su una macchina altrui: tutto cio' che linka diventa
+# superficie con privilegi di sistema.
+#
+# It deliberately has no HTTP client, async runtime, archive extractor, or
+# executor loader. The helper never executes received code: it accepts only
+# closed typed requests over a local pipe and builds each operation internally.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# La firma della richiesta si verifica qui, al momento di agire, invece di
+# fidarsi della decisione ricevuta (ADR 0210 D3).
+ed25519-dalek = "2"
+sha2 = "0.10"
+hex = "0.4"
+# La firma del descrittore d'aggiornamento arriva in base64url, come la
+# scrive il server. Si usa la stessa libreria del client invece di
+# scriverne una a mano: un decodificatore fatto in casa dentro il
+# componente privilegiato sarebbe la parte meno provata di tutto il
+# sistema, proprio dove serve il contrario.
+base64 = "0.22"
+ureq = { version = "3.4.0", default-features = false, features = ["rustls"] }
+
+[target.'cfg(windows)'.dependencies]
+# Solo cio' che serve alla pipe con ACL e alla verifica del chiamante:
+#   Win32_System_Pipes            → CreateNamedPipeW, ConnectNamedPipe
+#   Win32_Security                → SID, ACL, SECURITY_ATTRIBUTES
+#   Win32_Security_Authorization  → SetEntriesInAclW, ConvertStringSidToSidW
+#   Win32_System_Threading        → OpenProcessToken, apertura del chiamante
+#   Win32_Foundation              → handle, codici d'errore
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_System_IO",
+    "Win32_System_Memory",
+    "Win32_System_Registry",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Storage_FileSystem",
+    # Il protocollo del gestore dei servizi: senza, un programma registrato
+    # come servizio non riesce a dire «eccomi» e Windows lo dichiara caduto
+    # dopo trenta secondi (errore 1053).
+    "Win32_System_Services",
+] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

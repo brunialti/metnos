@@ -140,6 +140,22 @@ header form button:hover{color:var(--accent)}
 .msg .msg-fb-btn:hover{opacity:1;transform:scale(1.12)}
 .msg .msg-fb-btn:disabled{cursor:default;opacity:.2}
 .msg .msg-fb-pending{opacity:.5}
+/* ---------- decisione si'/no: due bottoni al posto della parola scritta.
+   Il tap manda una decisione legata a QUELLA domanda, non un testo da
+   interpretare. Target ≥40px: si preme col pollice senza sbagliare. ------ */
+.msg .msg-decide{display:flex;gap:.5rem;margin-top:.65rem;flex-wrap:wrap}
+.msg .msg-decide-btn{cursor:pointer;font:inherit;font-size:.95em;
+                      min-height:40px;padding:.45rem 1.1rem;
+                      border-radius:var(--r-1);
+                      border:1px solid var(--line);
+                      background:var(--bubble-bg,transparent);color:inherit;
+                      transition:opacity var(--t-1) var(--ease),
+                                 transform var(--t-1) var(--ease)}
+.msg .msg-decide-btn.yes{border-color:var(--ok-fg);color:var(--ok-fg)}
+.msg .msg-decide-btn.no{border-color:var(--err-fg);color:var(--err-fg)}
+.msg .msg-decide-btn:hover:not(:disabled){transform:translateY(-1px)}
+.msg .msg-decide-btn:disabled{cursor:default;opacity:.35;transform:none}
+body.readonly #log .msg-decide-btn{display:none}
 .msg .msg-fb-done{color:var(--muted);font-size:.95em;margin-left:.4rem;
                    opacity:.85;white-space:nowrap}
 .msg .msg-fb-done.ok{color:var(--ok-fg);opacity:1}
@@ -1411,9 +1427,51 @@ function renderCompletedTurn(data, options){
     right: closeHms,
     turn_id: turnId,
   };
-  return renderAtPlaceholder(options.placeholder || null, () => add(
+  const bubble = renderAtPlaceholder(options.placeholder || null, () => add(
     'bot', body, meta, options.persist !== false,
     data.attachments || null, galleryInfo, bodyAsHtml));
+  attachDecisionButtons(bubble, data.pending_decision);
+  return bubble;
+}
+
+// ---------- Decisione si'/no a bottoni (17/8/2026) ----------
+// Quando il server lascia aperta una domanda che si chiude con un si' o un
+// no, la chat offre due bottoni invece di far scrivere la risposta. Il tap
+// NON manda la parola «si'»: manda una decisione tipizzata legata a quella
+// proposta (`turn_id`), quindi non c'e' testo da interpretare e non c'e'
+// fraintendimento possibile. E' il contratto dei bottoni Telegram su un
+// altro trasporto. Scrivere la risposta continua a funzionare: i due modi
+// sono complementari, e il controllo sul testo resta l'unica difesa per chi
+// digita.
+let pendingDecision = null;
+
+function attachDecisionButtons(bubble, decision){
+  if(!bubble || !decision || !decision.turn_id) return;
+  if(bubble.querySelector('.msg-decide')) return;
+  const row = document.createElement('div');
+  row.className = 'msg-decide';
+  const mk = (verdict, label, cls) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'msg-decide-btn ' + cls;
+    b.textContent = label;
+    b.addEventListener('click', () => {
+      if(busy || sessionReadOnly) return;
+      // Un solo tap decide: disabilitare ENTRAMBI evita il doppio invio,
+      // che su una proposta gia' consumata sarebbe un secondo turno al
+      // buio.
+      row.querySelectorAll('button').forEach(x => { x.disabled = true; });
+      pendingDecision = {decision: verdict, turn_id: decision.turn_id};
+      q.value = label;
+      form.requestSubmit ? form.requestSubmit()
+                         : form.dispatchEvent(new Event('submit', {cancelable: true}));
+    });
+    return b;
+  };
+  row.appendChild(mk('yes', decision.yes_label || 'OK', 'yes'));
+  row.appendChild(mk('no', decision.no_label || 'No', 'no'));
+  bubble.appendChild(row);
+  scrollToEnd();
 }
 
 // Ricostruisce la chat dai messaggi salvati (su page load).
@@ -1887,6 +1945,17 @@ function subscribeSessionEvents(token){
   try {
     const url = '/agent/session/events?device_token=' + encodeURIComponent(token);
     sessionSse = new EventSource(url);
+    // Esito di un'operazione che ha finito DOPO che le avevamo gia' risposto
+    // «sta lavorando». Senza questo, chi ha premuto un bottone su qualcosa di
+    // lento — un'installazione che apre una finestra di conferma sul computer
+    // e resta li' finche' non rispondi — non saprebbe mai com'e' finita.
+    // Il testo arriva gia' nella lingua dell'istanza: qui si mostra e basta.
+    sessionSse.addEventListener('operation_done', (ev) => {
+      let info = {};
+      try { info = JSON.parse(ev.data || '{}'); } catch(_){}
+      const testo = (info && info.message) ? String(info.message) : '';
+      if(testo) add('bot', testo, null, true);
+    });
     sessionSse.addEventListener('session_revoked', (ev) => {
       let info = {};
       try { info = JSON.parse(ev.data || '{}'); } catch(_){}
@@ -2050,6 +2119,10 @@ form.addEventListener('submit', async (e) => {
     return;
   }
   const query = q.value.trim();
+  // La decisione vale per QUESTO invio e per nessun altro: la si preleva
+  // subito, cosi' un turno scritto a mano dopo un tap non la eredita.
+  const decisionForThisTurn = pendingDecision;
+  pendingDecision = null;
   // Allow submit con solo foto (no caption): la query default e' "trova
   // foto simili" implicitamente via reference_images. Richiediamo testo
   // SOLO se non ci sono allegati.
@@ -2167,11 +2240,14 @@ form.addEventListener('submit', async (e) => {
         submitOpts = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+          body: JSON.stringify(Object.assign({
             query,
             conversation_id: conversationId,
             device_token: deviceToken,
-          }),
+          }, decisionForThisTurn ? {
+            decision: decisionForThisTurn.decision,
+            decision_turn_id: decisionForThisTurn.turn_id,
+          } : {})),
         };
       }
       const submitResp = await fetch('/agent/turn/submit', submitOpts);

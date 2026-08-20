@@ -96,7 +96,8 @@ class Validator:
                     step_idx=i, code="invalid_args", detail=err))
         return ValidationResult(ok=not errors, errors=errors)
 
-    def _check_args(self, args: dict, schema: dict) -> Optional[str]:
+    @staticmethod
+    def _check_args(args: dict, schema: dict) -> Optional[str]:
         """Lightweight: required + requires_one_of + type check sui top-level."""
         props = schema.get("properties") or {}
         required = schema.get("required") or []
@@ -107,6 +108,16 @@ class Validator:
         # Coerente con agent_runtime.validate_args (from_step → entries).
         for r in required:
             if r in args and not _is_placeholder(args.get(r)):
+                # Una lista OBBLIGATORIA vuota non e' un valore: e' la chiave
+                # senza il contenuto. Eseguire vuol dire chiamare lo strumento
+                # su niente, che puo' solo fallire — e il turno muore su un
+                # errore d'argomento invece di riproporre il piano. Se il vuoto
+                # fosse legittimo, l'argomento non starebbe fra i required.
+                # Difetto reale «ho outlook sul pc?» (17/8/2026): strumento
+                # giusto, `packages: []`, turno chiuso senza risposta.
+                if (isinstance(args.get(r), (list, tuple))
+                        and len(args.get(r)) == 0):
+                    return f"required arg '{r}' is an empty list"
                 continue  # valore concreto presente
             if r in args:
                 continue  # placeholder ${...}: risolto dall'Executor
@@ -195,3 +206,16 @@ class Validator:
                     f"ricevuto {type(v).__name__}"
                 )
         return None
+
+
+def args_contract_error(args: dict, schema: dict) -> Optional[str]:
+    """Why `args` do not satisfy `schema`, or None when they do.
+
+    The same oracle the Validator applies to a finished plan, exposed so a
+    guard that rewrites a step can ask the question BEFORE committing the
+    rewrite.  Without it a guard can hand the executor a step the validator
+    would have rejected: measured on "where is the Duomo di Milano", where the
+    producer was realigned to a sibling that only accepts coordinates, and the
+    turn died on a missing argument instead of searching by name.
+    """
+    return Validator._check_args(args or {}, schema or {})

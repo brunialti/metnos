@@ -224,8 +224,23 @@ _WEBRTC_OFF_JS = r"""
 # drop-in, fix #13). Il default resta onesto; il webdriver-hiding vive nel
 # LAUNCH-arg del browser stealth, non qui.
 
+_ACCESSIBLE_ACTION_NAME_JS = r"""
+  const metnosNameOf = el => {
+    const labelled = (el.getAttribute('aria-labelledby') || '').split(/\s+/)
+      .filter(Boolean).map(id => document.getElementById(id))
+      .filter(Boolean).map(x => x.innerText || x.textContent || '').join(' ');
+    const alt = el.querySelector && el.querySelector('img[alt]');
+    return el.getAttribute('aria-label') || labelled ||
+      el.getAttribute('title') || (alt ? alt.getAttribute('alt') : '') ||
+      el.innerText ||
+      ((el.type === 'submit' || el.type === 'button') ? el.value : '') || '';
+  };
+"""
+
+
 _ENUMERATE_ACTION_TARGETS_JS = r"""
 () => {
+""" + _ACCESSIBLE_ACTION_NAME_JS + r"""
   document.querySelectorAll('[data-metnos-action-id]').forEach(
     el => el.removeAttribute('data-metnos-action-id'));
   const standard = Array.from(document.querySelectorAll(
@@ -287,16 +302,6 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
   ].slice(0, 640);
   const out = [];
   let n = 0;
-  const nameOf = el => {
-    const labelled = (el.getAttribute('aria-labelledby') || '').split(/\s+/)
-      .filter(Boolean).map(id => document.getElementById(id))
-      .filter(Boolean).map(x => x.innerText || x.textContent || '').join(' ');
-    const alt = el.querySelector && el.querySelector('img[alt]');
-    return el.getAttribute('aria-label') || labelled ||
-      el.getAttribute('title') || (alt ? alt.getAttribute('alt') : '') ||
-      el.innerText ||
-      ((el.type === 'submit' || el.type === 'button') ? el.value : '') || '';
-  };
   const controlsOf = el => {
     const out = [];
     for (const attr of ['aria-controls', 'popovertarget', 'commandfor']) {
@@ -344,7 +349,7 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     out.push({
       id, tag: el.tagName.toLowerCase(), type: (el.type || '').toLowerCase(),
       role: el.getAttribute('role') || '',
-      name: nameOf(el),
+      name: metnosNameOf(el),
       label, context_name: contextOf(el),
       placeholder: el.getAttribute('placeholder') || '',
       href: el.href || '', download: el.hasAttribute('download'),
@@ -573,60 +578,16 @@ _SCROLL_COLLECTION_JS = r"""
   const target = candidates[0] || root;
   const before = Number(target.scrollTop || 0);
   const maximum = Math.max(0, target.scrollHeight - target.clientHeight);
-  target.scrollTop = target.scrollHeight;
-  return {moved: maximum > before + 2, before, maximum};
-}
-"""
-
-_CANDIDATE_STATE_JS = r"""
-(id) => {
-  const el = document.querySelector(`[data-metnos-action-id="${id}"]`);
-  if (!el) return null;
-  const form = el.form || el.closest('form');
-  const r = el.getBoundingClientRect();
-  const st = getComputedStyle(el);
-  const rendered = r.width >= 2 && r.height >= 2 &&
-    st.visibility !== 'hidden' && st.display !== 'none' &&
-    Number.parseFloat(st.opacity || '1') >= 0.05;
-  const ix = Math.max(0, Math.min(r.right, innerWidth) - Math.max(r.left, 0));
-  const iy = Math.max(0, Math.min(r.bottom, innerHeight) - Math.max(r.top, 0));
-  const visibleRatio = r.width > 0 && r.height > 0
-    ? (ix * iy) / (r.width * r.height) : 0;
-  const inViewport = visibleRatio >= 0.2;
-  const visible = rendered && inViewport;
-  const x = Math.max(0, Math.min(innerWidth - 1, r.left + r.width / 2));
-  const y = Math.max(0, Math.min(innerHeight - 1, r.top + r.height / 2));
-  const top = visible ? document.elementFromPoint(x, y) : null;
-  return {
-    id, tag: el.tagName.toLowerCase(), type: (el.type || '').toLowerCase(),
-    role: el.getAttribute('role') || '',
-    name: el.getAttribute('aria-label') || el.innerText ||
-          ((el.type === 'submit' || el.type === 'button') ? el.value : '') || '',
-    href: el.href || '', download: el.hasAttribute('download'),
-    form_action: form ? form.action : '',
-    form_method: form ? (form.method || 'get').toUpperCase() : '',
-    secret_input: el.type === 'password' ||
-      (el.getAttribute('autocomplete') || '').toLowerCase() === 'one-time-code' ||
-      /(^|[^a-z])(otp|verification|2fa|one.time|pin)([^a-z]|$)/i.test(
-        [el.name, el.id, el.getAttribute('aria-label') || '',
-         el.getAttribute('placeholder') || ''].join(' ')),
-    disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true',
-    rendered, visible, in_viewport: inViewport,
-    aria_expanded: el.getAttribute('aria-expanded') || '',
-    aria_selected: el.getAttribute('aria-selected') || '',
-    aria_pressed: el.getAttribute('aria-pressed') || '',
-    aria_checked: el.getAttribute('aria-checked') || '',
-    aria_current: el.getAttribute('aria-current') || '',
-    checked: !!el.checked,
-    topmost: top === el || !!(top && el.contains(top)),
-    rect: {x: Math.round(r.x), y: Math.round(r.y),
-           width: Math.round(r.width), height: Math.round(r.height)}
-  };
+  const step = Math.max(240, Number(target.clientHeight || innerHeight) * 0.85);
+  const next = Math.min(maximum, before + step);
+  target.scrollTop = next;
+  return {moved: next > before + 2, before, maximum};
 }
 """
 
 _ELEMENT_STATE_JS = r"""
 (el) => {
+""" + _ACCESSIBLE_ACTION_NAME_JS + r"""
   if (!el || !el.isConnected) return null;
   const form = el.form || el.closest('form');
   const r = el.getBoundingClientRect();
@@ -647,8 +608,7 @@ _ELEMENT_STATE_JS = r"""
     id: el.getAttribute('data-metnos-action-id') || '',
     tag: el.tagName.toLowerCase(), type: (el.type || '').toLowerCase(),
     role: el.getAttribute('role') || '',
-    name: el.getAttribute('aria-label') || el.innerText ||
-          ((el.type === 'submit' || el.type === 'button') ? el.value : '') || '',
+    name: metnosNameOf(el),
     href: el.href || '', download: el.hasAttribute('download'),
     form_action: form ? form.action : '',
     form_method: form ? (form.method || 'get').toUpperCase() : '',
@@ -1668,6 +1628,8 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms,
         "ok": True, "session_id": session_id, "url": scrub_url(page.url),
         "title": title, "text": text, "sensitive": sensitive,
     }
+    if entry.get("_source_scope_label"):
+        out["_source_scope_label"] = str(entry["_source_scope_label"])
     if goal:
         # Leggere mentre la pagina carica restituisce «Caricamento…» al posto
         # del dato: il marcatore e' nel lessico (concetto `sites.loading_marker`)
@@ -2269,6 +2231,16 @@ async def _expand_collection_by_scrolling(entry: dict, flow: dict) -> bool:
             flow["collection_scroll_complete"] = True
             break
         changed_any = changed_any or after != before
+        target = str(flow.get("collection_target") or "")
+        if target:
+            candidates = await _enumerate_candidates(entry["page"])
+            record = action_resolver.choose_goal_drilldown_candidate(
+                target, candidates,
+                collection_tokens=set(
+                    flow.get("collection_scope_tokens") or ()))
+            if record.get("ok") or record.get("error_class") \
+                    == "selector_ambiguous":
+                break
     if int(flow.get("collection_scrolls", 0)) >= _MAX_COLLECTION_SCROLLS:
         flow["collection_scroll_complete"] = True
     return changed_any
@@ -2823,6 +2795,7 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
     plan_kind = ""
     reveal_key = ""
     goal_flow_key = ""
+    collection_facet_key = ""
     # goto/wait non hanno un elemento DOM; cred:* viene risolto esclusivamente
     # dal broker, quindi anche il fill ignora ogni target suggerito.
     if primitive == "search":
@@ -2840,12 +2813,33 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                     "content_signatures": set(),
                     "collection": action_resolver.is_collection_search_request(
                         action),
+                    "collection_attested": False,
+                    "collection_facets_visited": set(),
                     "collection_scrolls": 0,
                     "collection_scroll_complete": False}
             flows[goal_flow_key] = flow
         elif action_resolver.is_collection_search_request(action):
             flow["collection"] = True
         candidates = await _enumerate_candidates(entry["page"])
+        observed_scope = action_resolver.collection_control_tokens(
+            parsed.get("target", ""), candidates)
+        target_tokens = set(action_resolver.goal_tokens(
+            parsed.get("target", ""), navigation=True))
+        # The planner may shorten "find all the bookings for Luxor" to
+        # "find bookings for Luxor", losing the grammatical collection
+        # marker.  Page evidence is stronger: a generic search control covers
+        # only the container while a discriminator remains in the goal.
+        # This is language/site neutral and never turns a scalar target into a
+        # collection when the control already covers the whole target.
+        if observed_scope and (
+                flow.get("collection") or target_tokens - observed_scope):
+            flow["collection"] = True
+            flow["collection_attested"] = True
+            flow["collection_scope_tokens"] = sorted(
+                set(flow.get("collection_scope_tokens") or ())
+                | set(observed_scope))
+        if flow.get("collection"):
+            flow["collection_target"] = parsed.get("target", "")
         url_corrente = getattr(entry.get("page"), "url", "") or ""
         # The budget is spent on PROGRESS, not on attempts. If after a
         # navigation exactly the previous state is observed, that step moved
@@ -2906,8 +2900,84 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         goal_satisfied = await _page_satisfies_goal(
             entry, entry.get("goal_done_when") or parsed.get("target", ""),
             candidates)
-        continuation = {"ok": False, "error_class": "selector_missing"}
+        collection_no_match = False
+        collection_facet = {"ok": False,
+                            "error_class": "selector_missing"}
+        goal_drilldown = {"ok": False,
+                          "error_class": "selector_missing"}
+        drilldown_ambiguous = False
         if goal_satisfied:
+            goal_drilldown = action_resolver.choose_goal_drilldown_candidate(
+                parsed.get("target", ""), candidates,
+                collection_tokens=set(
+                    flow.get("collection_scope_tokens") or ()),
+                excluded=excluded)
+            if goal_drilldown.get("error_class") == "selector_ambiguous":
+                drilldown_ambiguous = True
+                goal_drilldown = {"ok": False,
+                                  "error_class": "selector_missing"}
+        # A collection page can expose a generic control whose label shares
+        # only the collection noun with the goal (for example a separate
+        # lookup form).  Clicking that partial match is not evidence of
+        # progress toward the requested record.  Once the current page itself
+        # attests the collection, scan its bounded lazy content first.  If the
+        # complete scan still lacks the full goal, report an empty result
+        # instead of opening an unrelated control.
+        if flow.get("collection") and not goal_drilldown.get("ok"):
+            collection_attested = bool(flow.get("collection_attested"))
+            if (not collection_attested and chosen.get("ok")
+                    and not action_resolver.goal_candidate_is_exact(
+                        parsed.get("target", ""), chosen["candidate"])):
+                partial_name = str(
+                    chosen["candidate"].get("name")
+                    or chosen["candidate"].get("label") or "")
+                observed_scope = action_resolver.collection_control_tokens(
+                    parsed.get("target", ""), [chosen["candidate"]])
+                collection_attested = bool(observed_scope) and \
+                    await _page_satisfies_goal(entry, partial_name, candidates)
+                if collection_attested:
+                    flow["collection_scope_tokens"] = sorted(observed_scope)
+            if collection_attested:
+                flow["collection_attested"] = True
+                await _expand_collection_by_scrolling(entry, flow)
+                candidates = await _enumerate_candidates(entry["page"])
+                goal_drilldown = (
+                    action_resolver.choose_goal_drilldown_candidate(
+                        parsed.get("target", ""), candidates,
+                        collection_tokens=set(
+                            flow.get("collection_scope_tokens") or ()),
+                        excluded=excluded))
+                if goal_drilldown.get("error_class") == "selector_ambiguous":
+                    drilldown_ambiguous = True
+                    goal_drilldown = {"ok": False,
+                                      "error_class": "selector_missing"}
+                if goal_drilldown.get("ok"):
+                    chosen = goal_drilldown
+                goal_satisfied = await _page_satisfies_goal(
+                    entry,
+                    entry.get("goal_done_when") or parsed.get("target", ""),
+                    candidates)
+                goal_satisfied = goal_satisfied or drilldown_ambiguous
+                if (not goal_satisfied and not goal_drilldown.get("ok")
+                        and flow.get("collection_scroll_complete")):
+                    visited_facets = flow.setdefault(
+                        "collection_facets_visited", set())
+                    # The selected facet is the collection just scanned. Mark
+                    # it before choosing another one, so a tab strip cannot
+                    # send the search back and forth between two views.
+                    visited_facets.update(
+                        action_resolver.active_collection_facet_keys(
+                            candidates))
+                    collection_facet = (
+                        action_resolver.choose_collection_facet_candidate(
+                            candidates, excluded=set(visited_facets)))
+                    if (not collection_facet.get("ok")
+                            and collection_facet.get("error_class")
+                            != "selector_missing"):
+                        return collection_facet
+                    collection_no_match = not collection_facet.get("ok")
+        continuation = {"ok": False, "error_class": "selector_missing"}
+        if goal_satisfied and not goal_drilldown.get("ok"):
             continuation_excluded = set(
                 flow.get("continuation_exhausted") or ())
             continuation = action_resolver.choose_goal_continuation_candidate(
@@ -2937,16 +3007,30 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                     action_resolver.choose_goal_continuation_candidate(
                         parsed.get("target", ""), candidates,
                         excluded=continuation_excluded))
+        elif collection_facet.get("ok"):
+            continuation = collection_facet
         if (continuation.get("ok")
                 and int(flow.get("continuations", 0))
                     >= _MAX_GOAL_CONTINUATIONS):
             return {"ok": False,
                     "error_class": "goal_continuation_limit"}
-        if continuation.get("ok"):
+        if collection_no_match:
+            candidate = None
+            primitive = "observe"
+            plan_kind = "goal_no_match"
+            confidence = 1.0
+        elif continuation.get("ok"):
             candidate = continuation["candidate"]
             primitive = "click"
             plan_kind = "goal_continuation"
             confidence = float(continuation.get("confidence", 0.0))
+            collection_facet_key = str(
+                continuation.get("facet_key") or "")
+        elif goal_drilldown.get("ok"):
+            candidate = goal_drilldown["candidate"]
+            primitive = "click"
+            plan_kind = "goal_navigation"
+            confidence = float(goal_drilldown.get("confidence", 0.0))
         elif (chosen.get("ok") and not (
                 goal_satisfied and not action_resolver.goal_candidate_is_exact(
                     parsed.get("target", ""), chosen["candidate"]))):
@@ -3103,6 +3187,8 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         plan["goal_target"] = target_override
     if plan_kind == "goal_continuation":
         plan["content_sig_before"] = await _goal_content_signature(entry)
+        if collection_facet_key:
+            plan["collection_facet_key"] = collection_facet_key
     if candidate:
         try:
             handle = await entry["page"].locator(
@@ -3896,6 +3982,11 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
                 "primitive": "authorize",
                 "credential_origin": plan.get("exact_origin") or observed,
                 "url": scrub_url(entry["page"].url)}
+    # A scope label belongs to the page reached by the last completed goal.
+    # Any new effect invalidates it; a collection goal will bind a fresh label
+    # after its navigation has actually succeeded.
+    if primitive not in {"wait", "observe"}:
+        entry.pop("_source_scope_label", None)
     locator = None
     if candidate:
         handle = plan.get("element_handle")
@@ -4189,6 +4280,12 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             goal_flow.setdefault("approval_source", "action")
         if plan.get("kind") == "goal_navigation":
             goal_flow["steps"] = int(goal_flow.get("steps", 0)) + 1
+            if goal_flow.get("collection") and candidate:
+                matched_label = str(
+                    candidate.get("name") or candidate.get("label") or ""
+                ).strip()
+                if matched_label:
+                    goal_flow["matched_record_label"] = matched_label[:160]
             # The step is counted now, but it only counts if it moved
             # something: the proof is read at the next observation, where the
             # page controls are already enumerated and measuring costs
@@ -4222,6 +4319,14 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             # Una nuova pagina/porzione esplicita puo' avere a sua volta
             # contenuto lazy: consenti un nuovo ciclo entro il budget globale.
             goal_flow["collection_scroll_complete"] = False
+            facet_key = str(plan.get("collection_facet_key") or "")
+            if facet_key:
+                goal_flow.setdefault(
+                    "collection_facets_visited", set()).add(facet_key)
+                # The scroll bound is per collection partition.  Reusing the
+                # exhausted counter would make the newly opened facet look
+                # fully scanned before its first scroll.
+                goal_flow["collection_scrolls"] = 0
             if not progressed or repeated:
                 goal_flow.setdefault("continuation_exhausted", set()).add(
                     action_resolver.goal_candidate_key(candidate or {}))
@@ -4267,9 +4372,20 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             entry, entry.get("_sid", ""),
             plan.get("original_action") or "", plan.get("value_ref"),
             prepared)
-    if plan.get("kind") in {"goal_complete", "goal_search"}:
+    if plan.get("kind") == "goal_complete":
+        if (isinstance(goal_flow, dict) and goal_flow.get("collection")
+                and goal_flow.get("matched_record_label")):
+            entry["_source_scope_label"] = str(
+                goal_flow["matched_record_label"])
+        else:
+            entry.pop("_source_scope_label", None)
+    if plan.get("kind") in {
+            "goal_complete", "goal_search", "goal_no_match"}:
         entry.get("goal_flows", {}).pop(goal_flow_key, None)
-    return {"ok": True, "executed": True, "primitive": primitive,
+    no_match = plan.get("kind") == "goal_no_match"
+    return {"ok": True, "executed": not no_match,
+            "primitive": primitive,
+            **({"no_match": True} if no_match else {}),
             "url": scrub_url(entry["page"].url)}
 
 

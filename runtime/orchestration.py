@@ -47,6 +47,7 @@ from __future__ import annotations
 import json
 import hmac
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -58,6 +59,11 @@ from logging_setup import get_logger
 from messages import get as _msg
 
 log = get_logger(__name__)
+
+
+# A process can exist before the capability it exposes is ready. Keep one
+# short, package-agnostic settle window before the already bounded retry.
+_MANAGED_DEPENDENCY_SETTLE_S = 2.0
 
 
 def _shape_result_for_chat(res) -> str:
@@ -327,7 +333,16 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
             lines.append(descr)
         lines.append("")
         lines.append(f"INLINE_FORM:{url}")
-        lines.append(_msg("MSG_ORCH_FORM_FIELDS_HINT", n=n))
+        # Un modulo di soli BOTTONI non ha campi da compilare, e dirlo
+        # contraddice cio' che la persona ha davanti: «1 campi da compilare;
+        # rispondi annulla» sotto due pulsanti Si'/No manda a cercare una
+        # casella che non c'e' (turno 989c8826, 17/8/2026). Il criterio e'
+        # strutturale — che cosa dichiara lo schema — non un elenco di casi.
+        _tutto_a_scelte = bool(dialog) and all(
+            (step.get("schema") or {}).get("kind") in ("choice", "yes_no")
+            for step in dialog)
+        lines.append(_msg("MSG_ORCH_FORM_CHOICE_HINT") if _tutto_a_scelte
+                     else _msg("MSG_ORCH_FORM_FIELDS_HINT", n=n))
         return "\n".join(lines)
     # dialogue (default)
     first = dialog[0]
@@ -567,6 +582,11 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
 
     if callback_type == "strato3_choice_dispatch":
         return _process_strato3_choice_dispatch(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
+    if callback_type == "managed_dependency_resume":
+        return _process_managed_dependency_resume(
             on_complete, values, actor=actor, channel=channel,
         )
 
@@ -875,8 +895,13 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     confirm = values.get("confirm")
     # Tolerant: yes_no parser ritorna bool; difensivamente, accetta
     # stringhe ("si"/"no") nel caso il caller bypassi parse_step_value.
+    # Language forms come from the lexicon, as for `parse_step_value` and
+    # `_classify_yes_no`: this was the third copy of the list, and it was
+    # missing «okay», which the other two accepted.
     if isinstance(confirm, str):
-        confirm = confirm.strip().lower() in ("si", "sì", "yes", "y", "ok", "true", "1")
+        from channels.daemon import _dialog_forms
+        low = confirm.strip().lower()
+        confirm = low in ("true", "1") or low in _dialog_forms("confirm.yes")
     if not confirm:
         return _msg("MSG_CAP_EXPAND_DECLINED")
 
@@ -889,21 +914,19 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     if not executor:
         return _msg("MSG_ORCH_CAPEXPAND_MALFORMED")
 
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
-        import agent_runtime
-        res = agent_runtime.invoke_executor(
-            ex, args, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            owner_user_id=str(on_complete.get("owner_user_id") or ""),
-        )
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: expand_cap invoke fallito")
-        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
+    res = _esegui_ramo(
+        executor, args, actor=actor, channel=channel,
+        owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        contesto="expand_cap")
+    if res.get("orchestration_error"):
+        return str(res.get("error") or "")
+    # Ancora in corso: si dice quello e basta. Proseguire produrrebbe
+    # «Rilancio con X=Y -> 0 risultati» — una fine dichiarata, con un conteggio,
+    # per un lavoro che non e' finito (§2.8). Che poi il testo seguente
+    # ammettesse il contrario non lo rimedia: la prima riga sarebbe falsa nel
+    # momento in cui viene letta.
+    if res.get("pending"):
+        return str(res.get("final_message_hint") or "")
 
     if not isinstance(res, dict) or not res.get("ok"):
         err = (res or {}).get("error", _msg("MSG_ERR_UNKNOWN")) if isinstance(res, dict) else _msg("MSG_ORCH_NO_RESULT")
@@ -948,6 +971,184 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     return head + "\n\n" + "\n\n".join(body_blocks)
 
 
+# Quanto si aspetta un ramo prima di rispondere «sta ancora lavorando».
+# Sta sotto il tetto dei proxy che possono stare in mezzo (100 s e' il valore
+# diffuso): oltre, una risposta non arriverebbe comunque a destinazione.
+_ATTESA_MASSIMA_RAMO_S = 25
+
+
+def _consegna_esito_tardivo(futuro, *, channel: str | None,
+                            owner_user_id: str, executor: str,
+                            loop=None) -> None:
+    """Racconta l'esito di un ramo che ha finito dopo il tetto d'attesa.
+
+    Chi ha premuto il bottone ha gia' ricevuto «sta lavorando»: senza questo,
+    non saprebbe MAI com'e' finita, e l'unico modo di scoprirlo sarebbe
+    chiedere. Un'operazione che produce un effetto sulla macchina e poi tace
+    e' peggio di una che fallisce dicendolo.
+
+    Va al PROPRIETARIO, non al collegamento che aveva chiesto: se
+    l'operazione e' durata tanto, la pagina potrebbe essere stata chiusa e
+    riaperta con un altro token. Nessuna eccezione esce di qui: una consegna
+    mancata non deve trasformarsi in un guasto del lavoro, che a quel punto
+    e' gia' avvenuto.
+
+    Solo canale HTTP, per ora: e' li' che l'utente vede la chat, ed e' li'
+    che si prova per primo cio' che e' delicato. Telegram dopo.
+    """
+    try:
+        if channel != "http" or not owner_user_id:
+            return
+        try:
+            res = futuro.result()
+        except Exception as exc:  # noqa: BLE001 — l'errore va raccontato, non perso
+            res = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        import active_sessions as _as
+        payload = {"message": _messaggio_da_result(res),
+                   "ok": bool(isinstance(res, dict) and res.get("ok")),
+                   "executor": executor}
+        # Qui siamo nel filo del lavoro, non in quello che gira l'attesa. Le
+        # code su cui poggia lo stream verso la chat appartengono a
+        # quest'ultimo e non si toccano da fuori: metterci dentro qualcosa
+        # direttamente puo' non svegliare chi ascolta — l'esito resterebbe
+        # in coda fino al battito successivo, fino a un minuto dopo — e
+        # sotto contesa puo' confondere la coda interna del ciclo. Si chiede
+        # al ciclo di farlo lui, che e' il modo che il resto del runtime usa
+        # gia' in quattro punti.
+        def _pubblica():
+            # Quante orecchie ha raggiunto, DETTO. «Affidato al ciclo» non e'
+            # una consegna: se in quel momento nessuno ascolta — pagina
+            # chiusa, riconnessione in corso, versione vecchia della pagina —
+            # l'esito sparisce e chi si era sentito promettere «ti dico com'e'
+            # andata» non lo sapra' mai. Zero e' il numero che va visto, ed e'
+            # esattamente quello che il 19/8/2026 non si e' potuto vedere.
+            raggiunte = _as.publish_to_user(
+                owner_user_id, "operation_done", payload)
+            if raggiunte:
+                log.info("orchestration: esito tardivo di %s consegnato a %d "
+                         "collegamenti", executor, raggiunte)
+            else:
+                log.warning("orchestration: esito tardivo di %s PERSO: nessuno "
+                            "in ascolto", executor)
+
+        if loop is not None:
+            try:
+                loop.call_soon_threadsafe(_pubblica)
+                return
+            except RuntimeError:
+                # Ciclo gia' chiuso: non c'e' piu' nessuno in ascolto, e
+                # provarci direttamente non cambierebbe niente.
+                log.info("orchestration: esito tardivo di %s non consegnato "
+                         "(ciclo chiuso)", executor)
+                return
+        _pubblica()
+    except Exception:  # noqa: BLE001
+        log.exception("orchestration: consegna dell'esito tardivo fallita")
+
+
+def _esegui_ramo(executor: str, args: dict, *, actor: str,
+                 channel: str | None, owner_user_id: str = "",
+                 target_device: str | None = None,
+                 contesto: str = "gate") -> dict:
+    """Esegue UN executor per conto di un dialogo. Ritorna sempre un result.
+
+    Punto unico. Prima questo blocco — carica il catalogo, cerca l'executor,
+    invoca, gestisce le stesse quattro eccezioni — viveva in quattro funzioni
+    diverse: una correzione applicata a una sola era una correzione a meta',
+    e nessuno se ne accorgeva finche' non capitava proprio sull'altra.
+
+    **L'attesa ha un tetto.** Un ramo approvato puo' durare minuti quando di
+    mezzo c'e' una persona: «installa per tutti gli utenti» apre una finestra
+    di conferma di Windows e resta li' finche' qualcuno non risponde.
+    Bloccare la risposta per tutto quel tempo la fa scadere a un proxy
+    intermedio, e chi ha premuto il bottone riceve una pagina d'errore grezza
+    invece di un messaggio — mentre l'operazione, dietro, riesce (turno
+    a243532766b14676, 19/8/2026: sette minuti, esito «done», utente senza
+    alcuna notizia).
+    Percio' si aspetta un tempo ragionevole e poi si dice cosa sta
+    succedendo. Il lavoro prosegue: gira in un filo suo, l'effetto sulla
+    macchina avviene lo stesso e l'esito resta nel registro delle
+    invocazioni. Cio' che si perde e' solo la possibilita' di raccontarlo
+    subito — ed e' meglio di una pagina d'errore.
+    """
+    if not executor:
+        return {"ok": False, "orchestration_error": True,
+                "error": _msg("MSG_ORCH_RESUME_EXEC_MISSING")}
+    try:
+        from loader import load_catalog
+        cat = load_catalog(verify=True, include_synth=True)
+        ex = cat.executors.get(executor)
+        if ex is None:
+            return {"ok": False, "orchestration_error": True, "error": _msg(
+                "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)}
+        import agent_runtime
+        import concurrent.futures as _cf
+
+        def _invoca():
+            return agent_runtime.invoke_executor(
+                ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+                actor=actor, channel=channel,
+                # Un'azione approvata torna dove appartiene: senza
+                # destinazione ogni ripresa girava sul server, anche quando la
+                # domanda era stata posta su un altro computer (turno
+                # a97056e1, 17/8/2026).
+                target_device=target_device,
+                owner_user_id=owner_user_id)
+
+        # Il ciclo che sta girando adesso, se c'e': servira' al filo del
+        # lavoro per consegnare l'esito senza toccare da fuori cose che non
+        # gli appartengono.
+        try:
+            import asyncio as _asyncio
+            ciclo = _asyncio.get_running_loop()
+        except RuntimeError:
+            ciclo = None
+
+        pool = _cf.ThreadPoolExecutor(max_workers=1)
+        try:
+            futuro = pool.submit(_invoca)
+            try:
+                return futuro.result(timeout=_ATTESA_MASSIMA_RAMO_S)
+            except _cf.TimeoutError:
+                log.info("orchestration: ramo %s ancora in corso dopo %ss, "
+                         "rispondo senza aspettarlo", executor,
+                         _ATTESA_MASSIMA_RAMO_S)
+                # L'esito arrivera' dopo, e deve arrivare comunque: si
+                # consegna da solo quando il lavoro finisce.
+                futuro.add_done_callback(
+                    lambda f: _consegna_esito_tardivo(
+                        f, channel=channel, owner_user_id=owner_user_id,
+                        executor=executor, loop=ciclo))
+                return {"ok": True, "pending": True,
+                        "final_message_hint": _msg("MSG_GATE_IN_CORSO")}
+        finally:
+            # Non si aspetta la chiusura: il filo deve poter finire da solo.
+            pool.shutdown(wait=False)
+    except (PermissionError, KeyError, RuntimeError, TypeError) as exc:
+        log.exception("orchestration: ramo %s fallito (%s)", executor, contesto)
+        return {"ok": False, "orchestration_error": True, "error": _msg(
+            "MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(exc).__name__}: {exc}")}
+
+
+def _messaggio_da_result(res) -> str:
+    """Il risultato di un ramo, detto a chi ha premuto il bottone.
+
+    Un posto solo: lo stesso esito deve leggersi allo stesso modo che arrivi
+    subito o che arrivi dopo, quando il lavoro era troppo lento per stare
+    dentro una risposta. Due formattatori diversi vorrebbero dire che la
+    stessa cosa si racconta in due modi a seconda di quanto ci ha messo.
+    """
+    if isinstance(res, dict):
+        msg = res.get("final_message_hint") or res.get("summary")
+        if msg:
+            return str(msg)
+        if res.get("ok") is False:
+            err = res.get("error") or res.get("error_class") or ""
+            return f"✗ {err}" if err else _msg("ERR_GENERIC")
+        return _msg("MSG_ACTION_DONE")
+    return str(res)
+
+
 def _process_gate_dispatch(on_complete: dict, values: dict,
                            *, actor: str = "host",
                            channel: str | None = None) -> str:
@@ -961,41 +1162,81 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
     """
     approve_value = on_complete.get("approve_value", "approve")
     decision = next(iter(values.values()), None) if values else None
-    branch = on_complete.get("on_approve") if decision == approve_value \
-        else on_complete.get("on_reject")
+
+    # Un consenso puo' avere piu' di due esiti. «Installo per tutti gli utenti
+    # o solo per te?» e' una domanda sola con tre risposte, e farla scegliere
+    # a BOTTONI e' piu' sicuro che farla scrivere: una scelta premuta non si
+    # puo' fraintendere, una frase si' (Roberto, 17/8/2026).
+    #
+    # `branches` mappa il valore della scelta al ramo da eseguire. Il vecchio
+    # contratto binario resta valido e non cambia comportamento: un gate che
+    # dichiara solo `on_approve`/`on_reject` si comporta come prima.
+    branches = on_complete.get("branches")
+    if isinstance(branches, dict) and decision in branches:
+        branch = branches.get(decision)
+    else:
+        branch = on_complete.get("on_approve") if decision == approve_value \
+            else on_complete.get("on_reject")
     if not isinstance(branch, dict):
         # Rifiuto (o scelta non mappata) senza azione dichiarata: onesto, no-op.
         return _msg("MSG_GATE_NO_ACTION")
 
-    executor = branch.get("tool") or branch.get("executor") or ""
-    args_base = dict(branch.get("args") or {})
-    if not executor:
-        return _msg("MSG_ORCH_RESUME_EXEC_MISSING")
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
-        import agent_runtime
-        res = agent_runtime.invoke_executor(
-            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            owner_user_id=str(on_complete.get("owner_user_id") or ""),
-        )
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: gate_dispatch fallito")
-        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
+    res = _esegui_ramo(
+        branch.get("tool") or branch.get("executor") or "",
+        dict(branch.get("args") or {}),
+        actor=actor, channel=channel,
+        target_device=str(on_complete.get("target_device") or "") or None,
+        owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        contesto="gate_dispatch")
+    # Un guasto dell'orchestrazione si racconta com'e', senza la crocetta che
+    # segnala «l'operazione richiesta e' fallita»: non e' nemmeno partita.
+    if res.get("orchestration_error"):
+        return str(res.get("error") or "")
 
-    if isinstance(res, dict):
-        msg = res.get("final_message_hint") or res.get("summary")
-        if msg:
-            return msg
-        if res.get("ok") is False:
-            err = res.get("error") or res.get("error_class") or ""
-            return f"✗ {err}" if err else _msg("ERR_GENERIC")
-        return _msg("MSG_ACTION_DONE")
-    return str(res)
+    return _messaggio_da_result(res)
+
+
+def _process_managed_dependency_resume(
+        on_complete: dict, values: dict, *, actor: str = "host",
+        channel: str | None = None) -> str:
+    """Start one signed package, then retry its consumer exactly once."""
+
+    decision = next(iter(values.values()), None) if values else None
+    branches = on_complete.get("branches")
+    branch = branches.get(decision) if isinstance(branches, dict) else None
+    if decision not in {"session", "persistent"} or not isinstance(branch, dict):
+        return _msg("MSG_GATE_NO_ACTION")
+    owner = str(on_complete.get("owner_user_id") or "")
+    target = str(on_complete.get("target_device") or "") or None
+    started = _esegui_ramo(
+        branch.get("tool") or "",
+        dict(branch.get("args") or {}),
+        actor=actor,
+        channel=channel,
+        owner_user_id=owner,
+        target_device=target,
+        contesto="managed dependency start",
+    )
+    if not isinstance(started, dict) or not started.get("ok") or started.get("pending"):
+        return _shape_result_for_chat(started)
+
+    resume = on_complete.get("resume")
+    if not isinstance(resume, dict):
+        return _msg("MSG_ORCH_CONTINUATION_FAILED", detail="resume missing")
+    time.sleep(_MANAGED_DEPENDENCY_SETTLE_S)
+    result = _esegui_ramo(
+        str(resume.get("tool") or ""),
+        dict(resume.get("args") or {}),
+        actor=actor,
+        channel=channel,
+        owner_user_id=owner,
+        target_device=target,
+        contesto="managed dependency retry",
+    )
+    if isinstance(result, dict) and isinstance(result.get("health"), dict):
+        return _fmt_health_block(
+            result["health"], host=str(result.get("_ran_on_device") or target or ""))
+    return _shape_result_for_chat(result)
 
 
 def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
@@ -1003,27 +1244,13 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
                                owner_user_id: str):
     """Esegue un branch dichiarativo e conserva il result strutturato."""
     if not isinstance(branch, dict):
-        return {"ok": False, "error": _msg("MSG_GATE_NO_ACTION")}
-    executor = branch.get("tool") or branch.get("executor") or ""
-    args_base = dict(branch.get("args") or {})
-    if not executor:
-        return {"ok": False, "error": _msg("MSG_ORCH_RESUME_EXEC_MISSING")}
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return {"ok": False, "error": _msg(
-                "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)}
-        import agent_runtime
-        return agent_runtime.invoke_executor(
-            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            owner_user_id=owner_user_id)
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: executor gate branch fallito")
-        return {"ok": False, "error": _msg(
-            "MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")}
+        return {"ok": False, "orchestration_error": True,
+                "error": _msg("MSG_GATE_NO_ACTION")}
+    return _esegui_ramo(
+        branch.get("tool") or branch.get("executor") or "",
+        dict(branch.get("args") or {}),
+        actor=actor, channel=channel, owner_user_id=owner_user_id,
+        contesto="executor gate branch")
 
 
 def _carry_executor_tail_to_nested_gate(
@@ -1327,21 +1554,19 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
     else:
         args_base.update(values)
 
-    try:
-        from loader import load_catalog
-        cat = load_catalog(verify=True, include_synth=True)
-        ex = cat.executors.get(executor)
-        if ex is None:
-            return _msg("MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)
-        import agent_runtime
-        res = agent_runtime.invoke_executor(
-            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel,
-            owner_user_id=str(on_complete.get("owner_user_id") or ""),
-        )
-    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
-        log.exception("orchestration: resume_executor_with_values fallito")
-        return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
+    res = _esegui_ramo(
+        executor, args_base, actor=actor, channel=channel,
+        target_device=str(on_complete.get("target_device") or "") or None,
+        owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        contesto="resume_executor_with_values")
+    if res.get("orchestration_error"):
+        return str(res.get("error") or "")
+    # In corso non e' riuscito: cio' che segue memorizza i valori del dialogo
+    # come default per le volte successive, e memorizzarli da un'operazione
+    # che potrebbe ancora fallire vorrebbe dire imparare da un esito che non
+    # c'e' stato.
+    if res.get("pending"):
+        return str(res.get("final_message_hint") or "")
 
     # Cattura scope-arg dal form: il valore confermato/inserito diventa default
     # per il giro dopo (§7.9). Resume bypassa Executor.run → cattura esplicita qui.
@@ -1731,29 +1956,11 @@ def _process_resume_planner_with_dialog_values(
 
 
 def _thermal_absence_message(thermal: dict, health: dict) -> str:
-    """Perche' non c'e' una temperatura, non solo che non c'e'.
+    """Explain a missing Windows sensor without naming one implementation.
 
-    Su Windows il kernel non espone la temperatura del pacchetto CPU: la
-    leggono i driver di LibreHardwareMonitor/OpenHardwareMonitor, che
-    l'executor consulta se il servizio gira o se la DLL e' indicata. Le zone
-    ACPI che restano non sono quella misura — verificato su un PC reale il
-    6/8/2026: le uniche zone esposte davano 0 K e 283 K, cioe' niente e 10 °C.
-    Senza questa riga la risposta e' vera ma cieca: «non disponibili» non
-    distingue «questa macchina non puo'» da «manca il backend», e la stessa
-    domanda torna.
-
-    Il messaggio nomina il programma e dichiara il CONFINE: quel programma e'
-    di terze parti e Metnos non lo installa per mandato — il client non cerca
-    ne' scarica binari durante un'invocazione, e la scelta di installarlo resta
-    di chi possiede la macchina (decisione di Roberto, 6/8/2026). Dire
-    «installa X» senza dire «io non lo faccio» lascerebbe credere che il
-    sistema possa arrangiarsi da solo.
-
-    Deterministico §7.9: `reason_code` dell'executor + sistema operativo
-    dichiarato dal device. Qualunque altro motivo (probe fallito, PowerShell
-    assente, output non valido) resta sul messaggio generico: la sua causa non
-    e' l'assenza di un backend, e suggerire un'installazione sarebbe una
-    diagnosi inventata.
+    The signed manifest and remote client own provider acquisition. Rendering
+    remains generic so another provider can satisfy the same typed interface
+    without adding a product-specific branch here.
     """
     reason = str((thermal or {}).get("reason_code") or "")
     sistema = ((health or {}).get("system") or {})

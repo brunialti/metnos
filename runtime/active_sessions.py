@@ -636,6 +636,29 @@ def publish_event(device_token: str, kind: str, payload: dict) -> int:
     return n
 
 
+def publish_to_user(user_id: str, kind: str, payload: dict) -> int:
+    """Pubblica un evento a TUTTI i collegamenti vivi di una persona.
+
+    Serve quando cio' che si ha in mano e' il proprietario, non il singolo
+    collegamento: un esito che arriva tardi appartiene alla persona, e la
+    persona puo' avere la chat aperta altrove — o averla riaperta nel
+    frattempo, con un altro token. Consegnare al solo collegamento che aveva
+    fatto la richiesta vorrebbe dire perdere l'esito proprio nei casi in cui
+    la richiesta e' durata tanto da far chiudere la pagina.
+
+    Ritorna quante code sono state raggiunte. Zero non e' un errore: vuol
+    dire che nessuno stava ascoltando.
+    """
+    if not user_id:
+        return 0
+    raggiunte = 0
+    for sessione in list_sessions_for_user(user_id):
+        token = str(sessione.get("device_token") or "")
+        if token and not sessione.get("revoked_at"):
+            raggiunte += publish_event(token, kind, payload)
+    return raggiunte
+
+
 # Hook nel takeover: dopo aver revocato la sessione vecchia, notifica il
 # device sloggato. Non puo' essere fatto direttamente in confirm_takeover()
 # perche' quello e' sync e i subscriber sono asyncio queue; usiamo un

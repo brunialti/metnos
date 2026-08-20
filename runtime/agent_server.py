@@ -467,6 +467,36 @@ async def shim_bundle(request: web.Request) -> web.Response:
     return web.json_response(bundle)
 
 
+def _mirror_component_entry(component: str, target: str):
+    """La voce del mirror per un componente su un sistema, o una spiegazione.
+
+    Ritorna `(version, entry, None)` oppure `(None, None, errore)`.
+    """
+    import json as _json
+    p = agent_mirror.MIRROR_CLIENT_DIR / "manifest.json"
+    if not p.is_file():
+        return None, None, _error(404, "no_manifest", "mirror client assente")
+    try:
+        man = _json.loads(p.read_text())
+        version = man.get("latest") or ""
+        target_entry = (((man.get("versions") or {}).get(version) or {})
+                        .get(target) or {})
+        entry = target_entry.get(component)
+        # Mirrors created before helper distribution stored the client fields
+        # directly under the target. Keep that read-only compatibility here,
+        # in the single mirror parser, instead of branching in every route.
+        if (entry is None and component == "client"
+                and isinstance(target_entry, dict)
+                and isinstance(target_entry.get("sha256"), str)):
+            entry = target_entry
+    except Exception:
+        return None, None, _error(500, "bad_manifest", "manifest illeggibile")
+    if not version or not entry:
+        return None, None, _error(
+            404, "no_binary", f"nessun {component} {target} in {version!r}")
+    return version, entry, None
+
+
 async def client_update_descriptor(request: web.Request) -> web.Response:
     """GET /agent/client/update/{target} — descrittore di self-update FIRMATO.
 
@@ -475,29 +505,55 @@ async def client_update_descriptor(request: web.Request) -> web.Response:
     pubkey server PINNATA (stessa ancora di fiducia di shim/invocazioni — a
     differenza dello sha-solo-integrità di install.ps1) e scarica il binario
     dal mirror. Idempotenza lato client: sha del proprio exe == sha del
-    descrittore ⇒ già aggiornato, nessun loop."""
+    descrittore ⇒ già aggiornato, nessun loop.
+
+    L'indirizzo e la forma della risposta sono quelli che i client GIA'
+    INSTALLATI conoscono, e restano: questo endpoint e' l'unica strada per
+    sostituire un client, quindi cambiarlo vorrebbe dire dover aggiornare a
+    mano proprio i client che non si possono aggiornare a mano. I componenti
+    aggiunti dopo usano `/agent/component/...`, che porta il nome del
+    componente DENTRO la firma.
+    """
     target = request.match_info.get("target") or ""
     if not re.fullmatch(r"[a-z0-9_\-]+", target):
         return _error(400, "bad_target", "target non valido")
-    import json as _json
-    p = agent_mirror.MIRROR_CLIENT_DIR / "manifest.json"
-    if not p.is_file():
-        return _error(404, "no_manifest", "mirror client assente")
-    try:
-        man = _json.loads(p.read_text())
-        version = man.get("latest") or ""
-        entry = ((man.get("versions") or {}).get(version) or {}).get(target)
-    except Exception:
-        return _error(500, "bad_manifest", "manifest illeggibile")
-    if not version or not entry:
-        return _error(404, "no_binary", f"nessun binario {target} in {version!r}")
+    version, entry, errore = _mirror_component_entry("client", target)
+    if errore is not None:
+        return errore
     payload = {"version": version, "target": target,
                "sha256": entry.get("sha256") or ""}
     return web.json_response({
         **payload,
-        "url_path": f"/agent/client/{version}/{target}/"
-                    + ("metnos-client.exe" if "windows" in target
-                       else "metnos-client"),
+        "url_path": f"/agent/client/{entry.get('path') or ''}",
+        "sig": invocations.sign_payload(payload),
+    })
+
+
+async def component_update_descriptor(request: web.Request) -> web.Response:
+    """GET /agent/component/{component}/update/{target} — descrittore FIRMATO.
+
+    Come sopra, con una differenza che conta: il nome del componente entra
+    nel payload FIRMATO. Senza, due componenti pubblicati per la stessa
+    versione e lo stesso sistema condividerebbero una firma valida, e un
+    descrittore potrebbe essere presentato al posto dell'altro: chi si
+    aspetta l'aiutante elevato riceverebbe un altro programma, con la firma
+    del server a garantirlo. Chi legge DEVE verificare che il componente sia
+    quello che ha chiesto.
+    """
+    component = request.match_info.get("component") or ""
+    target = request.match_info.get("target") or ""
+    if not re.fullmatch(r"[a-z][a-z0-9_\-]*", component):
+        return _error(400, "bad_component", "componente non valido")
+    if not re.fullmatch(r"[a-z0-9_\-]+", target):
+        return _error(400, "bad_target", "target non valido")
+    version, entry, errore = _mirror_component_entry(component, target)
+    if errore is not None:
+        return errore
+    payload = {"component": component, "version": version, "target": target,
+               "sha256": entry.get("sha256") or ""}
+    return web.json_response({
+        **payload,
+        "url_path": f"/agent/client/{entry.get('path') or ''}",
         "sig": invocations.sign_payload(payload),
     })
 
@@ -812,13 +868,14 @@ async def client_join_installer(request: web.Request) -> web.Response:
         # Nel flusso join il pin e' OBBLIGATORIO: se non generabile, fail-closed
         # 503 (mai un installer Windows senza pin che ricada sul manifest).
         try:
-            m = json.loads(
-                (agent_mirror.MIRROR_CLIENT_DIR / "manifest.json").read_text())
-            entry = m["versions"][m["latest"]]["x86_64-pc-windows-gnu"]
+            version, entry, mirror_error = _mirror_component_entry(
+                "client", "x86_64-pc-windows-gnu")
+            if mirror_error is not None or not version or not entry:
+                raise ValueError("client entry missing from mirror")
             env = {
                 "METNOS_SERVER": server_url,
                 "METNOS_TOKEN": token,
-                "METNOS_CLIENT_VERSION": m["latest"],
+                "METNOS_CLIENT_VERSION": version,
                 "METNOS_CLIENT_SHA256": entry["sha256"],
             }
             runtime_pin = _windows_python_runtime_pin()
@@ -884,6 +941,8 @@ def make_app() -> web.Application:
     # Join flow (§5): PRIMA del mirror, che ha la route catch-all
     # /agent/client/{filename}.
     app.router.add_get("/agent/client/update/{target}", client_update_descriptor)
+    app.router.add_get("/agent/component/{component}/update/{target}",
+                       component_update_descriptor)
     app.router.add_get("/agent/client/join/{join_id}", client_join_page)
     app.router.add_get("/agent/client/join/{join_id}/status", client_join_status)
     app.router.add_get("/agent/client/join/{join_id}/installer", client_join_installer)

@@ -50,12 +50,11 @@ impl std::error::Error for AlreadyRunning {}
 /// Acquisisce il lock esclusivo `<data_dir>/client.lock`. Se un altro
 /// `metnos-client run` lo tiene, errore ONESTO tipizzato (`AlreadyRunning`).
 pub fn acquire(data_dir: &Path) -> Result<ProcLock> {
-    std::fs::create_dir_all(data_dir)
-        .with_context(|| format!("mkdir {}", data_dir.display()))?;
+    std::fs::create_dir_all(data_dir).with_context(|| format!("mkdir {}", data_dir.display()))?;
     let path = data_dir.join("client.lock");
     let mut file = OpenOptions::new()
         .create(true)
-        .truncate(false)  // lock file: apri/crea senza troncare il contenuto
+        .truncate(false) // lock file: apri/crea senza troncare il contenuto
         .write(true)
         .open(&path)
         .with_context(|| format!("apertura lock {}", path.display()))?;
@@ -73,8 +72,7 @@ mod tests {
 
     #[test]
     fn second_acquire_fails_while_held() {
-        let dir = std::env::temp_dir().join(format!(
-            "metnos-proclock-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("metnos-proclock-test-{}", std::process::id()));
         let first = acquire(&dir).expect("primo lock");
         assert!(acquire(&dir).is_err(), "il secondo lock deve fallire");
         drop(first);

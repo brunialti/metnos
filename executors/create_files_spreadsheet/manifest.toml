@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name             = "create_files_spreadsheet"
-version          = "0.4.1"
+version          = "0.4.3"
 platforms        = ["linux", "windows"]
 author           = "Roberto Brunialti"
 affinity         = [
@@ -63,6 +63,24 @@ default = []
 [args.properties.column_specs.description]
 it = "Mappa non ambigua, indipendente dalla lingua: [{header='Nome file', source='path', transform='basename'}]. transform: identity, basename o dirname."
 en = "Unambiguous language-independent mapping: [{header='File name', source='path', transform='basename'}]. transform: identity, basename, or dirname."
+
+[args.properties.field_roles]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "entry_field_roles"
+
+[args.properties.field_roles.description]
+it = "Metadati tipizzati dei campi prodotti dallo step sorgente. Iniettati automaticamente dal runtime; non passarli manualmente."
+en = "Typed metadata for fields produced by the source step. Injected automatically by runtime; do not pass it manually."
+
+[args.properties.unique_rows]
+type = "boolean"
+default = false
+
+[args.properties.unique_rows.description]
+it = "Se true, conserva una sola occorrenza di ogni riga finale identica, mantenendo il primo ordine. Utile quando trasformazioni come dirname fanno convergere più record nella stessa riga."
+en = "When true, keeps only the first occurrence of each identical final row. Useful when transforms such as dirname collapse multiple records into one row."
 
 [args.properties.title]
 type    = "string"

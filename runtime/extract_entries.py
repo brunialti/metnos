@@ -427,6 +427,7 @@ def _attach_source_provenance(record: dict, source: dict,
         "_source_domain": _source_domain(source),
         "_duplicate_paths": source.get("duplicate_paths"),
         "_parse_diagnostic": source.get("parse_diagnostic"),
+        "_source_scope_label": source.get("_source_scope_label"),
     }
     out.update({key: value for key, value in private.items()
                 if value not in (None, "", [])})

@@ -75,6 +75,13 @@ ACTIONS = (
     # (F2, gate §4.2). `read` (gia' canonico) legge la sessione (read_sites).
     # Mappatura forzata sui canonici RESPINTA (ambigua) -> token nuovi.
     "open", "login", "act",
+    # Dominio `packages` (ADR 0209, 16/8/2026): mettere o togliere SOFTWARE
+    # su una macchina tramite il suo gestore di pacchetti. Non e' `create`
+    # (che fa nascere un oggetto nostro), non e' `get` (che scarica e basta),
+    # non e' `admin` (che esegue un comando qualunque). La disinstallazione
+    # e' lo STESSO verbo con la direzione dichiarata negli argomenti: un
+    # verbo separato raddoppierebbe il vocabolario per una direzione.
+    "install",
 )
 
 # Oggetti ammessi (plurale).
@@ -490,6 +497,7 @@ ACTION_CATEGORIES = {
     "order": "ordinamento-persistente",
     "share": "outbound-consent",
     "open": "web-session", "login": "web-session", "act": "web-session",
+    "install": "system",
 }
 
 # ── Classificazione operativa per il runtime ──────────────────────────
@@ -510,6 +518,9 @@ PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 # sono CANONICI (detect_canonical_verbs_all normalizza già IT+EN).
 COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
     "send", "create", "write", "move", "delete", "share",
+    # `install` modifica una macchina: se la query lo chiede e il piano
+    # non lo porta, la decomposizione e' monca — non un dettaglio.
+    "install",
     # sites F1: azioni web esplicite da portare a termine (open precursore di
     # login; login autentica). `act` (F2) si aggiunge quando l'executor esiste.
     "open", "login"})
@@ -527,7 +538,13 @@ PROCESSOR_VERBS = frozenset({
 
 # Verbi che lasciano residuo permanente (modifiche reali). Il vaglio
 # potrebbe escludere o richiedere conferma esplicita.
-DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract", "create", "share"})
+DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract",
+                               "create", "share",
+                               # Residuo permanente per definizione, e in
+                               # un senso piu' forte degli altri: l'ambiente
+                               # cambia e non si torna indietro con un undo
+                               # (ADR 0209 D3).
+                               "install"})
 
 # Verbi candidati per precursor injection (chi può "popolare entries"
 # upstream di un consumer come describe/filter/move/...).
@@ -544,7 +561,7 @@ PRECURSOR_VERBS = ("read", "find", "list", "get")
 OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "files":      "write",
     "dirs":       "create",
-    "packages":   None,        # install/upgrade non sono verbi vocab §2.2
+    "packages":   "install",   # ADR 0209: `install` e' verbo canonico
     "messages":   "send",
     "events":     "create",
     "contacts":   "set",
@@ -822,12 +839,23 @@ ACTION_MAPPING = {
             "en": "Performs an ACTION on an authenticated `sites` session (click/fill/submit — F2). Sensitive actions (submit/POST/navigation) go through a BATCH human-approval gate (§4.2). NOT change (transforms a datum's FORM) · NOT send (human recipients). F2 only.",
         },
     },
+    "install": {
+        "it": ["installa", "installare", "metti-su", "aggiungi-il-programma",
+               "scarica-e-installa", "disinstalla", "rimuovi-il-programma"],
+        "en": ["install", "set-up", "add-the-program", "uninstall",
+               "remove-the-program"],
+        "boundary": {
+            "it": "Mette o toglie SOFTWARE su una macchina tramite il suo gestore di pacchetti (winget su Windows, apt/dnf su Linux). Input = identificativo del pacchetto, mai una riga di comando. La DISINSTALLAZIONE e' lo stesso verbo con la direzione negli argomenti, non un verbo diverso. NON create (fa nascere un oggetto nostro: file, cartella, evento) · NON write (scrive contenuto in un file) · NON get (scarica e basta, senza installare: get_urls) · NON admin (esegue un comando qualunque). «Controlla se X e' installato» NON e' install: e' find_packages.",
+            "en": "Puts SOFTWARE on a machine or takes it off, through the machine's package manager (winget on Windows, apt/dnf on Linux). Input = a package identifier, never a command line. UNINSTALLING is the same verb with the direction in the arguments, not a different verb. NOT create (brings one of our own objects into being: file, directory, event) · NOT write (writes content into a file) · NOT get (downloads only, without installing: get_urls) · NOT admin (runs an arbitrary command). «Check whether X is installed» is NOT install: that is find_packages.",
+        },
+    },
 }
 
 # NB: `check`/`verifica` NON e' verbo canonico — sussunto da `find`. Una
 # query come "controlla se ffmpeg e' installato" si mappa a
-# `find_packages(name='ffmpeg')`: lista vuota = non installato, lista non
-# vuota = installato + dettaglio (path).
+# `find_packages(packages=['ffmpeg'])`. Dal 17/8/2026 la risposta e' una
+# riga per pacchetto con `installed: true|false`, non una lista che si
+# svuota: «non installato» e' un dato, non un'assenza di dati.
 
 
 # ── Mapping OBJECT → sezioni planner (Fase C2, 11/5/2026) ─────────────

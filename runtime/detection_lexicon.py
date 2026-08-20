@@ -133,9 +133,9 @@ def ensure_seeded() -> None:
     """Carica il seed canonico una sola volta per processo (idempotente).
 
     Importa `detection_lexicon_seed` che chiama `register(...)` per ogni
-    concept. `register` e' no-op se la riga (concept, lang) esiste gia', quindi
-    e' sicuro chiamarlo ad ogni boot: il DB persiste, il seed riallinea solo
-    le righe mancanti.
+    concept. `register` scrive le righe mancanti e riallinea quelle che
+    divergono dal seed, quindi e' sicuro chiamarlo ad ogni boot: il DB
+    persiste e il seed resta l'autorita' sulle lingue che dichiara.
     """
     global _seeded
     if _seeded:
@@ -179,7 +179,11 @@ def _startup_coverage_check() -> None:
 
 def register(concept: str, kind: str, *, it, en,
              match_mode: str = "substring") -> bool:
-    """Seed di un concept (lingue it+en) SOLO se assente. Idempotente.
+    """Seed di un concept nelle lingue it+en. Idempotente.
+
+    Scrive una riga assente e RIALLINEA una riga che diverge dal seed (kind,
+    match_mode o payload). Le lingue non seedate non vengono mai toccate: le
+    scrive il daemon di traduzione.
 
     `it`/`en` sono: list[str] per kind=phrases/regex; dict per kind=mapping.
     Ritorna True se ha scritto almeno una riga, False se gia' presente.
@@ -191,23 +195,78 @@ def register(concept: str, kind: str, *, it, en,
         raise ValueError(f"match_mode invalido: {match_mode!r}")
     conn = _open()
     wrote = False
-    for lang, payload in (("it", it), ("en", en)):
-        row = conn.execute(
-            "SELECT 1 FROM detection_lexicon WHERE concept=? AND lang=?",
-            (concept, lang),
-        ).fetchone()
-        if row:
-            continue
-        js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-        conn.execute(
-            "INSERT INTO detection_lexicon(concept, lang, kind, match_mode, "
-            "payload, needs_translation, source_lang, version_hash, updated_at) "
-            "VALUES (?,?,?,?,?,0,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
-            (concept, lang, kind, match_mode, js, lang, _sha256(js)),
-        )
-        wrote = True
+    realigned = False
+    try:
+        for lang, payload in (("it", it), ("en", en)):
+            js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            row = conn.execute(
+                "SELECT kind, match_mode, payload FROM detection_lexicon "
+                "WHERE concept=? AND lang=?",
+                (concept, lang),
+            ).fetchone()
+            if row is not None:
+                # The seed is the authority for the languages it declares, and
+                # only for those: a translated row of another language is never
+                # touched here.  Without this, changing a concept's KIND — say
+                # from a hand-written regex to a translatable phrase list —
+                # would reach a new installation and never an existing one, and
+                # the two would diverge silently.  Compared canonically, so an
+                # unchanged seed still writes nothing and the caches stay warm.
+                if (row[0], row[1], row[2]) == (kind, match_mode, js):
+                    continue
+                conn.execute(
+                    "UPDATE detection_lexicon SET kind=?, match_mode=?, "
+                    "payload=?, needs_translation=0, source_lang=?, "
+                    "version_hash=?, "
+                    "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                    "WHERE concept=? AND lang=?",
+                    (kind, match_mode, js, lang, _sha256(js), concept, lang),
+                )
+                log.info("detection_lexicon: concept %r lingua %r riallineato "
+                         "al seed (kind %r -> %r)", concept, lang, row[0], kind)
+                wrote = realigned = True
+                continue
+            conn.execute(
+                "INSERT INTO detection_lexicon(concept, lang, kind, match_mode,"
+                " payload, needs_translation, source_lang, version_hash, "
+                "updated_at) "
+                "VALUES (?,?,?,?,?,0,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+                (concept, lang, kind, match_mode, js, lang, _sha256(js)),
+            )
+            wrote = True
+        if realigned:
+            # When the source changes, translations made from that source are
+            # stale: they are marked to be redone, not deleted. Without this,
+            # `verify_coverage` would keep reporting "covered" for a payload
+            # that no longer matches — and for a concept like confirm.* that
+            # means a user who can no longer confirm anything (§2.8).
+            conn.execute(
+                "UPDATE detection_lexicon SET needs_translation=1 "
+                "WHERE concept=? AND lang NOT IN (?,?)",
+                (concept, "it", "en"),
+            )
+        if wrote:
+            # Dentro il try: un commit fallito e' un fallimento di questo
+            # concetto come gli altri, e deve passare dal rollback invece di
+            # lasciare la transazione aperta sulla connessione globale.
+            conn.commit()
+    except Exception:
+        # The DB can be read-only (the sandbox mounts it --ro-bind) or busy on
+        # the first boot after a deploy. The exception used to escape here: it
+        # cut the seed in half — concepts declared AFTER were never registered,
+        # `ensure_seeded` swallowed it and never retried — and it left an open
+        # transaction on the global connection, blocking every other writer for
+        # the life of the process. Now this one concept is rolled back and the
+        # rest of the seed proceeds.
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        log.warning("detection_lexicon: seed of %r not written (DB read-only "
+                    "or busy); the concept is left as it is",
+                    concept, exc_info=True)
+        return False
     if wrote:
-        conn.commit()
         # §7.13: flush WAL→main così l'immutable-reader in sandbox vede il seed.
         try:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -295,7 +354,21 @@ def _resolve(concept: str):
                 "detection_lexicon: concept %r privo di forme native per "
                 "lingua %r — match via union it/en (best-effort); esegui il "
                 "daemon di traduzione per coprire la lingua", concept, cur)
+    # The authoritative form comes from the SEED languages, not from the first
+    # row that happens to be found. Two reasons, both measured:
+    #  - a translated row carrying `match_mode='substring'` could loosen the
+    #    comparison for every other language, and on `confirm.*` that meant
+    #    «sinistra» counted as a yes;
+    #  - an installation in a third language that still holds the OLD kind of a
+    #    concept (the seed only realigns the languages it declares) would win
+    #    the vote, discard it/en, and leave the user unable to confirm anything
+    #    — silently. Letting the seed decide keeps the loanword forms usable.
     kind = match_mode = None
+    for _seed_lang in SEED_LANGS:
+        _seed_row = _native(concept, _seed_lang)
+        if _seed_row is not None:
+            kind, match_mode = _seed_row[0], _seed_row[1]
+            break
     merged_list: list = []
     merged_map: dict = {}
     used: list[str] = []
@@ -304,7 +377,17 @@ def _resolve(concept: str):
         nat = _native(concept, lang)
         if nat is None:
             continue
-        kind, match_mode, payload = nat
+        row_kind, row_mode, payload = nat
+        if kind is None:
+            kind, match_mode = row_kind, row_mode
+        elif row_kind != kind:
+            # Rows of a different form are never mixed: a `regex` payload
+            # merged into a phrase list would sit among the forms as a literal
+            # string, match nothing, and the hole would be invisible.
+            log.warning("detection_lexicon: concept %r language %r has kind %r "
+                        "instead of %r — row ignored in the union",
+                        concept, lang, row_kind, kind)
+            continue
         used.append(lang)
         if kind == "mapping" and isinstance(payload, dict):
             for canon, fl in payload.items():
@@ -452,22 +535,47 @@ def verify_coverage(lang: str | None = None) -> dict:
     missing = sorted(c for c, ok in cov.items() if not ok)
     return {
         "lang": (lang or current_lang()).lower(),
-        "ok": not missing,
+        # Un lessico VUOTO non e' un lessico coperto: senza concetti registrati
+        # (seed fallito, DB assente) `not missing` era vero e la guardia
+        # anti-silenzio taceva proprio nel caso peggiore.
+        "ok": bool(cov) and not missing,
         "total": len(cov),
         "covered": len(cov) - len(missing),
         "missing": missing,
     }
 
 
-def list_pending(limit: int = 100) -> list[dict]:
-    """Righe needs_translation=1 + payload sorgente (per il daemon)."""
+def list_pending(limit: int = 100, exclude_concepts: tuple = (),
+                 exclude_kinds: tuple = ()) -> list[dict]:
+    """Rows with needs_translation=1 plus their source payload, for the daemon.
+
+    The two exclusions are for rows a model must not localize on its own
+    (regex, consent gates). They are filtered in SQL rather than skipped by
+    the caller because the caller reads a bounded window: a handful of rows
+    that can never be translated would otherwise occupy the same slots at
+    every fire and starve the work that CAN be done. Coverage still counts
+    them as gaps — that is `verify_coverage`, a different question.
+    """
     conn = _open()
+    where = ["d.needs_translation=1"]
+    params: list = []
+    if exclude_concepts:
+        where.append("d.concept NOT IN (%s)"
+                     % ",".join("?" * len(exclude_concepts)))
+        params.extend(exclude_concepts)
+    if exclude_kinds:
+        where.append("d.kind NOT IN (%s)" % ",".join("?" * len(exclude_kinds)))
+        params.extend(exclude_kinds)
+    # the design guide §2.4: a cap of 0 means «no limit». SQLite reads a negative
+    # LIMIT as unbounded, so the convention translates directly and a caller
+    # that wants the whole picture does not have to invent a big number.
+    params.append(int(limit) if int(limit) > 0 else -1)
     rows = conn.execute(
         "SELECT d.concept, d.lang, d.source_lang, d.kind, d.match_mode, "
         "(SELECT payload FROM detection_lexicon WHERE concept=d.concept "
         " AND lang=d.source_lang) AS source_payload "
-        "FROM detection_lexicon d WHERE d.needs_translation=1 LIMIT ?",
-        (limit,),
+        "FROM detection_lexicon d WHERE " + " AND ".join(where) + " LIMIT ?",
+        tuple(params),
     ).fetchall()
     return [{"concept": r[0], "target_lang": r[1], "source_lang": r[2],
              "kind": r[3], "match_mode": r[4], "source_payload": r[5]}

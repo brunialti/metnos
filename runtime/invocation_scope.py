@@ -57,13 +57,58 @@ def _within(path: Path, hint: str) -> bool:
     return fnmatch.fnmatchcase(str(path), os.path.abspath(expanded))
 
 
+def _server_authority_denial(executor, *, actor: str) -> str | None:
+    """Why this actor may not run this executor ON THE SERVER, or None.
+
+    The server holds every user's data and every service, so an act that
+    changes it is instance-wide and belongs to whoever administers the
+    instance (ADR 0209 D4). The rule is capability-driven, not a list of
+    executor names: it applies to `system:admin`, which is exactly the
+    declaration «this changes the machine under administrative authority».
+
+    Its twin — nobody installs on a device they do not own, the
+    administrator included — is already structural: the device candidate
+    list is filtered by owner before placement, with no administrator
+    branch. This function is the half that did not exist.
+
+    Reaching here means the invocation resolved to LOCAL execution: a call
+    bound for a device took the remote branch earlier and never arrives.
+    """
+    capabilities = getattr(executor, "capabilities", None) or []
+    names = {(c.get("name") or "") for c in capabilities
+             if isinstance(c, dict)}
+    if "system:admin" not in names:
+        return None
+
+    import devices as _devices
+    import users as _users
+
+    owner_id = _devices.owner_id_for_actor(actor or "host")
+    user = _users.get_user(owner_id) if owner_id else None
+    # Fail closed: an actor the registry cannot resolve is not an
+    # administrator. Being unknown is not a permission.
+    if not user or str(user.get("role") or "") != "host":
+        from messages import get as _msg
+        return _msg("ERR_SERVER_ADMIN_REQUIRED",
+                    executor=getattr(executor, "name", "?"))
+    return None
+
+
 def check_invocation_scope(executor, args, *, actor: str = "host") -> str | None:
     """Return a stable denial reason, or ``None`` when the preflight passes.
+
+    Two independent checks share this preflight because they share its one
+    property: it sits at the invocation choke-point, so fast paths, resumes
+    and asynchronous submissions all pass through it. Filesystem scope comes
+    from annotated capabilities; server authority comes from `system:admin`.
 
     Only annotated effective filesystem capabilities participate.  Invalid
     annotations fail closed at standard admission; this function remains
     defensive for legacy or directly-constructed executor objects.
     """
+    denial = _server_authority_denial(executor, actor=actor)
+    if denial:
+        return denial
     if not isinstance(args, dict):
         return None
     from capabilities import effective_capabilities

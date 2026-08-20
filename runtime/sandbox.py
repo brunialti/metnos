@@ -374,6 +374,39 @@ def _system_read_resources(hints: list[str]) -> tuple[bool, list[Path]]:
     return "network_interfaces" in requested, paths
 
 
+# A tool bound read-only is not yet a tool that can answer: several carry
+# their knowledge in a state directory outside their own binary. `apt-get`
+# keeps the package index under /var/lib/apt, and without it every lookup
+# comes back «unable to locate package» — a WRONG answer rather than a
+# missing capability, which is the harder kind to trace (found 18/8/2026:
+# install_packages could not resolve a single package on Linux).
+#
+# Keyed by the tool the executor named in its hint, so declaring a tool is
+# what grants its state, and an unknown name grants nothing.
+_EXEC_TOOL_STATE = {
+    "apt-get": ("/var/lib/apt",),
+    "apt-cache": ("/var/lib/apt",),
+}
+
+
+def _exec_tool_resources(hints: list[str]) -> list[Path]:
+    """Read-only state directories the named tools need in order to answer.
+
+    Only what the tool must READ to reply. Nothing here makes an operation
+    possible that was not already possible: acting still needs the privileges
+    the sandbox never grants.
+    """
+    paths: list[Path] = []
+    for hint in hints or []:
+        if not isinstance(hint, str):
+            continue
+        for percorso in _EXEC_TOOL_STATE.get(hint, ()):
+            candidato = Path(percorso)
+            if candidato.exists() and candidato not in paths:
+                paths.append(candidato)
+    return paths
+
+
 # --- core ------------------------------------------------------------------
 
 # Path system minimi montati read-only in ogni sandbox.
@@ -583,8 +616,11 @@ def _build_bwrap_args(
                 args += ["--bind", str(home), str(home)]
             has_network = True
         elif kind == "code":
-            # code:exec eredita /usr/bin per i tool consueti; nessun bind aggiuntivo
-            pass
+            # code:exec eredita /usr/bin per i tool consueti. In piu' i soli
+            # dati che i tool nominati devono LEGGERE per rispondere: senza,
+            # il binario c'e' e mente.
+            for path in _exec_tool_resources(hints):
+                args += ["--ro-bind", str(path), str(path)]
         # altre famiglie (mail, time, ...) non richiedono bind
 
     # Path extra forniti dal chiamante

@@ -369,6 +369,13 @@ def _maybe_record_fastpath(query: str, intent: Intent,
         return
     if not _run_is_cacheworthy(run):
         return
+    # A successful read is not a successful write.  In particular, a
+    # `find_packages` miss used to be cached for an explicit install request:
+    # the executor was healthy, but the requested side effect was absent.
+    # Check the intent/framework contract before teaching L0 the plan.
+    if _dropped_required_verbs(framework, query, intent):
+        log.info("[L0 fastpath] skip record: required action absent from plan")
+        return
     # Cacheabilità L0 (Roberto 15/6): solo pipeline multi-step che NON bakeizzano
     # un valore numerico della query (vedi _should_cache_plan). Esclude il bug
     # delete_tasks(id=42) ri-servito su «cancella task 40».
@@ -1117,6 +1124,133 @@ def _enrich_move_source_dir(framework: Framework, query: str,
         return framework
 
 
+# Argument that carries the centre of a geographic search.  It is a manifest
+# contract, not a tool name: any executor declaring it takes part in the guard
+# below, and `find_places` is only its first consumer.
+_GEO_CENTER_ARG = "near"
+# The single authority on where the asking user is.  The guard never reads a
+# position itself: it wires the plan to this producer, so freshness, source
+# ranking and the "I do not know where you are" outcome stay in one place.
+_GEO_CENTER_PRODUCER = "get_location"
+# Field of the producer's result that carries {lat, lon, ...}.
+_GEO_CENTER_FIELD = "location"
+
+
+def _declares_geo_center(tool: str, catalog: Optional[list]) -> bool:
+    """True when the tool's manifest declares the geographic-centre argument."""
+    for entry in (catalog or ()):
+        if _entry_name(entry) != tool:
+            continue
+        props = _entry_schema(entry).get("properties")
+        return isinstance(props, dict) and _GEO_CENTER_ARG in props
+    return False
+
+
+def _geo_center_is_usable(value) -> bool:
+    """True when the planned centre will still be a centre at run time.
+
+    A value the runtime cannot resolve is not a centre, it is a hole that the
+    executor silently drops.  Turn 7e0f69a1 planned — and cached —
+    `near={"lat": "${RUNTIME:lat}", "lon": "${RUNTIME:lon}"}`, placeholders
+    with no resolver: the argument was discarded before the call and the
+    search ran with no centre at all.  A step reference stays usable, because
+    the producer materialises it.
+    """
+    if value in (None, "", {}, []):
+        return False
+    # `0` is the project-wide unset placeholder (§2.4): a centre at (0, 0) is
+    # the example being copied verbatim, not a point in the Gulf of Guinea.
+    coords = value if isinstance(value, dict) else None
+    if isinstance(coords, dict) and isinstance(coords.get("location"), dict):
+        coords = coords["location"]
+    if isinstance(coords, dict):
+        try:
+            if (float(coords.get("lat", 1)) == 0.0
+                    and float(coords.get("lon", 1)) == 0.0):
+                return False
+        except (TypeError, ValueError):
+            pass
+
+    def _texts(node):
+        if isinstance(node, str):
+            yield node
+        elif isinstance(node, dict):
+            for item in node.values():
+                yield from _texts(item)
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                yield from _texts(item)
+
+    usable = True
+    for text in _texts(value):
+        if "${step" in text or "{{step" in text:
+            return True
+        if "${" in text or "{{" in text:
+            usable = False
+    return usable
+
+
+def _ensure_proximity_center(framework: Framework, query: str,
+                             catalog: Optional[list]) -> Framework:
+    """§7.9: a search "near where I am" needs a centre, or it ranks by fame.
+
+    Turn 7e0f69a1 ("where is the nearest pharmacy to where I am") planned
+    `find_places(queries=["farmacia"])` with no centre: the provider answered
+    with namesakes in Padova, Cagliari, Lucca and Bergamo while the asker was
+    in Rome.  The machine did know where it stood — `get_location` reads the
+    installation position — but nothing in the plan asked it.
+
+    The guard inserts that producer and wires the centre to it.  It fires only
+    when the request carries a proximity form referred to the asker
+    (`geo.self_proximity`, multilingual lexicon) and the step declares the
+    centre argument without a value: a request that names its own place
+    ("pharmacy in Padova") keeps it, and an explicit centre is never
+    overwritten.  Idempotent, so re-running the pipeline is a no-op.
+    """
+    try:
+        if not (query and _dl_match("geo.self_proximity", query)):
+            return framework
+        names = catalog_names(catalog)
+        if _GEO_CENTER_PRODUCER not in names:
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        if not steps:
+            return framework
+        from .types import StepSpec
+        for consumer in list(steps):
+            tool = getattr(consumer, "tool", "") or ""
+            if not _declares_geo_center(tool, catalog):
+                continue
+            args = getattr(consumer, "args", None)
+            args = args if isinstance(args, dict) else {}
+            if _geo_center_is_usable(args.get(_GEO_CENTER_ARG)):
+                continue
+            # Identity, not equality: two structurally identical steps are
+            # distinct positions in the plan and `index()` would return the
+            # first one for both.
+            steps = list(getattr(framework, "steps", None) or [])
+            pos = next((i for i, s in enumerate(steps) if s is consumer), -1)
+            if pos < 0:
+                continue
+            producer_1b = next(
+                (i + 1 for i, s in enumerate(steps[:pos])
+                 if (getattr(s, "tool", "") or "") == _GEO_CENTER_PRODUCER),
+                0)
+            if not producer_1b:
+                insert_steps(framework, pos,
+                             [StepSpec(tool=_GEO_CENTER_PRODUCER, args={})])
+                producer_1b = pos + 1
+            consumer.args = dict(args)
+            consumer.args[_GEO_CENTER_ARG] = (
+                "${step%d.%s}" % (producer_1b, _GEO_CENTER_FIELD))
+            log.info("[proximity §7.9] %s: search centre taken from the "
+                     "actor position (step %d)", tool, producer_1b)
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("ensure_proximity_center noop (best-effort): %r", ex)
+        return framework
+
+
 # Fratelli-FILESYSTEM (§2.2): `files` e `dirs` sono facce dello stesso dominio
 # — «elenca i FILE della cartella X» si serve con list_dirs (container enum).
 # Un intent-object `files` NON delegittima uno step `dirs` (e viceversa):
@@ -1307,10 +1441,27 @@ def _align_framework_action_pairs(framework: Framework, intent, query: str,
                 # Gli argomenti del verbo sbagliato non valgono per quello
                 # giusto: si conformano allo schema del nuovo strumento invece
                 # di sopravvivergli addosso.
+                previous_args = getattr(step, "args", None) or {}
                 step.args = _candidate_args(
-                    candidate, getattr(step, "args", None) or {}, framework,
+                    candidate, previous_args, framework,
                     query, [query], exclude_step=step)
                 _wire_upstream_producer(framework, step, candidate)
+                # A rewrite that leaves the step unable to run is not an
+                # alignment. Measured on «dov'e' il Duomo di Milano»: the
+                # intent read {get, places}, so the correct find_places became
+                # get_places, which accepts only coordinates — the name in the
+                # request had nowhere to go and the turn died on a missing
+                # argument. The oracle is the Validator's own, so this guard
+                # cannot produce a step the Validator would then reject.
+                from .validator import args_contract_error
+                contract_error = args_contract_error(
+                    step.args, _entry_schema(candidate))
+                if contract_error:
+                    step.args = previous_args
+                    log.info("[action_pair] %s NON riscritto in %s: il nuovo "
+                             "contratto resta insoddisfatto (%s)",
+                             tool, target, contract_error)
+                    continue
                 log.info("[action_pair] %s → %s (coppia %s+%s scoperta)",
                          tool, target, verb, obj)
                 step.tool = target
@@ -1829,25 +1980,44 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     mail»/«crea evento» vanno portati a termine §4.3). Es. "cerca online ... crea
     evento ... manda mail" che collassa a create_events-only (find+send droppati)
     o a find→create senza send. Universale §7.3/§7.9, multilingue (verbi canonici),
-    model-indep. Conservativo: solo query MULTI-azione (≥2 verbi); i soft
-    (describe/classify/sort/filter) NON sono richiesti (si fondono nel final).
+    model-indep. Conservativo: query MULTI-azione (>=2 verbi) oppure una
+    singola mutazione esplicita; i soft (describe/classify/sort/filter) NON
+    sono richiesti (si fondono nel final).
     """
     try:
         from prefilter import tokenize, detect_canonical_verbs_all
-        from vocab import COVERAGE_REQUIRED_VERBS, ACTIONS
+        from vocab import COVERAGE_REQUIRED_VERBS, ACTIONS, DESTRUCTIVE_VERBS
     except Exception:
         return set()
-    qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
+    lexical_qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
+    qverbs = set(lexical_qverbs)
     # Unisci i verbi della decomposizione LLM (intent.actions): il detector
     # lessicale non copre tutti i verbi NL ("salva"→write, "prendi"→get); la
     # decomposizione sì (multilingue, ZERO dizionari). Così la guard vede i
     # side-effecting reali della query (fix q13: clausola "salva" → write
     # droppata → describe usato come finale, nessun file scritto).
-    for _a in (getattr(intent, "actions", None) or []):
+    intent_actions = [
+        _a for _a in (getattr(intent, "actions", None) or [])
+        if isinstance(_a, dict)
+    ]
+    for _a in intent_actions:
         _v = _a.get("verb") if isinstance(_a, dict) else None
         if _v:
             qverbs.add(_v)
-    if len(qverbs) < 2:
+    # A single-action extraction legitimately leaves ``actions`` empty and
+    # stores the canonical action in ``intent.verb``.  Ignoring that primary
+    # field made an explicit install request look read-only: ``find_packages``
+    # was executed and even cached as if it had completed the requested write.
+    # The primary verb is model-produced canonical data, so this remains
+    # language- and domain-independent.
+    primary_verb = str(getattr(intent, "verb", "") or "").lower()
+    if primary_verb in ACTIONS:
+        qverbs.add(primary_verb)
+    # Producer-only requests stay permissive: find/read/get/list are a
+    # substitutable family.  A *single explicit mutation*, however, must not
+    # disappear just because the original guard was introduced for compound
+    # requests.  That gap turned "install" into a read-only package lookup.
+    if len(qverbs) < 2 and not (qverbs & set(DESTRUCTIVE_VERBS)):
         return set()
     fw_verbs = set()
     for s in framework.steps:
@@ -1857,6 +2027,11 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
         head = t.split("_", 1)[0]
         if head in ACTIONS:
             fw_verbs.add(head)
+        # `admin` is the approved system-operation gateway.  It can implement
+        # a requested mutation without exposing a verb-prefixed executor
+        # (apt/systemctl/mount all share this one gate).
+        if t == "admin":
+            fw_verbs.update(qverbs & set(DESTRUCTIVE_VERBS))
     dropped = (qverbs & set(COVERAGE_REQUIRED_VERBS)) - fw_verbs
     # Famiglia PRODUTTORI interscambiabile (find/read/get/list): un produttore
     # qualunque nel framework copre ogni produttore richiesto (find_messages ==
@@ -1894,7 +2069,7 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     if _WRITERS & dropped:
         import naming_grammar as _ng
         from collections import Counter as _Counter
-        _acts = [a for a in (getattr(intent, "actions", None) or [])
+        _acts = [a for a in intent_actions
                  if isinstance(a, dict) and (a.get("verb") or "") in _WRITERS]
         need: "_Counter" = _Counter((a.get("object") or "") for a in _acts)
         have: "_Counter" = _Counter()
@@ -1910,6 +2085,13 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
                 # (colonne/righe/contenuto non sono un secondo artefatto).
                 # Richiediamo evidenza strutturale nel piano: senza payload il
                 # create vuoto NON copre write e l'enforcement resta attivo.
+                # Un passo di scrittura che non e' un create non porta un
+                # payload iniziale da valutare: senza questo valore di
+                # partenza il ramo sotto legge una variabile non assegnata,
+                # l'eccezione finisce nel `noop` della guardia e la guardia
+                # smette di guardare — in silenzio, su ogni piano con un
+                # writer non-create.
+                payload = False
                 if nc.verb == "create":
                     sa = getattr(s, "args", None) or {}
                     payload = any(
@@ -1917,8 +2099,32 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
                         for key in ("values", "entries", "content", "text",
                                     "items", "events", "from_step")
                     )
-                    if payload:
-                        populated_creates[nc.obj] += 1
+                if payload:
+                    populated_creates[nc.obj] += 1
+
+        # Canonical alias across the two intent views.  The lexical detector
+        # can call a phrase ``write`` (for example, put data in a sheet) while
+        # the object-aware decomposition calls the same single sink ``create``.
+        # Treat it as one lifecycle action only when all of these facts hold:
+        # the query did not itself contain both writer verbs, the decomposition
+        # contains no separate write clause, and the matching create step is
+        # structurally populated.  Thus a genuinely separate write remains
+        # required, while create-and-fill is not rejected as incomplete.
+        _action_writer_verbs = {
+            str(a.get("verb") or "") for a in _acts
+        }
+        if ("write" in dropped
+                and "write" in lexical_qverbs
+                and "write" not in _action_writer_verbs
+                and "create" in _action_writer_verbs
+                and "create" not in lexical_qverbs):
+            _create_need = _Counter(
+                (a.get("object") or "") for a in _acts
+                if (a.get("verb") or "") == "create")
+            if _create_need and all(
+                    populated_creates[obj] >= count
+                    for obj, count in _create_need.items()):
+                dropped.discard("write")
 
         # Pairing lifecycle sullo STESSO object: N create popolati possono
         # soddisfare fino a N clausole write omonime, senza sommare create+write
@@ -3933,9 +4139,41 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             str((getattr(step, "args", {}) or {}).get("action") or "").strip().lower()
             for step in post_login_acts
         }
-        has_search_action = any(
-            _dl_match("sites.search_action_verb", action)
-            for action in existing_actions)
+
+        # Il planner puo' esprimere il fine senza il verbo, mentre la clausola
+        # ricavata dalla query lo conserva e puo' differire nella spaziatura.
+        # Il solo match sul verbo aggiungeva quindi un secondo act_sites dopo
+        # che lo stesso risultato era gia' visibile. Riusa il resolver canonico
+        # e confronta l'obiettivo: due ricerche diverse restano due azioni.
+        def _search_target_keys(action: str) -> frozenset[tuple]:
+            try:
+                import unicodedata as _unicode
+                from playwright_sidecar.action_resolver import (
+                    goal_is_exhaustive, goal_is_personal, goal_tokens,
+                    parse_action,
+                )
+
+                parsed = parse_action(action)
+                if not (parsed.get("ok")
+                        and parsed.get("primitive") == "search"):
+                    return frozenset()
+                target = _unicode.normalize(
+                    "NFKC", str(parsed.get("target") or "")).casefold()
+                compact = "".join(ch for ch in target if ch.isalnum())
+                keys: set[tuple] = set()
+                if compact:
+                    keys.add(("compact", compact))
+                semantic = tuple(goal_tokens(target))
+                if semantic:
+                    keys.add(("semantic", semantic,
+                              goal_is_exhaustive(target),
+                              goal_is_personal(target)))
+                return frozenset(keys)
+            except Exception:  # noqa: BLE001 -- deduplica solo se attestabile
+                return frozenset()
+
+        existing_search_targets = set().union(*(
+            _search_target_keys(action) for action in existing_actions))
         try:
             import urllib.parse as _urlparse
             session_host = (_urlparse.urlsplit(url).hostname or "").lower()
@@ -3947,12 +4185,14 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                 r"[a-z]{2,63})(?![\w])", chunk, _re.IGNORECASE)
             if any(domain.lower() != session_host for domain in domains):
                 continue
-            if has_search_action or chunk.lower() in existing_actions:
+            chunk_targets = _search_target_keys(chunk)
+            if (chunk.lower() in existing_actions
+                    or bool(chunk_targets & existing_search_targets)):
                 continue
             post_login_acts.append(StepSpec(
                 tool="act_sites", args={"action": chunk}))
             existing_actions.add(chunk.lower())
-            has_search_action = True
+            existing_search_targets.update(chunk_targets)
         if search_chunks:
             want_read = True
             absorbed_site_search = True
@@ -5778,6 +6018,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"query"}),
           rationale="§7.9 (turn b66ec6f3): query hardware/status (lessici status/section_focus+machine) con get_processes senza include_health → forzato true. Additivo: aggiunge dati, il focus per-sezione seleziona",
           adr="0177"),
+    Guard("ensure_proximity_center",
+          lambda fw, i, q, c: _ensure_proximity_center(fw, q, c),
+          scope="cross-clause", writes=frozenset({"args.near", "step"}),
+          reads=frozenset({"query", "catalog", "step.tool", "args.near"}),
+          rationale="§7.9 (turn 7e0f69a1): «the nearest pharmacy to where I am» without a centre makes the provider rank by fame — namesakes across the whole country. Concept geo.self_proximity plus a declared and empty `near` argument insert get_location and wire the centre to it. A request naming its own place does not match, and an explicit centre is never overwritten",
+          adr="0177"),
     Guard("route_folder_size",
           lambda fw, i, q, c: _route_folder_size(fw, q, c),
           scope="routing", writes=frozenset({"step.tool", "step", "args.recursive", "args.key"}),
@@ -6317,6 +6563,19 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             payload = paused_input.result.get("needs_inputs") or {}
             callback = payload.get("on_complete") or {}
             paused_tool = str(getattr(paused_input, "tool", "") or "")
+            # Un'azione approvata torna DOVE appartiene. Il passo sospeso e'
+            # girato su una macchina precisa; la ripresa passa per
+            # `orchestration`, che invocava senza destinazione e quindi
+            # sempre sul server. «Installa X sul mio PC» chiedeva conferma al
+            # PC e poi provava a installare sul server, con il gestore di
+            # pacchetti sbagliato (turno a97056e1, 17/8/2026).
+            #
+            # La destinazione la sa il RUNTIME, non l'executor: la scrive qui,
+            # una volta, per qualunque dominio. Vale per il cancello di
+            # consenso come per la ripresa con valori.
+            _device = str(getattr(paused_input, "host", "") or "")
+            if isinstance(callback, dict) and _device and _device != "server":
+                callback.setdefault("target_device", _device)
             if (isinstance(callback, dict)
                     and callback.get("type") == "resume_executor_with_values"
                     and callback.get("executor") == paused_tool):
@@ -6705,6 +6964,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                      "non presente nella query → fall-through/re-plan "
                      "evidence=%s", _fp_ungrounded[:5])
             fp_hit = None
+        if fp_hit is not None and _dropped_required_verbs(
+                fp_hit.framework, query, intent):
+            log.info("[L0 fastpath] fp_id=%d INVALIDATO: azione richiesta "
+                     "assente dal piano → morte + fall-through", fp_hit.fp_id)
+            _fp.delete(fp_hit.fp_id)
+            fp_hit = None
         if fp_hit is not None:
             if verbose:
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
@@ -6798,6 +7063,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             log.info("[L1 autopath] REJECT mis-serve: step mutante con valore "
                      "non presente nella query → fall-through a L3 (re-plan) "
                      "evidence=%s", _ap_ungrounded[:5])
+            ap_hit = None
+        if ap_hit is not None and _dropped_required_verbs(
+                ap_hit.framework, query, intent):
+            log.info("[L1 autopath] REJECT: azione richiesta assente dal "
+                     "piano → fall-through a L3")
             ap_hit = None
         if ap_hit is not None:
             if verbose:
@@ -7007,6 +7277,22 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     framework = _finalize_framework_for_run(framework, intent, query,
                                             catalog, runtime_ctx)
 
+    # Last word before any executor: never replace an explicit side effect
+    # with a harmless lookup.  Re-proposal and deterministic guards have
+    # already had their chance above, so a residual means there is no safe
+    # executable plan in the current catalog.
+    _missing_actions = _dropped_required_verbs(framework, query, intent)
+    if _missing_actions:
+        from messages import get as _msg_get
+        log.info("[intent-fulfilment] unavailable actions=%s",
+                 ",".join(sorted(_missing_actions)))
+        return DispatchResult(
+            final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
+            final_kind="answer", match_source="terminator",
+            framework_hash=compute_framework_hash(framework),
+            elapsed_ms=int((time.time() - t_start) * 1000),
+            framework=framework, error_class="capability_missing")
+
     # Execute
     run = executor.run(framework, query=query,
                         runtime_ctx=runtime_ctx,
@@ -7087,6 +7373,37 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # (get_location per «ip …» dopo 2 fallimenti remoti).
                 framework_alt = _finalize_framework_for_run(
                     framework_alt, intent, query, catalog, runtime_ctx)
+                # Same last word as the initial path (gate above, 16/8): a
+                # recovery plan must not replace an explicit side effect with
+                # a harmless lookup either. The leg is MORE exposed, not less:
+                # `recover` removes the failed tool from the pool, so when
+                # that tool was the only one carrying the required verb the
+                # proposer can only answer with a read-only sibling — and a
+                # confident «here is what I found» for a request to install is
+                # the §2.8 anti-pattern, not a recovery.
+                _missing_alt = _dropped_required_verbs(
+                    framework_alt, query, intent)
+                if _missing_alt:
+                    from messages import get as _msg_get
+                    log.info("[L3 recovery] REJECT: unavailable actions=%s",
+                             ",".join(sorted(_missing_alt)))
+                    return DispatchResult(
+                        final_text=_msg_get("MSG_REQUIRED_ACTION_NOT_PLANNED"),
+                        final_kind="answer", match_source="terminator",
+                        framework_hash=compute_framework_hash(framework_alt),
+                        elapsed_ms=int((time.time() - t_start) * 1000),
+                        framework=framework_alt,
+                        error_class="capability_missing")
+                if (compute_framework_hash(framework_alt)
+                        == compute_framework_hash(framework)):
+                    # Re-running the same executable graph cannot recover an
+                    # argument/contract failure; it only doubles latency and
+                    # may repeat expensive producers. Compare *after* all
+                    # deterministic rewrites, because two raw proposals can
+                    # normalize to the same plan.
+                    log.info("[L3 recovery] SKIP: finalized plan unchanged")
+                    framework_alt = None
+            if framework_alt is not None:
                 run2 = executor.run(framework_alt, query=query,
                                      runtime_ctx=runtime_ctx,
                                      remediate_args_cb=remediate_args_cb,

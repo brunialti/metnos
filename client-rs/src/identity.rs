@@ -30,11 +30,15 @@ impl Identity {
     }
 
     fn load(path: &Path) -> Result<Self> {
-        let bytes = std::fs::read(path)
-            .with_context(|| format!("read key from {}", path.display()))?;
-        let arr: [u8; 32] = bytes.as_slice().try_into()
+        let bytes =
+            std::fs::read(path).with_context(|| format!("read key from {}", path.display()))?;
+        let arr: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
             .context("key file is not 32 bytes")?;
-        Ok(Self { signing: SigningKey::from_bytes(&arr) })
+        Ok(Self {
+            signing: SigningKey::from_bytes(&arr),
+        })
     }
 
     fn save(&self, path: &Path) -> Result<()> {
@@ -42,8 +46,7 @@ impl Identity {
             std::fs::create_dir_all(parent)?;
         }
         let bytes = self.signing.to_bytes();
-        std::fs::write(path, bytes)
-            .with_context(|| format!("write key to {}", path.display()))?;
+        std::fs::write(path, bytes).with_context(|| format!("write key to {}", path.display()))?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -58,6 +61,14 @@ impl Identity {
         self.signing.verifying_key()
     }
 
+    /// The public key as hex — which is also what identifies this device to a
+    /// person, because it IS the key and not a digest of it.
+    ///
+    /// One representation, deliberately. The elevated helper stores this exact
+    /// string at install time (ADR 0210 D) and refuses anything that is not 64
+    /// hex characters; a second, prettier encoding living next to it would be
+    /// a second thing to pass by mistake, and the mistake would only show up
+    /// after the person had already answered the Windows prompt.
     pub fn fingerprint(&self) -> String {
         let bytes = self.verifying().to_bytes();
         let mut hex = String::with_capacity(64);
@@ -85,7 +96,9 @@ pub fn verify_b64(public_key_b64: &str, sig_b64: &str, msg: &[u8]) -> Result<()>
         .try_into()
         .map_err(|_| anyhow!("server pubkey non e' 32 byte"))?;
     let vk = VerifyingKey::from_bytes(&arr).context("bad server pubkey")?;
-    let sig_bytes = URL_SAFE_NO_PAD.decode(sig_b64).context("decode signature")?;
+    let sig_bytes = URL_SAFE_NO_PAD
+        .decode(sig_b64)
+        .context("decode signature")?;
     let sig_arr: [u8; 64] = sig_bytes
         .as_slice()
         .try_into()

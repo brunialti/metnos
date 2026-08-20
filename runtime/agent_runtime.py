@@ -245,6 +245,14 @@ def _is_meta_step(s) -> bool:
     return False
 
 
+# Error classes for which the ENGINE already stated why the action did not
+# run.  The generic §4.3 message ("rephrase your request") is then a net loss
+# of information: it asks the user to retry when the problem is not how the
+# request was written but that no installed tool can perform it.  Closed
+# registry, never per-tool.
+_AUTHORITATIVE_UNFULFILLED_CLASSES = frozenset({"capability_missing"})
+
+
 def _detect_unfulfilled_mutating_intent(log) -> str:
     """Detection §4.3 + §2.8 (25/5/2026): intent utente mutating ma
     nessuno step l'ha eseguito con successo → l'azione e' pendente,
@@ -2623,7 +2631,7 @@ def resolve_from_step(args, history, consumer_schema=None):
     # Proiezione condivisa col motore v3: payload vettoriale e contesto scalare
     # omogeneo sono entrambi dichiarati nel manifest del consumer.
     new_args, consumer_arg = _project_from_entries(
-        new_args, prev_list, consumer_schema)
+        new_args, prev_list, consumer_schema, source_result=step_obs)
     context_errors = new_args.pop(_FROM_STEP_CONTEXT_ERRORS_KEY, None)
     if isinstance(context_errors, list) and context_errors:
         fields = ", ".join(sorted({
@@ -3860,6 +3868,12 @@ class TurnLog:
     # non chiama mai un tool col verbo richiesto (es. utente «cancella X»
     # ma PLANNER fa solo read/list).
     intent_verb: str = ""
+    # Error class declared by the engine for this turn (`DispatchResult`).
+    # `write()` needs it: an outcome the engine already explained (for
+    # instance `capability_missing`) is AUTHORITATIVE and must not be
+    # rewritten with a generic message.  Without this field the engine's
+    # explanation was lost on the way to the user (§2.8).
+    error_class: str = ""
     # Conversation linking (8/5/2026): persisted nel JSONL per permettere
     # al chat HTTP di ricaricare la storia della conversazione dopo un tab
     # close. Sender HTTP setta dal body POST `conversation_id`. Telegram lo
@@ -4035,7 +4049,7 @@ class TurnLog:
             label = str(it.get("path") or it.get("src") or it.get("id")
                         or it.get("event_id") or it.get("uid")
                         or it.get("to") or it.get("recipient")
-                        or it.get("account") or "?")
+                        or it.get("account") or it.get("package_id") or "")
             reason = ""
             code = it.get("error_code") or ""
             if code:
@@ -4049,7 +4063,14 @@ class TurnLog:
                     reason = cand
             if not reason:
                 reason = str(it.get("error") or code or "")
-            if label != "?" and label in reason:
+            # Senza identita' non si stampa un segnaposto: «?» davanti a un
+            # motivo gia' completo aggiunge rumore e non informa. Un dominio
+            # il cui fallimento non riguarda un singolo elemento (la
+            # risoluzione di un catalogo, per dire) non ne ha una, ed e'
+            # normale.
+            if not label:
+                return reason or ""
+            if label in reason:
                 return reason
             return f"«{label}»: {reason}" if reason else f"«{label}»"
 
@@ -4919,6 +4940,12 @@ class TurnLog:
                             break
                 if _mut_hint:
                     self.final_message = _mut_hint
+                elif self.error_class in _AUTHORITATIVE_UNFULFILLED_CLASSES:
+                    # The engine already explained WHY the action did not
+                    # happen (no tool can perform it).  Replacing that with
+                    # the generic "rephrase" message drops the information
+                    # and asks for a retry that cannot succeed.
+                    pass
                 else:
                     try:
                         self.final_message = msg(
@@ -5697,6 +5724,80 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
 
 # --- Auto-remediation generalizzata (ADR 0153) -----------------------------
 
+
+def _declared_managed_package(executor, observation: object) -> str:
+    """Resolve a dependency key only through the signed consumer manifest."""
+
+    if not isinstance(observation, dict):
+        return ""
+    if observation.get("error_class") != "managed_dependency_inactive":
+        return ""
+    key = observation.get("managed_dependency")
+    if not isinstance(key, str) or not key:
+        return ""
+    matches = [
+        dependency.package_id
+        for dependency in getattr(executor, "managed_dependencies", ())
+        if dependency.key == key and dependency.mode == "process"
+    ]
+    return matches[0] if len(matches) == 1 else ""
+
+
+def _bind_managed_dependency_resume(
+        start_result: object, *, package_id: str, resume_tool: str,
+        resume_args: dict, target_device: str) -> dict | None:
+    """Bind a validated package-start dialog to one deterministic retry."""
+
+    if not isinstance(start_result, dict):
+        return None
+    if start_result.get("decision") != "needs_inputs":
+        return dict(start_result)
+    payload = start_result.get("needs_inputs")
+    if not isinstance(payload, dict):
+        return None
+    original_callback = payload.get("on_complete")
+    if (not isinstance(original_callback, dict)
+            or original_callback.get("type") != "gate_dispatch"):
+        return None
+    raw_branches = original_callback.get("branches")
+    if not isinstance(raw_branches, dict):
+        return None
+
+    branches: dict[str, dict] = {}
+    for lifetime in ("session", "persistent"):
+        branch = raw_branches.get(lifetime)
+        if not isinstance(branch, dict) or branch.get("tool") != "create_processes":
+            return None
+        branch_args = branch.get("args")
+        if (not isinstance(branch_args, dict)
+                or set(branch_args) != {
+                    "programs", "lifetime", "actor_consent_token"}
+                or branch_args.get("programs") != [package_id]
+                or branch_args.get("lifetime") != lifetime):
+            return None
+        token = branch_args.get("actor_consent_token")
+        if (not isinstance(token, str) or len(token) != 64
+                or any(char not in "0123456789abcdef" for char in token)):
+            return None
+        branches[lifetime] = {
+            "tool": "create_processes",
+            "args": dict(branch_args),
+        }
+
+    bound_payload = dict(payload)
+    bound_payload["on_complete"] = {
+        "type": "managed_dependency_resume",
+        "branches": branches,
+        "resume": {"tool": resume_tool, "args": dict(resume_args)},
+        "target_device": target_device,
+    }
+    return {
+        **start_result,
+        "needs_inputs": bound_payload,
+        "managed_dependency_for": resume_tool,
+    }
+
+
 def _maybe_remediate_obs(
     obs: dict,
     original_args: dict,
@@ -6225,6 +6326,27 @@ def _run_engine(
                 autonomy="supervised", turn_id=turn_id,
                 actor=actor, channel=channel, target_device=_target_name,
                 owner_user_id=owner_user_id)
+            package_id = _declared_managed_package(exec_obj, result)
+            if package_id:
+                starter = _catalog_by_name.get("create_processes")
+                if starter is not None:
+                    start_result = invoke_executor(
+                        starter, {"programs": [package_id]},
+                        timeout_s=(getattr(starter, "timeout_s", None) or 120),
+                        autonomy="supervised", turn_id=turn_id,
+                        actor=actor, channel=channel,
+                        target_device=_target_name,
+                        owner_user_id=owner_user_id,
+                    )
+                    bound = _bind_managed_dependency_resume(
+                        start_result,
+                        package_id=package_id,
+                        resume_tool=tool_name,
+                        resume_args=args,
+                        target_device=_target_name or "",
+                    )
+                    if bound is not None:
+                        result = bound
             return _attach_presentation_contract(tool_name, result)
         except Exception as ex:
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
@@ -6472,6 +6594,11 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
                     _caps = _dlg.get("expandable_caps")
                     if isinstance(_caps, list) and _caps:
                         log.expandable_caps = _caps
+                    # Un turno che si FERMA su una domanda e' girato dove e'
+                    # girato: senza l'etichetta il registro lo attribuiva al
+                    # server, e la conferma chiesta dal PC risultava
+                    # un'operazione del server (segnalato 17/8/2026).
+                    _apply_device_tag(log)
                     log.ts_end = time.time()
                     log.write()
                     return log
@@ -6495,6 +6622,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
         if isinstance(_gcaps, list) and _gcaps:
             log.expandable_caps = _gcaps
         log.intent_verb = _engine_v2_res.get("verb", "") or ""
+        _apply_device_tag(log)   # anche una pausa da gate ha una macchina
         log.ts_end = time.time()
         log.write()
         return log
@@ -6507,6 +6635,9 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
         if isinstance(hint, str) and hint:
             log.final_message = hint
     log.intent_verb = _engine_v2_res.get("verb", "") or ""
+    # The engine's error class travels with the turn: `write()` uses it to
+    # avoid overwriting a specific explanation with a generic message.
+    log.error_class = str(_engine_v2_res.get("error_class") or "")
     _apply_device_tag(log)   # ADR 0034: tag 📍 + campo dal device REALE degli step
     log.ts_end = time.time()
     log.write()

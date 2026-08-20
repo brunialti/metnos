@@ -6,11 +6,14 @@
 * the vector payload (for example ``entries[*].uid`` -> ``message_ids``);
 * homogeneous scalar context required to interpret that payload (for example
   the mailbox ``account`` and source ``folder`` shared by those UIDs).
+* typed top-level metadata explicitly requested by the consumer through
+  ``from_result_key`` (for example semantic roles for tabular fields).
 
-Both mappings are declared by the consumer manifest through
-``from_entries_key``.  Array properties receive the projected vector; scalar
-properties receive a value only when every source entry declares the same
-primitive value.  Heterogeneous or incomplete context is never guessed.
+All mappings are declared by the consumer manifest: ``from_entries_key`` for
+entry fields and ``from_result_key`` for top-level result metadata. Array
+properties receive the projected vector; scalar properties receive a value
+only when every source entry declares the same primitive value. Heterogeneous
+or incomplete context is never guessed.
 
 The module is deliberately independent from both runtime engines so the
 legacy and v3 execution paths share exactly the same projection semantics.
@@ -320,15 +323,53 @@ def _uniform_scalar(entries: list, source_key: str):
     return True, first
 
 
+def _matches_declared_type(value: Any, spec: dict) -> bool:
+    """Validate shallow result metadata before injecting it into arguments."""
+    declared = spec.get("type")
+    kinds = set(declared) if isinstance(declared, list) else {declared}
+    checks = {
+        "array": lambda item: isinstance(item, list),
+        "object": lambda item: isinstance(item, dict),
+        "string": lambda item: isinstance(item, str),
+        "integer": lambda item: isinstance(item, int)
+        and not isinstance(item, bool),
+        "number": lambda item: isinstance(item, (int, float))
+        and not isinstance(item, bool),
+        "boolean": lambda item: isinstance(item, bool),
+        "null": lambda item: item is None,
+    }
+    return any(kind in checks and checks[kind](value) for kind in kinds)
+
+
 def project_from_entries(args: dict, entries: list,
-                         consumer_schema: dict | None) -> tuple[dict, str | None]:
-    """Project payload and declared homogeneous context into consumer args.
+                         consumer_schema: dict | None,
+                         source_result: dict | None = None
+                         ) -> tuple[dict, str | None]:
+    """Project payload, declared context and typed metadata into consumer args.
 
     Returns ``(projected_args, vector_arg)``. ``vector_arg`` is ``None`` when
     the historical ``entries`` fallback was used.
     """
     out = dict(args)
     properties = _properties(consumer_schema)
+
+    # A producer may expose typed metadata about its vector payload (for
+    # example the semantic roles of record fields).  Consumers opt in through
+    # an exact manifest key; runtime contains no producer/consumer names and
+    # never guesses metadata from dict order.  Explicit consumer args win.
+    if isinstance(source_result, dict):
+        for arg_name, spec in properties.items():
+            if arg_name in out or not isinstance(spec, dict):
+                continue
+            source_key = spec.get("from_result_key")
+            if not isinstance(source_key, str) or not source_key:
+                continue
+            if source_key not in source_result:
+                continue
+            value = source_result[source_key]
+            if _matches_declared_type(value, spec):
+                out[arg_name] = value
+
     vector_arg = consumer_match_arg(consumer_schema, entries)
     used_vector_arg = None
     if vector_arg and vector_arg not in out:

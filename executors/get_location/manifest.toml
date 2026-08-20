@@ -87,12 +87,17 @@ device_ok = false
 
 # Sorgenti di rete spente: il test resta ermetico e verifica il FONDO della
 # catena, cioe' che senza alcuna sorgente si dichiari di non sapere.
+# Dati e configurazione in una casa PROPRIA e VUOTA: senza, l'executor legge
+# la posizione configurata della macchina vera e il test misura uno stato che
+# nessuno ha preparato. Erano tre prove rosse, invisibili perche' i test di
+# nascita non li esegue nessuno (scoperte 17/8/2026).
 [[tests]]
-name   = "nessuna_sorgente_sa_rispondere"
-setup  = "rm -f /tmp/metnos_loc_test.jsonl"
-input  = { actor = "test_no_data" }
-env    = { METNOS_OWNER_USER_ID = "manifest-location-owner", METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
-expect = { ok = false, error_contains = "Nessuna posizione ricevuta per ora. Condividi una posizione su Telegram con il bottone allegati e riprova" }
+name     = "nessuna_sorgente_sa_rispondere"
+setup    = "rm -rf /tmp/metnos_loc_vuoto && mkdir -p /tmp/metnos_loc_vuoto/data /tmp/metnos_loc_vuoto/config"
+teardown = "rm -rf /tmp/metnos_loc_vuoto"
+input    = { actor = "test_no_data" }
+env      = { METNOS_USER_DATA = "/tmp/metnos_loc_vuoto/data", METNOS_USER_CONFIG = "/tmp/metnos_loc_vuoto/config", METNOS_OWNER_USER_ID = "manifest-location-owner", METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
+expect   = { ok = false, error_contains = "Nessuna posizione ricevuta per ora. Condividi una posizione su Telegram con il bottone allegati e riprova" }
 
 [[tests]]
 name   = "actor_invalido_non_stringa"
@@ -102,9 +107,10 @@ expect = { ok = false, error_contains = "deve essere una stringa" }
 # Sample concreto di output (one-shot per synt + fast-path generator).
 [[tests]]
 name        = "happy_path_sample"
-setup       = "mkdir -p \"$METNOS_USER_DATA\" && printf '%s\\n' '{\"ts\":1778078500.0,\"owner_user_id\":\"manifest-location-owner\",\"actor\":\"test_sample\",\"channel\":\"telegram\",\"lat\":45.4642,\"lon\":9.19,\"accuracy\":12.5}' > \"$METNOS_USER_DATA/locations.jsonl\""
+setup       = "rm -rf /tmp/metnos_loc_sample && mkdir -p \"$METNOS_USER_DATA\" \"$METNOS_USER_CONFIG\" && printf '%s\\n' '{\"ts\":1778078500.0,\"owner_user_id\":\"manifest-location-owner\",\"actor\":\"test_sample\",\"channel\":\"telegram\",\"lat\":45.4642,\"lon\":9.19,\"accuracy\":12.5}' > \"$METNOS_USER_DATA/locations.jsonl\""
+teardown    = "rm -rf /tmp/metnos_loc_sample"
 input       = { actor = "test_sample" }
-env         = { METNOS_OWNER_USER_ID = "manifest-location-owner", METNOS_LOCATION_FRESH_S = "99999999999", METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
+env         = { METNOS_USER_DATA = "/tmp/metnos_loc_sample/data", METNOS_USER_CONFIG = "/tmp/metnos_loc_sample/config", METNOS_OWNER_USER_ID = "manifest-location-owner", METNOS_LOCATION_FRESH_S = "99999999999", METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
 expect      = { ok = true, has_field = "location" }
 expect_full = """
 {
@@ -126,8 +132,9 @@ expect_full = """
 # Rideterminazione esplicita: la configurata descrive la MACCHINA, quella
 # rilevata descrive dove si trova adesso. Si mostrano entrambe.
 [[tests]]
-name   = "verifica_confronta_configurata_e_rilevata"
-setup  = "mkdir -p \"$METNOS_USER_CONFIG\" && printf '[location]\\nlat = 45.4642\\nlon = 9.19\\nlabel = \"prova\"\\n' > \"$METNOS_USER_CONFIG/location.toml\""
-input  = { verify = true }
-env    = { METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
+name     = "verifica_confronta_configurata_e_rilevata"
+setup    = "rm -rf /tmp/metnos_loc_verify && mkdir -p \"$METNOS_USER_CONFIG\" \"$METNOS_USER_DATA\" && printf '[location]\\nlat = 45.4642\\nlon = 9.19\\nlabel = \"prova\"\\n' > \"$METNOS_USER_CONFIG/location.toml\""
+teardown = "rm -rf /tmp/metnos_loc_verify"
+input    = { verify = true }
+env      = { METNOS_USER_DATA = "/tmp/metnos_loc_verify/data", METNOS_USER_CONFIG = "/tmp/metnos_loc_verify/config", METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
 expect = { ok = true, error_contains = "" }

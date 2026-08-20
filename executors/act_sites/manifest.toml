@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "act_sites"
-version     = "0.2.0"
+version     = "0.2.1"
 intelligence = "agentic"
 timeout_s   = 180
 platforms   = ["linux"]
@@ -22,7 +22,7 @@ en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PAT
 
 [code]
 files = ["act_sites.py"]
-digest = "sha256:715ca257ce5a197cb75574eb4f48211b079b8bfffe89302566ebf5bef6c4db74"
+digest = "sha256:a1c198a90c402c8c04a565a16dcbde8d63532cdbdb2038025e50d08ae287062d"
 
 [args]
 type = "object"

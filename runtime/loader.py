@@ -49,6 +49,108 @@ BUILTIN_EXECUTOR_CONTRACTS_DIR = (
 ALLOWED_PLATFORMS = {"linux", "windows", "macos"}
 
 
+@dataclass(frozen=True)
+class ManagedDependency:
+    """One signed package dependency declared by a consumer manifest.
+
+    ``process`` dependencies use the existing user-selected lifetime flow.
+    ``provider`` dependencies expose a read-only typed interface and are
+    acquired lazily when both selector arguments request a bounded data slice.
+    """
+
+    key: str
+    package_id: str
+    mode: str = "process"
+    interface: str = ""
+    domains_arg: str = ""
+    sensor_types_arg: str = ""
+    assembly: str = ""
+    entry_type: str = ""
+
+
+def _managed_dependencies(raw: object) -> tuple[ManagedDependency, ...]:
+    """Validate the closed manifest shape used by managed package start."""
+
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ValueError("managed_dependencies_must_be_array")
+    dependencies: list[ManagedDependency] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("managed_dependency_invalid_shape")
+        keys = set(item)
+        process_shape = {"key", "package_id"}
+        provider_shape = {
+            "key", "package_id", "mode", "interface", "domains_arg",
+            "sensor_types_arg", "assembly", "entry_type",
+        }
+        if keys not in (process_shape, provider_shape):
+            raise ValueError("managed_dependency_invalid_shape")
+        key = item.get("key")
+        package_id = item.get("package_id")
+        if (not isinstance(key, str) or not key.isascii()
+                or not key or len(key) > 64
+                or not all(char.isalnum() or char == "_" for char in key)):
+            raise ValueError("managed_dependency_invalid_key")
+        if (not isinstance(package_id, str) or not package_id.isascii()
+                or not package_id or len(package_id) > 128
+                or not package_id[0].isalnum()
+                or not all(char.isalnum() or char in "._+:@-"
+                           for char in package_id)):
+            raise ValueError("managed_dependency_invalid_package_id")
+        if key in seen:
+            raise ValueError("managed_dependency_duplicate_key")
+        mode = item.get("mode", "process")
+        interface = item.get("interface", "")
+        domains_arg = item.get("domains_arg", "")
+        sensor_types_arg = item.get("sensor_types_arg", "")
+        assembly = item.get("assembly", "")
+        entry_type = item.get("entry_type", "")
+        if keys == provider_shape:
+            if mode != "provider":
+                raise ValueError("managed_dependency_invalid_mode")
+            for value, code in (
+                (interface, "managed_dependency_invalid_interface"),
+                (domains_arg, "managed_dependency_invalid_domains_arg"),
+                (sensor_types_arg,
+                 "managed_dependency_invalid_sensor_types_arg"),
+            ):
+                if (not isinstance(value, str) or not value.isascii()
+                        or not value or len(value) > 64
+                        or not value[0].isalpha()
+                        or not all(char.isalnum() or char == "_"
+                                   for char in value)):
+                    raise ValueError(code)
+            if (not isinstance(assembly, str) or not assembly.isascii()
+                    or not assembly.lower().endswith(".dll")
+                    or len(assembly) > 128
+                    or not assembly[0].isalnum()
+                    or not all(char.isalnum() or char in "._-"
+                               for char in assembly)):
+                raise ValueError("managed_dependency_invalid_assembly")
+            if (not isinstance(entry_type, str) or not entry_type.isascii()
+                    or len(entry_type) > 192
+                    or any(not part or not part[0].isalpha()
+                           or not all(char.isalnum() or char == "_"
+                                      for char in part)
+                           for part in entry_type.split("."))):
+                raise ValueError("managed_dependency_invalid_entry_type")
+        seen.add(key)
+        dependencies.append(ManagedDependency(
+            key=key,
+            package_id=package_id,
+            mode=mode,
+            interface=interface,
+            domains_arg=domains_arg,
+            sensor_types_arg=sensor_types_arg,
+            assembly=assembly,
+            entry_type=entry_type,
+        ))
+    return tuple(dependencies)
+
+
 def _resolve_lang_text(value, *, where: str, current_lang: str) -> str:
     """Risolve un campo testuale multilingua del manifest (ADR 0092 Phase 4).
 
@@ -237,6 +339,7 @@ def builtin_contract_executor(name: str, module_path: Path,
         deprecated_at=None,
         deprecation_ttl_hours=24,
         placement=dict(manifest.get("placement") or {}),
+        undo=dict(manifest.get("undo") or {}),
         platforms=list(manifest.get("platforms") or ["linux"]),
         digest=str((manifest.get("code") or {}).get("digest") or ""),
         executor_standard=str(manifest.get("executor_standard") or ""),
@@ -547,6 +650,13 @@ class Executor:
     # Vuoto = scope "any" (gira su .33 come oggi). Consumato da
     # placement.choose_placement nel hook di invoke_executor.
     placement: dict = field(default_factory=dict)
+    # Sezione `[undo]` del manifest (ADR 0209 D3): che cosa rispondere a un
+    # «annulla» quando l'operazione NON e' annullabile ma esiste un rimedio.
+    # Un'installazione non si ripercorre all'indietro; disinstallare e'
+    # un'altra operazione, che va chiesta. L'executor DICHIARA il rimedio,
+    # cosi' `undo_last_turn` non deve conoscere nessun dominio per nome.
+    # Vuoto = nessun rimedio: l'undo dice che non e' annullabile, e basta.
+    undo: dict = field(default_factory=dict)
     # Hint storico `[planning] complexity = "low|medium|high"`, mantenuto nel
     # modello dati per compatibilita' dei manifest. Non controlla piu' think,
     # temperature o budget: i consumer selezionano un workload e la relativa
@@ -589,6 +699,10 @@ class Executor:
     # exact historical execution semantics for every existing executor.
     execution_policy: dict = field(default_factory=_execution_policy)
     execution_policy_declared: bool = False
+    # Signed, consumer-owned package requirements. The runtime resolves only
+    # the declared key; executors never provide a command, path, or package ID
+    # in their result.
+    managed_dependencies: tuple[ManagedDependency, ...] = ()
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)
@@ -1425,6 +1539,13 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         _companions = list(dict.fromkeys(
             value.strip() for value in _companions_raw))
 
+        try:
+            _managed = _managed_dependencies(
+                manifest.get("managed_dependencies"))
+        except ValueError as exc:
+            catalog.rejected.append((str(sub), str(exc)))
+            continue
+
         # Piattaforme device supportate (W3.2, §16.3): assente = ["linux"]
         # default onesto (tutto il parco e' nato POSIX, §16.0 the design guide);
         # presente = lista non vuota di valori ammessi, altrimenti REJECT —
@@ -1463,6 +1584,8 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             sandbox_profile=sandbox_profile,
             provenance=provenance,
             placement=_placement,
+            undo=dict(manifest.get("undo") or {})
+            if isinstance(manifest.get("undo"), dict) else {},
             complexity=_complexity,
             planning_companions=_companions,
             platforms=_platforms,
@@ -1478,6 +1601,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             execution_policy=_execution_policy(manifest),
             execution_policy_declared=isinstance(manifest.get("execution"), dict),
             presentation=_normalize_presentation(manifest),
+            managed_dependencies=_managed,
         )
         catalog.executors[name] = ex
 

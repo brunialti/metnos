@@ -51,9 +51,19 @@ def invoke(args):
     near = None
 
     def _pair(lat, lon):
-        """Coppia di coordinate, tollerante alla forma plurale del planner."""
+        """Coordinate pair, tolerant of the planner's plural form.
+
+        `0` is the project-wide unset placeholder (§2.4), and a centre of
+        exactly (0, 0) is that placeholder rather than a request to search
+        the Gulf of Guinea: the planner copies it from the argument example
+        ("near={lat:0,lon:0}") and the search then ordered pharmacies in
+        Sardinia and Sicily by their 4500 km distance from open sea.  An
+        unset centre means no centre, so the search stays global.
+        """
         lat_v, lon_v = scalar_coordinate(lat), scalar_coordinate(lon)
         if lat_v is None or lon_v is None or not (-90.0 <= lat_v <= 90.0):
+            return None
+        if lat_v == 0.0 and lon_v == 0.0:
             return None
         return {"lat": lat_v, "lon": lon_v}
 

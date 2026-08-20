@@ -33,8 +33,8 @@ use std::sync::{Mutex, OnceLock};
 use anyhow::{bail, Context, Result};
 
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, SetHandleInformation, BOOL, HANDLE, HLOCAL,
-    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WIN32_ERROR,
+    CloseHandle, GetLastError, LocalFree, SetHandleInformation, BOOL, HANDLE, HANDLE_FLAG_INHERIT,
+    HLOCAL, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WIN32_ERROR,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSidToSidW, GetNamedSecurityInfoW, SetEntriesInAclW,
@@ -45,15 +45,14 @@ use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeleteAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
 };
 use windows_sys::Win32::Security::{
-    ACL, DACL_SECURITY_INFORMATION, FreeSid, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES,
+    FreeSid, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES,
     SECURITY_CAPABILITIES, SID_AND_ATTRIBUTES, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
 };
 use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, TerminateJobObject};
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
-    ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
-    CREATE_NO_WINDOW,
+    CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList, ResumeThread,
+    TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
     CREATE_SUSPENDED, EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST,
     PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES,
     STARTUPINFOEXW, STARTUPINFOW,
@@ -87,7 +86,11 @@ const CREATE_UNICODE_ENVIRONMENT: u32 = 0x0000_0400;
 pub enum Outcome {
     /// Container costruito e processo avviato al suo interno: risultato ONESTO
     /// a livello "appcontainer" (anche se l'executor poi fallisce o va in timeout).
-    Ran { stdout: String, stderr: String, timed_out: bool },
+    Ran {
+        stdout: String,
+        stderr: String,
+        timed_out: bool,
+    },
     /// Container NON costruibile su questo device (edizione, policy, FS non-NTFS,
     /// gate): il chiamante degrada a job-object dichiarando `motivo`.
     Unsupported(String),
@@ -118,7 +121,10 @@ pub struct ContainerParams {
 /// all'unpair (0 concessioni orfane); il rollback ACL su fallimento container e'
 /// coperto dalla stessa pulizia unpair validata.
 pub fn gate_on() -> bool {
-    !matches!(std::env::var(GATE_ENV).ok().as_deref(), Some("0") | Some("false") | Some("off"))
+    !matches!(
+        std::env::var(GATE_ENV).ok().as_deref(),
+        Some("0") | Some("false") | Some("off")
+    )
 }
 
 /// Livello riportato a freddo per l'heartbeat: "appcontainer" solo se il gate e'
@@ -231,7 +237,11 @@ struct GrantGuard {
 
 impl GrantGuard {
     fn new(sid: PSID, sid_str: String) -> Self {
-        Self { sid, sid_str, paths: Vec::new() }
+        Self {
+            sid,
+            sid_str,
+            paths: Vec::new(),
+        }
     }
     fn track(&mut self, root: &Path) {
         self.paths.push(root.to_path_buf());
@@ -279,7 +289,13 @@ fn check_bool(op: &str, ok: BOOL) -> Result<()> {
 
 fn check_win32(op: &str, code: WIN32_ERROR) -> Result<()> {
     if code != 0 {
-        bail!("{op} → WIN32_ERROR {code}");
+        // Il codice viaggia DENTRO l'errore, non dentro il testo. Scritto solo
+        // nel messaggio, chi lo riceve puo' soltanto mostrarlo: non puo'
+        // distinguere «accesso negato» da qualunque altro guasto, e quindi non
+        // puo' reagire diversamente. E' lo stesso difetto che oggi ha prodotto
+        // «codice 3» e «1 ACL non revocabile» — un numero senza appiglio
+        // (19/8/2026, terza volta nella stessa giornata).
+        return Err(std::io::Error::from_raw_os_error(code as i32)).with_context(|| op.to_string());
     }
     Ok(())
 }
@@ -306,14 +322,20 @@ fn ensure_profile_sid() -> Result<OwnedSid> {
         )
     };
     if hr == S_OK {
-        return Ok(OwnedSid { psid, free: SidFree::FreeSid });
+        return Ok(OwnedSid {
+            psid,
+            free: SidFree::FreeSid,
+        });
     }
     if hr == HR_ALREADY_EXISTS {
         // Profilo gia' registrato: deriva il SID dal nome (stabile).
         let mut psid2: PSID = std::ptr::null_mut();
         let hr2 = unsafe { DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut psid2) };
         if hr2 == S_OK {
-            return Ok(OwnedSid { psid: psid2, free: SidFree::FreeSid });
+            return Ok(OwnedSid {
+                psid: psid2,
+                free: SidFree::FreeSid,
+            });
         }
         bail!("DeriveAppContainerSidFromAppContainerName HRESULT {hr2:#010x}");
     }
@@ -327,7 +349,10 @@ fn internet_client_sid() -> Result<OwnedSid> {
     check_bool("ConvertStringSidToSidW(internetClient)", unsafe {
         ConvertStringSidToSidW(s.as_ptr(), &mut psid)
     })?;
-    Ok(OwnedSid { psid, free: SidFree::LocalFree })
+    Ok(OwnedSid {
+        psid,
+        free: SidFree::LocalFree,
+    })
 }
 
 /// Deriva il SID del container SENZA (ri)crearne il profilo. Il SID e'
@@ -338,7 +363,10 @@ fn derive_sid() -> Result<OwnedSid> {
     let mut psid: PSID = std::ptr::null_mut();
     let hr = unsafe { DeriveAppContainerSidFromAppContainerName(name.as_ptr(), &mut psid) };
     if hr == S_OK {
-        Ok(OwnedSid { psid, free: SidFree::FreeSid })
+        Ok(OwnedSid {
+            psid,
+            free: SidFree::FreeSid,
+        })
     } else {
         bail!("DeriveAppContainerSidFromAppContainerName HRESULT {hr:#010x}");
     }
@@ -388,6 +416,13 @@ pub struct CleanupReport {
     pub revoked: usize,
     /// Voci NON revocate (mantenute nel registro per un retry, §2.8).
     pub failed: usize,
+    /// QUALI voci non si sono potute revocare.
+    ///
+    /// Il numero da solo non e' azionabile: un fallimento qui blocca ogni
+    /// esecuzione sul computer, e chi lo legge deve poter sapere su quale
+    /// cartella intervenire. «1 ACL non revocabile» manda a cercare ovunque
+    /// (successo il 19/8/2026: device fermo, nessun modo di sapere dove).
+    pub failed_paths: Vec<String>,
     /// Voci scartate perche' il path e' sparito (l'ACE e' morto con la dir):
     /// niente da revocare, non un fallimento retry-abile.
     pub dropped: usize,
@@ -404,10 +439,26 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
     let path = registry_path()?;
     let records = AclRegistry::load(&path).take_all();
     let total = records.len();
+    // Dirlo prima di cominciare, non dopo: revocare un permesso su una
+    // cartella ne riscrive i permessi in tutto cio' che contiene, quindi con
+    // un arretrato grosso questa funzione puo' durare minuti senza produrre
+    // una riga. Chi guarda vede solo un processo che consuma e tace, e va a
+    // cercare la causa ovunque tranne che qui (successo il 18/8/2026: 75
+    // cartelle, fra cui Documenti e Download, oltre venti minuti).
+    if total > 0 {
+        tracing::info!(
+            voci = total,
+            "pulizia ACL: comincio; su cartelle grandi puo' durare minuti"
+        );
+    }
 
     // SID del container (derivato, non ri-crea il profilo). Se non derivabile,
     // non possiamo revocare nulla: manteniamo tutte le voci.
-    let sid = if records.is_empty() { None } else { derive_sid().ok() };
+    let sid = if records.is_empty() {
+        None
+    } else {
+        derive_sid().ok()
+    };
 
     let mut revoked = 0usize;
     let mut dropped = 0usize;
@@ -424,14 +475,40 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
             Some(s) => match apply_acl(s.psid, Path::new(&rec.path), 0, REVOKE_ACCESS) {
                 Ok(()) => revoked += 1,
                 Err(e) => {
-                    tracing::warn!(path = %rec.path, "REVOKE ACL fallito, mantengo la voce: {e:#}");
-                    remaining.push(rec);
+                    // Accesso negato = non abbiamo diritti su quella cartella.
+                    // Ma allora non li avevamo NEMMENO quando avremmo dovuto
+                    // concedere: quel permesso non e' mai stato dato, e non
+                    // c'e' niente di vecchio da togliere. Tenere la voce
+                    // significherebbe bloccare per sempre ogni esecuzione su
+                    // questo computer per una concessione che non e' mai
+                    // esistita — successo il 19/8/2026 con
+                    // `C:\ProgramData\Metnos\helper`, cartella di proprieta'
+                    // del sistema che un executor aveva chiesto di leggere.
+                    //
+                    // Si scarta, ma rumorosamente: se un giorno accadesse per
+                    // un'altra ragione, la riga nel registro e' l'unica cosa
+                    // che lo direbbe.
+                    const ACCESSO_NEGATO: i32 = 5;
+                    if e.downcast_ref::<std::io::Error>()
+                        .and_then(|io| io.raw_os_error())
+                        == Some(ACCESSO_NEGATO)
+                    {
+                        tracing::warn!(path = %rec.path,
+                            "REVOKE ACL: accesso negato, quindi la concessione \
+non era mai stata applicata. Scarto la voce invece di bloccare la macchina");
+                        dropped += 1;
+                    } else {
+                        tracing::warn!(path = %rec.path,
+                            "REVOKE ACL fallito, mantengo la voce: {e:#}");
+                        remaining.push(rec);
+                    }
                 }
             },
             None => remaining.push(rec),
         }
     }
     let failed = remaining.len();
+    let failed_paths: Vec<String> = remaining.iter().map(|r| r.path.clone()).take(5).collect();
 
     // Rimuovi il profilo (il SID resta derivabile per eventuali retry).
     let profile_removed = match delete_profile() {
@@ -458,7 +535,14 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
         }
     }
 
-    Ok(CleanupReport { total, revoked, failed, dropped, profile_removed })
+    Ok(CleanupReport {
+        total,
+        revoked,
+        failed,
+        failed_paths,
+        dropped,
+        profile_removed,
+    })
 }
 
 // --- ACL ---------------------------------------------------------------------
@@ -477,7 +561,9 @@ static ACL_REGISTRY: OnceLock<Mutex<AclRegistry>> = OnceLock::new();
 
 fn registry() -> &'static Mutex<AclRegistry> {
     ACL_REGISTRY.get_or_init(|| {
-        let reg = registry_path().map(|p| AclRegistry::load(&p)).unwrap_or_default();
+        let reg = registry_path()
+            .map(|p| AclRegistry::load(&p))
+            .unwrap_or_default();
         Mutex::new(reg)
     })
 }
@@ -503,7 +589,9 @@ fn grant_dir(sid: PSID, sid_str: &str, root: &Path, mask: u32) -> Result<()> {
     });
     if added {
         let rp = registry_path()?;
-        guard.save(&rp).context("persistenza write-ahead registro ACL")?;
+        guard
+            .save(&rp)
+            .context("persistenza write-ahead registro ACL")?;
     }
 
     // Applica SEMPRE l'ACE: il registro NON e' una cache di "gia' fatto". Una
@@ -602,7 +690,9 @@ fn make_pipe() -> Result<(Handle, Handle)> {
     sa.bInheritHandle = 1;
     let mut rd: HANDLE = std::ptr::null_mut();
     let mut wr: HANDLE = std::ptr::null_mut();
-    check_bool("CreatePipe", unsafe { CreatePipe(&mut rd, &mut wr, &sa, 0) })?;
+    check_bool("CreatePipe", unsafe {
+        CreatePipe(&mut rd, &mut wr, &sa, 0)
+    })?;
     Ok((Handle(rd), Handle(wr)))
 }
 
@@ -627,7 +717,9 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     //    derivato dal nome, non questa stringa.
     let sid = ensure_profile_sid().context("profilo AppContainer")?;
     let sid_str = sid_to_string(sid.psid).unwrap_or_else(|e| {
-        tracing::warn!("SID container non serializzabile ({e:#}): registro ACL usera' un segnaposto");
+        tracing::warn!(
+            "SID container non serializzabile ({e:#}): registro ACL usera' un segnaposto"
+        );
         "unknown".to_string()
     });
 
@@ -644,7 +736,8 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     }
     grant_dir(sid.psid, &sid_str, &p.shim_dir, common::ACCESS_READ).context("ACL lettura shim")?;
     grant_guard.track(&p.shim_dir);
-    grant_dir(sid.psid, &sid_str, &p.exec_dir, common::ACCESS_READ).context("ACL lettura executor")?;
+    grant_dir(sid.psid, &sid_str, &p.exec_dir, common::ACCESS_READ)
+        .context("ACL lettura executor")?;
     grant_guard.track(&p.exec_dir);
     // Scratch/TEMP in scrittura.
     grant_dir(sid.psid, &sid_str, &p.scratch_dir, common::ACCESS_WRITE)
@@ -674,7 +767,10 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     };
     let mut cap_attrs: Vec<SID_AND_ATTRIBUTES> = Vec::new();
     if let Some(ns) = &net_sid {
-        cap_attrs.push(SID_AND_ATTRIBUTES { Sid: ns.psid, Attributes: SE_GROUP_ENABLED });
+        cap_attrs.push(SID_AND_ATTRIBUTES {
+            Sid: ns.psid,
+            Attributes: SE_GROUP_ENABLED,
+        });
     }
 
     // 5. SECURITY_CAPABILITIES: identita' del container + capability abilitate.
@@ -793,7 +889,11 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
         p.args_json,
         p.deadline_ms,
     );
-    Ok(Outcome::Ran { stdout, stderr, timed_out })
+    Ok(Outcome::Ran {
+        stdout,
+        stderr,
+        timed_out,
+    })
     // `job`, `attr_list`, `sid`, `net_sid`, i buffer wide droppano qui.
 }
 

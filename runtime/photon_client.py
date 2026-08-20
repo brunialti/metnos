@@ -236,9 +236,17 @@ def forward_search(query: str, max_results: int = 5, near: dict | None = None,
                         best_matches.append(m); seen.add(k)
             if len(best_matches) >= max_results:
                 break
-        # sort haversine + tronco
-        best_matches.sort(key=lambda m: m.get("distance_km", 1e9))
-        return best_matches[:max_results], last_source
+        if best_matches:
+            # sort haversine + tronco
+            best_matches.sort(key=lambda m: m.get("distance_km", 1e9))
+            return best_matches[:max_results], last_source
+        # The bounded walk found nothing up to the cap radius.  That is not the
+        # same as "no such place": the corpus may simply not name any POI the
+        # way the request does ("benzinaio" for a fuel station), and the tag
+        # filter makes the text match stricter still.  Returning empty here
+        # loses a real answer, so fall through to the biased-unbounded search
+        # below, which still orders by distance from the same centre.
+        bounded = False
 
     # === Path semplice: niente near OR bounded=False ===
     fetch_limit = 50 if near else max(max_results, 1)

@@ -178,6 +178,31 @@ def assigned_workers(*, default: int = 1, maximum: int = 32) -> int:
         default=default, maximum=maximum, cpu_count=visible_cpus)
 
 
+def managed_provider_result(key: str) -> dict | None:
+    """Return one client-injected, read-only managed-provider result.
+
+    The remote client creates this bounded environment value from a
+    server-signed grant before entering the executor sandbox. Executors name
+    only their abstract dependency key; package identity, privileged access,
+    and provider dispatch stay outside executor code.
+    """
+    import json
+    import os
+    if (not isinstance(key, str) or not key.isascii() or not key
+            or len(key) > 64
+            or not all(char.isalnum() or char == "_" for char in key)):
+        return None
+    raw = os.environ.get("METNOS_MANAGED_PROVIDER_RESULTS") or ""
+    if not raw or len(raw) > 16 * 1024:
+        return None
+    try:
+        values = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    result = values.get(key) if isinstance(values, dict) else None
+    return dict(result) if isinstance(result, dict) else None
+
+
 def run_stdio(invoke, *, default=None, error_extra=None,
               allow_empty=False) -> None:
     """main() standard di un executor (I/O contract subprocess, §2.1/§2.8): legge

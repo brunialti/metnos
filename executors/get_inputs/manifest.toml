@@ -204,29 +204,37 @@ hint = []
 scope = "server"
 device_ok = false
 
+# Un dialogo e' scoped al proprietario (isolamento del pending per utente):
+# senza `METNOS_OWNER_USER_ID` l'executor rifiuta PRIMA di guardare gli args, ed
+# e' corretto cosi'. Ogni test deve quindi dichiarare quel proprietario, o
+# misura soltanto il rifiuto di autorizzazione invece del contratto in esame.
 [[tests]]
 name   = "manca_dialog_fallisce"
+env    = { METNOS_OWNER_USER_ID = "manifest-get-inputs-owner" }
 input  = { title = "test" }
 expect = { ok = false, error_contains = "dialog" }
 
 [[tests]]
 name   = "dialog_vuoto_fallisce"
+env    = { METNOS_OWNER_USER_ID = "manifest-get-inputs-owner" }
 input  = { title = "test", dialog = [] }
 expect = { ok = false, error_contains = "almeno uno step" }
 
 [[tests]]
 name   = "var_duplicate_fallisce"
+env    = { METNOS_OWNER_USER_ID = "manifest-get-inputs-owner" }
 input  = { title = "test", dialog = [{ var = "x", prompt = "?", schema = { kind = "text" } }, { var = "x", prompt = "??", schema = { kind = "text" } }] }
 expect = { ok = false, error_contains = "duplicata" }
 
 [[tests]]
 name   = "schema_kind_invalido_fallisce"
+env    = { METNOS_OWNER_USER_ID = "manifest-get-inputs-owner" }
 input  = { title = "test", dialog = [{ var = "x", prompt = "?", schema = { kind = "weirdo" } }] }
 expect = { ok = false, error_contains = "kind" }
 
 [[tests]]
 name   = "happy_path_singolo_step_text"
-env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_inputs_text" }
+env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_inputs_text", METNOS_OWNER_USER_ID = "manifest-get-inputs-owner" }
 setup  = "rm -rf /tmp/metnos_test_get_inputs_text"
 input  = { title = "Quale citta'?", dialog = [{ var = "city", prompt = "Citta':", schema = { kind = "text" } }] }
 expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 1 } }
@@ -234,7 +242,7 @@ teardown = "rm -rf /tmp/metnos_test_get_inputs_text"
 
 [[tests]]
 name   = "happy_path_credenziali_due_step"
-env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_inputs_credentials" }
+env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_inputs_credentials", METNOS_OWNER_USER_ID = "manifest-get-inputs-owner" }
 setup  = "rm -rf /tmp/metnos_test_get_inputs_credentials"
 input  = { title = "Credenziali NAS", dialog = [{ var = "username", prompt = "User:", schema = { kind = "text" } }, { var = "password", prompt = "Pwd:", schema = { kind = "credentials", secret = true } }] }
 expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 2 } }

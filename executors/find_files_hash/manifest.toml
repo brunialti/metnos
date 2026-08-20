@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_files_hash"
-version     = "0.5.0"
+version     = "0.5.1"
 timeout_s   = 600
 author      = "Roberto Brunialti"
 affinity    = [
@@ -27,7 +27,7 @@ en = "SCOPO: finds exact duplicates through complete SHA-256; broad file types e
 
 [code]
 files  = ["find_files_hash.py"]
-digest = "sha256:90565ab783aaa76296abbcd7094887feb15fb64380115fbb980c3d38c83c8bb0"
+digest = "sha256:211325dff27cc9507150bc6adac8c9461b6dadc1d641a3828a0047f704853cf0"
 
 [args]
 type     = "object"
@@ -107,6 +107,7 @@ schema_inline = """
   ok_count: int,
   fail_count: int,
   entries: Array<{path: str, duplicate_of: str, size: int, sha256: str, group_count: int}>,
+  entry_field_roles: Array<{field: str, roles: Array<str>}>,
   failed: Array<{path: str, error_class: str, error_code: str, error: str}>,
   scanned_files: int,
   same_size_candidates: int,
