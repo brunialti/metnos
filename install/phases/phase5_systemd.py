@@ -33,6 +33,7 @@ STACK_UNIT_TEMPLATES = (
     ("metnos-stack-quarantine.service.tmpl", "metnos-stack-quarantine.service"),
     ("metnos-stack-watchdog.service.tmpl", "metnos-stack-watchdog.service"),
     ("metnos-stack-watchdog.timer.tmpl", "metnos-stack-watchdog.timer"),
+    ("metnos-durable-worker.service.tmpl", "metnos-durable-worker.service"),
     ("metnos-i18n-translator.service.tmpl", "metnos-i18n-translator.service"),
     ("metnos-i18n-translator.timer.tmpl", "metnos-i18n-translator.timer"),
 )

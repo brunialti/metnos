@@ -6,6 +6,7 @@ BindsTo=metnos-stack-ready.service
 Wants=metnos-side-display.service metnos-playwright.service
 Wants=metnos-telegram-daemon.service metnos-stack-watchdog.timer
 Wants=metnos-llm.service metnos-searxng.service metnos-photon.service
+Wants=metnos-durable-worker.service
 After=metnos-stack-ready.service
 
 [Install]

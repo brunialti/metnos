@@ -1,0 +1,30 @@
+[Unit]
+Description=Metnos supervised durable workload worker
+After=network-online.target
+Before=metnos-stack-ready.service
+PartOf=metnos.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_DIR@
+ExecStart=@VENV@/bin/python -m durable_workloads.service
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGTERM
+KillMode=control-group
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@REPO_DIR@/runtime
+Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
+Environment=METNOS_USER_DATA=@DATA_DIR@
+Environment=METNOS_USER_CONFIG=@CONFIG_DIR@
+Environment=METNOS_USER_STATE=@STATE_DIR@
+# The shipped lifecycle is safe by default. F11 adds only registered runtime
+# bindings before an administrator can enable this gate through a drop-in.
+Environment=METNOS_DURABLE_WORKLOADS_ENABLED=0
+SyslogIdentifier=metnos-durable-worker
+
+[Install]
+WantedBy=metnos.target

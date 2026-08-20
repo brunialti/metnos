@@ -38,6 +38,7 @@ CONTROL_PLANE_UNITS = (
 )
 STACK_UNITS = (
     "metnos-http.service",
+    "metnos-durable-worker.service",
     "metnos-side-display.service",
     "metnos-playwright.service",
     "metnos-telegram-daemon.service",

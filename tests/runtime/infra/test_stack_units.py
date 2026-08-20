@@ -46,7 +46,8 @@ def test_ready_gate_orders_every_owned_runtime_component():
         "metnos-http.service", "metnos-side-display.service",
         "metnos-playwright.service", "metnos-telegram-daemon.service",
         "metnos-llm.service", "metnos-searxng.service",
-        "metnos-photon.service", "metnos-i18n-translator.timer",
+        "metnos-photon.service", "metnos-durable-worker.service",
+        "metnos-i18n-translator.timer",
     ):
         assert dependency in unit
 
@@ -59,7 +60,7 @@ def test_failure_quarantine_is_closed_and_stops_partial_stack():
         "metnos-http.service", "metnos-side-display.service",
         "metnos-playwright.service", "metnos-telegram-daemon.service",
         "metnos-llm.service", "metnos-searxng.service",
-        "metnos-photon.service",
+        "metnos-photon.service", "metnos-durable-worker.service",
         "metnos-i18n-translator.service",
         "metnos-i18n-translator.timer",
     ):
@@ -77,6 +78,18 @@ def test_service_templates_are_owned_by_target_not_default_individually():
         unit = _read(name)
         assert "PartOf=metnos.target" in unit
         assert "WantedBy=default.target" not in unit
+
+
+def test_durable_worker_is_a_bounded_supervised_target_component():
+    unit = _read("metnos-durable-worker.service.tmpl")
+    assert "-m durable_workloads.service" in unit
+    assert "PartOf=metnos.target" in unit
+    assert "Before=metnos-stack-ready.service" in unit
+    assert "Restart=on-failure" in unit
+    assert "StartLimitBurst=3" in unit
+    assert "TimeoutStopSec=45" in unit
+    assert "KillMode=control-group" in unit
+    assert "METNOS_DURABLE_WORKLOADS_ENABLED=0" in unit
 
 
 def test_telegram_unit_invokes_the_shipped_daemon_module():
@@ -108,6 +121,7 @@ def test_catalog_target_reconcile_and_phase5_unit_sets_remain_in_parity():
     assert set(phase5.STACK_OWNED_OPTIONAL_UNITS) == (
         registry_units - {
             "metnos-http.service",
+            "metnos-durable-worker.service",
             "metnos-i18n-translator.service",
             "metnos-i18n-translator.timer",
         }
@@ -118,6 +132,7 @@ def test_catalog_target_reconcile_and_phase5_unit_sets_remain_in_parity():
     assert set(reconcile.RUNTIME_COMPONENT_UNITS) == (
         registry_units - {
             "metnos-http.service",
+            "metnos-durable-worker.service",
             "metnos-i18n-translator.service",
         }
     )
@@ -130,6 +145,7 @@ def test_catalog_target_reconcile_and_phase5_unit_sets_remain_in_parity():
         "metnos-stack-watchdog.timer",
         "metnos-i18n-translator.service",
         "metnos-i18n-translator.timer",
+        "metnos-durable-worker.service",
     }
 
     target = _read("metnos.target.tmpl")
@@ -169,6 +185,7 @@ def test_rendered_units_pass_systemd_analyze(monkeypatch, tmp_path):
         "metnos-stack-watchdog.timer.tmpl": "metnos-stack-watchdog.timer",
         "metnos-i18n-translator.service.tmpl": "metnos-i18n-translator.service",
         "metnos-i18n-translator.timer.tmpl": "metnos-i18n-translator.timer",
+        "metnos-durable-worker.service.tmpl": "metnos-durable-worker.service",
     }
     rendered = []
     for template, unit in names.items():

@@ -28,7 +28,10 @@ def _show(*, unit: str, load: str = "loaded", active: str = "active"):
 def test_catalog_keys_and_targets_are_closed_and_unique():
     services = registry.catalog()
     assert len({service.key for service in services}) == len(services)
-    assert {"http", "playwright", "llm", "searxng", "photon", "i18n"} <= {
+    assert {
+        "http", "playwright", "llm", "searxng", "photon", "i18n",
+        "durable_workloads",
+    } <= {
         service.key for service in services
     }
     assert "issues" not in {service.key for service in services}
@@ -39,6 +42,7 @@ def test_catalog_keys_and_targets_are_closed_and_unique():
     # alcun carico (ADR 0207, emendamento al censimento).
     assert "wise" in registry.get("i18n").description
     assert registry.get("llm").endpoint_env == "METNOS_LLM_URL"
+    assert registry.get("durable_workloads").health_policy == "application"
     for service in services:
         assert service.targets
         assert all(target.scope in {"system", "user"}
@@ -107,6 +111,26 @@ def test_llm_resolves_supported_system_installation(monkeypatch):
     assert row["unit"] == "llama-server.service"
     assert row["scope"] == "system"
     assert row["active_state"] == "active"
+
+
+def test_durable_worker_uses_the_closed_application_health_snapshot(monkeypatch):
+    monkeypatch.setattr(
+        registry, "resolve_target", lambda _spec, **_kwargs: {
+            "unit": "metnos-durable-worker.service", "scope": "user",
+            "load_state": "loaded", "active_state": "active",
+            "sub_state": "running", "main_pid": "42",
+            "active_since": "", "unit_state": "enabled",
+        },
+    )
+    import durable_workloads.service as durable_service
+
+    monkeypatch.setattr(durable_service, "health_snapshot", lambda: {
+        "state": "degraded", "reason_code": "feature_disabled",
+    })
+    row = registry.snapshot_one(registry.get("durable_workloads"))
+    assert (row["status"], row["healthy"], row["health_detail"]) == (
+        "degraded", False, "feature_disabled",
+    )
 
 
 def test_user_manager_gets_explicit_bus_environment(monkeypatch):

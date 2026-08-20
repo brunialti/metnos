@@ -195,6 +195,15 @@ enabled_at_install = true
 owner = "metnos.target"
 
 [[services.entry]]
+name = "metnos-durable-worker.service"
+type = "systemd-user"
+unit_file_local = "install/units/metnos-durable-worker.service.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-durable-worker.service"
+description = "Worker supervisionato per il motore interno dei lavori durevoli; l'esecuzione resta disabilitata finché non sono presenti binding registrati e un'esplicita abilitazione."
+enabled_at_install = true
+owner = "metnos.target"
+
+[[services.entry]]
 name = "metnos-stack-ready.service"
 type = "systemd-user"
 unit_file_local = "install/units/metnos-stack-ready.service.tmpl"
