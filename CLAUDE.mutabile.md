@@ -20,12 +20,16 @@
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
 - **ADR registry**: `0001-0213` (skipped: `0055`/`0115`/`0116`/`0121`).
-- **Lavori durevoli F0-F10 chiusi, attivazione ancora spenta** (21/8, ADR
+- **Lavori durevoli F0-F11 implementati, attivazione ancora spenta** (21/8, ADR
   0213, RM-0004): `runtime/durable_workloads/` contiene contratti, schema
   SQLite, repository owner-scoped, acquisizione, lease, heartbeat, fencing,
   ritentativo e ripresa; il worker supervisionato resta separato da HTTP e
-  privo dei binding reali F11. Il deposito privato degli artefatti è
-  circoscritto al proprietario, indirizzato per contenuto e dotato di
+  non riceve binding di produzione. Il preset immagini privato usa contratti
+  OCR firmati, workload logici su `wise`, fan-out tipizzato per elemento e tre
+  artefatti idempotenti nel deposito. Una sorgente locale non viene mai
+  ricostruita dal suo locator redatto: prima dell'attivazione serve un'autorità
+  esplicita di device. Il deposito privato degli artefatti è circoscritto al
+  proprietario, indirizzato per contenuto e dotato di
   pubblicazione interna riconciliabile, raccolta prudente degli orfani e
   cancellazione selettiva. La facciata e la console owner-scoped espongono
   solo dati redatti, eventi SSE persistenti e download con autorizzazione

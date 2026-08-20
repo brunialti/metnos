@@ -2,17 +2,17 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F10 completate il 2026-08-21 |
+| Stato | `active`; F0-F10 completate il 2026-08-21; F11 implementata, I2 e F12 parziali |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-21 |
-| Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/admission del piano v1, contesto fair nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato; i binding di runtime restano deliberatamente assenti fino a F11. F9 aggiunge facciata e DTO owner-scoped, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, retry e localizzazione; non esistono comandi in linguaggio naturale |
+| Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/admission del piano v1, contesto fair nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato. F9 aggiunge facciata e DTO owner-scoped, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, retry e localizzazione. F11 aggiunge il preset immagini privato: contratti OCR firmati, workload logici registrati, fan-out tipizzato per elemento, validazione e deposito idempotente di artefatti; nessuna route di ammissione pubblica o sorgente locale è abilitata |
 | Progettazione | Gate V1-V5 ratificati da ADR 0213. Il nome pubblico è rinviato per decisione; la topologia futura è congelata ma non installata |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro svolto e senza ripetere un effetto già prodotto; l'utente formula il risultato voluto, non il flusso |
 | Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | F11 deve configurare il preset immagini senza creare rami o scheduler dedicati; il gate I2 precede le prove distruttive F12 |
+| Prossimo gate | Completare le prove distruttive F12 senza abilitare worker, route o invii pubblici; evidenza parziale in `internal/reports/rm0004-f11-f12-verification-20260821.md` |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
 
 ## 0. Esito della verifica
@@ -49,7 +49,10 @@ owner-scoped e le route sottili; nessuna route accetta il proprietario dal body
 o restituisce piano, risultati o istantanee interne. F10 ha aggiunto la console
 web sulla stessa facciata, con timeline SSE riletta dal database, autorizzazioni
 temporanee di download legate al proprietario e notifiche durevoli; non carica le unità nella vista
-iniziale né espone percorsi, payload di risultato o link pubblici. I pacchetti
+iniziale né espone percorsi, payload di risultato o link pubblici. F11 dispone
+ora di contratti e prova E2E sintetica, ma il servizio distribuito resta
+spento: la riapertura di una sorgente locale richiede un'autorità di device
+esplicita, non il riutilizzo di un percorso redatto dal database. I pacchetti
 F11-F13 restano circoscritti per agenti esecutivi, secondo §16-17, e non
 possono anticipare i rispettivi gate.
 
@@ -1923,6 +1926,16 @@ reconcile_expired(now, batch_size)
 - **Scopo:** implementare il caso delle 98 immagini sul motore, senza logica
   numerica speciale.
 
+- **Stato:** implementazione privata completata il 2026-08-21 e in attesa del
+  gate I2. Il piano `images.questions.v1` usa il solo motore generico;
+  `read_files_ocr` firmato riceve una provenienza sigillata e in tale modalità
+  non restituisce il percorso locale. Le domande canoniche usano il fan-out
+  generico `per_dependency` con `entry_identity_field`, non una modalità
+  immagini. Il test E2E copre 98 sorgenti sintetiche, assenze di domande,
+  domande multiple, duplicati, riapertura del deposito a circa 30% e 60% e i
+  tre artefatti privati. Non abilita una route, un servizio o la risoluzione di
+  percorsi locali in produzione.
+
 - **File ammessi:** configurazione e piano di prova del dominio, JSON Schema di
   estrazione e soluzione, test E2E; modifiche a `read_files_ocr`, VLM o
   `write_files` soltanto in commit distinti, dopo audit e nuova firma
@@ -1962,6 +1975,9 @@ inventory
    dati del preset/piano.
 3. Chiamare OCR per unità o per lotti di dimensione misurata; nessun ciclo
    parallelo privato.
+   Il fan-out da un risultato strutturato si esprime con `per_dependency` e
+   un `entry_identity_field` dichiarato nello schema dell'elemento: identità,
+   chiave dell'unità e selezione dell'input restano nel nucleo universale.
 4. Prima di abilitare parallelismo di `read_files_ocr`, aggiungere policy
    firmata e prove di equivalenza e contesa delle risorse. In assenza resta
    seriale: il comportamento rimane corretto, soltanto più lento.
@@ -1994,6 +2010,14 @@ inventory
 - **Assegnazione:** agente di test avversariale distinto dagli implementatori.
 - **Dipendenze:** gate I2 con F8-F11 integrati.
 - **Scopo:** tentare di falsificare le promesse prima della distribuzione.
+
+- **Stato:** in corso. Il corpus sintetico da 980 sorgenti supera due
+  riaperture del deposito al 30% e al 60%, e i test del nucleo e del deposito
+  artefatti usano `SIGKILL` reale con recovery in un processo nuovo. Le
+  evidenze, i tempi e i limiti sono in
+  `internal/reports/rm0004-f11-f12-verification-20260821.md`. Non equivalgono
+  ancora al gate di uscita: mancano l'autorità di device, le prove operative
+  complete e i guasti integrati dell'intero percorso immagini.
 
 - **File ammessi:** infrastruttura e dati di prova sotto `tests/`, strumenti di
   test interni e rapporto riservato. Il runtime si modifica solo con correzioni
