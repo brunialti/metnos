@@ -55,10 +55,12 @@ from .models import (
     RunnerKind,
     TERMINAL_UNIT_STATES,
     UnitCounters,
+    UnitReadRecord,
     UnitState,
     WorkloadRecord,
     WorkloadState,
     can_transition_workload,
+    control_transition,
 )
 from .schema import (
     MAX_EVENT_JSON_BYTES,
@@ -428,6 +430,50 @@ class DurableWorkloadStore:
             FROM workloads
             WHERE {where}
             ORDER BY updated_at DESC, id
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall()
+        return tuple(_row_to_workload(row) for row in rows)
+
+    def list_workloads_page(
+        self,
+        owner_user_id: str,
+        *,
+        state: WorkloadState | str | None = None,
+        before: tuple[str, str] | None = None,
+        limit: int = 100,
+    ) -> tuple[WorkloadRecord, ...]:
+        """List one owner-scoped page ordered by update time and identifier."""
+
+        owner = _require_owner(owner_user_id)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer in 1..200")
+        normalized_state = WorkloadState(state) if state is not None else None
+        parameters: list[Any] = [owner]
+        clauses = ["owner_user_id=?"]
+        if normalized_state is not None:
+            clauses.append("state=?")
+            parameters.append(normalized_state.value)
+        if before is not None:
+            if (
+                not isinstance(before, tuple)
+                or len(before) != 2
+                or not all(isinstance(value, str) and value for value in before)
+            ):
+                raise ValueError("before must contain an update time and workload ID")
+            updated_at, workload_id = before
+            clauses.append("(updated_at<? OR (updated_at=? AND id<?))")
+            parameters.extend((updated_at, updated_at, workload_id))
+        parameters.append(limit)
+        rows = self._connection.execute(
+            f"""
+            SELECT owner_user_id, id, request_key, state, priority,
+                   active_revision_id, version, created_at, updated_at,
+                   terminal_reason_json
+            FROM workloads
+            WHERE {' AND '.join(clauses)}
+            ORDER BY updated_at DESC, id DESC
             LIMIT ?
             """,
             parameters,
@@ -852,6 +898,70 @@ class DurableWorkloadStore:
             for row in rows
         )
 
+    def list_units(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        state: UnitState | str | None = None,
+        before: tuple[str, str] | None = None,
+        limit: int = 100,
+    ) -> tuple[UnitReadRecord, ...]:
+        """Read a redacted page of units without exposing result payloads."""
+
+        owner = _require_owner(owner_user_id)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer in 1..200")
+        workload = self._select_workload(self._connection, owner, workload_id)
+        revision_id = workload["active_revision_id"]
+        if revision_id is None:
+            return ()
+        normalized_state = UnitState(state) if state is not None else None
+        parameters: list[Any] = [owner, revision_id]
+        clauses = ["u.owner_user_id=?", "u.revision_id=?"]
+        if normalized_state is not None:
+            clauses.append("u.state=?")
+            parameters.append(normalized_state.value)
+        if before is not None:
+            if (
+                not isinstance(before, tuple)
+                or len(before) != 2
+                or not all(isinstance(value, str) and value for value in before)
+            ):
+                raise ValueError("before must contain an update time and unit ID")
+            updated_at, unit_id = before
+            clauses.append("(u.updated_at<? OR (u.updated_at=? AND u.id<?))")
+            parameters.extend((updated_at, updated_at, unit_id))
+        parameters.append(limit)
+        rows = self._connection.execute(
+            f"""
+            SELECT u.owner_user_id, u.id, u.revision_id, s.stage_key,
+                   u.state, u.attempt_count, u.next_attempt_at,
+                   u.error_class, u.updated_at
+            FROM units u
+            JOIN stages s
+              ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY u.updated_at DESC, u.id DESC
+            LIMIT ?
+            """,
+            parameters,
+        ).fetchall()
+        return tuple(
+            UnitReadRecord(
+                owner_user_id=str(row["owner_user_id"]),
+                unit_id=str(row["id"]),
+                revision_id=str(row["revision_id"]),
+                stage_key=str(row["stage_key"]),
+                state=UnitState(row["state"]),
+                attempt_count=int(row["attempt_count"]),
+                next_attempt_at=row["next_attempt_at"],
+                error_class=row["error_class"],
+                updated_at=str(row["updated_at"]),
+            )
+            for row in rows
+        )
+
     def transition_workload(
         self,
         owner_user_id: str,
@@ -1032,41 +1142,13 @@ class DurableWorkloadStore:
             if int(row["version"]) != expected:
                 raise VersionConflictError("workload version precondition failed")
             source = WorkloadState(row["state"])
-            target: WorkloadState | None
-            event_type: EventType | None
-            if command == "pause":
-                if source in {WorkloadState.PAUSED, WorkloadState.PAUSE_REQUESTED}:
-                    target, event_type = None, None
-                elif source is WorkloadState.RUNNING:
-                    target, event_type = WorkloadState.PAUSE_REQUESTED, EventType.PAUSE_REQUESTED
-                elif source is WorkloadState.QUEUED:
-                    target, event_type = WorkloadState.PAUSED, EventType.PAUSED
-                else:
-                    raise InvalidTransitionError(f"cannot pause {source.value}")
-            elif command == "resume":
-                if source is WorkloadState.QUEUED:
-                    target, event_type = None, None
-                elif source is WorkloadState.PAUSED:
-                    target, event_type = WorkloadState.QUEUED, EventType.RESUMED
-                else:
-                    raise InvalidTransitionError(f"cannot resume {source.value}")
-            elif command == "cancel":
-                if source in {WorkloadState.CANCELLED, WorkloadState.CANCEL_REQUESTED}:
-                    target, event_type = None, None
-                elif source in {WorkloadState.RUNNING, WorkloadState.PAUSE_REQUESTED}:
-                    target, event_type = WorkloadState.CANCEL_REQUESTED, EventType.CANCEL_REQUESTED
-                elif source in {
-                    WorkloadState.DRAFT,
-                    WorkloadState.ADMITTED,
-                    WorkloadState.QUEUED,
-                    WorkloadState.PAUSED,
-                    WorkloadState.NEEDS_ATTENTION,
-                }:
-                    target, event_type = WorkloadState.CANCELLED, EventType.CANCELLED
-                else:
-                    raise InvalidTransitionError(f"cannot cancel {source.value}")
-            else:
-                raise ValueError(f"unknown control command: {command}")
+            try:
+                target = control_transition(command, source)
+            except ValueError as exc:
+                raise InvalidTransitionError(
+                    f"cannot {command} {source.value}"
+                ) from exc
+            event_type = _EVENT_BY_TARGET.get(target) if target is not None else None
 
             if target is None:
                 result = _row_to_workload(row)

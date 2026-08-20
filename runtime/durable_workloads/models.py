@@ -175,6 +175,35 @@ WORKLOAD_TRANSITIONS: Mapping[WorkloadState, frozenset[WorkloadState]] = {
 }
 
 
+# ``None`` means an explicit idempotent no-op.  An absent state/command pair
+# is illegal and must never infer a transition from the general state graph.
+CONTROL_STATE_MATRIX: Mapping[
+    str, Mapping[WorkloadState, WorkloadState | None]
+] = {
+    "pause": {
+        WorkloadState.QUEUED: WorkloadState.PAUSED,
+        WorkloadState.RUNNING: WorkloadState.PAUSE_REQUESTED,
+        WorkloadState.PAUSE_REQUESTED: None,
+        WorkloadState.PAUSED: None,
+    },
+    "resume": {
+        WorkloadState.QUEUED: None,
+        WorkloadState.PAUSED: WorkloadState.QUEUED,
+    },
+    "cancel": {
+        WorkloadState.DRAFT: WorkloadState.CANCELLED,
+        WorkloadState.ADMITTED: WorkloadState.CANCELLED,
+        WorkloadState.QUEUED: WorkloadState.CANCELLED,
+        WorkloadState.RUNNING: WorkloadState.CANCEL_REQUESTED,
+        WorkloadState.PAUSE_REQUESTED: WorkloadState.CANCEL_REQUESTED,
+        WorkloadState.PAUSED: WorkloadState.CANCELLED,
+        WorkloadState.CANCEL_REQUESTED: None,
+        WorkloadState.CANCELLED: None,
+        WorkloadState.NEEDS_ATTENTION: WorkloadState.CANCELLED,
+    },
+}
+
+
 UNIT_TRANSITIONS: Mapping[UnitState, frozenset[UnitState]] = {
     UnitState.PENDING: frozenset({
         UnitState.LEASED,
@@ -233,6 +262,22 @@ def can_transition_workload(
     except ValueError:
         return False
     return target in WORKLOAD_TRANSITIONS[current]
+
+
+def control_transition(
+    command: str,
+    source: WorkloadState | str,
+) -> WorkloadState | None:
+    """Return one declared control outcome, or reject an illegal command."""
+
+    try:
+        current = WorkloadState(source)
+    except ValueError as exc:
+        raise ValueError("source workload state is invalid") from exc
+    matrix = CONTROL_STATE_MATRIX.get(command)
+    if matrix is None or current not in matrix:
+        raise ValueError("control command is illegal for the workload state")
+    return matrix[current]
 
 
 def can_transition_unit(
@@ -311,6 +356,21 @@ class UnitCounters:
             self.committed + self.failed + self.skipped
             + self.attention + self.pending
         )
+
+
+@dataclass(frozen=True, slots=True)
+class UnitReadRecord:
+    """Redacted, owner-scoped unit projection for control-plane readers."""
+
+    owner_user_id: str
+    unit_id: str
+    revision_id: str
+    stage_key: str
+    state: UnitState
+    attempt_count: int
+    next_attempt_at: str | None
+    error_class: str | None
+    updated_at: str
 
 
 @dataclass(frozen=True, slots=True)
