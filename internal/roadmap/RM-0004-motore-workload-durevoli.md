@@ -2,17 +2,17 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F4 completate il 2026-08-20 |
+| Stato | `active`; F0-F7 completate il 2026-08-20 |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-20 |
-| Implementazione reale | Nucleo interno e inattivo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, worker esclusivamente fittizio e deposito privato degli artefatti con pubblicazione interna riconciliabile. Non esistono ancora compilatore, executor durevole reale, servizio attivo, route, UI o notifiche |
+| Implementazione reale | Nucleo interno e inattivo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/admission del piano v1, contesto fair nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. Non esistono ancora servizio supervisionato, route, UI o notifiche attivi |
 | Progettazione | Gate V1-V5 ratificati da ADR 0213. Il nome pubblico è rinviato per decisione; la topologia futura è congelata ma non installata |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro svolto e senza ripetere un effetto già prodotto; l'utente formula il risultato voluto, non il flusso |
 | Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | F5 deve compilare e ammettere il piano v1 con inventario sigillato e invalidazione deterministica, senza eseguire unità |
+| Prossimo gate | F8 deve integrare il worker già verificato nel ciclo di vita supervisionato, con ripresa e stato di salute, senza route di controllo |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
 
 ## 0. Esito della verifica
@@ -39,9 +39,12 @@ La direzione resta `active`, ma il suo fondamento non è più soltanto proposto.
 ADR 0213 ha chiuso F0; F1 e F2 hanno introdotto un archivio inattivo e
 verificabile; F3 ha dimostrato acquisizione atomica, fencing e ripresa fra
 processi. F4 ha aggiunto il deposito privato content-addressed e la
-pubblicazione interna riconciliabile, sempre senza collegare il pacchetto al
-runtime corrente. I pacchetti F5-F13 restano circostanziati per agenti
-esecutivi, secondo §16-17, e non possono anticipare i rispettivi gate.
+pubblicazione interna riconciliabile. F5 ha compilato e ammesso il piano v1;
+F6 ha collegato il contesto fair allo scheduler centrale; F7 ha verificato il
+ponte universale locale, remoto e LLM, inclusa la provenienza durevole. Il
+pacchetto resta inattivo nel runtime corrente. I pacchetti F8-F13 restano
+circostanziati per agenti esecutivi, secondo §16-17, e non possono anticipare
+i rispettivi gate.
 
 ### 0.1 Lessico di verifica
 
@@ -104,6 +107,27 @@ La promessa di prodotto va espressa in termini tecnicamente sostenibili:
   artefatti richiesti convalidati;
 - nessuna pretesa generica di *exactly once* tra SQLite, filesystem, provider e
   dispositivi remoti.
+
+### 1.2 Universalità del motore e confine dell'ammissione
+
+Il motore è universale rispetto al dominio: riceve soltanto un piano ammesso,
+un inventario sigillato e runner con contratti verificati. Non importa moduli
+di immagini, OCR, VLM, posta, file o altri domini e non contiene diramazioni
+basate sul nome dell'executor, sul tipo della sorgente o sul preset scelto.
+
+Un preset è quindi soltanto dati versionati: schema d'uscita approvato,
+workload registrato, binding, prompt, piano e fixture. Il caso immagini di F11
+è una prova rappresentativa del percorso generico, non un secondo motore e non
+una scorciatoia nel nucleo.
+
+La promessa vale per ogni attività utente che possa essere ammessa nel
+contratto chiuso: input autorizzati, output con schema, risorse, scadenza,
+profilo d'effetto e politica di ripresa dichiarati. Un'attività con effetto
+esterno ambiguo o senza riconciliazione resta ammissibile solo come
+`manual_only`: conserva evidenze e richiede attenzione umana dopo un timeout,
+senza un nuovo invio automatico. Shell generica, codice fornito dall'utente e
+side effect non contrattualizzati restano fuori dal perimetro, come già
+stabilito nei non-obiettivi della prima versione.
 
 ## 2. Stato del codice verificato
 
