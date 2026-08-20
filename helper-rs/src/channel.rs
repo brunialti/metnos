@@ -154,5 +154,4 @@ mod tests {
         let nome = pipe_name_for_owner("S-1-5-21-1-2-3-1001").unwrap();
         assert!(nome.starts_with(r"\\.\pipe\"), "nome non locale: {nome}");
     }
-
 }

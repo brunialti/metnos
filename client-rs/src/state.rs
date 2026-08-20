@@ -19,10 +19,9 @@ impl State {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let bytes = std::fs::read(path)
-            .with_context(|| format!("read state from {}", path.display()))?;
-        serde_json::from_slice(&bytes)
-            .with_context(|| format!("parse state {}", path.display()))
+        let bytes =
+            std::fs::read(path).with_context(|| format!("read state from {}", path.display()))?;
+        serde_json::from_slice(&bytes).with_context(|| format!("parse state {}", path.display()))
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -33,8 +32,7 @@ impl State {
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, bytes)
             .with_context(|| format!("write tmp state to {}", tmp.display()))?;
-        std::fs::rename(&tmp, path)
-            .with_context(|| format!("rename tmp -> {}", path.display()))?;
+        std::fs::rename(&tmp, path).with_context(|| format!("rename tmp -> {}", path.display()))?;
         Ok(())
     }
 

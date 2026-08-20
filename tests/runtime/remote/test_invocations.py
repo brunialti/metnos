@@ -11,6 +11,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
@@ -19,10 +20,24 @@ import devices  # noqa: E402
 import invocations  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 from cryptography.hazmat.primitives import serialization  # noqa: E402
+from sign import list_trusted_publics  # noqa: E402
 
 
 def _b64u(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).rstrip(b"=").decode("ascii")
+
+
+def _manifest_signer(manifest_path: Path):
+    """Return the installed trust key that signed one repository manifest."""
+    signature = manifest_path.with_suffix(".toml.sig").read_bytes()
+    manifest_bytes = manifest_path.read_bytes()
+    for _name, public_key in list_trusted_publics():
+        try:
+            public_key.verify(signature, manifest_bytes)
+            return public_key
+        except Exception:
+            continue
+    raise AssertionError("no trusted key verifies the executor manifest")
 
 
 class DeviceKey:
@@ -84,6 +99,82 @@ class InvocationQueueTests(unittest.TestCase):
         sig = wire.pop("server_sig")
         server_pub = invocations.server_public_key_b64()
         self.assertTrue(invocations.verify_payload(server_pub, sig, wire))
+
+    def test_provider_grant_is_manifest_derived_and_server_signed(self):
+        manifest_path = _RUNTIME.parent / "executors/get_processes/manifest.toml"
+        # Runtime tests use a fresh server author key but preserve repository
+        # manifests under their installed signer. Patch only manifest
+        # admission; the emitted grant is still signed by the fresh server.
+        with mock.patch.object(
+                invocations, "load_public",
+                return_value=_manifest_signer(manifest_path)):
+            inv_id = invocations.enqueue_invocation(
+                self.device_id,
+                "get_processes",
+                {
+                    "sensor_domains": ["cpu"],
+                    "sensor_types": ["temperature"],
+                    "top": 1,
+                },
+                db_path=self.db,
+            )
+        wire = invocations.next_invocation(self.device_id, db_path=self.db)
+
+        self.assertEqual(wire["invocation_id"], inv_id)
+        self.assertEqual(len(wire["managed_provider_grants"]), 1)
+        grant = wire["managed_provider_grants"][0]
+        self.assertEqual(
+            grant["dependency_key"], "hardware_sensor_provider")
+        self.assertEqual(
+            grant["package_id"], "LibreHardwareMonitor.LibreHardwareMonitor")
+        self.assertEqual(grant["interface"], "hardware_sensors_v1")
+        self.assertEqual(grant["domains"], ["cpu"])
+        self.assertEqual(grant["sensor_types"], ["temperature"])
+        self.assertEqual(grant["assembly"], "LibreHardwareMonitorLib.dll")
+        self.assertEqual(
+            grant["entry_type"], "LibreHardwareMonitor.Hardware.Computer")
+        signature = invocations._b64u_decode(grant["server_sig"])
+        invocations.load_public("author").verify(
+            signature, invocations.managed_provider_grant_body(grant))
+
+    def test_provider_grant_is_lazy_and_cannot_come_from_args(self):
+        for args in (
+            {"sensor_domains": [], "sensor_types": []},
+            {
+                "package_id": "Attacker.Package",
+                "interface": "shell",
+                "assembly": "Attacker.dll",
+                "entry_type": "Attacker.Command",
+            },
+        ):
+            invocations.enqueue_invocation(
+                self.device_id, "get_processes", args, db_path=self.db)
+            wire = invocations.next_invocation(self.device_id, db_path=self.db)
+            self.assertNotIn("managed_provider_grants", wire)
+
+        with self.assertRaises(invocations.InvocationError):
+            invocations.enqueue_invocation(
+                self.device_id,
+                "get_processes",
+                {"sensor_domains": ["cpu"]},
+                db_path=self.db,
+            )
+
+    def test_provider_grant_requires_the_author_signed_manifest(self):
+        rejecting_key = mock.Mock()
+        rejecting_key.verify.side_effect = ValueError("invalid signature")
+        with mock.patch.object(invocations, "load_public",
+                               return_value=rejecting_key):
+            with self.assertRaises(invocations.InvocationError):
+                invocations.enqueue_invocation(
+                    self.device_id,
+                    "get_processes",
+                    {
+                        "sensor_domains": ["cpu"],
+                        "sensor_types": ["temperature"],
+                    },
+                    db_path=self.db,
+                )
 
     def test_next_invocation_empty(self):
         self.assertIsNone(invocations.next_invocation(self.device_id, db_path=self.db))

@@ -108,7 +108,11 @@ pub async fn fetch(server: &str, server_pubkey: &str, dest_dir: &Path) -> Result
 
     // Verified content still has to be the content we asked for.
     if desc.component != COMPONENT {
-        bail!("descriptor is for component {}, not {}", desc.component, COMPONENT);
+        bail!(
+            "descriptor is for component {}, not {}",
+            desc.component,
+            COMPONENT
+        );
     }
     if desc.target != target {
         bail!("descriptor is for target {}, not {}", desc.target, target);
@@ -126,11 +130,14 @@ pub async fn fetch(server: &str, server_pubkey: &str, dest_dir: &Path) -> Result
         .context("download helper (body)")?;
     let got = hex_lower(&Sha256::digest(&bytes));
     if !got.eq_ignore_ascii_case(&desc.sha256) {
-        bail!("helper hash mismatch (expected {}, got {})", desc.sha256, got);
+        bail!(
+            "helper hash mismatch (expected {}, got {})",
+            desc.sha256,
+            got
+        );
     }
 
-    std::fs::create_dir_all(dest_dir)
-        .with_context(|| format!("create {}", dest_dir.display()))?;
+    std::fs::create_dir_all(dest_dir).with_context(|| format!("create {}", dest_dir.display()))?;
     let path = dest_dir.join(if cfg!(windows) {
         "metnos-helper.exe"
     } else {
@@ -152,8 +159,8 @@ pub async fn fetch(server: &str, server_pubkey: &str, dest_dir: &Path) -> Result
 /// it does mean the file is not replaced between download and launch by
 /// anything with weaker access.
 pub fn still_intact(fetched: &Fetched) -> Result<bool> {
-    let bytes = std::fs::read(&fetched.path)
-        .with_context(|| format!("read {}", fetched.path.display()))?;
+    let bytes =
+        std::fs::read(&fetched.path).with_context(|| format!("read {}", fetched.path.display()))?;
     Ok(hex_lower(&Sha256::digest(&bytes)).eq_ignore_ascii_case(&fetched.sha256))
 }
 
@@ -189,14 +196,14 @@ pub fn install_elevated(
 ) -> Result<Outcome> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Foundation::{CloseHandle, ERROR_CANCELLED, HANDLE};
+    use windows_sys::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+    };
     use windows_sys::Win32::System::Threading::{
         GetExitCodeProcess, WaitForSingleObject, INFINITE,
     };
     use windows_sys::Win32::UI::Shell::{
         ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
-    };
-    use windows_sys::Win32::System::Com::{
-        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
@@ -341,8 +348,13 @@ pub fn install_elevated(
 
 /// Outside Windows there is no elevated helper, and that is not a fault.
 #[cfg(not(windows))]
-pub fn install_elevated(_f: &Fetched, _sid: &str, _key: &str, _srv: &str,
-                        _url: &str) -> Result<Outcome> {
+pub fn install_elevated(
+    _f: &Fetched,
+    _sid: &str,
+    _key: &str,
+    _srv: &str,
+    _url: &str,
+) -> Result<Outcome> {
     bail!("the elevated helper exists only on Windows")
 }
 
@@ -364,11 +376,18 @@ mod tests {
         let path = dir.join("metnos-helper.exe");
         std::fs::write(&path, b"the verified bytes").unwrap();
         let atteso = hex_lower(&Sha256::digest(b"the verified bytes"));
-        let f = Fetched { path: path.clone(), version: "0.0.1".into(), sha256: atteso };
+        let f = Fetched {
+            path: path.clone(),
+            version: "0.0.1".into(),
+            sha256: atteso,
+        };
         assert!(still_intact(&f).unwrap());
 
         std::fs::write(&path, b"something else entirely").unwrap();
-        assert!(!still_intact(&f).unwrap(), "a swapped file passed as intact");
+        assert!(
+            !still_intact(&f).unwrap(),
+            "a swapped file passed as intact"
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

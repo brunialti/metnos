@@ -41,6 +41,22 @@ def test_assigned_workers_clamps_to_remote_visible_hardware(monkeypatch):
     assert assigned_workers(maximum=32) == 1
 
 
+def test_managed_provider_result_is_keyed_bounded_and_fail_closed(monkeypatch):
+    import json
+    from executor_helpers import managed_provider_result
+
+    monkeypatch.setenv("METNOS_MANAGED_PROVIDER_RESULTS", json.dumps({
+        "thermal_provider": {"ok": True, "payload": {"sensors": []}},
+    }))
+    assert managed_provider_result("thermal_provider") == {
+        "ok": True, "payload": {"sensors": []},
+    }
+    assert managed_provider_result("other_provider") is None
+    assert managed_provider_result("../thermal") is None
+    monkeypatch.setenv("METNOS_MANAGED_PROVIDER_RESULTS", "{invalid")
+    assert managed_provider_result("thermal_provider") is None
+
+
 def test_vector_result_distinguishes_complete_partial_and_empty_success():
     from executor_helpers import vector_result
 

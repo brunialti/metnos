@@ -479,8 +479,16 @@ def _mirror_component_entry(component: str, target: str):
     try:
         man = _json.loads(p.read_text())
         version = man.get("latest") or ""
-        entry = (((man.get("versions") or {}).get(version) or {})
-                 .get(target) or {}).get(component)
+        target_entry = (((man.get("versions") or {}).get(version) or {})
+                        .get(target) or {})
+        entry = target_entry.get(component)
+        # Mirrors created before helper distribution stored the client fields
+        # directly under the target. Keep that read-only compatibility here,
+        # in the single mirror parser, instead of branching in every route.
+        if (entry is None and component == "client"
+                and isinstance(target_entry, dict)
+                and isinstance(target_entry.get("sha256"), str)):
+            entry = target_entry
     except Exception:
         return None, None, _error(500, "bad_manifest", "manifest illeggibile")
     if not version or not entry:
@@ -860,13 +868,14 @@ async def client_join_installer(request: web.Request) -> web.Response:
         # Nel flusso join il pin e' OBBLIGATORIO: se non generabile, fail-closed
         # 503 (mai un installer Windows senza pin che ricada sul manifest).
         try:
-            m = json.loads(
-                (agent_mirror.MIRROR_CLIENT_DIR / "manifest.json").read_text())
-            entry = m["versions"][m["latest"]]["x86_64-pc-windows-gnu"]
+            version, entry, mirror_error = _mirror_component_entry(
+                "client", "x86_64-pc-windows-gnu")
+            if mirror_error is not None or not version or not entry:
+                raise ValueError("client entry missing from mirror")
             env = {
                 "METNOS_SERVER": server_url,
                 "METNOS_TOKEN": token,
-                "METNOS_CLIENT_VERSION": m["latest"],
+                "METNOS_CLIENT_VERSION": version,
                 "METNOS_CLIENT_SHA256": entry["sha256"],
             }
             runtime_pin = _windows_python_runtime_pin()

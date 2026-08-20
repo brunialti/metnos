@@ -80,3 +80,28 @@ def test_device_rende_errori_from_step_it_en(monkeypatch):
     for language, text in expected.items():
         monkeypatch.setenv("METNOS_LANG", language)
         assert _dsm.get("ERR_FROM_STEP_RANGE", step=3, maximum=2) == text
+
+
+def test_device_rende_provider_termico_it_en(monkeypatch):
+    _dsm = _load_device_messages()
+    expected = {
+        "it": "Nessun provider compatibile ha restituito una temperatura hardware utilizzabile.",
+        "en": "No compatible provider returned a usable hardware temperature.",
+    }
+    for language, text in expected.items():
+        monkeypatch.setenv("METNOS_LANG", language)
+        assert _dsm.get("ERR_THERMAL_PROVIDER_UNAVAILABLE") == text
+    for translations in _dsm._I18N.values():
+        assert "ERR_THERMAL_PROVIDER_INACTIVE" not in translations
+
+
+def test_message_may_use_code_as_a_placeholder(monkeypatch):
+    """The lookup key is positional, so a `{code}` placeholder cannot collide."""
+    _dsm = _load_device_messages()
+    monkeypatch.setenv("METNOS_LANG", "en")
+    rendered = _dsm.get(
+        "ERR_CREATE_PROCESSES_START_FAILED",
+        package="Vendor.Sensor",
+        code="package_start_failed",
+    )
+    assert "package_start_failed" in rendered

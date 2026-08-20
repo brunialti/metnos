@@ -26,6 +26,8 @@ AIUTANTE = ROOT / "helper-rs" / "src" / "protocol.rs"
 CLIENT = ROOT / "client-rs" / "src" / "helper_client.rs"
 CANALE = ROOT / "helper-rs" / "src" / "channel.rs"
 INSTALLAZIONE = ROOT / "helper-rs" / "src" / "win_setup.rs"
+ATTIVAZIONE = ROOT / "helper-rs" / "src" / "win_activation.rs"
+PROVIDER_WINDOWS = ROOT / "helper-rs" / "src" / "win_provider.rs"
 DELIMITAZIONE = (ROOT / "helper-rs" / "src" / "frame.rs",
                  ROOT / "client-rs" / "src" / "frame.rs")
 
@@ -34,6 +36,13 @@ DELIMITAZIONE = (ROOT / "helper-rs" / "src" / "frame.rs",
 # sorgente Rust e' scritto come sequenza di escape, ed e' cosi' che lo
 # cerchiamo — leggendo il testo del file, non eseguendolo.
 _ATTESA = re.compile(r'"(install\\u\{1f\}winget\\u\{1f\}[^"]+)"')
+_START_ATTESO = re.compile(
+    r'"(managed-start\\u\{1f\}winget\\u\{1f\}LibreHardwareMonitor'
+    r'\.LibreHardwareMonitor\\u\{1f\}session\\u\{1f\}[^"]+)"')
+_PROVIDER_GRANT_TEMPLATE = re.compile(
+    r'"(managed-provider-grant(?:\\u\{1f\}\{\}){10})"')
+_PROVIDER_REQUEST_TEMPLATE = re.compile(
+    r'"(managed-provider(?:\\u\{1f\}\{\}){3})"')
 
 
 def _corpo_atteso(percorso: Path) -> str:
@@ -67,6 +76,115 @@ def test_i_campi_sono_separati_da_un_carattere_impossibile_nei_valori():
     varrebbe per un'operazione che nessuno ha approvato."""
     corpo = _corpo_atteso(AIUTANTE)
     assert corpo.count("u{1f}") == 4, "servono quattro separatori, cinque campi"
+
+
+def test_il_corpo_managed_start_combacia_senza_aggiungere_un_verbo():
+    """The dedicated request is signed identically at both ends while the
+    package-operation enumeration remains unchanged."""
+    bodies = []
+    for path in (AIUTANTE, CLIENT):
+        found = _START_ATTESO.findall(path.read_text(encoding="utf-8"))
+        assert len(found) == 1, (path, found)
+        bodies.append(found[0])
+    assert bodies[0] == bodies[1]
+    assert bodies[0].count("u{1f}") == 4
+
+
+@pytest.mark.parametrize(
+    "pattern", (_PROVIDER_GRANT_TEMPLATE, _PROVIDER_REQUEST_TEMPLATE))
+def test_i_corpi_del_provider_combacciano_e_non_duplicano_campi(pattern):
+    """Server grant and client request use one minimal byte contract."""
+    bodies = []
+    for path in (AIUTANTE, CLIENT):
+        found = pattern.findall(path.read_text(encoding="utf-8"))
+        assert len(found) == 1, (path, found)
+        bodies.append(found[0])
+    assert bodies[0] == bodies[1]
+
+
+def test_il_provider_accetta_un_profilo_dati_non_codice_libero():
+    """The privileged provider accepts a signed standard profile only."""
+    for path in (AIUTANTE, CLIENT):
+        assert "hardware_sensors_v1" in path.read_text(encoding="utf-8")
+    helper_shape = re.search(
+        r"pub struct ManagedProviderRequest \{(.*?)\n\}",
+        AIUTANTE.read_text(encoding="utf-8"),
+        re.S,
+    )
+    assert helper_shape
+    fields = set(re.findall(r"pub (\w+):", helper_shape.group(1)))
+    assert fields == {
+        "source", "package_id", "interface", "invocation_id",
+        "manifest_sha256", "dependency_key", "grant_signature",
+        "assembly", "entry_type", "domains", "sensor_types",
+        "idempotency_key", "signature",
+    }
+    assert fields.isdisjoint({"path", "command", "args", "method", "type_name"})
+
+
+def test_hardware_provider_initialises_once_and_keeps_partial_sensor_data():
+    """Initialisation is single-shot and traversal preserves healthy rows."""
+    source = PROVIDER_WINDOWS.read_text(encoding="utf-8")
+    assert source.count("$computer.Open()") == 1
+    assert "$attempt" not in source
+    assert "$script:probeFailed = $true" in source
+    assert "if ($rows.Count -eq 0 -and $script:probeFailed) { exit 22 }" in source
+    for code in (
+        "provider_assembly_load_failed",
+        "provider_open_failed",
+        "provider_read_failed",
+        "provider_instance_failed",
+        "provider_configuration_failed",
+    ):
+        assert code in source
+
+
+def test_provider_loads_a_validated_winget_asset_without_removing_its_web_mark():
+    """A downloaded DLL can retain Mark-of-the-Web after WinGet extracts it.
+
+    The helper may bypass that loader check only after Rust has resolved the
+    signed assembly name to a canonical direct child of the registered package
+    root.  It must not mutate the package with Unblock-File or an ADS write.
+    """
+    source = PROVIDER_WINDOWS.read_text(encoding="utf-8")
+    assert "Assembly]::UnsafeLoadFrom" in source
+    assert "Assembly]::LoadFrom" not in source
+    assert "Unblock-File" not in source
+    assert "Zone.Identifier" not in source
+    assert "canonical_direct_child(package_id, assembly)" in source
+
+
+def test_provider_respells_only_the_validated_local_path_for_dotnet():
+    """Rust canonical paths are verbatim paths, which .NET Framework rejects."""
+    provider = PROVIDER_WINDOWS.read_text(encoding="utf-8")
+    activation = ATTIVAZIONE.read_text(encoding="utf-8")
+    pure_rules = (ROOT / "helper-rs" / "src" / "activation.rs").read_text(
+        encoding="utf-8")
+    assert "canonical_direct_child(package_id, assembly)" in provider
+    assert "windows_local_interop_path(&path)" in provider
+    assert provider.index("canonical_direct_child(package_id, assembly)") < \
+        provider.index("windows_local_interop_path(&path)")
+    assert r'strip_prefix(r"\\?\")' in pure_rules
+    assert "bytes[1] != b':'" in pure_rules
+    assert "HKEY_LOCAL_MACHINE" in activation
+
+
+def test_provider_host_has_no_program_specific_branch():
+    """A future compatible package changes profile data, not helper code."""
+    source = PROVIDER_WINDOWS.read_text(encoding="utf-8")
+    assert "LibreHardwareMonitor" not in source
+    assert "package_id ==" not in source
+    assert "match package_id" not in source
+    assert "METNOS_PROVIDER_ASSEMBLY" in source
+    assert "METNOS_PROVIDER_ENTRY_TYPE" in source
+    for fixed_property in (
+            "IsCpuEnabled", "IsGpuEnabled", "IsStorageEnabled",
+            "IsMotherboardEnabled"):
+        assert fixed_property in source
+    assert "foreach ($domain in $requestedDomains)" in source
+    assert "METNOS_PROVIDER_DOMAINS" in source
+    assert "METNOS_PROVIDER_SENSOR_TYPES" in source
+    assert "$attempt" not in source
 
 
 def _operazioni_dichiarate(percorso: Path) -> tuple:
@@ -106,6 +224,19 @@ def test_nessuna_operazione_significa_esegui():
         for vietata in ("Exec", "Run", "Shell", "Command"):
             assert vietata not in _operazioni_dichiarate(percorso), (
                 f"{percorso.name} dichiara l'operazione «{vietata}»")
+
+
+def test_managed_start_uses_the_official_winget_portable_target_value():
+    """The helper resolves the registered portable target without guessing.
+
+    WinGet writes ``PortableTargetFullPath`` for a portable package. The
+    shorter look-alike name is not a registered value and would make every
+    legitimate start fail closed as if its executable were missing.
+    """
+    source = ATTIVAZIONE.read_text(encoding="utf-8")
+    queried_values = re.findall(r'string_value\(key\.0, "([^"]+)"\)', source)
+    assert "PortableTargetFullPath" in queried_values
+    assert "TargetFullPath" not in queried_values
 
 
 def test_la_delimitazione_dei_messaggi_e_la_stessa_parola_per_parola():

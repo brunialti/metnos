@@ -49,12 +49,68 @@ pub struct CachedExecutor {
     /// impedisce il fallback a un mero Job Object (nessun isolamento FS).
     #[cfg_attr(not(windows), allow(dead_code))]
     pub min_sandbox: String,
+    /// Lazy read-only providers authorised by the signed manifest.
+    pub managed_providers: Vec<ManagedProviderDependency>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Capability {
     pub name: String,
     pub hint: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManagedProviderDependency {
+    pub key: String,
+    pub package_id: String,
+    pub interface: String,
+    pub domains_arg: String,
+    pub sensor_types_arg: String,
+    pub assembly: String,
+    pub entry_type: String,
+}
+
+/// Resolve one closed provider selection from the verified invocation args.
+pub fn managed_provider_selection(
+    args: &serde_json::Value,
+    dependency: &ManagedProviderDependency,
+) -> Result<Option<(Vec<String>, Vec<String>)>> {
+    fn selectors(value: Option<&serde_json::Value>) -> Result<Vec<String>> {
+        let Some(value) = value else {
+            return Ok(Vec::new());
+        };
+        let rows = value
+            .as_array()
+            .ok_or_else(|| anyhow!("managed provider selectors must be arrays"))?;
+        if rows.len() > 16 {
+            bail!("managed provider selector limit exceeded");
+        }
+        let mut values = Vec::with_capacity(rows.len());
+        for row in rows {
+            let value = row
+                .as_str()
+                .ok_or_else(|| anyhow!("managed provider selector must be a string"))?;
+            if value.len() > 32 || !safe_identifier(value) {
+                bail!("managed provider selector is invalid");
+            }
+            values.push(value.to_string());
+        }
+        values.sort();
+        if values.windows(2).any(|pair| pair[0] == pair[1]) {
+            bail!("managed provider selector is duplicated");
+        }
+        Ok(values)
+    }
+
+    let domains = selectors(args.get(&dependency.domains_arg))?;
+    let sensor_types = selectors(args.get(&dependency.sensor_types_arg))?;
+    if domains.is_empty() && sensor_types.is_empty() {
+        return Ok(None);
+    }
+    if domains.is_empty() || sensor_types.is_empty() {
+        bail!("managed provider selector lists must be provided together");
+    }
+    Ok(Some((domains, sensor_types)))
 }
 
 /// Scarica (se serve), verifica e materializza un executor nella cache.
@@ -68,7 +124,11 @@ pub async fn ensure_executor(
 ) -> Result<CachedExecutor> {
     validate_cache_key(name, manifest_sha256, code_sha256)?;
     // Cache key = manifest_sha: manifest immutabile => dir immutabile.
-    let dir = cache_root.join(format!("{}-{}", name, &manifest_sha256[..16.min(manifest_sha256.len())]));
+    let dir = cache_root.join(format!(
+        "{}-{}",
+        name,
+        &manifest_sha256[..16.min(manifest_sha256.len())]
+    ));
     let manifest_path = dir.join("manifest.toml");
 
     if manifest_path.is_file() {
@@ -76,11 +136,21 @@ pub async fn ensure_executor(
             Ok((manifest, entry)) => {
                 let capabilities = parse_capabilities(&manifest);
                 let min_sandbox = parse_min_sandbox(&manifest)?;
+                let managed_providers = parse_managed_providers(&manifest)?;
                 return Ok(CachedExecutor {
-                    name: name.to_string(), dir, entry, capabilities, min_sandbox });
+                    name: name.to_string(),
+                    dir,
+                    entry,
+                    capabilities,
+                    min_sandbox,
+                    managed_providers,
+                });
             }
             Err(e) => {
-                tracing::warn!(executor = name, "cache executor non integra, refetch firmato: {e:#}");
+                tracing::warn!(
+                    executor = name,
+                    "cache executor non integra, refetch firmato: {e:#}"
+                );
                 std::fs::remove_dir_all(&dir).context("rimozione cache executor corrotta")?;
             }
         }
@@ -91,19 +161,29 @@ pub async fn ensure_executor(
         bail!("bundle executor inatteso: {} != {}", bundle.name, name);
     }
     materialize(&bundle, server_pubkey, manifest_sha256, code_sha256, &dir)?;
-    let (manifest, entry) = verify_cached(
-        &dir, server_pubkey, manifest_sha256, code_sha256)?;
+    let (manifest, entry) = verify_cached(&dir, server_pubkey, manifest_sha256, code_sha256)?;
     let capabilities = parse_capabilities(&manifest);
     let min_sandbox = parse_min_sandbox(&manifest)?;
-    Ok(CachedExecutor { name: name.to_string(), dir, entry, capabilities, min_sandbox })
+    let managed_providers = parse_managed_providers(&manifest)?;
+    Ok(CachedExecutor {
+        name: name.to_string(),
+        dir,
+        entry,
+        capabilities,
+        min_sandbox,
+        managed_providers,
+    })
 }
 
-fn validate_cache_key(name: &str, manifest_sha256: &str,
-                      code_sha256: &str) -> Result<()> {
-    let valid_name = name.len() >= 2 && name.len() <= 65
+fn validate_cache_key(name: &str, manifest_sha256: &str, code_sha256: &str) -> Result<()> {
+    let valid_name = name.len() >= 2
+        && name.len() <= 65
         && name.bytes().enumerate().all(|(i, b)| {
-            if i == 0 { b.is_ascii_lowercase() }
-            else { b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-' }
+            if i == 0 {
+                b.is_ascii_lowercase()
+            } else {
+                b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-'
+            }
         });
     let valid_hash = |s: &str| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit());
     if !valid_name || !valid_hash(manifest_sha256) || !valid_hash(code_sha256) {
@@ -112,12 +192,20 @@ fn validate_cache_key(name: &str, manifest_sha256: &str,
     Ok(())
 }
 
-fn verify_cached(dir: &Path, server_pubkey: &str, manifest_sha256: &str,
-                 code_sha256: &str) -> Result<(toml::Value, PathBuf)> {
+fn verify_cached(
+    dir: &Path,
+    server_pubkey: &str,
+    manifest_sha256: &str,
+    code_sha256: &str,
+) -> Result<(toml::Value, PathBuf)> {
     let manifest_bytes = std::fs::read(dir.join("manifest.toml"))?;
     let got_manifest = hex_sha256(&manifest_bytes);
     if !got_manifest.eq_ignore_ascii_case(manifest_sha256) {
-        bail!("manifest cache corrotto: {} != {}", got_manifest, manifest_sha256);
+        bail!(
+            "manifest cache corrotto: {} != {}",
+            got_manifest,
+            manifest_sha256
+        );
     }
 
     // La firma viene verificata anche sui cache hit: il digest portato
@@ -153,7 +241,11 @@ async fn fetch_executor(server: &str, name: &str) -> Result<ExecutorBundle> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
-    let resp = client.get(&url).send().await.with_context(|| format!("GET {}", url))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .with_context(|| format!("GET {}", url))?;
     if !resp.status().is_success() {
         bail!("executor bundle {} HTTP {}", name, resp.status());
     }
@@ -167,13 +259,21 @@ fn materialize(
     code_sha256: &str,
     dir: &Path,
 ) -> Result<()> {
-    let manifest_bytes = B64.decode(&bundle.manifest_toml).context("decode manifest")?;
-    let sig_bytes = B64.decode(&bundle.manifest_sig).context("decode manifest sig")?;
+    let manifest_bytes = B64
+        .decode(&bundle.manifest_toml)
+        .context("decode manifest")?;
+    let sig_bytes = B64
+        .decode(&bundle.manifest_sig)
+        .context("decode manifest sig")?;
 
     // 1. digest manifest atteso.
     let got_manifest = hex_sha256(&manifest_bytes);
     if got_manifest != manifest_sha256 {
-        bail!("manifest sha mismatch: {} != {}", got_manifest, manifest_sha256);
+        bail!(
+            "manifest sha mismatch: {} != {}",
+            got_manifest,
+            manifest_sha256
+        );
     }
     // 2. firma del manifest verificata con la pubkey server pinnata (§8).
     //    Il server firma i BYTES del manifest (sign.py::sign_executor), b64 std.
@@ -195,7 +295,9 @@ fn materialize(
             .files
             .get(fname)
             .ok_or_else(|| anyhow!("bundle privo del file {}", fname))?;
-        let data = B64.decode(b64).with_context(|| format!("decode {}", fname))?;
+        let data = B64
+            .decode(b64)
+            .with_context(|| format!("decode {}", fname))?;
         hasher.update(&data);
         decoded.insert(fname.clone(), data);
     }
@@ -225,13 +327,21 @@ fn materialize(
 
 /// Scarica e verifica il bundle shim (executor_helpers + messages fallback)
 /// nella dir data. Ritorna la dir dello shim (da mettere su PYTHONPATH).
-pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -> Result<(PathBuf, String)> {
+pub async fn ensure_shim(
+    server: &str,
+    server_pubkey: &str,
+    cache_root: &Path,
+) -> Result<(PathBuf, String)> {
     let dir = cache_root.join("shim");
     let url = format!("{}/agent/shim", server.trim_end_matches('/'));
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
-    let resp = client.get(&url).send().await.with_context(|| format!("GET {}", url))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .with_context(|| format!("GET {}", url))?;
     if !resp.status().is_success() {
         bail!("shim bundle HTTP {}", resp.status());
     }
@@ -257,7 +367,9 @@ pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let data = B64.decode(b64).with_context(|| format!("decode shim {}", fname))?;
+        let data = B64
+            .decode(b64)
+            .with_context(|| format!("decode shim {}", fname))?;
         std::fs::write(dest, data)?;
     }
     let _ = std::fs::remove_dir_all(&dir);
@@ -272,8 +384,12 @@ pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -
 /// wire), ':' (drive/ADS windows), slash iniziale/finale (assoluti) e
 /// segmenti vuoti o '.'. Il bundle resta firmato dal server (rilievo #6).
 fn shim_rel_path(fname: &str) -> Result<std::path::PathBuf> {
-    if fname.is_empty() || fname.contains('\\') || fname.contains(':')
-        || fname.starts_with('/') || fname.ends_with('/') {
+    if fname.is_empty()
+        || fname.contains('\\')
+        || fname.contains(':')
+        || fname.starts_with('/')
+        || fname.ends_with('/')
+    {
         bail!("nome file shim non sicuro: {}", fname);
     }
     let mut rel = std::path::PathBuf::new();
@@ -288,7 +404,7 @@ fn shim_rel_path(fname: &str) -> Result<std::path::PathBuf> {
 
 #[cfg(test)]
 mod shim_tests {
-    use super::{code_rel_path, shim_rel_path, validate_cache_key};
+    use super::{code_rel_path, parse_managed_providers, shim_rel_path, validate_cache_key};
 
     #[test]
     fn flat_and_tree_ok() {
@@ -299,8 +415,18 @@ mod shim_tests {
 
     #[test]
     fn traversal_and_bad_forms_rejected() {
-        for bad in ["../evil.py", "a/../b.py", "a/./b.py", "/abs.py",
-                    "dir/", "a//b.py", "c:\\win.py", "a\\b.py", "", "x:y"] {
+        for bad in [
+            "../evil.py",
+            "a/../b.py",
+            "a/./b.py",
+            "/abs.py",
+            "dir/",
+            "a//b.py",
+            "c:\\win.py",
+            "a\\b.py",
+            "",
+            "x:y",
+        ] {
             assert!(shim_rel_path(bad).is_err(), "accettato: {}", bad);
         }
     }
@@ -316,6 +442,66 @@ mod shim_tests {
         assert!(validate_cache_key("../read", &hash, &hash).is_err());
         assert!(validate_cache_key("read", "abc", &hash).is_err());
     }
+
+    #[test]
+    fn signed_manifest_provider_shape_is_closed() {
+        let manifest: toml::Value = toml::from_str(
+            r#"
+            [[managed_dependencies]]
+            key = "hardware_sensor_provider"
+            package_id = "Vendor.Sensor"
+            mode = "provider"
+            interface = "hardware_sensors_v1"
+            domains_arg = "sensor_domains"
+            sensor_types_arg = "sensor_types"
+            assembly = "Vendor.SensorLib.dll"
+            entry_type = "Vendor.Sensor.Computer"
+        "#,
+        )
+        .unwrap();
+        let providers = parse_managed_providers(&manifest).unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].package_id, "Vendor.Sensor");
+        assert_eq!(providers[0].assembly, "Vendor.SensorLib.dll");
+        assert_eq!(providers[0].entry_type, "Vendor.Sensor.Computer");
+
+        let malformed: toml::Value = toml::from_str(
+            r#"
+            [[managed_dependencies]]
+            key = "hardware_sensor_provider"
+            package_id = "Vendor.Sensor"
+            mode = "provider"
+            interface = "hardware_sensors_v1"
+            domains_arg = "sensor_domains"
+            sensor_types_arg = "sensor_types"
+            assembly = "Vendor.SensorLib.dll"
+            entry_type = "Vendor.Sensor.Computer"
+            command = "cmd.exe"
+        "#,
+        )
+        .unwrap();
+        assert!(parse_managed_providers(&malformed).is_err());
+
+        let valid_source = r#"
+                [[managed_dependencies]]
+                key = "hardware_sensor_provider"
+                package_id = "Vendor.Sensor"
+                mode = "provider"
+                interface = "hardware_sensors_v1"
+                domains_arg = "sensor_domains"
+                sensor_types_arg = "sensor_types"
+                assembly = "Vendor.SensorLib.dll"
+                entry_type = "Vendor.Sensor.Computer"
+                "#;
+        for (original, invalid) in [
+            ("Vendor.SensorLib.dll", "../Sensor.dll"),
+            ("Vendor.Sensor.Computer", "Vendor..Computer"),
+        ] {
+            let malformed: toml::Value =
+                toml::from_str(&valid_source.replace(original, invalid)).unwrap();
+            assert!(parse_managed_providers(&malformed).is_err());
+        }
+    }
 }
 
 fn code_file_names(manifest: &toml::Value) -> Vec<String> {
@@ -323,13 +509,21 @@ fn code_file_names(manifest: &toml::Value) -> Vec<String> {
         .get("code")
         .and_then(|c| c.get("files"))
         .and_then(|f| f.as_array())
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 fn code_rel_path(fname: &str) -> Result<PathBuf> {
-    if fname.is_empty() || fname.contains('\\') || fname.contains(':')
-        || fname.starts_with('/') || fname.ends_with('/') {
+    if fname.is_empty()
+        || fname.contains('\\')
+        || fname.contains(':')
+        || fname.starts_with('/')
+        || fname.ends_with('/')
+    {
         bail!("nome file codice non sicuro: {}", fname);
     }
     let mut rel = PathBuf::new();
@@ -346,11 +540,19 @@ fn parse_capabilities(manifest: &toml::Value) -> Vec<Capability> {
     let mut out = Vec::new();
     if let Some(arr) = manifest.get("capabilities").and_then(|c| c.as_array()) {
         for c in arr {
-            let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = c
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let hint = c
                 .get("hint")
                 .and_then(|h| h.as_array())
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             if !name.is_empty() {
                 out.push(Capability { name, hint });
@@ -361,7 +563,8 @@ fn parse_capabilities(manifest: &toml::Value) -> Vec<Capability> {
 }
 
 fn parse_min_sandbox(manifest: &toml::Value) -> Result<String> {
-    let value = manifest.get("placement")
+    let value = manifest
+        .get("placement")
         .and_then(|p| p.get("min_sandbox"))
         .and_then(|v| v.as_str())
         .unwrap_or("job-object");
@@ -369,6 +572,112 @@ fn parse_min_sandbox(manifest: &toml::Value) -> Result<String> {
         bail!("placement.min_sandbox non supportato: {}", value);
     }
     Ok(value.to_string())
+}
+
+fn safe_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.is_ascii()
+        && value.as_bytes()[0].is_ascii_alphabetic()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+fn safe_package_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.is_ascii()
+        && value.as_bytes()[0].is_ascii_alphanumeric()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'+' | b':' | b'@' | b'-')
+        })
+}
+
+fn safe_assembly_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.is_ascii()
+        && value.as_bytes()[0].is_ascii_alphanumeric()
+        && value.to_ascii_lowercase().ends_with(".dll")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn safe_dotnet_type(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 192
+        && value.is_ascii()
+        && value.split('.').all(safe_identifier)
+}
+
+/// Parse only the closed provider shape. Process dependencies remain owned by
+/// the server's consent flow and require no client-side metadata.
+fn parse_managed_providers(manifest: &toml::Value) -> Result<Vec<ManagedProviderDependency>> {
+    let Some(rows) = manifest.get("managed_dependencies") else {
+        return Ok(Vec::new());
+    };
+    let rows = rows
+        .as_array()
+        .ok_or_else(|| anyhow!("managed_dependencies must be an array"))?;
+    let mut providers = Vec::new();
+    let mut keys = std::collections::HashSet::new();
+    for row in rows {
+        let table = row
+            .as_table()
+            .ok_or_else(|| anyhow!("managed dependency must be a table"))?;
+        let names: std::collections::BTreeSet<&str> = table.keys().map(String::as_str).collect();
+        let process: std::collections::BTreeSet<&str> = ["key", "package_id"].into_iter().collect();
+        let provider: std::collections::BTreeSet<&str> = [
+            "assembly",
+            "domains_arg",
+            "entry_type",
+            "interface",
+            "key",
+            "mode",
+            "package_id",
+            "sensor_types_arg",
+        ]
+        .into_iter()
+        .collect();
+        if names == process {
+            continue;
+        }
+        if names != provider || table.get("mode").and_then(toml::Value::as_str) != Some("provider")
+        {
+            bail!("managed provider shape is invalid");
+        }
+        let value = |name: &str| table.get(name).and_then(toml::Value::as_str).unwrap_or("");
+        let key = value("key");
+        let package_id = value("package_id");
+        let interface = value("interface");
+        let domains_arg = value("domains_arg");
+        let sensor_types_arg = value("sensor_types_arg");
+        let assembly = value("assembly");
+        let entry_type = value("entry_type");
+        if !safe_identifier(key)
+            || !safe_package_id(package_id)
+            || !safe_identifier(interface)
+            || !safe_identifier(domains_arg)
+            || !safe_identifier(sensor_types_arg)
+            || !safe_assembly_name(assembly)
+            || !safe_dotnet_type(entry_type)
+            || !keys.insert(key.to_string())
+        {
+            bail!("managed provider values are invalid");
+        }
+        providers.push(ManagedProviderDependency {
+            key: key.to_string(),
+            package_id: package_id.to_string(),
+            interface: interface.to_string(),
+            domains_arg: domains_arg.to_string(),
+            sensor_types_arg: sensor_types_arg.to_string(),
+            assembly: assembly.to_string(),
+            entry_type: entry_type.to_string(),
+        });
+    }
+    Ok(providers)
 }
 
 fn hex_sha256(data: &[u8]) -> String {

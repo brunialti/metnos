@@ -93,7 +93,10 @@ impl Journal {
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect();
-        let tenute: Vec<&String> = keys.iter().skip(keys.len().saturating_sub(MAX_KEYS)).collect();
+        let tenute: Vec<&String> = keys
+            .iter()
+            .skip(keys.len().saturating_sub(MAX_KEYS))
+            .collect();
 
         // Si scrive accanto e si sposta: un'interruzione a meta' lascerebbe
         // un registro troncato, cioe' richieste vecchie di nuovo accettabili.
@@ -159,7 +162,10 @@ mod tests {
         for i in 0..(MAX_KEYS + 50) {
             j.consume(&format!("chiave-{i}")).unwrap();
         }
-        assert!(j.seen.len() <= MAX_KEYS, "registro cresciuto oltre il tetto");
+        assert!(
+            j.seen.len() <= MAX_KEYS,
+            "registro cresciuto oltre il tetto"
+        );
         // Le piu' recenti restano: sono quelle che possono essere rigiocate.
         assert!(j.already_used(&format!("chiave-{}", MAX_KEYS + 49)));
         let _ = std::fs::remove_file(&p);

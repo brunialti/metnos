@@ -44,9 +44,11 @@ struct UpdateDescriptor {
 /// "0.2.20" > "0.2.18"). Confronto lessicografico dei componenti numerici:
 /// per versioni a 3 parti coincide con l'ordinamento semver. Componenti non
 /// numerici → 0 (degradazione prudente).
-fn version_gt(a: &str, b: &str) -> bool {
+pub(crate) fn version_gt(a: &str, b: &str) -> bool {
     let parse = |v: &str| -> Vec<u64> {
-        v.split('.').map(|s| s.trim().parse().unwrap_or(0)).collect()
+        v.split('.')
+            .map(|s| s.trim().parse().unwrap_or(0))
+            .collect()
     };
     parse(a) > parse(b)
 }
@@ -80,11 +82,19 @@ pub fn marker_path(data_dir: &Path) -> PathBuf {
 /// supervisor rilancerà. NIENTE respawn.
 pub async fn maybe_update(server: &str, server_pubkey: &str, marker: &Path) -> Result<bool> {
     let target = build_target();
-    let url = format!("{}/agent/client/update/{}", server.trim_end_matches('/'), target);
+    let url = format!(
+        "{}/agent/client/update/{}",
+        server.trim_end_matches('/'),
+        target
+    );
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()?;
-    let resp = client.get(&url).send().await.with_context(|| format!("GET {}", url))?;
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .with_context(|| format!("GET {}", url))?;
     if !resp.status().is_success() {
         bail!("update descriptor HTTP {}", resp.status());
     }
@@ -128,16 +138,23 @@ pub async fn maybe_update(server: &str, server_pubkey: &str, marker: &Path) -> R
     let new_path = exe.with_extension("new");
     let bytes = client
         .get(format!("{}{}", server.trim_end_matches('/'), desc.url_path))
-        .send().await.context("download binario")?
-        .error_for_status().context("download binario (status)")?
-        .bytes().await.context("download binario (body)")?;
+        .send()
+        .await
+        .context("download binario")?
+        .error_for_status()
+        .context("download binario (status)")?
+        .bytes()
+        .await
+        .context("download binario (body)")?;
     let got_sha = hex_lower(&Sha256::digest(&bytes));
     if !got_sha.eq_ignore_ascii_case(&desc.sha256) {
-        bail!("sha256 del binario scaricato non combacia (atteso {}, avuto {})",
-              desc.sha256, got_sha);
+        bail!(
+            "sha256 del binario scaricato non combacia (atteso {}, avuto {})",
+            desc.sha256,
+            got_sha
+        );
     }
-    std::fs::write(&new_path, &bytes)
-        .with_context(|| format!("write {}", new_path.display()))?;
+    std::fs::write(&new_path, &bytes).with_context(|| format!("write {}", new_path.display()))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -165,7 +182,8 @@ fn swap_binary(exe: &Path, new_path: &Path) -> Result<()> {
     if let Err(e) = std::fs::rename(new_path, exe) {
         // Ripristina il vecchio: mai lasciare il client senza binario.
         let _ = std::fs::rename(&old_path, exe);
-        return Err(e).with_context(|| format!("rename {} -> {}", new_path.display(), exe.display()));
+        return Err(e)
+            .with_context(|| format!("rename {} -> {}", new_path.display(), exe.display()));
     }
     Ok(())
 }
@@ -207,7 +225,10 @@ fn restore_exe_if_missing(exe: &Path) -> bool {
 fn rollback_binary(exe: &Path) -> Result<()> {
     let old = exe.with_extension("old");
     if !old.exists() {
-        bail!("rollback impossibile: {} assente (nessun binario known-good)", old.display());
+        bail!(
+            "rollback impossibile: {} assente (nessun binario known-good)",
+            old.display()
+        );
     }
     let failed = exe.with_extension("failed");
     let _ = std::fs::remove_file(&failed);
@@ -332,9 +353,16 @@ mod tests {
         std::fs::write(&exe, b"NEW-BAD").unwrap();
         std::fs::write(exe.with_extension("old"), b"OLD-GOOD").unwrap();
         rollback_binary(&exe).unwrap();
-        assert_eq!(std::fs::read(&exe).unwrap(), b"OLD-GOOD", "exe torna al known-good");
-        assert_eq!(std::fs::read(exe.with_extension("failed")).unwrap(), b"NEW-BAD",
-                   "il binario in prova finito da parte come .failed");
+        assert_eq!(
+            std::fs::read(&exe).unwrap(),
+            b"OLD-GOOD",
+            "exe torna al known-good"
+        );
+        assert_eq!(
+            std::fs::read(exe.with_extension("failed")).unwrap(),
+            b"NEW-BAD",
+            "il binario in prova finito da parte come .failed"
+        );
         assert!(!exe.with_extension("old").exists(), ".old consumato");
     }
 
@@ -343,7 +371,10 @@ mod tests {
         let dir = tdir("rb2");
         let exe = dir.join("metnos-client");
         std::fs::write(&exe, b"NEW").unwrap();
-        assert!(rollback_binary(&exe).is_err(), "senza .old non si può rollbackare");
+        assert!(
+            rollback_binary(&exe).is_err(),
+            "senza .old non si può rollbackare"
+        );
         assert_eq!(std::fs::read(&exe).unwrap(), b"NEW", "exe intatto");
     }
 
@@ -365,8 +396,14 @@ mod tests {
         assert!(version_gt("0.3.0", "0.2.99"), "newer minor");
         assert!(version_gt("1.0.0", "0.9.9"), "newer major");
         assert!(!version_gt("0.2.18", "0.2.20"), "downgrade bloccato");
-        assert!(!version_gt("0.2.20", "0.2.20"), "stessa versione: non più recente");
-        assert!(version_gt("0.2.20", "0.2.9"), "20 > 9 numerico (non stringa!)");
+        assert!(
+            !version_gt("0.2.20", "0.2.20"),
+            "stessa versione: non più recente"
+        );
+        assert!(
+            version_gt("0.2.20", "0.2.9"),
+            "20 > 9 numerico (non stringa!)"
+        );
     }
 
     #[test]
@@ -377,17 +414,30 @@ mod tests {
         std::fs::write(&exe, b"NEW").unwrap();
         std::fs::write(exe.with_extension("old"), b"OLD").unwrap();
         std::fs::write(exe.with_extension("failed"), b"OLDER").unwrap();
-        UpdateState::enter_probation("0.2.20").save(&marker).unwrap();
+        UpdateState::enter_probation("0.2.20")
+            .save(&marker)
+            .unwrap();
 
         confirm_running(&marker, &exe);
-        assert_eq!(UpdateState::load(&marker).phase, Phase::None, "probation confermata");
+        assert_eq!(
+            UpdateState::load(&marker).phase,
+            Phase::None,
+            "probation confermata"
+        );
         assert!(!exe.with_extension("old").exists(), ".old cancellato");
         assert!(!exe.with_extension("failed").exists(), ".failed cancellato");
-        assert_eq!(std::fs::read(&exe).unwrap(), b"NEW", "binario nuovo confermato");
+        assert_eq!(
+            std::fs::read(&exe).unwrap(),
+            b"NEW",
+            "binario nuovo confermato"
+        );
 
         // No-op se non in probation (idempotente).
         std::fs::write(exe.with_extension("old"), b"X").unwrap();
         confirm_running(&marker, &exe);
-        assert!(exe.with_extension("old").exists(), "fuori probation: non tocca .old");
+        assert!(
+            exe.with_extension("old").exists(),
+            "fuori probation: non tocca .old"
+        );
     }
 }

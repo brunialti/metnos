@@ -40,10 +40,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use windows_sys::Win32::Foundation::{ERROR_FAILED_SERVICE_CONTROLLER_CONNECT, NO_ERROR};
 use windows_sys::Win32::System::Services::{
     RegisterServiceCtrlHandlerW, SetServiceStatus, StartServiceCtrlDispatcherW,
-    SERVICE_ACCEPT_SHUTDOWN, SERVICE_ACCEPT_STOP, SERVICE_CONTROL_SHUTDOWN,
-    SERVICE_CONTROL_STOP, SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STATUS,
-    SERVICE_STATUS_HANDLE, SERVICE_STOPPED, SERVICE_STOP_PENDING, SERVICE_TABLE_ENTRYW,
-    SERVICE_WIN32_OWN_PROCESS,
+    SERVICE_ACCEPT_SHUTDOWN, SERVICE_ACCEPT_STOP, SERVICE_CONTROL_SHUTDOWN, SERVICE_CONTROL_STOP,
+    SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STATUS, SERVICE_STATUS_HANDLE, SERVICE_STOPPED,
+    SERVICE_STOP_PENDING, SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS,
 };
 
 use crate::win_pipe::wide;
@@ -72,7 +71,11 @@ fn riferisci(stato: u32, codice_uscita: u32) {
     s.dwWin32ExitCode = codice_uscita;
     // Quanto tempo chiediamo prima di essere richiamati: vale solo negli stati
     // «in corso».
-    s.dwWaitHint = if stato == SERVICE_START_PENDING { 10_000 } else { 0 };
+    s.dwWaitHint = if stato == SERVICE_START_PENDING {
+        10_000
+    } else {
+        0
+    };
     unsafe { SetServiceStatus(handle, &s) };
 }
 

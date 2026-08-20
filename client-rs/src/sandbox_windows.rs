@@ -28,7 +28,9 @@ use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, BOOL, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, BOOL, HANDLE, INVALID_HANDLE_VALUE,
+};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
 };
@@ -47,8 +49,8 @@ use crate::executors::CachedExecutor;
 use crate::sandbox_common::HintGrant;
 // Tipi condivisi col modulo linux (§16.2: "minimo diff" = ri-esportati, non
 // duplicati). sandbox_linux.rs compila su entrambe le piattaforme.
-pub use crate::sandbox_linux::{Limits, SandboxOutput};
 use crate::sandbox_linux::pythonpath_sep;
+pub use crate::sandbox_linux::{Limits, SandboxOutput};
 
 const DEFAULT_MEM_LIMIT_MB: usize = 512;
 const ACTIVE_PROCESS_LIMIT: u32 = 8;
@@ -212,8 +214,12 @@ fn build_env(
     extra_env: &[(String, String)],
 ) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = Vec::new();
-    let pythonpath =
-        format!("{}{}{}", shim_dir.display(), pythonpath_sep(), exec_dir.display());
+    let pythonpath = format!(
+        "{}{}{}",
+        shim_dir.display(),
+        pythonpath_sep(),
+        exec_dir.display()
+    );
     env.push((
         "PATH".into(),
         std::env::var("PATH").unwrap_or_else(|_| r"C:\Windows\System32".into()),
@@ -288,8 +294,7 @@ pub async fn run_sandboxed(
     // Regola capability-driven (§7.3, `needs_system_exec`), non lista di
     // executor. Il Job Object sotto li contiene comunque (albero/memoria/conteggio).
     let system_exec = crate::sandbox_common::needs_system_exec(&exec.capabilities);
-    let unanchored_fs_path =
-        crate::sandbox_common::caps_fs_access(&exec.capabilities).is_some()
+    let unanchored_fs_path = crate::sandbox_common::caps_fs_access(&exec.capabilities).is_some()
         && crate::sandbox_common::has_unanchored_path_args(args_json);
     let want_appcontainer = !disabled && appcontainer::gate_on();
     if want_appcontainer && system_exec {
@@ -317,8 +322,8 @@ pub async fn run_sandboxed(
     // METNOS_SANDBOX_APPCONTAINER default ON su Windows (7/7/2026): opt-OUT con
     // =0 salta questo blocco e il percorso job-object sotto resta byte-identico a W3.3.
     if want_appcontainer && !system_exec && !unanchored_fs_path {
-        let (mut grants, want_net) = crate::sandbox_common::invocation_grants(
-            &exec.capabilities, args_json);
+        let (mut grants, want_net) =
+            crate::sandbox_common::invocation_grants(&exec.capabilities, args_json);
         // Dir dati dello shim (METNOS_USER_DATA, iniettata dal runner): config.py
         // ci crea l'albero user a import + ci finiscono i blob undo. Isolata e
         // client-owned → il container puo' scriverla senza aprire ~/.local/share.
@@ -329,10 +334,9 @@ pub async fn run_sandboxed(
             }
         }
         let home = dirs::home_dir();
-        let broad_grant = grants.iter().any(|grant| {
-            crate::sandbox_common::is_broad_acl_root(
-                &grant.root, home.as_deref())
-        });
+        let broad_grant = grants
+            .iter()
+            .any(|grant| crate::sandbox_common::is_broad_acl_root(&grant.root, home.as_deref()));
         if broad_grant {
             // SetNamedSecurityInfoW puo' propagare un ACE ereditabile su tutta
             // la home/volume PRIMA dello spawn: la deadline del processo non
@@ -356,8 +360,13 @@ pub async fn run_sandboxed(
                 want_net,
             };
             // FFI bloccante (job + pipe + CreateProcessW): fuori dai worker async.
-            match tokio::task::spawn_blocking(move || appcontainer::run_in_container(params)).await {
-                Ok(appcontainer::Outcome::Ran { stdout, stderr, timed_out }) => {
+            match tokio::task::spawn_blocking(move || appcontainer::run_in_container(params)).await
+            {
+                Ok(appcontainer::Outcome::Ran {
+                    stdout,
+                    stderr,
+                    timed_out,
+                }) => {
                     if timed_out {
                         tracing::warn!(
                             executor = %exec.name, wall_s = limits.wall.as_secs(),
@@ -389,8 +398,9 @@ pub async fn run_sandboxed(
     }
 
     if want_appcontainer && exec.min_sandbox == "appcontainer" {
-        let reason = downgrade.as_deref().unwrap_or(
-            "AppContainer richiesto dal manifest ma non disponibile");
+        let reason = downgrade
+            .as_deref()
+            .unwrap_or("AppContainer richiesto dal manifest ma non disponibile");
         bail!("sandbox minima appcontainer non soddisfatta: {reason}");
     }
 
@@ -439,7 +449,9 @@ pub async fn run_sandboxed(
     let mut child = cmd.spawn().context("spawn sandboxed executor (windows)")?;
 
     if let Some(job) = &job {
-        let pid = child.id().context("PID del processo appena creato assente")?;
+        let pid = child
+            .id()
+            .context("PID del processo appena creato assente")?;
         let raw_handle: RawHandle = child
             .raw_handle()
             .context("raw handle del processo appena creato assente")?;
@@ -511,12 +523,17 @@ impl ScratchDir {
     fn create() -> Result<Self> {
         for _ in 0..16 {
             let path = std::env::temp_dir().join(format!(
-                "metnos-exec-{}-{}", std::process::id(), unique_suffix()));
+                "metnos-exec-{}-{}",
+                std::process::id(),
+                unique_suffix()
+            ));
             match std::fs::create_dir(&path) {
                 Ok(()) => return Ok(Self { path }),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(e) => return Err(e).with_context(
-                    || format!("creazione scratch dir {}", path.display())),
+                Err(e) => {
+                    return Err(e)
+                        .with_context(|| format!("creazione scratch dir {}", path.display()))
+                }
             }
         }
         bail!("impossibile allocare scratch univoco dopo 16 tentativi")

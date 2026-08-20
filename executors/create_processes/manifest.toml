@@ -1,0 +1,110 @@
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name         = "create_processes"
+version      = "0.2.0"
+intelligence = "deterministic"
+timeout_s    = 30
+platforms    = ["windows"]
+author       = "Roberto Brunialti"
+affinity     = [
+  "avvia", "avviare", "lancia", "lanciare", "fai partire",
+  "start", "launch", "run program", "start program"
+]
+revertible = false
+critical   = true
+lifecycle  = "active"
+
+[execution]
+effect            = "mutating"
+parallelism_class = 0
+resource_class    = "device"
+concurrency_key   = "device"
+equivalence_gate  = "unverified"
+
+[description]
+it = "SCOPO: avvia pacchetti già installati sul dispositivo. PATTERN: create_processes(programs=['Publisher.Package']). NON: percorsi, comandi, script o programmi non registrati. OUT: chiede se mantenerli fino al riavvio o a ogni accensione, poi restituisce results e failed."
+en = "SCOPO: starts packages already installed on the device. PATTERN: create_processes(programs=['Publisher.Package']). NON: paths, commands, scripts, or unregistered programs. OUT: asks whether to keep them until restart or at every startup, then returns results and failed."
+
+[code]
+files  = ["create_processes.py"]
+digest = "sha256:0b618e64bcb8ba458c39fa53ccf914008905c1828f21deb768079e493ea73fa5"
+
+[args]
+type     = "object"
+required = ["programs"]
+
+[args.properties.programs]
+type        = "array"
+uniqueItems = true
+minItems    = 1
+maxItems    = 10
+items       = { type = "string", maxLength = 128 }
+
+[args.properties.programs.description]
+it = "Identificativi esatti dei pacchetti installati, come lista. Non accetta percorsi, comandi, caratteri jolly o nomi da indovinare."
+en = "Exact identifiers of installed packages, as a list. Paths, commands, wildcards, and names that require guessing are not accepted."
+
+[args.properties.lifetime]
+type             = "string"
+enum             = ["session", "persistent"]
+runtime_resolved = true
+
+[args.properties.lifetime.description]
+it = "Scelta inserita dal runtime dopo il consenso: 'session' fino al riavvio, 'persistent' anche alle accensioni successive."
+en = "Choice inserted by the runtime after consent: 'session' until restart, 'persistent' also at subsequent startups."
+
+[args.properties.actor_consent_token]
+type             = "string"
+runtime_resolved = true
+
+[args.properties.actor_consent_token.description]
+it = "Token della scheda approvata, inserito dal runtime. Il planner non lo vede e non lo genera."
+en = "Token for the approved card, inserted by the runtime. The planner neither sees nor generates it."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  decision?: str,
+  started?: bool,
+  lifetime?: str,
+  needs_inputs?: object,
+  results: Array<{package_id: str, ok: bool, lifetime: str, already_running: bool}>,
+  failed: Array<{package_id?: str, error: str, error_code: str, error_class: str}>,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  error?: str,
+  error_code?: str,
+  error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "system:admin"
+hint = ["managed-package-start"]
+
+[[capabilities]]
+name = "code:exec"
+hint = ["registered-package"]
+
+[placement]
+scope       = "any"
+device_ok   = true
+min_sandbox = "job-object"
+
+[[tests]]
+name   = "missing_programs_fails"
+input  = {}
+expect = { ok = false, field_eq = { error_code = "programs_missing" } }
+
+[[tests]]
+name   = "free_path_is_rejected"
+input  = { programs = ["C:\\Windows\\System32\\cmd.exe"] }
+expect = { ok = false, field_eq = { error_code = "invalid_package_id" } }
+
+[[tests]]
+name   = "duplicate_package_is_rejected"
+input  = { programs = ["Vendor.App", "Vendor.App"] }
+expect = { ok = false, field_eq = { error_code = "duplicate_package" } }

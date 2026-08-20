@@ -5,20 +5,14 @@
 //! per la stessa ragione: un programma che resta indietro in silenzio e' un
 //! programma che un giorno non capisce piu' chi gli parla.
 //!
-//! ## Perche' l'aiutante TIRA invece di farsi spingere
+//! ## Why the helper pulls instead of accepting a pushed binary
 //!
-//! Il client ha la rete, questo programma no — e non deve averla: uno stack
-//! di rete dentro un servizio di sistema e' superficie d'attacco pagata per
-//! una comodita'. Ma il client gira senza privilegi, e un programma senza
-//! privilegi che sostituisce un binario di sistema sarebbe la chiave della
-//! macchina.
-//!
-//! Percio' il client non chiede: **lascia**. Scrive in una cartella
-//! d'appoggio il binario e il descrittore firmati dal server, e finisce li'
-//! il suo ruolo. Questo programma ci guarda quando decide lui, e verifica
-//! tutto per conto proprio. Il client non puo' ordinare un aggiornamento;
-//! puo' solo mettere a disposizione qualcosa che il server ha firmato, e
-//! anche allora e' l'aiutante a dire di si'.
+//! The unprivileged client may report that its build is newer, but it cannot
+//! provide a URL, path, descriptor, or artifact. The helper reads the server
+//! address and trust anchor from its system-owned pairing, fetches the signed
+//! release itself, and independently validates every binding below. This
+//! keeps the lazy update trigger cheap without allowing the client to choose
+//! what a privileged service installs.
 //!
 //! ## Che cosa si verifica, e in quale ordine
 //!
@@ -123,7 +117,10 @@ pub fn version_gt(candidata: &str, corrente: &str) -> bool {
     };
     let (a, b) = (pezzi(candidata), pezzi(corrente));
     for i in 0..a.len().max(b.len()) {
-        let (x, y) = (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0));
+        let (x, y) = (
+            a.get(i).copied().unwrap_or(0),
+            b.get(i).copied().unwrap_or(0),
+        );
         if x != y {
             return x > y;
         }
@@ -359,7 +356,10 @@ mod tests {
         let (_, pubk) = chiavi();
         let altra = SigningKey::from_bytes(&[9u8; 32]);
         let d = firmato(&altra, "0.3.0", &"a".repeat(64), COMPONENT);
-        assert_eq!(verify(&d, &pubk, "0.2.26", TARGET), Err("untrusted_signature"));
+        assert_eq!(
+            verify(&d, &pubk, "0.2.26", TARGET),
+            Err("untrusted_signature")
+        );
     }
 
     #[test]
@@ -369,7 +369,10 @@ mod tests {
         let (k, pubk) = chiavi();
         let mut d = firmato(&k, "0.3.0", &"a".repeat(64), COMPONENT);
         d.sha256 = "b".repeat(64);
-        assert_eq!(verify(&d, &pubk, "0.2.26", TARGET), Err("untrusted_signature"));
+        assert_eq!(
+            verify(&d, &pubk, "0.2.26", TARGET),
+            Err("untrusted_signature")
+        );
     }
 
     #[test]
@@ -388,8 +391,11 @@ mod tests {
         let (k, pubk) = chiavi();
         for vecchia in ["0.2.25", "0.2.26", "0.1.0"] {
             let d = firmato(&k, vecchia, &"a".repeat(64), COMPONENT);
-            assert_eq!(verify(&d, &pubk, "0.2.26", TARGET), Err("not_newer"),
-                       "accettata {vecchia}");
+            assert_eq!(
+                verify(&d, &pubk, "0.2.26", TARGET),
+                Err("not_newer"),
+                "accettata {vecchia}"
+            );
         }
     }
 
@@ -408,7 +414,6 @@ mod tests {
         assert!(!version_gt("0.2.9", "0.2.10"));
         assert!(!version_gt("0.2.26", "0.2.26"));
     }
-
 }
 
 #[cfg(test)]
@@ -424,8 +429,12 @@ mod tests_applicazione {
         (k, pubb)
     }
 
-    fn descrittore(chiave: &SigningKey, versione: &str, contenuto: &[u8],
-                   componente: &str) -> Descriptor {
+    fn descrittore(
+        chiave: &SigningKey,
+        versione: &str,
+        contenuto: &[u8],
+        componente: &str,
+    ) -> Descriptor {
         let sha = hex::encode(Sha256::digest(contenuto));
         let corpo = canonical_payload(componente, &sha, TARGET, versione);
         Descriptor {
@@ -440,14 +449,20 @@ mod tests_applicazione {
 
     /// Fa girare il flusso senza rete: la sequenza dei controlli e' la stessa,
     /// ed e' quella che si vuole provare.
-    fn prova(d: Descriptor, contenuto: &'static [u8], chiave_fidata: &str)
-        -> (Outcome, Option<Vec<u8>>)
-    {
-        let scaricato = std::env::temp_dir()
-            .join(format!("metnos-su-{}-{:p}.new", std::process::id(), &d));
+    fn prova(
+        d: Descriptor,
+        contenuto: &'static [u8],
+        chiave_fidata: &str,
+    ) -> (Outcome, Option<Vec<u8>>) {
+        let scaricato =
+            std::env::temp_dir().join(format!("metnos-su-{}-{:p}.new", std::process::id(), &d));
         let sostituito = std::cell::RefCell::new(None);
         let esito = check_and_apply(
-            "https://server.esempio", chiave_fidata, "0.2.26", TARGET, &scaricato,
+            "https://server.esempio",
+            chiave_fidata,
+            "0.2.26",
+            TARGET,
+            &scaricato,
             |_, _| Ok(d.clone()),
             |_, desc, dove| {
                 // Come farebbe la vera: scrive e controlla l'impronta.
@@ -493,14 +508,20 @@ mod tests_applicazione {
         let d = descrittore(&k, "0.3.0", b"quello firmato", COMPONENT);
         let (esito, sostituito) = prova(d, b"tutt'altro programma", &pubb);
         assert_eq!(esito, Outcome::Refused("artifact_hash_mismatch"));
-        assert!(sostituito.is_none(), "ha sostituito con un file non firmato");
+        assert!(
+            sostituito.is_none(),
+            "ha sostituito con un file non firmato"
+        );
     }
 
     #[test]
     fn un_descrittore_firmato_da_un_altro_non_si_installa() {
         let (k, _) = chiavi();
         let altra = URL_SAFE_NO_PAD.encode(
-            SigningKey::from_bytes(&[3u8; 32]).verifying_key().to_bytes());
+            SigningKey::from_bytes(&[3u8; 32])
+                .verifying_key()
+                .to_bytes(),
+        );
         let d = descrittore(&k, "0.3.0", b"programma", COMPONENT);
         let (esito, sostituito) = prova(d, b"programma", &altra);
         assert_eq!(esito, Outcome::Refused("untrusted_signature"));
@@ -512,7 +533,11 @@ mod tests_applicazione {
         // Un aiutante installato prima che gli aggiornamenti esistessero non
         // sa a chi chiedere. Resta com'e' invece di indovinare.
         let esito = check_and_apply(
-            "", "chiave", "0.2.26", TARGET, Path::new("/non/serve"),
+            "",
+            "chiave",
+            "0.2.26",
+            TARGET,
+            Path::new("/non/serve"),
             |_, _| panic!("non deve nemmeno chiedere"),
             |_, _, _| panic!("non deve scaricare"),
             |_| panic!("non deve sostituire"),
@@ -554,10 +579,13 @@ mod tests_idempotenza {
         };
 
         let esito = check_and_apply(
-            "https://server.esempio", &pubblica,
+            "https://server.esempio",
+            &pubblica,
             // Numero volutamente indietro: se contasse il numero, si
             // aggiornerebbe.
-            "0.1.0", TARGET_TRIPLE, Path::new("/non/serve"),
+            "0.1.0",
+            TARGET_TRIPLE,
+            Path::new("/non/serve"),
             move |_, _| Ok(descrittore.clone()),
             |_, _, _| panic!("non deve scaricare: e' gia' questo binario"),
             |_| panic!("non deve sostituire: e' gia' questo binario"),
@@ -583,18 +611,24 @@ mod tests_idempotenza {
             component: COMPONENT.into(),
             version: "9.9.9".into(),
             target: TARGET_TRIPLE.into(),
-            sha256: mia_impronta,           // l'impronta giusta...
-            sig: String::new(),             // ...ma nessuna firma
+            sha256: mia_impronta, // l'impronta giusta...
+            sig: String::new(),   // ...ma nessuna firma
             url_path: "/x".into(),
         };
         let esito = check_and_apply(
-            "https://server.esempio", &pubblica, "0.1.0", TARGET_TRIPLE,
+            "https://server.esempio",
+            &pubblica,
+            "0.1.0",
+            TARGET_TRIPLE,
             Path::new("/non/serve"),
             move |_, _| Ok(falso.clone()),
             |_, _, _| panic!("non deve scaricare"),
             |_| panic!("non deve sostituire"),
         );
-        assert_eq!(esito, Outcome::Refused("malformed_signature"),
-                   "un descrittore non firmato ha superato la scorciatoia");
+        assert_eq!(
+            esito,
+            Outcome::Refused("malformed_signature"),
+            "un descrittore non firmato ha superato la scorciatoia"
+        );
     }
 }

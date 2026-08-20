@@ -14,9 +14,15 @@ related:
   - 0209
 complements:
   - 0209
+modified_by:
+  - 0211
 ---
 
 ## Context
+
+> **Amended by ADR 0211.** The package-operation enumeration remains closed.
+> A separate signed request shape can start one registered package without
+> accepting a command, path, or caller-controlled argument.
 
 ADR 0209 (D5) decided that installing software on Windows requires an
 elevated helper, and stated its non-negotiable properties. It deliberately
@@ -125,9 +131,17 @@ consent is recorded by the helper.
 
 NON DEVI: installare l'aiutante durante l'installazione del client, o come
 effetto collaterale di una richiesta d'installazione.
-NON DEVI: aggiornare l'aiutante in silenzio. The client's signed self-update
-(ADR 0184) does not extend to the helper: a new version of the most
-privileged component asks again.
+The initial installation never happens as a side effect and still requires
+the explicit Windows elevation described above. Later builds from the same
+paired installation may update without another prompt, but only from the
+server-signed helper release, with the pinned server key, component, target,
+version and artifact hash all revalidated by the helper itself.
+
+Update discovery is lazy and always on: before any helper operation the client
+performs a local version handshake. Network and download work occurs only when
+the client is newer. The helper updates and restarts before the real operation
+is sent, so no mutating request is retried. An unused, aligned helper does no
+periodic network polling.
 
 ### D5 — Its own audit
 

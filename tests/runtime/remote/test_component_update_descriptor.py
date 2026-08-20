@@ -74,6 +74,24 @@ async def test_il_descrittore_del_client_ha_la_forma_che_i_client_conoscono(mirr
 
 
 @pytest.mark.asyncio
+async def test_il_vecchio_mirror_piatto_resta_leggibile(mirror):
+    (mirror / "manifest.json").write_text(json.dumps({
+        "latest": "8.8.8",
+        "versions": {"8.8.8": {TARGET: {
+            "filename": "metnos-client.exe",
+            "path": f"8.8.8/{TARGET}/metnos-client.exe",
+            "size": 10,
+            "sha256": SHA_CLIENT,
+        }}},
+    }))
+    corpo, stato = await _json(
+        agent_server.client_update_descriptor, target=TARGET)
+    assert stato == 200
+    assert corpo["version"] == "8.8.8"
+    assert corpo["sha256"] == SHA_CLIENT
+
+
+@pytest.mark.asyncio
 async def test_il_componente_entra_nella_firma(mirror):
     corpo, stato = await _json(agent_server.component_update_descriptor,
                                component="helper", target=TARGET)

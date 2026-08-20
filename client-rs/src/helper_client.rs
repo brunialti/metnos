@@ -57,7 +57,7 @@ const PROPRIETARI_PRIVILEGIATI: [&str; 2] = [LOCAL_SYSTEM_SID, ADMINISTRATORS_SI
 /// la LINGUA, non la build: due versioni diverse dei due programmi si
 /// capiscono benissimo se questa combacia, e non si capiscono affatto se non
 /// combacia — che e' esattamente la differenza da saper dire.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
@@ -71,6 +71,42 @@ pub enum Operation {
     /// si puo' CHIEDERE. Senza, si scopre come un guasto — una richiesta che
     /// l'altro capo non capisce, e nessun modo di dire perche'.
     Version,
+}
+
+/// Closed lifetime values for the dedicated managed-start request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartLifetime {
+    Session,
+    Persistent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderInterface {
+    HardwareSensorsV1,
+}
+
+impl ProviderInterface {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "hardware_sensors_v1" => Some(Self::HardwareSensorsV1),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::HardwareSensorsV1 => "hardware_sensors_v1",
+        }
+    }
+}
+
+impl StartLifetime {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StartLifetime::Session => "session",
+            StartLifetime::Persistent => "persistent",
+        }
+    }
 }
 
 impl Operation {
@@ -107,6 +143,64 @@ pub fn canonical_body(
         package_id,
         version.unwrap_or(""),
         idempotency_key,
+    )
+}
+
+/// Signed body for managed start.
+///
+/// This mirrors `ManagedStartRequest::canonical_body` in the helper. The
+/// fixed domain separator prevents a signature from authorising a package
+/// operation, and no caller-controlled path or command exists in the shape.
+pub fn canonical_start_body(
+    source: &str,
+    package_id: &str,
+    lifetime: StartLifetime,
+    idempotency_key: &str,
+) -> String {
+    format!(
+        "managed-start\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        source,
+        package_id,
+        lifetime.as_str(),
+        idempotency_key,
+    )
+}
+
+pub fn canonical_provider_grant_body(
+    invocation_id: &str,
+    manifest_sha256: &str,
+    dependency_key: &str,
+    source: &str,
+    package_id: &str,
+    interface: ProviderInterface,
+    assembly: &str,
+    entry_type: &str,
+    domains: &[String],
+    sensor_types: &[String],
+) -> String {
+    format!(
+        "managed-provider-grant\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        invocation_id,
+        manifest_sha256,
+        dependency_key,
+        source,
+        package_id,
+        interface.as_str(),
+        assembly,
+        entry_type,
+        domains.join(","),
+        sensor_types.join(","),
+    )
+}
+
+pub fn canonical_provider_body(
+    grant_body: &str,
+    grant_signature: &str,
+    idempotency_key: &str,
+) -> String {
+    format!(
+        "managed-provider\u{1f}{}\u{1f}{}\u{1f}{}",
+        grant_body, grant_signature, idempotency_key,
     )
 }
 
@@ -161,7 +255,11 @@ pub fn pipe_name_for_owner(owner_sid: &str) -> Option<String> {
 /// significherebbe che chi puo' modificare quella configurazione decide chi
 /// e' l'aiutante.
 pub fn helper_executable_in(program_files: &str) -> String {
-    format!("{}\\Metnos\\{}", program_files.trim_end_matches('\\'), HELPER_EXECUTABLE)
+    format!(
+        "{}\\Metnos\\{}",
+        program_files.trim_end_matches('\\'),
+        HELPER_EXECUTABLE
+    )
 }
 
 /// Perche' non si e' potuto parlare con l'aiutante.
@@ -197,7 +295,8 @@ computer, oppure non e' in esecuzione."
             }
             ChannelRefusal::NotLocal => {
                 "Il canale verso il componente amministrativo non e' locale: non ci \
-parlo.".into()
+parlo."
+                    .into()
             }
             ChannelRefusal::NotLocalSystem(chi) => format!(
                 "Dall'altro capo del canale non c'e' il servizio di sistema ma «{chi}». \
@@ -272,6 +371,74 @@ pub fn build_request(
     serde_json::to_string(&corpo).map_err(|e| anyhow!("richiesta non serializzabile: {e}"))
 }
 
+/// Build the separate managed-start request.
+pub fn build_start_request(
+    identity: &crate::identity::Identity,
+    package_id: &str,
+    lifetime: StartLifetime,
+) -> Result<String> {
+    use ed25519_dalek::Signer;
+    let key = new_idempotency_key();
+    let body = canonical_start_body("winget", package_id, lifetime, &key);
+    let signature = identity.signing.sign(body.as_bytes());
+    let request = serde_json::json!({
+        "source": "winget",
+        "package_id": package_id,
+        "lifetime": lifetime.as_str(),
+        "idempotency_key": key,
+        "signature": signature.to_bytes().iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>(),
+    });
+    serde_json::to_string(&request)
+        .map_err(|error| anyhow!("managed-start request is not serializable: {error}"))
+}
+
+/// Build one provider request from the server-signed grant carried by the
+/// already verified invocation. No caller-selected path or code is accepted.
+pub fn build_provider_request(
+    identity: &crate::identity::Identity,
+    grant: &crate::wire::ManagedProviderGrant,
+) -> Result<String> {
+    use ed25519_dalek::Signer;
+    let provider = ProviderInterface::parse(&grant.interface)
+        .ok_or_else(|| anyhow!("managed provider interface is unknown"))?;
+    let key = new_idempotency_key();
+    let grant_body = canonical_provider_grant_body(
+        &grant.invocation_id,
+        &grant.manifest_sha256,
+        &grant.dependency_key,
+        &grant.source,
+        &grant.package_id,
+        provider,
+        &grant.assembly,
+        &grant.entry_type,
+        &grant.domains,
+        &grant.sensor_types,
+    );
+    let body = canonical_provider_body(&grant_body, &grant.server_sig, &key);
+    let signature = identity.signing.sign(body.as_bytes());
+    let request = serde_json::json!({
+        "source": grant.source,
+        "package_id": grant.package_id,
+        "interface": provider.as_str(),
+        "assembly": grant.assembly,
+        "entry_type": grant.entry_type,
+        "domains": grant.domains,
+        "sensor_types": grant.sensor_types,
+        "invocation_id": grant.invocation_id,
+        "manifest_sha256": grant.manifest_sha256,
+        "dependency_key": grant.dependency_key,
+        "grant_signature": grant.server_sig,
+        "idempotency_key": key,
+        "signature": signature.to_bytes().iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>(),
+    });
+    serde_json::to_string(&request)
+        .map_err(|error| anyhow!("managed-provider request is not serializable: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -285,10 +452,15 @@ mod tests {
         // il motivo per cui non e' mai stato riconosciuto.
         for proprietario in ["S-1-5-18", "S-1-5-32-544"] {
             assert_eq!(
-                judge_peer(r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001",
-                           proprietario, "C:\\x\\h.exe", "C:\\x\\h.exe"),
+                judge_peer(
+                    r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001",
+                    proprietario,
+                    "C:\\x\\h.exe",
+                    "C:\\x\\h.exe"
+                ),
                 Ok(()),
-                "rifiutato un proprietario privilegiato: {proprietario}");
+                "rifiutato un proprietario privilegiato: {proprietario}"
+            );
         }
     }
 
@@ -297,10 +469,16 @@ mod tests {
         // Il rovescio, ed e' cio' che il controllo esiste per fare: chi non ha
         // privilegi non puo' possedere quell'oggetto, quindi se lo possiede
         // qualcun altro non e' l'aiutante.
-        let esito = judge_peer(r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001",
-                               "S-1-5-21-1-2-3-1001", "C:\\x\\h.exe", "C:\\x\\h.exe");
-        assert!(matches!(esito, Err(ChannelRefusal::NotLocalSystem(_))),
-                "accettato un canale di un utente senza privilegi");
+        let esito = judge_peer(
+            r"\\.\pipe\metnos-helper-S-1-5-21-1-2-3-1001",
+            "S-1-5-21-1-2-3-1001",
+            "C:\\x\\h.exe",
+            "C:\\x\\h.exe",
+        );
+        assert!(
+            matches!(esito, Err(ChannelRefusal::NotLocalSystem(_))),
+            "accettato un canale di un utente senza privilegi"
+        );
     }
 
     use super::*;
@@ -311,10 +489,7 @@ mod tests {
     // ── Il giudizio su chi c'e' dall'altro capo ──
     #[test]
     fn laiutante_vero_passa() {
-        assert_eq!(
-            judge_peer(PIPE, "S-1-5-18", ESEGUIBILE, ESEGUIBILE),
-            Ok(())
-        );
+        assert_eq!(judge_peer(PIPE, "S-1-5-18", ESEGUIBILE, ESEGUIBILE), Ok(()));
     }
 
     #[test]
@@ -329,7 +504,10 @@ mod tests {
     fn un_altro_programma_di_sistema_non_passa() {
         // Girare come sistema non basta: deve essere QUEL programma.
         let esito = judge_peer(PIPE, "S-1-5-18", r"C:\Windows\System32\cmd.exe", ESEGUIBILE);
-        assert!(matches!(esito, Err(ChannelRefusal::UnexpectedExecutable(_))));
+        assert!(matches!(
+            esito,
+            Err(ChannelRefusal::UnexpectedExecutable(_))
+        ));
     }
 
     #[test]
@@ -338,7 +516,12 @@ mod tests {
         // rifiuterebbe l'aiutante vero perche' il sistema ha scritto in
         // maiuscolo.
         assert_eq!(
-            judge_peer(PIPE, "S-1-5-18", r"C:\PROGRAM FILES\METNOS\METNOS-HELPER.EXE", ESEGUIBILE),
+            judge_peer(
+                PIPE,
+                "S-1-5-18",
+                r"C:\PROGRAM FILES\METNOS\METNOS-HELPER.EXE",
+                ESEGUIBILE
+            ),
             Ok(())
         );
     }
@@ -406,8 +589,16 @@ mod tests {
     fn un_sid_che_non_e_un_sid_non_diventa_un_nome() {
         // Il valore finisce dentro il nome di un oggetto di sistema: uno
         // qualunque potrebbe portarci dentro un separatore.
-        for cattivo in ["", "S", "S-1", "X-1-5-18", "s-1-5-18", r"S-1-5-18\..\altro",
-                        "S-1-5-18-", "S-1-5-1a"] {
+        for cattivo in [
+            "",
+            "S",
+            "S-1",
+            "X-1-5-18",
+            "s-1-5-18",
+            r"S-1-5-18\..\altro",
+            "S-1-5-18-",
+            "S-1-5-1a",
+        ] {
             assert_eq!(pipe_name_for_owner(cattivo), None, "accettato: {cattivo:?}");
         }
     }
@@ -416,7 +607,10 @@ mod tests {
     fn un_nome_costruito_qui_passa_il_giudizio_sulla_localita() {
         // Le due meta' — costruzione e verifica — devono essere d'accordo.
         let nome = pipe_name_for_owner("S-1-5-21-1-2-3-1001").unwrap();
-        assert_eq!(judge_peer(&nome, "S-1-5-18", ESEGUIBILE, ESEGUIBILE), Ok(()));
+        assert_eq!(
+            judge_peer(&nome, "S-1-5-18", ESEGUIBILE, ESEGUIBILE),
+            Ok(())
+        );
     }
 
     #[test]
@@ -457,6 +651,62 @@ mod tests {
         assert_eq!(
             corpo,
             "install\u{1f}winget\u{1f}Microsoft.PowerToys\u{1f}\u{1f}0123456789abcdef0123456789abcdef"
+        );
+    }
+
+    #[test]
+    fn managed_start_body_matches_the_helper_contract() {
+        let body = canonical_start_body(
+            "winget",
+            "LibreHardwareMonitor.LibreHardwareMonitor",
+            StartLifetime::Session,
+            "0123456789abcdef0123456789abcdef",
+        );
+        assert_eq!(
+            body,
+            "managed-start\u{1f}winget\u{1f}LibreHardwareMonitor.LibreHardwareMonitor\u{1f}session\u{1f}0123456789abcdef0123456789abcdef"
+        );
+        assert_ne!(
+            body,
+            canonical_body(
+                Operation::Install,
+                "winget",
+                "LibreHardwareMonitor.LibreHardwareMonitor",
+                None,
+                "0123456789abcdef0123456789abcdef",
+            )
+        );
+    }
+
+    #[test]
+    fn managed_provider_bodies_match_the_helper_contract() {
+        let grant = canonical_provider_grant_body(
+            "inv-0123456789abcdef01234567",
+            &"a".repeat(64),
+            "hardware_sensor_provider",
+            "winget",
+            "Vendor.Sensor",
+            ProviderInterface::HardwareSensorsV1,
+            "Vendor.SensorLib.dll",
+            "Vendor.Sensor.Computer",
+            &["cpu".to_string()],
+            &["temperature".to_string()],
+        );
+        assert_eq!(
+            grant,
+            format!(
+                "managed-provider-grant\u{1f}inv-0123456789abcdef01234567\u{1f}{}\u{1f}hardware_sensor_provider\u{1f}winget\u{1f}Vendor.Sensor\u{1f}hardware_sensors_v1\u{1f}Vendor.SensorLib.dll\u{1f}Vendor.Sensor.Computer\u{1f}cpu\u{1f}temperature",
+                "a".repeat(64),
+            ),
+        );
+        let body =
+            canonical_provider_body(&grant, &"A".repeat(86), "0123456789abcdef0123456789abcdef");
+        assert_eq!(
+            body,
+            format!(
+                "managed-provider\u{1f}{grant}\u{1f}{}\u{1f}0123456789abcdef0123456789abcdef",
+                "A".repeat(86),
+            ),
         );
     }
 

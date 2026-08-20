@@ -26,28 +26,88 @@ use std::path::Path;
 use crate::audit::{self, Event};
 use crate::journal::Journal;
 use crate::pairing::{authorize, Pairing};
-use crate::protocol::{self, Operation, Request, Response};
+use crate::protocol::{self, Action, Response, WireRequest};
 
-/// L'esito grezzo di un comando: codice d'uscita e uscita testuale.
-pub type Outcome = (Option<i32>, String);
+/// A system action result with a stable, language-neutral failure code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    pub ok: bool,
+    pub error_code: Option<&'static str>,
+    pub exit_code: Option<i32>,
+    pub detail: String,
+    pub payload: Option<serde_json::Value>,
+}
+
+impl Outcome {
+    pub fn success(detail: impl Into<String>) -> Self {
+        Self {
+            ok: true,
+            error_code: None,
+            exit_code: None,
+            detail: detail.into(),
+            payload: None,
+        }
+    }
+
+    pub fn failure(code: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            ok: false,
+            error_code: Some(code),
+            exit_code: None,
+            detail: detail.into(),
+            payload: None,
+        }
+    }
+
+    pub fn success_with_payload(payload: serde_json::Value) -> Self {
+        Self {
+            ok: true,
+            error_code: None,
+            exit_code: None,
+            detail: String::new(),
+            payload: Some(payload),
+        }
+    }
+}
+
+impl From<(Option<i32>, String)> for Outcome {
+    fn from((exit_code, detail): (Option<i32>, String)) -> Self {
+        Self {
+            ok: exit_code == Some(0),
+            error_code: if exit_code == Some(0) {
+                None
+            } else {
+                Some("package_operation_failed")
+            },
+            exit_code,
+            detail,
+            payload: None,
+        }
+    }
+}
 
 /// Applica una richiesta, dall'inizio alla fine.
 ///
 /// `run` riceve la riga di comando gia' costruita e validata. Non puo'
 /// riceverne una diversa: il chiamante non ha modo di influenzarla.
 pub fn handle(
-    request: &Request,
+    request: &WireRequest,
     caller_sid: &str,
     pairing_path: &Path,
     journal_path: &Path,
     audit_path: &Path,
-    run: impl FnOnce(&[String]) -> Outcome,
+    run: impl FnOnce(&Action) -> Outcome,
 ) -> Response {
     let Some(pairing) = Pairing::load(pairing_path) else {
         // Nessun consenso registrato: non c'e' niente da autorizzare. Si
         // registra comunque, perche' una richiesta a un aiutante non appaiato
         // e' esattamente il genere di cosa che si vuole poter contare.
-        let _ = audit::record(audit_path, Event::Refused, &request.package_id, "not_paired");
+        let _ = audit::record(
+            audit_path,
+            Event::Refused,
+            request.package_id(),
+            "not_paired",
+        );
         return Response {
             error_code: Some("not_paired".into()),
             ..Response::stamped()
@@ -63,7 +123,7 @@ pub fn handle(
             let _ = audit::record(
                 audit_path,
                 Event::Refused,
-                &request.package_id,
+                request.package_id(),
                 "journal_unavailable",
             );
             return Response {
@@ -77,17 +137,17 @@ pub fn handle(
         let _ = audit::record(
             audit_path,
             Event::Refused,
-            &request.package_id,
+            request.package_id(),
             refusal.code(),
         );
         return Response::refused(refusal);
     }
 
-    if journal.consume(&request.idempotency_key).is_err() {
+    if journal.consume(request.idempotency_key()).is_err() {
         let _ = audit::record(
             audit_path,
             Event::Refused,
-            &request.package_id,
+            request.package_id(),
             "journal_write_failed",
         );
         return Response {
@@ -96,34 +156,55 @@ pub fn handle(
         };
     }
 
-    // «Chi sei» non esegue niente: la risposta e' una proprieta' di questo
-    // programma. Arriva pero' DOPO gli stessi controlli di tutte le altre —
-    // consenso, chiamante, firma, chiave consumata — perche' un componente
-    // privilegiato con due strade e' un componente con una strada sicura e
-    // una da trovare. Si registra come tutto il resto.
-    if request.operation == Operation::Version {
-        let _ = audit::record(audit_path, Event::Executed, &request.package_id,
-                              protocol::helper_version());
-        return Response { ok: true, ..Response::stamped() };
+    // A plain version query is local and side-effect free. Supplying the
+    // expected client build requests one signed update check, but only after
+    // the normal caller, signature and replay gates above. The real package
+    // operation is never sent until this handshake has completed.
+    if request.is_version_query() {
+        let outcome = request.action().map(|action| run(&action));
+        let ok = outcome.as_ref().map_or(true, |value| value.ok);
+        let error_code = outcome
+            .as_ref()
+            .and_then(|value| value.error_code)
+            .map(str::to_string);
+        let detail = outcome
+            .as_ref()
+            .map(|value| coda_utile(&value.detail))
+            .unwrap_or_default();
+        let _ = audit::record(
+            audit_path,
+            Event::Executed,
+            request.package_id(),
+            if outcome.is_some() {
+                "lazy_update_check"
+            } else {
+                protocol::helper_version()
+            },
+        );
+        return Response {
+            ok,
+            error_code,
+            detail,
+            payload: outcome.and_then(|value| value.payload),
+            ..Response::stamped()
+        };
     }
 
-    let (exit_code, output) = run(&request.argv());
-    let detail = coda_utile(&output);
+    let action = request.action().expect("non-version request has an action");
+    let outcome = run(&action);
+    let detail = coda_utile(&outcome.detail);
     let _ = audit::record(
         audit_path,
         Event::Executed,
-        &request.package_id,
-        &format!("rc={} {}", exit_code.unwrap_or(-1), detail),
+        request.package_id(),
+        &format!("rc={} {}", outcome.exit_code.unwrap_or(-1), detail),
     );
     Response {
-        ok: exit_code == Some(0),
-        error_code: if exit_code == Some(0) {
-            None
-        } else {
-            Some("package_operation_failed".into())
-        },
-        exit_code,
+        ok: outcome.ok,
+        error_code: outcome.error_code.map(str::to_string),
+        exit_code: outcome.exit_code,
         detail,
+        payload: outcome.payload,
         ..Response::stamped()
     }
 }
@@ -135,8 +216,16 @@ pub fn handle(
 /// l'opposto di cio' che e' successo. E' la stessa lezione imparata sul lato
 /// Python nella stessa giornata.
 fn coda_utile(output: &str) -> String {
-    let righe: Vec<&str> = output.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-    let utili = if righe.len() > 1 { &righe[1..] } else { &righe[..] };
+    let righe: Vec<&str> = output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let utili = if righe.len() > 1 {
+        &righe[1..]
+    } else {
+        &righe[..]
+    };
     let inizio = utili.len().saturating_sub(3);
     utili[inizio..].join(" · ").chars().take(300).collect()
 }
@@ -144,7 +233,9 @@ fn coda_utile(output: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Operation, Source};
+    use crate::protocol::{
+        Action, ManagedStartRequest, Operation, Request, Source, StartLifetime, WireRequest,
+    };
     use ed25519_dalek::{Signer, SigningKey};
     use std::path::PathBuf;
 
@@ -156,8 +247,8 @@ mod tests {
 
     impl Banco {
         fn nuovo(nome: &str) -> Self {
-            let radice = std::env::temp_dir()
-                .join(format!("metnos-helper-{nome}-{}", std::process::id()));
+            let radice =
+                std::env::temp_dir().join(format!("metnos-helper-{nome}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&radice);
             std::fs::create_dir_all(&radice).unwrap();
             let chiave = SigningKey::from_bytes(&[3u8; 32]);
@@ -167,10 +258,14 @@ mod tests {
                 public_key_hex: hex::encode(chiave.verifying_key().to_bytes()),
                 server_public_key_b64: String::new(),
                 server_url: String::new(),
-            consented_at: 1_786_000_000,
+                consented_at: 1_786_000_000,
             };
             pairing.save(&radice.join("pairing.json")).unwrap();
-            Banco { radice, chiave, sid }
+            Banco {
+                radice,
+                chiave,
+                sid,
+            }
         }
 
         fn richiesta(&self, id: &str, chiave_idem: &str) -> Request {
@@ -182,8 +277,7 @@ mod tests {
                 idempotency_key: chiave_idem.into(),
                 signature: String::new(),
             };
-            r.signature =
-                hex::encode(self.chiave.sign(r.canonical_body().as_bytes()).to_bytes());
+            r.signature = hex::encode(self.chiave.sign(r.canonical_body().as_bytes()).to_bytes());
             r
         }
 
@@ -191,22 +285,56 @@ mod tests {
             let mut r = self.richiesta("Segnaposto", chiave_idem);
             r.operation = Operation::Version;
             r.package_id = String::new();
-            r.signature =
-                hex::encode(self.chiave.sign(r.canonical_body().as_bytes()).to_bytes());
+            r.signature = hex::encode(self.chiave.sign(r.canonical_body().as_bytes()).to_bytes());
             r
         }
 
-        fn applica(&self, r: &Request, sid: &str, esito: Outcome) -> (Response, Vec<Vec<String>>) {
+        fn chi_sei_aspettando(&self, chiave_idem: &str, version: &str) -> Request {
+            let mut request = self.chi_sei(chiave_idem);
+            request.version = Some(version.into());
+            request.signature = hex::encode(
+                self.chiave
+                    .sign(request.canonical_body().as_bytes())
+                    .to_bytes(),
+            );
+            request
+        }
+
+        fn managed_start(&self, id: &str, key: &str) -> ManagedStartRequest {
+            let mut request = ManagedStartRequest {
+                source: Source::Winget,
+                package_id: id.into(),
+                lifetime: StartLifetime::Session,
+                idempotency_key: key.into(),
+                signature: String::new(),
+            };
+            request.signature = hex::encode(
+                self.chiave
+                    .sign(request.canonical_body().as_bytes())
+                    .to_bytes(),
+            );
+            request
+        }
+
+        fn applica(
+            &self,
+            r: &Request,
+            sid: &str,
+            esito: (Option<i32>, String),
+        ) -> (Response, Vec<Vec<String>>) {
             let eseguiti = std::cell::RefCell::new(Vec::new());
+            let wire = WireRequest::Package(r.clone());
             let risposta = handle(
-                r,
+                &wire,
                 sid,
                 &self.radice.join("pairing.json"),
                 &self.radice.join("consumed.log"),
                 &self.radice.join("audit.log"),
-                |argv| {
-                    eseguiti.borrow_mut().push(argv.to_vec());
-                    esito
+                |action| {
+                    if let Action::PackageCommand(argv) = action {
+                        eseguiti.borrow_mut().push(argv.clone());
+                    }
+                    esito.into()
                 },
             );
             (risposta, eseguiti.into_inner())
@@ -236,13 +364,71 @@ mod tests {
     }
 
     #[test]
+    fn managed_start_uses_the_same_authorization_and_replay_gate() {
+        let bank = Banco::nuovo("managed-start");
+        let request = WireRequest::ManagedStart(bank.managed_start(
+            "LibreHardwareMonitor.LibreHardwareMonitor",
+            "abcdef0123456789abcdef0123456789",
+        ));
+        let runs = std::cell::Cell::new(0);
+        let apply = || {
+            handle(
+                &request,
+                &bank.sid,
+                &bank.radice.join("pairing.json"),
+                &bank.radice.join("consumed.log"),
+                &bank.radice.join("audit.log"),
+                |action| {
+                    assert_eq!(
+                        action,
+                        &Action::ManagedStart {
+                            package_id: "LibreHardwareMonitor.LibreHardwareMonitor".into(),
+                            lifetime: StartLifetime::Session,
+                        }
+                    );
+                    runs.set(runs.get() + 1);
+                    Outcome::success("started_session")
+                },
+            )
+        };
+
+        assert!(apply().ok);
+        let replay = apply();
+        assert_eq!(replay.error_code.as_deref(), Some("replayed_request"));
+        assert_eq!(runs.get(), 1);
+    }
+
+    #[test]
+    fn managed_start_signature_cannot_be_reused_for_persistence() {
+        let bank = Banco::nuovo("managed-start-lifetime");
+        let mut request = bank.managed_start(
+            "LibreHardwareMonitor.LibreHardwareMonitor",
+            "abcdef0123456789abcdef0123456788",
+        );
+        request.lifetime = StartLifetime::Persistent;
+        let wire = WireRequest::ManagedStart(request);
+        let response = handle(
+            &wire,
+            &bank.sid,
+            &bank.radice.join("pairing.json"),
+            &bank.radice.join("consumed.log"),
+            &bank.radice.join("audit.log"),
+            |_| panic!("an invalid managed-start signature reached execution"),
+        );
+        assert_eq!(response.error_code.as_deref(), Some("untrusted_signature"));
+    }
+
+    #[test]
     fn una_richiesta_di_un_altro_utente_non_esegue_niente() {
         let b = Banco::nuovo("altro-utente");
         let r = b.richiesta("X.Y", "0123456789abcdef0123456789abcdef");
         let (risposta, eseguiti) = b.applica(&r, "S-1-5-21-9-9-9-9999", (Some(0), "".into()));
 
         assert!(!risposta.ok);
-        assert!(eseguiti.is_empty(), "ha eseguito per un utente non autorizzato");
+        assert!(
+            eseguiti.is_empty(),
+            "ha eseguito per un utente non autorizzato"
+        );
         assert!(b.registro().contains("refused"));
     }
 
@@ -271,8 +457,10 @@ mod tests {
 
         assert_eq!(risposta.error_code.as_deref(), Some("not_paired"));
         assert!(eseguiti.is_empty());
-        assert!(b.registro().contains("not_paired"),
-                "una richiesta a un aiutante non appaiato va contata");
+        assert!(
+            b.registro().contains("not_paired"),
+            "una richiesta a un aiutante non appaiato va contata"
+        );
     }
 
     #[test]
@@ -329,12 +517,38 @@ mod tests {
         // giorno eseguisse qualcosa, la voce piu' innocua del vocabolario
         // sarebbe diventata una strada per eseguire.
         let banco = Banco::nuovo("versione-non-esegue");
-        let (risposta, eseguiti) =
-            banco.applica(&banco.chi_sei("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"), &banco.sid, (Some(0), String::new()));
+        let (risposta, eseguiti) = banco.applica(
+            &banco.chi_sei("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"),
+            &banco.sid,
+            (Some(0), String::new()),
+        );
         assert!(risposta.ok, "rifiutata: {:?}", risposta.error_code);
         assert!(eseguiti.is_empty(), "ha eseguito {eseguiti:?}");
         assert_eq!(risposta.helper_version, protocol::helper_version());
         assert_eq!(risposta.protocol_version, protocol::PROTOCOL_VERSION);
+    }
+
+    #[test]
+    fn expected_version_runs_only_the_internal_update_check() {
+        let bank = Banco::nuovo("lazy-update");
+        let request = WireRequest::Package(
+            bank.chi_sei_aspettando("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa4", "0.2.44"),
+        );
+        let actions = std::cell::RefCell::new(Vec::new());
+        let response = handle(
+            &request,
+            &bank.sid,
+            &bank.radice.join("pairing.json"),
+            &bank.radice.join("consumed.log"),
+            &bank.radice.join("audit.log"),
+            |action| {
+                actions.borrow_mut().push(action.clone());
+                Outcome::success("helper_current")
+            },
+        );
+
+        assert!(response.ok);
+        assert_eq!(actions.into_inner(), vec![Action::HelperUpdateCheck]);
     }
 
     #[test]
@@ -344,8 +558,10 @@ mod tests {
         // non arrivare mai.
         let banco = Banco::nuovo("versione-anche-nei-rifiuti");
         let (risposta, eseguiti) = banco.applica(
-            &banco.richiesta("Qualcosa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2"), "S-1-5-21-9-9-9-9999",
-            (Some(0), String::new()));
+            &banco.richiesta("Qualcosa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2"),
+            "S-1-5-21-9-9-9-9999",
+            (Some(0), String::new()),
+        );
         assert!(!risposta.ok);
         assert!(eseguiti.is_empty());
         assert_eq!(risposta.helper_version, protocol::helper_version());
@@ -357,8 +573,11 @@ mod tests {
         // «chi sono».
         let banco = Banco::nuovo("versione-stessi-controlli");
         std::fs::remove_file(banco.radice.join("pairing.json")).unwrap();
-        let (risposta, eseguiti) =
-            banco.applica(&banco.chi_sei("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3"), &banco.sid, (Some(0), String::new()));
+        let (risposta, eseguiti) = banco.applica(
+            &banco.chi_sei("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3"),
+            &banco.sid,
+            (Some(0), String::new()),
+        );
         assert!(!risposta.ok);
         assert_eq!(risposta.error_code.as_deref(), Some("not_paired"));
         assert!(eseguiti.is_empty());

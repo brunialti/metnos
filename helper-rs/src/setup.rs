@@ -32,8 +32,7 @@ use crate::pairing::Pairing;
 pub const SERVICE_NAME: &str = "MetnosHelper";
 
 /// La chiave sotto cui Windows elenca i programmi installati.
-pub const ARP_KEY: &str =
-    r"HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\MetnosHelper";
+pub const ARP_KEY: &str = r"HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\MetnosHelper";
 
 /// Che cosa la persona sta concedendo. Compare nella richiesta di consenso.
 ///
@@ -333,10 +332,7 @@ pub fn prepare_pairing(
 /// disinstallare anche il potere di far sparire le proprie tracce, e un
 /// registro che si puo' cancellare non e' un registro.
 pub fn files_to_remove(data_dir: &Path) -> Vec<PathBuf> {
-    vec![
-        data_dir.join("pairing.json"),
-        data_dir.join("consumed.log"),
-    ]
+    vec![data_dir.join("pairing.json"), data_dir.join("consumed.log")]
 }
 
 #[cfg(test)]
@@ -344,10 +340,7 @@ mod tests {
     use super::*;
 
     fn temporanea(nome: &str) -> PathBuf {
-        let p = std::env::temp_dir().join(format!(
-            "metnos-setup-{nome}-{}",
-            std::process::id()
-        ));
+        let p = std::env::temp_dir().join(format!("metnos-setup-{nome}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).unwrap();
         p
@@ -362,7 +355,15 @@ mod tests {
     #[test]
     fn un_appaiamento_valido_si_prepara() {
         let d = temporanea("valido");
-        let p = prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &d.join("pairing.json"), 1_786_000_000).unwrap();
+        let p = prepare_pairing(
+            SID,
+            CHIAVE,
+            CHIAVE_SERVER,
+            URL_SERVER,
+            &d.join("pairing.json"),
+            1_786_000_000,
+        )
+        .unwrap();
         assert_eq!(p.owner_sid, SID);
         assert_eq!(p.consented_at, 1_786_000_000);
         let _ = std::fs::remove_dir_all(&d);
@@ -380,7 +381,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            prepare_pairing("S-1-5-21-9-9-9-9999", CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 2),
+            prepare_pairing(
+                "S-1-5-21-9-9-9-9999",
+                CHIAVE,
+                CHIAVE_SERVER,
+                URL_SERVER,
+                &percorso,
+                2
+            ),
             Err(SetupRefusal::AlreadyPaired)
         );
         let _ = std::fs::remove_dir_all(&d);
@@ -393,22 +401,40 @@ mod tests {
         // pretendere un canale cifrato renderebbe impossibile installare
         // senza aggiungere una difesa.
         let d = temporanea("server-in-chiaro");
-        assert!(prepare_pairing(SID, CHIAVE, CHIAVE_SERVER,
-                                "http://192.168.1.33:8765",
-                                &d.join("pairing.json"), 1).is_ok());
+        assert!(prepare_pairing(
+            SID,
+            CHIAVE,
+            CHIAVE_SERVER,
+            "http://192.168.1.33:8765",
+            &d.join("pairing.json"),
+            1
+        )
+        .is_ok());
         let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
     fn cio_che_non_e_un_indirizzo_non_diventa_un_indirizzo() {
         let d = temporanea("server-non-indirizzo");
-        for cattivo in ["", "192.168.1.33", "file:///etc/passwd",
-                        "http://a b", "http://a\"b"] {
+        for cattivo in [
+            "",
+            "192.168.1.33",
+            "file:///etc/passwd",
+            "http://a b",
+            "http://a\"b",
+        ] {
             assert_eq!(
-                prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, cattivo,
-                                &d.join("pairing.json"), 1),
+                prepare_pairing(
+                    SID,
+                    CHIAVE,
+                    CHIAVE_SERVER,
+                    cattivo,
+                    &d.join("pairing.json"),
+                    1
+                ),
                 Err(SetupRefusal::MalformedServerUrl),
-                "accettato {cattivo:?}");
+                "accettato {cattivo:?}"
+            );
         }
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -420,10 +446,12 @@ mod tests {
         // ogni versione: gli e' stato promesso UNA volta sola.
         let d = temporanea("aggiornamento");
         let percorso = d.join("pairing.json");
-        let primo = prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 1_000).unwrap();
+        let primo =
+            prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 1_000).unwrap();
         primo.save(&percorso).unwrap();
 
-        let secondo = prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 9_999).unwrap();
+        let secondo =
+            prepare_pairing(SID, CHIAVE, CHIAVE_SERVER, URL_SERVER, &percorso, 9_999).unwrap();
         // La data del consenso e' quella originale: e' quando l'utente ha
         // detto di si', e non lo si riscrive perche' e' passato del tempo.
         assert_eq!(secondo.consented_at, 1_000);
@@ -445,7 +473,14 @@ mod tests {
 
         let altra_chiave = "b".repeat(64);
         assert_eq!(
-            prepare_pairing(SID, &altra_chiave, CHIAVE_SERVER, URL_SERVER, &percorso, 2_000),
+            prepare_pairing(
+                SID,
+                &altra_chiave,
+                CHIAVE_SERVER,
+                URL_SERVER,
+                &percorso,
+                2_000
+            ),
             Err(SetupRefusal::AlreadyPaired)
         );
         let _ = std::fs::remove_dir_all(&d);
@@ -456,7 +491,14 @@ mod tests {
         let d = temporanea("sid-rotto");
         for cattivo in ["", "amministratore", "S-1-5-abc", r"S-1-5-18\..\x"] {
             assert_eq!(
-                prepare_pairing(cattivo, CHIAVE, CHIAVE_SERVER, URL_SERVER, &d.join("pairing.json"), 1),
+                prepare_pairing(
+                    cattivo,
+                    CHIAVE,
+                    CHIAVE_SERVER,
+                    URL_SERVER,
+                    &d.join("pairing.json"),
+                    1
+                ),
                 Err(SetupRefusal::MalformedOwnerSid)
             );
         }
@@ -466,9 +508,22 @@ mod tests {
     #[test]
     fn una_chiave_malformata_non_diventa_lautorita() {
         let d = temporanea("chiave-rotta");
-        for cattiva in ["", "zz", &"aa".repeat(31), &"aa".repeat(33), &"g".repeat(64)] {
+        for cattiva in [
+            "",
+            "zz",
+            &"aa".repeat(31),
+            &"aa".repeat(33),
+            &"g".repeat(64),
+        ] {
             assert_eq!(
-                prepare_pairing(SID, cattiva, CHIAVE_SERVER, URL_SERVER, &d.join("pairing.json"), 1),
+                prepare_pairing(
+                    SID,
+                    cattiva,
+                    CHIAVE_SERVER,
+                    URL_SERVER,
+                    &d.join("pairing.json"),
+                    1
+                ),
                 Err(SetupRefusal::MalformedPublicKey)
             );
         }
@@ -496,9 +551,15 @@ mod tests {
         // argomenti, e il servizio punterebbe a «C:\Program». Il valore e'
         // l'argomento SUBITO DOPO `binPath=`, non attaccato ad esso.
         let argv = service_create_argv(Path::new(r"C:\Program Files\Metnos\helper.exe"));
-        let i = argv.iter().position(|a| a == "binPath=").expect("manca binPath=");
-        assert!(argv[i + 1].contains(r#""C:\Program Files\Metnos\helper.exe""#),
-                "valore inatteso: {}", argv[i + 1]);
+        let i = argv
+            .iter()
+            .position(|a| a == "binPath=")
+            .expect("manca binPath=");
+        assert!(
+            argv[i + 1].contains(r#""C:\Program Files\Metnos\helper.exe""#),
+            "valore inatteso: {}",
+            argv[i + 1]
+        );
     }
 
     #[test]
@@ -506,7 +567,10 @@ mod tests {
         // Un aiutante da avviare a mano fallirebbe alla prima installazione
         // dopo un riavvio, senza che nessuno capisca perche'.
         let argv = service_create_argv(Path::new(r"C:\x\helper.exe"));
-        let i = argv.iter().position(|a| a == "start=").expect("manca start=");
+        let i = argv
+            .iter()
+            .position(|a| a == "start=")
+            .expect("manca start=");
         assert_eq!(argv[i + 1], "auto");
         assert!(argv.iter().any(|a| a == "LocalSystem"));
     }
@@ -612,10 +676,16 @@ mod tests_argomenti_sc {
         // 19/8/2026; l'aiutante finiva in Program Files e si fermava li'.
         let argv = service_create_argv(Path::new(r"C:\Program Files\Metnos\metnos-helper.exe"));
         for chiave in ["binPath=", "start=", "obj=", "DisplayName="] {
-            assert!(argv.iter().any(|a| a == chiave),
-                    "«{chiave}» non e' un argomento a se': {argv:?}");
-            assert!(!argv.iter().any(|a| a.starts_with(chiave) && a.len() > chiave.len()),
-                    "«{chiave}» ha il valore attaccato: {argv:?}");
+            assert!(
+                argv.iter().any(|a| a == chiave),
+                "«{chiave}» non e' un argomento a se': {argv:?}"
+            );
+            assert!(
+                !argv
+                    .iter()
+                    .any(|a| a.starts_with(chiave) && a.len() > chiave.len()),
+                "«{chiave}» ha il valore attaccato: {argv:?}"
+            );
         }
     }
 
@@ -625,15 +695,20 @@ mod tests_argomenti_sc {
         // verrebbe registrato su un percorso troncato.
         let argv = service_create_argv(Path::new(r"C:\Program Files\Metnos\metnos-helper.exe"));
         let riga = riga_di_comando(&argv);
-        assert!(riga.contains(r#"binPath= "\"C:\Program Files\Metnos\metnos-helper.exe\" service""#),
-                "riga di comando inattesa: {riga}");
+        assert!(
+            riga.contains(r#"binPath= "\"C:\Program Files\Metnos\metnos-helper.exe\" service""#),
+            "riga di comando inattesa: {riga}"
+        );
     }
 
     #[test]
     fn anche_la_politica_di_riavvio_separa_chiave_e_valore() {
         let argv = service_recovery_argv();
         for chiave in ["reset=", "actions="] {
-            assert!(argv.iter().any(|a| a == chiave), "«{chiave}» attaccata: {argv:?}");
+            assert!(
+                argv.iter().any(|a| a == chiave),
+                "«{chiave}» attaccata: {argv:?}"
+            );
         }
     }
 }
@@ -660,7 +735,10 @@ mod tests_ciclo_di_vita_servizio {
         // di prima. Successo il 19/8/2026, errore 1073.
         let argv = service_config_argv(Path::new(r"C:\Program Files\Metnos\helper.exe"));
         assert_eq!(argv[1], "config");
-        let i = argv.iter().position(|a| a == "binPath=").expect("manca binPath=");
+        let i = argv
+            .iter()
+            .position(|a| a == "binPath=")
+            .expect("manca binPath=");
         assert!(argv[i + 1].contains(r#""C:\Program Files\Metnos\helper.exe""#));
         assert_eq!(SERVICE_EXISTS, 1073);
     }

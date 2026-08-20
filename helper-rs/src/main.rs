@@ -27,6 +27,7 @@
 //! Ricevono valori gia' decisi e si limitano a chiamare Windows: la parte non
 //! provabile e' cosi' la piu' piccola e la piu' stupida possibile.
 
+mod activation;
 mod audit;
 mod channel;
 mod cli;
@@ -34,11 +35,16 @@ mod frame;
 mod journal;
 mod pairing;
 mod protocol;
+mod provider;
 mod selfupdate;
 mod service;
 mod setup;
 #[cfg(windows)]
+mod win_activation;
+#[cfg(windows)]
 mod win_pipe;
+#[cfg(windows)]
+mod win_provider;
 #[cfg(windows)]
 mod win_serve;
 #[cfg(windows)]
@@ -67,8 +73,13 @@ fn main() -> ExitCode {
             server_key_b64,
             server_url,
             error_file,
-        } => installa(&owner_sid, &public_key_hex, &server_key_b64, &server_url,
-                      &error_file),
+        } => installa(
+            &owner_sid,
+            &public_key_hex,
+            &server_key_b64,
+            &server_url,
+            &error_file,
+        ),
         cli::Command::Uninstall => disinstalla(),
         cli::Command::Serve => servi(),
     }
@@ -85,9 +96,15 @@ fn stato() -> ExitCode {
         Some(p) => {
             println!("Installato e appaiato.");
             println!("  proprietario : {}", p.owner_sid);
-            println!("  chiave       : {}…", &p.public_key_hex[..16.min(p.public_key_hex.len())]);
+            println!(
+                "  chiave       : {}…",
+                &p.public_key_hex[..16.min(p.public_key_hex.len())]
+            );
             println!("  consenso dato: {}", p.consented_at);
-            println!("  registro     : {}", pairing::data_dir().join("audit.log").display());
+            println!(
+                "  registro     : {}",
+                pairing::data_dir().join("audit.log").display()
+            );
             ExitCode::SUCCESS
         }
         None => {
@@ -111,8 +128,13 @@ fn annota_motivo(error_file: &str, motivo: &str) {
 }
 
 #[cfg(windows)]
-fn installa(owner_sid: &str, public_key_hex: &str, server_key_b64: &str,
-            server_url: &str, error_file: &str) -> ExitCode {
+fn installa(
+    owner_sid: &str,
+    public_key_hex: &str,
+    server_key_b64: &str,
+    server_url: &str,
+    error_file: &str,
+) -> ExitCode {
     let percorso_appaiamento = pairing::pairing_path();
     let adesso = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -131,8 +153,7 @@ fn installa(owner_sid: &str, public_key_hex: &str, server_key_b64: &str,
     ) {
         Ok(p) => p,
         Err(e) => {
-            annota_motivo(error_file,
-                          &format!("appaiamento rifiutato: {}", e.code()));
+            annota_motivo(error_file, &format!("appaiamento rifiutato: {}", e.code()));
             eprintln!("Installazione non eseguita: {}", e.code());
             if e == setup::SetupRefusal::AlreadyPaired {
                 eprintln!(
@@ -153,8 +174,7 @@ proprietario si disinstalla e si reinstalla, cosi' il passaggio e' esplicito."
     let eseguibile = match win_setup::installa_eseguibile() {
         Ok(p) => p,
         Err(e) => {
-            annota_motivo(error_file,
-                          &format!("copia dell'eseguibile fallita: {e}"));
+            annota_motivo(error_file, &format!("copia dell'eseguibile fallita: {e}"));
             eprintln!("Copia dell'eseguibile fallita: {e}");
             return ExitCode::from(3);
         }
@@ -167,8 +187,10 @@ proprietario si disinstalla e si reinstalla, cosi' il passaggio e' esplicito."
     // Un componente privilegiato presente e INVISIBILE e' peggio di uno
     // assente: il proprietario non saprebbe che c'e' ne' come toglierlo.
     if let Err(e) = win_setup::registra_fra_i_programmi(&eseguibile, env!("CARGO_PKG_VERSION")) {
-        annota_motivo(error_file,
-                      &format!("registrazione fra i programmi installati: {e}"));
+        annota_motivo(
+            error_file,
+            &format!("registrazione fra i programmi installati: {e}"),
+        );
         eprintln!("{e}");
         eprintln!("Annullo: un aiutante che non compare fra i programmi non si puo' togliere.");
         win_setup::disinstalla(&pairing::data_dir());
@@ -197,8 +219,10 @@ proprietario si disinstalla e si reinstalla, cosi' il passaggio e' esplicito."
     if let Err(e) = win_setup::avvia_servizio() {
         annota_motivo(error_file, &format!("{e}"));
         eprintln!("{e}");
-        eprintln!("L'aiutante e' installato e autorizzato: partira' al prossimo \
-riavvio del computer.");
+        eprintln!(
+            "L'aiutante e' installato e autorizzato: partira' al prossimo \
+riavvio del computer."
+        );
         return ExitCode::from(4);
     }
     println!("Fatto. Le installazioni successive non chiederanno piu' questo permesso.");
@@ -209,8 +233,10 @@ riavvio del computer.");
 fn disinstalla() -> ExitCode {
     let problemi = win_setup::disinstalla(&pairing::data_dir());
     if problemi.is_empty() {
-        println!("Rimosso. Il registro di cio' che e' stato fatto resta in {}.",
-                 pairing::data_dir().join("audit.log").display());
+        println!(
+            "Rimosso. Il registro di cio' che e' stato fatto resta in {}.",
+            pairing::data_dir().join("audit.log").display()
+        );
         return ExitCode::SUCCESS;
     }
     // Si dice tutto cio' che non e' andato: una rimozione parziale taciuta
@@ -255,8 +281,13 @@ fn servi() -> ExitCode {
 // binario che finge di installarsi dove non puo' e' un binario che mente.
 
 #[cfg(not(windows))]
-fn installa(_owner_sid: &str, _public_key_hex: &str, _server_key_b64: &str,
-            _server_url: &str, _error_file: &str) -> ExitCode {
+fn installa(
+    _owner_sid: &str,
+    _public_key_hex: &str,
+    _server_key_b64: &str,
+    _server_url: &str,
+    _error_file: &str,
+) -> ExitCode {
     non_su_questa_piattaforma()
 }
 

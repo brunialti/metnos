@@ -50,9 +50,8 @@ fn da_wide(buffer: &[u16], lunghezza: usize) -> String {
 fn eseguibile_del_processo(processo: HANDLE) -> io::Result<String> {
     let mut buffer = vec![0u16; 32 * 1024];
     let mut lunghezza = buffer.len() as u32;
-    let ok = unsafe {
-        QueryFullProcessImageNameW(processo, 0, buffer.as_mut_ptr(), &mut lunghezza)
-    };
+    let ok =
+        unsafe { QueryFullProcessImageNameW(processo, 0, buffer.as_mut_ptr(), &mut lunghezza) };
     if ok == 0 {
         return Err(io::Error::last_os_error());
     }
@@ -98,8 +97,7 @@ fn proprietario_della_pipe(pipe: HANDLE) -> io::Result<String> {
     // Il descrittore lo alloca Windows e va restituito, sia che la conversione
     // sia riuscita sia che no.
     let libera = |p: *mut core::ffi::c_void| unsafe {
-        windows_sys::Win32::Foundation::LocalFree(
-            p as windows_sys::Win32::Foundation::HLOCAL)
+        windows_sys::Win32::Foundation::LocalFree(p as windows_sys::Win32::Foundation::HLOCAL)
     };
     if convertito == 0 {
         let e = io::Error::last_os_error();
@@ -157,9 +155,7 @@ fn sid_del_processo(processo: HANDLE) -> io::Result<String> {
     let parola = unsafe { std::slice::from_raw_parts(testo, len) };
     let risultato = String::from_utf16_lossy(parola);
     unsafe {
-        windows_sys::Win32::Foundation::LocalFree(
-            testo as windows_sys::Win32::Foundation::HLOCAL,
-        )
+        windows_sys::Win32::Foundation::LocalFree(testo as windows_sys::Win32::Foundation::HLOCAL)
     };
     Ok(risultato)
 }
@@ -183,11 +179,12 @@ pub fn sid_corrente() -> io::Result<String> {
 /// scegliere chi e' l'aiutante.
 pub fn indirizzo() -> Result<(String, String), ChannelRefusal> {
     let sid = sid_corrente().map_err(|_| ChannelRefusal::NotAvailable)?;
-    let nome = crate::helper_client::pipe_name_for_owner(&sid)
-        .ok_or(ChannelRefusal::NotLocal)?;
-    let program_files =
-        std::env::var("ProgramFiles").map_err(|_| ChannelRefusal::NotAvailable)?;
-    Ok((nome, crate::helper_client::helper_executable_in(&program_files)))
+    let nome = crate::helper_client::pipe_name_for_owner(&sid).ok_or(ChannelRefusal::NotLocal)?;
+    let program_files = std::env::var("ProgramFiles").map_err(|_| ChannelRefusal::NotAvailable)?;
+    Ok((
+        nome,
+        crate::helper_client::helper_executable_in(&program_files),
+    ))
 }
 
 /// Apre il canale e stabilisce chi c'e' dall'altro capo. NON scrive niente.
@@ -195,21 +192,32 @@ pub fn indirizzo() -> Result<(String, String), ChannelRefusal> {
 /// L'ordine non e' negoziabile: si apre, si guarda, si giudica. Scrivere prima
 /// di guardare vorrebbe dire aver gia' consegnato la richiesta firmata a
 /// chiunque fosse dall'altro capo.
-fn apri_e_verifica(
-    nome_pipe: &str,
-    eseguibile_atteso: &str,
-) -> Result<Handle, ChannelRefusal> {
-    let pipe = unsafe {
-        CreateFileW(
-            wide(nome_pipe).as_ptr(),
-            GENERIC_READ | GENERIC_WRITE,
-            0,
-            std::ptr::null(),
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            std::ptr::null_mut(),
-        )
-    };
+fn apri_e_verifica(nome_pipe: &str, eseguibile_atteso: &str) -> Result<Handle, ChannelRefusal> {
+    let name = wide(nome_pipe);
+    let mut pipe = INVALID_HANDLE_VALUE;
+    // The service deliberately creates one pipe instance per request. A
+    // version handshake followed immediately by the real action can land in
+    // the few milliseconds between instances, so wait locally before
+    // declaring the helper absent. No request bytes have been written yet.
+    for attempt in 0..20 {
+        pipe = unsafe {
+            CreateFileW(
+                name.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                0,
+                std::ptr::null(),
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                std::ptr::null_mut(),
+            )
+        };
+        if pipe != INVALID_HANDLE_VALUE {
+            break;
+        }
+        if attempt < 19 {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
     if pipe == INVALID_HANDLE_VALUE {
         // La pipe non c'e': l'aiutante non e' installato o non gira. Non e'
         // un guasto da spiegare in dettaglio, e' una capacita' assente.

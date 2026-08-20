@@ -164,7 +164,10 @@ pub fn disinstalla(data_dir: &Path) -> Vec<String> {
         match esegui(&argv) {
             // `stop` su un servizio gia' fermo non e' un problema.
             Ok((codice, uscita)) if codice != 0 && argv[1] == "delete" => {
-                problemi.push(format!("servizio non rimosso (rc={codice}): {}", uscita.trim()));
+                problemi.push(format!(
+                    "servizio non rimosso (rc={codice}): {}",
+                    uscita.trim()
+                ));
             }
             Err(e) => problemi.push(format!("comando {} fallito: {e}", argv[1])),
             _ => {}

@@ -27,8 +27,27 @@ pub struct Invocation {
     pub reversibility: String,
     #[serde(default)]
     pub env_injections: std::collections::BTreeMap<String, String>,
+    /// Read-only provider authorities derived from the signed executor
+    /// manifest. Empty for ordinary invocations and omitted on the wire.
+    #[serde(default)]
+    pub managed_provider_grants: Vec<ManagedProviderGrant>,
     #[serde(default = "default_deadline")]
     pub deadline_ms: u64,
+    pub server_sig: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ManagedProviderGrant {
+    pub invocation_id: String,
+    pub manifest_sha256: String,
+    pub dependency_key: String,
+    pub source: String,
+    pub package_id: String,
+    pub interface: String,
+    pub assembly: String,
+    pub entry_type: String,
+    pub domains: Vec<String>,
+    pub sensor_types: Vec<String>,
     pub server_sig: String,
 }
 
@@ -41,7 +60,7 @@ impl Invocation {
     /// verifica della firma del server (§6.2). L'ordine dei campi e' irrilevante:
     /// la canonicalizzazione ordina le chiavi.
     pub fn signed_bytes(&self) -> Result<Vec<u8>> {
-        let payload = serde_json::json!({
+        let mut payload = serde_json::json!({
             "invocation_id": self.invocation_id,
             "turn_id": self.turn_id,
             "executor": self.executor,
@@ -53,6 +72,15 @@ impl Invocation {
             "env_injections": self.env_injections,
             "deadline_ms": self.deadline_ms,
         });
+        if !self.managed_provider_grants.is_empty() {
+            payload
+                .as_object_mut()
+                .expect("invocation payload is an object")
+                .insert(
+                    "managed_provider_grants".into(),
+                    serde_json::to_value(&self.managed_provider_grants)?,
+                );
+        }
         canonical_bytes(&payload)
     }
 }
@@ -103,7 +131,10 @@ impl InvocationResult {
     /// (punteggi, coordinate) senza rompere la firma.
     pub fn body_value(&self) -> Value {
         let mut obj = serde_json::Map::new();
-        obj.insert("invocation_id".into(), Value::String(self.invocation_id.clone()));
+        obj.insert(
+            "invocation_id".into(),
+            Value::String(self.invocation_id.clone()),
+        );
         obj.insert("device_id".into(), Value::String(self.device_id.clone()));
         obj.insert("ok".into(), Value::Bool(self.ok));
         obj.insert("entries".into(), self.entries.clone());

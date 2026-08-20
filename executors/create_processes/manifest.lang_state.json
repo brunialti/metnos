@@ -1,0 +1,26 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:8382e1cf69438332d4e7b25b913c45b1ded70a3911f0b40fe923250d4f9a488b",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:eeb778db7f2cdb42490181933199dcac67678e4e7bbdac1e458922bdfd671202",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.programs.description": {
+    "it": {
+      "version_hash": "sha256:b3b90d79311928f2c90dde52d3deabf9de5ebd6fa01d9a05758f8e4d96b5f984",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:e0f62a6f20b46e9972f7e220de5af8e1b263c7bfb16d27ee2b54824bf82cfd12",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

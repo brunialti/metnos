@@ -26,10 +26,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{Refusal, Request};
+use crate::protocol::{Refusal, WireRequest};
 
 /// Cio' che si e' deciso al momento del consenso, e che non cambia dopo.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,17 +107,49 @@ impl Pairing {
     }
 
     /// Vero quando la richiesta e' firmata dall'installazione appaiata.
-    pub fn verify_signature(&self, request: &Request) -> bool {
+    pub fn verify_signature(&self, request: &WireRequest) -> bool {
         let Some(key) = self.verifying_key() else {
             return false;
         };
-        let Ok(bytes) = hex::decode(&request.signature) else {
+        let Ok(bytes) = hex::decode(request.signature()) else {
             return false;
         };
         let Ok(array) = <[u8; 64]>::try_from(bytes.as_slice()) else {
             return false;
         };
-        key.verify(request.canonical_body().as_bytes(), &Signature::from_bytes(&array))
+        key.verify(
+            request.canonical_body().as_bytes(),
+            &Signature::from_bytes(&array),
+        )
+        .is_ok()
+    }
+
+    /// Verify the server authority carried only by managed-provider reads.
+    /// Other request kinds have their existing authorization path unchanged.
+    pub fn verify_provider_grant(&self, request: &WireRequest) -> bool {
+        let WireRequest::ManagedProvider(provider) = request else {
+            return true;
+        };
+        let Ok(public_bytes) = URL_SAFE_NO_PAD.decode(&self.server_public_key_b64) else {
+            return false;
+        };
+        let Ok(public_array) = <[u8; 32]>::try_from(public_bytes.as_slice()) else {
+            return false;
+        };
+        let Ok(public_key) = VerifyingKey::from_bytes(&public_array) else {
+            return false;
+        };
+        let Ok(signature_bytes) = URL_SAFE_NO_PAD.decode(&provider.grant_signature) else {
+            return false;
+        };
+        let Ok(signature_array) = <[u8; 64]>::try_from(signature_bytes.as_slice()) else {
+            return false;
+        };
+        public_key
+            .verify(
+                provider.canonical_grant_body().as_bytes(),
+                &Signature::from_bytes(&signature_array),
+            )
             .is_ok()
     }
 }
@@ -158,7 +191,7 @@ pub fn download_path() -> PathBuf {
 pub fn authorize(
     pairing: &Pairing,
     caller_sid: &str,
-    request: &Request,
+    request: &WireRequest,
     already_used: impl Fn(&str) -> bool,
 ) -> Result<(), Refusal> {
     request.check_shape()?;
@@ -168,7 +201,10 @@ pub fn authorize(
     if !pairing.verify_signature(request) {
         return Err(Refusal::UntrustedSignature);
     }
-    if already_used(&request.idempotency_key) {
+    if !pairing.verify_provider_grant(request) {
+        return Err(Refusal::UntrustedGrant);
+    }
+    if already_used(request.idempotency_key()) {
         return Err(Refusal::ReplayedRequest);
     }
     Ok(())
@@ -177,7 +213,10 @@ pub fn authorize(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{Operation, Source};
+    use crate::protocol::{
+        HardwareDomain, ManagedProviderRequest, Operation, ProviderInterface, Request, SensorKind,
+        Source, WireRequest,
+    };
     use ed25519_dalek::{Signer, SigningKey};
 
     fn coppia() -> (SigningKey, Pairing) {
@@ -187,7 +226,7 @@ mod tests {
             owner_sid: "S-1-5-21-1-2-3-1001".into(),
             public_key_hex: hex::encode(signing.verifying_key().to_bytes()),
             server_public_key_b64: String::new(),
-                server_url: String::new(),
+            server_url: String::new(),
             consented_at: 1_786_000_000,
         };
         (signing, pairing)
@@ -210,12 +249,26 @@ mod tests {
         false
     }
 
+    fn autorizza(
+        pairing: &Pairing,
+        caller_sid: &str,
+        request: &Request,
+        already_used: impl Fn(&str) -> bool,
+    ) -> Result<(), Refusal> {
+        authorize(
+            pairing,
+            caller_sid,
+            &WireRequest::Package(request.clone()),
+            already_used,
+        )
+    }
+
     // ── Il caso buono ──
     #[test]
     fn il_proprietario_con_una_firma_valida_passa() {
         let (s, p) = coppia();
         let r = firmata(&s, "Microsoft.PowerToys");
-        assert_eq!(authorize(&p, &p.owner_sid, &r, mai_usata), Ok(()));
+        assert_eq!(autorizza(&p, &p.owner_sid, &r, mai_usata), Ok(()));
     }
 
     // ── I due controlli servono a cose diverse ──
@@ -227,7 +280,7 @@ mod tests {
         let (s, p) = coppia();
         let r = firmata(&s, "Microsoft.PowerToys");
         assert_eq!(
-            authorize(&p, "S-1-5-21-1-2-3-1002", &r, mai_usata),
+            autorizza(&p, "S-1-5-21-1-2-3-1002", &r, mai_usata),
             Err(Refusal::UntrustedSignature)
         );
     }
@@ -240,7 +293,7 @@ mod tests {
         let altra = SigningKey::from_bytes(&[9u8; 32]);
         let r = firmata(&altra, "Microsoft.PowerToys");
         assert_eq!(
-            authorize(&p, &p.owner_sid, &r, mai_usata),
+            autorizza(&p, &p.owner_sid, &r, mai_usata),
             Err(Refusal::UntrustedSignature)
         );
     }
@@ -250,7 +303,7 @@ mod tests {
         let (s, p) = coppia();
         let r = firmata(&s, "X.Y");
         assert_eq!(
-            authorize(&p, "", &r, mai_usata),
+            autorizza(&p, "", &r, mai_usata),
             Err(Refusal::UntrustedSignature)
         );
     }
@@ -263,7 +316,7 @@ mod tests {
         // Stessa firma, pacchetto cambiato: e' il caso che conta.
         r.package_id = "Qualcos.Altro".into();
         assert_eq!(
-            authorize(&p, &p.owner_sid, &r, mai_usata),
+            autorizza(&p, &p.owner_sid, &r, mai_usata),
             Err(Refusal::UntrustedSignature)
         );
     }
@@ -274,7 +327,7 @@ mod tests {
         let mut r = firmata(&s, "X.Y");
         r.operation = Operation::Uninstall;
         assert_eq!(
-            authorize(&p, &p.owner_sid, &r, mai_usata),
+            autorizza(&p, &p.owner_sid, &r, mai_usata),
             Err(Refusal::UntrustedSignature)
         );
     }
@@ -285,7 +338,7 @@ mod tests {
         let mut r = firmata(&s, "X.Y");
         r.version = Some("9.9".into());
         assert_eq!(
-            authorize(&p, &p.owner_sid, &r, mai_usata),
+            autorizza(&p, &p.owner_sid, &r, mai_usata),
             Err(Refusal::UntrustedSignature)
         );
     }
@@ -296,7 +349,7 @@ mod tests {
         let (s, p) = coppia();
         let r = firmata(&s, "X.Y");
         assert_eq!(
-            authorize(&p, &p.owner_sid, &r, |_| true),
+            autorizza(&p, &p.owner_sid, &r, |_| true),
             Err(Refusal::ReplayedRequest)
         );
     }
@@ -310,7 +363,7 @@ mod tests {
         let mut r = firmata(&s, "X.Y");
         r.package_id = "--force".into();
         assert_eq!(
-            authorize(&p, &p.owner_sid, &r, mai_usata),
+            autorizza(&p, &p.owner_sid, &r, mai_usata),
             Err(Refusal::MalformedPackageId)
         );
     }
@@ -323,7 +376,7 @@ mod tests {
             let mut r = firmata(&s, "X.Y");
             r.signature = cattiva.to_string();
             assert_eq!(
-                authorize(&p, &p.owner_sid, &r, mai_usata),
+                autorizza(&p, &p.owner_sid, &r, mai_usata),
                 Err(Refusal::UntrustedSignature),
                 "accettata la firma {cattiva:?}"
             );
@@ -337,10 +390,55 @@ mod tests {
         for cattiva in ["", "zz", &"aa".repeat(31), &"aa".repeat(33)] {
             p.public_key_hex = cattiva.to_string();
             assert_eq!(
-                authorize(&p, &p.owner_sid, &r, mai_usata),
+                autorizza(&p, &p.owner_sid, &r, mai_usata),
                 Err(Refusal::UntrustedSignature)
             );
         }
+    }
+
+    #[test]
+    fn provider_requires_both_client_signature_and_server_grant() {
+        use base64::Engine as _;
+
+        let (client, mut pairing) = coppia();
+        let server = SigningKey::from_bytes(&[8u8; 32]);
+        pairing.server_public_key_b64 = URL_SAFE_NO_PAD.encode(server.verifying_key().to_bytes());
+        let mut provider = ManagedProviderRequest {
+            source: Source::Winget,
+            package_id: "Vendor.Sensor".into(),
+            interface: ProviderInterface::HardwareSensorsV1,
+            assembly: "Vendor.SensorLib.dll".into(),
+            entry_type: "Vendor.Sensor.Computer".into(),
+            domains: vec![HardwareDomain::Cpu],
+            sensor_types: vec![SensorKind::Temperature],
+            invocation_id: "inv-0123456789abcdef01234567".into(),
+            manifest_sha256: "a".repeat(64),
+            dependency_key: "hardware_sensor_provider".into(),
+            grant_signature: String::new(),
+            idempotency_key: "0123456789abcdef0123456789abcdef".into(),
+            signature: String::new(),
+        };
+        provider.grant_signature = URL_SAFE_NO_PAD.encode(
+            server
+                .sign(provider.canonical_grant_body().as_bytes())
+                .to_bytes(),
+        );
+        provider.signature =
+            hex::encode(client.sign(provider.canonical_body().as_bytes()).to_bytes());
+        let wire = WireRequest::ManagedProvider(provider.clone());
+        assert_eq!(
+            authorize(&pairing, &pairing.owner_sid, &wire, mai_usata),
+            Ok(())
+        );
+
+        provider.package_id = "Other.Package".into();
+        provider.signature =
+            hex::encode(client.sign(provider.canonical_body().as_bytes()).to_bytes());
+        let tampered = WireRequest::ManagedProvider(provider);
+        assert_eq!(
+            authorize(&pairing, &pairing.owner_sid, &tampered, mai_usata),
+            Err(Refusal::UntrustedGrant),
+        );
     }
 
     // ── L'appaiamento sul disco ──
@@ -354,13 +452,15 @@ mod tests {
     #[test]
     fn un_appaiamento_illeggibile_vale_come_assente() {
         // Fail-closed: un file rotto non deve produrre un consenso a caso.
-        let p = std::env::temp_dir().join(format!(
-            "metnos-pairing-rotto-{}.json",
-            std::process::id()
-        ));
+        let p =
+            std::env::temp_dir().join(format!("metnos-pairing-rotto-{}.json", std::process::id()));
         fs::write(&p, "{ non sono json").unwrap();
         assert!(Pairing::load(&p).is_none());
-        fs::write(&p, r#"{"owner_sid":"","public_key_hex":"aa","consented_at":1}"#).unwrap();
+        fs::write(
+            &p,
+            r#"{"owner_sid":"","public_key_hex":"aa","consented_at":1}"#,
+        )
+        .unwrap();
         assert!(Pairing::load(&p).is_none());
         let _ = fs::remove_file(&p);
     }
@@ -368,10 +468,7 @@ mod tests {
     #[test]
     fn un_appaiamento_scritto_si_rilegge_uguale() {
         let (_s, originale) = coppia();
-        let p = std::env::temp_dir().join(format!(
-            "metnos-pairing-{}.json",
-            std::process::id()
-        ));
+        let p = std::env::temp_dir().join(format!("metnos-pairing-{}.json", std::process::id()));
         originale.save(&p).unwrap();
         let riletto = Pairing::load(&p).expect("deve rileggersi");
         assert_eq!(riletto.owner_sid, originale.owner_sid);

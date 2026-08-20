@@ -5724,6 +5724,80 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
 
 # --- Auto-remediation generalizzata (ADR 0153) -----------------------------
 
+
+def _declared_managed_package(executor, observation: object) -> str:
+    """Resolve a dependency key only through the signed consumer manifest."""
+
+    if not isinstance(observation, dict):
+        return ""
+    if observation.get("error_class") != "managed_dependency_inactive":
+        return ""
+    key = observation.get("managed_dependency")
+    if not isinstance(key, str) or not key:
+        return ""
+    matches = [
+        dependency.package_id
+        for dependency in getattr(executor, "managed_dependencies", ())
+        if dependency.key == key and dependency.mode == "process"
+    ]
+    return matches[0] if len(matches) == 1 else ""
+
+
+def _bind_managed_dependency_resume(
+        start_result: object, *, package_id: str, resume_tool: str,
+        resume_args: dict, target_device: str) -> dict | None:
+    """Bind a validated package-start dialog to one deterministic retry."""
+
+    if not isinstance(start_result, dict):
+        return None
+    if start_result.get("decision") != "needs_inputs":
+        return dict(start_result)
+    payload = start_result.get("needs_inputs")
+    if not isinstance(payload, dict):
+        return None
+    original_callback = payload.get("on_complete")
+    if (not isinstance(original_callback, dict)
+            or original_callback.get("type") != "gate_dispatch"):
+        return None
+    raw_branches = original_callback.get("branches")
+    if not isinstance(raw_branches, dict):
+        return None
+
+    branches: dict[str, dict] = {}
+    for lifetime in ("session", "persistent"):
+        branch = raw_branches.get(lifetime)
+        if not isinstance(branch, dict) or branch.get("tool") != "create_processes":
+            return None
+        branch_args = branch.get("args")
+        if (not isinstance(branch_args, dict)
+                or set(branch_args) != {
+                    "programs", "lifetime", "actor_consent_token"}
+                or branch_args.get("programs") != [package_id]
+                or branch_args.get("lifetime") != lifetime):
+            return None
+        token = branch_args.get("actor_consent_token")
+        if (not isinstance(token, str) or len(token) != 64
+                or any(char not in "0123456789abcdef" for char in token)):
+            return None
+        branches[lifetime] = {
+            "tool": "create_processes",
+            "args": dict(branch_args),
+        }
+
+    bound_payload = dict(payload)
+    bound_payload["on_complete"] = {
+        "type": "managed_dependency_resume",
+        "branches": branches,
+        "resume": {"tool": resume_tool, "args": dict(resume_args)},
+        "target_device": target_device,
+    }
+    return {
+        **start_result,
+        "needs_inputs": bound_payload,
+        "managed_dependency_for": resume_tool,
+    }
+
+
 def _maybe_remediate_obs(
     obs: dict,
     original_args: dict,
@@ -6252,6 +6326,27 @@ def _run_engine(
                 autonomy="supervised", turn_id=turn_id,
                 actor=actor, channel=channel, target_device=_target_name,
                 owner_user_id=owner_user_id)
+            package_id = _declared_managed_package(exec_obj, result)
+            if package_id:
+                starter = _catalog_by_name.get("create_processes")
+                if starter is not None:
+                    start_result = invoke_executor(
+                        starter, {"programs": [package_id]},
+                        timeout_s=(getattr(starter, "timeout_s", None) or 120),
+                        autonomy="supervised", turn_id=turn_id,
+                        actor=actor, channel=channel,
+                        target_device=_target_name,
+                        owner_user_id=owner_user_id,
+                    )
+                    bound = _bind_managed_dependency_resume(
+                        start_result,
+                        package_id=package_id,
+                        resume_tool=tool_name,
+                        resume_args=args,
+                        target_device=_target_name or "",
+                    )
+                    if bound is not None:
+                        result = bound
             return _attach_presentation_contract(tool_name, result)
         except Exception as ex:
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}",

@@ -1,6 +1,6 @@
 [package]
 name = "metnos-helper"
-version = "0.2.40"
+version = "0.2.55"
 edition = "2021"
 description = "Metnos elevated helper for Windows package operations (ADR 0210)"
 license = "AGPL-3.0-only"
@@ -10,10 +10,9 @@ license = "AGPL-3.0-only"
 # che Metnos installi su una macchina altrui: tutto cio' che linka diventa
 # superficie con privilegi di sistema.
 #
-# In particolare NON dipende da: un client HTTP, un runtime asincrono, un
-# estrattore di archivi, il caricatore di executor. L'aiutante non parla con
-# la rete e non esegue codice ricevuto: riceve TRE operazioni tipizzate da una
-# pipe locale e costruisce da se' la riga di comando del gestore di pacchetti.
+# It deliberately has no HTTP client, async runtime, archive extractor, or
+# executor loader. The helper never executes received code: it accepts only
+# closed typed requests over a local pipe and builds each operation internally.
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -45,6 +44,8 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Threading",
     "Win32_System_IO",
     "Win32_System_Memory",
+    "Win32_System_Registry",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_Storage_FileSystem",
     # Il protocollo del gestore dei servizi: senza, un programma registrato
     # come servizio non riesce a dire «eccomi» e Windows lo dichiara caduto

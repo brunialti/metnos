@@ -44,7 +44,7 @@ _TEMPLATES = {
 }
 
 
-def get(code: str, **kwargs) -> str:
+def get(code: str, /, **kwargs) -> str:
     lang = os.environ.get("METNOS_LANG", "en")
     # 1. repertorio i18n bundleato (en+it): lingua richiesta → fallback en.
     template = ((_I18N.get(lang) or {}).get(code)

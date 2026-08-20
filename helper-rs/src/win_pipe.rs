@@ -31,9 +31,8 @@ use windows_sys::Win32::Security::Authorization::{
     NO_MULTIPLE_TRUSTEE, SET_ACCESS, TRUSTEE_IS_SID, TRUSTEE_IS_USER, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::{
-    GetTokenInformation, InitializeSecurityDescriptor, SetSecurityDescriptorDacl, TokenUser,
-    ACL, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR, TOKEN_QUERY,
-    TOKEN_USER,
+    GetTokenInformation, InitializeSecurityDescriptor, SetSecurityDescriptorDacl, TokenUser, ACL,
+    PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_DESCRIPTOR, TOKEN_QUERY, TOKEN_USER,
 };
 // `PIPE_ACCESS_DUPLEX` vive fra gli attributi di file, non fra le costanti
 // delle pipe: e' un flag di apertura, e Windows lo classifica li'.
@@ -211,7 +210,7 @@ pub fn create_owner_only_pipe(name: &str, owner_sid: &str) -> io::Result<Handle>
             wide(name).as_ptr(),
             PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-            1,      // una istanza: un proprietario, una conversazione per volta
+            1, // una istanza: un proprietario, una conversazione per volta
             64 * 1024,
             64 * 1024,
             0,

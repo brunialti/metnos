@@ -1,17 +1,13 @@
-//! Il vocabolario CHIUSO dell'aiutante, e la sua validazione (ADR 0210 D1).
+//! Closed helper vocabulary and validation (ADR 0210 D1).
 //!
-//! Qui si decide la differenza fra un aiutante e una porta aperta. Un
-//! componente con privilegi di sistema che esegue una riga di comando
-//! ricevuta da un processo utente e' una scalata di privilegi con
-//! un'interfaccia gentile: non importa quanto sia curato il resto.
+//! A system-privileged component that executes a command supplied by an
+//! unprivileged process is a privilege-escalation interface. The helper
+//! therefore accepts no command line. It accepts only typed requests and
+//! constructs operations internally from validated values.
 //!
-//! Percio' l'aiutante non accetta comandi. Accetta TRE operazioni tipizzate
-//! su un identificativo di pacchetto, e la riga di comando la costruisce lui,
-//! da valori che ha validato.
-//!
-//! Il modulo non usa nessuna API di Windows: e' logica pura, quindi si prova
-//! su qualunque macchina. La parte che tocca il sistema vive altrove, e riceve
-//! da qui soltanto valori gia' verificati.
+//! This module contains pure validation logic and no Windows API calls, so it
+//! can be tested on every platform. System-facing adapters live elsewhere and
+//! receive only values already validated here.
 
 use serde::{Deserialize, Serialize};
 
@@ -33,8 +29,8 @@ impl Source {
     }
 }
 
-/// Che cosa si chiede all'aiutante. Quattro voci, e nessuna significa
-/// «esegui».
+/// Package-management operations. This enumeration stays closed: managed
+/// process start uses `ManagedStartRequest`, not another operation here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Operation {
@@ -54,21 +50,43 @@ pub enum Operation {
     Version,
 }
 
+/// How long a registered package should remain enabled.
+///
+/// `Session` means this boot only. `Persistent` also creates the fixed
+/// helper-owned startup registration described by ADR 0211.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StartLifetime {
+    Session,
+    Persistent,
+}
+
+impl StartLifetime {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            StartLifetime::Session => "session",
+            StartLifetime::Persistent => "persistent",
+        }
+    }
+}
+
 /// La versione del protocollo parlato su questo canale.
 ///
 /// Distinta dalla versione del programma: due build diverse possono parlare
 /// la stessa lingua, ed e' la lingua che decide se si capiscono. Cambia solo
 /// quando cambia la forma dei messaggi.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Una richiesta completa. Ogni campo e' tipizzato: non esiste un campo
 /// «argomenti liberi», e non puo' esistere senza cambiare questo file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Request {
     pub operation: Operation,
     pub source: Source,
     pub package_id: String,
-    /// Versione esatta, quando chi chiede ne vuole una precisa.
+    /// Exact package version. For `Version`, this is the client build that
+    /// triggered a signed, lazy update check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     /// Rende la richiesta irripetibile. Senza, una richiesta catturata si
@@ -77,6 +95,181 @@ pub struct Request {
     pub idempotency_key: String,
     /// Firma dell'installazione appaiata sopra il corpo canonico.
     pub signature: String,
+}
+
+/// A dedicated managed-start request.
+///
+/// There is deliberately no operation, path, command, argument list, task
+/// name, or executable name. The helper resolves the exact package identity
+/// from machine-owned registration data (ADR 0211).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedStartRequest {
+    pub source: Source,
+    pub package_id: String,
+    pub lifetime: StartLifetime,
+    pub idempotency_key: String,
+    pub signature: String,
+}
+
+/// Read-only provider interfaces implemented by the privileged broker.
+///
+/// The enum is intentionally closed. A signed profile can select an
+/// implementation of an existing interface, but cannot provide code, paths,
+/// method names, property names, or arguments for the helper to execute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderInterface {
+    HardwareSensorsV1,
+}
+
+impl ProviderInterface {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ProviderInterface::HardwareSensorsV1 => "hardware_sensors_v1",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HardwareDomain {
+    Battery,
+    Controller,
+    Cpu,
+    Gpu,
+    Memory,
+    Motherboard,
+    Network,
+    PowerMonitor,
+    PowerSupply,
+    Storage,
+}
+
+impl HardwareDomain {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Battery => "battery",
+            Self::Controller => "controller",
+            Self::Cpu => "cpu",
+            Self::Gpu => "gpu",
+            Self::Memory => "memory",
+            Self::Motherboard => "motherboard",
+            Self::Network => "network",
+            Self::PowerMonitor => "power_monitor",
+            Self::PowerSupply => "power_supply",
+            Self::Storage => "storage",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SensorKind {
+    Clock,
+    Conductivity,
+    Control,
+    Current,
+    Data,
+    Energy,
+    Factor,
+    Fan,
+    Flow,
+    Frequency,
+    Humidity,
+    Level,
+    Load,
+    Noise,
+    Power,
+    SmallData,
+    Temperature,
+    Throughput,
+    TimeSpan,
+    Timing,
+    Voltage,
+}
+
+impl SensorKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Clock => "clock",
+            Self::Conductivity => "conductivity",
+            Self::Control => "control",
+            Self::Current => "current",
+            Self::Data => "data",
+            Self::Energy => "energy",
+            Self::Factor => "factor",
+            Self::Fan => "fan",
+            Self::Flow => "flow",
+            Self::Frequency => "frequency",
+            Self::Humidity => "humidity",
+            Self::Level => "level",
+            Self::Load => "load",
+            Self::Noise => "noise",
+            Self::Power => "power",
+            Self::SmallData => "small_data",
+            Self::Temperature => "temperature",
+            Self::Throughput => "throughput",
+            Self::TimeSpan => "time_span",
+            Self::Timing => "timing",
+            Self::Voltage => "voltage",
+        }
+    }
+}
+
+/// One server-authorised, read-only provider request.
+///
+/// The server grant binds the dependency from the signed executor manifest.
+/// The client signature separately proves which paired device requested it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedProviderRequest {
+    pub source: Source,
+    pub package_id: String,
+    pub interface: ProviderInterface,
+    pub assembly: String,
+    pub entry_type: String,
+    pub domains: Vec<HardwareDomain>,
+    pub sensor_types: Vec<SensorKind>,
+    pub invocation_id: String,
+    pub manifest_sha256: String,
+    pub dependency_key: String,
+    pub grant_signature: String,
+    pub idempotency_key: String,
+    pub signature: String,
+}
+
+/// The closed request shapes accepted on the authenticated channel.
+///
+/// `untagged` is safe here because both inner structures reject unknown
+/// fields and have disjoint required fields (`operation` versus `lifetime`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum WireRequest {
+    Package(Request),
+    ManagedStart(ManagedStartRequest),
+    ManagedProvider(ManagedProviderRequest),
+}
+
+/// The system action selected only after deserialisation and validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    PackageCommand(Vec<String>),
+    /// Check the signed update source selected by the installed pairing.
+    /// No URL, path, or artifact comes from the request.
+    HelperUpdateCheck,
+    ManagedStart {
+        package_id: String,
+        lifetime: StartLifetime,
+    },
+    ManagedProvider {
+        package_id: String,
+        interface: ProviderInterface,
+        assembly: String,
+        entry_type: String,
+        domains: Vec<HardwareDomain>,
+        sensor_types: Vec<SensorKind>,
+    },
 }
 
 /// Perche' una richiesta non e' accettabile. Ogni variante e' un rifiuto
@@ -93,6 +286,8 @@ pub enum Refusal {
     ReplayedRequest,
     /// La firma non corrisponde all'installazione appaiata.
     UntrustedSignature,
+    /// The server did not authorise this package/interface binding.
+    UntrustedGrant,
 }
 
 impl Refusal {
@@ -105,6 +300,7 @@ impl Refusal {
             Refusal::MalformedIdempotencyKey => "malformed_idempotency_key",
             Refusal::ReplayedRequest => "replayed_request",
             Refusal::UntrustedSignature => "untrusted_signature",
+            Refusal::UntrustedGrant => "untrusted_provider_grant",
         }
     }
 }
@@ -188,12 +384,9 @@ impl Request {
     /// il confronto di una firma.
     pub fn check_shape(&self) -> Result<(), Refusal> {
         if self.operation == Operation::Version {
-            // «Chi sei» non riguarda un pacchetto, e portarne uno sarebbe una
-            // contraddizione: la richiesta dice una cosa e ne trasporta
-            // un'altra. Si pretende che i due campi siano vuoti invece di
-            // ignorarli — un campo ignorato e' un campo che qualcuno prima o
-            // poi riempie aspettandosi che serva a qualcosa.
-            if !self.package_id.is_empty() || self.version.is_some() {
+            // A version request never names a package. Its optional version
+            // is the client build that triggered a lazy update check.
+            if !self.package_id.is_empty() {
                 return Err(Refusal::MalformedPackageId);
             }
         } else if !is_valid_package_id(&self.package_id) {
@@ -215,8 +408,8 @@ impl Request {
     /// Nessun pezzo di questa lista viene da chi ha chiamato: i valori
     /// ricevuti compaiono solo come VALORI, mai come opzioni, e le opzioni
     /// sono quelle scritte in questo file. E' l'altra meta' del vocabolario
-    /// chiuso: accettare tre operazioni non basterebbe, se poi una di quelle
-    /// tre potesse portare con se' un'opzione arbitraria.
+    /// chiuso: accettare operazioni tipizzate non basterebbe, se una di esse
+    /// potesse portare con se' un'opzione arbitraria.
     ///
     /// `--scope machine` e' esplicito: l'aiutante esiste per fare cio' che il
     /// client non puo', e installare per il solo utente corrente il client lo
@@ -262,6 +455,223 @@ impl Request {
     }
 }
 
+impl ManagedStartRequest {
+    /// The signed body has a fixed domain separator that is not supplied by
+    /// the caller. A signature for managed start cannot authorize package
+    /// installation, removal, or query.
+    pub fn canonical_body(&self) -> String {
+        format!(
+            "managed-start\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            match self.source {
+                Source::Winget => "winget",
+            },
+            self.package_id,
+            self.lifetime.as_str(),
+            self.idempotency_key,
+        )
+    }
+
+    pub fn check_shape(&self) -> Result<(), Refusal> {
+        if !is_valid_package_id(&self.package_id) {
+            return Err(Refusal::MalformedPackageId);
+        }
+        if !is_valid_idempotency_key(&self.idempotency_key) {
+            return Err(Refusal::MalformedIdempotencyKey);
+        }
+        Ok(())
+    }
+}
+
+fn is_valid_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value.is_ascii()
+        && value.as_bytes()[0].is_ascii_alphabetic()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+}
+
+fn is_valid_assembly_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.is_ascii()
+        && value.as_bytes()[0].is_ascii_alphanumeric()
+        && value.to_ascii_lowercase().ends_with(".dll")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn is_valid_dotnet_type(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 192
+        && value.is_ascii()
+        && value.split('.').all(is_valid_identifier)
+}
+
+fn is_valid_invocation_id(value: &str) -> bool {
+    value.len() == 28
+        && value.starts_with("inv-")
+        && value[4..].bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn is_valid_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn is_valid_b64url_signature(value: &str) -> bool {
+    value.len() == 86
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn closed_selectors<T: Copy>(values: &[T], render: fn(T) -> &'static str) -> bool {
+    if values.is_empty() || values.len() > 16 {
+        return false;
+    }
+    let names = values.iter().copied().map(render).collect::<Vec<_>>();
+    names.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+impl ManagedProviderRequest {
+    /// Server-signed authority. This deliberately excludes the client
+    /// idempotency key and client signature.
+    pub fn canonical_grant_body(&self) -> String {
+        let domains = self
+            .domains
+            .iter()
+            .map(|value| value.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sensor_types = self
+            .sensor_types
+            .iter()
+            .map(|value| value.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            "managed-provider-grant\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            self.invocation_id,
+            self.manifest_sha256,
+            self.dependency_key,
+            match self.source {
+                Source::Winget => "winget",
+            },
+            self.package_id,
+            self.interface.as_str(),
+            self.assembly,
+            self.entry_type,
+            domains,
+            sensor_types,
+        )
+    }
+
+    /// Client-signed request. Including the server signature prevents a grant
+    /// from being replaced while keeping the paired client's signature.
+    pub fn canonical_body(&self) -> String {
+        format!(
+            "managed-provider\u{1f}{}\u{1f}{}\u{1f}{}",
+            self.canonical_grant_body(),
+            self.grant_signature,
+            self.idempotency_key,
+        )
+    }
+
+    pub fn check_shape(&self) -> Result<(), Refusal> {
+        if !is_valid_package_id(&self.package_id) {
+            return Err(Refusal::MalformedPackageId);
+        }
+        if !is_valid_invocation_id(&self.invocation_id)
+            || !is_valid_sha256(&self.manifest_sha256)
+            || !is_valid_identifier(&self.dependency_key)
+            || !is_valid_assembly_name(&self.assembly)
+            || !is_valid_dotnet_type(&self.entry_type)
+            || !is_valid_b64url_signature(&self.grant_signature)
+            || !closed_selectors(&self.domains, HardwareDomain::as_str)
+            || !closed_selectors(&self.sensor_types, SensorKind::as_str)
+        {
+            return Err(Refusal::UntrustedGrant);
+        }
+        if !is_valid_idempotency_key(&self.idempotency_key) {
+            return Err(Refusal::MalformedIdempotencyKey);
+        }
+        Ok(())
+    }
+}
+
+impl WireRequest {
+    pub fn package_id(&self) -> &str {
+        match self {
+            WireRequest::Package(request) => &request.package_id,
+            WireRequest::ManagedStart(request) => &request.package_id,
+            WireRequest::ManagedProvider(request) => &request.package_id,
+        }
+    }
+
+    pub fn idempotency_key(&self) -> &str {
+        match self {
+            WireRequest::Package(request) => &request.idempotency_key,
+            WireRequest::ManagedStart(request) => &request.idempotency_key,
+            WireRequest::ManagedProvider(request) => &request.idempotency_key,
+        }
+    }
+
+    pub fn signature(&self) -> &str {
+        match self {
+            WireRequest::Package(request) => &request.signature,
+            WireRequest::ManagedStart(request) => &request.signature,
+            WireRequest::ManagedProvider(request) => &request.signature,
+        }
+    }
+
+    pub fn canonical_body(&self) -> String {
+        match self {
+            WireRequest::Package(request) => request.canonical_body(),
+            WireRequest::ManagedStart(request) => request.canonical_body(),
+            WireRequest::ManagedProvider(request) => request.canonical_body(),
+        }
+    }
+
+    pub fn check_shape(&self) -> Result<(), Refusal> {
+        match self {
+            WireRequest::Package(request) => request.check_shape(),
+            WireRequest::ManagedStart(request) => request.check_shape(),
+            WireRequest::ManagedProvider(request) => request.check_shape(),
+        }
+    }
+
+    pub fn is_version_query(&self) -> bool {
+        matches!(self, WireRequest::Package(request)
+                 if request.operation == Operation::Version)
+    }
+
+    pub fn action(&self) -> Option<Action> {
+        match self {
+            WireRequest::Package(request)
+                if request.operation == Operation::Version && request.version.is_some() =>
+            {
+                Some(Action::HelperUpdateCheck)
+            }
+            WireRequest::Package(request) if request.operation == Operation::Version => None,
+            WireRequest::Package(request) => Some(Action::PackageCommand(request.argv())),
+            WireRequest::ManagedStart(request) => Some(Action::ManagedStart {
+                package_id: request.package_id.clone(),
+                lifetime: request.lifetime,
+            }),
+            WireRequest::ManagedProvider(request) => Some(Action::ManagedProvider {
+                package_id: request.package_id.clone(),
+                interface: request.interface,
+                assembly: request.assembly.clone(),
+                entry_type: request.entry_type.clone(),
+                domains: request.domains.clone(),
+                sensor_types: request.sensor_types.clone(),
+            }),
+        }
+    }
+}
+
 /// L'esito di un'operazione, come torna al chiamante.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Response {
@@ -275,6 +685,9 @@ pub struct Response {
     /// Le ultime righe utili dell'uscita: il verdetto lo scrivono in fondo.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub detail: String,
+    /// Typed provider data. Package operations never populate this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payload: Option<serde_json::Value>,
     /// La versione dell'aiutante che ha risposto, sempre.
     ///
     /// Su OGNI risposta, non solo su quella che la chiede: chi riceve un
@@ -306,6 +719,7 @@ impl Response {
             error_code: None,
             exit_code: None,
             detail: String::new(),
+            payload: None,
             helper_version: helper_version().to_string(),
             protocol_version: PROTOCOL_VERSION,
         }
@@ -345,7 +759,10 @@ mod tests {
             "7zip.7zip",
             "9NRX63209R7B",
         ] {
-            assert!(is_valid_package_id(id), "rifiutato un identificativo vero: {id}");
+            assert!(
+                is_valid_package_id(id),
+                "rifiutato un identificativo vero: {id}"
+            );
         }
     }
 
@@ -449,7 +866,13 @@ mod tests {
 
     #[test]
     fn una_chiave_didempotenza_deve_essere_plausibile() {
-        for chiave in ["", "corta", &"g".repeat(32), &"a".repeat(31), &"a".repeat(33)] {
+        for chiave in [
+            "",
+            "corta",
+            &"g".repeat(32),
+            &"a".repeat(31),
+            &"a".repeat(33),
+        ] {
             let mut r = richiesta("X.Y");
             r.idempotency_key = chiave.to_string();
             assert_eq!(r.check_shape(), Err(Refusal::MalformedIdempotencyKey));
@@ -468,6 +891,18 @@ mod tests {
         assert!(r.check_shape().is_ok());
     }
 
+    #[test]
+    fn version_query_may_request_one_signed_lazy_update_check() {
+        let mut request = richiesta("X.Y");
+        request.operation = Operation::Version;
+        request.package_id.clear();
+        request.version = Some("0.2.44".into());
+        let wire = WireRequest::Package(request);
+
+        assert!(wire.check_shape().is_ok());
+        assert_eq!(wire.action(), Some(Action::HelperUpdateCheck));
+    }
+
     // ── Il corpo canonico: una firma non si trasferisce ──
     #[test]
     fn due_richieste_diverse_hanno_corpi_diversi() {
@@ -478,8 +913,11 @@ mod tests {
 
         let mut c = richiesta("A.Uno");
         c.operation = Operation::Uninstall;
-        assert_ne!(a.canonical_body(), c.canonical_body(),
-                   "installare e disinstallare non condividono una firma");
+        assert_ne!(
+            a.canonical_body(),
+            c.canonical_body(),
+            "installare e disinstallare non condividono una firma"
+        );
     }
 
     #[test]
@@ -507,15 +945,113 @@ mod tests {
     // ── Il protocollo non ha una via d'uscita verso «esegui questo» ──
     #[test]
     fn una_richiesta_con_un_campo_comando_non_si_deserializza() {
-        // Il campo non esiste nel tipo: una richiesta che lo porta viene
-        // accettata ignorandolo, e non puo' raggiungere la riga di comando.
+        // Unknown fields are rejected rather than ignored. This makes a
+        // command-like extension fail closed at the wire boundary.
         let json = r#"{"operation":"install","source":"winget",
             "package_id":"X.Y","idempotency_key":"0123456789abcdef0123456789abcdef",
             "signature":"s","command":"cmd.exe /c calc","args":["--force"]}"#;
-        let r: Request = serde_json::from_str(json).expect("deve deserializzare");
-        let argv = r.argv();
-        assert!(!argv.iter().any(|a| a.contains("cmd.exe")));
-        assert!(!argv.contains(&"--force".to_string()));
+        assert!(serde_json::from_str::<Request>(json).is_err());
+    }
+
+    #[test]
+    fn managed_start_has_no_operation_or_executable_fields() {
+        let json = r#"{"source":"winget","package_id":"X.Y",
+            "lifetime":"session",
+            "idempotency_key":"0123456789abcdef0123456789abcdef",
+            "signature":"s"}"#;
+        let request: WireRequest = serde_json::from_str(json).unwrap();
+        assert!(matches!(request, WireRequest::ManagedStart(_)));
+
+        for extra in [
+            r#", "operation":"run""#,
+            r#", "path":"C:\\Windows\\System32\\cmd.exe""#,
+            r#", "args":["/c", "calc"]"#,
+            r#", "task_name":"chosen-by-caller""#,
+        ] {
+            let malformed = json.replacen("}", &format!("{extra}}}"), 1);
+            assert!(
+                serde_json::from_str::<WireRequest>(&malformed).is_err(),
+                "accepted caller-controlled field: {extra}"
+            );
+        }
+    }
+
+    #[test]
+    fn managed_start_signature_is_domain_separated_and_binds_lifetime() {
+        let request = ManagedStartRequest {
+            source: Source::Winget,
+            package_id: "LibreHardwareMonitor.LibreHardwareMonitor".into(),
+            lifetime: StartLifetime::Session,
+            idempotency_key: "0123456789abcdef0123456789abcdef".into(),
+            signature: String::new(),
+        };
+        assert_eq!(
+            request.canonical_body(),
+            "managed-start\u{1f}winget\u{1f}LibreHardwareMonitor.LibreHardwareMonitor\u{1f}session\u{1f}0123456789abcdef0123456789abcdef"
+        );
+        let mut persistent = request.clone();
+        persistent.lifetime = StartLifetime::Persistent;
+        assert_ne!(request.canonical_body(), persistent.canonical_body());
+        assert_ne!(
+            request.canonical_body(),
+            richiesta("LibreHardwareMonitor.LibreHardwareMonitor").canonical_body()
+        );
+    }
+
+    #[test]
+    fn managed_start_rejects_unknown_lifetime() {
+        let json = r#"{"source":"winget","package_id":"X.Y",
+            "lifetime":"forever",
+            "idempotency_key":"0123456789abcdef0123456789abcdef",
+            "signature":"s"}"#;
+        assert!(serde_json::from_str::<WireRequest>(json).is_err());
+    }
+
+    #[test]
+    fn managed_provider_has_no_path_code_or_free_arguments() {
+        let json = format!(
+            r#"{{"source":"winget","package_id":"Vendor.Sensor","interface":"hardware_sensors_v1","assembly":"Vendor.SensorLib.dll","entry_type":"Vendor.Sensor.Computer","domains":["cpu"],"sensor_types":["temperature"],"invocation_id":"inv-0123456789abcdef01234567","manifest_sha256":"{}","dependency_key":"hardware_sensor_provider","grant_signature":"{}","idempotency_key":"0123456789abcdef0123456789abcdef","signature":"s"}}"#,
+            "a".repeat(64),
+            "A".repeat(86),
+        );
+        let request: WireRequest = serde_json::from_str(&json).unwrap();
+        assert!(matches!(request, WireRequest::ManagedProvider(_)));
+        assert!(request.check_shape().is_ok());
+        for field in ["path", "command", "args", "method"] {
+            let extra = json.replacen("}", &format!(r#", "{field}":"x"}}"#), 1);
+            assert!(serde_json::from_str::<WireRequest>(&extra).is_err());
+        }
+    }
+
+    #[test]
+    fn managed_provider_signature_bodies_are_exact_and_minimal() {
+        let request = ManagedProviderRequest {
+            source: Source::Winget,
+            package_id: "Vendor.Sensor".into(),
+            interface: ProviderInterface::HardwareSensorsV1,
+            assembly: "Vendor.SensorLib.dll".into(),
+            entry_type: "Vendor.Sensor.Computer".into(),
+            domains: vec![HardwareDomain::Cpu],
+            sensor_types: vec![SensorKind::Temperature],
+            invocation_id: "inv-0123456789abcdef01234567".into(),
+            manifest_sha256: "a".repeat(64),
+            dependency_key: "hardware_sensor_provider".into(),
+            grant_signature: "A".repeat(86),
+            idempotency_key: "0123456789abcdef0123456789abcdef".into(),
+            signature: String::new(),
+        };
+        let grant = format!(
+            "managed-provider-grant\u{1f}inv-0123456789abcdef01234567\u{1f}{}\u{1f}hardware_sensor_provider\u{1f}winget\u{1f}Vendor.Sensor\u{1f}hardware_sensors_v1\u{1f}Vendor.SensorLib.dll\u{1f}Vendor.Sensor.Computer\u{1f}cpu\u{1f}temperature",
+            "a".repeat(64),
+        );
+        assert_eq!(request.canonical_grant_body(), grant);
+        assert_eq!(
+            request.canonical_body(),
+            format!(
+                "managed-provider\u{1f}{grant}\u{1f}{}\u{1f}0123456789abcdef0123456789abcdef",
+                "A".repeat(86),
+            ),
+        );
     }
 
     #[test]

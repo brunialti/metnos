@@ -99,45 +99,35 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
                     "--owner-sid" => {
                         owner_sid = Some(
                             iter.next()
-                                .ok_or_else(|| {
-                                    ParseError::MissingValue("--owner-sid".into())
-                                })?
+                                .ok_or_else(|| ParseError::MissingValue("--owner-sid".into()))?
                                 .clone(),
                         );
                     }
                     "--public-key" => {
                         public_key_hex = Some(
                             iter.next()
-                                .ok_or_else(|| {
-                                    ParseError::MissingValue("--public-key".into())
-                                })?
+                                .ok_or_else(|| ParseError::MissingValue("--public-key".into()))?
                                 .clone(),
                         );
                     }
                     "--server-key" => {
                         server_key_b64 = Some(
                             iter.next()
-                                .ok_or_else(|| {
-                                    ParseError::MissingValue("--server-key".into())
-                                })?
+                                .ok_or_else(|| ParseError::MissingValue("--server-key".into()))?
                                 .clone(),
                         );
                     }
                     "--error-file" => {
                         error_file = Some(
                             iter.next()
-                                .ok_or_else(|| {
-                                    ParseError::MissingValue("--error-file".into())
-                                })?
+                                .ok_or_else(|| ParseError::MissingValue("--error-file".into()))?
                                 .clone(),
                         );
                     }
                     "--server-url" => {
                         server_url = Some(
                             iter.next()
-                                .ok_or_else(|| {
-                                    ParseError::MissingValue("--server-url".into())
-                                })?
+                                .ok_or_else(|| ParseError::MissingValue("--server-url".into()))?
                                 .clone(),
                         );
                     }
@@ -150,8 +140,7 @@ pub fn parse(args: &[String]) -> Result<Command, ParseError> {
                     .ok_or(ParseError::MissingRequired("--public-key"))?,
                 server_key_b64: server_key_b64
                     .ok_or(ParseError::MissingRequired("--server-key"))?,
-                server_url: server_url
-                    .ok_or(ParseError::MissingRequired("--server-url"))?,
+                server_url: server_url.ok_or(ParseError::MissingRequired("--server-url"))?,
                 error_file: error_file.unwrap_or_default(),
             })
         }
@@ -230,8 +219,11 @@ mod tests {
         // e resterebbe indietro in silenzio: meglio non nascere.
         assert_eq!(
             parse(&a(&[
-                "install", "--owner-sid", "S-1-5-21-1-2-3-1001",
-                "--public-key", "aabb",
+                "install",
+                "--owner-sid",
+                "S-1-5-21-1-2-3-1001",
+                "--public-key",
+                "aabb",
             ])),
             Err(ParseError::MissingRequired("--server-key"))
         );
@@ -239,10 +231,28 @@ mod tests {
 
     #[test]
     fn lordine_delle_opzioni_non_conta() {
-        let a1 = parse(&a(&["install", "--owner-sid", "S", "--public-key", "K",
-                            "--server-key", "V", "--server-url", "U"]));
-        let a2 = parse(&a(&["install", "--server-url", "U", "--server-key", "V", "--public-key", "K",
-                            "--owner-sid", "S"]));
+        let a1 = parse(&a(&[
+            "install",
+            "--owner-sid",
+            "S",
+            "--public-key",
+            "K",
+            "--server-key",
+            "V",
+            "--server-url",
+            "U",
+        ]));
+        let a2 = parse(&a(&[
+            "install",
+            "--server-url",
+            "U",
+            "--server-key",
+            "V",
+            "--public-key",
+            "K",
+            "--owner-sid",
+            "S",
+        ]));
         assert_eq!(a1, a2);
     }
 
@@ -268,7 +278,14 @@ mod tests {
         // diversa da quella che sembra, e su un componente privilegiato
         // «sembra» non basta.
         assert_eq!(
-            parse(&a(&["install", "--owner-sid", "S", "--public-key", "K", "--force"])),
+            parse(&a(&[
+                "install",
+                "--owner-sid",
+                "S",
+                "--public-key",
+                "K",
+                "--force"
+            ])),
             Err(ParseError::UnknownOption("--force".into()))
         );
     }
@@ -286,10 +303,7 @@ mod tests {
         // Niente abbreviazioni e niente prefissi: «unin» non e' «uninstall».
         for cattivo in ["unin", "exec", "run", "INSTALL", "--help", ""] {
             assert!(
-                matches!(
-                    parse(&a(&[cattivo])),
-                    Err(ParseError::UnknownCommand(_))
-                ),
+                matches!(parse(&a(&[cattivo])), Err(ParseError::UnknownCommand(_))),
                 "accettato il verbo {cattivo:?}"
             );
         }

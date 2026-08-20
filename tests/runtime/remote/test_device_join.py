@@ -158,8 +158,11 @@ class JoinHttpTests(AioHTTPTestCase):
         (cls._mirror / "manifest.json").write_text(json.dumps({
             "latest": "9.9.9",
             "versions": {"9.9.9": {"x86_64-pc-windows-gnu": {
-                "filename": "metnos-client.exe",
-                "sha256": "cafe" * 16}}},
+                "client": {
+                    "filename": "metnos-client.exe",
+                    "path": "9.9.9/x86_64-pc-windows-gnu/metnos-client.exe",
+                    "sha256": "cafe" * 16,
+                }}}},
         }))
 
     @classmethod

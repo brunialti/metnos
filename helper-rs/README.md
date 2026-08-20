@@ -13,29 +13,47 @@ privilegi di sistema.
 |---|---|---|
 | librerie collegate | 210 | **52** |
 | binario Windows | megabyte | **516 KB** |
-| parla con la rete | si' | **no** |
+| parla con la rete | si' | **only for a signed update when behind** |
 | esegue codice ricevuto | si' (executor firmati) | **no** |
 
 L'aiutante non dipende da un client HTTP, da un runtime asincrono, da un
 estrattore di archivi o dal caricatore di executor.
 
-## Che cosa sa fare
+## Supported requests
 
-Tre operazioni tipizzate, e nessuna significa «esegui»:
+The package-management vocabulary remains exactly four typed operations; none
+means "run a command":
 
-| operazione | effetto |
+| operation | effect |
 |---|---|
-| `query` | questo pacchetto e' installato, e in che versione |
-| `install` | lo installa per tutti gli utenti |
-| `uninstall` | lo rimuove |
+| `query` | checks whether an exact package is installed |
+| `install` | installs it for all users |
+| `uninstall` | removes it |
+| `version` | reports protocol/build locally; an optional expected client build triggers one signed lazy update check |
 
-La riga di comando la costruisce l'aiutante, dai soli valori validati. Non
-esiste un campo «argomenti liberi», e una richiesta che ne porta uno viene
-accettata ignorandolo (c'e' un test che lo prova).
+The helper also accepts the separate managed-start request defined by ADR 0211.
+That request contains only an exact registered package identity and the closed
+`session`/`persistent` lifetime. It has no operation, executable path,
+arguments, task name, or command field. The helper resolves the executable
+from machine-owned installation metadata and fails closed when that metadata
+is missing, unsupported, or ambiguous.
 
-## Stato (18 agosto 2026)
+ADR 0212 adds one separate read-only provider request. The server derives it
+from a signed executor manifest and signs a grant bound to one invocation.
+The helper requires both that grant and the paired client's signature, then
+runs one closed standard interface. A signed profile may name one direct-child
+assembly and its entry type; it cannot select paths, commands, scripts,
+methods, properties, or free arguments. Package IDs never select code paths.
+Provider output is bounded and typed; it never starts an application or
+changes its lifetime. A compatible future package therefore needs profile
+data, not a new helper adapter.
 
-**Fatto e provato** — 88 test qui, 71 nel client, compila per Windows:
+Every command line is constructed inside the helper from validated values.
+Unknown fields are rejected at deserialisation rather than ignored.
+
+## Stato (20 agosto 2026)
+
+**Fatto e provato** — 132 test qui, 82 nel client, compila per Windows:
 
 - `protocol.rs` — vocabolario chiuso, validazione della forma, costruzione
   della riga di comando, corpo canonico della firma. Logica pura: si prova su
@@ -102,7 +120,10 @@ si reinstalla, cosi' il passaggio e' un atto esplicito.
   sovrappongono su un componente che modifica il sistema sono due modi di
   lasciarlo a meta', e il guadagno sarebbe nullo perche' un'installazione dura
   secondi. Il ciclo non decide niente: legge, passa a `service::handle`,
-  risponde.
+  risponde. Before every operation the client performs a local version
+  handshake. Only a version mismatch causes a network check and possible
+  download. The helper restarts before the client sends the real operation,
+  so that operation is never retried.
 - `frame.rs` — dove finisce un messaggio. Il canale e' bidirezionale e nessuno
   dei due capi lo chiude: leggere fino a fine-flusso vorrebbe dire aspettare
   l'altro che sta aspettando te. Il file e' BYTE-IDENTICO nei due progetti, e
@@ -146,8 +167,10 @@ e il secondo esemplare e' quello che diverge.
 
 Cosi' l'executor:
 
-1. chiede `check` prima di comporre la scheda di conferma. E' una domanda che
-   non manda niente all'aiutante: apre il canale, guarda chi c'e', richiude.
+1. chiede `check` prima di comporre la scheda di conferma. The client verifies
+   the peer and sends the same signed local version handshake used before
+   every operation. If the helper is behind, that handshake completes its
+   signed lazy update before any package request is sent.
    Dove l'aiutante non risponde, «Per tutti gli utenti» non compare fra i
    bottoni, e la scheda spiega come aggiungerlo;
 2. manda `install` all'aiutante quando la persona ha scelto quella portata.
@@ -160,8 +183,8 @@ Cosi' l'executor:
 (`helper_unreachable` e' una capacita' assente; un rifiuto porta il codice che
 l'aiutante ha usato).
 
-**Da provare dal vivo**: nessuno ha ancora installato l'aiutante su una
-macchina vera. Finche' non succede, la catena e' verde solo nei test.
+The chain is installed on PC-ROBERTO. Every new change still requires a live
+test after its local tests, build, signature, and publication are complete.
 
 ## Come si prova
 

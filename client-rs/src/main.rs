@@ -26,15 +26,19 @@ mod runner;
 // Win32): compila su entrambe le piattaforme, testabile sotto Linux (W4).
 mod sandbox_common;
 mod sandbox_linux;
-mod selfupdate;
-mod update_state;
 #[cfg(windows)]
 mod sandbox_windows;
+mod selfupdate;
 mod state;
+mod update_state;
 mod wire;
 
 #[derive(Parser)]
-#[command(name = "metnos-client", version, about = "Metnos remote executor client")]
+#[command(
+    name = "metnos-client",
+    version,
+    about = "Metnos remote executor client"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -77,7 +81,7 @@ enum Cmd {
 
 #[derive(Subcommand)]
 enum HelperCmd {
-    /// Is the genuine helper there, right now? Nothing is sent to it.
+    /// Verify the genuine helper and report its local build/protocol state.
     Check,
     /// Is this package installed, and in which version? Changes nothing.
     Query {
@@ -94,9 +98,23 @@ enum HelperCmd {
         #[arg(long)]
         package_id: String,
     },
+    /// Start one package resolved by the helper from trusted installation
+    /// metadata. No executable path or arguments cross the channel.
+    Start {
+        #[arg(long)]
+        package_id: String,
+        #[arg(long, value_enum)]
+        lifetime: HelperStartLifetime,
+    },
     /// Bring the helper onto this machine and install it. Windows asks for
     /// confirmation once; from then on nothing asks again.
     Setup,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum HelperStartLifetime {
+    Session,
+    Persistent,
 }
 
 /// Bring the helper onto this machine, and install it.
@@ -104,10 +122,7 @@ enum HelperCmd {
 /// One JSON line, like every other helper command: whoever called needs to
 /// tell «installed» from «the person said no» from «it never got here», and a
 /// refusal is an answer, not a crash.
-async fn run_helper_setup(
-    id: &identity::Identity,
-    st: &state::State,
-) -> serde_json::Value {
+async fn run_helper_setup(id: &identity::Identity, st: &state::State) -> serde_json::Value {
     let (server, pubkey) = match (st.server_url.as_deref(), st.server_public_key.as_deref()) {
         (Some(s), Some(k)) if !s.is_empty() && !k.is_empty() => (s, k),
         // Without the pinned key there is no way to tell the real artifact
@@ -184,38 +199,210 @@ async fn run_helper_setup(
 /// helper is missing as clearly as it needs to know that an install failed,
 /// and both travel on the same shape.
 #[cfg(windows)]
+fn helper_exchange(
+    pipe: &str,
+    expected_executable: &str,
+    request: &str,
+) -> Result<serde_json::Value, helper_client::ChannelRefusal> {
+    let response = helper_win::chiedi(pipe, expected_executable, request)?;
+    Ok(serde_json::from_str(&response)
+        .unwrap_or_else(|_| serde_json::json!({"ok": false, "error_code": "malformed_response"})))
+}
 
+#[cfg(any(windows, test))]
+fn stamp_helper_alignment(mut response: serde_json::Value) -> serde_json::Value {
+    if let Some(object) = response.as_object_mut() {
+        let helper_protocol = object
+            .get("protocol_version")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(0) as u32;
+        let helper_version = object
+            .get("helper_version")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        let protocol_current = helper_protocol == helper_client::PROTOCOL_VERSION;
+        let version_current = !helper_version.is_empty()
+            && !selfupdate::version_gt(env!("CARGO_PKG_VERSION"), helper_version);
+        object.insert(
+            "client_protocol_version".into(),
+            serde_json::json!(helper_client::PROTOCOL_VERSION),
+        );
+        object.insert(
+            "client_version".into(),
+            serde_json::json!(env!("CARGO_PKG_VERSION")),
+        );
+        object.insert("version_current".into(), serde_json::json!(version_current));
+        object.insert(
+            "aligned".into(),
+            serde_json::json!(protocol_current && version_current),
+        );
+    }
+    response
+}
+
+#[cfg(test)]
+mod lazy_helper_alignment_tests {
+    use super::stamp_helper_alignment;
+
+    fn stamped(helper_version: &str, protocol_version: u32) -> serde_json::Value {
+        stamp_helper_alignment(serde_json::json!({
+            "ok": true,
+            "helper_version": helper_version,
+            "protocol_version": protocol_version,
+        }))
+    }
+
+    #[test]
+    fn an_older_helper_requires_the_lazy_update() {
+        let response = stamped("0.2.1", crate::helper_client::PROTOCOL_VERSION);
+        assert_eq!(response["version_current"], false);
+        assert_eq!(response["aligned"], false);
+    }
+
+    #[test]
+    fn the_same_or_newer_compatible_helper_needs_no_network_check() {
+        for version in [env!("CARGO_PKG_VERSION"), "99.0.0"] {
+            let response = stamped(version, crate::helper_client::PROTOCOL_VERSION);
+            assert_eq!(response["version_current"], true);
+            assert_eq!(response["aligned"], true);
+        }
+    }
+
+    #[test]
+    fn protocol_mismatch_still_fails_closed() {
+        let response = stamped(env!("CARGO_PKG_VERSION"), 0);
+        assert_eq!(response["version_current"], true);
+        assert_eq!(response["aligned"], false);
+    }
+}
+
+#[cfg(windows)]
+fn helper_version_request(
+    pipe: &str,
+    expected_executable: &str,
+    id: &identity::Identity,
+    expected_version: Option<&str>,
+) -> Result<serde_json::Value, helper_client::ChannelRefusal> {
+    let request =
+        helper_client::build_request(id, helper_client::Operation::Version, "", expected_version)
+            .map_err(|_| helper_client::ChannelRefusal::NotAvailable)?;
+    helper_exchange(pipe, expected_executable, &request).map(stamp_helper_alignment)
+}
+
+#[cfg(windows)]
+fn mark_update_pending(mut response: serde_json::Value) -> serde_json::Value {
+    if let Some(object) = response.as_object_mut() {
+        object.insert("ok".into(), serde_json::json!(false));
+        object.insert(
+            "error_code".into(),
+            serde_json::json!("helper_update_pending"),
+        );
+        object.insert("aligned".into(), serde_json::json!(false));
+    }
+    response
+}
+
+#[cfg(windows)]
+fn ensure_helper_current(
+    pipe: &str,
+    expected_executable: &str,
+    id: &identity::Identity,
+) -> Result<serde_json::Value, helper_client::ChannelRefusal> {
+    let current = helper_version_request(pipe, expected_executable, id, None)?;
+    if current.get("aligned").and_then(|value| value.as_bool()) == Some(true) {
+        return Ok(current);
+    }
+
+    let helper_version = current
+        .get("helper_version")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    if helper_version.is_empty()
+        || !selfupdate::version_gt(env!("CARGO_PKG_VERSION"), helper_version)
+    {
+        return Ok(current);
+    }
+
+    // Only this targeted, signed Version request may touch the network. The
+    // real action has not been sent and therefore cannot be duplicated.
+    match helper_version_request(
+        pipe,
+        expected_executable,
+        id,
+        Some(env!("CARGO_PKG_VERSION")),
+    ) {
+        Ok(response) => {
+            let ready = response.get("ok").and_then(|value| value.as_bool()) == Some(true)
+                && response.get("aligned").and_then(|value| value.as_bool()) == Some(true);
+            return Ok(if ready {
+                response
+            } else {
+                mark_update_pending(response)
+            });
+        }
+        Err(helper_client::ChannelRefusal::NotAvailable) => {}
+        Err(error) => return Err(error),
+    }
+
+    // Service recovery is configured for a five-second first restart. Wait
+    // once, then make at most three local probes; no package action is retried.
+    std::thread::sleep(std::time::Duration::from_millis(5_500));
+    for attempt in 0..3 {
+        match helper_version_request(pipe, expected_executable, id, None) {
+            Ok(response) => {
+                return Ok(
+                    if response.get("aligned").and_then(|value| value.as_bool()) == Some(true) {
+                        response
+                    } else {
+                        mark_update_pending(response)
+                    },
+                )
+            }
+            Err(helper_client::ChannelRefusal::NotAvailable) if attempt < 2 => {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(helper_client::ChannelRefusal::NotAvailable)
+}
+
+#[cfg(windows)]
 fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
     use helper_client::Operation;
 
     let esito = (|| -> Result<serde_json::Value, helper_client::ChannelRefusal> {
         let (pipe, atteso) = helper_win::indirizzo()?;
-        let (operazione, package_id, versione) = match what {
-            HelperCmd::Check => {
-                // «Chi sei»: la risposta dice la versione e prova che il
-                // canale funziona davvero. Un programma col nome giusto che
-                // non risponde e' un guasto diverso da un programma assente,
-                // e i due si devono poter distinguere.
-                //
-                // UNA connessione sola. Prima se ne apriva una in piu' per
-                // guardare chi c'era dall'altro capo, e la si chiudeva subito:
-                // ma il canale serve un client alla volta, quindi quella
-                // sonda si bruciava l'istanza e la richiesta vera arrivava
-                // nel buco — «l'aiutante non risponde» mentre l'aiutante
-                // c'era, in ascolto, e nel suo registro restavano due righe
-                // «messaggio senza delimitatore: l'altro capo ha chiuso
-                // subito» (macchina di Roberto, 19/8/2026).
-                //
-                // Il controllo su CHI c'e' non si e' perso: `chiedi` giudica
-                // l'altro capo prima di scrivere una sola parola. Era la
-                // sonda a essere di troppo.
-                (Operation::Version, String::new(), None)
+        let helper_state = ensure_helper_current(&pipe, &atteso, id)?;
+        if matches!(&what, HelperCmd::Check)
+            || helper_state.get("ok").and_then(|value| value.as_bool()) != Some(true)
+            || helper_state
+                .get("aligned")
+                .and_then(|value| value.as_bool())
+                != Some(true)
+        {
+            return Ok(helper_state);
+        }
+        let (operazione, package_id, versione, avvio) = match what {
+            HelperCmd::Check => unreachable!("check returned after the version handshake"),
+            HelperCmd::Query { package_id } => (Some(Operation::Query), package_id, None, None),
+            HelperCmd::Install {
+                package_id,
+                version,
+            } => (Some(Operation::Install), package_id, version, None),
+            HelperCmd::Uninstall { package_id } => {
+                (Some(Operation::Uninstall), package_id, None, None)
             }
-            HelperCmd::Query { package_id } => (Operation::Query, package_id, None),
-            HelperCmd::Install { package_id, version } => {
-                (Operation::Install, package_id, version)
+            HelperCmd::Start {
+                package_id,
+                lifetime,
+            } => {
+                let lifetime = match lifetime {
+                    HelperStartLifetime::Session => helper_client::StartLifetime::Session,
+                    HelperStartLifetime::Persistent => helper_client::StartLifetime::Persistent,
+                };
+                (None, package_id, None, Some(lifetime))
             }
-            HelperCmd::Uninstall { package_id } => (Operation::Uninstall, package_id, None),
             // `setup` non e' un'operazione DELL'aiutante: e' come l'aiutante
             // arriva. Lo smistamento lo prende prima, e questo ramo esiste
             // perche' il compilatore non lo sappia per caso: se domani
@@ -227,33 +414,16 @@ fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
                 }))
             }
         };
-        let richiesta =
-            helper_client::build_request(id, operazione, &package_id, versione.as_deref())
-                // Una richiesta che non si riesce nemmeno a comporre non e' un
-                // problema del canale: si dichiara per quello che e'.
-                .map_err(|_| helper_client::ChannelRefusal::NotAvailable)?;
-        let risposta = helper_win::chiedi(&pipe, &atteso, &richiesta)?;
-        // La risposta dell'aiutante passa cosi' com'e': riscriverla qui
-        // vorrebbe dire poterla addolcire (§2.8).
-        let mut esito: serde_json::Value =
-            serde_json::from_str(&risposta).unwrap_or_else(|_| {
-                serde_json::json!({"ok": false, "error_code": "malformed_response"})
-            });
-        // Chi legge deve poter distinguere «non funziona» da «non ci
-        // capiamo». La seconda si ripara riallineando i due programmi, la
-        // prima no, e trattarle allo stesso modo manderebbe a cercare nel
-        // posto sbagliato.
-        if let Some(oggetto) = esito.as_object_mut() {
-            let parlata = oggetto
-                .get("protocol_version")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
-            oggetto.insert("client_protocol_version".into(),
-                           serde_json::json!(helper_client::PROTOCOL_VERSION));
-            oggetto.insert("aligned".into(),
-                           serde_json::json!(parlata == helper_client::PROTOCOL_VERSION));
+        let richiesta = match (operazione, avvio) {
+            (Some(operation), None) => {
+                helper_client::build_request(id, operation, &package_id, versione.as_deref())
+            }
+            (None, Some(lifetime)) => helper_client::build_start_request(id, &package_id, lifetime),
+            _ => unreachable!("helper request shape is closed"),
         }
-        Ok(esito)
+        // A request that cannot be composed never reaches the channel.
+        .map_err(|_| helper_client::ChannelRefusal::NotAvailable)?;
+        helper_exchange(&pipe, &atteso, &richiesta).map(stamp_helper_alignment)
     })();
 
     esito.unwrap_or_else(|rifiuto| {
@@ -261,6 +431,34 @@ fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
             "ok": false,
             "error_code": rifiuto.code(),
             "detail": rifiuto.message(),
+        })
+    })
+}
+
+/// Internal provider path used only by the verified invocation runner.
+/// It is deliberately absent from the public CLI command vocabulary.
+#[cfg(windows)]
+pub(crate) fn run_managed_provider(
+    grant: &wire::ManagedProviderGrant,
+    id: &identity::Identity,
+) -> serde_json::Value {
+    let result = (|| -> Result<serde_json::Value, helper_client::ChannelRefusal> {
+        let (pipe, expected) = helper_win::indirizzo()?;
+        let state = ensure_helper_current(&pipe, &expected, id)?;
+        if state.get("ok").and_then(serde_json::Value::as_bool) != Some(true)
+            || state.get("aligned").and_then(serde_json::Value::as_bool) != Some(true)
+        {
+            return Ok(state);
+        }
+        let request = helper_client::build_provider_request(id, grant)
+            .map_err(|_| helper_client::ChannelRefusal::NotAvailable)?;
+        helper_exchange(&pipe, &expected, &request).map(stamp_helper_alignment)
+    })();
+    result.unwrap_or_else(|refusal| {
+        serde_json::json!({
+            "ok": false,
+            "error_code": refusal.code(),
+            "detail": refusal.message(),
         })
     })
 }
@@ -289,7 +487,11 @@ fn open_log_file(dir: &std::path::Path) -> Option<std::fs::File> {
             let _ = std::fs::rename(&path, dir.join("client.log.1"));
         }
     }
-    std::fs::OpenOptions::new().create(true).append(true).open(&path).ok()
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .ok()
 }
 
 fn init_tracing(log_file: Option<std::fs::File>) {
@@ -362,10 +564,22 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
             println!("data dir:           {}", paths.data_dir.display());
             println!("cache dir:          {}", paths.cache_dir.display());
             if st.is_paired() {
-                println!("device id:          {}", st.device_id.as_deref().unwrap_or("?"));
-                println!("device name:        {}", st.device_name.as_deref().unwrap_or("?"));
-                println!("server:             {}", st.server_url.as_deref().unwrap_or("?"));
-                println!("paired_at:          {}", st.paired_at.as_deref().unwrap_or("?"));
+                println!(
+                    "device id:          {}",
+                    st.device_id.as_deref().unwrap_or("?")
+                );
+                println!(
+                    "device name:        {}",
+                    st.device_name.as_deref().unwrap_or("?")
+                );
+                println!(
+                    "server:             {}",
+                    st.server_url.as_deref().unwrap_or("?")
+                );
+                println!(
+                    "paired_at:          {}",
+                    st.paired_at.as_deref().unwrap_or("?")
+                );
             } else {
                 println!("status:             not paired");
             }
@@ -377,7 +591,8 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
                     "already paired; re-registering will keep the same key"
                 );
             }
-            let resp = pairing::register(&server, &token, &id).await
+            let resp = pairing::register(&server, &token, &id)
+                .await
                 .context("register failed")?;
             st.device_id = Some(resp.device_id.clone());
             st.device_name = Some(resp.name.clone());
@@ -392,8 +607,13 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
                      le invocazioni non potranno essere verificate (run rifiutera')"
                 );
             }
-            println!("paired: device_id={} name={} fingerprint={} owner={}",
-                     resp.device_id, resp.name, &resp.fingerprint[..16], resp.owner_user_id);
+            println!(
+                "paired: device_id={} name={} fingerprint={} owner={}",
+                resp.device_id,
+                resp.name,
+                &resp.fingerprint[..16],
+                resp.owner_user_id
+            );
         }
         Cmd::Run { server } => {
             // Self-update ROBUSTO: recovery+macchina a stati PRIMA di tutto.
@@ -425,10 +645,10 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
             // una finestra aperta: il log su file (§2.8) resta la fonte di
             // verita', stdout dopo il detach va nel nulla ed e' accettabile.
             detach_console();
-            let url = server.or(st.server_url.clone())
+            let url = server
+                .or(st.server_url.clone())
                 .ok_or_else(|| anyhow::anyhow!("no server (pair first or pass --server)"))?;
-            let r = runner::Runner::new(url, &st, id, paths)
-                .context("init runner")?;
+            let r = runner::Runner::new(url, &st, id, paths).context("init runner")?;
             r.run().await?;
         }
         Cmd::Helper { what } => {
@@ -464,9 +684,8 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
             //    (la chiave) resta, cosi' un nuovo `register` e' possibile.
             if paths.state_file.exists() {
                 let was = st.device_id.clone().unwrap_or_else(|| "?".into());
-                std::fs::remove_file(&paths.state_file).with_context(|| {
-                    format!("rimozione state {}", paths.state_file.display())
-                })?;
+                std::fs::remove_file(&paths.state_file)
+                    .with_context(|| format!("rimozione state {}", paths.state_file.display()))?;
                 println!("pairing rimosso (device {was} non piu' appaiato)");
             } else {
                 println!("nessun pairing da rimuovere");

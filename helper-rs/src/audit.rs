@@ -72,7 +72,13 @@ pub fn record(path: &Path, event: Event, package_id: &str, detail: &str) -> std:
 fn pulisci(valore: &str) -> String {
     valore
         .chars()
-        .map(|c| if c == '\n' || c == '\r' || c == '\t' { ' ' } else { c })
+        .map(|c| {
+            if c == '\n' || c == '\r' || c == '\t' {
+                ' '
+            } else {
+                c
+            }
+        })
         .take(200)
         .collect()
 }

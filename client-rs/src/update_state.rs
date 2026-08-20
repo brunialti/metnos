@@ -57,8 +57,7 @@ impl UpdateState {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let bytes = serde_json::to_vec_pretty(self)
-            .map_err(std::io::Error::other)?;
+        let bytes = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, &bytes)?;
         std::fs::rename(&tmp, path)
@@ -104,10 +103,7 @@ pub fn decide_boot(st: UpdateState) -> (UpdateState, BootAction) {
             if boots >= MAX_PROBATION_BOOTS {
                 (UpdateState::default(), BootAction::Rollback)
             } else {
-                (
-                    UpdateState { boots, ..st },
-                    BootAction::Proceed,
-                )
+                (UpdateState { boots, ..st }, BootAction::Proceed)
             }
         }
     }
@@ -128,7 +124,11 @@ mod tests {
     fn first_probation_boot_proceeds_and_counts() {
         let st = UpdateState::enter_probation("0.2.20");
         let (next, act) = decide_boot(st);
-        assert_eq!(act, BootAction::Proceed, "primo boot del nuovo binario: prova");
+        assert_eq!(
+            act,
+            BootAction::Proceed,
+            "primo boot del nuovo binario: prova"
+        );
         assert_eq!(next.phase, Phase::Probation);
         assert_eq!(next.boots, 1, "boots persistito a 1 prima di rischiare");
         assert_eq!(next.target_version, "0.2.20");
@@ -138,10 +138,18 @@ mod tests {
     fn second_probation_boot_rolls_back() {
         // Il nuovo binario ha già consumato un boot (boots=1) senza confermare
         // (crash pre-poll) → al boot successivo rollback.
-        let st = UpdateState { phase: Phase::Probation, target_version: "0.2.20".into(), boots: 1 };
+        let st = UpdateState {
+            phase: Phase::Probation,
+            target_version: "0.2.20".into(),
+            boots: 1,
+        };
         let (next, act) = decide_boot(st);
         assert_eq!(act, BootAction::Rollback);
-        assert_eq!(next, UpdateState::default(), "dopo rollback nessun update in volo");
+        assert_eq!(
+            next,
+            UpdateState::default(),
+            "dopo rollback nessun update in volo"
+        );
     }
 
     #[test]

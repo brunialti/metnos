@@ -47,6 +47,7 @@ from __future__ import annotations
 import json
 import hmac
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -58,6 +59,11 @@ from logging_setup import get_logger
 from messages import get as _msg
 
 log = get_logger(__name__)
+
+
+# A process can exist before the capability it exposes is ready. Keep one
+# short, package-agnostic settle window before the already bounded retry.
+_MANAGED_DEPENDENCY_SETTLE_S = 2.0
 
 
 def _shape_result_for_chat(res) -> str:
@@ -576,6 +582,11 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
 
     if callback_type == "strato3_choice_dispatch":
         return _process_strato3_choice_dispatch(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
+    if callback_type == "managed_dependency_resume":
+        return _process_managed_dependency_resume(
             on_complete, values, actor=actor, channel=channel,
         )
 
@@ -1183,6 +1194,49 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
         return str(res.get("error") or "")
 
     return _messaggio_da_result(res)
+
+
+def _process_managed_dependency_resume(
+        on_complete: dict, values: dict, *, actor: str = "host",
+        channel: str | None = None) -> str:
+    """Start one signed package, then retry its consumer exactly once."""
+
+    decision = next(iter(values.values()), None) if values else None
+    branches = on_complete.get("branches")
+    branch = branches.get(decision) if isinstance(branches, dict) else None
+    if decision not in {"session", "persistent"} or not isinstance(branch, dict):
+        return _msg("MSG_GATE_NO_ACTION")
+    owner = str(on_complete.get("owner_user_id") or "")
+    target = str(on_complete.get("target_device") or "") or None
+    started = _esegui_ramo(
+        branch.get("tool") or "",
+        dict(branch.get("args") or {}),
+        actor=actor,
+        channel=channel,
+        owner_user_id=owner,
+        target_device=target,
+        contesto="managed dependency start",
+    )
+    if not isinstance(started, dict) or not started.get("ok") or started.get("pending"):
+        return _shape_result_for_chat(started)
+
+    resume = on_complete.get("resume")
+    if not isinstance(resume, dict):
+        return _msg("MSG_ORCH_CONTINUATION_FAILED", detail="resume missing")
+    time.sleep(_MANAGED_DEPENDENCY_SETTLE_S)
+    result = _esegui_ramo(
+        str(resume.get("tool") or ""),
+        dict(resume.get("args") or {}),
+        actor=actor,
+        channel=channel,
+        owner_user_id=owner,
+        target_device=target,
+        contesto="managed dependency retry",
+    )
+    if isinstance(result, dict) and isinstance(result.get("health"), dict):
+        return _fmt_health_block(
+            result["health"], host=str(result.get("_ran_on_device") or target or ""))
+    return _shape_result_for_chat(result)
 
 
 def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
@@ -1902,29 +1956,11 @@ def _process_resume_planner_with_dialog_values(
 
 
 def _thermal_absence_message(thermal: dict, health: dict) -> str:
-    """Perche' non c'e' una temperatura, non solo che non c'e'.
+    """Explain a missing Windows sensor without naming one implementation.
 
-    Su Windows il kernel non espone la temperatura del pacchetto CPU: la
-    leggono i driver di LibreHardwareMonitor/OpenHardwareMonitor, che
-    l'executor consulta se il servizio gira o se la DLL e' indicata. Le zone
-    ACPI che restano non sono quella misura — verificato su un PC reale il
-    6/8/2026: le uniche zone esposte davano 0 K e 283 K, cioe' niente e 10 °C.
-    Senza questa riga la risposta e' vera ma cieca: «non disponibili» non
-    distingue «questa macchina non puo'» da «manca il backend», e la stessa
-    domanda torna.
-
-    Il messaggio nomina il programma e dichiara il CONFINE: quel programma e'
-    di terze parti e Metnos non lo installa per mandato — il client non cerca
-    ne' scarica binari durante un'invocazione, e la scelta di installarlo resta
-    di chi possiede la macchina (decisione di Roberto, 6/8/2026). Dire
-    «installa X» senza dire «io non lo faccio» lascerebbe credere che il
-    sistema possa arrangiarsi da solo.
-
-    Deterministico §7.9: `reason_code` dell'executor + sistema operativo
-    dichiarato dal device. Qualunque altro motivo (probe fallito, PowerShell
-    assente, output non valido) resta sul messaggio generico: la sua causa non
-    e' l'assenza di un backend, e suggerire un'installazione sarebbe una
-    diagnosi inventata.
+    The signed manifest and remote client own provider acquisition. Rendering
+    remains generic so another provider can satisfy the same typed interface
+    without adding a product-specific branch here.
     """
     reason = str((thermal or {}).get("reason_code") or "")
     sistema = ((health or {}).get("system") or {})

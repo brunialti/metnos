@@ -152,6 +152,126 @@ def sign_payload(payload: dict, *, key_name: str = "author") -> str:
     return _b64u_encode(priv.sign(canonical_bytes(payload)))
 
 
+def managed_provider_grant_body(grant: dict) -> bytes:
+    """Return the cross-language body signed for one read-only provider.
+
+    The fixed domain separator keeps this authority distinct from an
+    invocation or package operation. All variable fields are closed ASCII
+    identifiers validated by the signed executor manifest.
+    """
+    text_fields = (
+        "invocation_id", "manifest_sha256", "dependency_key", "source",
+        "package_id", "interface", "assembly", "entry_type",
+    )
+    values = [grant.get(field) for field in text_fields]
+    if any(not isinstance(value, str) or not value for value in values):
+        raise InvocationError("managed provider grant malformed")
+    if any("\x1f" in value for value in values):
+        raise InvocationError("managed provider grant contains separator")
+    for field in ("domains", "sensor_types"):
+        selectors = grant.get(field)
+        if (not isinstance(selectors, list) or not selectors
+                or selectors != sorted(set(selectors))
+                or any(not isinstance(value, str) or not value
+                       or len(value) > 32 or not value.isascii()
+                       or not value[0].isalpha()
+                       or not all(char.isalnum() or char == "_"
+                                  for char in value)
+                       for value in selectors)):
+            raise InvocationError("managed provider selectors malformed")
+        values.append(",".join(selectors))
+    return ("managed-provider-grant\x1f" + "\x1f".join(values)).encode("utf-8")
+
+
+def _provider_selectors(args: dict, dependency) -> tuple[list[str], list[str]] | None:
+    """Read one bounded provider selection from signed executor arguments."""
+
+    raw_domains = args.get(dependency.domains_arg)
+    raw_sensor_types = args.get(dependency.sensor_types_arg)
+    if raw_domains in (None, []) and raw_sensor_types in (None, []):
+        return None
+    selected: list[list[str]] = []
+    for value in (raw_domains, raw_sensor_types):
+        if (not isinstance(value, list) or not value or len(value) > 16
+                or any(not isinstance(item, str) or not item
+                       or len(item) > 32 or not item.isascii()
+                       or not item[0].isalpha()
+                       or not all(char.isalnum() or char == "_"
+                                  for char in item)
+                       for item in value)):
+            raise InvocationError("managed provider selectors invalid")
+        canonical = sorted(set(value))
+        if len(canonical) != len(value):
+            raise InvocationError("managed provider selectors duplicated")
+        selected.append(canonical)
+    return selected[0], selected[1]
+
+
+def _managed_provider_grants(executor: str, args: dict, invocation_id: str,
+                             manifest_sha256: str) -> list[dict]:
+    """Create server-signed grants from one verified executor manifest.
+
+    A grant is emitted only when both declared selector arguments are
+    non-empty closed lists. Package IDs and interfaces are never accepted
+    from invocation arguments.
+    """
+    import tomllib
+    from loader import _managed_dependencies
+    from sign import compute_code_digest
+
+    manifest_path = _C.PATH_EXECUTORS / executor / "manifest.toml"
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        if hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha256:
+            raise InvocationError("executor manifest changed while enqueueing")
+        manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
+        dependencies = _managed_dependencies(manifest.get("managed_dependencies"))
+        selected = []
+        for dependency in dependencies:
+            if dependency.mode != "provider":
+                continue
+            selectors = _provider_selectors(args, dependency)
+            if selectors is not None:
+                selected.append((dependency, selectors))
+        if not selected:
+            return []
+
+        # A provider grant crosses into the privileged helper. It therefore
+        # requires the installation's own author signature and a current code
+        # digest, not merely a manifest that happens to exist on disk.
+        signature = manifest_path.with_suffix(".toml.sig").read_bytes()
+        load_public("author").verify(signature, manifest_bytes)
+        code_files = manifest.get("code", {}).get("files", [])
+        declared = manifest.get("code", {}).get("digest", "")
+        if (not isinstance(code_files, list) or not code_files
+                or compute_code_digest(manifest_path.parent, code_files) != declared):
+            raise InvocationError("managed provider executor code drift")
+    except InvocationError:
+        raise
+    except Exception as exc:
+        raise InvocationError(f"managed provider manifest invalid: {exc}") from exc
+
+    grants: list[dict] = []
+    for dependency, (domains, sensor_types) in selected:
+        grant = {
+            "invocation_id": invocation_id,
+            "manifest_sha256": manifest_sha256,
+            "dependency_key": dependency.key,
+            "source": "winget",
+            "package_id": dependency.package_id,
+            "interface": dependency.interface,
+            "assembly": dependency.assembly,
+            "entry_type": dependency.entry_type,
+            "domains": domains,
+            "sensor_types": sensor_types,
+        }
+        private_key = load_private("author")
+        grant["server_sig"] = _b64u_encode(
+            private_key.sign(managed_provider_grant_body(grant)))
+        grants.append(grant)
+    return grants
+
+
 def verify_payload(public_key_b64: str, sig_b64: str, payload: dict) -> bool:
     """Verifica una firma Ed25519 b64url contro i bytes CANONICI del payload.
 
@@ -274,6 +394,8 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
 
     manifest_sha, code_sha = executor_shas(executor)
     invocation_id = _new_invocation_id()
+    provider_grants = _managed_provider_grants(
+        executor, args or {}, invocation_id, manifest_sha)
     payload = {
         "invocation_id": invocation_id,
         "turn_id": turn_id or "",
@@ -286,6 +408,8 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
         "env_injections": env_injections or {},
         "deadline_ms": int(deadline_ms),
     }
+    if provider_grants:
+        payload["managed_provider_grants"] = provider_grants
     sig = sign_payload(payload)
 
     conn = _open_db(db_path)
