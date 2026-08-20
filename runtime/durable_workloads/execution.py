@@ -526,6 +526,8 @@ class DurableExecutionBridge:
         observed = observation.get("error_class")
         if observed in _TRANSIENT_ERRORS:
             error_class, retry = "executor_transient", "automatic"
+        elif observed == "publication_ambiguous":
+            error_class, retry = "publication_ambiguous", "manual"
         elif observed in _CONTRACT_ERRORS:
             error_class, retry = "contract_violation", "never"
         elif observed in _CAPABILITY_ERRORS:

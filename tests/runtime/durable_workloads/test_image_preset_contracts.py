@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from durable_workloads.compiler import compile_plan
 from durable_workloads.image_preset import (
+    ImagePresetWorkloadInvoker,
     SEMANTIC_SCHEMA_VERSION,
     image_questions_plan,
     output_schemas,
@@ -72,3 +73,28 @@ def test_image_preset_has_no_corpus_size_or_source_path_in_its_plan_data():
     assert "98" not in rendered
     assert "/tmp/" not in rendered
     assert "C:\\" not in rendered
+
+
+def test_image_workload_invoker_derives_stable_question_identities():
+    invoker = ImagePresetWorkloadInvoker(
+        lambda _name, _prompt, _args: {
+            "questions": [{
+                "text": "  Qual è   la risposta? ",
+                "coordinate_locale": "page:1",
+                "confidence": 0.9,
+            }],
+        }
+    )
+    result = invoker(
+        "durable.images.extract_questions",
+        {
+            "source": {"source_id": "source_00000000"},
+            "ocr_entries": [{"source_id": "source_00000000", "content": "fixture"}],
+        },
+        object(),
+    )
+    entry = result["entries"][0]
+    assert entry["normalized_text"] == "qual è la risposta?"
+    assert entry["semantic_schema_version"] == SEMANTIC_SCHEMA_VERSION
+    assert entry["question_occurrence_id"].startswith("sha256:")
+    assert entry["canonical_question_key"].startswith("sha256:")

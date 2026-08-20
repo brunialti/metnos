@@ -461,6 +461,11 @@ _INTERNAL_EFFECTS = {
     "schema_and_coverage_validator": DurableEffect.PURE.value,
     "artifact_store_publish": DurableEffect.IDEMPOTENT.value,
 }
+_INTERNAL_INPUT_TYPES = {
+    "sealed_inventory": {"inventory": "object"},
+    "schema_and_coverage_validator": {"assembled": "object"},
+    "artifact_store_publish": {"artifacts": "array", "validation": "array"},
+}
 
 
 def _internal_contract(name: str, output_schema_name: str) -> FrozenRunnerContract:
@@ -468,7 +473,13 @@ def _internal_contract(name: str, output_schema_name: str) -> FrozenRunnerContra
         effect = _INTERNAL_EFFECTS[name]
     except KeyError as exc:
         raise CompilationError(f"internal runner is not approved: {name}") from exc
-    facts = {"kind": "internal", "name": name, "version": 1}
+    input_types = _INTERNAL_INPUT_TYPES[name]
+    facts = {
+        "kind": "internal",
+        "name": name,
+        "version": 1,
+        "input_types": input_types,
+    }
     digest = _digest(facts, "durable-internal-runner")
     return FrozenRunnerContract(
         kind=RunnerKind.INTERNAL.value,
@@ -476,8 +487,10 @@ def _internal_contract(name: str, output_schema_name: str) -> FrozenRunnerContra
         contract_digest=digest,
         implementation_digest=digest,
         allowed_effects=(effect,),
-        input_names=(),
+        input_names=tuple(sorted(input_types, key=str.encode)),
         output_schema_names=(output_schema_name,),
+        required_input_names=tuple(sorted(input_types, key=str.encode)),
+        input_types=tuple(sorted(input_types.items(), key=lambda item: item[0].encode())),
     )
 
 

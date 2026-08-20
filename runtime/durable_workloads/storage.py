@@ -3048,10 +3048,17 @@ class DurableWorkloadStore:
                 ).fetchone()[0]) == 0
                 for stage in stages
             }
+            # A stage with no rows is not necessarily complete: downstream
+            # units may still have to be materialised from an upstream stage.
+            # Track that boundary separately from terminal unit state so a
+            # singleton reducer cannot be admitted over an empty, unfinished
+            # parent and later receive a different dependency set.
+            materialization_complete: dict[str, bool] = {}
 
             for stage in stages:
                 stage_id = str(stage["id"])
                 if stage["stage_type"] == "inventory":
+                    materialization_complete[stage_id] = True
                     continue
                 parent_ids = tuple(
                     item for item in dependencies[stage_id]
@@ -3060,6 +3067,14 @@ class DurableWorkloadStore:
                 # Root units and units depending only on the sealed inventory
                 # are materialized during admission.
                 if not parent_ids:
+                    materialization_complete[stage_id] = True
+                    continue
+                if not all(
+                    materialization_complete.get(parent, False)
+                    and terminal_by_stage[parent]
+                    for parent in parent_ids
+                ):
+                    materialization_complete[stage_id] = False
                     continue
                 mode = str(stage["cardinality"])
                 candidates: list[tuple[sqlite3.Row | None, tuple[sqlite3.Row, ...], str | None]] = []
@@ -3162,6 +3177,7 @@ class DurableWorkloadStore:
                     (owner, revision_id, stage_id),
                 ).fetchone()[0])
                 now = utc_now()
+                inserted_for_stage = 0
                 for source, parents, shard_key in candidates:
                     semantic = {
                         "stage_key": str(stage["stage_key"]),
@@ -3192,7 +3208,8 @@ class DurableWorkloadStore:
                         continue
                     if existing_count >= int(stage["max_units"]):
                         raise DurableStoreError(
-                            "materialized units exceed the frozen stage cardinality cap"
+                            "materialized units exceed the frozen stage cardinality cap: "
+                            + str(stage["stage_key"])
                         )
                     inserted = connection.execute(
                         """
@@ -3213,6 +3230,8 @@ class DurableWorkloadStore:
                     if inserted.rowcount == 1:
                         created += 1
                         existing_count += 1
+                        inserted_for_stage += 1
+                materialization_complete[stage_id] = inserted_for_stage == 0
         return created
 
     def materialize_all_ready_units(self, *, limit: int = 200) -> int:
