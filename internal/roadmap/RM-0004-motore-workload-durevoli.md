@@ -2,17 +2,17 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F10 completate il 2026-08-21; F11 implementata, I2 e F12 parziali |
+| Stato | `active`; F0-F11 completate; F12 ha superato il gate automatico il 2026-08-22, con smoke esterno autorizzato ancora da eseguire |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
-| Ultima revisione | 2026-08-21 |
-| Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/admission del piano v1, contesto fair nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato. F9 aggiunge facciata e DTO owner-scoped, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, retry e localizzazione. F11 aggiunge il preset immagini privato: contratti OCR firmati, workload logici registrati, fan-out tipizzato per elemento, validazione e deposito idempotente di artefatti; nessuna route di ammissione pubblica o sorgente locale è abilitata |
+| Ultima revisione | 2026-08-22 |
+| Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato. F9 aggiunge facciata e DTO owner-scoped, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, retry e localizzazione. F11 aggiunge il preset immagini privato come registrazione esterna al nucleo. F12 collega l'autorità locale/remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali; nessuna route di ammissione pubblica è abilitata |
 | Progettazione | Gate V1-V5 ratificati da ADR 0213. Il nome pubblico è rinviato per decisione; la topologia futura è congelata ma non installata |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro svolto e senza ripetere un effetto già prodotto; l'utente formula il risultato voluto, non il flusso |
 | Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | Completare le prove distruttive F12 senza abilitare worker, route o invii pubblici; evidenza parziale in `internal/reports/rm0004-f11-f12-verification-20260821.md` |
+| Prossimo gate | Eseguire lo smoke esterno F12 soltanto con destinatario autorizzato; poi aprire F13 senza abilitazioni implicite. Evidenza in `internal/reports/rm0004-f12-verification-20260822.md` |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
 
 ## 0. Esito della verifica
@@ -50,18 +50,18 @@ o restituisce piano, risultati o istantanee interne. F10 ha aggiunto la console
 web sulla stessa facciata, con timeline SSE riletta dal database, autorizzazioni
 temporanee di download legate al proprietario e notifiche durevoli; non carica le unità nella vista
 iniziale né espone percorsi, payload di risultato o link pubblici. F11 dispone
-ora di contratti e prova E2E sintetica, ma il servizio distribuito resta
-spento: la riapertura di una sorgente locale richiede un'autorità di device
-esplicita, non il riutilizzo di un percorso redatto dal database. I pacchetti
-F11-F13 restano circoscritti per agenti esecutivi, secondo §16-17, e non
-possono anticipare i rispettivi gate.
+ora di contratti e prove E2E sintetiche. F12 collega al factory l'autorità
+esplicita delle sorgenti locali e remote, verifica il corpus da 980 file con
+arresti reali e mantiene il preset fuori dal nucleo generico. Il gate
+automatico è positivo, ma il servizio distribuito resta spento: manca ancora
+lo smoke esterno autorizzato e F13 non può essere anticipata.
 
 ### 0.1 Lessico di verifica
 
 Nel testo analitico sono usate quattro etichette:
 
 - **[VERIFICATO]**: comportamento osservato nel codice o nei test al
-  20 agosto 2026;
+  22 agosto 2026;
 - **[MANCANTE]**: semantica cercata nel codice e non trovata;
 - **[PROPOSTA]**: disegno futuro, privo di autorità finché non è approvato;
 - **[GATE]**: decisione che blocca il pacchetto dipendente.
@@ -2011,13 +2011,15 @@ inventory
 - **Dipendenze:** gate I2 con F8-F11 integrati.
 - **Scopo:** tentare di falsificare le promesse prima della distribuzione.
 
-- **Stato:** in corso. Il corpus sintetico da 980 sorgenti supera due
-  riaperture del deposito al 30% e al 60%, e i test del nucleo e del deposito
-  artefatti usano `SIGKILL` reale con recovery in un processo nuovo. Le
-  evidenze, i tempi e i limiti sono in
-  `internal/reports/rm0004-f11-f12-verification-20260821.md`. Non equivalgono
-  ancora al gate di uscita: mancano l'autorità di device, le prove operative
-  complete e i guasti integrati dell'intero percorso immagini.
+- **Stato:** gate automatico superato il 2026-08-22. Il corpus sintetico da
+  980 sorgenti usa uno spool senza copia monolitica, sopravvive a `SIGKILL`
+  reali al 30%, al 60% e durante il commit dell'artefatto; la pubblicazione è
+  riconciliata dopo un ulteriore arresto reale. Autorità locale e attestatore
+  remoto sono collegati al factory. Comandi, semi, tempi, limiti e matrice
+  delle prove sono in
+  `internal/reports/rm0004-f12-verification-20260822.md`. Lo smoke verso un
+  trasporto Telegram esterno non è stato eseguito senza un destinatario
+  autorizzato: il gate operativo e F13 restano quindi chiusi.
 
 - **File ammessi:** infrastruttura e dati di prova sotto `tests/`, strumenti di
   test interni e rapporto riservato. Il runtime si modifica solo con correzioni
