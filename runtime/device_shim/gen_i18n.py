@@ -1,7 +1,7 @@
-"""gen_i18n — genera `messages_i18n.json` (repertorio ERR_/WARN_/MSG_ del DB
-i18n, en+it) che viaggia nel bundle shim così il device rende i messaggi
-user-facing (§7.13) invece del codice grezzo. Sul device NON c'è il DB i18n
-(invariante §11) → il repertorio si porta con lo shim, rigenerato dal DB (SoT).
+"""gen_i18n — genera `messages_i18n.json` (repertorio ERR_/WARN_/MSG_ del
+catalogo i18n distribuito, en+it) che viaggia nel bundle shim così il device
+rende i messaggi user-facing (§7.13) invece del codice grezzo. Sul device NON
+c'è il DB i18n (invariante §11) → il repertorio si porta con lo shim.
 
 Sync: `test_device_shim_i18n.py` rigenera e confronta col file committato →
 un cambio al DB i18n non allineato rompe il baseline (come lo shim
@@ -13,35 +13,44 @@ nel DB i18n — vedi project-i18n-lexicon-debt)."""
 from __future__ import annotations
 
 import json
-import sys
+import sqlite3
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _JSON = _HERE / "messages_i18n.json"
+_SEED_DB = _HERE.parents[1] / "install" / "data" / "i18n_seed.sqlite"
 _PREFIXES = ("ERR_", "WARN_", "MSG_")
 _LANGS = ("en", "it")
 
 
-def build_templates() -> dict:
-    """{lang: {code: template}} per i codici user-facing, dal DB i18n. Puro
-    read-only; ordinato per diff stabile."""
-    sys.path.insert(0, str(_HERE.parent))  # runtime/ sul path
-    import i18n
-    conn = i18n._open()
-    like = " OR ".join("key LIKE ?" for _ in _PREFIXES)
-    rows = conn.execute(
-        f"SELECT key, lang, text FROM i18n WHERE ({like}) "
-        "AND text IS NOT NULL AND lang IN (?, ?) ORDER BY key, lang",
-        (*[f"{p}%" for p in _PREFIXES], *_LANGS),
-    ).fetchall()
+def build_templates(seed_db: Path | str = _SEED_DB) -> dict:
+    """Return the deterministic device catalog from the released seed.
+
+    The mutable per-user database is intentionally excluded: besides making a
+    committed bundle depend on the workstation that generated it, reading it
+    here could publish locally synthesized messages or other private wording.
+    """
+    seed = Path(seed_db).resolve()
+    if not seed.is_file():
+        raise FileNotFoundError(f"i18n seed not found: {seed}")
+    connection = sqlite3.connect(f"file:{seed}?mode=ro", uri=True)
+    try:
+        like = " OR ".join("key LIKE ?" for _ in _PREFIXES)
+        rows = connection.execute(
+            f"SELECT key, lang, text FROM i18n WHERE ({like}) "
+            "AND text IS NOT NULL AND lang IN (?, ?) ORDER BY key, lang",
+            (*[f"{p}%" for p in _PREFIXES], *_LANGS),
+        ).fetchall()
+    finally:
+        connection.close()
     out: dict = {}
     for key, lang, text in rows:
         out.setdefault(lang, {})[key] = text
     return out
 
 
-def write() -> int:
-    data = build_templates()
+def write(seed_db: Path | str = _SEED_DB) -> int:
+    data = build_templates(seed_db)
     _JSON.write_text(
         json.dumps(data, ensure_ascii=False, sort_keys=True, indent=0) + "\n",
         encoding="utf-8",

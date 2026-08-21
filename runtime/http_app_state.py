@@ -28,6 +28,7 @@ TUTOR_GATE = web.AppKey("tutor_gate", asyncio.Semaphore)
 DURABLE_WORKLOAD_STORE_FACTORY = web.AppKey("durable_workload_store_factory", Callable)
 DURABLE_ARTIFACT_STORE_FACTORY = web.AppKey("durable_artifact_store_factory", Callable)
 DURABLE_ARTIFACT_DOWNLOADS = web.AppKey("durable_artifact_downloads", object)
+DURABLE_SSE_COUNTS = web.AppKey("durable_sse_counts", dict)
 
 _LEGACY_NAMES = {
     STARTED_AT: "started_at",
@@ -45,6 +46,7 @@ _LEGACY_NAMES = {
     DURABLE_WORKLOAD_STORE_FACTORY: "durable_workload_store_factory",
     DURABLE_ARTIFACT_STORE_FACTORY: "durable_artifact_store_factory",
     DURABLE_ARTIFACT_DOWNLOADS: "durable_artifact_downloads",
+    DURABLE_SSE_COUNTS: "durable_sse_counts",
 }
 
 

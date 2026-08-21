@@ -18,6 +18,7 @@ from http_app_state import (
     ADMIN_KEY,
     DURABLE_ARTIFACT_DOWNLOADS,
     DURABLE_ARTIFACT_STORE_FACTORY,
+    DURABLE_SSE_COUNTS,
     DURABLE_WORKLOAD_STORE_FACTORY,
     SSE_RESPONSES,
     app_get,
@@ -33,6 +34,33 @@ _SSE_RECHECK_S = 1.0
 _SSE_KEEPALIVE_S = 15.0
 _DOWNLOAD_CAPABILITY_LIFETIME_S = 300
 _DOWNLOAD_CHUNK_BYTES = 64 * 1024
+_MAX_COMMAND_BODY_BYTES = 4096
+_SSE_MAX_PER_OWNER = 4
+_SSE_MAX_TOTAL = 128
+_DURABLE_ERROR_MESSAGE_KEYS = {
+    "budget_exhausted": "UI_DURABLE_ERROR_BUDGET_EXHAUSTED",
+    "cancelled": "UI_DURABLE_ERROR_CANCELLED",
+    "capability_unavailable": "UI_DURABLE_ERROR_CAPABILITY_UNAVAILABLE",
+    "contract_violation": "UI_DURABLE_ERROR_CONTRACT_VIOLATION",
+    "dependency_fan_in_exceeded": "UI_DURABLE_ERROR_DEPENDENCY_FAN_IN",
+    "dependency_input_too_large": "UI_DURABLE_ERROR_DEPENDENCY_INPUT_SIZE",
+    "dependency_payload_invalid": "UI_DURABLE_ERROR_DEPENDENCY_PAYLOAD",
+    "dependency_result_missing": "UI_DURABLE_ERROR_DEPENDENCY_MISSING",
+    "dependency_result_unavailable": "UI_DURABLE_ERROR_DEPENDENCY_UNAVAILABLE",
+    "duplicate_entry_identity": "UI_DURABLE_ERROR_DUPLICATE_ENTRY",
+    "entry_identity_invalid": "UI_DURABLE_ERROR_ENTRY_IDENTITY",
+    "executor_permanent": "UI_DURABLE_ERROR_EXECUTOR_PERMANENT",
+    "executor_transient": "UI_DURABLE_ERROR_EXECUTOR_TRANSIENT",
+    "invalid_plan": "UI_DURABLE_ERROR_INVALID_PLAN",
+    "inventory_unstable": "UI_DURABLE_ERROR_INVENTORY_UNSTABLE",
+    "lease_lost": "UI_DURABLE_ERROR_LEASE_LOST",
+    "publication_ambiguous": "UI_DURABLE_ERROR_PUBLICATION_AMBIGUOUS",
+    "reduction_not_converging": "UI_DURABLE_ERROR_REDUCTION_NOT_CONVERGING",
+    "result_digest_conflict": "UI_DURABLE_ERROR_RESULT_CONFLICT",
+    "reusable_result_invalid": "UI_DURABLE_ERROR_REUSE_INVALID",
+    "source_missing": "UI_DURABLE_ERROR_SOURCE_MISSING",
+    "stage_unit_cap_exceeded": "UI_DURABLE_ERROR_STAGE_CAP",
+}
 
 
 def _error_response(error: DurableControlError) -> web.Response:
@@ -167,13 +195,25 @@ def _recent_events(request: web.Request) -> bool:
 
 async def _command_body(request: web.Request) -> tuple[int, str]:
     try:
-        body = await request.json()
-    except Exception:
+        encoded = bytearray()
+        while len(encoded) <= _MAX_COMMAND_BODY_BYTES:
+            chunk = await request.content.read(
+                _MAX_COMMAND_BODY_BYTES + 1 - len(encoded)
+            )
+            if not chunk:
+                break
+            encoded.extend(chunk)
+        if len(encoded) > _MAX_COMMAND_BODY_BYTES:
+            raise ValueError("command body exceeds its boundary")
+        body = json.loads(bytes(encoded).decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError):
         raise DurableControlError("durable_workload.invalid_request", 400) from None
     if not isinstance(body, Mapping):
         raise DurableControlError("durable_workload.invalid_request", 400)
     if any(key in body for key in ("owner", "owner_id", "owner_user_id")):
         raise DurableControlError("durable_workload.owner_in_body_rejected", 400)
+    if set(body) != {"expected_version", "idempotency_key"}:
+        raise DurableControlError("durable_workload.invalid_request", 400)
     version = body.get("expected_version")
     key = body.get("idempotency_key")
     if (
@@ -187,6 +227,35 @@ async def _command_body(request: web.Request) -> tuple[int, str]:
     ):
         raise DurableControlError("durable_workload.invalid_request", 400)
     return version, key
+
+
+def _reserve_sse(app: Any, owner_user_id: str) -> dict[str, int] | None:
+    """Reserve one bounded LRE stream before a response is prepared."""
+
+    counts = app_setdefault(app, DURABLE_SSE_COUNTS, {})
+    if not isinstance(counts, dict) or any(
+        not isinstance(key, str)
+        or isinstance(value, bool)
+        or not isinstance(value, int)
+        or value < 1
+        for key, value in counts.items()
+    ):
+        return None
+    owner_count = int(counts.get(owner_user_id, 0))
+    if owner_count >= _SSE_MAX_PER_OWNER or sum(counts.values()) >= _SSE_MAX_TOTAL:
+        return None
+    counts[owner_user_id] = owner_count + 1
+    return counts
+
+
+def _release_sse(counts: dict[str, int], owner_user_id: str) -> None:
+    current = counts.get(owner_user_id)
+    if current is None:
+        return
+    if current <= 1:
+        counts.pop(owner_user_id, None)
+    else:
+        counts[owner_user_id] = current - 1
 
 
 async def workloads(request: web.Request) -> web.Response:
@@ -217,13 +286,18 @@ async def workload_console(request: web.Request) -> web.Response:
         await _owner(request)
     except DurableControlError as error:
         return _error_response(error)
-    from messages import get as message
-
     state_keys = (
         "draft", "admitted", "queued", "running", "pause_requested",
         "paused", "cancel_requested", "cancelled", "needs_attention",
         "failed", "completed_with_errors", "completed",
     )
+    priority_keys = ("low", "normal", "high")
+    stage_type_keys = ("inventory", "map", "reduce", "validate", "publish")
+    runner_kind_keys = ("internal", "executor", "workload")
+    artifact_state_keys = (
+        "prepared", "committed", "published", "needs_attention", "expired",
+    )
+    resource_keys = ("cpu", "device", "llm", "local_io", "network_io", "vlm")
     copy = {
         "empty": message("UI_DURABLE_EMPTY"),
         "state": message("UI_DURABLE_STATE"),
@@ -239,6 +313,15 @@ async def workload_console(request: web.Request) -> web.Response:
         "budget": message("UI_DURABLE_BUDGET"),
         "stages": message("UI_DURABLE_STAGES"),
         "errors": message("UI_DURABLE_ERROR_CATEGORIES"),
+        "errorUnknown": message("UI_DURABLE_ERROR_UNKNOWN"),
+        "unknown": message("UI_DURABLE_VALUE_UNKNOWN"),
+        "errorLabels": {
+            code: message(key)
+            for code, key in _DURABLE_ERROR_MESSAGE_KEYS.items()
+        },
+        "materializationAttention": message(
+            "UI_DURABLE_MATERIALIZATION_ATTENTION"
+        ),
         "warnings": message("UI_DURABLE_WARNINGS"),
         "runner": message("UI_DURABLE_RUNNER"),
         "resources": message("UI_DURABLE_RESOURCES"),
@@ -281,6 +364,26 @@ async def workload_console(request: web.Request) -> web.Response:
         "states": {
             state: message("UI_DURABLE_STATE_" + state.upper())
             for state in state_keys
+        },
+        "priorities": {
+            priority: message("UI_DURABLE_PRIORITY_" + priority.upper())
+            for priority in priority_keys
+        },
+        "stageTypes": {
+            stage_type: message("UI_DURABLE_STAGE_TYPE_" + stage_type.upper())
+            for stage_type in stage_type_keys
+        },
+        "runnerKinds": {
+            runner_kind: message("UI_DURABLE_RUNNER_KIND_" + runner_kind.upper())
+            for runner_kind in runner_kind_keys
+        },
+        "artifactStates": {
+            state: message("UI_DURABLE_ARTIFACT_STATE_" + state.upper())
+            for state in artifact_state_keys
+        },
+        "resourceLabels": {
+            resource: message("UI_DURABLE_RESOURCE_" + resource.upper())
+            for resource in resource_keys
         },
     }
     return web.Response(
@@ -348,6 +451,11 @@ async def workload_event_stream(request: web.Request) -> web.StreamResponse | we
     except DurableControlError as error:
         return _error_response(error)
 
+    counts = _reserve_sse(request.app, owner)
+    if counts is None:
+        return _error_response(DurableControlError(
+            "durable_workload.stream_limit", 429,
+        ))
     response = web.StreamResponse(
         status=200,
         headers={
@@ -357,13 +465,18 @@ async def workload_event_stream(request: web.Request) -> web.StreamResponse | we
             "X-Accel-Buffering": "no",
         },
     )
-    await response.prepare(request)
     active = app_setdefault(request.app, SSE_RESPONSES, set())
-    active.add(response)
     last_keepalive = time.monotonic()
     batch = first
+    prepared = False
     try:
+        await response.prepare(request)
+        prepared = True
+        active.add(response)
         while True:
+            transport = request.transport
+            if transport is None or transport.is_closing():
+                break
             if batch:
                 for event in batch:
                     payload = json.dumps(
@@ -411,10 +524,12 @@ async def workload_event_stream(request: web.Request) -> web.StreamResponse | we
         log.warning("durable_workload_sse_closed")
     finally:
         active.discard(response)
-        try:
-            await response.write_eof()
-        except (ConnectionError, ConnectionResetError, RuntimeError):
-            pass
+        _release_sse(counts, owner)
+        if prepared:
+            try:
+                await response.write_eof()
+            except (ConnectionError, ConnectionResetError, RuntimeError):
+                pass
     return response
 
 
@@ -451,6 +566,8 @@ async def issue_artifact_download(request: web.Request) -> web.Response:
         )
     except DurableControlError as error:
         return _error_response(error)
+    except Exception as exc:
+        return _error_response(_artifact_error(exc))
 
 
 async def workload_artifacts(request: web.Request) -> web.Response:

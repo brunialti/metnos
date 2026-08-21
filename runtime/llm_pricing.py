@@ -6,8 +6,10 @@ Consolida (15/6/2026) le tabelle prima duplicate e DIVERGENTI in
 $15/$75 — 3× il prezzo reale — e una riga fantasma `gpt-5`). Una sola tabella qui;
 i consumatori importano `cost_usd`/`PRICING`. §7.2 (no duplicazione).
 
-Prezzi: pagine pubbliche Anthropic, aggiornati 15/6/2026. Mancanze → costo 0.0
-(degrade onesto: meglio 0 che un numero inventato). Aggiornare QUI quando cambiano.
+Prezzi: pagine pubbliche Anthropic, aggiornati 15/6/2026. ``cost_usd`` conserva
+il fallback storico a 0.0 per i soli report; il codice di autorizzazione deve
+usare ``cost_policy``, perché una tariffa ignota non equivale a costo zero.
+Aggiornare QUI quando cambiano.
 """
 from __future__ import annotations
 
@@ -20,6 +22,19 @@ PRICING: dict[tuple[str, str], tuple[float, float]] = {
     ("anthropic", "claude-haiku-4-5"):  (1.0, 5.0),
     ("anthropic", "claude-fable-5"):    (10.0, 50.0),
 }
+
+ZERO_COST_PROVIDERS = frozenset({"llamacpp", "ollama"})
+
+
+def cost_policy(provider: str | None, model: str | None = None) -> str:
+    """Classify monetary-cost evidence without treating unknown as free."""
+
+    identity = (provider or "", model or "")
+    if identity[0] in ZERO_COST_PROVIDERS:
+        return "zero"
+    if identity in PRICING:
+        return "metered"
+    return "unbounded"
 
 
 def price(provider: str | None, model: str | None) -> tuple[float, float]:

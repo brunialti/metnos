@@ -17,6 +17,7 @@ Contratto:
             entries[i] = {path, content: str, char_count: int, lang}
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -140,7 +141,11 @@ def invoke(args):
         else ""
     )
     lang = args.get("lang") or "ita+eng"
-    response_lang = str(args.get("_lang") or "it").split("-", 1)[0].lower()
+    response_lang = str(
+        args.get("_lang") or os.environ.get("METNOS_LANG") or "it"
+    ).strip().lower().replace("_", "-")
+    if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}", response_lang):
+        response_lang = "it"
     max_files = coerce_cap(args, "max_files", 20, maximum=100)
     if paths is None or not isinstance(paths, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}

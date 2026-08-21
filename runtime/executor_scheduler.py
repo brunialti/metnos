@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -40,10 +41,15 @@ class SchedulerContextError(ValueError):
     """An internal execution context is malformed or exceeds host limits."""
 
 
+class SchedulerOrchestrationSaturated(RuntimeError):
+    """The bounded central pool has no lane available for orchestration."""
+
+
 _CONTEXT_RESOURCE_KEYS = (
     "cpu", "device", "llm", "local_io", "network_io", "vlm",
 )
 _CONTEXT_PRIORITIES = frozenset({"low", "normal", "high"})
+_CONTEXT_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}$")
 _MAX_FAIR_WAITERS = 4096
 _MAX_PRIORITY_BURST = 2
 
@@ -420,6 +426,10 @@ class ExecutorScheduler:
         self._fair_gate = _FairGate(max(1, self.max_in_flight - 1))
         self._pool: ThreadPoolExecutor | None = None
         self._pool_lock = threading.Lock()
+        self._orchestration_capacity = max(0, self.max_workers - 1)
+        self._orchestration_slots = threading.BoundedSemaphore(
+            max(1, self._orchestration_capacity)
+        )
         self._policy_slots: dict[tuple[str, int], threading.BoundedSemaphore] = {}
         self._policy_slots_lock = threading.Lock()
         self._identity_slots: dict[
@@ -799,6 +809,44 @@ class ExecutorScheduler:
                 )
             return self._pool
 
+    @property
+    def orchestration_capacity(self) -> int:
+        """Threads available to controllers while one remains for executors."""
+
+        return self._orchestration_capacity if self.parallel_enabled else 0
+
+    def submit_orchestration(self, call: Callable[[], T]) -> Future[T]:
+        """Run a controller task in the one central, bounded thread pool.
+
+        This does not admit execution resources.  The task must eventually
+        enter ``invoke`` with its verified runner and execution context.  One
+        pool thread is never offered here, so a controller waiting for an
+        executor submitted to the same pool cannot consume every worker.
+        """
+
+        if not callable(call):
+            raise TypeError("orchestration call must be callable")
+        if self.orchestration_capacity < 1:
+            raise SchedulerOrchestrationSaturated(
+                "central orchestration capacity is unavailable"
+            )
+        if not self._orchestration_slots.acquire(blocking=False):
+            raise SchedulerOrchestrationSaturated(
+                "central orchestration capacity is saturated"
+            )
+
+        def run() -> T:
+            try:
+                return call()
+            finally:
+                self._orchestration_slots.release()
+
+        try:
+            return self._thread_pool().submit(run)
+        except BaseException:
+            self._orchestration_slots.release()
+            raise
+
     def submit(
             self, executor: object, call: Callable[[], T],
             *, concurrency_identity: str | None = None,
@@ -920,6 +968,18 @@ def scheduler_metrics_snapshot() -> dict[str, dict]:
     return _DEFAULT_SCHEDULER.metrics.snapshot()
 
 
+def orchestration_capacity() -> int:
+    """Return the deployment-clamped number of background controller lanes."""
+
+    return _DEFAULT_SCHEDULER.orchestration_capacity
+
+
+def submit_orchestration(call: Callable[[], T]) -> Future[T]:
+    """Submit bounded controller work without granting execution resources."""
+
+    return _DEFAULT_SCHEDULER.submit_orchestration(call)
+
+
 def assigned_worker_budget(executor: object) -> int:
     """Return the one centrally governed intra-executor worker allowance.
 
@@ -961,4 +1021,9 @@ def assigned_worker_environment(
         environment[
             f"METNOS_EXECUTOR_ASSIGNED_{resource_name.upper()}"
         ] = str(amount)
+    language = getattr(execution_context, "language", None)
+    if language is not None:
+        if not isinstance(language, str) or not _CONTEXT_LANGUAGE_RE.fullmatch(language):
+            raise SchedulerContextError("execution context language is invalid")
+        environment["METNOS_LANG"] = language
     return environment

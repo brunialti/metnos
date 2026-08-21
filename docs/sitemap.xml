@@ -203,6 +203,25 @@
   </url>
 
   <url>
+    <loc>https://metnos.com/en/architecture/multilingual_by_definition</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilingual_by_definition"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilingual_by_definition"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/multilingual_by_definition"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/multilingual_by_definition</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilingual_by_definition"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilingual_by_definition"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/multilingual_by_definition"/>
+  </url>
+
+  <url>
     <loc>https://metnos.com/en/architecture/executor</loc>
     <lastmod>2026-05-15</lastmod>
     <changefreq>monthly</changefreq>

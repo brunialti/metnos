@@ -19,7 +19,7 @@ en = "SCOPO: extracts text from images and scanned PDFs: local OCR first, bounde
 
 [code]
 files  = ["read_files_ocr.py"]
-digest = "sha256:7633ec1b7d270021c7b8d4e10579a2588c21162025835992d5a8ee4fa7cbba2f"
+digest = "sha256:f6ff63ef4e965da5b15f4dee745ceb44bbac66522ca7f000480b5dfa17504593"
 
 [args]
 type     = "object"
@@ -60,7 +60,7 @@ en = "Optional sealed provenance supplied by the durable runtime. When present, 
 
 [[capabilities]]
 name = "fs:read"
-hint = ["~/**", "/tmp/**"]
+hint = ["arg:paths"]
 
 [[capabilities]]
 name = "code:exec"

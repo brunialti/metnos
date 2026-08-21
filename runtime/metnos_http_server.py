@@ -49,7 +49,8 @@ import http_routes_stack
 from http_auth import auth_middleware, get_or_create_admin_key
 from http_app_state import (
     ADMIN_KEY, CATALOG_PROVIDER, DURABLE_ARTIFACT_DOWNLOADS,
-    DURABLE_ARTIFACT_STORE_FACTORY, DURABLE_WORKLOAD_STORE_FACTORY, SCHEDULER_V2, SSE_RESPONSES, STARTED_AT,
+    DURABLE_ARTIFACT_STORE_FACTORY, DURABLE_SSE_COUNTS,
+    DURABLE_WORKLOAD_STORE_FACTORY, SCHEDULER_V2, SSE_RESPONSES, STARTED_AT,
     TURN_POOL, TUTOR_BOOTSTRAP_TASK, app_get,
 )
 from http_turn_pool import HttpTurnPool
@@ -156,6 +157,7 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
 
     app[DURABLE_ARTIFACT_STORE_FACTORY] = _open_durable_artifact_store
     app[DURABLE_ARTIFACT_DOWNLOADS] = ArtifactDownloadRegistry()
+    app[DURABLE_SSE_COUNTS] = {}
     turn_pool = HttpTurnPool()
     app[TURN_POOL] = turn_pool
 

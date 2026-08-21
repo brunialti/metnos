@@ -54,7 +54,9 @@
     value.textContent = text;
     return value;
   };
-  const stateName = (state) => copy.states[state] || state;
+  const translated = (values, key) => values[key] || copy.unknown;
+  const stateName = (state) => translated(copy.states, state);
+  const errorName = (code) => copy.errorLabels[code] || copy.errorUnknown;
   const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
   const countersText = (counters) => `${counters.committed + counters.failed + counters.skipped} / ${counters.total}`;
   const button = (text, handler, {disabled = false, danger = false} = {}) => {
@@ -173,7 +175,7 @@
       if (!payload.items.length) entries.append(node("li", copy.empty, "muted"));
       for (const artifact of payload.items) {
         const row = node("li", "", "dw-artifact-row");
-        row.append(node("span", `${artifact.logical_name} · ${artifact.size_bytes} B · ${artifact.digest.slice(0, 15)} · ${artifact.state}`));
+        row.append(node("span", `${artifact.logical_name} · ${artifact.size_bytes} B · ${artifact.digest.slice(0, 15)} · ${translated(copy.artifactStates, artifact.state)}`));
         row.append(button(copy.download, async () => {
           try {
             const capability = await request(`${api}/${encodeURIComponent(workloadId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`, {method: "POST"});
@@ -223,7 +225,7 @@
       detail.append(node("div", selected.workload_id, "dw-work-id"));
       const facts = node("div", "", "dw-facts");
       appendFact(facts, copy.state, stateName(selected.state));
-      appendFact(facts, copy.priority, selected.priority);
+      appendFact(facts, copy.priority, translated(copy.priorities, selected.priority));
       appendFact(facts, copy.progress, countersText(selected.counters));
       appendFact(facts, copy.created, dateText(selected.created_at));
       detail.append(facts);
@@ -264,18 +266,19 @@
     plan.append(node("h3", copy.plan));
     const budget = node("div", "", "dw-facts");
     for (const [key, value] of Object.entries(summary.budget || {})) {
-      appendFact(budget, copy.budgetLabels[key] || key, String(value));
+      appendFact(budget, copy.budgetLabels[key] || copy.unknown, String(value));
     }
     if (budget.childElementCount) { plan.append(node("h4", copy.budget), budget); }
     const stages = node("div", "", "dw-summary-list");
     for (const stage of summary.stages || []) {
       const row = node("div", "", "dw-summary-row");
-      row.append(node("strong", `${stage.stage_key} · ${stage.stage_type}`));
-      row.append(node("span", `${copy.runner}: ${stage.runner_name} (${stage.runner_kind})`));
+      row.append(node("strong", `${stage.stage_key} · ${translated(copy.stageTypes, stage.stage_type)}`));
+      row.append(node("span", `${copy.runner}: ${stage.runner_name} (${translated(copy.runnerKinds, stage.runner_kind)})`));
       row.append(node("span", `${copy.progress}: ${countersText(stage.counters)}`));
       row.append(node("span", `${copy.timeout}: ${stage.timeout_s}s`));
       if (stage.required) row.append(node("span", copy.required));
-      const resources = Object.entries(stage.resources || {}).map(([key, value]) => `${key} × ${value}`);
+      if (stage.materialization_attention) row.append(node("span", copy.materializationAttention));
+      const resources = Object.entries(stage.resources || {}).map(([key, value]) => `${translated(copy.resourceLabels, key)} × ${value}`);
       if (resources.length) row.append(node("span", `${copy.resources}: ${resources.join(", ")}`));
       stages.append(row);
     }
@@ -285,13 +288,13 @@
     if ((summary.error_categories || []).length) {
       const errors = node("section", "", "dw-subpanel"); errors.append(node("h3", copy.errors));
       const entries = node("ul", "", "dw-events");
-      for (const error of summary.error_categories) entries.append(node("li", `${error.error_code} · ${error.count}`));
+      for (const error of summary.error_categories) entries.append(node("li", `${errorName(error.error_code)} · ${error.count}`));
       errors.append(entries); target.append(errors);
     }
     if ((summary.warnings || []).length) {
       const warnings = node("section", "", "dw-subpanel"); warnings.append(node("h3", copy.warnings));
       const entries = node("ul", "", "dw-events");
-      for (const warning of summary.warnings) entries.append(node("li", copy.warningsByCode[warning] || warning));
+      for (const warning of summary.warnings) entries.append(node("li", copy.warningsByCode[warning] || copy.unknown));
       warnings.append(entries); target.append(warnings);
     }
   }

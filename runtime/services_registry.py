@@ -139,13 +139,13 @@ SERVICES: tuple[ServiceSpec, ...] = (
         group_en="Core",
     ),
     ServiceSpec(
-        "durable_workloads", "Lavori durevoli",
-        "Motore supervisionato per i lavori durevoli ammessi. Rimane inattivo finché la funzione non è abilitata.",
+        "durable_workloads", "LRE (Long Run Engine)",
+        "Motore supervisionato per le attività LRE ammesse. Rimane inattivo finché la funzione non è abilitata.",
         "Nucleo", (_target("metnos-durable-worker.service"),),
         required=True, integrated=True,
-        label_en="Durable workloads",
+        label_en="LRE (Long Run Engine)",
         description_en=(
-            "Supervised engine for admitted durable workloads. It remains "
+            "Supervised engine for admitted LRE tasks. It remains "
             "inactive until the feature is enabled."
         ),
         group_en="Core",
