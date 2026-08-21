@@ -72,3 +72,4 @@ Ogni roadmap deve inoltre separare chiaramente:
 | [RM-0002](RM-0002-linter-manifest-multilingue.md) | Linter multilingue dei manifest executor | `active` | non iniziata | 2026-07-23 |
 | [RM-0003](RM-0003-tutor-integrato.md) | Tutor integrato: guida operativa intelligente | `closed` | F2/F3/F4 implementate, certificate e distribuite | 2026-07-30 |
 | [RM-0004](RM-0004-motore-workload-durevoli.md) | Motore generico per lavori lunghi, persistenti e paralleli | `active` | F0-F2 completate nel nucleo interno inattivo; F3 claim/lease/fencing non iniziata | 2026-08-20 |
+| [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `ready` | pipeline parziale; completamento non iniziato | 2026-08-21 |

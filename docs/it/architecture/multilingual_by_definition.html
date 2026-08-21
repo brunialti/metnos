@@ -203,6 +203,39 @@ revisione umana resta indispensabile. L'innovazione consiste nel rendere questi
 limiti parte del contratto, quindi misurabili e correggibili.
 </p>
 
+<h2 id="auto-localizzazione">Auto-localizzazione completa</h2>
+
+<p>
+Quando, durante l'installazione, viene indicata una lingua diversa da italiano o
+inglese, Metnos non finge che sia già disponibile. Registra la lingua desiderata,
+avvia l'istanza temporaneamente in inglese e mette in coda la localizzazione.
+L'inglese è quindi un avvio sicuro e transitorio, non una scelta nascosta per
+singolo utente o turno.
+</p>
+
+<p>
+La pipeline prevista lavora in modo incrementale e idempotente. Di notte
+confronta le impronte delle sorgenti e traduce, con il workload linguistico
+dedicato, l'intero patrimonio operativo: lessici usati dal proposer e dalla
+comprensione, prompt del planner e del synt, descrizioni e argomenti dei
+manifest, messaggi deterministici, notifiche, repertorio dei dispositivi e
+risorse destinate al Tutor. Non traduce soltanto le label: traduce ciò che guida
+il ragionamento e ciò che rende verificabile l'esecuzione.
+</p>
+
+<ol class="infographic-key">
+ <li><strong>Bootstrap.</strong> La lingua richiesta viene registrata; l'istanza resta operativa in inglese.</li>
+ <li><strong>Inventario.</strong> Ogni risorsa riceve una sorgente, un codice lingua, un'impronta e uno stato.</li>
+ <li><strong>Traduzione.</strong> I testi destinati alle persone e quelli destinati ai modelli seguono regole diverse ma lo stesso contratto semantico.</li>
+ <li><strong>Verifica.</strong> Placeholder, schema, firma dei manifest, lessico e comportamento del proposer vengono controllati prima dell'abilitazione.</li>
+ <li><strong>Attivazione.</strong> Solo dopo il superamento del gate l'amministratore riavvia l'istanza nella nuova lingua.</li>
+</ol>
+
+<p class="callout note"><strong>Che cosa resta invariato.</strong> La traduzione
+non modifica nomi degli executor, chiavi, schema degli argomenti, permessi,
+proprietario, policy o firme. Cambia la lingua con cui Metnos comprende e
+spiega; non cambia ciò che Metnos è autorizzato a fare.</p>
+
 <h2 id="approfondire">Per approfondire</h2>
 
 <ul>

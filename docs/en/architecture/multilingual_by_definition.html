@@ -198,6 +198,39 @@ review remains essential. The innovation is to make those limits part of the
 contract, and therefore measurable and correctable.
 </p>
 
+<h2 id="auto-localisation">Full self-localisation</h2>
+
+<p>
+When installation requests a language other than Italian or English, Metnos
+does not pretend that it is already available. It records the requested
+language, starts the instance temporarily in English, and queues localisation.
+English is therefore a safe transitional bootstrap, never a hidden per-user or
+per-turn choice.
+</p>
+
+<p>
+The planned pipeline is incremental and idempotent. Overnight it compares
+source fingerprints and translates, through the dedicated language workload,
+the complete operational corpus: lexicons used by the proposer and
+understanding layer, planner and synt prompts, manifest descriptions and
+arguments, deterministic messages, notifications, device repertories, and
+resources consumed by Tutor. It does not translate labels only: it translates
+the material that guides reasoning and makes execution verifiable.
+</p>
+
+<ol class="infographic-key">
+ <li><strong>Bootstrap.</strong> The requested language is recorded; the instance remains operational in English.</li>
+ <li><strong>Inventory.</strong> Every resource receives a source, language code, fingerprint, and state.</li>
+ <li><strong>Translation.</strong> Human-facing and model-facing text follow different safeguards under the same semantic contract.</li>
+ <li><strong>Verification.</strong> Placeholders, schemas, manifest signatures, lexicons, and proposer behaviour are checked before enablement.</li>
+ <li><strong>Activation.</strong> Only after the gate passes does an administrator restart the instance in the new language.</li>
+</ol>
+
+<p class="callout note"><strong>What remains unchanged.</strong> Translation does
+not alter executor names, keys, argument schemas, permissions, ownership,
+policy, or signatures. It changes the language Metnos uses to understand and
+explain; it does not change what Metnos is authorised to do.</p>
+
 <h2 id="further-reading">Further reading</h2>
 
 <ul>
