@@ -33,7 +33,7 @@ from .coordinator import WorkerCapabilities
 from .execution import DurableExecutionBridge
 from .internal_runners import approved_internal_runners
 from .models import DurableEffect, RunnerKind
-from .source_authority import SourceAuthority
+from .source_authority import RemoteAttestor, SourceAuthority
 from .storage import DurableWorkloadStore, StoreNotReadyError
 from .worker import DurableWorker
 
@@ -295,32 +295,6 @@ class BoundExecutionBridge:
             raise first_error
 
 
-def _image_registration() -> RuntimeRegistration:
-    from .image_preset import (
-        ImagePresetWorkloadInvoker,
-        output_schemas,
-        registered_output_schema_names,
-        registered_runner_bindings,
-        runner_resolver,
-    )
-
-    schemas = output_schemas()
-    return RuntimeRegistration(
-        name="images.questions.v1",
-        runner_bindings=registered_runner_bindings(),
-        runners=runner_resolver(),
-        output_schemas=schemas,
-        output_schema_names=registered_output_schema_names(schemas),
-        workload_invoker=ImagePresetWorkloadInvoker(),
-    )
-
-
-def default_runtime_registry() -> RuntimeRegistry:
-    """Build the closed deployment registry without task-specific dispatch."""
-
-    return RuntimeRegistry((_image_registration(),))
-
-
 def _resource_limits() -> dict[str, int]:
     limits: dict[str, int] = {}
     for key, environment_name in _RESOURCE_ENV.items():
@@ -342,13 +316,15 @@ class RuntimeFactory:
     def __init__(
         self,
         *,
-        registry_factory: Callable[[], RuntimeRegistry] = default_runtime_registry,
+        registry_factory: Callable[[], RuntimeRegistry],
         source_authority_path: str | Path | None = None,
+        remote_attestor: RemoteAttestor | None = None,
         artifact_root: str | Path | None = None,
         lease_duration: timedelta = timedelta(seconds=60),
     ) -> None:
         self._registry_factory = registry_factory
         self._source_authority_path = source_authority_path
+        self._remote_attestor = remote_attestor
         self._artifact_root = artifact_root
         self._lease_duration = lease_duration
         self._registry: RuntimeRegistry | None = None
@@ -382,7 +358,10 @@ class RuntimeFactory:
                 self._artifact_root or PATH_DURABLE_ARTIFACTS,
                 repository,
             )
-            authority = SourceAuthority.open(self._source_authority_path)
+            authority = SourceAuthority.open(
+                self._source_authority_path,
+                remote_attestor=self._remote_attestor,
+            )
             registry = self.registry()
             bridge = DurableExecutionBridge(
                 store,
@@ -420,19 +399,9 @@ class RuntimeFactory:
             raise
 
 
-def production_factories() -> tuple[
-    Callable[[DurableWorkloadStore], DurableWorker],
-    Callable[[DurableWorkloadStore], BoundExecutionBridge],
-]:
-    factory = RuntimeFactory()
-    return factory.worker, factory.bridge
-
-
 __all__ = [
     "BoundExecutionBridge",
     "RuntimeFactory",
     "RuntimeRegistration",
     "RuntimeRegistry",
-    "default_runtime_registry",
-    "production_factories",
 ]

@@ -623,6 +623,11 @@ def validate_inventory(
     if len(sources) > 1_000_000:
         raise SchemaValidationError("inventory.sources exceeds the v1 limit")
     source_ids = _BoundedUniqueValues()
+    # A custom Sequence may be a disk-backed, repeatable view.  Building the
+    # optional envelope for it would defeat that contract by accumulating the
+    # whole inventory in a second in-memory string.  Plain list/tuple inputs
+    # are already materialized, so retaining their bounded envelope is safe.
+    retain_inline = isinstance(sources, (list, tuple))
     inline_buffer: io.StringIO | None = None
     try:
         declared_digest = inventory["digest"]
@@ -646,8 +651,9 @@ def validate_inventory(
             )
             + ',"sealed":true,"sources":['
         )
-        inline_buffer = io.StringIO()
-        inline_buffer.write(inline_prefix)
+        if retain_inline:
+            inline_buffer = io.StringIO()
+            inline_buffer.write(inline_prefix)
         inline_bytes = len(inline_prefix.encode("utf-8")) + 2  # closing ]}
         hasher = _inventory_hasher()
         for index, raw_source in enumerate(sources):

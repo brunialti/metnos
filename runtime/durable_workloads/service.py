@@ -820,7 +820,7 @@ def default_service() -> DurableWorkerService:
     enabled = feature_enabled()
     if not enabled:
         return DurableWorkerService(enabled=False)
-    from .runtime_bindings import production_factories
+    from durable_runtime_registry import production_factories
 
     worker_factory, bridge_factory = production_factories()
     return DurableWorkerService(

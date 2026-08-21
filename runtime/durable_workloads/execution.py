@@ -57,7 +57,7 @@ from .worker import (
 
 _TRANSIENT_ERRORS = frozenset({
     "timeout", "remote_timeout", "network", "rate_limited",
-    "temporarily_unavailable", "executor_transient",
+    "temporarily_unavailable", "provider_unavailable", "executor_transient",
 })
 _CONTRACT_ERRORS = frozenset({
     "non_json", "contract_violation", "invalid_output", "schema_mismatch",

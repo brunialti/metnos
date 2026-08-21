@@ -14,7 +14,8 @@ import shutil
 import sqlite3
 import tempfile
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from .inventory import (
 )
 from .migrations import BUSY_TIMEOUT_MS
 from .models import ExecutionContext, SourceResolution
+from .transactions import checked_checkpoint, immediate_transaction
 
 
 SOURCE_AUTHORITY_SCHEMA_VERSION = 3
@@ -211,11 +213,13 @@ class SourceAuthority:
         local_device_id: str = "server",
         remote_attestor: RemoteAttestor | None = None,
         clock: Callable[[], datetime] | None = None,
+        checkpoint: Callable[[str], None] | None = None,
     ) -> None:
         self._connection = connection
         self.local_device_id = _identity(local_device_id, name="local_device_id")
         self._remote_attestor = remote_attestor
         self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._checkpoint = checked_checkpoint(checkpoint)
         self._snapshot_root = snapshot_root
         self._snapshot_session: Path | None = None
         self._snapshot_lock: int | None = None
@@ -231,6 +235,7 @@ class SourceAuthority:
         local_device_id: str = "server",
         remote_attestor: RemoteAttestor | None = None,
         clock: Callable[[], datetime] | None = None,
+        checkpoint: Callable[[str], None] | None = None,
     ) -> "SourceAuthority":
         connection, file_path = _open_private(path or default_authority_path())
         selected_snapshot_root = (
@@ -329,6 +334,7 @@ class SourceAuthority:
                 local_device_id=local_device_id,
                 remote_attestor=remote_attestor,
                 clock=clock,
+                checkpoint=checkpoint,
             )
         except BaseException:
             if connection.in_transaction:
@@ -384,6 +390,17 @@ class SourceAuthority:
 
     def _now(self) -> datetime:
         return normalize_instant(self._clock(), name="source authority clock")
+
+    @contextmanager
+    def _transaction(self) -> Iterator[sqlite3.Connection]:
+        if self._connection.in_transaction:
+            raise SourceAuthorityError("nested source authority transaction")
+        with immediate_transaction(
+            self._connection,
+            self._checkpoint,
+            name="source_authority_transaction",
+        ) as connection:
+            yield connection
 
     @staticmethod
     def _scope(owner_user_id: object, workload_id: object) -> tuple[str, str]:
@@ -460,7 +477,10 @@ class SourceAuthority:
         flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor: int | None = None
         try:
+            self._checkpoint("source_snapshot_before_temp_create")
             descriptor = os.open(snapshot, flags, 0o400)
+            self._checkpoint("source_snapshot_after_temp_create")
+            self._checkpoint("source_snapshot_before_copy")
             observed_digest, metadata = _stable_file_digest(
                 Path(locator),
                 chunk_bytes=1_048_576,
@@ -468,14 +488,19 @@ class SourceAuthority:
                 before_final_stat=None,
                 on_chunk=lambda block: _write_all(descriptor, block),
             )
+            self._checkpoint("source_snapshot_after_copy")
+            self._checkpoint("source_snapshot_before_fsync")
             os.fsync(descriptor)
+            self._checkpoint("source_snapshot_after_fsync")
             os.fchmod(descriptor, 0o400)
+            self._checkpoint("source_snapshot_before_verification")
             if (
                 observed_digest != digest
                 or int(metadata.st_size) != size_bytes
                 or int(metadata.st_mtime_ns) != mtime_ns
             ):
                 raise SourceAuthorityError("local source changed after sealing")
+            self._checkpoint("source_snapshot_after_verification")
         except BaseException:
             if descriptor is not None:
                 os.close(descriptor)
@@ -551,22 +576,22 @@ class SourceAuthority:
                 ),
             )
 
-        self._connection.execute("BEGIN IMMEDIATE")
         try:
-            inventory = seal_local_inventory(
-                roots,
-                device_id=device,
+            with self._transaction():
+                inventory = seal_local_inventory(
+                    roots,
+                    device_id=device,
                 limits=limits,
                 chunk_bytes=chunk_bytes,
                 on_source=register,
+                checkpoint=self._checkpoint,
             )
-            self._connection.commit()
             return inventory
         except BaseException:
-            self._connection.rollback()
-            close = getattr(inventory, "close", None)
-            if callable(close):
-                close()
+            if inventory is not None:
+                close = getattr(inventory, "close", None)
+                if callable(close):
+                    close()
             raise
 
     def resolve(
@@ -713,8 +738,7 @@ class SourceAuthority:
             for row in scopes
         ]
         revoked = 0
-        self._connection.execute("BEGIN IMMEDIATE")
-        try:
+        with self._transaction():
             for owner, workload, active in decisions:
                 if active:
                     self._connection.execute(
@@ -736,10 +760,6 @@ class SourceAuthority:
                     (current_text, current_text, owner, workload),
                 )
                 revoked += int(changed.rowcount)
-            self._connection.commit()
-        except BaseException:
-            self._connection.rollback()
-            raise
         return revoked
 
     def prune(self, *, limit: int = 1000, now: datetime | None = None) -> int:
@@ -748,8 +768,7 @@ class SourceAuthority:
         current = normalize_instant(now or self._now(), name="prune time")
         current_text = instant_text(current, name="prune time")
         deleted = 0
-        self._connection.execute("BEGIN IMMEDIATE")
-        try:
+        with self._transaction():
             rows = self._connection.execute(
                 """
                 SELECT owner_user_id, workload_id, source_id
@@ -771,10 +790,6 @@ class SourceAuthority:
                     (*tuple(row), current_text),
                 )
                 deleted += int(changed.rowcount)
-            self._connection.commit()
-        except BaseException:
-            self._connection.rollback()
-            raise
         return deleted
 
 
