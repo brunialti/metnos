@@ -230,6 +230,7 @@ class TelegramChannel:
             chunks = [""]
 
         last_result = {"ok": True}
+        delivered_chunks = 0
         for i, chunk in enumerate(chunks):
             # Rate-limit minimo fra chunk consecutivi (Telegram limit ~30
             # msg/s/bot in privato). 50 ms = 20 msg/s safe. ADR 0109.
@@ -254,13 +255,26 @@ class TelegramChannel:
                                              for row in message.buttons]
                     })
             result = self._call("sendMessage", params)
-            if not result.get("ok"):
+            if not result.get("ok") and not result.get("delivery_ambiguous"):
                 # Fallback plain: HTML rifiutato, riprova senza parse_mode
                 import re as _re
                 plain = _re.sub(r"<[^>]+>", "", chunk)
                 params.pop("parse_mode", None)
                 params["text"] = plain[:4096]
                 result = self._call("sendMessage", params)
+            if result.get("ok") is not True:
+                if delivered_chunks:
+                    # Retrying the whole logical message would duplicate the
+                    # already accepted prefix.  Treat partial delivery as an
+                    # ambiguous effect even when the current chunk was
+                    # authoritatively rejected.
+                    result = {
+                        **result,
+                        "delivery_ambiguous": True,
+                        "partial_delivery": True,
+                    }
+                return result
+            delivered_chunks += 1
             last_result = result
         return last_result
 
@@ -672,13 +686,20 @@ class TelegramChannel:
         try:
             with urllib.request.urlopen(req, timeout=request_timeout_s) as r:
                 body = r.read().decode("utf-8")
-                return json.loads(body)
+                response = json.loads(body)
+                if isinstance(response, dict):
+                    response.setdefault("delivery_ambiguous", False)
+                return response
         except urllib.error.HTTPError as e:
             try:
                 err_body = json.loads(e.read().decode("utf-8"))
             except Exception:
                 err_body = {"description": str(e)}
             return {"ok": False, "error": err_body.get("description", "HTTPError"),
-                    "status_code": e.code}
+                    "status_code": e.code, "delivery_ambiguous": False}
         except Exception as e:
-            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            return {
+                "ok": False,
+                "error": f"{type(e).__name__}: {e}",
+                "delivery_ambiguous": True,
+            }

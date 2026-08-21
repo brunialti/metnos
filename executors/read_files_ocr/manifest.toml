@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "read_files_ocr"
-version     = "0.2.0"
+version     = "0.3.0"
 intelligence = "agentic"
 timeout_s   = 1800
 author      = "Roberto Brunialti"
@@ -19,7 +19,7 @@ en = "SCOPO: extracts text from images and scanned PDFs: local OCR first, bounde
 
 [code]
 files  = ["read_files_ocr.py"]
-digest = "sha256:b007369ea29aed58a19b8a18b5e3113bd41012b1da7f67e0013c9c014ff95278"
+digest = "sha256:f6ff63ef4e965da5b15f4dee745ceb44bbac66522ca7f000480b5dfa17504593"
 
 [args]
 type     = "object"
@@ -51,9 +51,16 @@ default     = 20
 it = "Numero massimo di file elaborati nella singola chiamata. Default 20, limite di sicurezza 100; 0 usa il limite di sicurezza. Se restano file, l'output espone il troncamento."
 en = "Maximum files processed in one call. Default 20, safety ceiling 100; 0 uses the safety ceiling. If files remain, the output reports truncation."
 
+[args.properties.source]
+type = "object"
+
+[args.properties.source.description]
+it = "Provenienza sigillata opzionale fornita dal runtime durevole. Se presente, l'output usa source_id e non espone il percorso locale."
+en = "Optional sealed provenance supplied by the durable runtime. When present, output uses source_id and does not expose the local path."
+
 [[capabilities]]
 name = "fs:read"
-hint = ["~/**", "/tmp/**"]
+hint = ["arg:paths"]
 
 [[capabilities]]
 name = "code:exec"

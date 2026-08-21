@@ -71,6 +71,16 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "synt.semantic_verify": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
     "tutor.compose": WorkloadContract("wise", None, "high_fidelity_exact", "text"),
     "planner.grammar": WorkloadContract("wise", None, "high_fidelity_exact", "grammar"),
+    # Durable image preset: exact structured extraction and synthesis.  The
+    # preset stores these workload names, never a tier or a provider binding.
+    "durable.images.extract_questions": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "durable.images.deduplicate": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "durable.images.answer": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "durable.images.validate": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "durable.images.reduce_solutions": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "durable.images.reduce_notes": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "durable.images.reduce_formulae": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "durable.images.assemble": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
 
     # Deliberate planning and synthesis.
     "planner.deliberate": WorkloadContract("wise", None, "deliberate", "json"),

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Multilingual by definition</title>
+ <meta name="description" content="Why language is part of every Metnos request contract, from understanding and execution to the response and remote devices.">
+ <meta name="keywords" content="Metnos, multilingual, i18n, per-user language, language context, translations, fallback, Tutor">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/multilingual_by_definition">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilingual_by_definition">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilingual_by_definition">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/multilingual_by_definition">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/multilingual_by_definition">
+ <meta property="og:title" content="Metnos &mdash; Multilingual by definition">
+ <meta property="og:description" content="Language as a property of each request and a verifiable contract across the system.">
+ <meta property="og:image" content="https://metnos.com/assets/multilingual-by-definition.png">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary_large_image">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260821-1">
+ <script defer src="/assets/wiki-shell.js?v=20260821-1"></script>
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+ <a href="/it/architecture/multilingual_by_definition.html" hreflang="it" lang="it">IT</a>
+ <span class="sep">&middot;</span>
+ <a href="/en/architecture/multilingual_by_definition.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<h1>Multilingual by definition</h1>
+
+<p class="lead">
+In Metnos, language is not a decoration applied to the interface after the
+product is complete. It is a property of the person and of each request: it
+travels with what the system understands, plans, executes, and returns. Two
+people can therefore use different languages at the same time without changing
+a global setting or contaminating one another's turns.
+</p>
+
+<p>
+Many systems begin in one language and are localised later. This can translate
+buttons and messages while leaving model instructions, tool descriptions, or
+request-recognition phrases in another language. Metnos starts from a different
+constraint: a feature is not genuinely multilingual when only its surface is.
+</p>
+
+<figure class="documentation-infographic" aria-labelledby="multilingual-flow-caption">
+ <img src="/assets/multilingual-by-definition.png"
+      width="1536" height="1024" loading="eager" decoding="async"
+      alt="Two users with separate language preferences submit isolated requests. Each request passes through prompts, executor manifests, a message catalog, and a comprehension lexicon; fallbacks are explicit, the response reaches both a web interface and a remote device, and translations are finally verified.">
+ <figcaption id="multilingual-flow-caption">
+  One language follows the entire request path. The numbers refer to the six
+  stages below; arrows show a sequence, not an automatic loop.
+ </figcaption>
+</figure>
+
+<ol class="infographic-key">
+ <li><strong>The person's preference.</strong> Language belongs to the authenticated user, not to a computer or channel.</li>
+ <li><strong>An isolated context.</strong> Every request receives its own language context, including during concurrent execution.</li>
+ <li><strong>Four coordinated sources.</strong> Prompts, executor manifests, deterministic messages, and the comprehension lexicon remain separate but consistent.</li>
+ <li><strong>Declared fallbacks.</strong> When text is missing, Metnos follows a known chain and keeps the translation debt visible.</li>
+ <li><strong>One language across channels.</strong> Rendering remains consistent in the web chat, notifications, and paired devices.</li>
+ <li><strong>Verification before support.</strong> A language is declared supported only after coverage, structural, and editorial checks.</li>
+</ol>
+
+<h2 id="definition">What “by definition” means</h2>
+
+<p>
+It means that language enters the system boundaries rather than merely its
+copy. The request owner is identified before the preference is read; the
+language code is retained in the turn context; and every component that produces
+words for a person must receive it or derive it from that context. A global
+value remains only as the instance fallback.
+</p>
+
+<p>
+This makes a difficult situation ordinary: one person writes in Italian in the
+web chat while another uses English through Telegram and a recurring task
+prepares a notification in its owner's language at the same time. Concurrency
+does not require changing the process language. Each turn carries its own.
+</p>
+
+<div class="callout note">
+ <p><strong>Language and authority stay separate.</strong> Choosing a language
+ does not broaden permissions, change ownership, or grant an executor new
+ capabilities. The preference changes rendering and understanding, not authority.</p>
+</div>
+
+<h2 id="four-layers">One intent, four language layers</h2>
+
+<p>
+The innovation is not simply translating more text automatically. It is the
+recognition that an agent uses language at different points, each with a distinct
+purpose and risk. Metnos keeps them separate, so a gap can be found and corrected
+without pretending that the entire system is already ready.
+</p>
+
+<table>
+ <thead>
+  <tr><th>Layer</th><th>Purpose</th><th>Why the other layers cannot replace it</th></tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><strong>Prompts</strong></td>
+   <td>Give models their instructions, criteria, and expected response language.</td>
+   <td>A translated interface does not prevent a model from receiving instructions in the wrong language.</td>
+  </tr>
+  <tr>
+   <td><strong>Executor manifests</strong></td>
+   <td>Tell the planner which actions are available and what their arguments mean.</td>
+   <td>Translating the result is insufficient when a tool was selected from a description unsuitable for the turn language.</td>
+  </tr>
+  <tr>
+   <td><strong>Message catalog</strong></td>
+   <td>Renders deterministic errors, confirmations, labels, and notifications.</td>
+   <td>These texts must remain dependable even when no model is available.</td>
+  </tr>
+  <tr>
+   <td><strong>Comprehension lexicon</strong></td>
+   <td>Recognises natural ways to express intents, objects, and parameters.</td>
+   <td>Displaying Italian words does not automatically teach the system every way an intent can be phrased in Italian.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2 id="fallback">Explicit fallback, not false completeness</h2>
+
+<p>
+A missing translation should lead neither to a crash nor to invented wording.
+Each layer follows a deterministic fallback chain. For visible messages, for
+example, Metnos tries the turn language, then English, then Italian; if no version
+exists, it exposes a recognisable missing key. Prompts and manifests use
+equivalent rules suited to their own sources.
+</p>
+
+<p>
+Fallback provides continuity; it does not certify linguistic quality. A language
+may be present in the catalog while some resources are still under review. Metnos
+preserves that distinction: <em>available</em> does not automatically mean
+<em>fully supported</em>.
+</p>
+
+<h2 id="alignment">Translations that remember their source</h2>
+
+<p>
+A translation becomes stale when its source text changes. To keep an accurate but
+outdated sentence from appearing current, Metnos records fingerprints of both the
+present text and the source used to translate it. When one language changes,
+versions that are no longer aligned are marked for review. Comparison is
+structural and deterministic; a model may propose new wording, but it does not
+decide that the wording is correct.
+</p>
+
+<p>
+The same principle protects customisation. Distributed catalog updates add new
+keys and may refresh a previous official version, but they must not blindly
+overwrite a locally chosen translation. Provenance participates in the update
+decision.
+</p>
+
+<h2 id="devices">From server to devices, without a second language system</h2>
+
+<p>
+A remote executor does not own a separate language policy. It receives the
+context admitted by the server and a limited set of operational messages that it
+may need to render on the device. This set is generated from the immutable public
+release seed, not from the compiler's personal catalog: a local customisation
+therefore cannot accidentally enter a published artefact.
+</p>
+
+<p>
+The same rule applies to channels. Language belongs to the person associated with
+the channel; Telegram, the web chat, and deferred work do not keep independent
+preferences that can silently diverge.
+</p>
+
+<h2 id="innovation">Where the innovation lies</h2>
+
+<p>
+The distinctive idea is to treat multilingual operation as a verifiable
+cross-cutting property, alongside identity and provenance, rather than as a final
+editorial phase. This produces three concrete benefits:
+</p>
+
+<ul>
+ <li><strong>consistency:</strong> understanding, tool selection, and the response use the same turn language;</li>
+ <li><strong>isolation:</strong> concurrent users and tasks do not mutate global language state;</li>
+ <li><strong>honesty:</strong> fallbacks, stale translations, and incomplete coverage stay observable rather than hidden.</li>
+</ul>
+
+<p>
+This is not a promise of perfect translation. Models can still produce awkward
+wording, a new language can have incomplete comprehension coverage, and human
+review remains essential. The innovation is to make those limits part of the
+contract, and therefore measurable and correctable.
+</p>
+
+<h2 id="further-reading">Further reading</h2>
+
+<ul>
+ <li><a href="multilang.html">Languages and translations</a>: stores, fallback chains, administration tools, and the procedure for adding a language.</li>
+ <li><a href="channel.html">Conversation channels</a>: how identity, authorisation, and language travel across the web chat and Telegram.</li>
+ <li><a href="tutor.html">Tutor</a>: how bilingual public documentation enters the signed catalog used to explain Metnos.</li>
+</ul>
+
+</body>
+</html>

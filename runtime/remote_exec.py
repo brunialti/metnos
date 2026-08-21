@@ -63,7 +63,10 @@ def invoke_remote(executor, args: dict, device_id: str, *,
                   turn_id: str | None = None,
                   reversibility: str | None = None,
                   env_injections: dict | None = None,
-                  actor: str = "", channel: str = "") -> dict:
+                  actor: str = "", channel: str = "",
+                  invocation_id: str | None = None,
+                  dispatch_key: str | None = None,
+                  execution_context: object | None = None) -> dict:
     """Esegue `executor` sul device remoto e ritorna il result (shape §2.6).
 
     `executor` e' la dataclass loader.Executor (serve name + revertible).
@@ -106,6 +109,9 @@ def invoke_remote(executor, args: dict, device_id: str, *,
         deadline_ms=deadline_ms,
         origin_actor=actor or "",
         origin_channel=channel or "",
+        invocation_id=invocation_id,
+        dispatch_key=dispatch_key,
+        execution_context=execution_context,
     )
 
     wait_s = timeout_s + WAIT_MARGIN_S

@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS i18n (
 );
 CREATE INDEX IF NOT EXISTS idx_i18n_pending ON i18n(needs_translation, lang)
     WHERE needs_translation=1;
+CREATE TABLE IF NOT EXISTS i18n_seed_state (
+    key TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    version_hash TEXT NOT NULL,
+    PRIMARY KEY (key, lang)
+);
 """
 
 
@@ -202,11 +208,18 @@ def _merge_missing_seed_rows(
     connection: sqlite3.Connection,
     seed_path: Path | str | None = None,
 ) -> int:
-    """Insert missing seed rows without changing existing user translations.
+    """Merge a released seed without overwriting user-authored translations.
 
-    The intersection of the two schemas is used so older per-user databases
-    can be upgraded before all optional metadata columns exist.  Returns the
-    number of inserted ``(key, lang)`` rows.
+    Missing rows are inserted.  Existing rows are refreshed only when their
+    actual text is the current seed text, the last seed text observed by this
+    installation, or a historical release recorded by the seed database.
+    Comparing the text hash instead of trusting row metadata also fails safe
+    after a manual database edit that forgot to update ``version_hash``.
+
+    The intersection of the two schemas keeps upgrades compatible with older
+    per-user databases.  The return value remains the number of newly inserted
+    ``(key, lang)`` rows; seed refreshes are deliberately not counted as new
+    catalog entries.
     """
     seed = Path(seed_path) if seed_path is not None else _SEED_DB_PATH
     if not seed.is_file():
@@ -230,13 +243,80 @@ def _merge_missing_seed_rows(
             raise sqlite3.DatabaseError("seed i18n schema is incomplete")
         quoted = ", ".join(f'"{name}"' for name in columns)
         placeholders = ", ".join("?" for _ in columns)
-        before = connection.total_changes
-        rows = source.execute(f"SELECT {quoted} FROM i18n")
-        connection.executemany(
-            f"INSERT OR IGNORE INTO i18n ({quoted}) VALUES ({placeholders})",
-            rows,
+        key_index = columns.index("key")
+        lang_index = columns.index("lang")
+        text_index = columns.index("text")
+        non_key_columns = [
+            name for name in columns if name not in {"key", "lang"}
+        ]
+        assignments = ", ".join(
+            f'"{name}"=?' for name in non_key_columns
         )
-        return connection.total_changes - before
+
+        history_exists = source.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='i18n_seed_history'"
+        ).fetchone() is not None
+        history = (
+            {
+                (str(key), str(lang), str(version_hash))
+                for key, lang, version_hash in source.execute(
+                    "SELECT key, lang, version_hash FROM i18n_seed_history"
+                )
+            }
+            if history_exists
+            else frozenset()
+        )
+
+        inserted = 0
+        for values in source.execute(f"SELECT {quoted} FROM i18n"):
+            row = dict(zip(columns, values, strict=True))
+            key = str(values[key_index])
+            lang = str(values[lang_index])
+            seed_text = values[text_index]
+            seed_version = _sha256_full(seed_text or "")
+            current = connection.execute(
+                "SELECT text FROM i18n WHERE key=? AND lang=?",
+                (key, lang),
+            ).fetchone()
+
+            if current is None:
+                connection.execute(
+                    f"INSERT INTO i18n ({quoted}) VALUES ({placeholders})",
+                    values,
+                )
+                inserted += 1
+                refresh = True
+            else:
+                current_text = current[0]
+                current_version = _sha256_full(current_text or "")
+                tracked = connection.execute(
+                    "SELECT version_hash FROM i18n_seed_state "
+                    "WHERE key=? AND lang=?",
+                    (key, lang),
+                ).fetchone()
+                refresh = (
+                    current_text is None
+                    or current_version == seed_version
+                    or (tracked is not None and current_version == tracked[0])
+                    or (key, lang, current_version) in history
+                )
+                if refresh:
+                    connection.execute(
+                        f"UPDATE i18n SET {assignments} "
+                        "WHERE key=? AND lang=?",
+                        tuple(row[name] for name in non_key_columns)
+                        + (key, lang),
+                    )
+
+            if refresh:
+                connection.execute(
+                    "INSERT INTO i18n_seed_state(key, lang, version_hash) "
+                    "VALUES (?, ?, ?) ON CONFLICT(key, lang) DO UPDATE SET "
+                    "version_hash=excluded.version_hash",
+                    (key, lang, seed_version),
+                )
+        return inserted
     finally:
         source.close()
 

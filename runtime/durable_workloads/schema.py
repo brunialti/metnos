@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
+import sqlite3
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from .models import DurableEffect, RunnerKind, SourceState, StageType
+from .models import DurableEffect, RESOURCE_KEYS, RunnerKind, SourceState, StageType
 
 
 PLAN_SCHEMA_VERSION = "metnos.durable-plan/1"
@@ -54,13 +56,61 @@ _INVALIDATION_KEYS = frozenset({
     "reduction.order",
     "reduction.fan_in",
 })
-_RESOURCE_KEYS = frozenset({
-    "cpu", "local_io", "network_io", "llm", "vlm", "device",
-})
 
 
 class SchemaValidationError(ValueError):
     """A versioned payload is malformed, oversized or incompatible."""
+
+
+class _BoundedUniqueValues:
+    """Exact uniqueness check that spills to a disposable database."""
+
+    _MEMORY_LIMIT = 4096
+
+    def __init__(self) -> None:
+        self._memory: set[str] | None = set()
+        self._connection: sqlite3.Connection | None = None
+
+    def add(self, value: str) -> bool:
+        memory = self._memory
+        if memory is not None:
+            if value in memory:
+                return False
+            memory.add(value)
+            if len(memory) <= self._MEMORY_LIMIT:
+                return True
+            connection = sqlite3.connect("")
+            connection.execute("PRAGMA journal_mode=OFF")
+            connection.execute("PRAGMA synchronous=OFF")
+            connection.execute(
+                "CREATE TABLE values_seen (value TEXT PRIMARY KEY) WITHOUT ROWID"
+            )
+            connection.executemany(
+                "INSERT INTO values_seen(value) VALUES (?)",
+                ((item,) for item in memory),
+            )
+            self._connection = connection
+            self._memory = None
+            return True
+        assert self._connection is not None
+        try:
+            self._connection.execute(
+                "INSERT INTO values_seen(value) VALUES (?)", (value,)
+            )
+        except sqlite3.IntegrityError:
+            return False
+        return True
+
+    def close(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 def canonical_json(value: Any, *, max_bytes: int) -> str:
@@ -210,11 +260,67 @@ def _validate_stage(stage: Any, index: int) -> Mapping[str, Any]:
 
     cardinality = _object(
         item["cardinality"], context=f"{context}.cardinality",
-        required={"mode", "max_units"}, allowed={"mode", "max_units"},
+        required={"mode", "max_units"},
+        allowed={
+            "mode", "max_units", "entry_identity_field", "fan_in",
+            "reduction_input", "max_input_bytes",
+        },
     )
     if cardinality["mode"] not in {"singleton", "per_source", "per_dependency"}:
         raise SchemaValidationError(f"{context}.cardinality.mode is unknown")
     _integer(cardinality["max_units"], context=f"{context}.cardinality.max_units", minimum=1, maximum=10_000_000)
+    entry_identity_field = cardinality.get("entry_identity_field")
+    if entry_identity_field is not None:
+        if cardinality["mode"] != "per_dependency":
+            raise SchemaValidationError(
+                f"{context}.cardinality.entry_identity_field requires per_dependency"
+            )
+        identity_name = _string(
+            entry_identity_field,
+            context=f"{context}.cardinality.entry_identity_field",
+            maximum=64,
+        )
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", identity_name):
+            raise SchemaValidationError(
+                f"{context}.cardinality.entry_identity_field is invalid"
+            )
+    reduction_fields = (
+        cardinality.get("fan_in"),
+        cardinality.get("reduction_input"),
+        cardinality.get("max_input_bytes"),
+    )
+    if any(value is not None for value in reduction_fields):
+        if any(value is None for value in reduction_fields):
+            raise SchemaValidationError(
+                f"{context}.cardinality requires fan_in, reduction_input "
+                "and max_input_bytes together"
+            )
+        if stage_type is not StageType.REDUCE or cardinality["mode"] != "singleton":
+            raise SchemaValidationError(
+                f"{context}.cardinality hierarchical reduction requires "
+                "a singleton reduce stage"
+            )
+        _integer(
+            cardinality["fan_in"],
+            context=f"{context}.cardinality.fan_in",
+            minimum=2,
+            maximum=1024,
+        )
+        reduction_input = _string(
+            cardinality["reduction_input"],
+            context=f"{context}.cardinality.reduction_input",
+            maximum=64,
+        )
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", reduction_input):
+            raise SchemaValidationError(
+                f"{context}.cardinality.reduction_input is invalid"
+            )
+        _integer(
+            cardinality["max_input_bytes"],
+            context=f"{context}.cardinality.max_input_bytes",
+            minimum=1024,
+            maximum=16_777_216,
+        )
 
     bindings = item["input_bindings"]
     if not isinstance(bindings, Mapping) or len(bindings) > 64:
@@ -243,6 +349,21 @@ def _validate_stage(stage: Any, index: int) -> Mapping[str, Any]:
             field = _string(reference["field"], context=f"{context}.input_bindings.{name}.field", maximum=128)
             if not re.fullmatch(r"[A-Za-z0-9_.-]+", field):
                 raise SchemaValidationError(f"{context}.input_bindings.{name}.field is invalid")
+
+    reduction_input = cardinality.get("reduction_input")
+    if reduction_input is not None:
+        reference = bindings.get(str(reduction_input))
+        if (
+            len(dependencies) != 1
+            or not isinstance(reference, Mapping)
+            or reference.get("ref") != "dependency.entries"
+            or reference.get("stage") != dependencies[0]
+            or reference.get("field") is not None
+        ):
+            raise SchemaValidationError(
+                f"{context}.cardinality.reduction_input must bind the entries "
+                "of the stage's sole dependency"
+            )
 
     output_schema = _object(
         item["output_schema"], context=f"{context}.output_schema",
@@ -281,7 +402,7 @@ def _validate_stage(stage: Any, index: int) -> Mapping[str, Any]:
 
     resources = _object(
         item["resources"], context=f"{context}.resources",
-        required=set(_RESOURCE_KEYS), allowed=set(_RESOURCE_KEYS),
+        required=set(RESOURCE_KEYS), allowed=set(RESOURCE_KEYS),
     )
     for resource_name, amount in resources.items():
         maximum = 32 if resource_name in {"llm", "vlm"} else 64
@@ -382,7 +503,12 @@ def validate_plan(value: Any) -> str:
     _integer(budgets["max_attempts_per_unit"], context="plan.budgets.max_attempts_per_unit", minimum=1, maximum=32)
     _integer(budgets["max_wall_time_s"], context="plan.budgets.max_wall_time_s", minimum=1, maximum=2_592_000)
     for name in ("max_bytes_read", "max_bytes_written", "max_tokens", "max_cost_micros"):
-        _integer(budgets[name], context=f"plan.budgets.{name}", minimum=0)
+        _integer(
+            budgets[name],
+            context=f"plan.budgets.{name}",
+            minimum=0,
+            maximum=9_223_372_036_854_775_807,
+        )
     _integer(budgets["max_artifacts"], context="plan.budgets.max_artifacts", minimum=0, maximum=1024)
     _integer(budgets["max_concurrency"], context="plan.budgets.max_concurrency", minimum=1, maximum=256)
 
@@ -445,11 +571,43 @@ def plan_digest(value: Any) -> str:
     return digest_json("durable-plan", value, max_bytes=MAX_PLAN_JSON_BYTES)
 
 
+def _inventory_hasher() -> Any:
+    hasher = hashlib.sha256()
+    hasher.update(b"metnos:durable-inventory:1\x00[")
+    return hasher
+
+
+def _inventory_source_json(source: Mapping[str, Any]) -> str:
+    # The inventory as a whole can be much larger than its optional inline
+    # copy.  A single source record is nevertheless bounded by its validated
+    # fields, so canonicalising one record at a time keeps memory constant.
+    return canonical_json(source, max_bytes=MAX_INVENTORY_JSON_BYTES)
+
+
 def inventory_digest(sources: Sequence[Mapping[str, Any]]) -> str:
-    return digest_json("durable-inventory", list(sources), max_bytes=MAX_INVENTORY_JSON_BYTES)
+    """Hash a canonical source array without materialising the whole array."""
+
+    hasher = _inventory_hasher()
+    for index, source in enumerate(sources):
+        if index:
+            hasher.update(b",")
+        hasher.update(_inventory_source_json(source).encode("utf-8"))
+    hasher.update(b"]")
+    return f"sha256:{hasher.hexdigest()}"
 
 
-def validate_inventory(value: Any) -> tuple[str, tuple[Mapping[str, Any], ...]]:
+def validate_inventory(
+    value: Any,
+) -> tuple[str | None, Sequence[Mapping[str, Any]]]:
+    """Validate a sealed inventory and return its optional inline encoding.
+
+    Source rows are authoritative once admitted.  Inventories up to
+    ``MAX_INVENTORY_JSON_BYTES`` also retain the original canonical envelope
+    for bounded ``revision.inventory`` bindings.  Larger inventories are not
+    rejected or duplicated into one giant JSON value: their envelope is
+    represented by the digest, count and normalized ``sources`` rows.
+    """
+
     inventory = _object(
         value, context="inventory",
         required={"schema_version", "sealed", "digest", "sources"},
@@ -464,39 +622,135 @@ def validate_inventory(value: Any) -> tuple[str, tuple[Mapping[str, Any], ...]]:
         raise SchemaValidationError("inventory.sources must be an array")
     if len(sources) > 1_000_000:
         raise SchemaValidationError("inventory.sources exceeds the v1 limit")
-    normalized: list[Mapping[str, Any]] = []
-    ids: set[str] = set()
-    for index, raw_source in enumerate(sources):
-        fields = {
-            "source_id", "ordinal", "device_id", "locator_redacted", "kind",
-            "size_bytes", "mtime_ns", "content_digest", "state", "accounted",
-        }
-        source = _object(raw_source, context=f"inventory.sources[{index}]", required=fields, allowed=fields)
-        source_id = _string(source["source_id"], context=f"source[{index}].source_id", minimum=8, maximum=160)
-        if source_id in ids:
-            raise SchemaValidationError("inventory source_id values must be unique")
-        ids.add(source_id)
-        if source["ordinal"] != index:
-            raise SchemaValidationError("inventory ordinals must be contiguous from zero")
-        _string(source["device_id"], context=f"source[{index}].device_id", maximum=128)
-        _string(source["locator_redacted"], context=f"source[{index}].locator_redacted", maximum=1024)
-        _string(source["kind"], context=f"source[{index}].kind", maximum=64)
-        _integer(source["size_bytes"], context=f"source[{index}].size_bytes", minimum=0)
-        _integer(source["mtime_ns"], context=f"source[{index}].mtime_ns", minimum=0)
-        if not isinstance(source["content_digest"], str) or not _DIGEST_RE.fullmatch(source["content_digest"]):
-            raise SchemaValidationError(f"source[{index}].content_digest is invalid")
-        try:
-            SourceState(source["state"])
-        except (TypeError, ValueError) as exc:
-            raise SchemaValidationError(f"source[{index}].state is unknown") from exc
-        if not isinstance(source["accounted"], bool):
-            raise SchemaValidationError(f"source[{index}].accounted must be boolean")
-        normalized.append(source)
-    expected_digest = inventory_digest(normalized)
-    if inventory["digest"] != expected_digest:
-        raise SchemaValidationError("inventory digest does not match canonical sources")
-    canonical = canonical_json(inventory, max_bytes=MAX_INVENTORY_JSON_BYTES)
-    return canonical, tuple(normalized)
+    source_ids = _BoundedUniqueValues()
+    inline_buffer: io.StringIO | None = None
+    try:
+        declared_digest = inventory["digest"]
+        if not isinstance(declared_digest, str) or not _DIGEST_RE.fullmatch(
+            declared_digest
+        ):
+            raise SchemaValidationError("inventory.digest is invalid")
+
+        inline_prefix = (
+            '{"digest":'
+            + json.dumps(
+                declared_digest,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            + ',"schema_version":'
+            + json.dumps(
+                INVENTORY_SCHEMA_VERSION,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            + ',"sealed":true,"sources":['
+        )
+        inline_buffer = io.StringIO()
+        inline_buffer.write(inline_prefix)
+        inline_bytes = len(inline_prefix.encode("utf-8")) + 2  # closing ]}
+        hasher = _inventory_hasher()
+        for index, raw_source in enumerate(sources):
+            fields = {
+                "source_id", "ordinal", "device_id", "locator_redacted",
+                "kind", "size_bytes", "mtime_ns", "content_digest",
+                "state", "accounted",
+            }
+            source = _object(
+                raw_source,
+                context=f"inventory.sources[{index}]",
+                required=fields,
+                allowed=fields,
+            )
+            source_id = _string(
+                source["source_id"],
+                context=f"source[{index}].source_id",
+                minimum=8,
+                maximum=160,
+            )
+            if not source_ids.add(source_id):
+                raise SchemaValidationError(
+                    "inventory source_id values must be unique"
+                )
+            if source["ordinal"] != index:
+                raise SchemaValidationError(
+                    "inventory ordinals must be contiguous from zero"
+                )
+            _string(
+                source["device_id"],
+                context=f"source[{index}].device_id",
+                maximum=128,
+            )
+            _string(
+                source["locator_redacted"],
+                context=f"source[{index}].locator_redacted",
+                maximum=1024,
+            )
+            _string(
+                source["kind"],
+                context=f"source[{index}].kind",
+                maximum=64,
+            )
+            _integer(
+                source["size_bytes"],
+                context=f"source[{index}].size_bytes",
+                minimum=0,
+            )
+            _integer(
+                source["mtime_ns"],
+                context=f"source[{index}].mtime_ns",
+                minimum=0,
+            )
+            if (
+                not isinstance(source["content_digest"], str)
+                or not _DIGEST_RE.fullmatch(source["content_digest"])
+            ):
+                raise SchemaValidationError(
+                    f"source[{index}].content_digest is invalid"
+                )
+            try:
+                SourceState(source["state"])
+            except (TypeError, ValueError) as exc:
+                raise SchemaValidationError(
+                    f"source[{index}].state is unknown"
+                ) from exc
+            if not isinstance(source["accounted"], bool):
+                raise SchemaValidationError(
+                    f"source[{index}].accounted must be boolean"
+                )
+            source_json = _inventory_source_json(source)
+            source_bytes = source_json.encode("utf-8")
+            if index:
+                hasher.update(b",")
+            hasher.update(source_bytes)
+            if inline_buffer is not None:
+                separator_bytes = int(index > 0)
+                if (
+                    inline_bytes + separator_bytes + len(source_bytes)
+                    > MAX_INVENTORY_JSON_BYTES
+                ):
+                    inline_buffer.close()
+                    inline_buffer = None
+                else:
+                    if index:
+                        inline_buffer.write(",")
+                    inline_buffer.write(source_json)
+                    inline_bytes += separator_bytes + len(source_bytes)
+        hasher.update(b"]")
+        expected_digest = f"sha256:{hasher.hexdigest()}"
+        if declared_digest != expected_digest:
+            raise SchemaValidationError(
+                "inventory digest does not match canonical sources"
+            )
+        canonical = None
+        if inline_buffer is not None:
+            inline_buffer.write("]}")
+            canonical = inline_buffer.getvalue()
+        return canonical, sources
+    finally:
+        source_ids.close()
+        if inline_buffer is not None:
+            inline_buffer.close()
 
 
 def validate_event_payload(value: Any) -> str:

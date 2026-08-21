@@ -3335,7 +3335,8 @@ def _fill_runtime_sourced_args(executor, args: dict) -> dict:
 
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
                           turn_id=None, actor=None, channel=None,
-                          target_device=None, owner_user_id=None):
+                          target_device=None, owner_user_id=None,
+                          execution_context=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
 
     Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
@@ -3463,11 +3464,28 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
                                      actor=actor, channel=channel,
                                      device=str(_target))
             from executor_scheduler import assigned_worker_environment
+            _remote_kwargs = {}
+            _remote_env = assigned_worker_environment(
+                executor, execution_context,
+            )
+            if execution_context is not None:
+                _attempt_id = str(getattr(
+                    execution_context, "attempt_id", "") or "")
+                _dispatch_id = uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"metnos:durable-attempt:{_attempt_id}:{_target}",
+                ).hex
+                _remote_kwargs = {
+                    "invocation_id": f"inv-durable-{_dispatch_id}",
+                    "dispatch_key": f"durable:{_dispatch_id}",
+                    "execution_context": execution_context,
+                }
+                _remote_env["METNOS_CAPTURE_MODEL_USAGE"] = "1"
             _obs = _remote.invoke_remote(
                 executor, remote_args, _target, timeout_s=timeout_s,
                 turn_id=turn_id,
-                env_injections=assigned_worker_environment(executor) or None,
-                actor=actor or "", channel=channel or "")
+                env_injections=_remote_env or None,
+                actor=actor or "", channel=channel or "", **_remote_kwargs)
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:
@@ -3541,7 +3559,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # runtime-owned item-worker budget. Legacy/handcrafted manifests without
     # [execution] keep their exact historical internal-concurrency behavior.
     from executor_scheduler import assigned_worker_environment
-    env.update(assigned_worker_environment(executor))
+    env.update(assigned_worker_environment(executor, execution_context))
     runtime_path = str(Path(__file__).resolve().parent)
     existing_pp = env.get("PYTHONPATH", "")
     dependency_pp = os.pathsep.join(
@@ -3553,6 +3571,11 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # Gli executor (canonical e synthesized) la leggono per bootstrap sys.path
     # senza assunzioni di depth o location filesystem. ADR 0148 universal pattern.
     env["METNOS_RUNTIME"] = runtime_path
+    if execution_context is not None:
+        # The child emits only bounded counters and model digests.  The LRE
+        # bridge associates them with the authenticated attempt after return;
+        # no owner, path or prompt crosses this transport side channel.
+        env["METNOS_CAPTURE_MODEL_USAGE"] = "1"
     # Esponi METNOS_TURN_ID al subprocess: gli executor revertibili lo usano
     # per nominare i blob backup deterministicamente
     # (`<HISTORY>/<turn_id>/blob/<sha256>.bin`).
@@ -3575,18 +3598,75 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     if _scheduled_task:
         env["METNOS_TASK_NAME"] = _scheduled_task
     _t_start = time.perf_counter()
-    result = subprocess.run(
-        cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
-        env=env,
-    )
+    parsed_result = None
+    if execution_context is None:
+        result = subprocess.run(
+            cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
+            env=env,
+        )
+    else:
+        from bounded_subprocess import (
+            SubprocessOutputLimitExceeded,
+            SubprocessTerminationError,
+            run_bounded_subprocess,
+        )
+        from durable_workloads.schema import (
+            MAX_ERROR_JSON_BYTES,
+            MAX_RESULT_JSON_BYTES,
+        )
+        try:
+            result = run_bounded_subprocess(
+                cmd,
+                input_text=payload,
+                timeout_s=timeout_s,
+                env=env,
+                # The result cap covers canonical payload bytes; the small
+                # allowance carries the bounded model-usage side envelope.
+                stdout_limit_bytes=(
+                    MAX_RESULT_JSON_BYTES + MAX_ERROR_JSON_BYTES
+                ),
+                stderr_limit_bytes=MAX_ERROR_JSON_BYTES,
+            )
+        except SubprocessOutputLimitExceeded:
+            parsed_result = {
+                "ok": False,
+                "error_class": "contract_violation",
+                "error_code": "ERR_DURABLE_RESULT_CONTRACT_VIOLATION",
+                "error": msg("ERR_DURABLE_RESULT_CONTRACT_VIOLATION"),
+            }
+        except SubprocessTerminationError:
+            # Do not start another unattended process while the previous
+            # process group cannot be proven dead.
+            parsed_result = {
+                "ok": False,
+                "error_class": "capability_unavailable",
+                "error_code": "ERR_DURABLE_EXECUTION_FAILED",
+                "error": msg("ERR_DURABLE_EXECUTION_FAILED"),
+            }
+        except subprocess.TimeoutExpired as exc:
+            # ``subprocess.TimeoutExpired`` is not a ``TimeoutError``.  The
+            # durable bridge intentionally classifies the latter as a
+            # retryable timed-out attempt.
+            raise TimeoutError("durable executor deadline expired") from exc
     _elapsed_ms = int((time.perf_counter() - _t_start) * 1000)
-    try:
-        parsed_result = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        parsed_result = {"ok": False,
-                          "error": f"non-JSON output: {result.stdout!r}; "
-                                   f"stderr: {result.stderr!r}",
-                          "error_class": "non_json"}
+    if parsed_result is None:
+        try:
+            parsed_result = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            if execution_context is not None:
+                parsed_result = {
+                    "ok": False,
+                    "error_class": "non_json",
+                    "error_code": "ERR_DURABLE_RESULT_CONTRACT_VIOLATION",
+                    "error": msg("ERR_DURABLE_RESULT_CONTRACT_VIOLATION"),
+                }
+            else:
+                parsed_result = {
+                    "ok": False,
+                    "error": f"non-JSON output: {result.stdout!r}; "
+                             f"stderr: {result.stderr!r}",
+                    "error_class": "non_json",
+                }
     # Audit log per skill imports (mini-version Fase C, ADR 0140).
     # No-op per builtin handcrafted (provenance vuoto). Fail-silent.
     try:
@@ -3607,9 +3687,16 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     return parsed_result
 
 
+def _invoke_executor_impl_optional_context(
+        executor, args, *, execution_context=None, **kwargs):
+    if execution_context is not None:
+        kwargs["execution_context"] = execution_context
+    return _invoke_executor_impl(executor, args, **kwargs)
+
+
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None, target_device=None,
-                    owner_user_id=None):
+                    owner_user_id=None, execution_context=None):
     """Universal scheduled choke-point for local and remote executors.
 
     The scheduler is synchronous and serial-first by default, so this wrapper
@@ -3618,21 +3705,27 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     """
     from executor_scheduler import concurrency_identity_for, invoke_scheduled
 
-    return invoke_scheduled(
-        executor,
-        lambda: _invoke_executor_impl(
+    def call():
+        return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
             target_device=target_device, owner_user_id=owner_user_id,
-        ),
-        concurrency_identity=concurrency_identity_for(
+            execution_context=execution_context,
+        )
+
+    schedule_kwargs = {
+        "concurrency_identity": concurrency_identity_for(
             executor, args, target_device=target_device),
-    )
+    }
+    if execution_context is not None:
+        schedule_kwargs["execution_context"] = execution_context
+    return invoke_scheduled(executor, call, **schedule_kwargs)
 
 
 def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None,
-                    target_device=None, owner_user_id=None):
+                    target_device=None, owner_user_id=None,
+                    execution_context=None):
     """Submit one admitted executor call to the single central pool.
 
     This is deliberately the asynchronous twin of :func:`invoke_executor`:
@@ -3642,16 +3735,21 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     """
     from executor_scheduler import concurrency_identity_for, submit_scheduled
 
-    return submit_scheduled(
-        executor,
-        lambda: _invoke_executor_impl(
+    def call():
+        return _invoke_executor_impl_optional_context(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
             target_device=target_device, owner_user_id=owner_user_id,
-        ),
-        concurrency_identity=concurrency_identity_for(
+            execution_context=execution_context,
+        )
+
+    schedule_kwargs = {
+        "concurrency_identity": concurrency_identity_for(
             executor, args, target_device=target_device),
-    )
+    }
+    if execution_context is not None:
+        schedule_kwargs["execution_context"] = execution_context
+    return submit_scheduled(executor, call, **schedule_kwargs)
 
 
 # --- Step + Turn log -------------------------------------------------------

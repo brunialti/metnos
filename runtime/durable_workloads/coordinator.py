@@ -13,10 +13,9 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from .models import DurableEffect, RunnerKind
+from .models import ClosedStringEnum, DurableEffect, RESOURCE_KEYS, RunnerKind
 from .schema import (
     ERROR_SCHEMA_VERSION,
     MAX_ERROR_JSON_BYTES,
@@ -50,18 +49,10 @@ _ERROR_CLASSES = frozenset({
     "cancelled",
 })
 _ERROR_RETRY_MODES = frozenset({"automatic", "reconcile", "manual", "never"})
-RESOURCE_KEYS = (
-    "cpu", "device", "llm", "local_io", "network_io", "vlm",
-)
 MAX_LEASE_DURATION = timedelta(days=1)
 
 
-class _ClosedString(str, Enum):
-    def __str__(self) -> str:
-        return self.value
-
-
-class LeaseMutationStatus(_ClosedString):
+class LeaseMutationStatus(ClosedStringEnum):
     APPLIED = "applied"
     ALREADY_APPLIED = "already_applied"
     STALE_FENCE = "stale_fence"
@@ -70,22 +61,23 @@ class LeaseMutationStatus(_ClosedString):
     STOP_REQUESTED = "stop_requested"
 
 
-class CommitStatus(_ClosedString):
+class CommitStatus(ClosedStringEnum):
     COMMITTED = "committed"
     IDEMPOTENT_REPLAY = "idempotent_replay"
     STALE_FENCE = "stale_fence"
     LEASE_EXPIRED = "lease_expired"
+    DEADLINE_EXPIRED = "deadline_expired"
     DIGEST_CONFLICT = "digest_conflict"
     INVALID_STATE = "invalid_state"
 
 
-class RetryDecision(_ClosedString):
+class RetryDecision(ClosedStringEnum):
     RETRY = "retry"
     FAIL_PERMANENT = "fail_permanent"
     NEEDS_ATTENTION = "needs_attention"
 
 
-class FailureStatus(_ClosedString):
+class FailureStatus(ClosedStringEnum):
     RETRY_SCHEDULED = "retry_scheduled"
     FAILED_PERMANENT = "failed_permanent"
     NEEDS_ATTENTION = "needs_attention"
@@ -190,6 +182,7 @@ class WorkerCapabilities:
 
     runner_bindings: tuple[tuple[RunnerKind, str], ...]
     resource_limits: tuple[tuple[str, int], ...]
+    effect_profiles: tuple[DurableEffect, ...] = (DurableEffect.PURE,)
 
     def __post_init__(self) -> None:
         if not 1 <= len(self.runner_bindings) <= 256:
@@ -207,6 +200,14 @@ class WorkerCapabilities:
             if not isinstance(name, str) or not _RUNNER_RE.fullmatch(name):
                 raise ValueError("runner binding name is invalid")
 
+        normalized_effects = tuple(sorted(self.effect_profiles, key=str))
+        if normalized_effects != self.effect_profiles or not normalized_effects:
+            raise ValueError("effect_profiles must be non-empty and canonical")
+        if len(normalized_effects) != len(set(normalized_effects)):
+            raise ValueError("effect_profiles must not contain duplicates")
+        if any(not isinstance(effect, DurableEffect) for effect in normalized_effects):
+            raise TypeError("effect_profiles must contain DurableEffect values")
+
         if tuple(key for key, _amount in self.resource_limits) != RESOURCE_KEYS:
             raise ValueError("resource_limits must contain every v1 key canonically")
         for key, amount in self.resource_limits:
@@ -222,6 +223,8 @@ class WorkerCapabilities:
         cls,
         runner_bindings: tuple[tuple[RunnerKind | str, str], ...],
         resource_limits: Mapping[str, int],
+        *,
+        effect_profiles: tuple[DurableEffect | str, ...] = (DurableEffect.PURE,),
     ) -> "WorkerCapabilities":
         bindings = tuple(sorted(
             ((RunnerKind(kind), name) for kind, name in runner_bindings),
@@ -233,10 +236,16 @@ class WorkerCapabilities:
             raise ValueError("resource_limits must contain exactly the v1 keys")
         supplied = dict(resource_limits)
         resources = tuple((key, supplied[key]) for key in RESOURCE_KEYS)
-        return cls(bindings, resources)
+        effects = tuple(sorted(
+            (DurableEffect(effect) for effect in effect_profiles), key=str,
+        ))
+        return cls(bindings, resources, effects)
 
     def resource_map(self) -> dict[str, int]:
         return dict(self.resource_limits)
+
+    def accepted_effects(self) -> tuple[str, ...]:
+        return tuple(effect.value for effect in self.effect_profiles)
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +268,8 @@ class Lease:
     output_schema_version: str
     resource_claims: tuple[tuple[str, int], ...]
     retry_policy: RetryPolicy
+    timeout_s: int
+    manual_retry: bool = False
 
     def __post_init__(self) -> None:
         require_worker_id(self.worker_id)
@@ -285,6 +296,14 @@ class Lease:
             raise ValueError("lease output schema version is invalid")
         if tuple(key for key, _amount in self.resource_claims) != RESOURCE_KEYS:
             raise ValueError("lease resource claims are not canonical")
+        if (
+            isinstance(self.timeout_s, bool)
+            or not isinstance(self.timeout_s, int)
+            or not 1 <= self.timeout_s <= 86_400
+        ):
+            raise ValueError("lease timeout_s must be an integer in 1..86400")
+        if not isinstance(self.manual_retry, bool):
+            raise TypeError("lease manual_retry must be boolean")
 
 
 def _canonical_result(
@@ -412,6 +431,7 @@ class CommitOutcome:
     result_id: str | None
     winning_digest: str | None
     proposed_digest: str
+    stage_terminal: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -468,13 +488,31 @@ def decide_retry(
     retry_policy: RetryPolicy,
     attempt_number: int,
     error_class: str,
+    manual_retry: bool = False,
 ) -> RetryDecision:
     """Derive retry disposition only from the frozen stage contract."""
     if not isinstance(effect_profile, DurableEffect):
         raise TypeError("effect_profile must be DurableEffect")
     if not isinstance(error_class, str) or not _ERROR_CLASS_RE.fullmatch(error_class):
         raise ValueError("error_class is invalid")
+    if not isinstance(manual_retry, bool):
+        raise TypeError("manual_retry must be boolean")
+    if error_class in {
+        "budget_exhausted",
+        "capability_unavailable",
+        "publication_ambiguous",
+        "source_missing",
+    }:
+        # These conditions need restored authority, reconciliation or a new
+        # revision.  Retrying the same frozen attempt automatically would
+        # either repeat an ambiguous effect or fail without changing facts.
+        return RetryDecision.NEEDS_ATTENTION
     if effect_profile in {DurableEffect.RECONCILABLE, DurableEffect.MANUAL_ONLY}:
+        return RetryDecision.NEEDS_ATTENTION
+    if manual_retry and error_class in retry_policy.retryable_error_classes:
+        # The recorded owner decision grants exactly this attempt.  A further
+        # retryable failure needs another explicit grant; it never turns into
+        # an unbounded automatic loop.
         return RetryDecision.NEEDS_ATTENTION
     if (
         error_class in retry_policy.retryable_error_classes

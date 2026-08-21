@@ -27,6 +27,11 @@ pub struct Invocation {
     pub reversibility: String,
     #[serde(default)]
     pub env_injections: std::collections::BTreeMap<String, String>,
+    /// Contesto interno firmato per un tentativo di lavoro durevole. Non entra
+    /// negli argomenti dell'executor e il client lo conserva soltanto per la
+    /// verifica del messaggio ricevuto.
+    #[serde(default)]
+    pub execution_context: Option<Value>,
     /// Read-only provider authorities derived from the signed executor
     /// manifest. Empty for ordinary invocations and omitted on the wire.
     #[serde(default)]
@@ -80,6 +85,12 @@ impl Invocation {
                     "managed_provider_grants".into(),
                     serde_json::to_value(&self.managed_provider_grants)?,
                 );
+        }
+        if let Some(context) = &self.execution_context {
+            payload
+                .as_object_mut()
+                .expect("invocation payload is an object")
+                .insert("execution_context".into(), context.clone());
         }
         canonical_bytes(&payload)
     }
@@ -220,5 +231,41 @@ mod tests {
         let v = serde_json::json!({"k": "città"});
         let bytes = canonical_bytes(&v).unwrap();
         assert_eq!(bytes, "{\"k\":\"città\"}".as_bytes());
+    }
+
+    #[test]
+    fn signed_bytes_preserve_durable_execution_context() {
+        let invocation: Invocation = serde_json::from_value(serde_json::json!({
+            "invocation_id": "inv-durable-test",
+            "turn_id": "",
+            "executor": "read_files_ocr",
+            "manifest_sha256": "sha256:test",
+            "code_sha256": "sha256:test",
+            "args": {"paths": ["fixture"]},
+            "scope": "",
+            "reversibility": "",
+            "env_injections": {},
+            "deadline_ms": 60000,
+            "execution_context": {
+                "schema_version": "metnos.execution-context/1",
+                "owner_user_id": "owner-test",
+                "workload_id": "wrk-test",
+                "revision_id": "rev-test",
+                "stage_id": "stg-test",
+                "unit_key": "unit-test",
+                "attempt_id": "att-test",
+                "priority": "normal",
+                "resource_claims": [["cpu", 1]],
+                "deadline_at": null
+            },
+            "server_sig": "unused"
+        }))
+        .unwrap();
+
+        let signed: Value = serde_json::from_slice(&invocation.signed_bytes().unwrap()).unwrap();
+        assert_eq!(
+            signed["execution_context"]["attempt_id"],
+            Value::String("att-test".into())
+        );
     }
 }

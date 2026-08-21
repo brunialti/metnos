@@ -61,6 +61,8 @@ CREATE TABLE IF NOT EXISTS invocations (
     completed_epoch REAL,
     result_json   TEXT,
     abandoned_by_turn INTEGER NOT NULL DEFAULT 0,
+    dispatch_key TEXT NOT NULL DEFAULT '',
+    payload_digest TEXT NOT NULL DEFAULT '',
     owner_user_id TEXT NOT NULL DEFAULT '',
     origin_actor  TEXT NOT NULL DEFAULT '',
     origin_channel TEXT NOT NULL DEFAULT ''
@@ -101,6 +103,18 @@ def _migrate_schema(conn) -> None:
         conn.execute("ALTER TABLE invocations ADD COLUMN created_epoch REAL")
     if "completed_epoch" not in cols:
         conn.execute("ALTER TABLE invocations ADD COLUMN completed_epoch REAL")
+    if "dispatch_key" not in cols:
+        conn.execute(
+            "ALTER TABLE invocations ADD COLUMN dispatch_key TEXT NOT NULL DEFAULT ''"
+        )
+    if "payload_digest" not in cols:
+        conn.execute(
+            "ALTER TABLE invocations ADD COLUMN payload_digest TEXT NOT NULL DEFAULT ''"
+        )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_invocations_device_dispatch "
+        "ON invocations(device_id, dispatch_key) WHERE dispatch_key<>''"
+    )
 # delivered_epoch = time.time() a wall-clock (NON monotonic): il confronto per
 # la redelivery deve sopravvivere a restart/reboot del server, dove il clock
 # monotonic si azzera. La finestra (deadline+grace) è ampia: eventuali salti
@@ -113,6 +127,10 @@ class InvocationError(Exception):
 
 class SignatureError(InvocationError):
     """Firma device non verificata: il result NON viene accettato."""
+
+
+class InvocationConflictError(InvocationError):
+    """An invocation id or dispatch key was reused with different facts."""
 
 
 # --- canonical JSON + firma -------------------------------------------------
@@ -372,6 +390,95 @@ def _new_invocation_id() -> str:
     return f"inv-{time.time_ns():016x}{uuid.uuid4().hex[:8]}"
 
 
+_EXECUTION_RESOURCE_KEYS = (
+    "cpu", "device", "llm", "local_io", "network_io", "vlm",
+)
+
+
+def _normalize_execution_context(value: object | None) -> dict | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        supplied = dict(value)
+    else:
+        supplied = {
+            name: getattr(value, name, None)
+            for name in (
+                "owner_user_id", "workload_id", "revision_id", "stage_id",
+                "unit_key", "attempt_id", "priority", "resource_claims",
+                "deadline_at",
+            )
+        }
+    expected = {
+        "owner_user_id", "workload_id", "revision_id", "stage_id",
+        "unit_key", "attempt_id", "priority", "resource_claims", "deadline_at",
+    }
+    if set(supplied) != expected:
+        raise InvocationError("execution context fields do not match v1")
+    for name in (
+        "owner_user_id", "workload_id", "revision_id", "stage_id",
+        "unit_key", "attempt_id",
+    ):
+        item = supplied[name]
+        if not isinstance(item, str) or not item or len(item) > 256:
+            raise InvocationError("execution context identity is invalid")
+    if supplied["priority"] not in {"low", "normal", "high"}:
+        raise InvocationError("execution context priority is invalid")
+    resources = supplied["resource_claims"]
+    if isinstance(resources, dict):
+        resource_items = tuple(resources.items())
+    else:
+        resource_items = tuple(resources) if isinstance(resources, (list, tuple)) else ()
+    if tuple(
+        item[0] if isinstance(item, (list, tuple)) and len(item) == 2 else None
+        for item in resource_items
+    ) != _EXECUTION_RESOURCE_KEYS:
+        raise InvocationError("execution context resources are not canonical")
+    normalized_resources: list[list[object]] = []
+    for key, amount in resource_items:
+        maximum = 32 if key in {"llm", "vlm"} else 64
+        if (
+            isinstance(amount, bool) or not isinstance(amount, int)
+            or not 0 <= amount <= maximum
+        ):
+            raise InvocationError("execution context resource claim is invalid")
+        normalized_resources.append([key, amount])
+    deadline_at = supplied["deadline_at"]
+    if deadline_at is not None and (
+        not isinstance(deadline_at, str) or not deadline_at.endswith("Z")
+        or len(deadline_at) > 64
+    ):
+        raise InvocationError("execution context deadline is invalid")
+    return {
+        "schema_version": "metnos.execution-context/1",
+        **{
+            name: supplied[name]
+            for name in (
+                "owner_user_id", "workload_id", "revision_id", "stage_id",
+                "unit_key", "attempt_id", "priority",
+            )
+        },
+        "resource_claims": normalized_resources,
+        "deadline_at": deadline_at,
+    }
+
+
+def _request_digest(value: dict) -> str:
+    return "sha256:" + hashlib.sha256(
+        b"metnos:remote-dispatch:1\x00" + canonical_bytes(value)
+    ).hexdigest()
+
+
+def _validate_dispatch_identity(value: str, *, name: str) -> str:
+    if (
+        not isinstance(value, str) or not 8 <= len(value) <= 256
+        or not value.isascii()
+        or any(not (character.isalnum() or character in "._:-") for character in value)
+    ):
+        raise InvocationError(f"{name} is invalid")
+    return value
+
+
 # --- API ----------------------------------------------------------------------
 
 def enqueue_invocation(device_id: str, executor: str, args: dict, *,
@@ -382,6 +489,9 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
                        deadline_ms: int = DEFAULT_DEADLINE_MS,
                        origin_actor: str = "",
                        origin_channel: str = "",
+                       invocation_id: str | None = None,
+                       dispatch_key: str | None = None,
+                       execution_context: object | None = None,
                        db_path: Path | None = None) -> str:
     """Accoda un'invocazione firmata per `device_id`. Ritorna invocation_id.
 
@@ -393,11 +503,34 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
         raise InvocationError(f"device sconosciuto o revocato: {device_id}")
 
     manifest_sha, code_sha = executor_shas(executor)
-    invocation_id = _new_invocation_id()
+    chosen_id = (
+        _new_invocation_id()
+        if invocation_id is None
+        else _validate_dispatch_identity(invocation_id, name="invocation_id")
+    )
+    normalized_dispatch = (
+        "" if dispatch_key is None
+        else _validate_dispatch_identity(dispatch_key, name="dispatch_key")
+    )
+    normalized_context = _normalize_execution_context(execution_context)
+    semantic_request = {
+        "turn_id": turn_id or "",
+        "executor": executor,
+        "manifest_sha256": manifest_sha,
+        "code_sha256": code_sha,
+        "args": args or {},
+        "scope": scope,
+        "reversibility": reversibility,
+        "env_injections": env_injections or {},
+        "deadline_ms": int(deadline_ms),
+        "dispatch_key": normalized_dispatch,
+        "execution_context": normalized_context,
+    }
+    payload_digest = _request_digest(semantic_request)
     provider_grants = _managed_provider_grants(
-        executor, args or {}, invocation_id, manifest_sha)
+        executor, args or {}, chosen_id, manifest_sha)
     payload = {
-        "invocation_id": invocation_id,
+        "invocation_id": chosen_id,
         "turn_id": turn_id or "",
         "executor": executor,
         "manifest_sha256": manifest_sha,
@@ -408,28 +541,56 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
         "env_injections": env_injections or {},
         "deadline_ms": int(deadline_ms),
     }
+    if normalized_context is not None:
+        payload["execution_context"] = normalized_context
     if provider_grants:
         payload["managed_provider_grants"] = provider_grants
     sig = sign_payload(payload)
 
     conn = _open_db(db_path)
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = conn.execute(
+            """
+            SELECT invocation_id, payload_digest
+            FROM invocations
+            WHERE invocation_id=?
+               OR (?<>'' AND device_id=? AND dispatch_key=?)
+            ORDER BY invocation_id
+            """,
+            (chosen_id, normalized_dispatch, device_id, normalized_dispatch),
+        ).fetchall()
+        if existing:
+            if len(existing) != 1 or existing[0]["payload_digest"] != payload_digest:
+                conn.execute("ROLLBACK")
+                raise InvocationConflictError(
+                    "invocation identity was reused with a different payload"
+                )
+            conn.execute("COMMIT")
+            return str(existing[0]["invocation_id"])
         conn.execute(
             """INSERT INTO invocations
                (invocation_id, device_id, payload_json, server_sig, state,
                 created_at, created_epoch, deadline_ms,
-                owner_user_id, origin_actor, origin_channel)
-               VALUES (?,?,?,?, 'queued', ?, ?, ?, ?, ?, ?)""",
-            (invocation_id, device_id,
+                dispatch_key, payload_digest, owner_user_id,
+                origin_actor, origin_channel)
+               VALUES (?,?,?,?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (chosen_id, device_id,
              json.dumps(payload, ensure_ascii=False), sig,
-             _now_iso(), time.time(), int(deadline_ms), dev.owner_user_id,
-             origin_actor or "", origin_channel or ""),
+             _now_iso(), time.time(), int(deadline_ms), normalized_dispatch,
+             payload_digest, dev.owner_user_id, origin_actor or "",
+             origin_channel or ""),
         )
+        conn.execute("COMMIT")
+    except Exception:
+        if conn.in_transaction:
+            conn.execute("ROLLBACK")
+        raise
     finally:
         conn.close()
     log.info("invocation enqueued %s executor=%s device=%s",
-             invocation_id, executor, device_id[:12])
-    return invocation_id
+             chosen_id, executor, device_id[:12])
+    return chosen_id
 
 
 def purge_invocations(older_than_days: int = 30, *,

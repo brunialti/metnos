@@ -5,6 +5,7 @@ After=network-online.target metnos-http.service
 After=metnos-side-display.service metnos-playwright.service
 After=metnos-telegram-daemon.service
 After=metnos-llm.service metnos-searxng.service metnos-photon.service
+After=metnos-durable-worker.service
 After=metnos-i18n-translator.timer
 Before=metnos.target
 PartOf=metnos.target

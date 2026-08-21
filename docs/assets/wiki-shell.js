@@ -14,6 +14,7 @@
     lifecycle: { it: "/it/architecture/lifecycle.html", en: "/en/architecture/lifecycle.html" },
     policy: { it: "/it/architecture/policy.html", en: "/en/architecture/policy.html" },
     approval_ux: { it: "/it/architecture/approval_ux.html", en: "/en/architecture/approval_ux.html" },
+    multilingual_by_definition: { it: "/it/architecture/multilingual_by_definition.html", en: "/en/architecture/multilingual_by_definition.html" },
     sandbox: { it: "/it/architecture/sandbox.html", en: "/en/architecture/sandbox.html" },
     architecture: { it: "/it/architecture/index.html", en: "/en/architecture/index.html" },
     agent_runtime: { it: "/it/architecture/agent_runtime.html", en: "/en/architecture/agent_runtime.html" },
@@ -66,7 +67,7 @@
           ["home", "Panoramica della documentazione"], ["webui", "Aprire e usare Metnos"], ["interface", "Mappa dell'interfaccia"], ["domains", "Cosa puoi chiedere"], ["quick_tour", "Giro rapido"],
         ]],
         ["Concetti fondamentali", "Le basi di autorità, esecuzione e sicurezza.", [
-          ["executor", "Executor: azioni e limiti"], ["lifecycle", "Ciclo di vita di una richiesta"], ["policy", "Policy e autorità"], ["approval_ux", "Conferme e controlli"], ["sandbox", "Sandbox"],
+          ["executor", "Executor: azioni e limiti"], ["lifecycle", "Ciclo di vita di una richiesta"], ["policy", "Policy e autorità"], ["approval_ux", "Conferme e controlli"], ["multilingual_by_definition", "Multilingue per definizione"], ["sandbox", "Sandbox"],
         ]],
         ["Architettura di esecuzione", "Come i componenti collaborano, anche tra dispositivi.", [
           ["architecture", "Mappa dell'architettura"], ["agent_runtime", "Runtime dell'agente"], ["executor_catalog", "Catalogo degli executor"], ["remote_executors", "Executor remoti"], ["pairing", "Associazione dei dispositivi"], ["channel", "Canali di conversazione"], ["http_api", "Chat web e API HTTP"], ["mail_accounts", "Account di posta"],
@@ -105,7 +106,7 @@
           ["home", "Documentation overview"], ["webui", "Opening Metnos"], ["interface", "Interface map"], ["domains", "What you can ask"], ["quick_tour", "Quick tour"],
         ]],
         ["Core concepts", "The foundations of authority, execution, and safety.", [
-          ["executor", "Executors: admitted actions"], ["lifecycle", "The lifecycle of a request"], ["policy", "Policy and authority"], ["approval_ux", "Approval and review"], ["sandbox", "Sandbox"],
+          ["executor", "Executors: admitted actions"], ["lifecycle", "The lifecycle of a request"], ["policy", "Policy and authority"], ["approval_ux", "Approval and review"], ["multilingual_by_definition", "Multilingual by definition"], ["sandbox", "Sandbox"],
         ]],
         ["Execution architecture", "How the components cooperate, including across devices.", [
           ["architecture", "Architecture map"], ["agent_runtime", "Agent runtime"], ["executor_catalog", "Executor catalog"], ["remote_executors", "Remote executors"], ["pairing", "Device pairing"], ["channel", "Conversation channels"], ["http_api", "Web chat and HTTP API"], ["mail_accounts", "Mail accounts"],

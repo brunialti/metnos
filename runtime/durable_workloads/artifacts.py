@@ -8,10 +8,14 @@ streams; filesystem paths are never accepted as artifact input.
 from __future__ import annotations
 
 import hashlib
+import heapq
+import json
 import os
 import re
+import secrets
 import sqlite3
 import stat
+import threading
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -71,6 +75,10 @@ class ArtifactIntegrityError(ArtifactError):
 
 class ArtifactSecurityError(ArtifactError):
     """A path component is a symlink, the wrong type or otherwise unsafe."""
+
+
+class ArtifactBudgetError(ArtifactContractError):
+    """A new artifact would exceed or bypass frozen revision accounting."""
 
 
 class RecoveryStatus(str, Enum):
@@ -146,6 +154,164 @@ class OwnerDeletionReport:
     database_rows: int
     files: int
     directories: int
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactDownloadCapability:
+    """Short-lived, owner-bound authorization for one registered artifact."""
+
+    token: str
+    owner_user_id: str
+    artifact_id: str
+    expires_at: datetime
+
+
+class ArtifactDownloadRegistry:
+    """In-memory capability registry with explicit expiration and revocation.
+
+    Capabilities are deliberately not derivable from a filesystem path and are
+    invalid after a process restart.  The artifact repository remains the
+    second, persistent authorization check when bytes are opened.
+    """
+
+    def __init__(self, *, capacity: int = 8192) -> None:
+        if isinstance(capacity, bool) or not isinstance(capacity, int) or not 1 <= capacity <= 65536:
+            raise ValueError("capacity must be an integer in 1..65536")
+        self._entries: dict[str, ArtifactDownloadCapability] = {}
+        self._by_artifact: dict[tuple[str, str], str] = {}
+        self._expiry_heap: list[tuple[float, str]] = []
+        self._capacity = capacity
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _now(value: datetime | None) -> datetime:
+        current = value or datetime.now(timezone.utc)
+        if current.tzinfo is None or current.utcoffset() is None:
+            raise ValueError("capability time must be timezone-aware")
+        return current.astimezone(timezone.utc)
+
+    def issue(
+        self,
+        owner_user_id: str,
+        artifact_id: str,
+        *,
+        lifetime: timedelta = timedelta(minutes=5),
+        now: datetime | None = None,
+    ) -> ArtifactDownloadCapability:
+        owner = _require_owner(owner_user_id)
+        artifact = _require_id(artifact_id)
+        if not isinstance(lifetime, timedelta) or not timedelta(seconds=1) <= lifetime <= timedelta(minutes=15):
+            raise ArtifactContractError("artifact_download_lifetime_invalid")
+        current = self._now(now)
+        with self._lock:
+            self._purge_expired(current)
+            artifact_key = (owner, artifact)
+            existing_token = self._by_artifact.get(artifact_key)
+            existing = (
+                self._entries.get(existing_token)
+                if existing_token is not None else None
+            )
+            expires_at = current + lifetime
+            if existing is not None:
+                if existing.expires_at >= expires_at:
+                    return existing
+                capability = ArtifactDownloadCapability(
+                    token=existing.token,
+                    owner_user_id=owner,
+                    artifact_id=artifact,
+                    expires_at=expires_at,
+                )
+                self._entries[capability.token] = capability
+                heapq.heappush(
+                    self._expiry_heap,
+                    (capability.expires_at.timestamp(), capability.token),
+                )
+                self._compact_expiry_heap()
+                return capability
+            if len(self._entries) >= self._capacity:
+                raise ArtifactContractError("artifact_download_registry_full")
+            token = ""
+            for _attempt in range(8):
+                token = secrets.token_urlsafe(32)
+                if token not in self._entries:
+                    break
+            else:
+                raise ArtifactContractError("artifact_download_token_unavailable")
+            capability = ArtifactDownloadCapability(
+                token=token,
+                owner_user_id=owner,
+                artifact_id=artifact,
+                expires_at=expires_at,
+            )
+            self._entries[capability.token] = capability
+            self._by_artifact[artifact_key] = capability.token
+            heapq.heappush(
+                self._expiry_heap,
+                (capability.expires_at.timestamp(), capability.token),
+            )
+            self._compact_expiry_heap()
+            return capability
+
+    def resolve(
+        self,
+        token: str,
+        *,
+        owner_user_id: str,
+        now: datetime | None = None,
+    ) -> ArtifactDownloadCapability | None:
+        owner = _require_owner(owner_user_id)
+        if not isinstance(token, str) or not token:
+            return None
+        current = self._now(now)
+        with self._lock:
+            self._purge_expired(current)
+            capability = self._entries.get(token)
+            if capability is None or capability.owner_user_id != owner:
+                return None
+            return capability
+
+    def revoke(self, token: str) -> bool:
+        if not isinstance(token, str) or not token:
+            return False
+        with self._lock:
+            capability = self._entries.pop(token, None)
+            if capability is None:
+                return False
+            self._by_artifact.pop(
+                (capability.owner_user_id, capability.artifact_id), None,
+            )
+            self._compact_expiry_heap()
+            return True
+
+    def _purge_expired(self, current: datetime) -> None:
+        """Remove expired entries while the registry lock is held."""
+        current_epoch = current.timestamp()
+        while self._expiry_heap and self._expiry_heap[0][0] <= current_epoch:
+            expiry_epoch, token = heapq.heappop(self._expiry_heap)
+            capability = self._entries.get(token)
+            if (
+                capability is None
+                or capability.expires_at.timestamp() != expiry_epoch
+            ):
+                continue
+            self._entries.pop(token, None)
+            self._by_artifact.pop(
+                (capability.owner_user_id, capability.artifact_id), None,
+            )
+
+    def _compact_expiry_heap(self) -> None:
+        """Bound obsolete heap records while the registry lock is held."""
+        threshold = min(
+            self._capacity * 2,
+            max(64, len(self._entries) * 2),
+        )
+        if len(self._expiry_heap) <= threshold:
+            return
+        self._expiry_heap = [
+            (capability.expires_at.timestamp(), token)
+            for token, capability in self._entries.items()
+        ]
+        heapq.heapify(self._expiry_heap)
 
 
 def _require_owner(value: str) -> str:
@@ -291,7 +457,7 @@ class ArtifactRepository:
         try:
             migrate(connection)
             return cls(connection, owns_connection=True)
-        except Exception:
+        except BaseException:
             connection.close()
             raise
 
@@ -366,8 +532,15 @@ class ArtifactRepository:
         with self._transaction() as connection:
             revision_row = connection.execute(
                 """
-                SELECT 1 FROM revisions
-                WHERE owner_user_id=? AND id=? AND workload_id=?
+                SELECT revision.plan_json,
+                       usage.output_bytes, usage.artifact_count,
+                       usage.usage_unknown
+                FROM revisions revision
+                JOIN revision_usage usage
+                  ON usage.owner_user_id=revision.owner_user_id
+                 AND usage.revision_id=revision.id
+                WHERE revision.owner_user_id=? AND revision.id=?
+                  AND revision.workload_id=?
                 """,
                 (owner, revision, workload),
             ).fetchone()
@@ -416,9 +589,21 @@ class ArtifactRepository:
             if id_collision is not None:
                 raise ArtifactConflictError("artifact_identifier_conflict")
 
-            # The verification runs under the same writer lock used by GC.
-            # Therefore GC cannot pass its reference check and unlink this blob
-            # between verification and registration.
+            budgets = json.loads(str(revision_row["plan_json"]))["budgets"]
+            if bool(revision_row["usage_unknown"]):
+                raise ArtifactBudgetError("artifact_budget_accounting_incomplete")
+            next_artifact_count = int(revision_row["artifact_count"]) + 1
+            if next_artifact_count > int(budgets["max_artifacts"]):
+                raise ArtifactBudgetError("artifact_count_budget_exhausted")
+            next_output_bytes = int(revision_row["output_bytes"]) + blob.size_bytes
+            if next_output_bytes > int(budgets["max_bytes_written"]):
+                raise ArtifactBudgetError("artifact_byte_budget_exhausted")
+
+            # The expensive digest pass has already completed without a
+            # database lock.  This callback only checks that the verified open
+            # file is still the blob stored at its canonical name.  GC uses the
+            # same writer transaction, so it cannot unlink the name between
+            # this check and the artifact insert.
             verify_blob()
             now = utc_now()
             connection.execute(
@@ -448,6 +633,22 @@ class ArtifactRepository:
                     now,
                 ),
             )
+            usage_updated = connection.execute(
+                """
+                UPDATE revision_usage
+                SET output_bytes=?, artifact_count=?, updated_at=?
+                WHERE owner_user_id=? AND revision_id=?
+                  AND output_bytes=? AND artifact_count=?
+                """,
+                (
+                    next_output_bytes, next_artifact_count, now,
+                    owner, revision,
+                    revision_row["output_bytes"],
+                    revision_row["artifact_count"],
+                ),
+            )
+            if usage_updated.rowcount != 1:
+                raise ArtifactError("artifact_budget_accounting_conflict")
             row = connection.execute(
                 "SELECT * FROM artifacts WHERE owner_user_id=? AND id=?",
                 (owner, selected_id),
@@ -465,6 +666,29 @@ class ArtifactRepository:
         if row is None:
             raise ArtifactNotFoundError("artifact_not_found")
         return _artifact_from_row(row)
+
+    def list_workload_artifacts(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        limit: int = 100,
+    ) -> tuple[Artifact, ...]:
+        """List bounded registered metadata for one owner/workload pair."""
+
+        owner = _require_owner(owner_user_id)
+        workload = _require_id(workload_id)
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise ArtifactContractError("artifact_list_limit_invalid")
+        rows = self._connection.execute(
+            """
+            SELECT * FROM artifacts
+            WHERE owner_user_id=? AND workload_id=?
+            ORDER BY created_at DESC, id DESC LIMIT ?
+            """,
+            (owner, workload, limit),
+        ).fetchall()
+        return tuple(_artifact_from_row(row) for row in rows)
 
     def prepare_publication(
         self,
@@ -713,6 +937,77 @@ class ArtifactRepository:
             unlink()
             return True
 
+    def garbage_collection_cursor(self, owner_user_id: str) -> str:
+        """Return the durable lexicographic cursor for one owner's blob scan."""
+
+        owner = _require_owner(owner_user_id)
+        row = self._connection.execute(
+            """
+            SELECT cursor_name FROM artifact_gc_cursors
+            WHERE owner_user_id=?
+            """,
+            (owner,),
+        ).fetchone()
+        return "" if row is None else str(row["cursor_name"])
+
+    def advance_garbage_collection_cursor(
+        self,
+        owner_user_id: str,
+        *,
+        expected: str,
+        next_cursor: str,
+    ) -> bool:
+        """Persist scan progress with CAS; an empty cursor starts a new pass."""
+
+        owner = _require_owner(owner_user_id)
+        for value in (expected, next_cursor):
+            if (
+                not isinstance(value, str)
+                or len(value) > 255
+                or "\x00" in value
+            ):
+                raise ArtifactContractError("artifact_gc_cursor_invalid")
+        with self._transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT cursor_name FROM artifact_gc_cursors
+                WHERE owner_user_id=?
+                """,
+                (owner,),
+            ).fetchone()
+            current = "" if row is None else str(row["cursor_name"])
+            if current != expected:
+                return False
+            if not next_cursor:
+                if row is not None:
+                    connection.execute(
+                        "DELETE FROM artifact_gc_cursors WHERE owner_user_id=?",
+                        (owner,),
+                    )
+                return True
+            now = utc_now()
+            if row is None:
+                connection.execute(
+                    """
+                    INSERT INTO artifact_gc_cursors(
+                        owner_user_id, cursor_name, updated_at
+                    ) VALUES (?, ?, ?)
+                    """,
+                    (owner, next_cursor, now),
+                )
+            else:
+                updated = connection.execute(
+                    """
+                    UPDATE artifact_gc_cursors
+                    SET cursor_name=?, updated_at=?
+                    WHERE owner_user_id=? AND cursor_name=?
+                    """,
+                    (next_cursor, now, owner, expected),
+                )
+                if updated.rowcount != 1:
+                    return False
+            return True
+
     def delete_owner_rows(self, owner_user_id: str) -> int:
         owner = _require_owner(owner_user_id)
         with self._transaction() as connection:
@@ -722,6 +1017,10 @@ class ArtifactRepository:
             ).fetchone()[0])
             connection.execute(
                 "DELETE FROM artifacts WHERE owner_user_id=?",
+                (owner,),
+            )
+            connection.execute(
+                "DELETE FROM artifact_gc_cursors WHERE owner_user_id=?",
                 (owner,),
             )
             residue = int(connection.execute(
@@ -763,6 +1062,11 @@ class ArtifactStore:
         self._ensure_root()
         with self._directory("owners", create=True):
             pass
+
+    def close(self) -> None:
+        """Close the explicitly-owned metadata repository, if any."""
+
+        self._repository.close()
 
     def _ensure_root(self) -> None:
         try:
@@ -845,6 +1149,8 @@ class ArtifactStore:
                 return
             if not isinstance(chunk, (bytes, bytearray, memoryview)):
                 raise ArtifactContractError("artifact_stream_must_be_binary")
+            if len(chunk) > _CHUNK_BYTES:
+                raise ArtifactContractError("artifact_stream_chunk_too_large")
             yield bytes(chunk)
 
     @staticmethod
@@ -915,16 +1221,61 @@ class ArtifactStore:
             raise ArtifactSecurityError("artifact_file_permissions_unsafe")
         return descriptor
 
+    @staticmethod
+    def _file_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+        return (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
+        )
+
     @classmethod
-    def _verify_file(cls, directory_fd: int, name: str) -> tuple[str, int]:
-        descriptor = cls._open_regular(directory_fd, name)
+    def _verify_descriptor_state(
+        cls,
+        descriptor: int,
+        *,
+        max_bytes: int,
+    ) -> tuple[str, int, tuple[int, int, int, int, int, int]]:
+        before = os.fstat(descriptor)
+        if before.st_size > max_bytes:
+            raise ArtifactIntegrityError("artifact_file_too_large")
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        digest = hashlib.sha256()
+        size = 0
+        for chunk in cls._fd_chunks(descriptor):
+            size += len(chunk)
+            if size > max_bytes:
+                raise ArtifactIntegrityError("artifact_file_too_large")
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+        identity = cls._file_identity(after)
+        if cls._file_identity(before) != identity or size != int(after.st_size):
+            raise ArtifactIntegrityError("artifact_file_changed_during_verification")
+        return "sha256:" + digest.hexdigest(), size, identity
+
+    @classmethod
+    def _verify_descriptor(
+        cls,
+        descriptor: int,
+        *,
+        max_bytes: int,
+    ) -> tuple[str, int]:
+        digest, size, _identity = cls._verify_descriptor_state(
+            descriptor,
+            max_bytes=max_bytes,
+        )
+        return digest, size
+
+    def _verify_file(self, directory_fd: int, name: str) -> tuple[str, int]:
+        descriptor = self._open_regular(directory_fd, name)
         try:
-            digest = hashlib.sha256()
-            size = 0
-            for chunk in cls._fd_chunks(descriptor):
-                size += len(chunk)
-                digest.update(chunk)
-            return "sha256:" + digest.hexdigest(), size
+            return self._verify_descriptor(
+                descriptor,
+                max_bytes=self._max_blob_bytes,
+            )
         finally:
             os.close(descriptor)
 
@@ -1010,6 +1361,128 @@ class ArtifactStore:
         if observed != (expected_digest, blob.size_bytes):
             raise ArtifactIntegrityError("artifact_blob_integrity_failed")
 
+    @contextmanager
+    def _verified_registration(
+        self,
+        owner_user_id: str,
+        blob: Blob,
+    ) -> Iterator[Callable[[], None]]:
+        """Hash a blob without a DB lock and retain a cheap atomic guard."""
+
+        owner = _require_owner(owner_user_id)
+        expected_digest = _require_digest(blob.digest)
+        if blob.blob_ref != _blob_ref(expected_digest):
+            raise ArtifactContractError("artifact_blob_ref_invalid")
+        name = expected_digest[7:]
+        try:
+            with self._blob_directory(owner, create=False) as directory:
+                descriptor = self._open_regular(directory, name)
+                try:
+                    digest, size, identity = self._verify_descriptor_state(
+                        descriptor,
+                        max_bytes=self._max_blob_bytes,
+                    )
+                    if (digest, size) != (expected_digest, blob.size_bytes):
+                        raise ArtifactIntegrityError("artifact_blob_integrity_failed")
+
+                    def verify_current_identity() -> None:
+                        try:
+                            descriptor_identity = self._file_identity(
+                                os.fstat(descriptor)
+                            )
+                            path_identity = self._file_identity(os.stat(
+                                name,
+                                dir_fd=directory,
+                                follow_symlinks=False,
+                            ))
+                        except FileNotFoundError as exc:
+                            raise ArtifactIntegrityError(
+                                "artifact_blob_missing"
+                            ) from exc
+                        if descriptor_identity != identity or path_identity != identity:
+                            raise ArtifactIntegrityError(
+                                "artifact_blob_replaced_after_verification"
+                            )
+
+                    yield verify_current_identity
+                finally:
+                    os.close(descriptor)
+        except FileNotFoundError as exc:
+            raise ArtifactIntegrityError("artifact_blob_missing") from exc
+
+    def open_registered_download(
+        self,
+        owner_user_id: str,
+        artifact_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[Artifact, BinaryIO]:
+        """Open bytes only after registry, retention and integrity checks.
+
+        The caller receives an already-open descriptor rather than a path, so
+        a browser-controlled value can never reach filesystem resolution.
+        """
+
+        owner = _require_owner(owner_user_id)
+        artifact = self.get_downloadable_artifact(owner, artifact_id, now=now)
+        try:
+            with self._blob_directory(owner, create=False) as directory:
+                descriptor = self._open_regular(directory, artifact.digest[7:])
+        except FileNotFoundError as exc:
+            raise ArtifactIntegrityError("artifact_blob_missing") from exc
+        try:
+            observed = self._verify_descriptor(
+                descriptor,
+                max_bytes=self._max_blob_bytes,
+            )
+            if observed != (artifact.digest, artifact.size_bytes):
+                raise ArtifactIntegrityError("artifact_blob_integrity_failed")
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            return artifact, os.fdopen(descriptor, "rb", closefd=True)
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    def get_downloadable_artifact(
+        self,
+        owner_user_id: str,
+        artifact_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> Artifact:
+        """Resolve one registered artifact without exposing its blob path."""
+
+        owner = _require_owner(owner_user_id)
+        artifact = self._repository.get_artifact(owner, artifact_id)
+        moment = now or datetime.now(timezone.utc)
+        if not isinstance(moment, datetime) or moment.tzinfo is None or moment.utcoffset() is None:
+            raise ArtifactContractError("artifact_download_time_invalid")
+        current = _require_instant(
+            moment.astimezone(timezone.utc).isoformat(
+                timespec="microseconds"
+            ).replace("+00:00", "Z")
+        )
+        assert current is not None
+        if artifact.state not in {ArtifactState.COMMITTED, ArtifactState.PUBLISHED}:
+            raise ArtifactNotFoundError("artifact_download_unavailable")
+        if artifact.retention_until is not None:
+            expires = _require_instant(artifact.retention_until)
+            assert expires is not None
+            if expires <= current:
+                raise ArtifactNotFoundError("artifact_download_expired")
+        return artifact
+
+    def list_workload_artifacts(
+        self,
+        owner_user_id: str,
+        workload_id: str,
+        *,
+        limit: int = 100,
+    ) -> tuple[Artifact, ...]:
+        return self._repository.list_workload_artifacts(
+            owner_user_id, workload_id, limit=limit,
+        )
+
     def commit(
         self,
         owner_user_id: str,
@@ -1052,20 +1525,22 @@ class ArtifactStore:
         if not isinstance(schema_valid, bool) or not isinstance(postconditions_valid, bool):
             raise ArtifactContractError("artifact_validation_flags_invalid")
         blob = self.stage(owner, payload)
-        return self._repository.register(
-            owner,
-            workload_id,
-            revision_id,
-            logical_name,
-            mime_type,
-            schema_version,
-            blob,
-            artifact_id=artifact_id,
-            retention_until=retention_until,
-            schema_valid=schema_valid,
-            postconditions_valid=postconditions_valid,
-            verify_blob=lambda: self.verify_blob(owner, blob),
-        )
+        with self._verified_registration(owner, blob) as verify_current_identity:
+            self._checkpoint("blob_after_registration_verification")
+            return self._repository.register(
+                owner,
+                workload_id,
+                revision_id,
+                logical_name,
+                mime_type,
+                schema_version,
+                blob,
+                artifact_id=artifact_id,
+                retention_until=retention_until,
+                schema_valid=schema_valid,
+                postconditions_valid=postconditions_valid,
+                verify_blob=verify_current_identity,
+            )
 
     @staticmethod
     def _redacted_target(owner_user_id: str, target_key: str) -> str:
@@ -1321,11 +1796,38 @@ class ArtifactStore:
         try:
             context = self._blob_directory(owner, create=False)
             with context as directory:
-                names = sorted(os.listdir(directory))
+                cursor = self._repository.garbage_collection_cursor(owner)
+
+                def names_after(value: str) -> list[str]:
+                    # nsmallest keeps memory proportional to the requested
+                    # batch, unlike sorting the whole (potentially very large)
+                    # blob directory.
+                    with os.scandir(directory) as entries:
+                        return heapq.nsmallest(
+                            batch_limit + 1,
+                            (
+                                entry.name for entry in entries
+                                if entry.name > value
+                            ),
+                        )
+
+                names = names_after(cursor)
+                if not names and cursor:
+                    # The cursor can outlive the last file of a pass.  Wrap in
+                    # the same call so an externally removed tail cannot cost
+                    # an otherwise empty maintenance cycle.
+                    names = names_after("")
                 selected = names[:batch_limit]
                 for name in selected:
                     scanned += 1
-                    metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                    try:
+                        metadata = os.stat(
+                            name, dir_fd=directory, follow_symlinks=False,
+                        )
+                    except FileNotFoundError:
+                        # Another collector may already have removed the same
+                        # orphan.  Advancing past its stable name is safe.
+                        continue
                     if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
                         unsafe += 1
                         if len(events) < log_limit:
@@ -1368,13 +1870,21 @@ class ArtifactStore:
                             events.append("unknown_entry_skipped")
                 if deleted:
                     self._fsync(directory)
+                self._repository.advance_garbage_collection_cursor(
+                    owner,
+                    expected=cursor,
+                    next_cursor=(
+                        selected[-1]
+                        if len(names) > batch_limit and selected else ""
+                    ),
+                )
                 return GarbageCollectionReport(
                     scanned=scanned,
                     deleted=deleted,
                     referenced=referenced,
                     recent=recent,
                     unsafe=unsafe,
-                    more=len(names) > len(selected),
+                    more=len(names) > batch_limit,
                     events=tuple(events),
                 )
         except FileNotFoundError:
@@ -1403,18 +1913,32 @@ class ArtifactStore:
 
     @staticmethod
     def _delete_files(directory: int, allowed: Callable[[str], bool]) -> int:
-        names = sorted(os.listdir(directory))
-        for name in names:
-            metadata = os.stat(name, dir_fd=directory, follow_symlinks=False)
-            if (
-                not allowed(name)
-                or not stat.S_ISREG(metadata.st_mode)
-                or stat.S_ISLNK(metadata.st_mode)
-            ):
-                raise ArtifactSecurityError("artifact_delete_entry_unsafe")
-        for name in names:
-            os.unlink(name, dir_fd=directory)
-        return len(names)
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                metadata = os.stat(
+                    entry.name, dir_fd=directory, follow_symlinks=False,
+                )
+                if (
+                    not allowed(entry.name)
+                    or not stat.S_ISREG(metadata.st_mode)
+                    or stat.S_ISLNK(metadata.st_mode)
+                ):
+                    raise ArtifactSecurityError("artifact_delete_entry_unsafe")
+        deleted = 0
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                metadata = os.stat(
+                    entry.name, dir_fd=directory, follow_symlinks=False,
+                )
+                if (
+                    not allowed(entry.name)
+                    or not stat.S_ISREG(metadata.st_mode)
+                    or stat.S_ISLNK(metadata.st_mode)
+                ):
+                    raise ArtifactSecurityError("artifact_delete_entry_unsafe")
+                os.unlink(entry.name, dir_fd=directory)
+                deleted += 1
+        return deleted
 
     def _delete_owner_files(self, owner_user_id: str) -> tuple[int, int]:
         files = directories = 0
@@ -1425,29 +1949,49 @@ class ArtifactStore:
             except FileNotFoundError:
                 return 0, 0
             try:
-                top_names = sorted(os.listdir(owner))
-                if any(name not in {"blobs", "publications"} for name in top_names):
-                    raise ArtifactSecurityError("artifact_delete_owner_tree_unsafe")
+                top_names: set[str] = set()
+                with os.scandir(owner) as entries:
+                    for entry in entries:
+                        if entry.name not in {"blobs", "publications"}:
+                            raise ArtifactSecurityError(
+                                "artifact_delete_owner_tree_unsafe"
+                            )
+                        top_names.add(entry.name)
 
                 if "publications" in top_names:
                     publications = self._open_child_directory(owner, "publications")
                     try:
-                        targets = sorted(os.listdir(publications))
-                        if any(not _HEX_RE.fullmatch(name) for name in targets):
-                            raise ArtifactSecurityError("artifact_delete_target_unsafe")
-                        for target_name in targets:
-                            target = self._open_child_directory(publications, target_name)
-                            try:
-                                files += self._delete_files(
-                                    target,
-                                    lambda name: name == "artifact"
-                                    or bool(_PUBLICATION_TEMP_RE.fullmatch(name)),
+                        with os.scandir(publications) as entries:
+                            for entry in entries:
+                                if not _HEX_RE.fullmatch(entry.name):
+                                    raise ArtifactSecurityError(
+                                        "artifact_delete_target_unsafe"
+                                    )
+                        with os.scandir(publications) as targets:
+                            for target_entry in targets:
+                                target_name = target_entry.name
+                                if not _HEX_RE.fullmatch(target_name):
+                                    raise ArtifactSecurityError(
+                                        "artifact_delete_target_unsafe"
+                                    )
+                                target = self._open_child_directory(
+                                    publications, target_name,
                                 )
-                                self._fsync(target)
-                                self._remove_open_directory(publications, target_name, target)
-                                directories += 1
-                            finally:
-                                os.close(target)
+                                try:
+                                    files += self._delete_files(
+                                        target,
+                                        lambda name: name == "artifact"
+                                        or bool(
+                                            _PUBLICATION_TEMP_RE.fullmatch(name)
+                                        ),
+                                    )
+                                    self._fsync(target)
+                                    self._remove_open_directory(
+                                        publications, target_name, target,
+                                    )
+                                    directories += 1
+                                finally:
+                                    os.close(target)
                         self._fsync(publications)
                         self._remove_open_directory(owner, "publications", publications)
                         directories += 1
@@ -1457,7 +2001,13 @@ class ArtifactStore:
                 if "blobs" in top_names:
                     blobs = self._open_child_directory(owner, "blobs")
                     try:
-                        if sorted(os.listdir(blobs)) != ["sha256"]:
+                        blob_children: list[str] = []
+                        with os.scandir(blobs) as entries:
+                            for entry in entries:
+                                blob_children.append(entry.name)
+                                if len(blob_children) > 1:
+                                    break
+                        if blob_children != ["sha256"]:
                             raise ArtifactSecurityError("artifact_delete_blob_tree_unsafe")
                         sha256 = self._open_child_directory(blobs, "sha256")
                         try:
@@ -1494,8 +2044,11 @@ class ArtifactStore:
 
 __all__ = [
     "Artifact",
+    "ArtifactBudgetError",
     "ArtifactConflictError",
     "ArtifactContractError",
+    "ArtifactDownloadCapability",
+    "ArtifactDownloadRegistry",
     "ArtifactError",
     "ArtifactIntegrityError",
     "ArtifactNotFoundError",

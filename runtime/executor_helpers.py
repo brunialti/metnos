@@ -235,6 +235,7 @@ def run_stdio(invoke, *, default=None, error_extra=None,
             main()
     """
     import json
+    import os
     import sys
     from messages import get as _msg
 
@@ -244,16 +245,32 @@ def run_stdio(invoke, *, default=None, error_extra=None,
             out.update(error_extra)
         return out
 
+    def _invoke(args):
+        if os.environ.get("METNOS_CAPTURE_MODEL_USAGE") != "1":
+            return invoke(args)
+        from llm_telemetry import (
+            BoundedTransportUsageSink,
+            TRANSPORT_USAGE_KEY,
+            transport_usage_context,
+        )
+        sink = BoundedTransportUsageSink()
+        with transport_usage_context(sink):
+            result = invoke(args)
+        if isinstance(result, dict):
+            result = dict(result)
+            result[TRANSPORT_USAGE_KEY] = sink.export()
+        return result
+
     raw = sys.stdin.read()
     if not raw.strip():
-        result = invoke({}) if allow_empty else _err("ERR_EMPTY_INPUT")
+        result = _invoke({}) if allow_empty else _err("ERR_EMPTY_INPUT")
     else:
         try:
             args = json.loads(raw)
         except json.JSONDecodeError:
             result = _err("ERR_JSON_INVALID")
         else:
-            result = invoke(args)
+            result = _invoke(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=default))
 
 

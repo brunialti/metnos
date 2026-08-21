@@ -1,24 +1,48 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:8382e1cf69438332d4e7b25b913c45b1ded70a3911f0b40fe923250d4f9a488b",
+      "version_hash": "sha256:1de471a37554d30294f7f8a52456efdfc8d277df2d1747aa464933dedce6f3f8",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:eeb778db7f2cdb42490181933199dcac67678e4e7bbdac1e458922bdfd671202",
+      "version_hash": "sha256:40c5234a23eb8368f49d9649638fa29807dd2dd018ca577e311adf34d7050446",
       "source_lang": null,
       "source_hash": null
     }
   },
   "args.programs.description": {
     "it": {
-      "version_hash": "sha256:b3b90d79311928f2c90dde52d3deabf9de5ebd6fa01d9a05758f8e4d96b5f984",
+      "version_hash": "sha256:142773b7043691541e2493ac13fb479f95bbe06c0a0d6d4577e6543b74b0a0fe",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:e0f62a6f20b46e9972f7e220de5af8e1b263c7bfb16d27ee2b54824bf82cfd12",
+      "version_hash": "sha256:4669108f729822e2190663271fb79aa8ff6b6d4b54621c25274f3050f574562c",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.lifetime.description": {
+    "it": {
+      "version_hash": "sha256:846d8d29d980878eae0d11debe9813730d1106950fb060a596cb1b744627fb35",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:ce90c72e9c412b53188aabc4509efa95f24b7463ff76b0bcb0f71d872bbf4fc2",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.actor_consent_token.description": {
+    "it": {
+      "version_hash": "sha256:4edc68c036dcf0b4f9c2b0e271cee09fc019bbf42054a6fc0a723e924e0c23cf",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:c03dad7790414bfe08063fd3ce4baaf0f8c56e7216bc4791e1baa7b5d6ad31b8",
       "source_lang": null,
       "source_hash": null
     }

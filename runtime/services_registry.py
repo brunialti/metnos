@@ -51,7 +51,7 @@ class ServiceSpec:
     label_en: str = ""
     description_en: str = ""
     group_en: str = ""
-    health_policy: str = "endpoint"  # endpoint | process | systemd
+    health_policy: str = "endpoint"  # endpoint | process | systemd | application
 
 
 def _target(unit: str, scope: str = "user") -> ServiceTarget:
@@ -137,6 +137,19 @@ SERVICES: tuple[ServiceSpec, ...] = (
             "wise role."
         ),
         group_en="Core",
+    ),
+    ServiceSpec(
+        "durable_workloads", "LRE (Long Run Engine)",
+        "Motore supervisionato per le attività LRE ammesse. Rimane inattivo finché la funzione non è abilitata.",
+        "Nucleo", (_target("metnos-durable-worker.service"),),
+        required=True, integrated=True,
+        label_en="LRE (Long Run Engine)",
+        description_en=(
+            "Supervised engine for admitted LRE tasks. It remains "
+            "inactive until the feature is enabled."
+        ),
+        group_en="Core",
+        health_policy="application",
     ),
 )
 
@@ -513,6 +526,15 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
         healthy, health_detail = _probe_process(state)
     elif spec.health_policy == "systemd":
         healthy, health_detail = None, ""
+    elif spec.health_policy == "application":
+        try:
+            from durable_workloads.service import health_snapshot
+
+            application_health = health_snapshot()
+            healthy = application_health.get("state") == "ready"
+            health_detail = str(application_health.get("reason_code") or "")[:64]
+        except Exception:
+            healthy, health_detail = False, "health_unavailable"
     else:
         healthy, health_detail = _probe(url, deadline_at=deadline_at)
     installed = state.get("load_state") not in {"not-found", "error"}
@@ -549,7 +571,7 @@ def _failed_snapshot(spec: ServiceSpec, reason: str) -> dict:
         "active_state": "unknown",
         "sub_state": "unknown",
         "installed": False,
-        "healthy": False if spec.health_path else None,
+        "healthy": False if spec.health_path or spec.health_policy == "application" else None,
         "health_detail": reason,
         "observation_error": reason,
         "health_url": health_url(spec),

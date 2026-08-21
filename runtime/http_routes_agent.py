@@ -249,9 +249,22 @@ async def chat_root(request: web.Request) -> web.Response:
 async def health(request: web.Request) -> web.Response:
     """GET /agent/health"""
     started = app_get(request.app, STARTED_AT, time.time())
+    try:
+        from durable_workloads.service import health_snapshot as _durable_health
+
+        durable_health = _durable_health()
+    except Exception:
+        durable_health = {
+            "schema_version": "metnos.durable-worker-health/1",
+            "state": "degraded",
+            "enabled": False,
+            "worker_available": False,
+            "reason_code": "health_unavailable",
+            "heartbeat_at": "",
+        }
     return web.json_response(
         {"ok": True, "version": VERSION, "uptime_s": round(time.time() - started, 1),
-         **_metnos_version_info()}
+         "durable_workloads": durable_health, **_metnos_version_info()}
     )
 
 

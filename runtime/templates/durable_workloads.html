@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}{{ msg("UI_DURABLE_TITLE") }} · Metnos{% endblock %}
+{% block body %}
+<h1>{{ msg("UI_DURABLE_TITLE") }}</h1>
+<p class="page-sub">{{ msg("UI_DURABLE_SUBTITLE") }}</p>
+
+<div class="dw-layout" id="durableWorkloads" data-api="/agent/workloads">
+  <section class="dw-panel" aria-labelledby="dw-list-title">
+    <div class="dw-panel-head"><h2 id="dw-list-title">{{ msg("UI_DURABLE_TITLE") }}</h2></div>
+    <div id="dwList" class="empty">{{ msg("UI_DURABLE_LOADING") }}</div>
+    <div class="dw-pager" id="dwListPager"></div>
+  </section>
+
+  <section class="dw-panel" aria-labelledby="dw-detail-title">
+    <div class="dw-panel-head">
+      <h2 id="dw-detail-title">{{ msg("UI_DURABLE_TITLE") }}</h2>
+      <span class="dw-live" id="dwLive" aria-live="polite"></span>
+    </div>
+    <div class="dw-detail" id="dwDetail" hidden></div>
+    <div class="empty" id="dwPlaceholder">{{ msg("UI_DURABLE_EMPTY") }}</div>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const copy = {{ copy|tojson }};
+  const root = document.getElementById("durableWorkloads");
+  const list = document.getElementById("dwList");
+  const listPager = document.getElementById("dwListPager");
+  const detail = document.getElementById("dwDetail");
+  const placeholder = document.getElementById("dwPlaceholder");
+  const live = document.getElementById("dwLive");
+  const api = root.dataset.api;
+  let listCursor = null;
+  let selected = null;
+  let stream = null;
+  let unitsCursor = null;
+  let unitsState = null;
+  let lastEventId = 0;
+  let refreshTimer = null;
+
+  const request = async (url, options = {}) => {
+    const headers = new Headers(options.headers || {});
+    headers.set("Accept", "application/json");
+    if (options.body) headers.set("Content-Type", "application/json");
+    const response = await fetch(url, {...options, headers, credentials: "same-origin"});
+    if (!response.ok) throw new Error("request_failed");
+    return response.json();
+  };
+  const node = (name, text = "", className = "") => {
+    const value = document.createElement(name);
+    if (className) value.className = className;
+    value.textContent = text;
+    return value;
+  };
+  const translated = (values, key) => values[key] || copy.unknown;
+  const stateName = (state) => translated(copy.states, state);
+  const errorName = (code) => copy.errorLabels[code] || copy.errorUnknown;
+  const dateText = (value) => value ? new Date(value).toLocaleString() : "—";
+  const countersText = (counters) => `${counters.committed + counters.failed + counters.skipped} / ${counters.total}`;
+  const button = (text, handler, {disabled = false, danger = false} = {}) => {
+    const value = node("button", text, `btn${danger ? " bad" : ""}`);
+    value.type = "button";
+    value.disabled = disabled;
+    value.addEventListener("click", handler);
+    return value;
+  };
+  const clear = (element) => element.replaceChildren();
+
+  async function loadList(reset = false) {
+    if (reset) listCursor = null;
+    try {
+      const query = listCursor ? `?cursor=${encodeURIComponent(listCursor)}` : "";
+      const payload = await request(`${api}${query}`);
+      if (reset) clear(list);
+      const items = payload.items || [];
+      if (!items.length && !list.childElementCount) list.textContent = copy.empty;
+      for (const workload of items) {
+        if (list.classList.contains("empty")) { list.classList.remove("empty"); clear(list); }
+        const row = node("div", "", "dw-list-item");
+        const body = node("div");
+        body.append(node("div", workload.workload_id, "dw-work-id"));
+        const meta = node("div", "", "dw-meta");
+        meta.append(node("span", `${copy.state}: ${stateName(workload.state)}`));
+        meta.append(node("span", `${copy.progress}: ${countersText(workload.counters)}`));
+        meta.append(node("span", `${copy.updated}: ${dateText(workload.updated_at)}`));
+        body.append(meta);
+        row.append(body, button(copy.open, () => loadDetail(workload.workload_id)));
+        list.append(row);
+      }
+      listCursor = payload.next_cursor || null;
+      clear(listPager);
+      if (listCursor) listPager.append(button(copy.loadMore, () => loadList(false)));
+    } catch (_) {
+      list.textContent = copy.unavailable;
+    }
+  }
+
+  function appendFact(container, label, value) {
+    const fact = node("div", "", "dw-fact");
+    fact.append(node("span", label, "dw-fact-label"), node("span", value, "dw-fact-value"));
+    container.append(fact);
+  }
+
+  function eventName(type) {
+    const map = {
+      draft_created: "draft", revision_admitted: "admitted", queued: "queued", running: "running",
+      pause_requested: "pause_requested", paused: "paused", resumed: "queued",
+      cancel_requested: "cancel_requested", cancelled: "cancelled", needs_attention: "needs_attention",
+      attention_resolved: "queued", failed: "failed", completed_with_errors: "completed_with_errors",
+      completed: "completed"
+    };
+    return stateName(map[type] || type);
+  }
+
+  function addEvent(event) {
+    lastEventId = Math.max(lastEventId, event.event_id || 0);
+    const timeline = document.getElementById("dwEvents");
+    if (!timeline || timeline.querySelector(`[data-event-id="${event.event_id}"]`)) return;
+    const item = node("li", `${eventName(event.event_type)} · ${dateText(event.created_at)}`);
+    item.dataset.eventId = String(event.event_id);
+    timeline.prepend(item);
+    while (timeline.children.length > 200) timeline.lastElementChild.remove();
+  }
+
+  async function loadEvents(workloadId) {
+    const timeline = document.getElementById("dwEvents");
+    if (!timeline) return;
+    try {
+      const payload = await request(`${api}/${encodeURIComponent(workloadId)}/events?limit=100&recent=1`);
+      for (const event of payload.items) addEvent(event);
+    } catch (_) { timeline.textContent = copy.unavailable; }
+  }
+
+  function scheduleModelRefresh(workloadId) {
+    window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => loadDetail(workloadId, false), 250);
+  }
+
+  function connectStream(workloadId) {
+    if (stream) stream.close();
+    const suffix = lastEventId ? `?after_event_id=${encodeURIComponent(lastEventId)}` : "";
+    stream = new EventSource(`${api}/${encodeURIComponent(workloadId)}/stream${suffix}`);
+    stream.addEventListener("workload", (message) => {
+      try { addEvent(JSON.parse(message.data).event); scheduleModelRefresh(workloadId); } catch (_) {}
+    });
+    stream.onopen = () => { live.textContent = copy.live; };
+    stream.onerror = () => { live.textContent = copy.reconnecting; };
+  }
+
+  async function runAction(command, destructive = false) {
+    if (!selected || (destructive && !window.confirm(copy.cancelConfirm))) return;
+    const url = command === "retry"
+      ? `${api}/${encodeURIComponent(selected.workload_id)}/attention/retry`
+      : `${api}/${encodeURIComponent(selected.workload_id)}/${command}`;
+    try {
+      await request(url, {
+        method: "POST",
+        body: JSON.stringify({expected_version: selected.version, idempotency_key: crypto.randomUUID()})
+      });
+      await loadDetail(selected.workload_id, true);
+      await loadList(true);
+    } catch (_) { live.textContent = copy.actionFailed; }
+  }
+
+  async function loadArtifacts(workloadId, target) {
+    const section = node("section", "", "dw-subpanel");
+    section.append(node("h3", copy.artifacts));
+    const entries = node("ul", "", "dw-artifacts");
+    section.append(entries);
+    target.append(section);
+    try {
+      const payload = await request(`${api}/${encodeURIComponent(workloadId)}/artifacts`);
+      if (!payload.items.length) entries.append(node("li", copy.empty, "muted"));
+      for (const artifact of payload.items) {
+        const row = node("li", "", "dw-artifact-row");
+        row.append(node("span", `${artifact.logical_name} · ${artifact.size_bytes} B · ${artifact.digest.slice(0, 15)} · ${translated(copy.artifactStates, artifact.state)}`));
+        row.append(button(copy.download, async () => {
+          try {
+            const capability = await request(`${api}/${encodeURIComponent(workloadId)}/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`, {method: "POST"});
+            window.location.assign(capability.download_url);
+          } catch (_) { live.textContent = copy.unavailable; }
+        }, {disabled: !["committed", "published"].includes(artifact.state)}));
+        entries.append(row);
+      }
+    } catch (_) { entries.append(node("li", copy.unavailable, "muted")); }
+  }
+
+  async function loadUnits(workloadId, state = null, append = false) {
+    const entries = document.getElementById("dwUnits");
+    if (!entries) return;
+    try {
+      if (!append) { unitsCursor = null; unitsState = state; }
+      const params = new URLSearchParams();
+      if (unitsCursor) params.set("cursor", unitsCursor);
+      if (unitsState) params.set("state", unitsState);
+      const queryText = params.toString();
+      const query = queryText ? `?${queryText}` : "";
+      const payload = await request(`${api}/${encodeURIComponent(workloadId)}/units${query}`);
+      if (!append) clear(entries);
+      for (const unit of payload.items) {
+        entries.append(node("li", `${unit.stage_key} · ${stateName(unit.state)} · ${unit.attempt_count}`));
+      }
+      unitsCursor = payload.next_cursor || null;
+      const pager = document.getElementById("dwUnitsPager");
+      clear(pager);
+      if (unitsCursor) pager.append(button(copy.loadMore, () => loadUnits(workloadId, unitsState, true)));
+    } catch (_) { entries.textContent = copy.unavailable; }
+  }
+
+  async function loadDetail(workloadId, restartStream = true) {
+    if (!selected || selected.workload_id !== workloadId) {
+      if (stream) stream.close();
+      stream = null;
+      lastEventId = 0;
+    }
+    try {
+      const payload = await request(`${api}/${encodeURIComponent(workloadId)}`);
+      selected = payload.workload;
+      unitsCursor = null;
+      clear(detail);
+      placeholder.hidden = true;
+      detail.hidden = false;
+      detail.append(node("div", selected.workload_id, "dw-work-id"));
+      const facts = node("div", "", "dw-facts");
+      appendFact(facts, copy.state, stateName(selected.state));
+      appendFact(facts, copy.priority, translated(copy.priorities, selected.priority));
+      appendFact(facts, copy.progress, countersText(selected.counters));
+      appendFact(facts, copy.created, dateText(selected.created_at));
+      detail.append(facts);
+      if (payload.revision) {
+        const revision = node("section", "", "dw-subpanel");
+        revision.append(node("h3", copy.revision));
+        const revisionFacts = node("div", "", "dw-facts");
+        appendFact(revisionFacts, copy.planDigest, payload.revision.plan_digest);
+        appendFact(revisionFacts, copy.inventoryDigest, payload.revision.inventory_digest || "—");
+        revision.append(revisionFacts); detail.append(revision);
+        renderExecutionSummary(payload.revision.execution, detail);
+      }
+      const actions = node("div", "", "dw-actions");
+      actions.append(button(copy.pause, () => runAction("pause"), {disabled: !["queued", "running"].includes(selected.state)}));
+      actions.append(button(copy.resume, () => runAction("resume"), {disabled: selected.state !== "paused"}));
+      actions.append(button(copy.retry, () => runAction("retry"), {disabled: selected.state !== "needs_attention"}));
+      actions.append(button(copy.cancel, () => runAction("cancel", true), {disabled: ["cancelled", "completed", "completed_with_errors", "failed"].includes(selected.state), danger: true}));
+      detail.append(actions);
+      const events = node("section", "", "dw-subpanel"); events.append(node("h3", copy.events));
+      events.append(node("ul", "", "dw-events")); events.lastChild.id = "dwEvents"; detail.append(events);
+      const units = node("section", "", "dw-subpanel"); units.append(node("h3", copy.units));
+      const unitControls = node("div", "", "dw-actions");
+      unitControls.append(button(copy.loadAttention, () => loadUnits(workloadId, "needs_attention")));
+      unitControls.append(button(copy.loadFailed, () => loadUnits(workloadId, "failed_permanent")));
+      unitControls.append(button(copy.loadUnits, () => loadUnits(workloadId)));
+      units.append(unitControls);
+      const unitList = node("ul", "", "dw-units"); unitList.id = "dwUnits"; units.append(unitList);
+      const unitPager = node("div", "", "dw-pager"); unitPager.id = "dwUnitsPager"; units.append(unitPager); detail.append(units);
+      await loadEvents(workloadId);
+      await loadArtifacts(workloadId, detail);
+      if (restartStream) connectStream(workloadId);
+    } catch (_) { live.textContent = copy.unavailable; }
+  }
+
+  function renderExecutionSummary(summary, target) {
+    if (!summary) return;
+    const plan = node("section", "", "dw-subpanel");
+    plan.append(node("h3", copy.plan));
+    const budget = node("div", "", "dw-facts");
+    for (const [key, value] of Object.entries(summary.budget || {})) {
+      appendFact(budget, copy.budgetLabels[key] || copy.unknown, String(value));
+    }
+    if (budget.childElementCount) { plan.append(node("h4", copy.budget), budget); }
+    const stages = node("div", "", "dw-summary-list");
+    for (const stage of summary.stages || []) {
+      const row = node("div", "", "dw-summary-row");
+      row.append(node("strong", `${stage.stage_key} · ${translated(copy.stageTypes, stage.stage_type)}`));
+      row.append(node("span", `${copy.runner}: ${stage.runner_name} (${translated(copy.runnerKinds, stage.runner_kind)})`));
+      row.append(node("span", `${copy.progress}: ${countersText(stage.counters)}`));
+      row.append(node("span", `${copy.timeout}: ${stage.timeout_s}s`));
+      if (stage.required) row.append(node("span", copy.required));
+      if (stage.materialization_attention) row.append(node("span", copy.materializationAttention));
+      const resources = Object.entries(stage.resources || {}).map(([key, value]) => `${translated(copy.resourceLabels, key)} × ${value}`);
+      if (resources.length) row.append(node("span", `${copy.resources}: ${resources.join(", ")}`));
+      stages.append(row);
+    }
+    if (stages.childElementCount) { plan.append(node("h4", copy.stages), stages); }
+    target.append(plan);
+
+    if ((summary.error_categories || []).length) {
+      const errors = node("section", "", "dw-subpanel"); errors.append(node("h3", copy.errors));
+      const entries = node("ul", "", "dw-events");
+      for (const error of summary.error_categories) entries.append(node("li", `${errorName(error.error_code)} · ${error.count}`));
+      errors.append(entries); target.append(errors);
+    }
+    if ((summary.warnings || []).length) {
+      const warnings = node("section", "", "dw-subpanel"); warnings.append(node("h3", copy.warnings));
+      const entries = node("ul", "", "dw-events");
+      for (const warning of summary.warnings) entries.append(node("li", copy.warningsByCode[warning] || copy.unknown));
+      warnings.append(entries); target.append(warnings);
+    }
+  }
+
+  loadList(true);
+})();
+</script>
+{% endblock %}

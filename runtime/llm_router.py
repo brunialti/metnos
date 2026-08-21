@@ -225,19 +225,21 @@ class _TierBoundProvider:
         return resolved
 
     def chat(self, system, user, **kwargs):
-        from llm_telemetry import tier_context
+        from llm_telemetry import mark_call_started, tier_context
 
+        call_kwargs = self._call_kwargs(kwargs)
         with tier_context(self._tier):
-            return self._provider.chat(
-                system, user, **self._call_kwargs(kwargs))
+            mark_call_started()
+            return self._provider.chat(system, user, **call_kwargs)
 
     def chat_with_tools(self, system, user, tools, history=None, **kwargs):
-        from llm_telemetry import tier_context
+        from llm_telemetry import mark_call_started, tier_context
 
+        call_kwargs = self._call_kwargs(kwargs)
         with tier_context(self._tier):
+            mark_call_started()
             return self._provider.chat_with_tools(
-                system, user, tools, history=history,
-                **self._call_kwargs(kwargs))
+                system, user, tools, history=history, **call_kwargs)
 
 
 def provider_from_tier_spec(

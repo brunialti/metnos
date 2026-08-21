@@ -137,6 +137,31 @@ figure figcaption, .fig-note {
   font-size: 9.5pt; color: var(--muted); font-style: italic;
   text-align: center; margin-top: 6px;
 }
+.documentation-infographic {
+  margin: 24px 0 18px;
+}
+.documentation-infographic img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+}
+.infographic-key {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 24px;
+  margin: 18px 0 28px;
+  padding-left: 22px;
+}
+.infographic-key li {
+  padding-left: 3px;
+}
+.infographic-key strong {
+  display: block;
+  color: var(--navy);
+  font-family: var(--font-serif);
+}
 
 /* — link: bronzo con sottolineatura discreta (tratto editoriale) — */
 a { color: var(--bronze); text-decoration: none;
@@ -457,6 +482,7 @@ svg { filter: saturate(0.28) contrast(1.02); }
   pre { font-size: 8.5pt; }
   .invitation { padding: 24px 20px; }
   .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 9px; }
+  .infographic-key { grid-template-columns: 1fr; }
 }
 
 /* ==========================================================================

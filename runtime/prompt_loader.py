@@ -51,9 +51,11 @@ cache) + `_footer`. `sections=None` o `()` = includi TUTTE le sezioni (degrade
 graceful per intent.confidence bassa o object unknown). Cache lru_cache.
 """
 import functools
+import hashlib
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -127,6 +129,49 @@ _LANG_NAMES = {"it": "italiano", "en": "English", "fr": "français",
                "de": "Deutsch", "es": "español"}
 
 
+@dataclass(frozen=True, slots=True)
+class PromptIdentity:
+    role: str
+    requested_lang: str
+    effective_lang: str
+    source_name: str
+    source_kind: str
+    digest: str
+
+
+def _resolve_prompt_record(
+        root: Path, en_root: Path, name: str,
+) -> tuple[str, str, str, str] | None:
+    requested_lang = root.name
+    candidates = (
+        (root, name, requested_lang, "live"),
+        (root, f"_pending/{name}.candidate", requested_lang, "candidate"),
+        (en_root, name, _FALLBACK_LANG, "fallback_live"),
+        (
+            en_root,
+            f"_pending/{name}.candidate",
+            _FALLBACK_LANG,
+            "fallback_candidate",
+        ),
+    )
+    for base, relative_name, effective_lang, source_kind in candidates:
+        if not base.is_dir():
+            continue
+        path = (base / relative_name).resolve()
+        try:
+            path.relative_to(base.resolve())
+        except ValueError:
+            continue
+        if path.is_file():
+            return (
+                path.read_text(encoding="utf-8"),
+                effective_lang,
+                relative_name,
+                source_kind,
+            )
+    return None
+
+
 def _resolve_prompt_source(root: Path, en_root: Path, name: str) -> Optional[str]:
     """Risolve il testo di un template `name` (es. "intent_extractor.j2" o
     "planner/_core.j2") con catena DETERMINISTICA §7.9/§K:
@@ -142,20 +187,67 @@ def _resolve_prompt_source(root: Path, en_root: Path, name: str) -> Optional[str
     ha scritti ricade su EN — invece di far crashare il planner. Per IT/EN i
     live esistono sempre → vince il passo 1 → comportamento invariato (i
     candidati `_pending` di IT/EN restano ignorati). No `..` escape."""
-    for base, nm in ((root, name),
-                     (root, f"_pending/{name}.candidate"),
-                     (en_root, name),
-                     (en_root, f"_pending/{name}.candidate")):
-        if not base.is_dir():
-            continue
-        p = (base / nm).resolve()
-        try:
-            p.relative_to(base.resolve())
-        except ValueError:
-            continue  # tentativo di uscire dalla dir base
-        if p.is_file():
-            return p.read_text(encoding="utf-8")
-    return None
+    record = _resolve_prompt_record(root, en_root, name)
+    return record[0] if record is not None else None
+
+
+def prompt_identity(role: str, lang: str) -> PromptIdentity:
+    """Return the effective source identity without rendering or path leakage."""
+
+    if (
+        not isinstance(role, str) or not role or ".." in role
+        or not isinstance(lang, str) or not lang
+    ):
+        raise ValueError("prompt role and language are invalid")
+    name = f"{role}.j2"
+    if role in _SYNT_ROLES and _synt_format() in {"yaml_raw", "json_raw"}:
+        yaml_path = _BASE / lang / f"{role}.yaml"
+        if yaml_path.is_file():
+            text = yaml_path.read_text(encoding="utf-8")
+            record = (text, lang, f"{role}.yaml", "live_yaml")
+        else:
+            record = _resolve_prompt_record(
+                _BASE / lang, _BASE / _FALLBACK_LANG, name,
+            )
+    else:
+        record = _resolve_prompt_record(
+            _BASE / lang, _BASE / _FALLBACK_LANG, name,
+        )
+    if record is None:
+        raise RuntimeError(
+            f"prompt_loader: {name} is absent in {lang!r} and fallback"
+        )
+    text, effective_lang, source_name, source_kind = record
+    identity = {
+        "role": role,
+        "effective_lang": effective_lang,
+        "source_name": source_name,
+        "source_kind": source_kind,
+        "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+    }
+    encoded = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return PromptIdentity(
+        role=role,
+        requested_lang=lang,
+        effective_lang=effective_lang,
+        source_name=source_name,
+        source_kind=source_kind,
+        digest="sha256:" + hashlib.sha256(
+            b"metnos:prompt-identity:1\x00" + encoded
+        ).hexdigest(),
+    )
+
+
+def get_with_identity(role: str, lang: str, **vars) -> tuple[str, PromptIdentity]:
+    """Render through the existing path and expose its effective source facts."""
+
+    rendered = get(role, lang, **vars)
+    return rendered, prompt_identity(role, lang)
 
 
 def _env_for(lang: str) -> minijinja.Environment:

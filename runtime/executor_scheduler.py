@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import atexit
 import os
+import re
 import threading
 import time
+from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Callable, TypeVar
 
 from executor_aging import record_invocation
@@ -32,6 +35,222 @@ T = TypeVar("T")
 
 class SchedulerAdmissionTimeout(TimeoutError):
     """The shared execution budget expired before a call was admitted."""
+
+
+class SchedulerContextError(ValueError):
+    """An internal execution context is malformed or exceeds host limits."""
+
+
+class SchedulerOrchestrationSaturated(RuntimeError):
+    """The bounded central pool has no lane available for orchestration."""
+
+
+_CONTEXT_RESOURCE_KEYS = (
+    "cpu", "device", "llm", "local_io", "network_io", "vlm",
+)
+_CONTEXT_PRIORITIES = frozenset({"low", "normal", "high"})
+_CONTEXT_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}$")
+_MAX_FAIR_WAITERS = 4096
+_MAX_PRIORITY_BURST = 2
+
+
+@dataclass(frozen=True, slots=True)
+class _ContextFacts:
+    owner: str
+    priority: str
+    resources: tuple[tuple[str, int], ...]
+    deadline: float | None
+
+
+def _execution_context_facts(context: object) -> _ContextFacts:
+    """Validate by structure so this module never imports durable_workloads."""
+
+    identities = (
+        "owner_user_id", "workload_id", "revision_id", "stage_id",
+        "unit_key", "attempt_id",
+    )
+    values: dict[str, str] = {}
+    for name in identities:
+        value = getattr(context, name, None)
+        if not isinstance(value, str) or not value or len(value) > 256:
+            raise SchedulerContextError(f"execution context {name} is invalid")
+        values[name] = value
+    priority = getattr(context, "priority", None)
+    if priority not in _CONTEXT_PRIORITIES:
+        raise SchedulerContextError("execution context priority is invalid")
+    resources = getattr(context, "resource_claims", None)
+    if not isinstance(resources, tuple) or tuple(
+        item[0] if isinstance(item, tuple) and len(item) == 2 else None
+        for item in resources
+    ) != _CONTEXT_RESOURCE_KEYS:
+        raise SchedulerContextError("execution context resources are not canonical")
+    normalized: list[tuple[str, int]] = []
+    for key, amount in resources:
+        maximum = 32 if key in {"llm", "vlm"} else 64
+        if (
+            isinstance(amount, bool)
+            or not isinstance(amount, int)
+            or not 0 <= amount <= maximum
+        ):
+            raise SchedulerContextError("execution context resource claim is invalid")
+        normalized.append((key, amount))
+    deadline_at = getattr(context, "deadline_at", None)
+    deadline = None
+    if deadline_at is not None:
+        if not isinstance(deadline_at, str) or not deadline_at:
+            raise SchedulerContextError("execution context deadline is invalid")
+        try:
+            instant = datetime.fromisoformat(deadline_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise SchedulerContextError("execution context deadline is invalid") from exc
+        if instant.tzinfo is None:
+            raise SchedulerContextError("execution context deadline needs a timezone")
+        remaining = instant.astimezone(timezone.utc).timestamp() - time.time()
+        deadline = time.monotonic() + max(0.0, remaining)
+    return _ContextFacts(
+        owner=values["owner_user_id"],
+        priority=str(priority),
+        resources=tuple(normalized),
+        deadline=deadline,
+    )
+
+
+@dataclass(slots=True)
+class _FairTicket:
+    owner: str
+    priority: str
+    granted: bool = False
+
+
+class _FairGate:
+    """Bounded owner round-robin with locally bounded priority preference."""
+
+    def __init__(self, capacity: int) -> None:
+        self.capacity = max(1, int(capacity))
+        self._active = 0
+        self._waiters = 0
+        self._queues: dict[str, list[_FairTicket]] = {}
+        self._owners: deque[str] = deque()
+        self._priority_bursts: dict[str, int] = {}
+        self._condition = threading.Condition()
+
+    @property
+    def waiting_count(self) -> int:
+        with self._condition:
+            return self._waiters
+
+    def _pick(self, owner: str) -> _FairTicket:
+        queue = self._queues[owner]
+        burst = self._priority_bursts.get(owner, 0)
+        high_index = next(
+            (index for index, ticket in enumerate(queue) if ticket.priority == "high"),
+            None,
+        )
+        non_high_index = next(
+            (index for index, ticket in enumerate(queue) if ticket.priority != "high"),
+            None,
+        )
+        if high_index is not None and (burst < _MAX_PRIORITY_BURST or non_high_index is None):
+            selected = high_index
+            self._priority_bursts[owner] = burst + 1
+        else:
+            selected = non_high_index if non_high_index is not None else 0
+            self._priority_bursts[owner] = 0
+        return queue.pop(selected)
+
+    def _grant(self) -> None:
+        while self._active < self.capacity and self._owners:
+            owner = self._owners.popleft()
+            queue = self._queues.get(owner)
+            if not queue:
+                self._queues.pop(owner, None)
+                self._priority_bursts.pop(owner, None)
+                continue
+            ticket = self._pick(owner)
+            ticket.granted = True
+            self._active += 1
+            self._waiters -= 1
+            if queue:
+                self._owners.append(owner)
+            else:
+                self._queues.pop(owner, None)
+                self._priority_bursts.pop(owner, None)
+        self._condition.notify_all()
+
+    def acquire(self, owner: str, priority: str, deadline: float | None) -> bool:
+        ticket = _FairTicket(owner, priority)
+        with self._condition:
+            if self._waiters >= _MAX_FAIR_WAITERS:
+                raise SchedulerAdmissionTimeout("scheduler fair queue is full")
+            queue = self._queues.setdefault(owner, [])
+            if not queue:
+                self._owners.append(owner)
+            queue.append(ticket)
+            self._waiters += 1
+            self._grant()
+            while not ticket.granted:
+                if deadline is None:
+                    self._condition.wait()
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    queue = self._queues.get(owner, [])
+                    if ticket in queue:
+                        queue.remove(ticket)
+                        self._waiters -= 1
+                        if not queue:
+                            self._queues.pop(owner, None)
+                            self._priority_bursts.pop(owner, None)
+                            try:
+                                self._owners.remove(owner)
+                            except ValueError:
+                                pass
+                    self._grant()
+                    return False
+                self._condition.wait(remaining)
+            return True
+
+    def release(self) -> None:
+        with self._condition:
+            if self._active <= 0:
+                raise RuntimeError("fair scheduler slot released without acquisition")
+            self._active -= 1
+            self._grant()
+
+
+class _CapacitySlot:
+    """One atomic weighted resource counter shared by all scheduler paths."""
+
+    def __init__(self, capacity: int) -> None:
+        self.capacity = max(1, int(capacity))
+        self._available = self.capacity
+        self._condition = threading.Condition()
+
+    def acquire(self, timeout: float | None = None) -> bool:
+        deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
+        return self.acquire_many(1, deadline)
+
+    def acquire_many(self, amount: int, deadline: float | None) -> bool:
+        if not 1 <= amount <= self.capacity:
+            return False
+        with self._condition:
+            while self._available < amount:
+                if deadline is None:
+                    self._condition.wait()
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._condition.wait(remaining)
+            self._available -= amount
+            return True
+
+    def release(self, amount: int = 1) -> None:
+        with self._condition:
+            if amount < 1 or self._available + amount > self.capacity:
+                raise ValueError("resource slot released beyond capacity")
+            self._available += amount
+            self._condition.notify_all()
 
 
 def _bounded_env_int(name: str, default: int, low: int, high: int) -> int:
@@ -190,17 +409,27 @@ class ExecutorScheduler:
                 "METNOS_EXECUTOR_CPU_LIMIT", 2, 1, 64),
             "llm": _bounded_env_int(
                 "METNOS_LLM_MAX_IN_FLIGHT", 1, 1, 32),
+            "vlm": _bounded_env_int(
+                "METNOS_VLM_MAX_IN_FLIGHT", 1, 1, 32),
             "browser": _bounded_env_int(
                 "METNOS_EXECUTOR_BROWSER_LIMIT", 4, 1, 64),
             "device": _bounded_env_int(
                 "METNOS_EXECUTOR_DEVICE_LIMIT", 8, 1, 128),
         }
-        self._resource_slots = {
-            name: threading.BoundedSemaphore(max(1, int(limit)))
-            for name, limit in limits.items()
+        self._resource_limits = {
+            str(name): max(1, int(limit)) for name, limit in limits.items()
         }
+        self._resource_slots = {
+            name: _CapacitySlot(limit)
+            for name, limit in self._resource_limits.items()
+        }
+        self._fair_gate = _FairGate(max(1, self.max_in_flight - 1))
         self._pool: ThreadPoolExecutor | None = None
         self._pool_lock = threading.Lock()
+        self._orchestration_capacity = max(0, self.max_workers - 1)
+        self._orchestration_slots = threading.BoundedSemaphore(
+            max(1, self._orchestration_capacity)
+        )
         self._policy_slots: dict[tuple[str, int], threading.BoundedSemaphore] = {}
         self._policy_slots_lock = threading.Lock()
         self._identity_slots: dict[
@@ -292,6 +521,22 @@ class ExecutorScheduler:
             return self._policy_slots.setdefault(
                 key, threading.BoundedSemaphore(limit))
 
+    def _context_executor_slot(
+            self, executor: object,
+            *, concurrency_identity: str | None = None,
+    ) -> threading.BoundedSemaphore:
+        """Return a slot even for serial/incomplete executor metadata."""
+
+        parallel = self._executor_slot(
+            executor, concurrency_identity=concurrency_identity)
+        if parallel is not None:
+            return parallel
+        name = str(getattr(executor, "name", "unknown") or "unknown")
+        key = (name, 1)
+        with self._policy_slots_lock:
+            return self._policy_slots.setdefault(
+                key, threading.BoundedSemaphore(1))
+
     def _identity_slot(
             self, executor: object,
             *, concurrency_identity: str | None = None,
@@ -333,15 +578,40 @@ class ExecutorScheduler:
         remaining = deadline - time.monotonic()
         return remaining > 0 and bool(slot.acquire(timeout=remaining))
 
+    @staticmethod
+    def _acquire_amount(slot, amount: int, deadline: float | None) -> bool:
+        acquire_many = getattr(slot, "acquire_many", None)
+        if callable(acquire_many):
+            return bool(acquire_many(amount, deadline))
+        if amount != 1:
+            raise SchedulerContextError("resource slot does not support atomic claims")
+        return ExecutorScheduler._acquire(slot, deadline)
+
+    @staticmethod
+    def _release_amount(slot, amount: int) -> None:
+        if amount == 1:
+            slot.release()
+        else:
+            slot.release(amount)
+
     def invoke(
             self, executor: object, call: Callable[[], T],
             *, concurrency_identity: str | None = None,
-            admission_timeout_s: float | None = None) -> T:
+            admission_timeout_s: float | None = None,
+            execution_context: object | None = None) -> T:
         """Run one call with universal backpressure and metrics.
 
         The caller still executes synchronously.  Therefore adopting this
         method alone cannot reorder a plan or alter executor semantics.
         """
+        if execution_context is not None:
+            return self._invoke_with_context(
+                executor,
+                call,
+                concurrency_identity=concurrency_identity,
+                admission_timeout_s=admission_timeout_s,
+                execution_context=execution_context,
+            )
         name = str(getattr(executor, "name", "unknown") or "unknown")
         policy = self.policy_for(executor)
         resource_class = str(policy.get("resource_class") or "default")
@@ -393,6 +663,26 @@ class ExecutorScheduler:
             if global_acquired:
                 self._global_slots.release()
             raise
+
+        def release_slots() -> None:
+            if identity_token is not None:
+                self._release_identity_slot(identity_token)
+            if executor_slot is not None:
+                executor_slot.release()
+            if resource_slot is not None:
+                resource_slot.release()
+            self._global_slots.release()
+
+        return self._run_admitted(
+            executor, call, name=name, queued_at=queued_at,
+            release_slots=release_slots,
+        )
+
+    def _run_admitted(
+            self, executor: object, call: Callable[[], T], *, name: str,
+            queued_at: float, release_slots: Callable[[], None]) -> T:
+        """Run and account one already-admitted call through a single path."""
+
         queue_ms = int((time.perf_counter() - queued_at) * 1000)
         self.metrics.started(name, queue_ms)
         started_at = time.perf_counter()
@@ -404,35 +694,111 @@ class ExecutorScheduler:
         finally:
             run_ms = int((time.perf_counter() - started_at) * 1000)
             self.metrics.finished(name, run_ms, failed=failed)
-            if identity_token is not None:
-                self._release_identity_slot(identity_token)
-            if executor_slot is not None:
-                executor_slot.release()
-            if resource_slot is not None:
-                resource_slot.release()
-            self._global_slots.release()
+            release_slots()
             log.info(
                 "executor_scheduler name=%s class=%d queue_ms=%d run_ms=%d failed=%s",
                 name, self.effective_parallelism_class(executor), queue_ms,
                 run_ms, failed,
             )
-            # Lifecycle telemetry, not just process telemetry.  ``metrics``
-            # lives in RAM and dies with the daemon, while executor ageing
-            # (deprecate/archive) and change rollback decide on the persisted
-            # usage row.  This is the one point every subprocess, remote,
-            # in-process builtin and parallel-wave call crosses, so usage is
-            # recorded here; it runs after every slot is released so a disk
-            # write never extends the critical section.  Best effort by
-            # contract: the callee never raises and never records under pytest.
-            #
-            # ``code_path`` is what tells an executor apart from the internal
-            # slots this scheduler also admits: Tutor mode, probes and composer
-            # carry a name and an execution policy but no signed unit on disk.
-            # Recording those would invent a lifecycle for something that has
-            # none, and ageing iterates over every row it finds.
+            # Lifecycle telemetry, not just process telemetry. ``metrics`` is
+            # volatile; ageing and rollback use the persisted invocation row.
+            # This common point covers local, remote, builtin and parallel calls.
+            # Internal slots have no code_path and therefore no executor lifecycle.
             if getattr(executor, "code_path", None) is not None:
                 record_invocation(
                     str(getattr(executor, "name", "") or ""), ok=not failed)
+
+    def _invoke_with_context(
+            self, executor: object, call: Callable[[], T],
+            *, concurrency_identity: str | None,
+            admission_timeout_s: float | None,
+            execution_context: object) -> T:
+        """Admit one durable call with fair ownership and multiple resources."""
+
+        facts = _execution_context_facts(execution_context)
+        explicit_deadline = (
+            None if admission_timeout_s is None
+            else time.monotonic() + max(0.0, float(admission_timeout_s))
+        )
+        deadlines = [item for item in (facts.deadline, explicit_deadline) if item is not None]
+        deadline = min(deadlines) if deadlines else None
+        name = str(getattr(executor, "name", "unknown") or "unknown")
+        claims: list[tuple[str, object, int]] = []
+        for resource_name, amount in facts.resources:
+            if amount == 0:
+                continue
+            limit = self._resource_limits.get(resource_name)
+            slot = self._resource_slots.get(resource_name)
+            if limit is None or slot is None or amount > limit:
+                raise SchedulerContextError(
+                    f"execution context exceeds the {resource_name} host limit"
+                )
+            claims.append((resource_name, slot, amount))
+
+        queued_at = time.perf_counter()
+        fair_acquired = False
+        global_acquired = False
+        acquired_resources: list[tuple[object, int]] = []
+        executor_slot = self._context_executor_slot(
+            executor, concurrency_identity=concurrency_identity)
+        executor_acquired = False
+        identity_token = None
+        identity_acquired = False
+        try:
+            fair_acquired = self._fair_gate.acquire(
+                facts.owner, facts.priority, deadline)
+            if not fair_acquired:
+                raise SchedulerAdmissionTimeout("scheduler fair admission timed out")
+            global_acquired = self._acquire(self._global_slots, deadline)
+            if not global_acquired:
+                raise SchedulerAdmissionTimeout(
+                    f"scheduler admission timed out for {name}"
+                )
+            for resource_name, resource_slot, amount in claims:
+                if not self._acquire_amount(resource_slot, amount, deadline):
+                    raise SchedulerAdmissionTimeout(
+                        f"resource admission timed out for {name}:{resource_name}"
+                    )
+                acquired_resources.append((resource_slot, amount))
+            executor_acquired = self._acquire(executor_slot, deadline)
+            if not executor_acquired:
+                raise SchedulerAdmissionTimeout(
+                    f"executor admission timed out for {name}"
+                )
+            identity_token = self._identity_slot(
+                executor, concurrency_identity=concurrency_identity)
+            if identity_token is not None:
+                identity_acquired = self._acquire(identity_token[1].lock, deadline)
+                if not identity_acquired:
+                    raise SchedulerAdmissionTimeout(
+                        f"identity admission timed out for {name}"
+                    )
+        except BaseException:
+            if identity_token is not None:
+                self._release_identity_slot(identity_token, acquired=identity_acquired)
+            if executor_acquired:
+                executor_slot.release()
+            for resource_slot, amount in reversed(acquired_resources):
+                self._release_amount(resource_slot, amount)
+            if global_acquired:
+                self._global_slots.release()
+            if fair_acquired:
+                self._fair_gate.release()
+            raise
+
+        def release_slots() -> None:
+            if identity_token is not None:
+                self._release_identity_slot(identity_token)
+            executor_slot.release()
+            for resource_slot, amount in reversed(acquired_resources):
+                self._release_amount(resource_slot, amount)
+            self._global_slots.release()
+            self._fair_gate.release()
+
+        return self._run_admitted(
+            executor, call, name=name, queued_at=queued_at,
+            release_slots=release_slots,
+        )
 
     def _thread_pool(self) -> ThreadPoolExecutor:
         with self._pool_lock:
@@ -443,9 +809,49 @@ class ExecutorScheduler:
                 )
             return self._pool
 
+    @property
+    def orchestration_capacity(self) -> int:
+        """Threads available to controllers while one remains for executors."""
+
+        return self._orchestration_capacity if self.parallel_enabled else 0
+
+    def submit_orchestration(self, call: Callable[[], T]) -> Future[T]:
+        """Run a controller task in the one central, bounded thread pool.
+
+        This does not admit execution resources.  The task must eventually
+        enter ``invoke`` with its verified runner and execution context.  One
+        pool thread is never offered here, so a controller waiting for an
+        executor submitted to the same pool cannot consume every worker.
+        """
+
+        if not callable(call):
+            raise TypeError("orchestration call must be callable")
+        if self.orchestration_capacity < 1:
+            raise SchedulerOrchestrationSaturated(
+                "central orchestration capacity is unavailable"
+            )
+        if not self._orchestration_slots.acquire(blocking=False):
+            raise SchedulerOrchestrationSaturated(
+                "central orchestration capacity is saturated"
+            )
+
+        def run() -> T:
+            try:
+                return call()
+            finally:
+                self._orchestration_slots.release()
+
+        try:
+            return self._thread_pool().submit(run)
+        except BaseException:
+            self._orchestration_slots.release()
+            raise
+
     def submit(
             self, executor: object, call: Callable[[], T],
-            *, concurrency_identity: str | None = None) -> Future[T]:
+            *, concurrency_identity: str | None = None,
+            admission_timeout_s: float | None = None,
+            execution_context: object | None = None) -> Future[T]:
         """Submit only admitted opt-in calls; otherwise execute serially now.
 
         Returning a completed Future for serial policy gives the engine one API
@@ -455,11 +861,15 @@ class ExecutorScheduler:
                 executor, concurrency_identity=concurrency_identity):
             return self._thread_pool().submit(
                 self.invoke, executor, call,
-                concurrency_identity=concurrency_identity)
+                concurrency_identity=concurrency_identity,
+                admission_timeout_s=admission_timeout_s,
+                execution_context=execution_context)
         future: Future[T] = Future()
         try:
             future.set_result(self.invoke(
-                executor, call, concurrency_identity=concurrency_identity))
+                executor, call, concurrency_identity=concurrency_identity,
+                admission_timeout_s=admission_timeout_s,
+                execution_context=execution_context))
         except BaseException as exc:  # preserve synchronous exception semantics
             future.set_exception(exc)
         return future
@@ -523,10 +933,12 @@ def concurrency_identity_for(
 def invoke_scheduled(
         executor: object, call: Callable[[], T],
         *, concurrency_identity: str | None = None,
-        admission_timeout_s: float | None = None) -> T:
+        admission_timeout_s: float | None = None,
+        execution_context: object | None = None) -> T:
     return _DEFAULT_SCHEDULER.invoke(
         executor, call, concurrency_identity=concurrency_identity,
-        admission_timeout_s=admission_timeout_s)
+        admission_timeout_s=admission_timeout_s,
+        execution_context=execution_context)
 
 
 def can_schedule_parallel(
@@ -543,13 +955,29 @@ def can_schedule_parallel(
 
 def submit_scheduled(
         executor: object, call: Callable[[], T],
-        *, concurrency_identity: str | None = None) -> Future[T]:
+        *, concurrency_identity: str | None = None,
+        admission_timeout_s: float | None = None,
+        execution_context: object | None = None) -> Future[T]:
     return _DEFAULT_SCHEDULER.submit(
-        executor, call, concurrency_identity=concurrency_identity)
+        executor, call, concurrency_identity=concurrency_identity,
+        admission_timeout_s=admission_timeout_s,
+        execution_context=execution_context)
 
 
 def scheduler_metrics_snapshot() -> dict[str, dict]:
     return _DEFAULT_SCHEDULER.metrics.snapshot()
+
+
+def orchestration_capacity() -> int:
+    """Return the deployment-clamped number of background controller lanes."""
+
+    return _DEFAULT_SCHEDULER.orchestration_capacity
+
+
+def submit_orchestration(call: Callable[[], T]) -> Future[T]:
+    """Submit bounded controller work without granting execution resources."""
+
+    return _DEFAULT_SCHEDULER.submit_orchestration(call)
 
 
 def assigned_worker_budget(executor: object) -> int:
@@ -574,16 +1002,28 @@ def assigned_worker_budget(executor: object) -> int:
     return max(1, budget)
 
 
-def assigned_worker_environment(executor: object) -> dict[str, str]:
+def assigned_worker_environment(
+        executor: object, execution_context: object | None = None) -> dict[str, str]:
     """Return runtime-owned worker env for declared local or remote executors.
 
     Legacy executors did not share a worker contract and must retain their
     historical behavior. Generated and explicitly migrated manifests declare
     ``[execution]``; both transports receive the exact same bounded value.
     """
-    if not getattr(executor, "execution_policy_declared", False):
-        return {}
-    return {
-        "METNOS_EXECUTOR_ASSIGNED_WORKERS": str(
-            assigned_worker_budget(executor)),
-    }
+    environment = {}
+    if getattr(executor, "execution_policy_declared", False):
+        environment["METNOS_EXECUTOR_ASSIGNED_WORKERS"] = str(
+            assigned_worker_budget(executor))
+    if execution_context is None:
+        return environment
+    facts = _execution_context_facts(execution_context)
+    for resource_name, amount in facts.resources:
+        environment[
+            f"METNOS_EXECUTOR_ASSIGNED_{resource_name.upper()}"
+        ] = str(amount)
+    language = getattr(execution_context, "language", None)
+    if language is not None:
+        if not isinstance(language, str) or not _CONTEXT_LANGUAGE_RE.fullmatch(language):
+            raise SchedulerContextError("execution context language is invalid")
+        environment["METNOS_LANG"] = language
+    return environment

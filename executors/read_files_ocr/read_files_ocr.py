@@ -17,6 +17,7 @@ Contratto:
             entries[i] = {path, content: str, char_count: int, lang}
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -133,8 +134,18 @@ def invoke(args):
             "error_code": "args_not_object",
         }
     paths = args.get("paths")
+    source = args.get("source")
+    source_id = (
+        str(source.get("source_id")).strip()
+        if isinstance(source, dict) and source.get("source_id") is not None
+        else ""
+    )
     lang = args.get("lang") or "ita+eng"
-    response_lang = str(args.get("_lang") or "it").split("-", 1)[0].lower()
+    response_lang = str(
+        args.get("_lang") or os.environ.get("METNOS_LANG") or "it"
+    ).strip().lower().replace("_", "-")
+    if not re.fullmatch(r"[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}", response_lang):
+        response_lang = "it"
     max_files = coerce_cap(args, "max_files", 20, maximum=100)
     if paths is None or not isinstance(paths, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
@@ -148,24 +159,40 @@ def invoke(args):
     entries, failed = [], []
     for i, p in enumerate(selected_paths):
         if not isinstance(p, str) or not p:
-            failed.append({"index": i, "path": p, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path")})
+            item = {"index": i, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path")}
+            if source_id:
+                item["source_id"] = source_id
+            else:
+                item["path"] = p
+            failed.append(item)
             continue
         content, err = _read_one(p, lang)
         if err is not None:
-            failed.append({"index": i, "path": str(Path(os.path.expanduser(p)).resolve()), "error": err})
+            item = {"index": i, "error": err}
+            if source_id:
+                item["source_id"] = source_id
+            else:
+                item["path"] = str(Path(os.path.expanduser(p)).resolve())
+            failed.append(item)
             continue
         resolved_path = Path(os.path.expanduser(p)).resolve()
         if resolved_path.suffix.lower() in IMG_EXTS:
             content = _improve_ocr_with_agentic_fallback(
                 resolved_path, content, response_lang)
-        entries.append({
-            "path": str(resolved_path),
+        entry = {
             "content": content,
             "char_count": len(content),
             "lang": lang,
-        })
+        }
+        if source_id:
+            entry["source_id"] = source_id
+        else:
+            entry["path"] = str(resolved_path)
+        entries.append(entry)
 
     out = vector_result(entries, failed)
+    if source_id:
+        out["source_id"] = source_id
     if available_total > len(selected_paths):
         out.update({
             "truncated": True,

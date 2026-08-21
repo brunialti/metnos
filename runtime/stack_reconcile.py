@@ -38,6 +38,7 @@ CONTROL_PLANE_UNITS = (
 )
 STACK_UNITS = (
     "metnos-http.service",
+    "metnos-durable-worker.service",
     "metnos-side-display.service",
     "metnos-playwright.service",
     "metnos-telegram-daemon.service",
@@ -60,7 +61,12 @@ RUNTIME_COMPONENT_UNITS = (
 FAILURE_WINDOW_S = 10 * 60
 FAILURE_LIMIT = 3
 OPEN_INTERVAL_S = 15 * 60
-WATCHED_SERVICE_KEYS = ("searxng", "llm")
+WATCHED_SERVICE_KEYS = ("searxng", "llm", "durable_workloads")
+_DURABLE_NON_RESTARTABLE_REASONS = frozenset({
+    "already_active",
+    "runtime_bindings_unavailable",
+    "schema_incompatible",
+})
 
 
 class StackFailure(RuntimeError):
@@ -323,11 +329,11 @@ def _watched_service_snapshot(key: str, *,
                               probe_endpoint: bool | None = None) -> dict:
     """Resolve one closed-catalog dependency and add process-state evidence.
 
-    SearXNG is checked functionally.  The LLM is deliberately not HTTP-probed
-    during every readiness pass because a long inference may occupy its slots;
-    its critical false-``active`` failure is instead detected from a stopped
-    systemd MainPID (Linux state ``T``/``t``).  Recovery performs an explicit
-    endpoint probe before declaring success.
+    SearXNG and LRE are checked functionally.  The LLM is deliberately not
+    HTTP-probed during every readiness pass because a long inference may
+    occupy its slots; its critical false-``active`` failure is instead
+    detected from a stopped systemd MainPID (Linux state ``T``/``t``).
+    Recovery performs an explicit endpoint probe before declaring success.
     """
     from services_registry import get, snapshot_one
 
@@ -344,6 +350,21 @@ def _watched_service_snapshot(key: str, *,
         process_state = _read_process_state(pid)
         row["process_state"] = process_state
         row["process_stopped"] = process_state in {"T", "t"}
+    elif key == "durable_workloads":
+        from durable_workloads.service import health_snapshot
+
+        application = health_snapshot()
+        row.update({
+            "application_state": application.get("state"),
+            "application_enabled": application.get("enabled"),
+            "application_worker_available": application.get(
+                "worker_available"
+            ),
+            "healthy": application.get("state") == "ready",
+            "health_detail": str(
+                application.get("reason_code") or ""
+            )[:64],
+        })
     return row
 
 
@@ -358,6 +379,22 @@ def _watched_service_ok(key: str, row: dict) -> bool:
         return row.get("healthy") is True
     if key == "llm":
         return not bool(row.get("process_stopped"))
+    if key == "durable_workloads":
+        state = row.get("application_state")
+        if state is None:
+            # Compatibility for closed test adapters and older snapshots.
+            return row.get("healthy") is True
+        reason = row.get("health_detail")
+        if reason == "feature_disabled":
+            return row.get("application_enabled") is False
+        if state == "recovering" and reason == "recovery_incomplete":
+            return row.get("application_worker_available") is True
+        return (
+            state == "ready"
+            and reason == "none"
+            and row.get("application_enabled") is True
+            and row.get("application_worker_available") is True
+        )
     return False
 
 
@@ -726,7 +763,9 @@ class StackReconciler:
         last: dict = {}
         while time.monotonic() < deadline:
             last = _watched_service_snapshot(key, probe_endpoint=True)
-            if _watched_service_ok(key, last) and last.get("healthy") is True:
+            if _watched_service_ok(key, last) and (
+                key == "durable_workloads" or last.get("healthy") is True
+            ):
                 return last
             time.sleep(0.5)
         raise StackFailure(
@@ -779,10 +818,25 @@ class StackReconciler:
                     self._wait_watched_healthy(key)
                     continue
 
+                if (
+                    key == "durable_workloads"
+                    and row.get("health_detail")
+                    in _DURABLE_NON_RESTARTABLE_REASONS
+                ):
+                    raise StackFailure(
+                        "service_repair_unsafe",
+                        "LRE requires configuration or operator repair",
+                        details={
+                            "service": key,
+                            "reason_code": row.get("health_detail"),
+                        },
+                    )
+
                 # A functional SearXNG failure (or a normally stopped LLM)
                 # needs a real unit restart.  Prove no user turn/browser
                 # operation can be interrupted before asking systemd.
-                self.require_quiescent()
+                if key != "durable_workloads":
+                    self.require_quiescent()
                 result = self.systemctl.run(
                     scope, "restart", unit, timeout_s=60)
                 if result.returncode != 0:
