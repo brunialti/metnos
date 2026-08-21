@@ -308,6 +308,10 @@ class DurableWorkloadControl:
                 owner_user_id, state=normalized_state, before=before, limit=page_size + 1,
             )
             visible = records[:page_size]
+            counters = self._store.unit_counters_many(
+                owner_user_id,
+                tuple(record.workload_id for record in visible),
+            )
             next_cursor = None
             if len(records) > page_size and visible:
                 last = visible[-1]
@@ -321,7 +325,7 @@ class DurableWorkloadControl:
                 "items": [
                     _workload_dto(
                         record,
-                        self._store.unit_counters(owner_user_id, record.workload_id),
+                        counters[record.workload_id],
                     ).to_dict()
                     for record in visible
                 ],

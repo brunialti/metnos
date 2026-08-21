@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from .artifacts import ArtifactConflictError, ArtifactStore
+from .artifacts import ArtifactBudgetError, ArtifactConflictError, ArtifactStore
 from .models import ExecutionContext
 
 
@@ -106,6 +106,8 @@ def artifact_store_publish(
                 })
         except OSError:
             return {"ok": False, "error_class": "executor_transient"}
+        except ArtifactBudgetError:
+            return {"ok": False, "error_class": "budget_exhausted"}
         except ArtifactConflictError:
             return {"ok": False, "error_class": "publication_ambiguous"}
         except Exception:

@@ -9,13 +9,19 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from jsonschema import Draft202012Validator, ValidationError
+from executor_metadata import (
+    DEFAULT_EXECUTION_POLICY,
+    execution_policy as normalize_execution_policy,
+)
+from hashutil import sha256_prefixed
+from llm_pricing import cost_policy
 
 from .models import DurableEffect, RunnerKind
-from .reduction import DEFAULT_FAN_IN, ReductionPlanError, build_reduction_graph
+from .reduction import hierarchical_node_bound
 from .schema import (
     MAX_RESULT_JSON_BYTES,
     MAX_SNAPSHOT_JSON_BYTES,
@@ -29,6 +35,22 @@ from .schema import (
 
 _DIGEST_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
 _SCHEMA_NAME_RE = re.compile(r"^[a-z][a-z0-9_.-]{2,127}/[1-9][0-9]*$")
+_LANGUAGE_RE = re.compile(r"^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}$")
+_MODEL_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$")
+_DEFAULT_FROZEN_EXECUTION_POLICY = tuple(DEFAULT_EXECUTION_POLICY.items())
+
+
+def _freeze_execution_policy(
+    value: Mapping[str, Any] | None,
+) -> tuple[tuple[str, Any], ...]:
+    """Return the canonical, fail-closed scheduler authority."""
+
+    normalized = normalize_execution_policy({
+        "execution": dict(value) if isinstance(value, Mapping) else {},
+    })
+    return tuple(
+        (name, normalized[name]) for name in DEFAULT_EXECUTION_POLICY
+    )
 
 
 class CompilationError(ValueError):
@@ -49,6 +71,10 @@ def _require_digest(value: str | None, *, context: str) -> str:
     return value
 
 
+def _model_digest(value: object) -> str:
+    return sha256_prefixed(str(value or ""))
+
+
 @dataclass(frozen=True, slots=True)
 class ApprovedOutputSchema:
     """One registry-owned JSON Schema, never plan-owned inline prose."""
@@ -57,6 +83,11 @@ class ApprovedOutputSchema:
     schema: Mapping[str, Any]
     digest: str
     validator: Callable[[Any], None] | None = None
+    _schema_validator: Draft202012Validator | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     @classmethod
     def create(
@@ -85,6 +116,7 @@ class ApprovedOutputSchema:
         )
         try:
             Draft202012Validator.check_schema(normalized)
+            schema_validator = Draft202012Validator(normalized)
         except Exception as exc:
             raise CompilationError("approved output schema is invalid JSON Schema") from exc
         return cls(
@@ -92,6 +124,7 @@ class ApprovedOutputSchema:
             schema=normalized,
             digest=_digest(normalized, "durable-output-schema"),
             validator=validator,
+            _schema_validator=schema_validator,
         )
 
     @property
@@ -136,7 +169,7 @@ class ApprovedOutputSchema:
         if self.validator is not None:
             self.validator(value)
         try:
-            Draft202012Validator(self.schema).validate(value)
+            (self._schema_validator or Draft202012Validator(self.schema)).validate(value)
         except ValidationError as exc:
             location = ".".join(str(item) for item in exc.absolute_path) or "result"
             raise OutputValidationError(
@@ -166,6 +199,70 @@ class OutputSchemaRegistry:
         except KeyError as exc:
             raise CompilationError(f"output schema is not approved: {name}") from exc
 
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Return the closed schema identities in canonical order."""
+
+        return tuple(sorted(self._schemas, key=str.encode))
+
+    @property
+    def schemas(self) -> tuple[ApprovedOutputSchema, ...]:
+        """Return the immutable schemas in the same canonical order."""
+
+        return tuple(self._schemas[name] for name in self.names)
+
+
+def core_output_schemas() -> OutputSchemaRegistry:
+    """Return schemas owned by generic LRE internal runners."""
+
+    digest = {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+    return OutputSchemaRegistry((
+        ApprovedOutputSchema.create(
+            "metnos.internal-artifacts/1",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "entries": {
+                        "type": "array",
+                        "maxItems": 1_000_000,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "logical_name": {
+                                    "type": "string", "maxLength": 64,
+                                },
+                                "artifact_id": {
+                                    "type": "string", "maxLength": 128,
+                                },
+                                "digest": digest,
+                            },
+                            "required": [
+                                "logical_name", "artifact_id", "digest",
+                            ],
+                        },
+                    },
+                },
+                "required": ["entries"],
+            },
+        ),
+        ApprovedOutputSchema.create(
+            "metnos.inventory-seal/1",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "digest": digest,
+                    "sources": {
+                        "type": "array", "items": {"type": "object"},
+                    },
+                },
+                "required": ["digest", "sources"],
+            },
+        ),
+    ))
+
 
 @dataclass(frozen=True, slots=True)
 class FrozenRunnerContract:
@@ -183,8 +280,22 @@ class FrozenRunnerContract:
     verified: bool = True
     model_binding_digest: str | None = None
     prompt_digest: str | None = None
+    prompt_language: str | None = None
+    model_provider: str | None = None
+    model_digest: str | None = None
+    model_tier: str | None = None
+    model_kind: str | None = None
+    model_max_calls: int | None = None
+    model_max_input_tokens: int | None = None
+    model_max_output_tokens: int | None = None
+    model_cost_policy: str | None = None
     transport: str = "internal"
     intelligence: str = "deterministic"
+    supports_hierarchical_reduction: bool = False
+    execution_policy: tuple[tuple[str, Any], ...] = (
+        _DEFAULT_FROZEN_EXECUTION_POLICY
+    )
+    execution_policy_declared: bool = False
 
     def __post_init__(self) -> None:
         try:
@@ -220,9 +331,90 @@ class FrozenRunnerContract:
             _require_digest(self.model_binding_digest, context="model binding digest")
         if self.prompt_digest is not None:
             _require_digest(self.prompt_digest, context="prompt digest")
+        model_prompt_fields = (
+            self.model_binding_digest,
+            self.prompt_digest,
+            self.prompt_language,
+            self.model_provider,
+            self.model_digest,
+            self.model_tier,
+            self.model_kind,
+            self.model_max_calls,
+            self.model_max_input_tokens,
+            self.model_max_output_tokens,
+            self.model_cost_policy,
+        )
+        if any(value is not None for value in model_prompt_fields) and any(
+            value is None for value in model_prompt_fields
+        ):
+            raise CompilationError(
+                "model binding, prompt digest and prompt language must be frozen together"
+            )
+        if self.prompt_language is not None and not _LANGUAGE_RE.fullmatch(
+            self.prompt_language
+        ):
+            raise CompilationError("prompt language is not a canonical language tag")
+        if self.model_provider is not None and not _MODEL_LABEL_RE.fullmatch(
+            self.model_provider
+        ):
+            raise CompilationError("model provider is not a technical label")
+        if self.model_digest is not None:
+            _require_digest(self.model_digest, context="model identity digest")
+        if self.model_tier is not None and (
+            self.model_tier != ""
+            and not _MODEL_LABEL_RE.fullmatch(self.model_tier)
+        ):
+            raise CompilationError("model tier is not a technical label")
+        if self.model_kind is not None and not _MODEL_LABEL_RE.fullmatch(
+            self.model_kind
+        ):
+            raise CompilationError("model kind is not a technical label")
+        if self.model_max_calls is not None and (
+            isinstance(self.model_max_calls, bool)
+            or not isinstance(self.model_max_calls, int)
+            or not 1 <= self.model_max_calls <= 64
+        ):
+            raise CompilationError("model max calls must be an integer in 1..64")
+        if self.model_max_input_tokens is not None and (
+            isinstance(self.model_max_input_tokens, bool)
+            or not isinstance(self.model_max_input_tokens, int)
+            or not 1 <= self.model_max_input_tokens <= 16_777_216
+        ):
+            raise CompilationError(
+                "model max input tokens must be an integer in 1..16777216"
+            )
+        if self.model_max_output_tokens is not None and (
+            isinstance(self.model_max_output_tokens, bool)
+            or not isinstance(self.model_max_output_tokens, int)
+            or not 1 <= self.model_max_output_tokens <= 1_000_000
+        ):
+            raise CompilationError(
+                "model max output tokens must be an integer in 1..1000000"
+            )
+        if self.model_cost_policy is not None and self.model_cost_policy not in {
+            "zero", "metered", "unbounded",
+        }:
+            raise CompilationError("model cost policy is invalid")
+        if not isinstance(self.supports_hierarchical_reduction, bool):
+            raise CompilationError(
+                "runner hierarchical reduction support must be boolean"
+            )
+        try:
+            policy = dict(self.execution_policy)
+        except (TypeError, ValueError) as exc:
+            raise CompilationError("runner execution policy is malformed") from exc
+        if (
+            self.execution_policy != _freeze_execution_policy(policy)
+            or set(policy) != set(DEFAULT_EXECUTION_POLICY)
+        ):
+            raise CompilationError("runner execution policy is not canonical")
+        if not isinstance(self.execution_policy_declared, bool):
+            raise CompilationError(
+                "runner execution policy declaration must be boolean"
+            )
 
     def snapshot(self, *, stage_key: str, output_schema: ApprovedOutputSchema) -> dict[str, Any]:
-        return {
+        snapshot = {
             "stage_key": stage_key,
             "kind": self.kind,
             "name": self.name,
@@ -240,7 +432,24 @@ class FrozenRunnerContract:
             "prompt_digest": self.prompt_digest,
             "transport": self.transport,
             "intelligence": self.intelligence,
+            "execution_policy": dict(self.execution_policy),
+            "execution_policy_declared": self.execution_policy_declared,
         }
+        if self.prompt_language is not None:
+            snapshot.update({
+                "prompt_language": self.prompt_language,
+                "model_provider": self.model_provider,
+                "model_digest": self.model_digest,
+                "model_tier": self.model_tier,
+                "model_kind": self.model_kind,
+                "model_max_calls": self.model_max_calls,
+                "model_max_input_tokens": self.model_max_input_tokens,
+                "model_max_output_tokens": self.model_max_output_tokens,
+                "model_cost_policy": self.model_cost_policy,
+            })
+        if self.supports_hierarchical_reduction:
+            snapshot["supports_hierarchical_reduction"] = True
+        return snapshot
 
 
 class RunnerContractResolver(Protocol):
@@ -269,6 +478,9 @@ class VerifiedCatalogResolver:
         *,
         durable_output_schemas: Mapping[str, Sequence[str]] | None = None,
         durable_effects: Mapping[str, Sequence[str]] | None = None,
+        model_bindings: Mapping[str, Mapping[str, Any]] | None = None,
+        prompt_digests: Mapping[str, str] | None = None,
+        prompt_languages: Mapping[str, str] | None = None,
         catalog_loader: Callable[..., Any] | None = None,
     ) -> None:
         self._output_schemas = {
@@ -279,6 +491,30 @@ class VerifiedCatalogResolver:
             str(name): tuple(sorted(map(str, values), key=str.encode))
             for name, values in (durable_effects or {}).items()
         }
+        self._model_bindings = {
+            str(name): dict(binding)
+            for name, binding in (model_bindings or {}).items()
+        }
+        self._model_binding_digests = {
+            name: _digest(binding, "durable-executor-model-binding")
+            for name, binding in self._model_bindings.items()
+        }
+        self._prompt_digests = {
+            str(name): _require_digest(value, context=f"executor {name} prompt digest")
+            for name, value in (prompt_digests or {}).items()
+        }
+        self._prompt_languages = {
+            str(name): str(value)
+            for name, value in (prompt_languages or {}).items()
+        }
+        if not (
+            set(self._model_binding_digests)
+            == set(self._prompt_digests)
+            == set(self._prompt_languages)
+        ):
+            raise CompilationError(
+                "executor model bindings, prompt digests and languages must name the same runners"
+            )
         self._catalog_loader = catalog_loader
 
     def resolve(self, kind: str, name: str) -> FrozenRunnerContract:
@@ -294,6 +530,15 @@ class VerifiedCatalogResolver:
         executor = catalog.get(name)
         if executor is None:
             raise CompilationError(f"executor is absent from the verified catalog: {name}")
+        return self.attest_executor(name, executor)
+
+    def attest_executor(
+        self,
+        name: str,
+        executor: object,
+    ) -> FrozenRunnerContract:
+        """Derive the contract from the exact verified object to be invoked."""
+
         signed_by = str(getattr(executor, "signed_by", "") or "")
         if not signed_by or signed_by.startswith("("):
             raise CompilationError(f"executor is not signed: {name}")
@@ -307,6 +552,13 @@ class VerifiedCatalogResolver:
         properties = args_schema.get("properties") if isinstance(args_schema, Mapping) else None
         if not isinstance(properties, Mapping):
             raise CompilationError(f"executor has no closed argument schema: {name}")
+        execution_policy_declared = bool(
+            getattr(executor, "execution_policy_declared", False)
+        )
+        execution_policy = _freeze_execution_policy(
+            getattr(executor, "execution_policy", None)
+            if execution_policy_declared else None
+        )
         contract_facts = {
             "name": name,
             "version": str(getattr(executor, "version", "") or ""),
@@ -323,9 +575,29 @@ class VerifiedCatalogResolver:
             "signed_by": signed_by,
             "durable_effects": list(self._effects.get(name, ())),
             "durable_output_schemas": list(self._output_schemas.get(name, ())),
+            "model_binding_digest": self._model_binding_digests.get(name),
+            "prompt_digest": self._prompt_digests.get(name),
+            "execution_policy": dict(execution_policy),
+            "execution_policy_declared": execution_policy_declared,
         }
+        if name in self._prompt_languages:
+            binding = self._model_bindings[name]
+            contract_facts.update({
+                "prompt_language": self._prompt_languages[name],
+                "model_provider": str(binding.get("provider") or ""),
+                "model_digest": _model_digest(binding.get("model")),
+                "model_tier": str(binding.get("usage_tier") or ""),
+                "model_kind": str(binding.get("usage_kind") or ""),
+                "model_max_calls": binding.get("max_calls_per_attempt"),
+                "model_max_input_tokens": binding.get("max_input_tokens"),
+                "model_max_output_tokens": binding.get("max_tokens"),
+                "model_cost_policy": cost_policy(
+                    str(binding.get("provider") or ""),
+                    str(binding.get("model") or ""),
+                ),
+            })
         return FrozenRunnerContract(
-            kind=kind,
+            kind=RunnerKind.EXECUTOR.value,
             name=name,
             contract_digest=_digest(contract_facts, "durable-executor-contract"),
             implementation_digest=implementation_digest,
@@ -345,6 +617,23 @@ class VerifiedCatalogResolver:
             )),
             transport=contract_facts["transport"],
             intelligence=contract_facts["intelligence"],
+            model_binding_digest=contract_facts["model_binding_digest"],
+            prompt_digest=contract_facts["prompt_digest"],
+            prompt_language=contract_facts.get("prompt_language"),
+            model_provider=contract_facts.get("model_provider"),
+            model_digest=contract_facts.get("model_digest"),
+            model_tier=contract_facts.get("model_tier"),
+            model_kind=contract_facts.get("model_kind"),
+            model_max_calls=contract_facts.get("model_max_calls"),
+            model_max_input_tokens=contract_facts.get(
+                "model_max_input_tokens"
+            ),
+            model_max_output_tokens=contract_facts.get(
+                "model_max_output_tokens"
+            ),
+            model_cost_policy=contract_facts.get("model_cost_policy"),
+            execution_policy=execution_policy,
+            execution_policy_declared=execution_policy_declared,
         )
 
 
@@ -359,6 +648,11 @@ class RegisteredWorkloadResolver:
         input_types: Mapping[str, Mapping[str, str]] | None = None,
         required_inputs: Mapping[str, Sequence[str]] | None = None,
         prompt_digests: Mapping[str, str] | None = None,
+        prompt_language: str | None = None,
+        max_input_tokens: Mapping[str, int] | None = None,
+        max_output_tokens: Mapping[str, int] | None = None,
+        max_calls_per_attempt: Mapping[str, int] | None = None,
+        hierarchical_reducers: Sequence[str] = (),
         binding_resolver: Callable[..., Mapping[str, Any]] | None = None,
     ) -> None:
         self._output_schemas = {
@@ -378,6 +672,15 @@ class RegisteredWorkloadResolver:
             for key, value in (required_inputs or {}).items()
         }
         self._prompt_digests = dict(prompt_digests or {})
+        self._prompt_language = prompt_language
+        self._max_input_tokens = dict(max_input_tokens or {})
+        self._max_output_tokens = dict(max_output_tokens or {})
+        self._max_calls_per_attempt = dict(max_calls_per_attempt or {})
+        self._hierarchical_reducers = frozenset(map(str, hierarchical_reducers))
+        if not self._hierarchical_reducers <= set(self._output_schemas):
+            raise CompilationError(
+                "hierarchical reducers must be registered workloads"
+            )
         self._binding_resolver = binding_resolver
 
     def resolve(self, kind: str, name: str) -> FrozenRunnerContract:
@@ -406,6 +709,13 @@ class RegisteredWorkloadResolver:
             "binding": binding,
         }
         binding_digest = _digest(binding_facts, "durable-model-binding")
+        execution_policy = _freeze_execution_policy({
+            "effect": "read_only",
+            "parallelism_class": 1,
+            "resource_class": "llm",
+            "concurrency_key": "none",
+            "equivalence_gate": "verified",
+        })
         contract_facts = {
             "name": name,
             "tier": str(tier_request),
@@ -414,10 +724,26 @@ class RegisteredWorkloadResolver:
             "output_constraint": registered.output_constraint,
             "model_binding_digest": binding_digest,
             "prompt_digest": self._prompt_digests.get(name),
+            "prompt_language": self._prompt_language,
+            "model_provider": str(binding.get("provider") or ""),
+            "model_digest": _model_digest(binding.get("model")),
+            "model_tier": str(tier_request),
+            "model_kind": "chat",
+            "model_max_calls": self._max_calls_per_attempt.get(name),
+            "model_max_input_tokens": self._max_input_tokens.get(name),
+            "model_max_output_tokens": self._max_output_tokens.get(name),
+            "model_cost_policy": cost_policy(
+                str(binding.get("provider") or ""),
+                str(binding.get("model") or ""),
+            ),
             "input_names": list(self._input_names.get(name, ())),
             "input_types": dict(self._input_types.get(name, ())),
             "required_inputs": list(self._required_inputs.get(name, ())),
             "output_schemas": list(self._output_schemas.get(name, ())),
+            "supports_hierarchical_reduction":
+                name in self._hierarchical_reducers,
+            "execution_policy": dict(execution_policy),
+            "execution_policy_declared": True,
         }
         return FrozenRunnerContract(
             kind=kind,
@@ -433,8 +759,24 @@ class RegisteredWorkloadResolver:
             input_types=self._input_types.get(name, ()),
             model_binding_digest=binding_digest,
             prompt_digest=self._prompt_digests.get(name),
+            prompt_language=self._prompt_language,
+            model_provider=contract_facts["model_provider"],
+            model_digest=contract_facts["model_digest"],
+            model_tier=contract_facts["model_tier"],
+            model_kind=contract_facts["model_kind"],
+            model_max_calls=contract_facts["model_max_calls"],
+            model_max_input_tokens=contract_facts[
+                "model_max_input_tokens"
+            ],
+            model_max_output_tokens=contract_facts[
+                "model_max_output_tokens"
+            ],
+            model_cost_policy=contract_facts["model_cost_policy"],
             transport="llm-gateway",
             intelligence="model",
+            supports_hierarchical_reduction=name in self._hierarchical_reducers,
+            execution_policy=execution_policy,
+            execution_policy_declared=True,
         )
 
 
@@ -455,6 +797,16 @@ class CompositeRunnerResolver:
             return self._workloads.resolve(kind, name)
         raise CompilationError(f"composite resolver cannot resolve runner kind: {kind}")
 
+    def attest_executor(
+        self,
+        name: str,
+        executor: object,
+    ) -> FrozenRunnerContract:
+        attestor = getattr(self._executors, "attest_executor", None)
+        if not callable(attestor):
+            raise CompilationError("executor resolver cannot attest a loaded runner")
+        return attestor(name, executor)
+
 
 _INTERNAL_EFFECTS = {
     "sealed_inventory": DurableEffect.PURE.value,
@@ -474,11 +826,23 @@ def _internal_contract(name: str, output_schema_name: str) -> FrozenRunnerContra
     except KeyError as exc:
         raise CompilationError(f"internal runner is not approved: {name}") from exc
     input_types = _INTERNAL_INPUT_TYPES[name]
+    execution_policy = _freeze_execution_policy(
+        {
+            "effect": "read_only",
+            "parallelism_class": 1,
+            "resource_class": "default",
+            "concurrency_key": "none",
+            "equivalence_gate": "verified",
+        }
+        if effect == DurableEffect.PURE.value
+        else None
+    )
     facts = {
         "kind": "internal",
         "name": name,
         "version": 1,
         "input_types": input_types,
+        "execution_policy": dict(execution_policy),
     }
     digest = _digest(facts, "durable-internal-runner")
     return FrozenRunnerContract(
@@ -491,6 +855,8 @@ def _internal_contract(name: str, output_schema_name: str) -> FrozenRunnerContra
         output_schema_names=(output_schema_name,),
         required_input_names=tuple(sorted(input_types, key=str.encode)),
         input_types=tuple(sorted(input_types.items(), key=lambda item: item[0].encode())),
+        execution_policy=execution_policy,
+        execution_policy_declared=True,
     )
 
 
@@ -622,23 +988,31 @@ def compile_plan(
     *,
     runners: RunnerContractResolver,
     output_schemas: OutputSchemaResolver,
-    reduction_fan_in: int = DEFAULT_FAN_IN,
 ) -> CompiledPlan:
     """Compile one candidate and sealed inventory without executing anything."""
 
     canonical_plan = validate_plan(candidate)
-    canonical_inventory, sources = validate_inventory(inventory)
+    inline_inventory, sources = validate_inventory(inventory)
     normalized_plan = json.loads(canonical_plan)
-    normalized_inventory = json.loads(canonical_inventory)
+    inventory_hash = str(inventory["digest"])
     inventory_contract = normalized_plan["inventory"]
     if len(sources) > int(inventory_contract["max_sources"]):
         raise CompilationError("sealed inventory exceeds plan source budget")
-    if sum(int(source["size_bytes"]) for source in sources) > int(
-        inventory_contract["max_total_bytes"]
-    ):
+    inventory_bytes = sum(int(source["size_bytes"]) for source in sources)
+    if inventory_bytes > int(inventory_contract["max_total_bytes"]):
         raise CompilationError("sealed inventory exceeds plan byte budget")
-
+    if inline_inventory is None and any(
+        reference.get("ref") == "revision.inventory"
+        for stage in normalized_plan["stages"]
+        if stage["type"] != "inventory"
+        for reference in stage["input_bindings"].values()
+    ):
+        raise CompilationError(
+            "revision.inventory is available only for a bounded inline "
+            "inventory; use per-source bindings for a large inventory"
+        )
     schemas_by_stage: dict[str, ApprovedOutputSchema] = {}
+    exposed_units_by_stage: dict[str, int] = {}
     ordered = _topological_stages(normalized_plan)
     catalog_entries: list[dict[str, Any]] = []
     policy_rules: list[dict[str, Any]] = []
@@ -663,6 +1037,36 @@ def compile_plan(
         if schema_name not in contract.output_schema_names:
             raise CompilationError(f"runner does not declare approved output schema for stage {key}")
         _validate_binding_fields(stage, contract, schemas_by_stage)
+        resources = stage["resources"]
+        uses_model = int(resources["llm"]) > 0 or int(resources["vlm"]) > 0
+        has_model_contract = contract.model_binding_digest is not None
+        if uses_model != has_model_contract:
+            raise CompilationError(
+                f"stage {key} model resources and frozen model contract disagree"
+            )
+        if uses_model and int(normalized_plan["budgets"]["max_tokens"]) == 0:
+            raise CompilationError(
+                f"model stage {key} requires a positive plan token budget"
+            )
+        if uses_model:
+            required_token_reservation = int(contract.model_max_calls or 0) * (
+                int(contract.model_max_input_tokens or 0)
+                + int(contract.model_max_output_tokens or 0)
+            )
+            if int(normalized_plan["budgets"]["max_tokens"]) < required_token_reservation:
+                raise CompilationError(
+                    f"model stage {key} token reservation exceeds the plan token budget"
+                )
+            if contract.model_cost_policy != "zero":
+                raise CompilationError(
+                    f"model stage {key} has no preauthorized cost bound"
+                )
+        if uses_model and not {
+            "model_binding.digest", "prompt.digest",
+        } <= set(stage["invalidation_keys"]):
+            raise CompilationError(
+                f"model stage {key} must invalidate binding and prompt digests"
+            )
 
         mode = str(stage["cardinality"]["mode"])
         stage_type = str(stage["type"])
@@ -673,6 +1077,26 @@ def compile_plan(
             raise CompilationError("per_dependency map stages require an entry identity field")
         if stage_type == "reduce" and mode not in {"per_dependency", "singleton"}:
             raise CompilationError("reduce stages need per_dependency or singleton cardinality")
+        reduction_fan_in = stage["cardinality"].get("fan_in")
+        if reduction_fan_in is not None:
+            if not contract.supports_hierarchical_reduction:
+                raise CompilationError(
+                    f"runner does not approve hierarchical reduction for stage {key}"
+                )
+            if schema.field_schema("entries") is None:
+                raise CompilationError(
+                    f"hierarchical reduction stage {key} must output entries"
+                )
+            if len(stage["input_bindings"]) != 1:
+                raise CompilationError(
+                    f"hierarchical reduction stage {key} needs exactly one input"
+                )
+            required_invalidation = {"reduction.order", "reduction.fan_in"}
+            if not required_invalidation <= set(stage["invalidation_keys"]):
+                raise CompilationError(
+                    f"hierarchical reduction stage {key} must invalidate "
+                    "its ordering and fan-in"
+                )
         if mode == "per_source" and not any(
             reference["ref"] in {"source.path", "source.record"}
             for reference in stage["input_bindings"].values()
@@ -704,7 +1128,7 @@ def compile_plan(
         invalidation_facts: dict[str, Any] = {}
         for invalidation_key in stage["invalidation_keys"]:
             if invalidation_key == "source.digest":
-                invalidation_facts[invalidation_key] = normalized_inventory["digest"]
+                invalidation_facts[invalidation_key] = inventory_hash
             elif invalidation_key == "dependencies.digest":
                 invalidation_facts[invalidation_key] = _digest(
                     [
@@ -731,19 +1155,24 @@ def compile_plan(
             elif invalidation_key == "reduction.order":
                 invalidation_facts[invalidation_key] = "utf8-bytewise"
             elif invalidation_key == "reduction.fan_in":
-                invalidation_facts[invalidation_key] = reduction_fan_in
+                if reduction_fan_in is None:
+                    raise CompilationError(
+                        f"stage {key} declares reduction.fan_in without "
+                        "a hierarchical reduction"
+                    )
+                invalidation_facts[invalidation_key] = int(reduction_fan_in)
 
         reduction = None
         if stage_type == "reduce":
-            dependency_keys = tuple(sorted(map(str, stage["depends_on"]), key=str.encode))
-            try:
-                reduction = build_reduction_graph(
-                    dependency_keys,
-                    fan_in=reduction_fan_in,
-                    max_inputs=int(stage["cardinality"]["max_units"]),
-                ).as_dict()
-            except ReductionPlanError as exc:
-                raise CompilationError(f"stage {key} reduction is not admissible") from exc
+            reduction = {
+                "mode": (
+                    "hierarchical" if reduction_fan_in is not None else "direct"
+                ),
+                "fan_in": reduction_fan_in,
+                "input": stage["cardinality"].get("reduction_input"),
+                "max_input_bytes":
+                    stage["cardinality"].get("max_input_bytes"),
+            }
         stage_fingerprint = _digest(
             {
                 "stage": stage,
@@ -773,11 +1202,36 @@ def compile_plan(
         })
         schemas_by_stage[key] = schema
 
+        dependencies = tuple(map(str, stage["depends_on"]))
+        declared_max = int(stage["cardinality"]["max_units"])
+        if reduction_fan_in is not None:
+            input_bound = exposed_units_by_stage[dependencies[0]]
+            required_units = hierarchical_node_bound(input_bound)
+            if declared_max < required_units:
+                raise CompilationError(
+                    f"hierarchical reduction stage {key} needs at least "
+                    f"{required_units} units for its admitted dependency bound"
+                )
+            exposed_units_by_stage[key] = 1
+        elif mode == "singleton":
+            dependency_bound = sum(
+                exposed_units_by_stage[dependency] for dependency in dependencies
+            )
+            if stage_type != "inventory" and dependency_bound > 1024:
+                raise CompilationError(
+                    f"direct singleton stage {key} can receive more than 1024 inputs"
+                )
+            exposed_units_by_stage[key] = 1
+        elif mode == "per_source":
+            exposed_units_by_stage[key] = min(declared_max, len(sources))
+        else:
+            exposed_units_by_stage[key] = declared_max
+
     plan_hash = plan_digest(normalized_plan)
     graph = {
         "schema_version": "metnos.durable-graph/1",
         "plan_digest": plan_hash,
-        "inventory_digest": normalized_inventory["digest"],
+        "inventory_digest": inventory_hash,
         "stages": graph_stages,
     }
     graph_json = canonical_json(graph, max_bytes=MAX_SNAPSHOT_JSON_BYTES)
