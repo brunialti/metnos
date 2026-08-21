@@ -983,6 +983,38 @@ body.wiki-enabled .wiki-view h4 {
   .executor-axis { grid-template-columns: 1fr; }
 }
 
+/* Bespoke pages still carry legacy inline palettes.  The wiki shell owns the
+   public reading surface, so its cards must remain legible and harmonised with
+   the warm paper palette even when a page has not yet been migrated. */
+body.wiki-enabled .hero-note,
+body.wiki-enabled .hero-card,
+body.wiki-enabled .hero-stat {
+  background: var(--wiki-panel-active) !important;
+  color: var(--wiki-panel-ink) !important;
+  border: 1px solid var(--wiki-panel-line) !important;
+  border-radius: 0.7rem !important;
+  box-shadow: 0 0.45rem 1.2rem rgba(76, 55, 35, 0.10) !important;
+}
+body.wiki-enabled .hero-note strong,
+body.wiki-enabled .hero-card strong,
+body.wiki-enabled .hero-stat strong {
+  color: var(--wiki-title) !important;
+}
+body.wiki-enabled .hero-note span,
+body.wiki-enabled .hero-card span,
+body.wiki-enabled .hero-stat span {
+  color: var(--wiki-panel-muted) !important;
+}
+body.wiki-enabled .provider {
+  background: var(--wiki-panel-active) !important;
+  color: var(--wiki-panel-ink) !important;
+  border: 1px solid var(--wiki-panel-line) !important;
+  border-radius: 0.7rem !important;
+  box-shadow: 0 0.45rem 1.2rem rgba(76, 55, 35, 0.10) !important;
+}
+body.wiki-enabled .provider h2,
+body.wiki-enabled .provider p { color: var(--wiki-panel-ink) !important; }
+
 @media print {
   body.wiki-enabled { display: block; padding: 0; }
   .wiki-sidebar, .wiki-toggle, .wiki-overlay, .wiki-skip-link { display: none !important; }
