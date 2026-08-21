@@ -107,6 +107,7 @@ class DurableWorker:
         heartbeat_interval: timedelta | None = None,
         clock: Callable[[], datetime] | None = None,
         monotonic_clock: Callable[[], float] | None = None,
+        checkpoint: Callable[[str], None] | None = None,
     ) -> None:
         self.store = store
         self.worker_id = require_worker_id(worker_id)
@@ -131,6 +132,9 @@ class DurableWorker:
         self.heartbeat_interval = interval
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._monotonic_clock = monotonic_clock or monotonic
+        if checkpoint is not None and not callable(checkpoint):
+            raise TypeError("checkpoint must be callable")
+        self._checkpoint = checkpoint or (lambda _name: None)
         self.coordinator = DurableCoordinator(
             store,
             capabilities,
@@ -407,6 +411,8 @@ class DurableWorker:
                 return WorkerRunOutcome(WorkerRunStatus.ABANDONED, lease=lease)
             return WorkerRunOutcome(WorkerRunStatus.LOST_LEASE, lease=lease)
 
+        self._checkpoint("attempt_after_claim")
+        self._checkpoint("attempt_before_running")
         execution_started_at = normalize_instant(
             self._clock(), name="execution start",
         )
@@ -417,6 +423,7 @@ class DurableWorker:
         if running is not LeaseMutationStatus.APPLIED:
             self._release_active_lease(lease)
             return WorkerRunOutcome(WorkerRunStatus.LOST_LEASE, lease=lease)
+        self._checkpoint("attempt_after_running")
 
         if self.store._connection.in_transaction:
             raise RuntimeError("durable execution must run outside a DB transaction")
@@ -430,6 +437,7 @@ class DurableWorker:
         adapter_result: ValidatedResult | ExecutionResult | None = None
         adapter_error: StructuredAttemptError | None = None
         adapter_attempt_state = AttemptState.FAILED
+        self._checkpoint("attempt_before_execution")
         try:
             adapter_result = adapter(lease)
         except ExecutionFailure as exc:
@@ -506,6 +514,8 @@ class DurableWorker:
             )
             return self._record_failure(lease, error)
 
+        self._checkpoint("attempt_after_result")
+        self._checkpoint("attempt_before_commit")
         try:
             commit = self.store.commit_result(
                 lease,
@@ -531,6 +541,7 @@ class DurableWorker:
                 ),
                 result_discarded=True,
             )
+        self._checkpoint("attempt_after_commit")
         self._release_active_lease(lease)
         if commit.status is CommitStatus.COMMITTED:
             status = WorkerRunStatus.COMMITTED

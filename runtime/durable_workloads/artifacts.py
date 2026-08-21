@@ -33,6 +33,7 @@ from .migrations import (
     utc_now,
 )
 from .models import ArtifactState, PublicationState
+from .transactions import checked_checkpoint, immediate_transaction
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -442,6 +443,7 @@ class ArtifactRepository:
         connection: sqlite3.Connection,
         *,
         owns_connection: bool = False,
+        checkpoint: Callable[[str], None] | None = None,
     ) -> None:
         if database_schema_version(connection) != CURRENT_SCHEMA_VERSION:
             raise ArtifactError("artifact_repository_schema_not_ready")
@@ -450,13 +452,23 @@ class ArtifactRepository:
             raise ArtifactError("artifact_repository_foreign_keys_disabled")
         self._connection = connection
         self._owns_connection = owns_connection
+        self._checkpoint = checked_checkpoint(checkpoint)
 
     @classmethod
-    def open(cls, path: str | Path | None = None) -> "ArtifactRepository":
+    def open(
+        cls,
+        path: str | Path | None = None,
+        *,
+        checkpoint: Callable[[str], None] | None = None,
+    ) -> "ArtifactRepository":
         connection = open_db(path)
         try:
             migrate(connection)
-            return cls(connection, owns_connection=True)
+            return cls(
+                connection,
+                owns_connection=True,
+                checkpoint=checkpoint,
+            )
         except BaseException:
             connection.close()
             raise
@@ -469,14 +481,14 @@ class ArtifactRepository:
     @contextmanager
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         connection = self._connection
-        connection.execute("BEGIN IMMEDIATE")
-        try:
-            yield connection
-        except BaseException:
-            connection.rollback()
-            raise
-        else:
-            connection.commit()
+        if connection.in_transaction:
+            raise ArtifactError("artifact_nested_transaction")
+        with immediate_transaction(
+            connection,
+            self._checkpoint,
+            name="artifact_transaction",
+        ) as transaction:
+            yield transaction
 
     def register(
         self,
@@ -1058,7 +1070,7 @@ class ArtifactStore:
         self._repository = repository
         self._max_blob_bytes = max_blob_bytes
         self._fsync = fsync
-        self._checkpoint = checkpoint or (lambda _name: None)
+        self._checkpoint = checked_checkpoint(checkpoint)
         self._ensure_root()
         with self._directory("owners", create=True):
             pass
@@ -1178,19 +1190,25 @@ class ArtifactStore:
         *,
         checkpoint: str,
     ) -> tuple[str, int]:
+        prefix = checkpoint.removesuffix("_after_fsync")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        self._checkpoint(f"{prefix}_before_temp_create")
         descriptor = os.open(name, flags, 0o600, dir_fd=directory_fd)
         succeeded = False
         try:
+            self._checkpoint(f"{prefix}_after_temp_create")
             os.fchmod(descriptor, 0o600)
             digest = hashlib.sha256()
             size = 0
+            self._checkpoint(f"{prefix}_before_write")
             for chunk in chunks:
                 size += len(chunk)
                 if size > self._max_blob_bytes:
                     raise ArtifactContractError("artifact_payload_too_large")
                 self._write_all(descriptor, chunk)
                 digest.update(chunk)
+            self._checkpoint(f"{prefix}_after_write")
+            self._checkpoint(f"{prefix}_before_fsync")
             self._fsync(descriptor)
             self._checkpoint(checkpoint)
             succeeded = True
@@ -1341,10 +1359,14 @@ class ArtifactStore:
                 checkpoint="blob_after_fsync",
             )
             final = digest[7:]
+            self._checkpoint("blob_before_install")
             self._install_without_overwrite(directory, temporary, final)
+            self._checkpoint("blob_after_atomic_install")
+            self._checkpoint("blob_before_final_verification")
             observed_digest, observed_size = self._verify_file(directory, final)
             if (observed_digest, observed_size) != (digest, size):
                 raise ArtifactIntegrityError("artifact_blob_collision")
+            self._checkpoint("blob_after_final_verification")
             self._checkpoint("blob_after_install")
             return Blob(digest=digest, size_bytes=size, blob_ref=_blob_ref(digest))
 
@@ -1525,9 +1547,11 @@ class ArtifactStore:
         if not isinstance(schema_valid, bool) or not isinstance(postconditions_valid, bool):
             raise ArtifactContractError("artifact_validation_flags_invalid")
         blob = self.stage(owner, payload)
+        self._checkpoint("blob_before_registration_verification")
         with self._verified_registration(owner, blob) as verify_current_identity:
             self._checkpoint("blob_after_registration_verification")
-            return self._repository.register(
+            self._checkpoint("artifact_before_registration")
+            artifact = self._repository.register(
                 owner,
                 workload_id,
                 revision_id,
@@ -1541,6 +1565,8 @@ class ArtifactStore:
                 postconditions_valid=postconditions_valid,
                 verify_blob=verify_current_identity,
             )
+            self._checkpoint("artifact_after_registration")
+            return artifact
 
     @staticmethod
     def _redacted_target(owner_user_id: str, target_key: str) -> str:
@@ -1626,11 +1652,14 @@ class ArtifactStore:
                     self._fsync(directory)
                     return RecoveryStatus.RETRYABLE, prepared[0]
 
+                self._checkpoint("publication_before_install")
                 self._install_without_overwrite(directory, temporary, "artifact")
                 self._checkpoint("publication_after_install")
+                self._checkpoint("publication_before_final_verification")
                 final = self._verify_file(directory, "artifact")
                 if final != (publication.expected_digest, artifact.size_bytes):
                     return RecoveryStatus.NEEDS_ATTENTION, final[0]
+                self._checkpoint("publication_after_final_verification")
                 return RecoveryStatus.COMMITTED, final[0]
         except FileNotFoundError:
             return RecoveryStatus.RETRYABLE, None
@@ -1645,6 +1674,7 @@ class ArtifactStore:
     ) -> PublicationRecovery:
         owner = _require_owner(owner_user_id)
         artifact = self._repository.get_artifact(owner, artifact_id)
+        self._checkpoint("publication_before_prepare")
         publication = self._repository.prepare_publication(
             owner,
             artifact.artifact_id,
@@ -1652,6 +1682,7 @@ class ArtifactStore:
             self._redacted_target(owner, target_key),
             publication_id=publication_id,
         )
+        self._checkpoint("publication_after_prepare")
         if publication.state is PublicationState.PUBLISHED:
             return PublicationRecovery(RecoveryStatus.COMMITTED, publication, "already_published")
         if publication.state is PublicationState.NEEDS_ATTENTION:
@@ -1660,10 +1691,12 @@ class ArtifactStore:
                 publication,
                 "already_needs_attention",
             )
+        self._checkpoint("publication_before_attempt")
         publication = self._repository.begin_publication_attempt(
             owner,
             publication.publication_id,
         )
+        self._checkpoint("publication_after_attempt")
         return self._finish_publication(owner, artifact, publication, write_if_missing=True)
 
     def reconcile(
@@ -1731,11 +1764,13 @@ class ArtifactStore:
 
         if status is RecoveryStatus.COMMITTED:
             assert observed is not None
+            self._checkpoint("publication_before_commit")
             current = self._repository.mark_published(
                 owner_user_id,
                 publication.publication_id,
                 observed,
             )
+            self._checkpoint("publication_after_commit")
             return PublicationRecovery(status, current, "digest_verified")
         if status is RecoveryStatus.NEEDS_ATTENTION:
             current = self._repository.mark_needs_attention(

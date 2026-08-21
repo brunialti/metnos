@@ -21,6 +21,7 @@ from .schema import (
     inventory_digest,
     validate_inventory,
 )
+from .transactions import checked_checkpoint
 
 
 class InventorySealError(ValueError):
@@ -30,7 +31,10 @@ class InventorySealError(ValueError):
 _MAX_INVENTORY_ROOTS = 1024
 _MAX_DISCOVERY_ENTRIES = 1_100_000
 _MIN_DISCOVERY_ENTRIES = 4096
-_IN_MEMORY_SOURCE_LIMIT = 4096
+# Small inventories remain plain mappings for the common interactive path.
+# This is only a representation threshold, never a source-count limit: larger
+# inventories keep their metadata in the disposable spool and stay repeatable.
+_IN_MEMORY_SOURCE_LIMIT = 512
 _SPOOL_BATCH_SIZE = 1024
 _MAX_CHUNK_BYTES = 16 * 1024 * 1024
 _DEVICE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
@@ -239,7 +243,10 @@ def _stat_identity(item: os.stat_result) -> tuple[int, int, int, int, int, int]:
     )
 
 
-def _validate_root(raw: str | os.PathLike[str]) -> Path:
+def _validate_root(
+    raw: str | os.PathLike[str],
+    checkpoint: Callable[[str], None],
+) -> Path:
     text = os.fspath(raw)
     if not isinstance(text, str) or not text or "\x00" in text:
         raise InventorySealError("inventory roots must be non-empty local paths")
@@ -252,7 +259,9 @@ def _validate_root(raw: str | os.PathLike[str]) -> Path:
     # redirect discovery or the final revalidation to another tree.
     path = Path(os.path.abspath(text))
     try:
+        checkpoint("inventory_root_before_lstat")
         metadata = path.lstat()
+        checkpoint("inventory_root_after_lstat")
     except OSError as exc:
         raise InventorySealError("inventory root is missing or unreadable") from exc
     if stat.S_ISLNK(metadata.st_mode):
@@ -265,6 +274,7 @@ def _validate_root(raw: str | os.PathLike[str]) -> Path:
 def _discover(
     roots: Sequence[str | os.PathLike[str]],
     limits: InventoryLimits,
+    checkpoint: Callable[[str], None],
 ) -> tuple[_InventorySpool, int]:
     if (
         isinstance(roots, (str, bytes, os.PathLike))
@@ -273,7 +283,7 @@ def _discover(
         raise InventorySealError("inventory roots must be an array of paths")
     if len(roots) > _MAX_INVENTORY_ROOTS:
         raise InventorySealError("inventory root count exceeds the v1 limit")
-    normalized = tuple(_validate_root(raw) for raw in roots)
+    normalized = tuple(_validate_root(raw, checkpoint) for raw in roots)
     if not normalized:
         return _InventorySpool(), 0
     absolute_keys = [os.path.abspath(os.fspath(path)) for path in normalized]
@@ -326,7 +336,9 @@ def _discover(
 
     try:
         for root_index, root in enumerate(normalized):
+            checkpoint("inventory_root_before_revalidation")
             metadata = root.lstat()
+            checkpoint("inventory_root_after_revalidation")
             prefix = f"root-{root_index:04d}/"
             if stat.S_ISREG(metadata.st_mode):
                 add_candidate(root, prefix + root.name)
@@ -360,11 +372,14 @@ def _discover(
                     "inventory directory depth exceeds the admitted maximum"
                 )
             try:
+                checkpoint("inventory_directory_before_lstat")
                 opened_directory = directory.lstat()
+                checkpoint("inventory_directory_after_lstat")
                 if not stat.S_ISDIR(opened_directory.st_mode):
                     raise InventorySealError(
                         "inventory directory changed during discovery"
                     )
+                checkpoint("inventory_directory_before_scan")
                 with os.scandir(directory) as entries:
                     for entry in entries:
                         claim_entry()
@@ -401,7 +416,10 @@ def _discover(
                                 "inventory entry changed during discovery"
                             ) from exc
                         add_candidate(Path(entry.path), locator)
+                checkpoint("inventory_directory_after_scan")
+                checkpoint("inventory_directory_before_final_lstat")
                 final_directory = directory.lstat()
+                checkpoint("inventory_directory_after_final_lstat")
                 identity = _stat_identity(opened_directory)
                 if identity != _stat_identity(final_directory):
                     raise InventorySealError(
@@ -422,14 +440,19 @@ def _discover(
                 raise InventorySealError(
                     "inventory directory changed or became unreadable"
                 ) from exc
+        checkpoint("inventory_spool_before_discovery_commit")
         spool.connection.commit()
+        checkpoint("inventory_spool_after_discovery_commit")
         return spool, source_count
     except BaseException:
         spool.close()
         raise
 
 
-def _verify_directories_unchanged(spool: _InventorySpool) -> None:
+def _verify_directories_unchanged(
+    spool: _InventorySpool,
+    checkpoint: Callable[[str], None],
+) -> None:
     """Reject additions, removals or renames that occurred while hashing."""
 
     rows = spool.connection.execute(
@@ -441,7 +464,9 @@ def _verify_directories_unchanged(spool: _InventorySpool) -> None:
     for row in rows:
         path = Path(os.fsdecode(bytes(row[0])))
         try:
+            checkpoint("inventory_directory_before_seal_revalidation")
             current = path.lstat()
+            checkpoint("inventory_directory_after_seal_revalidation")
         except OSError as exc:
             raise InventorySealError(
                 "inventory directory changed while sources were sealed"
@@ -460,18 +485,24 @@ def _stable_file_digest(
     max_bytes: int,
     before_final_stat: Callable[[Path], None] | None,
     on_chunk: Callable[[bytes], None] | None = None,
+    checkpoint: Callable[[str], None] | None = None,
 ) -> tuple[str, os.stat_result]:
+    fault = checked_checkpoint(checkpoint)
     flags = os.O_RDONLY
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
+        fault("inventory_source_before_open")
         descriptor = os.open(path, flags)
     except OSError as exc:
         raise InventorySealError("inventory source cannot be opened safely") from exc
     try:
+        fault("inventory_source_after_open")
+        fault("inventory_source_before_initial_stat")
         opened = os.fstat(descriptor)
+        fault("inventory_source_after_initial_stat")
         if not stat.S_ISREG(opened.st_mode):
             raise InventorySealError("inventory source is not a regular file")
         if opened.st_size > max_bytes:
@@ -480,6 +511,7 @@ def _stable_file_digest(
             )
         digest = hashlib.sha256()
         size = 0
+        fault("inventory_source_before_read")
         while True:
             block = os.read(descriptor, chunk_bytes)
             if not block:
@@ -492,6 +524,8 @@ def _stable_file_digest(
             digest.update(block)
             if on_chunk is not None:
                 on_chunk(block)
+        fault("inventory_source_after_read")
+        fault("inventory_source_before_final_stat")
         if before_final_stat is not None:
             before_final_stat(path)
         final_descriptor = os.fstat(descriptor)
@@ -499,6 +533,7 @@ def _stable_file_digest(
             final_path = path.lstat()
         except OSError as exc:
             raise InventorySealError("inventory source disappeared while sealing") from exc
+        fault("inventory_source_after_final_stat")
     finally:
         os.close(descriptor)
 
@@ -518,6 +553,7 @@ def seal_local_inventory(
     chunk_bytes: int = 1_048_576,
     before_final_stat: Callable[[Path], None] | None = None,
     on_source: Callable[[Mapping[str, Any], Path], None] | None = None,
+    checkpoint: Callable[[str], None] | None = None,
 ) -> Mapping[str, Any]:
     """Discover and seal regular local files without persisting absolute paths."""
 
@@ -533,11 +569,15 @@ def seal_local_inventory(
         )
     if on_source is not None and not callable(on_source):
         raise InventorySealError("on_source must be callable")
+    fault = checked_checkpoint(checkpoint)
 
-    spool, source_count = _discover(roots, limits)
+    fault("inventory_before_discovery")
+    spool, source_count = _discover(roots, limits, fault)
     total_bytes = 0
     ordinal = 0
     try:
+        fault("inventory_after_discovery")
+
         def seal_candidate(path_bytes: bytes, locator_value: str) -> None:
             nonlocal total_bytes, ordinal
             candidate = _Candidate(
@@ -548,6 +588,7 @@ def seal_local_inventory(
                 chunk_bytes=chunk_bytes,
                 max_bytes=limits.max_total_bytes - total_bytes,
                 before_final_stat=before_final_stat,
+                checkpoint=fault,
             )
             total_bytes += int(metadata.st_size)
             if total_bytes > limits.max_total_bytes:
@@ -614,18 +655,25 @@ def seal_local_inventory(
                 "DELETE FROM candidate_files WHERE locator_key=?",
                 ((row[0],) for row in batch),
             )
+            fault("inventory_spool_before_batch_commit")
             spool.connection.commit()
+            fault("inventory_spool_after_batch_commit")
         if ordinal != source_count:
             raise InventorySealError("inventory candidate spool is incomplete")
-        _verify_directories_unchanged(spool)
+        fault("inventory_before_directory_revalidation")
+        _verify_directories_unchanged(spool, fault)
+        fault("inventory_after_directory_revalidation")
+        fault("inventory_spool_before_finalize_commit")
         spool.connection.executescript(
             """
+            BEGIN IMMEDIATE;
             DROP TABLE candidate_files;
             DROP TABLE pending_directories;
             DROP TABLE observed_directories;
+            COMMIT;
             """
         )
-        spool.connection.commit()
+        fault("inventory_spool_after_finalize_commit")
         sources = _SpoolSources(spool)
         digest = inventory_digest(sources)
         if source_count <= _IN_MEMORY_SOURCE_LIMIT:

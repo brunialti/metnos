@@ -11,7 +11,7 @@ import json
 import re
 import sqlite3
 import uuid
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -77,6 +77,7 @@ from .schema import (
     validate_inventory,
     validate_plan,
 )
+from .transactions import checked_checkpoint, immediate_transaction
 
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -642,7 +643,12 @@ def _snapshot_to_workload(raw: str) -> WorkloadRecord:
 class DurableWorkloadStore:
     """One explicitly-owned repository connection; never a process singleton."""
 
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        checkpoint: Callable[[str], None] | None = None,
+    ) -> None:
         if schema_version(connection) != CURRENT_SCHEMA_VERSION:
             raise StoreNotReadyError(
                 "durable workload schema is not at the supported version"
@@ -661,13 +667,19 @@ class DurableWorkloadStore:
             if main_file not in {"", ":memory:"}
             else None
         )
+        self._checkpoint = checked_checkpoint(checkpoint)
 
     @classmethod
-    def open(cls, path: str | Path | None = None) -> "DurableWorkloadStore":
+    def open(
+        cls,
+        path: str | Path | None = None,
+        *,
+        checkpoint: Callable[[str], None] | None = None,
+    ) -> "DurableWorkloadStore":
         connection = open_db(path)
         try:
             migrate(connection)
-            return cls(connection)
+            return cls(connection, checkpoint=checkpoint)
         except BaseException:
             connection.close()
             raise
@@ -690,7 +702,7 @@ class DurableWorkloadStore:
             )
         connection = open_db(self._database_path)
         try:
-            return type(self)(connection)
+            return type(self)(connection, checkpoint=self._checkpoint)
         except BaseException:
             connection.close()
             raise
@@ -705,14 +717,12 @@ class DurableWorkloadStore:
     def _transaction(self) -> Iterator[sqlite3.Connection]:
         if self._connection.in_transaction:
             raise DurableStoreError("nested durable-workload transactions are forbidden")
-        self._connection.execute("BEGIN IMMEDIATE")
-        try:
-            yield self._connection
-            self._connection.execute("COMMIT")
-        except BaseException:
-            if self._connection.in_transaction:
-                self._connection.execute("ROLLBACK")
-            raise
+        with immediate_transaction(
+            self._connection,
+            self._checkpoint,
+            name="workload_transaction",
+        ) as connection:
+            yield connection
 
     @staticmethod
     def _select_workload(
