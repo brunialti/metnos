@@ -4,6 +4,8 @@ import json
 import multiprocessing
 import os
 import signal
+import sqlite3
+import time
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1369,6 +1371,54 @@ def test_real_process_crash_at_controlled_boundaries(
         if process.is_alive():
             process.terminate()
             process.join(timeout=5)
+
+
+def test_real_database_writer_lock_is_bounded_and_recovery_is_lossless(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        workload_id = _prepare_one(store, "database-busy")
+        store._connection.execute("PRAGMA busy_timeout=100")
+        blocker = sqlite3.connect(
+            db_path,
+            timeout=0.1,
+            isolation_level=None,
+        )
+        try:
+            blocker.execute("BEGIN IMMEDIATE")
+            started = time.monotonic()
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                store.claim_next(
+                    "blocked-worker",
+                    BASE_TIME,
+                    timedelta(seconds=30),
+                    _capabilities(),
+                )
+            elapsed = time.monotonic() - started
+            assert 0.05 <= elapsed < 1.0
+            row = _unit_row(store, workload_id)
+            assert row["state"] == "pending"
+            assert row["attempt_count"] == 0
+            assert row["fence"] == 0
+        finally:
+            if blocker.in_transaction:
+                blocker.rollback()
+            blocker.close()
+
+        lease = store.claim_next(
+            "recovered-worker",
+            BASE_TIME,
+            timedelta(seconds=30),
+            _capabilities(),
+        )
+        assert lease is not None
+        assert lease.fence == 1
+        assert store.mark_running(
+            lease, now=BASE_TIME + timedelta(microseconds=1),
+        ) is LeaseMutationStatus.APPLIED
+        assert store.commit_result(
+            lease,
+            _result(lease, "after-database-lock"),
+            now=BASE_TIME + timedelta(microseconds=2),
+        ).status is CommitStatus.COMMITTED
 
 
 def test_old_real_worker_cannot_heartbeat_or_commit_after_new_fence(db_path):

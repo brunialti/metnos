@@ -85,6 +85,31 @@ def test_large_local_inventory_uses_a_repeatable_disposable_spool(
         _ = sealed["sources"]
 
 
+def test_disk_backed_inventory_validation_never_builds_an_inline_copy(
+    tmp_path,
+    monkeypatch,
+):
+    import durable_workloads.inventory as inventory_module
+
+    root = tmp_path / "streamed"
+    root.mkdir()
+    for index in range(3):
+        (root / f"source-{index}.txt").write_text(str(index), encoding="utf-8")
+    monkeypatch.setattr(inventory_module, "_IN_MEMORY_SOURCE_LIMIT", 2)
+
+    sealed = seal_local_inventory(
+        [root], device_id="device-a", limits=_limits(),
+    )
+    assert isinstance(sealed, SealedInventory)
+    try:
+        inline, sources = validate_inventory(sealed)
+        assert inline is None
+        assert sources is sealed["sources"]
+        assert len(sources) == 3
+    finally:
+        sealed.close()
+
+
 def test_large_inventory_duplicate_check_spills_without_losing_exactness(
     monkeypatch,
 ):

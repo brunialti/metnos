@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from durable_workloads.coordinator import (
     CommitStatus,
+    LeaseMutationStatus,
     RetryDecision,
     StructuredAttemptError,
     ValidatedResult,
@@ -236,6 +237,98 @@ def test_hierarchy_keys_do_not_depend_on_random_database_ids(tmp_path):
             _finish_reduction(store, workload_id)
             observed.append(_reduction_keys(store, workload_id))
     assert observed[0] == observed[1]
+
+
+def test_reduction_order_is_identical_after_reversed_parallel_completion(
+    tmp_path,
+):
+    def first_level_signature(database, *, reverse_completion):
+        with DurableWorkloadStore.open(database) as store:
+            selected_plan = _plan(4)
+            selected_plan["budgets"]["max_concurrency"] = 4
+            draft = store.create_draft(
+                "owner-a",
+                "parallel-completion-order",
+                redacted_request={"summary": "synthetic ordering fixture"},
+            )
+            store.admit_revision(
+                "owner-a",
+                draft.workload_id,
+                selected_plan,
+                inventory([source(index) for index in range(4)]),
+                expected_version=draft.version,
+            )
+            admitted = store.get_workload("owner-a", draft.workload_id)
+            store.transition_workload(
+                "owner-a",
+                draft.workload_id,
+                WorkloadState.QUEUED,
+                expected_version=admitted.version,
+            )
+            started = datetime.now(timezone.utc)
+            claimed = []
+            for index in range(4):
+                lease = store.claim_next(
+                    f"map-worker-{index}",
+                    started + timedelta(microseconds=index),
+                    timedelta(minutes=5),
+                    _capabilities(),
+                )
+                assert lease is not None and lease.stage_key == "map"
+                assert store.mark_running(
+                    lease,
+                    now=started + timedelta(microseconds=10 + index),
+                ) is LeaseMutationStatus.APPLIED
+                facts = store.execution_inputs(lease)
+                claimed.append((lease, int(facts["source"]["ordinal"])))
+
+            completion = reversed(claimed) if reverse_completion else claimed
+            for index, (lease, ordinal) in enumerate(completion):
+                result = ValidatedResult.from_payload(
+                    lease.output_schema_version,
+                    {"entries": [{"ordinal": ordinal, "text": "stable"}]},
+                )
+                assert store.commit_result(
+                    lease,
+                    result,
+                    now=started + timedelta(seconds=1, microseconds=index),
+                ).status is CommitStatus.COMMITTED
+
+            assert store.materialize_ready_units(
+                "owner-a", draft.workload_id, limit=10,
+            ) == 2
+            signature = []
+            for index in range(2):
+                lease = store.claim_next(
+                    f"reduce-worker-{index}",
+                    started + timedelta(seconds=2, microseconds=index),
+                    timedelta(minutes=5),
+                    _capabilities(),
+                )
+                assert lease is not None and lease.stage_key == "reduce"
+                assert store.mark_running(
+                    lease,
+                    now=started + timedelta(seconds=3, microseconds=index),
+                ) is LeaseMutationStatus.APPLIED
+                facts = store.execution_inputs(lease)
+                signature.append((
+                    lease.unit_key,
+                    tuple(
+                        dependency["payload"]["entries"][0]["ordinal"]
+                        for dependency in facts["dependencies"]
+                    ),
+                ))
+            return tuple(signature)
+
+    forward = first_level_signature(
+        tmp_path / "forward" / "state.sqlite3",
+        reverse_completion=False,
+    )
+    reversed_order = first_level_signature(
+        tmp_path / "reversed" / "state.sqlite3",
+        reverse_completion=True,
+    )
+    assert forward == reversed_order
 
 
 def test_oversized_pair_stops_once_without_a_materialization_loop(tmp_path):

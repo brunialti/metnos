@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+import random
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -443,6 +445,124 @@ def test_interactive_call_keeps_one_slot_under_durable_saturation():
     release.set()
     thread.join(2)
     scheduler.shutdown()
+
+
+def test_two_owners_and_fake_remote_device_cannot_starve_interactive_calls():
+    """F12 saturation probe with a fixed seed and bounded wait at every edge."""
+
+    seed = 0xF12
+    latencies = (0.0, 0.001, 0.003)
+    generator = random.Random(seed)
+
+    for round_index in range(12):
+        scheduler = ExecutorScheduler(
+            max_workers=4,
+            max_in_flight=3,
+            parallel_enabled=True,
+            hardware_threads=4,
+            resource_limits={"device": 1, "network_io": 1},
+        )
+        remote_policy = _safe_policy()
+        remote_policy["resource_class"] = "device"
+        remote_executor = _Executor(
+            name="fake_remote_device",
+            execution_policy=remote_policy,
+        )
+        interactive_executor = _Executor(
+            name="interactive_fixture",
+            execution_policy=dict(DEFAULT_EXECUTION_POLICY),
+        )
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        lock = threading.Lock()
+        active = 0
+        maximum = 0
+        completed = []
+        errors = []
+        delays = [generator.choice(latencies) for _index in range(3)]
+
+        def invoke_remote(label, owner, delay, *, hold=False):
+            nonlocal active, maximum
+
+            def fake_device():
+                nonlocal active, maximum
+                with lock:
+                    active += 1
+                    maximum = max(maximum, active)
+                try:
+                    if hold:
+                        first_entered.set()
+                        assert release_first.wait(timeout=2)
+                    time.sleep(delay)
+                    with lock:
+                        completed.append((label, owner))
+                    return {"ok": True, "device_id": "device-f12"}
+                finally:
+                    with lock:
+                        active -= 1
+
+            try:
+                scheduler.invoke(
+                    remote_executor,
+                    fake_device,
+                    admission_timeout_s=1,
+                    execution_context=_context(
+                        owner,
+                        resources={"device": 1, "network_io": 1},
+                    ),
+                )
+            except BaseException as exc:
+                with lock:
+                    errors.append(exc)
+
+        threads = [
+            threading.Thread(
+                target=invoke_remote,
+                args=("a-1", "owner-a", delays[0]),
+                kwargs={"hold": True},
+            ),
+            threading.Thread(
+                target=invoke_remote,
+                args=("b-1", "owner-b", delays[1]),
+            ),
+            threading.Thread(
+                target=invoke_remote,
+                args=("a-2", "owner-a", delays[2]),
+            ),
+        ]
+        try:
+            threads[0].start()
+            assert first_entered.wait(timeout=1)
+            threads[1].start()
+            deadline = time.monotonic() + 1
+            while scheduler._fair_gate._active < 2:
+                assert time.monotonic() < deadline
+                threading.Event().wait(0.001)
+            threads[2].start()
+            _wait_for_waiters(scheduler, 1)
+
+            started = time.monotonic()
+            assert scheduler.invoke(
+                interactive_executor,
+                lambda: {"ok": True, "turn": round_index},
+                admission_timeout_s=0.2,
+            ) == {"ok": True, "turn": round_index}
+            assert time.monotonic() - started < 0.2
+        finally:
+            release_first.set()
+            for thread in threads:
+                if thread.ident is not None:
+                    thread.join(timeout=2)
+            scheduler.shutdown()
+
+        assert all(not thread.is_alive() for thread in threads)
+        assert errors == []
+        assert maximum == 1
+        assert len(completed) == 3
+        assert {owner for _label, owner in completed} == {"owner-a", "owner-b"}
+        metrics = scheduler.metrics.snapshot()
+        assert metrics["fake_remote_device"]["calls"] == 3
+        assert metrics["interactive_fixture"]["calls"] == 1
 
 
 def test_incomplete_executor_policy_remains_serial_for_context_calls():

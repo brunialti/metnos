@@ -14,14 +14,14 @@ from durable_workloads.compiler import (
     core_output_schemas,
 )
 from durable_workloads.inventory import InventoryLimits
-from durable_workloads.models import RunnerKind, WorkloadState
+from durable_workloads.models import RunnerKind, SourceResolution, WorkloadState
 from durable_workloads.runtime_bindings import (
     BoundExecutionBridge,
     RuntimeFactory,
     RuntimeRegistration,
     RuntimeRegistry,
-    default_runtime_registry,
 )
+from durable_runtime_registry import default_runtime_registry
 from durable_workloads.service import default_service
 from durable_workloads.source_authority import SourceAuthority
 from durable_workloads.storage import DurableWorkloadStore, StoreNotReadyError
@@ -118,6 +118,16 @@ def test_default_registry_exposes_generic_core_and_registered_capabilities():
     assert registry.output_schemas.resolve(
         "metnos.inventory-seal/1"
     ).name == "metnos.inventory-seal/1"
+
+
+def test_core_runtime_composition_does_not_import_a_task_domain():
+    root = Path(__file__).resolve().parents[3] / "runtime" / "durable_workloads"
+    for path in root.glob("*.py"):
+        if path.name == "image_preset.py":
+            continue
+        source = path.read_text(encoding="utf-8")
+        assert "image_preset" not in source
+        assert "read_files_ocr" not in source
 
 
 def test_package_can_reuse_a_core_schema_without_redeclaring_its_authority():
@@ -419,6 +429,124 @@ def test_runtime_factory_executes_an_admitted_generic_source_workload(tmp_path):
             ).fetchone()[0] == 0
 
 
+def test_runtime_factory_uses_explicit_remote_source_authority(tmp_path):
+    schema_name = "tests.factory-remote-source/1"
+    schema = ApprovedOutputSchema.create(
+        schema_name,
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 1,
+                },
+            },
+            "required": ["entries"],
+        },
+    )
+    contract = _contract(
+        "workload",
+        "workload.read_remote_source",
+        schema_name,
+        input_names=("paths",),
+        input_types=(("paths", "array"),),
+        required_input_names=("paths",),
+    )
+    remote_path = tmp_path / "remote-device" / "source.txt"
+    remote_path.parent.mkdir()
+    remote_path.write_text("remote payload", encoding="utf-8")
+    observed = []
+
+    def invoke(_name, arguments, _context):
+        selected = arguments["paths"][0]
+        return {"entries": [Path(selected).read_text(encoding="utf-8")]}
+
+    def attest(device_id, locator, source, context):
+        observed.append((device_id, locator, context.owner_user_id))
+        return SourceResolution(
+            value=locator,
+            source_id=source["source_id"],
+            device_id=device_id,
+            content_digest=source["content_digest"],
+            size_bytes=source["size_bytes"],
+            mtime_ns=source["mtime_ns"],
+            authority="remote-device-test-v1",
+        )
+
+    registration = RuntimeRegistration(
+        name="tests.factory-remote-source.v1",
+        runner_bindings=(("workload", "workload.read_remote_source"),),
+        runners=_Runners((contract,)),
+        output_schemas=OutputSchemaRegistry((schema,)),
+        output_schema_names=(schema_name,),
+        workload_invoker=invoke,
+    )
+    registry = RuntimeRegistry((registration,))
+    authority_path = tmp_path / "private" / "authority.sqlite3"
+    database_path = tmp_path / "state.sqlite3"
+    with DurableWorkloadStore.open(database_path) as store:
+        draft = store.create_draft(
+            "owner-a",
+            "runtime-factory-remote-source",
+            redacted_request={"summary": "fixture"},
+        )
+        with SourceAuthority.open(authority_path) as authority:
+            sealed = authority.seal_and_register(
+                [remote_path],
+                owner_user_id="owner-a",
+                workload_id=draft.workload_id,
+                device_id="device-a",
+                limits=InventoryLimits(
+                    max_sources=1,
+                    max_total_bytes=1024,
+                    max_depth=1,
+                ),
+                valid_until=datetime.now(timezone.utc) + timedelta(days=1),
+            )
+        candidate = plan(with_map=True)
+        candidate["stages"][1]["runner"] = {
+            "kind": "workload", "name": "workload.read_remote_source",
+        }
+        candidate["stages"][1]["output_schema"]["name"] = schema_name
+        admit_candidate(
+            store,
+            "owner-a",
+            draft.workload_id,
+            candidate,
+            sealed,
+            expected_version=draft.version,
+            runners=registry.runners,
+            output_schemas=registry.output_schemas,
+            usage_complete=True,
+        )
+        current = store.get_workload("owner-a", draft.workload_id)
+        store.transition_workload(
+            "owner-a",
+            draft.workload_id,
+            WorkloadState.QUEUED,
+            expected_version=current.version,
+        )
+
+        factory = RuntimeFactory(
+            registry_factory=lambda: registry,
+            source_authority_path=authority_path,
+            remote_attestor=attest,
+            artifact_root=tmp_path / "artifacts",
+        )
+        bridge = factory.bridge(store)
+        try:
+            assert bridge.run_once(factory.worker(store)).status.value == "committed"
+        finally:
+            bridge.close()
+
+        assert store.get_workload(
+            "owner-a", draft.workload_id,
+        ).state is WorkloadState.COMPLETED
+        assert observed == [("device-a", str(remote_path), "owner-a")]
+
+
 def test_runtime_factory_rejects_memory_store_and_invalid_resource_limit(
     monkeypatch,
 ):
@@ -439,7 +567,7 @@ def test_runtime_factory_rejects_memory_store_and_invalid_resource_limit(
 def test_default_service_composes_bindings_only_when_gate_is_enabled(
     monkeypatch,
 ):
-    import durable_workloads.runtime_bindings as bindings
+    import durable_runtime_registry as bindings
 
     def unavailable():
         raise AssertionError("production bindings must remain lazy while disabled")

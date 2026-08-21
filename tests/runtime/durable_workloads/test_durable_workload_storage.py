@@ -13,6 +13,7 @@ from durable_workloads.migrations import utc_now
 from durable_workloads.models import WorkloadState
 from durable_workloads.schema import SchemaValidationError
 from durable_workloads.storage import (
+    DurableWorkloadStore,
     IdempotencyConflictError,
     OwnerRequiredError,
     VersionConflictError,
@@ -23,8 +24,6 @@ from helpers import artifact_requirement, inventory, plan, source
 
 @pytest.fixture
 def store(tmp_path):
-    from durable_workloads.storage import DurableWorkloadStore
-
     repository = DurableWorkloadStore.open(
         tmp_path / "durable" / "state.sqlite3"
     )
@@ -92,6 +91,62 @@ def test_submit_is_idempotent_and_owner_ids_can_overlap(store):
         )
     assert len(store.list_workloads("owner-a")) == 1
     assert len(store.list_workloads("owner-b")) == 1
+
+
+def test_named_transaction_boundaries_rollback_or_replay_without_duplicates(
+    tmp_path,
+):
+    events = []
+    injected_at = ["workload_transaction_before_commit"]
+
+    def checkpoint(name):
+        events.append(name)
+        if name == injected_at[0]:
+            raise RuntimeError(f"injected at {name}")
+
+    database = tmp_path / "fault-points" / "durable.sqlite3"
+    with DurableWorkloadStore.open(database, checkpoint=checkpoint) as repository:
+        with pytest.raises(RuntimeError, match="before_commit"):
+            repository.create_draft(
+                "owner-a",
+                "before-commit",
+                redacted_request={"summary": "fixture"},
+            )
+        assert repository._connection.in_transaction is False
+        assert repository._connection.execute(
+            "SELECT COUNT(*) FROM workloads"
+        ).fetchone()[0] == 0
+        assert events == [
+            "workload_transaction_before_begin",
+            "workload_transaction_after_begin",
+            "workload_transaction_before_commit",
+            "workload_transaction_before_rollback",
+            "workload_transaction_after_rollback",
+        ]
+
+        events.clear()
+        injected_at[0] = "workload_transaction_after_commit"
+        with pytest.raises(RuntimeError, match="after_commit"):
+            repository.create_draft(
+                "owner-a",
+                "after-commit",
+                redacted_request={"summary": "fixture"},
+            )
+        assert repository._connection.in_transaction is False
+        assert repository._connection.execute(
+            "SELECT COUNT(*) FROM workloads"
+        ).fetchone()[0] == 1
+
+        injected_at[0] = "disabled"
+        replay = repository.create_draft(
+            "owner-a",
+            "after-commit",
+            redacted_request={"summary": "fixture"},
+        )
+        assert replay.request_key == "after-commit"
+        assert repository._connection.execute(
+            "SELECT COUNT(*) FROM workloads"
+        ).fetchone()[0] == 1
 
 
 def test_revision_replay_requires_identical_snapshots_and_facts(store):

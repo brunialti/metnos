@@ -101,6 +101,138 @@ def test_local_authority_keeps_at_most_one_snapshot_per_lane(tmp_path):
         assert len(authority._snapshot_files) == 1
 
 
+def test_named_source_boundaries_are_ordered_and_registration_rolls_back(
+    tmp_path,
+):
+    source_path = tmp_path / "source.txt"
+    source_path.write_bytes(b"stable source")
+    events = []
+    injected_at = [""]
+
+    def checkpoint(name):
+        events.append(name)
+        if name == injected_at[0]:
+            raise RuntimeError(f"injected at {name}")
+
+    with SourceAuthority.open(
+        tmp_path / "private" / "authority.sqlite3",
+        clock=lambda: NOW,
+        checkpoint=checkpoint,
+    ) as authority:
+        inventory = authority.seal_and_register(
+            [source_path],
+            owner_user_id="owner-a",
+            workload_id="workload-a",
+            device_id="server",
+            limits=_limits(),
+            valid_until=NOW + timedelta(days=1),
+        )
+        authority.resolve(
+            inventory["sources"][0],
+            _context("owner-a", "workload-a"),
+        )
+        required = (
+            "source_authority_transaction_before_begin",
+            "source_authority_transaction_after_begin",
+            "inventory_before_discovery",
+            "inventory_root_before_lstat",
+            "inventory_root_after_lstat",
+            "inventory_spool_before_discovery_commit",
+            "inventory_spool_after_discovery_commit",
+            "inventory_after_discovery",
+            "inventory_source_before_open",
+            "inventory_source_after_open",
+            "inventory_source_before_initial_stat",
+            "inventory_source_after_initial_stat",
+            "inventory_source_before_read",
+            "inventory_source_after_read",
+            "inventory_source_before_final_stat",
+            "inventory_source_after_final_stat",
+            "inventory_spool_before_batch_commit",
+            "inventory_spool_after_batch_commit",
+            "inventory_before_directory_revalidation",
+            "inventory_after_directory_revalidation",
+            "inventory_spool_before_finalize_commit",
+            "inventory_spool_after_finalize_commit",
+            "source_authority_transaction_before_commit",
+            "source_authority_transaction_after_commit",
+            "source_snapshot_before_temp_create",
+            "source_snapshot_after_temp_create",
+            "source_snapshot_before_copy",
+            "source_snapshot_after_copy",
+            "source_snapshot_before_fsync",
+            "source_snapshot_after_fsync",
+            "source_snapshot_before_verification",
+            "source_snapshot_after_verification",
+        )
+        positions = [events.index(name) for name in required]
+        assert positions == sorted(positions)
+
+        injected_at[0] = "inventory_source_after_read"
+        with pytest.raises(RuntimeError, match="after_read"):
+            authority.seal_and_register(
+                [source_path],
+                owner_user_id="owner-a",
+                workload_id="workload-b",
+                device_id="server",
+                limits=_limits(),
+                valid_until=NOW + timedelta(days=1),
+            )
+        assert authority._connection.in_transaction is False
+        assert authority._connection.execute(
+            "SELECT COUNT(*) FROM source_grants WHERE workload_id='workload-b'"
+        ).fetchone()[0] == 0
+
+        injected_at[0] = "source_authority_transaction_before_commit"
+        with pytest.raises(RuntimeError, match="before_commit"):
+            authority.seal_and_register(
+                [source_path],
+                owner_user_id="owner-a",
+                workload_id="workload-c",
+                device_id="server",
+                limits=_limits(),
+                valid_until=NOW + timedelta(days=1),
+            )
+        assert authority._connection.in_transaction is False
+        assert authority._connection.execute(
+            "SELECT COUNT(*) FROM source_grants WHERE workload_id='workload-c'"
+        ).fetchone()[0] == 0
+
+        injected_at[0] = "source_authority_transaction_after_commit"
+        with pytest.raises(RuntimeError, match="after_commit"):
+            authority.seal_and_register(
+                [source_path],
+                owner_user_id="owner-a",
+                workload_id="workload-d",
+                device_id="server",
+                limits=_limits(),
+                valid_until=NOW + timedelta(days=1),
+            )
+        assert authority._connection.in_transaction is False
+        assert authority._connection.execute(
+            "SELECT COUNT(*) FROM source_grants WHERE workload_id='workload-d'"
+        ).fetchone()[0] == 1
+
+        injected_at[0] = ""
+        replay = authority.seal_and_register(
+            [source_path],
+            owner_user_id="owner-a",
+            workload_id="workload-d",
+            device_id="server",
+            limits=_limits(),
+            valid_until=NOW + timedelta(days=1),
+        )
+        try:
+            assert len(replay["sources"]) == 1
+        finally:
+            close = getattr(replay, "close", None)
+            if callable(close):
+                close()
+        assert authority._connection.execute(
+            "SELECT COUNT(*) FROM source_grants WHERE workload_id='workload-d'"
+        ).fetchone()[0] == 1
+
+
 def test_snapshot_interruption_removes_partial_file_and_allows_retry(
     tmp_path, monkeypatch,
 ):

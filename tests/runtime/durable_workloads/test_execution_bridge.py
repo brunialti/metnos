@@ -1168,6 +1168,116 @@ def test_malformed_executor_output_never_reaches_result_commit(tmp_path):
         ).fetchone()[0] == "contract_violation"
 
 
+def test_provider_outage_and_request_limit_retry_then_commit_once(tmp_path):
+    resolver = _Resolver()
+    candidate = _pipeline(with_reduce=False)
+    candidate["stages"][1]["retry"] = {
+        "max_attempts": 3,
+        "base_delay_ms": 0,
+        "max_delay_ms": 0,
+        "retryable_error_classes": ["executor_transient"],
+    }
+    observations = iter((
+        {"ok": False, "error_class": "provider_unavailable"},
+        {"ok": False, "error_class": "rate_limited"},
+        _map_observation(),
+    ))
+    with DurableWorkloadStore.open(
+        tmp_path / "durable" / "state.sqlite3"
+    ) as store:
+        workload_id, revision_id = _admit(
+            store,
+            resolver,
+            candidate=candidate,
+            request_key="provider-outage-and-limit",
+        )
+        bridge = DurableExecutionBridge(
+            store,
+            runners=resolver,
+            output_schemas=_schemas(),
+            source_resolver=lambda item, _context: source_resolution(item),
+            executor_loader=lambda _name: SimpleNamespace(name="read_files_ocr"),
+            executor_invoker=lambda *_args: next(observations),
+        )
+        worker = _worker(store, resolver)
+
+        first = bridge.run_once(worker)
+        second = bridge.run_once(worker)
+        third = bridge.run_once(worker)
+
+        assert first.failure is not None
+        assert first.failure.status.value == "retry_scheduled"
+        assert second.failure is not None
+        assert second.failure.status.value == "retry_scheduled"
+        assert third.status is WorkerRunStatus.COMMITTED
+        assert store.get_workload(
+            "owner-f7", workload_id,
+        ).state is WorkloadState.COMPLETED
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM attempts attempt JOIN units unit "
+            "ON unit.owner_user_id=attempt.owner_user_id "
+            "AND unit.id=attempt.unit_id "
+            "WHERE attempt.owner_user_id='owner-f7' AND unit.revision_id=?",
+            (revision_id,),
+        ).fetchone()[0] == 3
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM results WHERE owner_user_id='owner-f7' "
+            "AND revision_id=?",
+            (revision_id,),
+        ).fetchone()[0] == 1
+
+
+def test_revoked_executor_credential_requires_attention_without_retry(tmp_path):
+    resolver = _Resolver()
+    candidate = _pipeline(with_reduce=False)
+    candidate["stages"][1]["retry"] = {
+        "max_attempts": 3,
+        "base_delay_ms": 0,
+        "max_delay_ms": 0,
+        "retryable_error_classes": ["executor_transient"],
+    }
+    calls = []
+    with DurableWorkloadStore.open(
+        tmp_path / "durable" / "state.sqlite3"
+    ) as store:
+        workload_id, revision_id = _admit(
+            store,
+            resolver,
+            candidate=candidate,
+            request_key="revoked-executor-credential",
+        )
+
+        def denied(*_args):
+            calls.append(True)
+            return {"ok": False, "error_class": "permission_denied"}
+
+        bridge = DurableExecutionBridge(
+            store,
+            runners=resolver,
+            output_schemas=_schemas(),
+            source_resolver=lambda item, _context: source_resolution(item),
+            executor_loader=lambda _name: SimpleNamespace(name="read_files_ocr"),
+            executor_invoker=denied,
+        )
+        worker = _worker(store, resolver)
+
+        outcome = bridge.run_once(worker)
+
+        assert outcome.failure is not None
+        assert outcome.failure.status.value == "needs_attention"
+        assert bridge.run_once(worker).status is WorkerRunStatus.IDLE
+        assert calls == [True]
+        row = store._connection.execute(
+            "SELECT state, error_class, attempt_count FROM units "
+            "WHERE owner_user_id='owner-f7' AND revision_id=?",
+            (revision_id,),
+        ).fetchone()
+        assert tuple(row) == ("needs_attention", "capability_unavailable", 1)
+        assert store.get_workload(
+            "owner-f7", workload_id,
+        ).state is WorkloadState.NEEDS_ATTENTION
+
+
 def test_manual_only_timeout_requires_attention_and_never_retries(tmp_path):
     resolver = _Resolver(map_effect="manual_only")
     with DurableWorkloadStore.open(tmp_path / "durable" / "state.sqlite3") as store:

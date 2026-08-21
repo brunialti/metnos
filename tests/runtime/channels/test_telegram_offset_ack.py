@@ -4,7 +4,9 @@ import json
 import stat
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
@@ -163,3 +165,91 @@ def test_daemon_stops_batch_before_ack_after_handler_exception(monkeypatch):
     assert daemon.run_forever(max_iterations=1) == 1
     assert seen == [1, 2]
     assert channel.acks == [1]
+
+
+def test_durable_telegram_cycle_is_inert_off_and_delivers_once_on(
+    tmp_path,
+    monkeypatch,
+):
+    """Exercise the production daemon gate and Telegram formatting without network I/O."""
+
+    import config
+    import pairing
+    import users
+    from channels.daemon import ChannelDaemon
+    from durable_workloads.models import EventType
+    from durable_workloads.storage import DurableWorkloadStore
+
+    owner = "owner-f12-telegram"
+    database = tmp_path / "durable" / "state.sqlite3"
+    monkeypatch.setattr(config, "DB_DURABLE_WORKLOADS", database)
+    with DurableWorkloadStore.open(database) as store:
+        draft = store.create_draft(
+            owner,
+            "telegram-gate-turn",
+            redacted_request={"summary": "fixture"},
+        )
+        with store._transaction() as connection:
+            event = store.append_event_in_transaction(
+                connection,
+                owner_user_id=owner,
+                workload_id=draft.workload_id,
+                event_type=EventType.COMPLETED,
+                payload={"version": draft.version},
+            )
+            store.enqueue_outbox_in_transaction(
+                connection,
+                owner_user_id=owner,
+                workload_id=draft.workload_id,
+                event_id=event.event_id,
+                channel="telegram",
+                recipient_key=owner,
+            )
+
+    monkeypatch.setattr(
+        pairing,
+        "list_pairings",
+        lambda: [SimpleNamespace(channel="telegram", sender_id="42")],
+    )
+    monkeypatch.setattr(
+        users,
+        "find_user_by_recipient",
+        lambda channel, sender: {"id": owner}
+        if (channel, sender) == ("telegram", "42") else None,
+    )
+    monkeypatch.setattr(users, "get_pref", lambda *_args: "it")
+
+    channel = TelegramChannel(
+        token="test-token",
+        default_chat_id="42",
+        state_path=False,
+    )
+    sends = []
+
+    def send_without_network(method, params, **_kwargs):
+        sends.append((method, dict(params), datetime.now(timezone.utc)))
+        return {"ok": True, "result": {"message_id": 1}}
+
+    monkeypatch.setattr(channel, "_call", send_without_network)
+    daemon = object.__new__(ChannelDaemon)
+    daemon.channel = channel
+
+    monkeypatch.setenv("METNOS_DURABLE_WORKLOADS_ENABLED", "0")
+    assert daemon._push_durable_workload_notices() == 0
+    assert sends == []
+
+    monkeypatch.setenv("METNOS_DURABLE_WORKLOADS_ENABLED", "1")
+    assert daemon._push_durable_workload_notices() == 1
+    assert len(sends) == 1
+    assert sends[0][0] == "sendMessage"
+    assert sends[0][1]["chat_id"] == "42"
+    assert sends[0][1]["text"]
+
+    assert daemon._push_durable_workload_notices() == 0
+    assert len(sends) == 1
+    with DurableWorkloadStore.open(database) as store:
+        row = store._connection.execute(
+            "SELECT state, attempt_count FROM outbox WHERE owner_user_id=?",
+            (owner,),
+        ).fetchone()
+        assert tuple(row) == ("sent", 1)

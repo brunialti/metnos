@@ -10,7 +10,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from aiohttp import ClientSession
 from aiohttp.test_utils import AioHTTPTestCase
 
 
@@ -164,6 +166,69 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
                 store, cursor_secret=ADMIN_KEY,
             ).detail(owner, workload.workload_id)
         self.assertEqual(payload, direct)
+
+    async def test_interactive_http_turn_is_unchanged_with_lre_off_and_on(self):
+        import http_routes_agent as routes
+
+        observed = []
+
+        class TurnLog:
+            turn_id = "turn-f12-http"
+            final_message = "F12 HTTP gate ok"
+            final_kind = "answer"
+            ts_start = 0.0
+            ts_end = 0.01
+            steps = []
+            expandable_caps = []
+            attachments = []
+
+        def run_turn(query, **kwargs):
+            observed.append((
+                os.environ.get("METNOS_DURABLE_WORKLOADS_ENABLED"),
+                query,
+                kwargs["channel"],
+            ))
+            return TurnLog()
+
+        with mock.patch.object(
+            routes,
+            "_apply_tutor_http",
+            new=mock.AsyncMock(return_value=None),
+        ), mock.patch.object(
+            routes, "_save_cap_pending_if_any",
+        ), mock.patch.object(
+            routes, "_gallery_url_for", return_value=(None, 0),
+        ), mock.patch.object(
+            routes, "_enrich_attachments", return_value=[],
+        ), mock.patch("agent_runtime.run_turn", side_effect=run_turn):
+            payloads = []
+            for enabled in ("0", "1"):
+                with mock.patch.dict(
+                    os.environ,
+                    {"METNOS_DURABLE_WORKLOADS_ENABLED": enabled},
+                ):
+                    response = await self.client.post(
+                        "/agent/turn",
+                        headers=self.headers(),
+                        json={
+                            "query": "F12 interactive probe",
+                            "conversation_id": f"f12-http-{enabled}",
+                        },
+                    )
+                    self.assertEqual(response.status, 200)
+                    payloads.append(await response.json())
+
+        self.assertEqual(
+            observed,
+            [
+                ("0", "F12 interactive probe", "http"),
+                ("1", "F12 interactive probe", "http"),
+            ],
+        )
+        self.assertEqual(
+            [payload["final_message"] for payload in payloads],
+            ["F12 HTTP gate ok", "F12 HTTP gate ok"],
+        )
 
     async def test_html_control_surface_uses_the_same_api_without_page_local_css(self):
         import users
@@ -416,6 +481,16 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         download = await self.client.get(capability["download_url"], headers=self.headers())
         self.assertEqual(download.status, 200)
         self.assertEqual(await download.read(), b"durable download bytes")
+        async with ClientSession() as fresh_session:
+            fresh_download = await fresh_session.get(
+                self.server.make_url(capability["download_url"]),
+                headers=self.headers(),
+            )
+            self.assertEqual(fresh_download.status, 200)
+            self.assertEqual(
+                await fresh_download.read(),
+                b"durable download bytes",
+            )
         token = capability["download_url"].rsplit("/", 1)[-1]
         self.assertTrue(self._download_registry.revoke(token))
         revoked = await self.client.get(capability["download_url"], headers=self.headers())

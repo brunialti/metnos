@@ -1,16 +1,20 @@
 from __future__ import annotations
 
-import io
+import errno
 import hashlib
+import io
 import multiprocessing
 import os
+import random
 import signal
 import stat
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from queue import Empty
+from threading import Barrier
 
 import pytest
 
@@ -405,6 +409,158 @@ def test_same_owner_deduplicates_content_and_replays_logical_commit(
     assert artifact_environment.repository._connection.execute(
         "SELECT COUNT(*) FROM artifacts WHERE owner_user_id='owner-a'"
     ).fetchone()[0] == 2
+
+
+def test_named_filesystem_and_artifact_transaction_boundaries_are_ordered(
+    artifact_environment: ArtifactEnvironment,
+):
+    events = []
+    repository = ArtifactRepository.open(
+        artifact_environment.db_path,
+        checkpoint=events.append,
+    )
+    artifacts = ArtifactStore(
+        artifact_environment.root,
+        repository,
+        checkpoint=events.append,
+    )
+    workload_id, revision_id = artifact_environment.revisions["owner-a"]
+    try:
+        artifact = artifacts.commit(
+            "owner-a",
+            workload_id,
+            revision_id,
+            "fault-boundary-report",
+            "application/octet-stream",
+            "metnos.test-artifact/1",
+            b"fault boundary payload",
+        )
+        recovery = artifacts.publish(
+            "owner-a",
+            artifact.artifact_id,
+            "internal.fault-boundary-report",
+        )
+    finally:
+        artifacts.close()
+
+    assert recovery.status is RecoveryStatus.COMMITTED
+    required = (
+        "blob_before_temp_create",
+        "blob_after_temp_create",
+        "blob_before_write",
+        "blob_after_write",
+        "blob_before_fsync",
+        "blob_after_fsync",
+        "blob_before_install",
+        "blob_after_atomic_install",
+        "blob_before_final_verification",
+        "blob_after_final_verification",
+        "blob_after_install",
+        "blob_before_registration_verification",
+        "blob_after_registration_verification",
+        "artifact_before_registration",
+        "artifact_after_registration",
+        "publication_before_prepare",
+        "publication_after_prepare",
+        "publication_before_attempt",
+        "publication_after_attempt",
+        "publication_before_temp_create",
+        "publication_after_temp_create",
+        "publication_before_write",
+        "publication_after_write",
+        "publication_before_fsync",
+        "publication_after_fsync",
+        "publication_before_install",
+        "publication_after_install",
+        "publication_before_final_verification",
+        "publication_after_final_verification",
+        "publication_before_commit",
+        "publication_after_commit",
+    )
+    positions = [events.index(name) for name in required]
+    assert positions == sorted(positions)
+    registration = events[
+        events.index("artifact_before_registration"):
+        events.index("artifact_after_registration") + 1
+    ]
+    assert registration == [
+        "artifact_before_registration",
+        "artifact_transaction_before_begin",
+        "artifact_transaction_after_begin",
+        "artifact_transaction_before_commit",
+        "artifact_transaction_after_commit",
+        "artifact_after_registration",
+    ]
+
+
+def test_artifact_and_publication_after_commit_ambiguity_replays_once(
+    artifact_environment: ArtifactEnvironment,
+):
+    injected = ["artifact_transaction_after_commit"]
+
+    def checkpoint(name):
+        if name == injected[0]:
+            injected[0] = ""
+            raise RuntimeError(f"injected at {name}")
+
+    repository = ArtifactRepository.open(
+        artifact_environment.db_path,
+        checkpoint=checkpoint,
+    )
+    artifacts = ArtifactStore(
+        artifact_environment.root,
+        repository,
+        checkpoint=checkpoint,
+    )
+    workload_id, revision_id = artifact_environment.revisions["owner-a"]
+    try:
+        with pytest.raises(RuntimeError, match="after_commit"):
+            artifacts.commit(
+                "owner-a",
+                workload_id,
+                revision_id,
+                "ambiguous-artifact",
+                "application/octet-stream",
+                "metnos.test-artifact/1",
+                b"stable payload",
+                artifact_id="artifact_ambiguous_01",
+            )
+        artifact = artifacts.commit(
+            "owner-a",
+            workload_id,
+            revision_id,
+            "ambiguous-artifact",
+            "application/octet-stream",
+            "metnos.test-artifact/1",
+            b"stable payload",
+            artifact_id="artifact_ambiguous_01",
+        )
+        assert artifact.artifact_id == "artifact_ambiguous_01"
+        assert repository._connection.execute(
+            "SELECT COUNT(*) FROM artifacts WHERE logical_name='ambiguous-artifact'"
+        ).fetchone()[0] == 1
+
+        injected[0] = "publication_after_commit"
+        with pytest.raises(RuntimeError, match="publication_after_commit"):
+            artifacts.publish(
+                "owner-a",
+                artifact.artifact_id,
+                "internal.ambiguous-publication",
+                publication_id="publication_ambiguous_01",
+            )
+        replay = artifacts.publish(
+            "owner-a",
+            artifact.artifact_id,
+            "internal.ambiguous-publication",
+            publication_id="publication_ambiguous_01",
+        )
+        assert replay.status is RecoveryStatus.COMMITTED
+        assert replay.publication.state is PublicationState.PUBLISHED
+        assert repository._connection.execute(
+            "SELECT COUNT(*) FROM publications WHERE id='publication_ambiguous_01'"
+        ).fetchone()[0] == 1
+    finally:
+        artifacts.close()
 
 
 def test_same_digest_is_physically_isolated_between_owners(
@@ -923,12 +1079,12 @@ def test_delete_refuses_unexpected_owner_entries(
         artifact_environment.repository.get_artifact("owner-a", artifact.artifact_id)
 
 
-def test_fsync_error_leaves_no_database_row_or_partial_blob(
+def test_disk_full_leaves_no_database_row_or_partial_blob_and_recovers(
     artifact_environment: ArtifactEnvironment,
     tmp_path: Path,
 ):
     def fail_fsync(_descriptor: int) -> None:
-        raise OSError("synthetic fsync failure")
+        raise OSError(errno.ENOSPC, "synthetic disk full")
 
     artifacts = ArtifactStore(
         tmp_path / "fsync-artifacts",
@@ -936,7 +1092,7 @@ def test_fsync_error_leaves_no_database_row_or_partial_blob(
         fsync=fail_fsync,
     )
     workload_id, revision_id = artifact_environment.revisions["owner-a"]
-    with pytest.raises(OSError, match="synthetic fsync failure"):
+    with pytest.raises(OSError) as raised:
         artifacts.commit(
             "owner-a",
             workload_id,
@@ -946,6 +1102,7 @@ def test_fsync_error_leaves_no_database_row_or_partial_blob(
             "metnos.test-artifact/1",
             b"not committed",
         )
+    assert raised.value.errno == errno.ENOSPC
     assert artifact_environment.repository._connection.execute(
         """
         SELECT COUNT(*) FROM artifacts
@@ -954,6 +1111,137 @@ def test_fsync_error_leaves_no_database_row_or_partial_blob(
     ).fetchone()[0] == 0
     blob_dir = _blob_directory(tmp_path / "fsync-artifacts", "owner-a")
     assert list(blob_dir.iterdir()) == []
+
+    recovered = ArtifactStore(
+        tmp_path / "fsync-artifacts",
+        artifact_environment.repository,
+    ).commit(
+        "owner-a",
+        workload_id,
+        revision_id,
+        "fsync-report",
+        "application/octet-stream",
+        "metnos.test-artifact/1",
+        b"committed after space recovery",
+    )
+    assert recovered.state is ArtifactState.COMMITTED
+    assert _blob_path(
+        tmp_path / "fsync-artifacts", "owner-a", recovered.digest,
+    ).read_bytes() == b"committed after space recovery"
+
+
+def test_concurrent_gc_and_registration_preserve_every_committed_blob(
+    artifact_environment: ArtifactEnvironment,
+):
+    """Repeat both race orders with a recorded seed and bounded latencies."""
+
+    seed = 0xF12
+    generator = random.Random(seed)
+    latency_choices = (0.0, 0.001, 0.003)
+    observed_orders = set()
+
+    for index in range(16):
+        workload_id, revision_id = _create_revision(
+            artifact_environment.workload_store,
+            "owner-a",
+            f"gc-race-{seed}-{index}",
+        )
+        payload = f"gc-registration-race-{seed}-{index}".encode()
+        staging_repository = ArtifactRepository.open(artifact_environment.db_path)
+        try:
+            staged = ArtifactStore(
+                artifact_environment.root,
+                staging_repository,
+            ).stage("owner-a", payload)
+        finally:
+            staging_repository.close()
+        blob_path = _blob_path(
+            artifact_environment.root, "owner-a", staged.digest,
+        )
+        old = datetime.now(timezone.utc) - timedelta(days=2)
+        os.utime(blob_path, (old.timestamp(), old.timestamp()))
+
+        gc_delay = generator.choice(latency_choices)
+        commit_delay = generator.choice(latency_choices)
+        observed_orders.add((gc_delay, commit_delay))
+        barrier = Barrier(2)
+
+        def collect():
+            repository = ArtifactRepository.open(artifact_environment.db_path)
+            try:
+                store = ArtifactStore(artifact_environment.root, repository)
+                barrier.wait(timeout=5)
+                time.sleep(gc_delay)
+                return store.collect_garbage(
+                    "owner-a",
+                    grace_period=timedelta(days=1),
+                    batch_limit=1000,
+                )
+            finally:
+                repository.close()
+
+        def register():
+            repository = ArtifactRepository.open(artifact_environment.db_path)
+            try:
+                store = ArtifactStore(artifact_environment.root, repository)
+                barrier.wait(timeout=5)
+                time.sleep(commit_delay)
+                try:
+                    return store.commit(
+                        "owner-a",
+                        workload_id,
+                        revision_id,
+                        f"gc-race-{index}",
+                        "application/octet-stream",
+                        "metnos.test-artifact/1",
+                        payload,
+                    )
+                except FileNotFoundError:
+                    # A collector that won the DB fence may remove the old
+                    # orphan. The same logical commit must then be retryable.
+                    return store.commit(
+                        "owner-a",
+                        workload_id,
+                        revision_id,
+                        f"gc-race-{index}",
+                        "application/octet-stream",
+                        "metnos.test-artifact/1",
+                        payload,
+                    )
+                except ArtifactIntegrityError as exc:
+                    assert str(exc) in {
+                        "artifact_blob_missing",
+                        "artifact_blob_replaced_after_verification",
+                    }
+                    return store.commit(
+                        "owner-a",
+                        workload_id,
+                        revision_id,
+                        f"gc-race-{index}",
+                        "application/octet-stream",
+                        "metnos.test-artifact/1",
+                        payload,
+                    )
+            finally:
+                repository.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            gc_future = pool.submit(collect)
+            commit_future = pool.submit(register)
+            gc_future.result(timeout=10)
+            artifact = commit_future.result(timeout=10)
+
+        verifier = ArtifactRepository.open(artifact_environment.db_path)
+        try:
+            final = verifier.get_artifact("owner-a", artifact.artifact_id)
+            assert final.digest == staged.digest
+            assert _blob_path(
+                artifact_environment.root, "owner-a", final.digest,
+            ).read_bytes() == payload
+        finally:
+            verifier.close()
+
+    assert len(observed_orders) >= 4
 
 
 def test_logical_name_conflict_never_uses_last_writer_wins(
