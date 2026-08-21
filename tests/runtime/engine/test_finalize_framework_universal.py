@@ -65,6 +65,73 @@ class FinalizeFrameworkTests(unittest.TestCase):
             "trova i txt in /tmp")
         self.assertEqual([s.tool for s in out.steps][0], "find_files")
 
+    def test_general_device_status_selects_cpu_temperature(self):
+        """Regressione live 796e3cf6: lo stato mostrava «sensore assente»
+        perché include_health non attivava il provider hardware gestito."""
+        from engine.types import Intent
+        out = self._finalize(
+            [("get_processes", {"include_health": True, "top": 10}),
+             ("final_answer", {})],
+            Intent(verb="get", object="processes"),
+            "stato pc-roberto")
+        args = next(s.args for s in out.steps
+                    if s.tool == "get_processes")
+        self.assertTrue(args["include_health"])
+        self.assertEqual(args["sensor_domains"], ["cpu"])
+        self.assertEqual(args["sensor_types"], ["temperature"])
+
+    def test_general_status_repairs_health_and_sensors_together(self):
+        from engine.types import Intent
+        out = self._finalize(
+            [("get_processes", {}), ("final_answer", {})],
+            Intent(verb="get", object="processes"),
+            "stato del server")
+        args = next(s.args for s in out.steps
+                    if s.tool == "get_processes")
+        self.assertTrue(args["include_health"])
+        self.assertEqual(args["sensor_domains"], ["cpu"])
+        self.assertEqual(args["sensor_types"], ["temperature"])
+
+    def test_explicit_temperature_repairs_missing_sensor_selection(self):
+        from engine.types import Intent
+        out = self._finalize(
+            [("get_processes", {"include_health": True}),
+             ("final_answer", {})],
+            Intent(verb="get", object="numbers"),
+            "temperatura pc-roberto")
+        args = next(s.args for s in out.steps
+                    if s.tool == "get_processes")
+        self.assertEqual(args["sensor_domains"], ["cpu"])
+        self.assertEqual(args["sensor_types"], ["temperature"])
+
+    def test_targeted_memory_status_does_not_activate_sensors(self):
+        from engine.types import Intent
+        out = self._finalize(
+            [("get_processes", {"include_health": True}),
+             ("final_answer", {})],
+            Intent(verb="get", object="numbers"),
+            "quanta RAM ha pc-roberto")
+        args = next(s.args for s in out.steps
+                    if s.tool == "get_processes")
+        self.assertNotIn("sensor_domains", args)
+        self.assertNotIn("sensor_types", args)
+
+    def test_explicit_sensor_selection_is_preserved(self):
+        from engine.types import Intent
+        original = {
+            "include_health": True,
+            "sensor_domains": ["gpu"],
+            "sensor_types": ["temperature"],
+        }
+        out = self._finalize(
+            [("get_processes", original), ("final_answer", {})],
+            Intent(verb="get", object="processes"),
+            "stato pc-roberto")
+        args = next(s.args for s in out.steps
+                    if s.tool == "get_processes")
+        self.assertEqual(args["sensor_domains"], ["gpu"])
+        self.assertEqual(args["sensor_types"], ["temperature"])
+
     def test_idempotent_double_pass(self):
         # T4 esteso: finalize(finalize(fw)) == finalize(fw) sul caso live.
         from engine.types import Intent
@@ -76,6 +143,8 @@ class FinalizeFrameworkTests(unittest.TestCase):
             "ip metos server")
         self.assertEqual([s.tool for s in once.steps],
                          [s.tool for s in twice_fw.steps])
+        self.assertEqual([s.args for s in once.steps],
+                         [s.args for s in twice_fw.steps])
 
     def test_cached_time_plan_is_repaired_before_execution(self):
         from engine.dispatch import _finalize_framework_for_run

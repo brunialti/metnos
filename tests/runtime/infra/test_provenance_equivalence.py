@@ -137,6 +137,11 @@ _WRITES_SEMANTIC_ALLOWED = {
     # include_health (additivo, il proposer a volte lo omette). Regola di
     # dominio, non un valore-utente.
     ("ensure_health_arg", "include_health"),
+    # Il blocco di stato generale include la temperatura: i due selettori
+    # chiusi attivano il provider tipizzato senza una scansione hardware
+    # implicita. Anche questi valori sono regola di dominio, non testo utente.
+    ("ensure_health_arg", "sensor_domains"),
+    ("ensure_health_arg", "sensor_types"),
     # §7.9 (turn 7e0f69a1): a search referred to the asker needs a centre.
     # The guard writes `near` only when the planner left it absent or wrote a
     # value the runtime cannot resolve (the cached `{lat: ${RUNTIME:lat}}`),

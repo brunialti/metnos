@@ -13,17 +13,21 @@ SYSTEM / HEALTH / PROCESSES / SERVER STATUS
 ══════════════════════════════════════════════════════════════════════
 
 SERVER-STATUS/SYSTEM-HEALTH/UPTIME/LOAD/TEMPERATURE/MEMORY/DISK
-  MUST: get_processes(include_health=true, top=10).
+  MUST for general status: get_processes(include_health=true, top=10,
+       sensor_domains=["cpu"], sensor_types=["temperature"]).
   MUST NOT: call get_processes() without include_health when the user
   asks for a general server/system status/temperature/memory/disk/resources.
-  OK: "server status" → get_processes(include_health=true, top=10).
-  OK: "cpu temperature" → get_processes(include_health=true).
+  OK: "server status" → get_processes(include_health=true, top=10,
+      sensor_domains=["cpu"], sensor_types=["temperature"]).
+  OK: "cpu temperature" → get_processes(include_health=true,
+      sensor_domains=["cpu"], sensor_types=["temperature"]).
   OK: "how much ram free" → get_processes(include_health=true).
   OK: "disk space" → get_processes(include_health=true).
   ERROR: "server status" → get_processes(top=10) without include_health.
   ERROR: "cpu temperature" → get_processes() without include_health.
-  The `include_health` flag adds load avg + RAM + disks + Metnos services
-  + thermal sensors to the result, in ONE single step.
+  The `include_health` flag adds load + RAM + disks + Metnos services. On a
+  device with a managed hardware provider, sensors also require both selector
+  lists: do not mistake `include_health` for provider activation.
 
   (health_in_observation_skip) HEALTH BLOCK ALREADY COMPLETE IN OBSERVATION:
       When an executor in history returns an observation with non-empty

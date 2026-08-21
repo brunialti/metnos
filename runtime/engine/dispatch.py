@@ -930,25 +930,38 @@ def _scope_dirs_clause_to_contents(framework: Framework, intent, query: str,
 
 def _ensure_health_arg(framework: Framework, query: str,
                        catalog: Optional[list]) -> Framework:
-    """§7.9 (turn b66ec6f3 «ip metos server»): query HARDWARE/STATUS (lessici
-    `system.status_query` o `health.section_focus`+`machine.reference`) con
-    step get_processes SENZA include_health → il proposer a volte lo omette e
-    la risposta esce senza rete/gpu/sistema («non contiene informazioni di
-    rete»). Forza include_health=true: additivo (aggiunge dati, non ne toglie),
-    il focus per-sezione seleziona poi la parte pertinente. Best-effort."""
+    """§7.9: completa il contratto delle query di salute del sistema.
+
+    `include_health=true` rende disponibili le sezioni generali, ma su Windows
+    non attiva da solo il provider hardware gestito: questo richiede selettori
+    espliciti. Perciò una panoramica di stato richiede anche la temperatura
+    CPU, che il formatter mostra nel blocco completo; una domanda mirata a RAM,
+    disco, rete ecc. conserva invece la raccolta selettiva. La stessa regola
+    ripara i piani di temperatura privi dei selettori. Tutte le forme naturali
+    provengono dal lessico multilingue. Best-effort e idempotente."""
     try:
         steps = getattr(framework, "steps", None) or []
         if not query:
             return framework
         hw = _dl_match("system.status_query", query)
-        if not hw and _dl_match("machine.reference", query):
-            try:
-                import detection_lexicon as _dl
-                fmap = _dl.mapping("health.section_focus") or {}
-                ql = query.lower()
-                hw = any(_dl.match_any(f, ql) for f in fmap.values())
-            except Exception:  # noqa: BLE001
-                hw = False
+        focus_sections: set[str] = set()
+        try:
+            import detection_lexicon as _dl
+            fmap = _dl.mapping("health.section_focus") or {}
+            ql = query.lower()
+            focus_sections = {
+                str(section) for section, forms in fmap.items()
+                if _dl.match_any(forms, ql)
+            }
+        except Exception:  # noqa: BLE001
+            focus_sections = set()
+        has_process_step = any(
+            (getattr(s, "tool", "") or "") == "get_processes"
+            for s in steps)
+        if (not hw and focus_sections
+                and (_dl_match("machine.reference", query)
+                     or has_process_step)):
+            hw = True
         # Compound file+health (turn ddd828a6, 20/7): l'align per oggetto può
         # trasformare il corretto `get_processes(include_health=true)` in
         # `get_files(include_health=true)` perché l'intent primario è files.
@@ -980,11 +993,17 @@ def _ensure_health_arg(framework: Framework, query: str,
                 s.args = runtime_args
                 log.info("[health_arg §7.9] %s incompatibile → "
                          "get_processes(include_health=true)", tool)
-        if not hw and not any(
-                (getattr(s, "tool", "") or "") == "get_processes"
-                and bool((getattr(s, "args", None) or {}).get("include_health"))
-                for s in steps):
+        health_steps = [
+            s for s in steps
+            if (getattr(s, "tool", "") or "") == "get_processes"
+            and bool((getattr(s, "args", None) or {}).get("include_health"))
+        ]
+        if not hw and not health_steps:
             return framework
+        wants_temperature = (
+            "thermal" in focus_sections
+            or ((hw or bool(health_steps)) and not focus_sections)
+        )
         for s in steps:
             if (getattr(s, "tool", "") or "") == "get_processes":
                 a = getattr(s, "args", None)
@@ -995,6 +1014,16 @@ def _ensure_health_arg(framework: Framework, query: str,
                     a["include_health"] = True
                     log.info("[health_arg §7.9] get_processes: include_health "
                              "forzato (query hardware/status)")
+                # Il provider gestito interpreta le due liste come una sola
+                # selezione tipizzata: aggiungerle soltanto quando entrambe
+                # sono assenti evita di alterare una richiesta esplicita.
+                if (wants_temperature
+                        and not a.get("sensor_domains")
+                        and not a.get("sensor_types")):
+                    a["sensor_domains"] = ["cpu"]
+                    a["sensor_types"] = ["temperature"]
+                    log.info("[health_arg §7.9] get_processes: selezione "
+                             "termica CPU aggiunta (stato/temperatura)")
         return framework
     except Exception as ex:  # noqa: BLE001 — best-effort
         log.warning("ensure_health_arg noop (best-effort): %r", ex)
@@ -6014,9 +6043,11 @@ GUARD_PIPELINE: tuple = (
           adr="0136"),
     Guard("ensure_health_arg",
           lambda fw, i, q, c: _ensure_health_arg(fw, q, c),
-          scope="per-clause", writes=frozenset({"args.include_health"}),
+          scope="per-clause",
+          writes=frozenset({"args.include_health", "args.sensor_domains",
+                            "args.sensor_types"}),
           reads=frozenset({"query"}),
-          rationale="§7.9 (turn b66ec6f3): query hardware/status (lessici status/section_focus+machine) con get_processes senza include_health → forzato true. Additivo: aggiunge dati, il focus per-sezione seleziona",
+          rationale="§7.9 (turn b66ec6f3, 796e3cf6): completa get_processes per query hardware/status; include_health espone le sezioni e stato generale/temperatura selezionano anche il provider termico CPU. Le query su altre sezioni restano selettive",
           adr="0177"),
     Guard("ensure_proximity_center",
           lambda fw, i, q, c: _ensure_proximity_center(fw, q, c),
