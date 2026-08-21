@@ -209,7 +209,7 @@
     const list = element("ul", "wiki-page-list");
     const rows = [];
     entries.forEach(([key, label]) => {
-      const destination = paths[key][lang];
+      const destination = paths[key]?.[lang];
       if (!destination) return;
       const item = element("li", "wiki-page-item");
       const pageLink = link(destination, label, "wiki-page-link");
