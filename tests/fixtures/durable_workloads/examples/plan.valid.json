@@ -107,7 +107,7 @@
       "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.image-reduction-node/1"},
       "retry": {"max_attempts": 3, "base_delay_ms": 2000, "max_delay_ms": 60000, "retryable_error_classes": ["executor_transient"]},
       "timeout_s": 300,
-      "invalidation_keys": ["dependencies.digest", "model_binding.digest", "prompt.digest", "reduction.order", "reduction.fan_in"],
+      "invalidation_keys": ["dependencies.digest", "model_binding.digest", "prompt.digest", "reduction.order"],
       "resources": {"cpu": 0, "local_io": 0, "network_io": 0, "llm": 1, "vlm": 0, "device": 0},
       "required": true
     },

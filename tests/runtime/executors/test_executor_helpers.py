@@ -57,6 +57,36 @@ def test_managed_provider_result_is_keyed_bounded_and_fail_closed(monkeypatch):
     assert managed_provider_result("thermal_provider") is None
 
 
+def test_run_stdio_captures_only_bounded_model_usage_when_requested(monkeypatch):
+    import llm_telemetry
+
+    monkeypatch.setenv("METNOS_CAPTURE_MODEL_USAGE", "1")
+
+    def invoke(_args):
+        llm_telemetry.record(
+            provider="llamacpp",
+            model="private-model",
+            system="private prompt",
+            user="private input",
+            result=type("Result", (), {
+                "text": "private output",
+                "in_tokens": 3,
+                "out_tokens": 2,
+                "latency_ms": 1,
+            })(),
+        )
+        return {"ok": True}
+
+    out = json.loads(_run_stdio(invoke, "{}"))
+    wire = out.pop(llm_telemetry.TRANSPORT_USAGE_KEY)
+    assert out == {"ok": True}
+    assert wire["schema_version"] == llm_telemetry.TRANSPORT_USAGE_SCHEMA_VERSION
+    assert len(wire["records"]) == 1
+    assert "private prompt" not in str(wire)
+    assert "private input" not in str(wire)
+    assert "private output" not in str(wire)
+
+
 def test_vector_result_distinguishes_complete_partial_and_empty_success():
     from executor_helpers import vector_result
 

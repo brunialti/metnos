@@ -2,7 +2,7 @@
 call reale. Verifica raccolta path + shape output (entries + query_text) §2.6."""
 from __future__ import annotations
 
-import sys
+import json
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -10,6 +10,100 @@ from unittest import mock
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import describe_images as di  # noqa: E402
+
+
+def test_vlm_client_reports_bounded_provider_usage(monkeypatch, tmp_path):
+    import llm_telemetry
+    import vlm_client
+    from PIL import Image
+
+    image_path = tmp_path / "fixture.png"
+    Image.new("RGB", (8, 8), "white").save(image_path)
+    payload = json.dumps({
+        "choices": [{
+            "message": {
+                "content": json.dumps({
+                    "description": "fixture",
+                    "keywords": ["test"],
+                }),
+            },
+        }],
+        "usage": {"prompt_tokens": 23, "completion_tokens": 6},
+    }).encode("utf-8")
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return payload
+
+    monkeypatch.setattr(vlm_client.urllib.request, "urlopen", lambda *_a, **_k: Response())
+    sink = llm_telemetry.BoundedTransportUsageSink()
+    with llm_telemetry.transport_usage_context(sink):
+        result = vlm_client.describe_image(
+            image_path,
+            prompt="private vision prompt",
+            url="http://127.0.0.1:9999/v1/chat/completions",
+            model="private-model",
+        )
+
+    assert result["description"] == "fixture"
+    wire = sink.export()
+    assert wire["calls_started"] == 1
+    record = wire["records"][0]
+    assert record["kind"] == "vision"
+    assert record["tier"] == "vlm:default"
+    assert (record["in_tokens"], record["out_tokens"]) == (23, 6)
+    assert "private vision prompt" not in str(record)
+
+
+def test_vlm_attempt_without_usage_is_not_reported_as_zero_calls(
+    monkeypatch, tmp_path,
+):
+    import llm_telemetry
+    import vlm_client
+    from PIL import Image
+
+    image_path = tmp_path / "fixture.png"
+    Image.new("RGB", (8, 8), "white").save(image_path)
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return b"not-json"
+
+    monkeypatch.setattr(
+        vlm_client.urllib.request, "urlopen", lambda *_a, **_k: Response(),
+    )
+    child = llm_telemetry.BoundedTransportUsageSink()
+    with llm_telemetry.transport_usage_context(child):
+        result = vlm_client.describe_image(
+            image_path,
+            url="http://127.0.0.1:9999/v1/chat/completions",
+        )
+
+    assert result["_vlm_error"] == "resp_unparseable"
+    parent = llm_telemetry.BoundedUsageSink()
+    parent.ingest_transport(
+        child.export(),
+        workload_id="wrk-test",
+        stage_id="stg-test",
+        unit_key="unit-test",
+        attempt_id="att-test",
+    )
+    summary = parent.summary()
+    assert summary["zero_calls_verified"] is False
+    assert summary["usage_missing"] is True
+    assert summary["dropped"] == 1
 
 
 def _fake_describe(path, **kw):

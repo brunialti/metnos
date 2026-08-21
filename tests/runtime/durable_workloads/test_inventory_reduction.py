@@ -7,15 +7,101 @@ import pytest
 from durable_workloads.inventory import (
     InventoryLimits,
     InventorySealError,
+    SealedInventory,
     seal_local_inventory,
 )
-from durable_workloads.reduction import ReductionPlanError, build_reduction_graph
+from durable_workloads.reduction import (
+    MAX_REDUCTION_INPUTS,
+    ReductionPlanError,
+    hierarchical_node_bound,
+)
+from durable_workloads.schema import (
+    SchemaValidationError,
+    canonical_json,
+    inventory_digest,
+    validate_inventory,
+)
+from helpers import inventory, source
 
 
 def _limits(**overrides) -> InventoryLimits:
     values = {"max_sources": 10, "max_total_bytes": 1024 * 1024, "max_depth": 4}
     values.update(overrides)
     return InventoryLimits(**values)
+
+
+def test_large_inventory_keeps_a_digest_without_one_giant_json_copy(monkeypatch):
+    import durable_workloads.schema as schema
+
+    payload = inventory([source(index) for index in range(20)])
+    expected = payload["digest"]
+    monkeypatch.setattr(schema, "MAX_INVENTORY_JSON_BYTES", 2_048)
+
+    inline, validated_sources = validate_inventory(payload)
+
+    assert inline is None
+    assert validated_sources is payload["sources"]
+    assert schema.inventory_digest(validated_sources) == expected
+
+    monkeypatch.setattr(schema, "MAX_INVENTORY_JSON_BYTES", 1_000_000)
+    bounded_inline, _ = validate_inventory(payload)
+    assert bounded_inline == canonical_json(payload, max_bytes=1_000_000)
+
+
+def test_large_local_inventory_uses_a_repeatable_disposable_spool(
+    tmp_path,
+    monkeypatch,
+):
+    import durable_workloads.inventory as inventory_module
+
+    root = tmp_path / "spooled"
+    root.mkdir()
+    for name in ("c.txt", "a.txt", "b.txt"):
+        (root / name).write_text(name, encoding="utf-8")
+    monkeypatch.setattr(inventory_module, "_IN_MEMORY_SOURCE_LIMIT", 2)
+    monkeypatch.setattr(inventory_module, "_SPOOL_BATCH_SIZE", 2)
+
+    sealed = seal_local_inventory(
+        [root], device_id="device-a", limits=_limits(),
+    )
+    assert isinstance(sealed, SealedInventory)
+    try:
+        sources = sealed["sources"]
+        assert [item["locator_redacted"] for item in sources] == [
+            "root-0000/a.txt",
+            "root-0000/b.txt",
+            "root-0000/c.txt",
+        ]
+        assert sources[1]["ordinal"] == 1
+        assert [item["ordinal"] for item in sources[::-1]] == [2, 1, 0]
+        first_inline, first_sources = validate_inventory(sealed)
+        second_inline, second_sources = validate_inventory(sealed)
+        assert first_inline == second_inline
+        assert first_sources is second_sources is sources
+        assert inventory_digest(sources) == sealed["digest"]
+    finally:
+        sealed.close()
+    with pytest.raises(InventorySealError, match="closed"):
+        _ = sealed["sources"]
+
+
+def test_large_inventory_duplicate_check_spills_without_losing_exactness(
+    monkeypatch,
+):
+    import durable_workloads.schema as schema
+
+    monkeypatch.setattr(schema._BoundedUniqueValues, "_MEMORY_LIMIT", 2)
+    sources = [source(index) for index in range(4)]
+    sources[3]["source_id"] = sources[0]["source_id"]
+    payload = {
+        "schema_version": "metnos.durable-inventory/1",
+        "sealed": True,
+        "digest": inventory_digest(sources),
+        "sources": sources,
+    }
+
+    with pytest.raises(SchemaValidationError, match="must be unique"):
+        validate_inventory(payload)
 
 
 def test_inventory_is_locale_independent_redacted_and_stable(tmp_path):
@@ -49,6 +135,47 @@ def test_inventory_rejects_growth_during_hash(tmp_path):
         seal_local_inventory(
             [path], device_id="device-a", limits=_limits(), before_final_stat=grow,
         )
+
+
+def test_inventory_rejects_directory_growth_while_files_are_hashed(tmp_path):
+    root = tmp_path / "changing-directory"
+    root.mkdir()
+    (root / "before.txt").write_text("before", encoding="utf-8")
+    mutated = False
+
+    def add_source(selected):
+        nonlocal mutated
+        if not mutated:
+            (selected.parent / "after.txt").write_text("after", encoding="utf-8")
+            mutated = True
+
+    with pytest.raises(InventorySealError, match="directory changed"):
+        seal_local_inventory(
+            [root],
+            device_id="device-a",
+            limits=_limits(),
+            before_final_stat=add_source,
+        )
+
+
+def test_inventory_rejects_an_oversized_file_before_hashing_it(tmp_path):
+    path = tmp_path / "oversized.bin"
+    path.write_bytes(b"x" * 4_097)
+    final_stat_reached = False
+
+    def mark_final_stat(_selected):
+        nonlocal final_stat_reached
+        final_stat_reached = True
+
+    with pytest.raises(InventorySealError, match="byte size"):
+        seal_local_inventory(
+            [path],
+            device_id="device-a",
+            limits=_limits(max_total_bytes=4_096),
+            chunk_bytes=4_096,
+            before_final_stat=mark_final_stat,
+        )
+    assert final_stat_reached is False
 
 
 def test_inventory_ignores_child_symlinks_but_rejects_symlink_roots(tmp_path):
@@ -91,15 +218,13 @@ def test_inventory_caps_and_depth_fail_closed(tmp_path):
         seal_local_inventory([root], device_id="device-a", limits=_limits(max_depth=0))
 
 
-def test_reduction_graph_is_stable_and_bounded():
-    first = build_reduction_graph(["c", "a", "b"], fan_in=2)
-    second = build_reduction_graph(["b", "c", "a"], fan_in=2)
-    assert first.canonical_json == second.canonical_json
-    assert first.digest == second.digest
-    assert first.leaves == ("a", "b", "c")
-    assert first.root_key is not None
+def test_reduction_capacity_bound_is_constant_space_and_closed():
+    assert hierarchical_node_bound(0) == 1
+    assert hierarchical_node_bound(1) == 1
+    assert hierarchical_node_bound(2) == 1
+    assert hierarchical_node_bound(3) == 3
+    assert hierarchical_node_bound(7) == 7
+    assert hierarchical_node_bound(MAX_REDUCTION_INPUTS) == 1_000_007
 
-    with pytest.raises(ReductionPlanError, match="width"):
-        build_reduction_graph(["a", "b", "c"], fan_in=2, max_inputs=2)
-    with pytest.raises(ReductionPlanError, match="node maximum"):
-        build_reduction_graph(["a", "b", "c"], fan_in=2, max_nodes=1)
+    with pytest.raises(ReductionPlanError, match="supported bounds"):
+        hierarchical_node_bound(MAX_REDUCTION_INPUTS + 1)

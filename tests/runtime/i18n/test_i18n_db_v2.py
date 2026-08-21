@@ -235,6 +235,109 @@ class TestI18nSetVersionHash(unittest.TestCase):
             [("fr", "Nouvelle chaîne"), ("it", "Nuova stringa")],
         )
 
+    def test_seed_merge_refreshes_only_recognized_release_text(self):
+        self.i18n.set_catalog_translations(
+            "MSG_OFFICIAL", {"it": "Versione distribuita", "en": "Released"},
+        )
+        self.i18n.set("MSG_CUSTOM", "it", "Testo personalizzato")
+        conn = self.i18n._open()
+        conn.execute(
+            "UPDATE i18n SET version_hash='sha256:stale' "
+            "WHERE key='MSG_CUSTOM' AND lang='it'"
+        )
+        conn.commit()
+
+        seed = self.tmp / "versioned-seed.sqlite"
+        with sqlite3.connect(str(seed)) as seed_conn:
+            seed_conn.executescript(
+                "CREATE TABLE i18n ("
+                "key TEXT NOT NULL, lang TEXT NOT NULL, text TEXT, "
+                "version_hash TEXT, PRIMARY KEY (key, lang));"
+                "CREATE TABLE i18n_seed_history ("
+                "key TEXT NOT NULL, lang TEXT NOT NULL, "
+                "version_hash TEXT NOT NULL, "
+                "PRIMARY KEY (key, lang, version_hash));"
+            )
+            seed_conn.executemany(
+                "INSERT INTO i18n(key, lang, text, version_hash) "
+                "VALUES (?, ?, ?, ?)",
+                [
+                    (
+                        "MSG_OFFICIAL", "it", "Versione aggiornata",
+                        _h_full("Versione aggiornata"),
+                    ),
+                    (
+                        "MSG_CUSTOM", "it", "Testo del seed",
+                        _h_full("Testo del seed"),
+                    ),
+                ],
+            )
+            seed_conn.execute(
+                "INSERT INTO i18n_seed_history(key, lang, version_hash) "
+                "VALUES (?, ?, ?)",
+                (
+                    "MSG_OFFICIAL", "it", _h_full("Versione distribuita"),
+                ),
+            )
+
+        inserted = self.i18n._merge_missing_seed_rows(conn, seed)
+        conn.commit()
+
+        self.assertEqual(inserted, 0)
+        self.assertEqual(
+            conn.execute(
+                "SELECT text FROM i18n WHERE key='MSG_OFFICIAL' AND lang='it'"
+            ).fetchone()[0],
+            "Versione aggiornata",
+        )
+        self.assertEqual(
+            conn.execute(
+                "SELECT text, version_hash FROM i18n "
+                "WHERE key='MSG_CUSTOM' AND lang='it'"
+            ).fetchone(),
+            ("Testo personalizzato", "sha256:stale"),
+        )
+
+    def test_seed_state_allows_next_release_but_preserves_later_local_edit(self):
+        conn = self.i18n._open()
+
+        def write_seed(path, text):
+            with sqlite3.connect(str(path)) as seed_conn:
+                seed_conn.execute(
+                    "CREATE TABLE i18n (key TEXT NOT NULL, lang TEXT NOT NULL, "
+                    "text TEXT, version_hash TEXT, PRIMARY KEY (key, lang))"
+                )
+                seed_conn.execute(
+                    "INSERT INTO i18n(key, lang, text, version_hash) "
+                    "VALUES ('MSG_TRACKED', 'it', ?, ?)",
+                    (text, _h_full(text)),
+                )
+
+        first = self.tmp / "seed-first.sqlite"
+        second = self.tmp / "seed-second.sqlite"
+        third = self.tmp / "seed-third.sqlite"
+        write_seed(first, "Prima versione")
+        write_seed(second, "Seconda versione")
+        write_seed(third, "Terza versione")
+
+        self.i18n._merge_missing_seed_rows(conn, first)
+        self.i18n._merge_missing_seed_rows(conn, second)
+        self.assertEqual(
+            conn.execute(
+                "SELECT text FROM i18n WHERE key='MSG_TRACKED' AND lang='it'"
+            ).fetchone()[0],
+            "Seconda versione",
+        )
+
+        self.i18n.set("MSG_TRACKED", "it", "Scelta locale")
+        self.i18n._merge_missing_seed_rows(conn, third)
+        self.assertEqual(
+            conn.execute(
+                "SELECT text FROM i18n WHERE key='MSG_TRACKED' AND lang='it'"
+            ).fetchone()[0],
+            "Scelta locale",
+        )
+
     def test_mark_for_translation_requeues_existing_target_without_erasing_it(self):
         self.i18n.set_catalog_translations(
             "MSG_REQUEUE", {"it": "Versione nuova", "en": "Old version"},

@@ -32,11 +32,13 @@ EXPECTED_WORKLOAD = {
         WorkloadState.ADMITTED, WorkloadState.CANCELLED, WorkloadState.FAILED,
     },
     WorkloadState.ADMITTED: {
-        WorkloadState.QUEUED, WorkloadState.CANCELLED,
+        WorkloadState.QUEUED, WorkloadState.CANCEL_REQUESTED,
+        WorkloadState.CANCELLED,
         WorkloadState.NEEDS_ATTENTION, WorkloadState.FAILED,
     },
     WorkloadState.QUEUED: {
-        WorkloadState.RUNNING, WorkloadState.PAUSED, WorkloadState.CANCELLED,
+        WorkloadState.RUNNING, WorkloadState.PAUSED,
+        WorkloadState.CANCEL_REQUESTED, WorkloadState.CANCELLED,
         WorkloadState.NEEDS_ATTENTION, WorkloadState.FAILED,
     },
     WorkloadState.RUNNING: {
@@ -49,7 +51,8 @@ EXPECTED_WORKLOAD = {
         WorkloadState.NEEDS_ATTENTION, WorkloadState.FAILED,
     },
     WorkloadState.PAUSED: {
-        WorkloadState.QUEUED, WorkloadState.CANCELLED,
+        WorkloadState.QUEUED, WorkloadState.CANCEL_REQUESTED,
+        WorkloadState.CANCELLED,
         WorkloadState.NEEDS_ATTENTION, WorkloadState.FAILED,
     },
     WorkloadState.CANCEL_REQUESTED: {
@@ -57,7 +60,9 @@ EXPECTED_WORKLOAD = {
         WorkloadState.FAILED,
     },
     WorkloadState.NEEDS_ATTENTION: {
-        WorkloadState.QUEUED, WorkloadState.CANCELLED, WorkloadState.FAILED,
+        WorkloadState.QUEUED, WorkloadState.RUNNING,
+        WorkloadState.CANCEL_REQUESTED,
+        WorkloadState.CANCELLED, WorkloadState.FAILED,
     },
     WorkloadState.CANCELLED: set(),
     WorkloadState.FAILED: set(),

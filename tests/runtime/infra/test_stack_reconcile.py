@@ -98,6 +98,7 @@ def test_check_requires_catalog_contract_and_quiescence(monkeypatch, tmp_path):
         "http_health", "http_contract", "catalog_parity",
         "sidecar_contract", "managed_components", "quiescent",
         "service_health:searxng", "service_health:llm",
+        "service_health:durable_workloads",
     }
 
 
@@ -250,6 +251,146 @@ def test_watchdog_restarts_exact_resolved_searx_unit(monkeypatch, tmp_path):
         "service": "searxng", "action": "restart",
         "scope": "system", "unit": "searxng.service",
     }
+
+
+@pytest.mark.parametrize(
+    ("state", "enabled", "worker_available", "reason", "expected"),
+    (
+        ("degraded", False, False, "feature_disabled", True),
+        ("recovering", True, True, "recovery_incomplete", True),
+        ("ready", True, True, "none", True),
+        ("degraded", True, True, "execution_deadline_exceeded", False),
+        ("degraded", True, False, "health_stale", False),
+    ),
+)
+def test_durable_watchdog_distinguishes_operational_and_failed_states(
+    state,
+    enabled,
+    worker_available,
+    reason,
+    expected,
+):
+    row = {
+        "installed": True,
+        "load_state": "loaded",
+        "active_state": "active",
+        "observation_error": "",
+        "application_state": state,
+        "application_enabled": enabled,
+        "application_worker_available": worker_available,
+        "health_detail": reason,
+        "healthy": state == "ready",
+    }
+    assert sr._watched_service_ok("durable_workloads", row) is expected
+
+
+def test_watchdog_restarts_only_the_overdue_durable_worker(
+    monkeypatch,
+    tmp_path,
+):
+    _watchdog_test_guards(monkeypatch, tmp_path)
+    fake = FakeSystemctl()
+    rec = sr.StackReconciler(
+        systemctl=fake, report_path=tmp_path / "report.json",
+    )
+    monkeypatch.setattr(
+        rec,
+        "check",
+        lambda **_kwargs: (_ for _ in ()).throw(sr.StackFailure(
+            "stack_not_ready",
+            "LRE execution exceeded its deadline",
+            details={
+                "failed_checks": ["service_health:durable_workloads"],
+            },
+        )),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_watched_service_snapshot",
+        lambda _key, **_kwargs: {
+            "key": "durable_workloads",
+            "scope": "user",
+            "unit": "metnos-durable-worker.service",
+            "installed": True,
+            "load_state": "loaded",
+            "active_state": "active",
+            "healthy": False,
+            "health_detail": "execution_deadline_exceeded",
+            "application_state": "degraded",
+            "application_enabled": True,
+            "application_worker_available": True,
+            "observation_error": "",
+        },
+    )
+    monkeypatch.setattr(
+        rec,
+        "require_quiescent",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("an isolated LRE restart must not stop user turns")
+        ),
+    )
+    monkeypatch.setattr(
+        rec, "_wait_watched_healthy", lambda _key: {"healthy": True},
+    )
+    monkeypatch.setattr(rec, "wait_ready", lambda **_kwargs: {"ok": True})
+
+    result = rec.watchdog()
+
+    assert result["repaired"] == [{
+        "service": "durable_workloads",
+        "action": "restart",
+        "scope": "user",
+        "unit": "metnos-durable-worker.service",
+    }]
+    assert ("run", "user", "restart", "metnos-durable-worker.service") in (
+        fake.calls
+    )
+
+
+def test_watchdog_does_not_loop_on_an_incompatible_durable_schema(
+    monkeypatch,
+    tmp_path,
+):
+    _watchdog_test_guards(monkeypatch, tmp_path)
+    fake = FakeSystemctl()
+    rec = sr.StackReconciler(
+        systemctl=fake, report_path=tmp_path / "report.json",
+    )
+    monkeypatch.setattr(
+        rec,
+        "check",
+        lambda **_kwargs: (_ for _ in ()).throw(sr.StackFailure(
+            "stack_not_ready",
+            "LRE schema is incompatible",
+            details={
+                "failed_checks": ["service_health:durable_workloads"],
+            },
+        )),
+    )
+    monkeypatch.setattr(
+        sr,
+        "_watched_service_snapshot",
+        lambda _key, **_kwargs: {
+            "key": "durable_workloads",
+            "scope": "user",
+            "unit": "metnos-durable-worker.service",
+            "installed": True,
+            "load_state": "loaded",
+            "active_state": "active",
+            "healthy": False,
+            "health_detail": "schema_incompatible",
+            "application_state": "degraded",
+            "application_enabled": True,
+            "application_worker_available": False,
+            "observation_error": "",
+        },
+    )
+
+    with pytest.raises(sr.StackFailure) as caught:
+        rec.watchdog()
+
+    assert caught.value.code == "service_repair_unsafe"
+    assert not any(call[0] == "run" for call in fake.calls)
 
 
 def test_root_user_manager_actions_run_as_explicit_service_user(monkeypatch):

@@ -8,6 +8,8 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from queue import Empty
+from threading import Event
+from time import monotonic
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
@@ -45,16 +47,29 @@ def _capabilities() -> WorkerCapabilities:
     )
 
 
+def _model_capabilities() -> WorkerCapabilities:
+    return WorkerCapabilities.create(
+        ((RunnerKind.EXECUTOR, "read_files_ocr"),),
+        {
+            "cpu": 0, "device": 0, "llm": 1,
+            "local_io": 0, "network_io": 0, "vlm": 0,
+        },
+    )
+
+
 def _prepare_one(
     store: DurableWorkloadStore,
     suffix: str,
     *,
     max_attempts: int = 3,
+    max_wall_time_s: int = 3600,
     base_delay_ms: int = 0,
     max_delay_ms: int = 0,
     retryable_error_classes: tuple[str, ...] = ("executor_transient",),
+    queue_at: datetime = BASE_TIME,
 ) -> str:
     selected_plan = plan(with_map=True)
+    selected_plan["budgets"]["max_wall_time_s"] = max_wall_time_s
     selected_plan["stages"][1]["retry"] = {
         "max_attempts": max_attempts,
         "base_delay_ms": base_delay_ms,
@@ -79,6 +94,7 @@ def _prepare_one(
         draft.workload_id,
         WorkloadState.QUEUED,
         expected_version=admitted.version,
+        now=queue_at,
     )
     return draft.workload_id
 
@@ -107,6 +123,7 @@ def _prepare_many(
         draft.workload_id,
         WorkloadState.QUEUED,
         expected_version=admitted.version,
+        now=BASE_TIME,
     )
     return draft.workload_id
 
@@ -399,6 +416,7 @@ def test_f3_dummy_claim_does_not_admit_non_pure_effects(db_path):
             draft.workload_id,
             WorkloadState.QUEUED,
             expected_version=admitted.version,
+            now=BASE_TIME,
         )
         assert store.claim_next(
             "worker-a", BASE_TIME, timedelta(seconds=30), _capabilities(),
@@ -530,7 +548,7 @@ def test_failure_decision_is_derived_and_retry_time_is_deterministic(db_path):
         error = StructuredAttemptError.create(
             "executor_transient",
             code="executor.transient_fixture",
-            message_key="DURABLE_EXECUTOR_TRANSIENT",
+            message_key="ERR_DURABLE_EXECUTOR_TRANSIENT",
             retry="automatic",
             occurred_at=BASE_TIME + timedelta(seconds=2),
         )
@@ -653,6 +671,394 @@ def test_dummy_callable_executes_outside_the_database_transaction(db_path):
         assert outcome.status is WorkerRunStatus.COMMITTED
 
 
+def test_worker_renews_long_running_file_backed_lease_and_joins_heartbeat(db_path):
+    observed_extension = []
+    poll = Event()
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(
+            store,
+            "automatic-heartbeat",
+            queue_at=datetime.now(timezone.utc),
+        )
+        worker = DurableWorker(
+            store,
+            "worker-a",
+            _capabilities(),
+            lease_duration=timedelta(milliseconds=250),
+            heartbeat_interval=timedelta(milliseconds=40),
+        )
+
+        def adapter(lease):
+            original_expiry = parse_instant(lease.lease_expires_at)
+            wait_deadline = monotonic() + 2
+            with store.open_peer() as observer:
+                while monotonic() < wait_deadline:
+                    row = observer._connection.execute(
+                        """
+                        SELECT lease_expires_at FROM units
+                        WHERE owner_user_id=? AND id=?
+                        """,
+                        (lease.owner_user_id, lease.unit_id),
+                    ).fetchone()
+                    assert row is not None
+                    renewed_expiry = parse_instant(str(row["lease_expires_at"]))
+                    if renewed_expiry > original_expiry:
+                        observed_extension.append(renewed_expiry)
+                        break
+                    poll.wait(0.005)
+            assert observed_extension
+            return _result(lease, "heartbeat")
+
+        outcome = worker.run_once(adapter)
+        assert outcome.status is WorkerRunStatus.COMMITTED
+        assert worker._heartbeat_monitor is None
+
+
+def test_worker_discards_result_returned_after_frozen_stage_deadline(db_path):
+    current = [BASE_TIME]
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(store, "hard-deadline")
+        worker = DurableWorker(
+            store,
+            "worker-a",
+            _capabilities(),
+            lease_duration=timedelta(seconds=120),
+            clock=lambda: current[0],
+        )
+
+        def adapter(lease):
+            current[0] += timedelta(seconds=lease.timeout_s + 1)
+            return _result(lease, "too-late")
+
+        outcome = worker.run_once(adapter)
+        assert outcome.status is WorkerRunStatus.FAILED
+        assert outcome.failure.status is FailureStatus.RETRY_SCHEDULED
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM results WHERE owner_user_id='owner-a'"
+        ).fetchone()[0] == 0
+        attempt = store._connection.execute(
+            """
+            SELECT state, structured_error_json, metrics_json FROM attempts
+            WHERE owner_user_id='owner-a'
+            """
+        ).fetchone()
+        assert attempt["state"] == "timed_out"
+        assert json.loads(attempt["structured_error_json"])["code"] == (
+            "execution.timeout"
+        )
+        assert json.loads(attempt["metrics_json"])["timed_out"] is True
+
+
+def test_running_lease_cannot_outlive_the_frozen_stage_deadline(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(store, "bounded-running-lease")
+        lease = store.claim_next(
+            "worker-a", BASE_TIME, timedelta(seconds=120), _capabilities(),
+        )
+        assert lease is not None
+        assert store.mark_running(lease, now=BASE_TIME) is LeaseMutationStatus.APPLIED
+
+        row = store._connection.execute(
+            "SELECT lease_expires_at FROM units WHERE owner_user_id='owner-a'"
+        ).fetchone()
+        assert parse_instant(str(row["lease_expires_at"])) == (
+            BASE_TIME + timedelta(seconds=lease.timeout_s)
+        )
+        with pytest.raises(ValueError, match="frozen execution deadline"):
+            store.heartbeat(
+                lease,
+                BASE_TIME + timedelta(seconds=lease.timeout_s + 1),
+                now=BASE_TIME + timedelta(seconds=1),
+            )
+
+        recovered = store.reconcile_expired(
+            BASE_TIME + timedelta(seconds=lease.timeout_s), 1,
+        )
+        assert recovered.expired == 1
+
+
+def test_backward_wall_clock_jump_cannot_extend_the_stage_deadline(db_path):
+    wall = [BASE_TIME]
+    monotonic_time = [100.0]
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(store, "backward-clock-deadline")
+        worker = DurableWorker(
+            store,
+            "worker-a",
+            _capabilities(),
+            lease_duration=timedelta(seconds=120),
+            clock=lambda: wall[0],
+            monotonic_clock=lambda: monotonic_time[0],
+        )
+
+        def adapter(lease):
+            wall[0] -= timedelta(hours=1)
+            monotonic_time[0] += lease.timeout_s + 1
+            return _result(lease, "must-be-discarded")
+
+        outcome = worker.run_once(adapter)
+
+        assert outcome.status is WorkerRunStatus.FAILED
+        assert outcome.failure is not None
+        assert outcome.failure.status is FailureStatus.RETRY_SCHEDULED
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM results WHERE owner_user_id='owner-a'"
+        ).fetchone()[0] == 0
+        attempt = store._connection.execute(
+            "SELECT state FROM attempts WHERE owner_user_id='owner-a'"
+        ).fetchone()
+        assert attempt["state"] == "timed_out"
+
+
+def test_queue_clock_rollback_converges_before_the_first_claim(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        workload_id = _prepare_one(store, "queued-backward-clock")
+        usage = store._connection.execute(
+            """
+            SELECT started_at, clock_high_water_at
+            FROM revision_usage
+            WHERE owner_user_id='owner-a' AND revision_id=(
+              SELECT active_revision_id FROM workloads
+              WHERE owner_user_id='owner-a' AND id=?
+            )
+            """,
+            (workload_id,),
+        ).fetchone()
+        assert usage["started_at"] == usage["clock_high_water_at"]
+
+        regressed = BASE_TIME - timedelta(hours=1)
+        assert store.claim_next(
+            "worker-after-pre-claim-clock-jump",
+            regressed,
+            timedelta(seconds=120),
+            _capabilities(),
+        ) is None
+        assert store.settle_workloads(now=regressed) == 1
+        assert store.get_workload(
+            "owner-a", workload_id,
+        ).state is WorkloadState.NEEDS_ATTENTION
+        event = store._connection.execute(
+            """
+            SELECT payload_json FROM events
+            WHERE owner_user_id='owner-a' AND workload_id=?
+            ORDER BY event_id DESC LIMIT 1
+            """,
+            (workload_id,),
+        ).fetchone()
+        evidence = json.loads(event["payload_json"])
+        assert evidence["reason_code"] == "budget_accounting_incomplete"
+        assert evidence["budget"] == "max_wall_time_s"
+        assert evidence["clock_regressed"] is True
+
+
+def test_restart_reconciles_an_active_lease_after_a_wall_clock_rollback(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        workload_id = _prepare_one(
+            store,
+            "restart-backward-clock",
+            max_attempts=3,
+        )
+        lease = store.claim_next(
+            "worker-before-clock-jump",
+            BASE_TIME,
+            timedelta(seconds=120),
+            _capabilities(),
+        )
+        assert lease is not None
+        assert store.mark_running(
+            lease,
+            now=BASE_TIME + timedelta(seconds=1),
+        ) is LeaseMutationStatus.APPLIED
+
+    regressed = BASE_TIME - timedelta(hours=1)
+    with DurableWorkloadStore.open(db_path) as recovered:
+        outcome = recovered.reconcile_expired(regressed, batch_size=100)
+
+        assert outcome.expired == 1
+        assert outcome.needs_attention == 1
+        assert outcome.retry_scheduled == 0
+        unit = _unit_row(recovered, workload_id)
+        assert unit["state"] == "needs_attention"
+        attempt = recovered._connection.execute(
+            "SELECT structured_error_json, metrics_json FROM attempts "
+            "WHERE owner_user_id='owner-a' AND id=?",
+            (lease.attempt_id,),
+        ).fetchone()
+        assert json.loads(attempt["structured_error_json"])["code"] == (
+            "lease.clock_regressed"
+        )
+        assert json.loads(attempt["metrics_json"])["clock_regressed"] is True
+        assert recovered.get_workload(
+            "owner-a", workload_id,
+        ).state is WorkloadState.NEEDS_ATTENTION
+        assert recovered.claim_next(
+            "worker-after-clock-jump",
+            regressed,
+            timedelta(seconds=120),
+            _capabilities(),
+        ) is None
+
+
+def test_small_wall_clock_adjustment_does_not_poison_the_revision(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(store, "small-backward-clock")
+        lease = store.claim_next(
+            "worker-small-clock-adjustment",
+            BASE_TIME,
+            timedelta(seconds=120),
+            _capabilities(),
+        )
+        assert lease is not None
+
+        assert store.budget_violation(
+            lease,
+            now=BASE_TIME - timedelta(seconds=1),
+        ) is None
+
+
+def test_commit_transaction_rejects_result_after_stage_deadline(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        _prepare_one(store, "transaction-deadline")
+        lease = store.claim_next(
+            "worker-a", BASE_TIME, timedelta(seconds=120), _capabilities(),
+        )
+        assert lease is not None
+        assert store.mark_running(lease, now=BASE_TIME) is LeaseMutationStatus.APPLIED
+
+        outcome = store.commit_result(
+            lease,
+            _result(lease, "too-late-in-transaction"),
+            now=BASE_TIME + timedelta(seconds=lease.timeout_s),
+        )
+
+        assert outcome.status is CommitStatus.DEADLINE_EXPIRED
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM results WHERE owner_user_id='owner-a'"
+        ).fetchone()[0] == 0
+
+
+def test_commit_uses_one_operation_time_for_the_wall_budget(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        workload_id = _prepare_one(
+            store, "transaction-clock", max_wall_time_s=60,
+        )
+        revision_id = store.get_workload(
+            "owner-a", workload_id,
+        ).active_revision_id
+        store._connection.execute(
+            """
+            UPDATE revision_usage SET started_at=?
+            WHERE owner_user_id='owner-a' AND revision_id=?
+            """,
+            (BASE_TIME.isoformat().replace("+00:00", "Z"), revision_id),
+        )
+        lease = store.claim_next(
+            "worker-a", BASE_TIME, timedelta(seconds=120), _capabilities(),
+        )
+        assert lease is not None
+        assert store.mark_running(
+            lease, now=BASE_TIME,
+        ) is LeaseMutationStatus.APPLIED
+
+        outcome = store.commit_result(
+            lease,
+            _result(lease, "consistent-transaction-clock"),
+            now=BASE_TIME + timedelta(seconds=1),
+        )
+
+        assert outcome.status is CommitStatus.COMMITTED
+
+
+def test_model_budget_is_serialized_per_revision_across_connections(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        selected_plan = plan(with_map=True)
+        selected_plan["stages"][1]["resources"]["llm"] = 1
+        draft = store.create_draft(
+            "owner-a", "model-budget-race",
+            redacted_request={"summary": "synthetic model budget race"},
+        )
+        store.admit_revision(
+            "owner-a",
+            draft.workload_id,
+            selected_plan,
+            inventory([source(0), source(1)]),
+            expected_version=draft.version,
+        )
+        admitted = store.get_workload("owner-a", draft.workload_id)
+        store.transition_workload(
+            "owner-a", draft.workload_id, WorkloadState.QUEUED,
+            expected_version=admitted.version,
+            now=BASE_TIME,
+        )
+        first = store.claim_next(
+            "model-worker-a", BASE_TIME, timedelta(seconds=30),
+            _model_capabilities(),
+        )
+        assert first is not None
+
+        with store.open_peer() as peer:
+            assert peer.claim_next(
+                "model-worker-b",
+                BASE_TIME + timedelta(seconds=1),
+                timedelta(seconds=30),
+                _model_capabilities(),
+            ) is None
+
+            assert store.mark_running(
+                first, now=BASE_TIME + timedelta(seconds=1),
+            ) is LeaseMutationStatus.APPLIED
+            assert store.commit_result(
+                first,
+                _result(first, "first-model-unit"),
+                now=BASE_TIME + timedelta(seconds=2),
+            ).status is CommitStatus.COMMITTED
+
+            second = peer.claim_next(
+                "model-worker-b",
+                BASE_TIME + timedelta(seconds=3),
+                timedelta(seconds=30),
+                _model_capabilities(),
+            )
+            assert second is not None
+            assert second.unit_id != first.unit_id
+
+
+def test_model_stage_is_not_claimed_when_token_budget_has_no_remainder(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        selected_plan = plan(with_map=True)
+        selected_plan["stages"][1]["resources"]["llm"] = 1
+        selected_plan["budgets"]["max_tokens"] = 7
+        draft = store.create_draft(
+            "owner-a", "model-budget-empty",
+            redacted_request={"summary": "synthetic exhausted model budget"},
+        )
+        revision = store.admit_revision(
+            "owner-a",
+            draft.workload_id,
+            selected_plan,
+            inventory([source(0)]),
+            expected_version=draft.version,
+        )
+        admitted = store.get_workload("owner-a", draft.workload_id)
+        store.transition_workload(
+            "owner-a", draft.workload_id, WorkloadState.QUEUED,
+            expected_version=admitted.version,
+            now=BASE_TIME,
+        )
+        store._connection.execute(
+            """
+            UPDATE revision_usage SET input_tokens=4, output_tokens=3
+            WHERE owner_user_id='owner-a' AND revision_id=?
+            """,
+            (revision.revision_id,),
+        )
+
+        assert store.claim_next(
+            "model-worker-a", BASE_TIME, timedelta(seconds=30),
+            _model_capabilities(),
+        ) is None
+
+
 def test_dummy_worker_records_output_contract_violation_with_message_key(db_path):
     with DurableWorkloadStore.open(db_path) as store:
         workload_id = _prepare_one(store, "bad-output-schema")
@@ -679,8 +1085,33 @@ def test_dummy_worker_records_output_contract_violation_with_message_key(db_path
         ).fetchone()
         error = json.loads(attempt["structured_error_json"])
         assert error["error_class"] == "contract_violation"
-        assert error["message_key"] == "DURABLE_RESULT_CONTRACT_VIOLATION"
+        assert error["message_key"] == "ERR_DURABLE_RESULT_CONTRACT_VIOLATION"
         assert "message" not in error
+
+
+def test_worker_records_a_missing_adapter_result_as_a_contract_violation(db_path):
+    with DurableWorkloadStore.open(db_path) as store:
+        workload_id = _prepare_one(store, "missing-adapter-result")
+        worker = DurableWorker(
+            store,
+            "worker-a",
+            _capabilities(),
+            lease_duration=timedelta(seconds=30),
+            clock=lambda: BASE_TIME + timedelta(seconds=1),
+        )
+
+        outcome = worker.run_once(lambda _lease: None)  # type: ignore[arg-type]
+
+        assert outcome.status is WorkerRunStatus.FAILED
+        assert outcome.failure is not None
+        assert outcome.failure.status is FailureStatus.FAILED_PERMANENT
+        assert _unit_row(store, workload_id)["state"] == "failed_permanent"
+        error = json.loads(store._connection.execute(
+            "SELECT structured_error_json FROM attempts "
+            "WHERE owner_user_id='owner-a'",
+        ).fetchone()[0])
+        assert error["error_class"] == "contract_violation"
+        assert error["code"] == "result.invalid_adapter_type"
 
 
 def test_dummy_fairness_credit_survives_reopen(db_path):
@@ -744,7 +1175,12 @@ def test_two_real_processes_produce_one_commit_in_100_races(db_path):
     try:
         with DurableWorkloadStore.open(db_path) as store:
             for round_number in range(100):
-                _prepare_one(store, f"race-{round_number}")
+                origin = BASE_TIME + timedelta(minutes=round_number)
+                _prepare_one(
+                    store,
+                    f"race-{round_number}",
+                    queue_at=origin,
+                )
                 parent_a.send(round_number)
                 parent_b.send(round_number)
                 barrier.wait(timeout=10)
@@ -798,8 +1234,12 @@ def test_old_fence_never_changes_state_in_100_real_process_races(db_path):
     try:
         with DurableWorkloadStore.open(db_path) as store:
             for round_number in range(100):
-                _prepare_one(store, f"fence-race-{round_number}")
                 origin = BASE_TIME + timedelta(minutes=round_number)
+                _prepare_one(
+                    store,
+                    f"fence-race-{round_number}",
+                    queue_at=origin,
+                )
                 old = store.claim_next(
                     "old-worker",
                     origin,

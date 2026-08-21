@@ -84,3 +84,21 @@ def test_durable_source_provenance_redacts_local_path(monkeypatch, tmp_path):
         "char_count": len("testo leggibile"),
         "lang": "ita+eng",
     }]
+
+
+def test_durable_language_environment_controls_the_vlm_prompt(monkeypatch, tmp_path):
+    module = _module()
+    monkeypatch.setenv("METNOS_LANG", "en-US")
+    monkeypatch.setattr(module.shutil, "which", lambda _name: "/usr/bin/tool")
+    monkeypatch.setattr(module, "_read_one", lambda _path, _lang: ("", None))
+    observed = []
+    monkeypatch.setattr(
+        module,
+        "_improve_ocr_with_agentic_fallback",
+        lambda _path, content, response_lang: observed.append(response_lang) or content,
+    )
+
+    result = module.invoke({"paths": [str(tmp_path / "source.png")]})
+
+    assert result["ok"] is True
+    assert observed == ["en-us"]

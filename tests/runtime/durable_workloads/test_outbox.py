@@ -203,38 +203,39 @@ class _Sender:
         return self.outcome
 
 
-def test_telegram_adapter_retries_before_and_after_an_uncertain_send(store, monkeypatch):
+def test_telegram_adapter_never_retries_an_uncertain_send(store, monkeypatch):
     event = _event(store, number=3, event_type=EventType.COMPLETED)
     row = _enqueue(store, event)
     monkeypatch.setattr("durable_workloads.events.terminal_notice", lambda *_args, **_kwargs: "done")
 
-    before = _Sender(RuntimeError("transport unavailable"))
+    uncertain = _Sender(RuntimeError("connection dropped after send"))
     adapter = TelegramOutboxAdapter(
         store,
-        before,
+        uncertain,
         recipient_resolver=lambda _owner: "chat-a",
         language_resolver=lambda _owner: "en",
         retry_delay=timedelta(),
     )
-    assert adapter.deliver_once(now=NOW).deferred == 1
-    pending = store._connection.execute(
-        "SELECT state FROM outbox WHERE owner_user_id=? AND id=?", (OWNER, row.outbox_id),
-    ).fetchone()[0]
-    assert pending == "pending"
+    assert adapter.deliver_once(now=NOW).cancelled == 1
+    stored = store._connection.execute(
+        "SELECT state, ack_json FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert stored["state"] == "cancelled"
+    assert "delivery_ambiguous" in stored["ack_json"]
 
-    # An exception after the provider call is still uncertain: preserve the
-    # row rather than pretending delivery succeeded or deleting evidence.
-    after = _Sender(RuntimeError("connection dropped after send"))
-    adapter_after = TelegramOutboxAdapter(
+    replay = TelegramOutboxAdapter(
         store,
-        after,
+        _Sender({"ok": True}),
         recipient_resolver=lambda _owner: "chat-a",
         language_resolver=lambda _owner: "en",
         retry_delay=timedelta(),
     )
-    assert adapter_after.deliver_once(now=NOW).deferred == 1
-    assert len(after.messages) == 1
+    assert replay.deliver_once(now=NOW + timedelta(minutes=2)).claimed == 0
+    assert len(uncertain.messages) == 1
 
+    delivered_event = _event(store, number=30, event_type=EventType.COMPLETED)
+    _enqueue(store, delivered_event)
     delivered = _Sender({"ok": True})
     adapter_delivered = TelegramOutboxAdapter(
         store,
@@ -245,6 +246,68 @@ def test_telegram_adapter_retries_before_and_after_an_uncertain_send(store, monk
     )
     assert adapter_delivered.deliver_once(now=NOW).sent == 1
     assert len(delivered.messages) == 1
+
+
+def test_started_delivery_is_not_reclaimed_after_worker_crash(store):
+    event = _event(store, number=31, event_type=EventType.COMPLETED)
+    row = _enqueue(store, event)
+    leased = store.claim_outbox(
+        channel="telegram", worker_id="outbox-crash-a", now=NOW,
+        lease_duration=timedelta(seconds=10),
+    )[0]
+    assert store.mark_outbox_delivery_started(
+        leased, worker_id="outbox-crash-a", now=NOW,
+    )
+
+    reclaimed = store.claim_outbox(
+        channel="telegram", worker_id="outbox-crash-b",
+        now=NOW + timedelta(seconds=11),
+    )
+
+    assert reclaimed == ()
+    stored = store._connection.execute(
+        "SELECT state, ack_json FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert stored["state"] == "cancelled"
+    assert "delivery_ambiguous" in stored["ack_json"]
+
+
+def test_explicit_retryable_rejection_can_be_sent_once_later(store, monkeypatch):
+    event = _event(store, number=32, event_type=EventType.COMPLETED)
+    row = _enqueue(store, event)
+    monkeypatch.setattr(
+        "durable_workloads.events.terminal_notice",
+        lambda *_args, **_kwargs: "done",
+    )
+    rejected = TelegramOutboxAdapter(
+        store,
+        _Sender({
+            "ok": False,
+            "retryable": True,
+            "delivery_ambiguous": False,
+        }),
+        recipient_resolver=lambda _owner: "chat-a",
+        language_resolver=lambda _owner: "en",
+        retry_delay=timedelta(),
+    )
+    assert rejected.deliver_once(now=NOW).deferred == 1
+    pending = store._connection.execute(
+        "SELECT state, ack_json FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert (pending["state"], pending["ack_json"]) == ("pending", None)
+
+    sender = _Sender({"ok": True})
+    delivered = TelegramOutboxAdapter(
+        store,
+        sender,
+        recipient_resolver=lambda _owner: "chat-a",
+        language_resolver=lambda _owner: "en",
+        retry_delay=timedelta(),
+    )
+    assert delivered.deliver_once(now=NOW).sent == 1
+    assert len(sender.messages) == 1
 
 
 def test_revoked_or_missing_telegram_association_never_sends(store, monkeypatch):
@@ -260,5 +323,171 @@ def test_revoked_or_missing_telegram_association_never_sends(store, monkeypatch)
         retry_delay=timedelta(),
     )
     report = adapter.deliver_once(now=NOW)
-    assert (report.sent, report.deferred) == (0, 1)
+    assert (report.sent, report.deferred, report.cancelled) == (0, 0, 1)
     assert sender.messages == []
+    assert store._connection.execute(
+        "SELECT state FROM outbox WHERE owner_user_id=? AND channel='telegram'",
+        (OWNER,),
+    ).fetchone()[0] == "cancelled"
+
+
+def test_telegram_adapter_distinguishes_authority_failure_from_revocation(
+    store, monkeypatch,
+):
+    event = _event(store, number=5, event_type=EventType.COMPLETED)
+    row = _enqueue(store, event)
+    monkeypatch.setattr(
+        "durable_workloads.events.terminal_notice",
+        lambda *_args, **_kwargs: "done",
+    )
+
+    def unavailable(_owner):
+        raise RuntimeError("authority unavailable")
+
+    adapter = TelegramOutboxAdapter(
+        store,
+        _Sender({"ok": True}),
+        recipient_resolver=unavailable,
+        language_resolver=lambda _owner: "it",
+        retry_delay=timedelta(seconds=10),
+    )
+    report = adapter.deliver_once(now=NOW)
+    assert (report.deferred, report.cancelled) == (1, 0)
+    stored = store._connection.execute(
+        "SELECT state, next_attempt_at FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert stored["state"] == "pending"
+    assert stored["next_attempt_at"] == "2026-08-21T10:00:10.000000Z"
+
+
+def test_telegram_adapter_retries_failures_before_delivery_boundary(
+    store, monkeypatch,
+):
+    event = _event(store, number=51, event_type=EventType.COMPLETED)
+    row = _enqueue(store, event)
+    monkeypatch.setattr(
+        "durable_workloads.events.terminal_notice",
+        lambda *_args, **_kwargs: "done",
+    )
+    original = store.get_event
+
+    def unavailable(*_args, **_kwargs):
+        raise RuntimeError("temporary read failure")
+
+    monkeypatch.setattr(store, "get_event", unavailable)
+    adapter = TelegramOutboxAdapter(
+        store, _Sender({"ok": True}),
+        recipient_resolver=lambda _owner: "chat-a",
+        language_resolver=lambda _owner: "en",
+        retry_delay=timedelta(),
+    )
+    report = adapter.deliver_once(now=NOW)
+    assert (report.deferred, report.cancelled) == (1, 0)
+    stored = store._connection.execute(
+        "SELECT state, ack_json FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert tuple(stored) == ("pending", None)
+    monkeypatch.setattr(store, "get_event", original)
+
+
+def test_permanent_provider_rejection_is_not_retried_forever(store, monkeypatch):
+    event = _event(store, number=6, event_type=EventType.COMPLETED)
+    row = _enqueue(store, event)
+    monkeypatch.setattr(
+        "durable_workloads.events.terminal_notice",
+        lambda *_args, **_kwargs: "done",
+    )
+    adapter = TelegramOutboxAdapter(
+        store,
+        _Sender({"ok": False, "retryable": False}),
+        recipient_resolver=lambda _owner: "chat-a",
+        language_resolver=lambda _owner: "it",
+    )
+    report = adapter.deliver_once(now=NOW)
+    assert (report.deferred, report.cancelled) == (0, 1)
+    stored = store._connection.execute(
+        "SELECT state, ack_json FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert stored["state"] == "cancelled"
+    assert "provider_rejected" in stored["ack_json"]
+
+
+def test_retryable_outbox_failure_has_a_hard_attempt_limit(store, monkeypatch):
+    event = _event(store, number=60, event_type=EventType.COMPLETED)
+    row = _enqueue(store, event)
+    monkeypatch.setattr(
+        "durable_workloads.events.terminal_notice",
+        lambda *_args, **_kwargs: "done",
+    )
+    sender = _Sender({
+        "ok": False,
+        "retryable": True,
+        "delivery_ambiguous": False,
+    })
+    adapter = TelegramOutboxAdapter(
+        store,
+        sender,
+        recipient_resolver=lambda _owner: "chat-a",
+        language_resolver=lambda _owner: "it",
+        retry_delay=timedelta(),
+        max_attempts=3,
+    )
+
+    reports = [adapter.deliver_once(now=NOW) for _attempt in range(3)]
+
+    assert [(item.deferred, item.cancelled) for item in reports] == [
+        (1, 0),
+        (1, 0),
+        (0, 1),
+    ]
+    assert len(sender.messages) == 3
+    stored = store._connection.execute(
+        "SELECT state, attempt_count, ack_json FROM outbox "
+        "WHERE owner_user_id=? AND id=?",
+        (OWNER, row.outbox_id),
+    ).fetchone()
+    assert (stored["state"], stored["attempt_count"]) == ("cancelled", 3)
+    assert "retry_exhausted" in stored["ack_json"]
+    assert adapter.deliver_once(now=NOW + timedelta(days=1)).claimed == 0
+
+
+def test_outbox_retention_prunes_only_acknowledged_rows_in_bounded_batches(store):
+    old = NOW - timedelta(days=31)
+    sent_event = _event(store, number=7)
+    sent = _enqueue(store, sent_event)
+    leased = store.claim_outbox(
+        channel="telegram", worker_id="retention-worker", now=old,
+    )[0]
+    assert store.confirm_outbox(
+        leased, worker_id="retention-worker", now=old,
+    )
+    pending_event = _event(store, number=8)
+    pending = _enqueue(store, pending_event)
+    store._connection.execute(
+        "UPDATE outbox SET updated_at=? WHERE owner_user_id=? AND id=?",
+        ("2026-07-01T00:00:00.000000Z", OWNER, pending.outbox_id),
+    )
+
+    assert store.prune_outbox(limit=1, now=NOW) == 1
+    assert store._connection.execute(
+        "SELECT 1 FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, sent.outbox_id),
+    ).fetchone() is None
+    assert store._connection.execute(
+        "SELECT state FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, pending.outbox_id),
+    ).fetchone()[0] == "pending"
+
+
+def test_telegram_adapter_rejects_a_naive_delivery_time(store):
+    adapter = TelegramOutboxAdapter(
+        store,
+        _Sender({"ok": True}),
+        recipient_resolver=lambda _owner: "chat-a",
+        language_resolver=lambda _owner: "it",
+    )
+    with pytest.raises(ValueError, match="timezone-aware"):
+        adapter.deliver_once(now=datetime(2026, 8, 21, 10, 0))

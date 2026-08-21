@@ -4,6 +4,11 @@ import sqlite3
 
 import pytest
 
+from durable_workloads.inventory import (
+    InventoryLimits,
+    SealedInventory,
+    seal_local_inventory,
+)
 from durable_workloads.migrations import utc_now
 from durable_workloads.models import WorkloadState
 from durable_workloads.schema import SchemaValidationError
@@ -145,6 +150,62 @@ def test_admission_rejects_inventory_outside_declared_caps(store):
         )
 
 
+def test_admission_consumes_a_repeatable_disk_backed_inventory(
+    store,
+    tmp_path,
+    monkeypatch,
+):
+    import durable_workloads.inventory as inventory_module
+
+    root = tmp_path / "admission-sources"
+    root.mkdir()
+    for index in range(3):
+        (root / f"{index}.txt").write_text(str(index), encoding="utf-8")
+    monkeypatch.setattr(inventory_module, "_IN_MEMORY_SOURCE_LIMIT", 2)
+    sealed = seal_local_inventory(
+        [root],
+        device_id="device-a",
+        limits=InventoryLimits(
+            max_sources=3,
+            max_total_bytes=1024,
+            max_depth=1,
+        ),
+    )
+    assert isinstance(sealed, SealedInventory)
+    try:
+        selected_plan = plan(with_map=True)
+        selected_plan["inventory"]["max_sources"] = 3
+        selected_plan["inventory"]["max_total_bytes"] = 1024
+        draft = store.create_draft(
+            "owner-a",
+            "spooled-admission",
+            redacted_request={"summary": "synthetic fixture"},
+        )
+        revision = store.admit_revision(
+            "owner-a",
+            draft.workload_id,
+            selected_plan,
+            sealed,
+            expected_version=draft.version,
+        )
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM sources WHERE revision_id=?",
+            (revision.revision_id,),
+        ).fetchone()[0] == 3
+        assert store._connection.execute(
+            """
+            SELECT COUNT(*) FROM units unit
+            JOIN stages stage
+              ON stage.owner_user_id=unit.owner_user_id
+             AND stage.id=unit.stage_id
+            WHERE unit.revision_id=? AND stage.stage_key='map'
+            """,
+            (revision.revision_id,),
+        ).fetchone()[0] == 3
+    finally:
+        sealed.close()
+
+
 def test_owner_scope_blocks_idor_without_revealing_foreign_rows(store):
     workload = store.create_draft(
         "owner-a", "private-request", redacted_request={"summary": "private"}
@@ -217,6 +278,51 @@ def test_attention_resolution_is_recorded_and_idempotent(store):
         "SELECT COUNT(*) FROM attention_resolutions WHERE owner_user_id='owner-a'"
     ).fetchone()[0]
     assert count == 1
+
+
+def test_attention_cancel_replay_returns_the_settled_terminal_record(store):
+    draft, _revision = _admit(store)
+    admitted = store.get_workload("owner-a", draft.workload_id)
+    attention = store.transition_workload(
+        "owner-a", draft.workload_id, WorkloadState.NEEDS_ATTENTION,
+        expected_version=admitted.version, payload={"reason": "fixture"},
+    )
+    cancelled = store.record_attention_resolution(
+        "owner-a", draft.workload_id, decision="cancel",
+        expected_version=attention.version, idempotency_key="resolution-cancel",
+    )
+    replay = store.record_attention_resolution(
+        "owner-a", draft.workload_id, decision="cancel",
+        expected_version=attention.version, idempotency_key="resolution-cancel",
+    )
+    assert cancelled.state is WorkloadState.CANCELLED
+    assert replay == cancelled
+
+
+def test_transaction_rolls_back_on_baseexception_and_reuses_connection(store):
+    draft = store.create_draft(
+        "owner-a", "baseexception-transaction",
+        redacted_request={"summary": "fixture"},
+    )
+
+    class InjectedInterrupt(BaseException):
+        pass
+
+    with pytest.raises(InjectedInterrupt):
+        with store._transaction() as connection:
+            connection.execute(
+                "UPDATE workloads SET priority='high' "
+                "WHERE owner_user_id=? AND id=?",
+                ("owner-a", draft.workload_id),
+            )
+            raise InjectedInterrupt()
+
+    assert store._connection.in_transaction is False
+    assert store.get_workload("owner-a", draft.workload_id).priority == "normal"
+    store.create_draft(
+        "owner-a", "baseexception-transaction-next",
+        redacted_request={"summary": "fixture"},
+    )
 
 
 def test_state_and_event_roll_back_together(store, monkeypatch):

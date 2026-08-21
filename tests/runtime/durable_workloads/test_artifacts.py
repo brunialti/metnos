@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import signal
 import stat
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from queue import Empty
 import pytest
 
 from durable_workloads.artifacts import (
+    ArtifactBudgetError,
     ArtifactConflictError,
     ArtifactContractError,
     ArtifactDownloadRegistry,
@@ -256,6 +258,95 @@ def test_download_capability_is_owner_bound_expiring_and_revocable(
     assert registry.resolve(replacement.token, owner_user_id="owner-a", now=now) is None
 
 
+def test_download_capability_registry_is_safe_under_parallel_http_access():
+    registry = ArtifactDownloadRegistry()
+    now = datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        capabilities = tuple(pool.map(
+            lambda index: registry.issue(
+                "owner-a",
+                f"artifact_parallel_{index:04d}",
+                now=now,
+            ),
+            range(256),
+        ))
+    assert len({capability.token for capability in capabilities}) == 256
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        resolved = tuple(pool.map(
+            lambda capability: registry.resolve(
+                capability.token,
+                owner_user_id="owner-a",
+                now=now,
+            ),
+            capabilities,
+        ))
+    assert resolved == capabilities
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        revoked = tuple(pool.map(
+            registry.revoke,
+            (capability.token for capability in capabilities),
+        ))
+    assert all(revoked)
+
+
+def test_download_capability_registry_reuses_one_bounded_entry_per_artifact():
+    registry = ArtifactDownloadRegistry(capacity=2)
+    now = datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)
+
+    first = registry.issue("owner-a", "artifact_bounded_01", now=now)
+    renewed = registry.issue(
+        "owner-a",
+        "artifact_bounded_01",
+        now=now + timedelta(minutes=1),
+    )
+    assert renewed.token == first.token
+    assert renewed.expires_at > first.expires_at
+    assert len(registry._entries) == 1
+
+    registry.issue("owner-a", "artifact_bounded_02", now=now)
+    with pytest.raises(
+        ArtifactContractError,
+        match="artifact_download_registry_full",
+    ):
+        registry.issue("owner-a", "artifact_bounded_03", now=now)
+
+    replacement = registry.issue(
+        "owner-a",
+        "artifact_bounded_03",
+        now=now + timedelta(minutes=6),
+    )
+    assert replacement.artifact_id == "artifact_bounded_03"
+    assert len(registry._entries) == 1
+
+
+def test_download_capability_registry_bounds_obsolete_expiry_records():
+    registry = ArtifactDownloadRegistry(capacity=2)
+    now = datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)
+
+    capability = registry.issue("owner-a", "artifact_bounded_01", now=now)
+    for offset in range(1, 1000):
+        capability = registry.issue(
+            "owner-a",
+            "artifact_bounded_01",
+            now=now + timedelta(seconds=offset),
+        )
+    assert len(registry._entries) == 1
+    assert len(registry._expiry_heap) <= 4
+
+    for offset in range(1000, 2000):
+        assert registry.revoke(capability.token)
+        capability = registry.issue(
+            "owner-a",
+            "artifact_bounded_01",
+            now=now + timedelta(seconds=offset),
+        )
+    assert len(registry._entries) == 1
+    assert len(registry._expiry_heap) <= 4
+
+
 def test_download_opens_only_the_registered_owner_blob(
     artifact_environment: ArtifactEnvironment,
 ):
@@ -389,7 +480,79 @@ def test_existing_blob_is_reused_only_after_digest_and_size_verification(
         artifact_environment.artifacts.stage("owner-a", b"original")
 
 
-@pytest.mark.parametrize("checkpoint", ["blob_after_fsync", "blob_after_install"])
+def test_artifact_digest_verification_never_holds_the_database_writer_lock(
+    artifact_environment: ArtifactEnvironment,
+    monkeypatch,
+):
+    original = ArtifactStore._fd_chunks
+    observed_transactions: list[bool] = []
+
+    def checked_chunks(descriptor: int):
+        observed_transactions.append(
+            artifact_environment.repository._connection.in_transaction
+        )
+        yield from original(descriptor)
+
+    monkeypatch.setattr(ArtifactStore, "_fd_chunks", staticmethod(checked_chunks))
+    _commit(artifact_environment, "owner-a", "lock-free-hash", b"verified")
+
+    assert observed_transactions
+    assert not any(observed_transactions)
+
+
+def test_blob_replacement_after_digest_verification_aborts_registration(
+    artifact_environment: ArtifactEnvironment,
+):
+    def replace_verified_blob(checkpoint: str) -> None:
+        if checkpoint != "blob_after_registration_verification":
+            return
+        blob_paths = list(
+            _blob_directory(
+                artifact_environment.root,
+                "owner-a",
+            ).glob("[0-9a-f]" * 64)
+        )
+        assert len(blob_paths) == 1
+        path = blob_paths[0]
+        path.unlink()
+        path.write_bytes(b"replaced")
+        path.chmod(0o600)
+
+    artifacts = ArtifactStore(
+        artifact_environment.root,
+        artifact_environment.repository,
+        max_blob_bytes=1024 * 1024,
+        checkpoint=replace_verified_blob,
+    )
+    workload_id, revision_id = artifact_environment.revisions["owner-a"]
+
+    with pytest.raises(
+        ArtifactIntegrityError,
+        match="artifact_blob_replaced_after_verification",
+    ):
+        artifacts.commit(
+            "owner-a",
+            workload_id,
+            revision_id,
+            "replaced-before-registration",
+            "application/octet-stream",
+            "metnos.test-artifact/1",
+            b"verified",
+        )
+    assert artifact_environment.repository._connection.execute(
+        "SELECT COUNT(*) FROM artifacts WHERE logical_name=?",
+        ("replaced-before-registration",),
+    ).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "checkpoint",
+    [
+        "blob_after_fsync",
+        "blob_after_install",
+        "blob_after_registration_verification",
+    ],
+)
 @pytest.mark.skipif(
     not hasattr(signal, "SIGKILL"),
     reason="controlled durable-crash tests require SIGKILL",
@@ -662,6 +825,49 @@ def test_gc_is_bounded_and_skips_symlinks(
     assert outside.read_bytes() == b"outside"
 
 
+def test_gc_cursor_prevents_referenced_prefix_starvation_after_restart(
+    artifact_environment: ArtifactEnvironment,
+):
+    payloads = [f"gc-cursor-{index}".encode() for index in range(32)]
+    ordered = sorted(payloads, key=lambda value: hashlib.sha256(value).hexdigest())
+    active = _commit(
+        artifact_environment, "owner-a", "gc-active-prefix", ordered[0],
+    )
+    orphan = artifact_environment.artifacts.stage("owner-a", ordered[-1])
+    old = datetime.now(timezone.utc) - timedelta(days=2)
+    for digest in (active.digest, orphan.digest):
+        os.utime(
+            _blob_path(artifact_environment.root, "owner-a", digest),
+            (old.timestamp(), old.timestamp()),
+        )
+
+    first = artifact_environment.artifacts.collect_garbage(
+        "owner-a",
+        grace_period=timedelta(days=1),
+        batch_limit=1,
+    )
+    assert (first.scanned, first.referenced, first.deleted, first.more) == (
+        1, 1, 0, True,
+    )
+
+    restarted = ArtifactStore(
+        artifact_environment.root,
+        artifact_environment.repository,
+    )
+    second = restarted.collect_garbage(
+        "owner-a",
+        grace_period=timedelta(days=1),
+        batch_limit=1,
+    )
+    assert (second.scanned, second.deleted) == (1, 1)
+    assert not _blob_path(
+        artifact_environment.root, "owner-a", orphan.digest,
+    ).exists()
+    assert _blob_path(
+        artifact_environment.root, "owner-a", active.digest,
+    ).exists()
+
+
 def test_owner_deletion_is_explicit_idempotent_and_selective(
     artifact_environment: ArtifactEnvironment,
 ):
@@ -758,3 +964,80 @@ def test_logical_name_conflict_never_uses_last_writer_wins(
         _commit(artifact_environment, "owner-a", "stable", b"second")
     stored = artifact_environment.repository.get_artifact("owner-a", first.artifact_id)
     assert stored.digest == first.digest
+
+
+def test_artifact_count_budget_is_atomic_and_idempotent(
+    artifact_environment: ArtifactEnvironment,
+):
+    committed = [
+        _commit(
+            artifact_environment,
+            "owner-a",
+            f"report-{index}",
+            f"payload-{index}".encode(),
+        )
+        for index in range(8)
+    ]
+    replay = _commit(
+        artifact_environment,
+        "owner-a",
+        "report-0",
+        b"payload-0",
+    )
+    assert replay.artifact_id == committed[0].artifact_id
+
+    with pytest.raises(ArtifactBudgetError, match="artifact_count_budget_exhausted"):
+        _commit(
+            artifact_environment,
+            "owner-a",
+            "report-over-budget",
+            b"not registered",
+        )
+
+    _workload_id, revision_id = artifact_environment.revisions["owner-a"]
+    row = artifact_environment.workload_store._connection.execute(
+        """
+        SELECT artifact_count FROM revision_usage
+        WHERE owner_user_id='owner-a' AND revision_id=?
+        """,
+        (revision_id,),
+    ).fetchone()
+    assert row["artifact_count"] == 8
+
+
+def test_blob_verification_rejects_oversize_before_streaming(
+    artifact_environment: ArtifactEnvironment,
+    monkeypatch,
+):
+    payload = b"x" * (1024 * 1024)
+    blob = artifact_environment.artifacts.stage("owner-a", payload)
+    with _blob_path(
+        artifact_environment.root,
+        "owner-a",
+        blob.digest,
+    ).open("ab") as stream:
+        stream.write(b"x")
+
+    def must_not_read(_descriptor):
+        raise AssertionError("oversize files must be rejected from metadata")
+
+    monkeypatch.setattr(ArtifactStore, "_fd_chunks", must_not_read)
+    with pytest.raises(ArtifactIntegrityError, match="artifact_file_too_large"):
+        artifact_environment.artifacts.verify_blob("owner-a", blob)
+
+
+def test_artifact_stream_chunk_size_is_bounded(
+    artifact_environment: ArtifactEnvironment,
+):
+    class OversizedChunk:
+        def __init__(self) -> None:
+            self.consumed = False
+
+        def read(self, _size: int) -> bytes:
+            if self.consumed:
+                return b""
+            self.consumed = True
+            return b"x" * (1024 * 1024 + 1)
+
+    with pytest.raises(ArtifactContractError, match="artifact_stream_chunk_too_large"):
+        artifact_environment.artifacts.stage("owner-a", OversizedChunk())

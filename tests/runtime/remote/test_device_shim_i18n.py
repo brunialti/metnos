@@ -37,7 +37,7 @@ def _load_device_messages():
 
 
 def test_json_allineato_al_db():
-    """Il messages_i18n.json committato == rigenerato dal DB i18n (no drift)."""
+    """Il JSON committato coincide col seed distribuito (no drift o dati locali)."""
     committed = json.loads((_DEVSHIM / "messages_i18n.json").read_text("utf-8"))
     fresh = gen_i18n.build_templates()
     assert committed == fresh, (

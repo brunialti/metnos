@@ -108,6 +108,25 @@ def test_read_dtos_are_closed_owner_scoped_and_cursor_paged(store, control):
     assert recent["next_cursor"] is None
 
 
+def test_workload_list_reads_all_counters_with_one_aggregate_query(store, control):
+    for number in range(51, 56):
+        _admitted(store, OWNER, number)
+
+    statements = []
+    store._connection.set_trace_callback(statements.append)
+    try:
+        page = control.list_workloads(OWNER, limit=5)
+    finally:
+        store._connection.set_trace_callback(None)
+
+    assert len(page["items"]) == 5
+    counter_queries = [
+        statement for statement in statements
+        if "WITH selected AS" in statement
+    ]
+    assert len(counter_queries) == 1
+
+
 def test_owner_scope_and_cursors_fail_closed(store, control):
     workload, _revision = _admitted(store, OWNER, 11)
     for operation in (
@@ -272,14 +291,14 @@ def test_control_operation_matrix_covers_every_workload_state():
         },
         "cancel": {
             WorkloadState.DRAFT: WorkloadState.CANCELLED,
-            WorkloadState.ADMITTED: WorkloadState.CANCELLED,
-            WorkloadState.QUEUED: WorkloadState.CANCELLED,
+            WorkloadState.ADMITTED: WorkloadState.CANCEL_REQUESTED,
+            WorkloadState.QUEUED: WorkloadState.CANCEL_REQUESTED,
             WorkloadState.RUNNING: WorkloadState.CANCEL_REQUESTED,
             WorkloadState.PAUSE_REQUESTED: WorkloadState.CANCEL_REQUESTED,
-            WorkloadState.PAUSED: WorkloadState.CANCELLED,
+            WorkloadState.PAUSED: WorkloadState.CANCEL_REQUESTED,
             WorkloadState.CANCEL_REQUESTED: None,
             WorkloadState.CANCELLED: None,
-            WorkloadState.NEEDS_ATTENTION: WorkloadState.CANCELLED,
+            WorkloadState.NEEDS_ATTENTION: WorkloadState.CANCEL_REQUESTED,
         },
     }
     assert CONTROL_STATE_MATRIX == expected

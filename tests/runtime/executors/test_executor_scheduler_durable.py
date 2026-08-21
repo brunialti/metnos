@@ -14,6 +14,7 @@ from executor_scheduler import (
     ExecutorScheduler,
     SchedulerAdmissionTimeout,
     SchedulerContextError,
+    SchedulerOrchestrationSaturated,
     assigned_worker_environment,
 )
 
@@ -43,6 +44,7 @@ def _context(
     priority: str = "normal",
     resources: dict[str, int] | None = None,
     deadline_at: str | None = None,
+    language: str | None = None,
 ) -> ExecutionContext:
     values = {
         "cpu": 0,
@@ -63,6 +65,7 @@ def _context(
         priority=priority,
         resource_claims=tuple(values.items()),
         deadline_at=deadline_at,
+        language=language,
     )
 
 
@@ -127,6 +130,34 @@ def test_context_resources_acquire_and_release_in_canonical_order():
         "+global", "+cpu", "+llm", "+executor",
         "-executor", "-llm", "-cpu", "-global",
     ]
+    scheduler.shutdown()
+
+
+def test_central_orchestration_lanes_are_bounded_and_reserve_one_pool_thread():
+    scheduler = ExecutorScheduler(
+        max_workers=3,
+        max_in_flight=4,
+        parallel_enabled=True,
+        hardware_threads=4,
+    )
+    entered = threading.Barrier(3)
+    release = threading.Event()
+
+    def hold():
+        entered.wait(timeout=1)
+        assert release.wait(timeout=1)
+        return "done"
+
+    first = scheduler.submit_orchestration(hold)
+    second = scheduler.submit_orchestration(hold)
+    entered.wait(timeout=1)
+    assert scheduler.orchestration_capacity == 2
+    with pytest.raises(SchedulerOrchestrationSaturated, match="saturated"):
+        scheduler.submit_orchestration(lambda: None)
+
+    release.set()
+    assert first.result(timeout=1) == "done"
+    assert second.result(timeout=1) == "done"
     scheduler.shutdown()
 
 
@@ -462,6 +493,22 @@ def test_only_bounded_resource_budgets_enter_the_worker_environment():
     }
     assert "private-owner" not in repr(environment)
     assert "unit-fixture" not in repr(environment)
+
+
+def test_frozen_language_enters_worker_environment_without_identity_data():
+    environment = assigned_worker_environment(
+        _Executor(execution_policy=_safe_policy()),
+        _context("private-owner", language="en-us"),
+    )
+
+    assert environment["METNOS_LANG"] == "en-us"
+    assert "private-owner" not in repr(environment)
+
+    with pytest.raises(SchedulerContextError, match="language"):
+        assigned_worker_environment(
+            _Executor(execution_policy=_safe_policy()),
+            _context(language="EN_US"),
+        )
 
 
 def test_agent_runtime_propagates_context_separately_from_arguments(monkeypatch):

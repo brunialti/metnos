@@ -176,7 +176,11 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         self.assertEqual(response.status, 200)
         html = await response.text()
         self.assertIn('id="durableWorkloads"', html)
-        self.assertIn("Lavori durevoli", html)
+        self.assertIn("LRE (Long Run Engine)", html)
+        self.assertIn("Non ci sono attività LRE da mostrare.", html)
+        self.assertIn("La politica di esecuzione ammette risultati parziali.", html)
+        self.assertNotIn("La policy", html)
+        self.assertIn("Errore non classificato", html)
         template = (RUNTIME / "templates" / "durable_workloads.html").read_text("utf-8")
         self.assertNotIn("<style", template)
         self.assertIn("EventSource", template)
@@ -226,6 +230,20 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
             (await rejected_owner.json())["error"]["code"],
             "durable_workload.owner_in_body_rejected",
         )
+        rejected_unknown = await self.client.post(
+            f"/agent/workloads/{own.workload_id}/pause",
+            headers=self.headers(),
+            json={
+                "expected_version": queued.version,
+                "idempotency_key": "rejected-unknown-field",
+                "unexpected": True,
+            },
+        )
+        self.assertEqual(rejected_unknown.status, 400)
+        self.assertEqual(
+            (await rejected_unknown.json())["error"]["code"],
+            "durable_workload.invalid_request",
+        )
 
     async def test_commands_are_idempotent_versioned_and_safe_under_concurrency(self):
         owner = self.owner()
@@ -272,6 +290,24 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
             ),
         )
         self.assertEqual(sorted((left.status, right.status)), [200, 409])
+
+    async def test_command_json_body_has_its_own_small_boundary(self):
+        owner = self.owner()
+        workload = self._create_admitted(owner, 22)
+        queued = self._queue(owner, workload.workload_id)
+        response = await self.client.post(
+            f"/agent/workloads/{workload.workload_id}/pause",
+            headers={**self.headers(), "Content-Type": "application/json"},
+            data=json.dumps({
+                "expected_version": queued.version,
+                "idempotency_key": "x" * 5000,
+            }),
+        )
+        self.assertEqual(response.status, 400)
+        self.assertEqual(
+            (await response.json())["error"]["code"],
+            "durable_workload.invalid_request",
+        )
 
     async def test_attention_resolution_uses_closed_owner_scoped_routes(self):
         from durable_workloads.models import WorkloadState
@@ -337,6 +373,34 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
             headers={**self.headers(), "Last-Event-ID": "not-an-id"},
         )
         self.assertEqual(invalid.status, 400)
+
+    async def test_sse_connections_are_bounded_per_owner(self):
+        import http_routes_durable_workloads as routes
+
+        owner = self.owner()
+        workload = self._create_admitted(owner, 43)
+        previous = routes._SSE_MAX_PER_OWNER
+        routes._SSE_MAX_PER_OWNER = 1
+        first = None
+        try:
+            first = await self.client.get(
+                f"/agent/workloads/{workload.workload_id}/stream",
+                headers={**self.headers(), "Last-Event-ID": "1"},
+            )
+            self.assertEqual(first.status, 200)
+            second = await self.client.get(
+                f"/agent/workloads/{workload.workload_id}/stream",
+                headers={**self.headers(), "Last-Event-ID": "1"},
+            )
+            self.assertEqual(second.status, 429)
+            self.assertEqual(
+                (await second.json())["error"]["code"],
+                "durable_workload.stream_limit",
+            )
+        finally:
+            routes._SSE_MAX_PER_OWNER = previous
+            if first is not None:
+                first.close()
 
     async def test_artifact_download_uses_an_expiring_revocable_registry_capability(self):
         owner = self.owner()

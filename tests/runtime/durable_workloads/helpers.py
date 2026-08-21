@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from durable_workloads.models import SourceResolution
 from durable_workloads.schema import inventory_digest
 
 
@@ -139,6 +140,37 @@ def source(
         "state": state,
         "accounted": accounted,
     }
+
+
+def source_resolution(
+    item: Mapping[str, Any],
+    value: object | None = None,
+    *,
+    authority: str = "test-rehash",
+    **observed_overrides: object,
+) -> SourceResolution:
+    """Build a synthetic post-rehash attestation for bridge tests."""
+
+    observed = {
+        "source_id": item["source_id"],
+        "device_id": item["device_id"],
+        "content_digest": item["content_digest"],
+        "size_bytes": item["size_bytes"],
+        "mtime_ns": item["mtime_ns"],
+    }
+    observed.update(observed_overrides)
+    return SourceResolution(
+        value=(
+            f"/authorized/{item['source_id']}.png"
+            if value is None else value
+        ),
+        source_id=str(observed["source_id"]),
+        device_id=str(observed["device_id"]),
+        content_digest=str(observed["content_digest"]),
+        size_bytes=int(observed["size_bytes"]),
+        mtime_ns=int(observed["mtime_ns"]),
+        authority=authority,
+    )
 
 
 def inventory(sources: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
-from channels import InboundMessage
+from channels import InboundMessage, OutboundMessage
 from channels.telegram import TelegramChannel
 
 
@@ -18,6 +18,71 @@ def _message(update_id: int) -> InboundMessage:
         message_id=str(update_id), received_at=time.time(),
         extra={"update_id": update_id},
     )
+
+
+def test_send_does_not_repeat_an_ambiguous_transport_call(tmp_path, monkeypatch):
+    channel = TelegramChannel(
+        token="test-token", default_chat_id="42",
+        state_path=tmp_path / "offset",
+    )
+    calls = []
+
+    def ambiguous(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {
+            "ok": False,
+            "error": "connection dropped",
+            "delivery_ambiguous": True,
+        }
+
+    monkeypatch.setattr(channel, "_call", ambiguous)
+
+    outcome = channel.send("42", OutboundMessage(text="status"))
+
+    assert outcome["delivery_ambiguous"] is True
+    assert len(calls) == 1
+
+
+def test_send_stops_and_marks_a_partial_multichunk_delivery_ambiguous(
+    tmp_path,
+    monkeypatch,
+):
+    channel = TelegramChannel(
+        token="test-token", default_chat_id="42",
+        state_path=tmp_path / "offset",
+    )
+    monkeypatch.setattr(
+        "channels.telegram_format.format_for_telegram",
+        lambda _text: ["first", "second", "must-not-run"],
+    )
+    outcomes = iter((
+        {"ok": True, "delivery_ambiguous": False},
+        {
+            "ok": False,
+            "retryable": True,
+            "delivery_ambiguous": False,
+        },
+        {
+            "ok": False,
+            "retryable": True,
+            "delivery_ambiguous": False,
+        },
+        {"ok": True, "delivery_ambiguous": False},
+    ))
+    calls = []
+
+    def send_chunk(*args, **kwargs):
+        calls.append((args, kwargs))
+        return next(outcomes)
+
+    monkeypatch.setattr(channel, "_call", send_chunk)
+
+    outcome = channel.send("42", OutboundMessage(text="long notice"))
+
+    assert outcome["ok"] is False
+    assert outcome["delivery_ambiguous"] is True
+    assert outcome["partial_delivery"] is True
+    assert len(calls) == 3
 
 
 def test_poll_persists_offset_only_after_ack(tmp_path, monkeypatch):
@@ -98,4 +163,3 @@ def test_daemon_stops_batch_before_ack_after_handler_exception(monkeypatch):
     assert daemon.run_forever(max_iterations=1) == 1
     assert seen == [1, 2]
     assert channel.acks == [1]
-

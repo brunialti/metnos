@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -87,6 +88,7 @@ def _contract(
     effect: str = "pure",
     model: str | None = None,
     prompt: str | None = None,
+    model_cost_policy: str = "zero",
     input_types: tuple[tuple[str, str], ...] = (),
 ) -> FrozenRunnerContract:
     return FrozenRunnerContract(
@@ -100,6 +102,18 @@ def _contract(
         input_types=input_types,
         model_binding_digest=_digest(f"model:{model}") if model else None,
         prompt_digest=_digest(f"prompt:{prompt}") if prompt else None,
+        prompt_language="it" if model else None,
+        model_provider="fixture" if model else None,
+        model_digest=(
+            "sha256:" + hashlib.sha256(b"fixture-model").hexdigest()
+            if model else None
+        ),
+        model_tier="wise" if model else None,
+        model_kind="chat" if model else None,
+        model_max_calls=1 if model else None,
+        model_max_input_tokens=4_096 if model else None,
+        model_max_output_tokens=4_096 if model else None,
+        model_cost_policy=model_cost_policy if model else None,
         transport="local-subprocess" if kind == "executor" else "llm-gateway",
         intelligence="deterministic" if kind == "executor" else "model",
     )
@@ -154,7 +168,6 @@ def _reduce_stage() -> dict:
             "model_binding.digest",
             "prompt.digest",
             "reduction.order",
-            "reduction.fan_in",
         ],
         "resources": {
             "cpu": 0,
@@ -212,6 +225,30 @@ def test_unknown_plan_fields_and_cycle_fail_before_contract_resolution():
         _compiled(candidate=cyclic)
 
 
+def test_virtual_inventory_stage_does_not_require_a_giant_inline_inventory(
+    monkeypatch,
+):
+    import durable_workloads.schema as schema
+
+    monkeypatch.setattr(schema, "MAX_INVENTORY_JSON_BYTES", 2_048)
+    selected_inventory = inventory([source(index) for index in range(20)])
+    compiled = compile_plan(
+        plan(with_map=True), selected_inventory,
+        runners=_Resolver(), output_schemas=_schemas(),
+    )
+    assert len(compiled.graph["stages"]) == 2
+
+    invalid = plan(with_map=True)
+    invalid["stages"][1]["input_bindings"] = {
+        "paths": {"ref": "revision.inventory"},
+    }
+    with pytest.raises(CompilationError, match="bounded inline"):
+        compile_plan(
+            invalid, selected_inventory,
+            runners=_Resolver(), output_schemas=_schemas(),
+        )
+
+
 def test_unknown_or_untrusted_executor_fails_closed():
     class Missing:
         def resolve(self, _kind, _name):
@@ -238,6 +275,50 @@ def test_unknown_or_untrusted_executor_fails_closed():
     )
     with pytest.raises(CompilationError, match="not signed"):
         resolver.resolve("executor", "read_files_ocr")
+
+
+def test_verified_executor_scheduler_policy_is_frozen_into_its_contract():
+    executor = SimpleNamespace(
+        signed_by="test-authority",
+        lifecycle="active",
+        dormant=False,
+        digest="sha256:" + "a" * 64,
+        version="1.0.0",
+        args_schema={
+            "type": "object",
+            "properties": {"paths": {"type": "array"}},
+        },
+        capabilities=(),
+        placement={},
+        transport="local-subprocess",
+        intelligence="deterministic",
+        execution_policy_declared=True,
+        execution_policy={
+            "effect": "read_only",
+            "parallelism_class": 2,
+            "resource_class": "local_io",
+            "concurrency_key": "none",
+            "equivalence_gate": "verified",
+        },
+    )
+    catalog = SimpleNamespace(get=lambda _name: executor)
+    resolver = VerifiedCatalogResolver(
+        catalog_loader=lambda **_kwargs: catalog,
+        durable_effects={"read_files_ocr": ("pure",)},
+        durable_output_schemas={"read_files_ocr": ("metnos.test-map/1",)},
+    )
+
+    first = resolver.resolve("executor", "read_files_ocr")
+    assert dict(first.execution_policy) == executor.execution_policy
+    assert first.execution_policy_declared is True
+    assert first.snapshot(
+        stage_key="map",
+        output_schema=_schemas().resolve("metnos.test-map/1"),
+    )["execution_policy"] == executor.execution_policy
+
+    executor.execution_policy = {**executor.execution_policy, "parallelism_class": 1}
+    second = resolver.resolve("executor", "read_files_ocr")
+    assert second.contract_digest != first.contract_digest
 
 
 def test_inline_output_prose_is_not_an_approved_schema():
@@ -269,6 +350,71 @@ def test_missing_dependency_field_and_effect_authority_are_rejected():
     )
     with pytest.raises(CompilationError, match="incompatible reference type"):
         _compiled(resolver=wrong_type)
+
+
+def test_model_resources_require_frozen_binding_prompt_and_invalidation():
+    missing_contract = _pipeline()
+    missing_contract["stages"][1]["resources"]["vlm"] = 1
+    with pytest.raises(CompilationError, match="model resources"):
+        _compiled(candidate=missing_contract)
+
+    resolver = _Resolver()
+    resolver.map = _contract(
+        "executor",
+        "read_files_ocr",
+        "metnos.test-map/1",
+        inputs=("files", "paths"),
+        input_types=(("files", "array"), ("paths", "array")),
+        model="vlm-v1",
+        prompt="ocr-v1",
+    )
+    missing_invalidation = _pipeline()
+    missing_invalidation["stages"][1]["resources"]["vlm"] = 1
+    with pytest.raises(CompilationError, match="invalidate binding and prompt"):
+        _compiled(candidate=missing_invalidation, resolver=resolver)
+
+    admitted = deepcopy(missing_invalidation)
+    admitted["stages"][1]["invalidation_keys"].extend((
+        "model_binding.digest", "prompt.digest",
+    ))
+    compiled = _compiled(candidate=admitted, resolver=resolver)
+    snapshot = next(
+        item for item in compiled.catalog_snapshot["entries"]
+        if item["stage_key"] == "map"
+    )
+    assert snapshot["model_binding_digest"].startswith("sha256:")
+    assert snapshot["prompt_digest"].startswith("sha256:")
+    assert snapshot["prompt_language"] == "it"
+
+
+def test_model_stage_requires_a_positive_plan_token_budget():
+    candidate = _pipeline()
+    candidate["budgets"]["max_tokens"] = 0
+
+    with pytest.raises(CompilationError, match="positive plan token budget"):
+        _compiled(candidate=candidate)
+
+    insufficient = _pipeline()
+    insufficient["budgets"]["max_tokens"] = 8_191
+    with pytest.raises(CompilationError, match="token reservation"):
+        _compiled(candidate=insufficient)
+
+
+def test_model_stage_rejects_a_binding_without_a_preauthorized_cost_bound():
+    resolver = _Resolver()
+    resolver.reduce = _contract(
+        "workload",
+        "entries.describe",
+        "metnos.test-reduce/1",
+        inputs=("entries",),
+        input_types=(("entries", "array"),),
+        model="paid-fixture",
+        prompt="paid-fixture",
+        model_cost_policy="unbounded",
+    )
+
+    with pytest.raises(CompilationError, match="preauthorized cost bound"):
+        _compiled(resolver=resolver)
 
 
 def test_entry_identity_fanout_is_typed_and_requires_one_entries_dependency():
@@ -358,6 +504,11 @@ def test_registered_creative_tier_is_resolved_by_the_router_binding():
 
     resolver = RegisteredWorkloadResolver(
         output_schemas={"promotion.commentary": ("metnos.test-reduce/1",)},
+        prompt_digests={"promotion.commentary": _digest("promotion-prompt")},
+        prompt_language="it",
+        max_input_tokens={"promotion.commentary": 1_024},
+        max_output_tokens={"promotion.commentary": 512},
+        max_calls_per_attempt={"promotion.commentary": 1},
         binding_resolver=binding,
     )
     contract = resolver.resolve("workload", "promotion.commentary")

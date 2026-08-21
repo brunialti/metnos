@@ -100,6 +100,26 @@ def test_migration_rolls_back_tables_and_version_on_injected_error():
         connection.close()
 
 
+def test_migration_rolls_back_on_baseexception_and_keeps_connection_usable():
+    connection = open_db(":memory:")
+
+    class InjectedInterrupt(BaseException):
+        pass
+
+    def fail(statement_number, _statement):
+        if statement_number == 6:
+            raise InjectedInterrupt()
+
+    try:
+        with pytest.raises(InjectedInterrupt):
+            migrate(connection, _before_statement=fail)
+        assert connection.in_transaction is False
+        assert schema_version(connection) == 0
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
+    finally:
+        connection.close()
+
+
 def test_future_schema_is_rejected_without_change():
     connection = open_db(":memory:")
     try:
@@ -300,5 +320,90 @@ def test_upgrade_from_previous_schema_fixture():
             row[1] for row in connection.execute("PRAGMA table_info(outbox)")
         }
         assert {"lease_expires_at", "coalesce_key"}.issubset(columns)
+        unit_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(units)")
+        }
+        assert {
+            "manual_retry_tokens", "manual_retry_generation",
+        } <= unit_columns
+        revision_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(revisions)")
+        }
+        assert "manual_retry_generation" in revision_columns
+        usage_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(revision_usage)")
+        }
+        assert {
+            "input_bytes", "output_bytes", "input_tokens", "output_tokens",
+            "cost_micros", "usage_unknown", "artifact_count", "started_at",
+            "clock_high_water_at",
+        } <= usage_columns
+        indexes = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            )
+        }
+        assert {
+            "workloads_service_state_idx",
+            "units_retry_due_idx",
+            "units_reuse_ready_idx",
+            "scheduler_credits_sequence_idx",
+            "scheduler_credits_owner_sequence_idx",
+        } <= indexes
+    finally:
+        connection.close()
+
+
+def test_upgrade_from_v2_preserves_rows_and_adds_manual_retry_authority():
+    from durable_workloads.migrations import (
+        _V1_STATEMENTS,
+        _V2_STATEMENTS,
+        utc_now,
+    )
+
+    connection = open_db(":memory:")
+    try:
+        applied_at = utc_now()
+        for statement in _V1_STATEMENTS:
+            connection.execute(statement.replace("__APPLIED_AT__", applied_at))
+        for statement in _V2_STATEMENTS:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE durable_schema SET version=2, applied_at=? WHERE singleton=1",
+            (utc_now(),),
+        )
+        connection.execute(
+            """
+            INSERT INTO workloads(
+                owner_user_id, id, request_key, request_digest,
+                redacted_request_json, state, version, priority, budget_json,
+                created_at, updated_at
+            ) VALUES (
+                'owner-a', 'workload-upgrade-v2', 'upgrade-v2',
+                'sha256:' || lower(hex(zeroblob(32))),
+                '{"schema_version":"metnos.redacted-request/1","summary":"fixture"}',
+                'draft', 1, 'normal',
+                '{"schema_version":"metnos.durable-draft-budget/1"}', ?, ?
+            )
+            """,
+            (applied_at, applied_at),
+        )
+
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
+        assert connection.execute(
+            "SELECT state FROM workloads WHERE id='workload-upgrade-v2'"
+        ).fetchone()[0] == "draft"
+        unit_columns = {
+            row[1]: row for row in connection.execute("PRAGMA table_info(units)")
+        }
+        assert unit_columns["manual_retry_tokens"][4] == "0"
+        assert unit_columns["manual_retry_generation"][4] == "0"
+        revision_columns = {
+            row[1]: row
+            for row in connection.execute("PRAGMA table_info(revisions)")
+        }
+        assert revision_columns["manual_retry_generation"][4] == "0"
     finally:
         connection.close()
