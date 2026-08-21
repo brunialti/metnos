@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; Multilingual by definition</title>
- <meta name="description" content="Why language is part of every Metnos request contract, from understanding and execution to the response and remote devices.">
- <meta name="keywords" content="Metnos, multilingual, i18n, per-user language, language context, translations, fallback, Tutor">
+ <meta name="description" content="Why language belongs to the Metnos instance configuration and reaches understanding, execution, responses, and remote devices.">
+ <meta name="keywords" content="Metnos, multilingual, i18n, instance language, language context, translations, fallback, Tutor">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/en/architecture/multilingual_by_definition">
@@ -35,10 +35,10 @@
 
 <p class="lead">
 In Metnos, language is not a decoration applied to the interface after the
-product is complete. It is a property of the person and of each request: it
-travels with what the system understands, plans, executes, and returns. Two
-people can therefore use different languages at the same time without changing
-a global setting or contaminating one another's turns.
+product is complete. It is a property of the Metnos instance: the configured
+language is shared by its users, channels, requests, and responses. Changing
+the instance language is therefore a deliberate global configuration change,
+not a per-user or per-turn choice.
 </p>
 
 <p>
@@ -51,7 +51,7 @@ constraint: a feature is not genuinely multilingual when only its surface is.
 <figure class="documentation-infographic" aria-labelledby="multilingual-flow-caption">
  <img src="/assets/multilingual-flow.svg"
       width="1200" height="720" loading="eager" decoding="async"
-      alt="Metnos path: user preference, isolated context, coordinated prompts and manifests, execution with the same contract, response through the turn-language-English-Italian fallback chain; below, Tutor catalog compilation and signing.">
+      alt="Metnos path: instance language, shared execution context, coordinated prompts and manifests, execution with the same contract, response through the instance-language-English-Italian fallback chain; below, Tutor catalog compilation and signing.">
  <figcaption id="multilingual-flow-caption">
   One language follows the entire request path. The numbers refer to the six
   stages below; arrows show a sequence, not an automatic loop.
@@ -59,7 +59,7 @@ constraint: a feature is not genuinely multilingual when only its surface is.
 </figure>
 
 <ol class="infographic-key">
- <li><strong>The person's preference.</strong> Language belongs to the authenticated user, not to a computer or channel.</li>
+ <li><strong>The instance language.</strong> Language belongs to the Metnos instance and is shared by its users and channels.</li>
  <li><strong>An isolated context.</strong> Every request receives its own language context, including during concurrent execution.</li>
  <li><strong>Four coordinated sources.</strong> Prompts, executor manifests, deterministic messages, and the comprehension lexicon remain separate but consistent.</li>
  <li><strong>Declared fallbacks.</strong> When text is missing, Metnos follows a known chain and keeps the translation debt visible.</li>
@@ -71,23 +71,22 @@ constraint: a feature is not genuinely multilingual when only its surface is.
 
 <p>
 It means that language enters the system boundaries rather than merely its
-copy. The request owner is identified before the preference is read; the
-language code is retained in the turn context; and every component that produces
-words for a person must receive it or derive it from that context. A global
-value remains only as the instance fallback.
+copy. The instance language is established in configuration and is retained in
+the execution context; every component that produces words for a person must
+use that same value. There is no per-user or per-turn language override.
 </p>
 
 <p>
-This makes a difficult situation ordinary: one person writes in Italian in the
-web chat while another uses English through Telegram and a recurring task
-prepares a notification in its owner's language at the same time. Concurrency
-does not require changing the process language. Each turn carries its own.
+This makes the operational rule explicit: all users and channels connected to
+one instance receive the same configured language. If two languages are needed
+at the same time, they require separate Metnos instances; changing the language
+of one instance is a global configuration change for that instance.
 </p>
 
 <div class="callout note">
- <p><strong>Language and authority stay separate.</strong> Choosing a language
- does not broaden permissions, change ownership, or grant an executor new
- capabilities. The preference changes rendering and understanding, not authority.</p>
+ <p><strong>Language and authority stay separate.</strong> Changing the instance
+ language does not broaden permissions, change ownership, or grant an executor
+ new capabilities. It changes rendering and understanding, not authority.</p>
 </div>
 
 <h2 id="four-layers">One intent, four language layers</h2>
@@ -106,13 +105,13 @@ without pretending that the entire system is already ready.
  <tbody>
   <tr>
    <td><strong>Prompts</strong></td>
-   <td>Give models their instructions, criteria, and expected response language.</td>
+   <td>Give models their instructions, criteria, and the instance language expected in responses.</td>
    <td>A translated interface does not prevent a model from receiving instructions in the wrong language.</td>
   </tr>
   <tr>
    <td><strong>Executor manifests</strong></td>
    <td>Tell the planner which actions are available and what their arguments mean.</td>
-   <td>Translating the result is insufficient when a tool was selected from a description unsuitable for the turn language.</td>
+   <td>Translating the result is insufficient when a tool was selected from a description unsuitable for the instance language.</td>
   </tr>
   <tr>
    <td><strong>Message catalog</strong></td>
@@ -132,7 +131,7 @@ without pretending that the entire system is already ready.
 <p>
 A missing translation should lead neither to a crash nor to invented wording.
 Each layer follows a deterministic fallback chain. For visible messages, for
-example, Metnos tries the turn language, then English, then Italian; if no version
+example, Metnos tries the instance language, then English, then Italian; if no version
 exists, it exposes a recognisable missing key. Prompts and manifests use
 equivalent rules suited to their own sources.
 </p>
@@ -173,9 +172,9 @@ therefore cannot accidentally enter a published artefact.
 </p>
 
 <p>
-The same rule applies to channels. Language belongs to the person associated with
-the channel; Telegram, the web chat, and deferred work do not keep independent
-preferences that can silently diverge.
+The same rule applies to channels. Language belongs to the Metnos instance;
+Telegram, the web chat, and deferred work all use the instance language and do
+not keep independent preferences that can silently diverge.
 </p>
 
 <h2 id="innovation">Where the innovation lies</h2>
@@ -187,8 +186,8 @@ editorial phase. This produces three concrete benefits:
 </p>
 
 <ul>
- <li><strong>consistency:</strong> understanding, tool selection, and the response use the same turn language;</li>
- <li><strong>isolation:</strong> concurrent users and tasks do not mutate global language state;</li>
+ <li><strong>consistency:</strong> understanding, tool selection, and the response use the same instance language;</li>
+ <li><strong>isolation:</strong> concurrent users and tasks cannot replace the instance language with a per-user or per-turn value;</li>
  <li><strong>honesty:</strong> fallbacks, stale translations, and incomplete coverage stay observable rather than hidden.</li>
 </ul>
 
@@ -198,6 +197,39 @@ wording, a new language can have incomplete comprehension coverage, and human
 review remains essential. The innovation is to make those limits part of the
 contract, and therefore measurable and correctable.
 </p>
+
+<h2 id="auto-localisation">Full self-localisation</h2>
+
+<p>
+When installation requests a language other than Italian or English, Metnos
+does not pretend that it is already available. It records the requested
+language, starts the instance temporarily in English, and queues localisation.
+English is therefore a safe transitional bootstrap, never a hidden per-user or
+per-turn choice.
+</p>
+
+<p>
+The planned pipeline is incremental and idempotent. Overnight it compares
+source fingerprints and translates, through the dedicated language workload,
+the complete operational corpus: lexicons used by the proposer and
+understanding layer, planner and synt prompts, manifest descriptions and
+arguments, deterministic messages, notifications, device repertories, and
+resources consumed by Tutor. It does not translate labels only: it translates
+the material that guides reasoning and makes execution verifiable.
+</p>
+
+<ol class="infographic-key">
+ <li><strong>Bootstrap.</strong> The requested language is recorded; the instance remains operational in English.</li>
+ <li><strong>Inventory.</strong> Every resource receives a source, language code, fingerprint, and state.</li>
+ <li><strong>Translation.</strong> Human-facing and model-facing text follow different safeguards under the same semantic contract.</li>
+ <li><strong>Verification.</strong> Placeholders, schemas, manifest signatures, lexicons, and proposer behaviour are checked before enablement.</li>
+ <li><strong>Activation.</strong> Only after the gate passes does an administrator restart the instance in the new language.</li>
+</ol>
+
+<p class="callout note"><strong>What remains unchanged.</strong> Translation does
+not alter executor names, keys, argument schemas, permissions, ownership,
+policy, or signatures. It changes the language Metnos uses to understand and
+explain; it does not change what Metnos is authorised to do.</p>
 
 <h2 id="further-reading">Further reading</h2>
 

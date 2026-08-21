@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; Multilingue per definizione</title>
- <meta name="description" content="Perché in Metnos la lingua appartiene al contratto di ogni richiesta, dall'interpretazione all'esecuzione, fino alla risposta e ai dispositivi remoti.">
- <meta name="keywords" content="Metnos, multilingue, i18n, lingua per utente, contesto linguistico, traduzioni, fallback, Tutor">
+ <meta name="description" content="Perché in Metnos la lingua appartiene alla configurazione dell'istanza e attraversa interpretazione, esecuzione, risposta e dispositivi remoti.">
+ <meta name="keywords" content="Metnos, multilingue, i18n, lingua dell'istanza, contesto linguistico, traduzioni, fallback, Tutor">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/multilingual_by_definition">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/multilingual_by_definition">
  <meta property="og:title" content="Metnos &mdash; Multilingue per definizione">
- <meta property="og:description" content="La lingua come proprietà della richiesta e come contratto verificabile dell'intero sistema.">
+ <meta property="og:description" content="La lingua dell'istanza come contratto verificabile dell'intero sistema.">
  <meta property="og:image" content="https://metnos.com/assets/multilingual-by-definition.png">
  <meta property="og:locale" content="it_IT">
  <meta property="og:site_name" content="Metnos">
@@ -35,10 +35,10 @@
 
 <p class="lead">
 In Metnos la lingua non è una decorazione applicata all'interfaccia quando il
-prodotto è già finito. È una proprietà della persona e della singola richiesta:
-accompagna ciò che viene compreso, pianificato, eseguito e restituito. Per questo
-due persone possono usare contemporaneamente lingue diverse senza cambiare la
-configurazione globale e senza contaminare i rispettivi turni.
+prodotto è già finito. È una proprietà dell'istanza Metnos: la lingua configurata
+è condivisa da utenti, canali, richieste e risposte. Cambiare la lingua
+dell'istanza è quindi una modifica deliberata della configurazione globale, non
+una scelta per singolo utente o per singolo turno.
 </p>
 
 <p>
@@ -52,7 +52,7 @@ non è davvero multilingue se lo è soltanto la sua superficie.
 <figure class="documentation-infographic" aria-labelledby="multilingual-flow-caption">
  <img src="/assets/multilingual-flow.svg"
       width="1200" height="720" loading="eager" decoding="async"
-      alt="Percorso Metnos: preferenza dell'utente, contesto isolato, prompt e manifest coordinati, esecuzione con contratto invariato, risposta con catena turno-inglese-italiano; sotto, compilazione e firma del catalogo Tutor.">
+      alt="Percorso Metnos: lingua dell'istanza, contesto di esecuzione condiviso, prompt e manifest coordinati, esecuzione con contratto invariato, risposta con catena lingua dell'istanza-inglese-italiano; sotto, compilazione e firma del catalogo Tutor.">
  <figcaption id="multilingual-flow-caption">
   Una lingua segue l'intero percorso della richiesta. I numeri rimandano ai sei
   passaggi descritti qui sotto; le frecce indicano una sequenza, non un ciclo automatico.
@@ -60,7 +60,7 @@ non è davvero multilingue se lo è soltanto la sua superficie.
 </figure>
 
 <ol class="infographic-key">
- <li><strong>Preferenza della persona.</strong> La lingua è associata all'utente autenticato, non al computer o al canale.</li>
+ <li><strong>Lingua dell'istanza.</strong> La lingua appartiene all'istanza Metnos ed è condivisa da utenti e canali.</li>
  <li><strong>Contesto isolato.</strong> Ogni richiesta riceve il proprio contesto linguistico, anche durante esecuzioni concorrenti.</li>
  <li><strong>Quattro sorgenti coordinate.</strong> Prompt, manifest degli executor, messaggi deterministici e lessico di comprensione restano distinti ma coerenti.</li>
  <li><strong>Ripieghi dichiarati.</strong> Se manca un testo, Metnos segue una catena nota e rende visibile il debito di traduzione.</li>
@@ -72,24 +72,24 @@ non è davvero multilingue se lo è soltanto la sua superficie.
 
 <p>
 Significa che la lingua entra nei confini del sistema, non soltanto nei suoi
-testi. Il proprietario della richiesta viene identificato prima di leggerne la
-preferenza; il codice lingua viene conservato nel contesto del turno; ogni
-componente che produce parole destinate a una persona deve riceverlo o ricavarlo
-da quel contesto. Un valore globale resta soltanto il ripiego dell'istanza.
+testi. La lingua dell'istanza viene stabilita nella configurazione e conservata
+nel contesto di esecuzione; ogni componente che produce parole destinate a una
+persona deve usare quel medesimo valore. Non esiste una variazione per singolo
+utente o per singolo turno.
 </p>
 
 <p>
-Questa scelta rende naturale una situazione altrimenti difficile: una persona
-scrive in italiano dalla chat web mentre un'altra usa l'inglese da Telegram e
-un'attività ricorrente prepara, nello stesso momento, una notifica nella lingua
-del proprio titolare. La concorrenza non richiede di cambiare la lingua del
-processo. Ogni turno porta con sé la propria.
+Questa regola rende esplicito il comportamento operativo: tutti gli utenti e
+tutti i canali collegati alla stessa istanza ricevono la medesima lingua
+configurata. Se occorrono due lingue nello stesso momento, servono istanze
+Metnos distinte; cambiare la lingua di un'istanza è una modifica globale per
+quell'istanza.
 </p>
 
 <div class="callout note">
- <p><strong>Lingua e autorizzazione restano separate.</strong> Scegliere la lingua
- non amplia i permessi, non cambia il proprietario e non concede nuove capacità a
- un executor. La preferenza modifica la resa e la comprensione, non l'autorità.</p>
+ <p><strong>Lingua e autorizzazione restano separate.</strong> Cambiare la lingua
+ dell'istanza non amplia i permessi, non cambia il proprietario e non concede nuove
+ capacità a un executor. Cambia la resa e la comprensione, non l'autorità.</p>
 </div>
 
 <h2 id="quattro-livelli">Un solo intento, quattro livelli linguistici</h2>
@@ -114,7 +114,7 @@ essere individuata e corretta senza fingere che l'intero sistema sia già pronto
   <tr>
    <td><strong>Manifest degli executor</strong></td>
    <td>Descrivono al pianificatore le azioni disponibili e il significato degli argomenti.</td>
-   <td>Tradurre il risultato non basta se lo strumento è stato scelto partendo da una descrizione non adatta alla lingua del turno.</td>
+   <td>Tradurre il risultato non basta se lo strumento è stato scelto partendo da una descrizione non adatta alla lingua dell'istanza.</td>
   </tr>
   <tr>
    <td><strong>Catalogo dei messaggi</strong></td>
@@ -134,7 +134,7 @@ essere individuata e corretta senza fingere che l'intero sistema sia già pronto
 <p>
 La mancanza di una traduzione non deve trasformarsi né in un arresto né in una
 frase inventata. Ciascun livello segue una catena di ripiego deterministica. Per
-i messaggi visibili, ad esempio, Metnos prova la lingua del turno, poi l'inglese,
+ i messaggi visibili, ad esempio, Metnos prova la lingua dell'istanza, poi l'inglese,
 poi l'italiano; se nessuna versione esiste, espone una chiave mancante
 riconoscibile. I prompt e i manifest hanno regole equivalenti, adatte alle loro
 fonti.
@@ -177,9 +177,9 @@ errore in un artefatto pubblicato.
 </p>
 
 <p>
-La stessa regola vale per i canali. La lingua appartiene alla persona associata
-al canale; Telegram, la chat web e un'attività differita non mantengono preferenze
-indipendenti che possano divergere silenziosamente.
+La stessa regola vale per i canali. La lingua appartiene all'istanza Metnos;
+Telegram, la chat web e un'attività differita usano tutti la lingua dell'istanza
+e non mantengono preferenze indipendenti che possano divergere silenziosamente.
 </p>
 
 <h2 id="innovazione">Dove sta l'innovazione</h2>
@@ -191,8 +191,8 @@ come una fase editoriale conclusiva. Questo porta tre vantaggi concreti:
 </p>
 
 <ul>
- <li><strong>coerenza:</strong> comprensione, scelta degli strumenti e risposta usano la stessa lingua del turno;</li>
- <li><strong>isolamento:</strong> utenti e attività concorrenti non modificano uno stato linguistico globale;</li>
+ <li><strong>coerenza:</strong> comprensione, scelta degli strumenti e risposta usano la stessa lingua dell'istanza;</li>
+ <li><strong>isolamento:</strong> utenti e attività concorrenti non possono sostituire la lingua dell'istanza con un valore per utente o per turno;</li>
  <li><strong>onestà:</strong> ripieghi, traduzioni superate e copertura incompleta restano osservabili invece di essere nascosti.</li>
 </ul>
 
@@ -202,6 +202,39 @@ formulazione mediocre, una lingua nuova può avere un lessico incompleto e una
 revisione umana resta indispensabile. L'innovazione consiste nel rendere questi
 limiti parte del contratto, quindi misurabili e correggibili.
 </p>
+
+<h2 id="auto-localizzazione">Auto-localizzazione completa</h2>
+
+<p>
+Quando, durante l'installazione, viene indicata una lingua diversa da italiano o
+inglese, Metnos non finge che sia già disponibile. Registra la lingua desiderata,
+avvia l'istanza temporaneamente in inglese e mette in coda la localizzazione.
+L'inglese è quindi un avvio sicuro e transitorio, non una scelta nascosta per
+singolo utente o turno.
+</p>
+
+<p>
+La pipeline prevista lavora in modo incrementale e idempotente. Di notte
+confronta le impronte delle sorgenti e traduce, con il workload linguistico
+dedicato, l'intero patrimonio operativo: lessici usati dal proposer e dalla
+comprensione, prompt del planner e del synt, descrizioni e argomenti dei
+manifest, messaggi deterministici, notifiche, repertorio dei dispositivi e
+risorse destinate al Tutor. Non traduce soltanto le label: traduce ciò che guida
+il ragionamento e ciò che rende verificabile l'esecuzione.
+</p>
+
+<ol class="infographic-key">
+ <li><strong>Bootstrap.</strong> La lingua richiesta viene registrata; l'istanza resta operativa in inglese.</li>
+ <li><strong>Inventario.</strong> Ogni risorsa riceve una sorgente, un codice lingua, un'impronta e uno stato.</li>
+ <li><strong>Traduzione.</strong> I testi destinati alle persone e quelli destinati ai modelli seguono regole diverse ma lo stesso contratto semantico.</li>
+ <li><strong>Verifica.</strong> Placeholder, schema, firma dei manifest, lessico e comportamento del proposer vengono controllati prima dell'abilitazione.</li>
+ <li><strong>Attivazione.</strong> Solo dopo il superamento del gate l'amministratore riavvia l'istanza nella nuova lingua.</li>
+</ol>
+
+<p class="callout note"><strong>Che cosa resta invariato.</strong> La traduzione
+non modifica nomi degli executor, chiavi, schema degli argomenti, permessi,
+proprietario, policy o firme. Cambia la lingua con cui Metnos comprende e
+spiega; non cambia ciò che Metnos è autorizzato a fare.</p>
 
 <h2 id="approfondire">Per approfondire</h2>
 
