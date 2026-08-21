@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def _resolve_vlm_url(env_val: str | None) -> str:
@@ -58,7 +59,9 @@ def reload_configuration() -> None:
     global _VLM, _VLM_URL, _VLM_MODEL, _VLM_TIMEOUT_S, _VLM_MAX_EDGE, _VLM_MAX_TOKENS
     _VLM = _vlm_cfg()
     _VLM_URL = _resolve_vlm_url(
-        os.environ.get("METNOS_VLM_URL") or _VLM.get("endpoint"))
+        os.environ.get("METNOS_VLM_URL")
+        or _VLM.get("endpoint")
+        or _VLM.get("base_url"))
     _VLM_MODEL = os.environ.get("METNOS_VLM_MODEL") or _VLM.get(
         "model", "qwen3vl-2b")
     _VLM_TIMEOUT_S = int(
@@ -70,6 +73,43 @@ def reload_configuration() -> None:
 
 
 reload_configuration()
+
+
+def model_binding_facts(*, max_tokens: int | None = None) -> dict:
+    """Return the effective VLM binding and policy for admission hashing."""
+
+    effective_max_tokens = _VLM_MAX_TOKENS if max_tokens is None else max_tokens
+    if (
+        isinstance(effective_max_tokens, bool)
+        or not isinstance(effective_max_tokens, int)
+        or not 1 <= effective_max_tokens <= 1_000_000
+    ):
+        raise ValueError("max_tokens must be an integer in 1..1000000")
+    if (
+        isinstance(_VLM_MAX_EDGE, bool)
+        or not isinstance(_VLM_MAX_EDGE, int)
+        or _VLM_MAX_EDGE < 1
+    ):
+        raise ValueError("max_edge must be a positive integer")
+    # The adapter resizes to a square bounded by max_edge and emits JPEG
+    # base64.  Five tokens per pixel plus a fixed envelope is deliberately
+    # conservative (raw RGB + base64 is below four bytes per pixel); the LRE
+    # treats the declared value as a hard per-call reservation.
+    max_input_tokens = 5 * _VLM_MAX_EDGE * _VLM_MAX_EDGE + 65_536
+    return {
+        "family": "vlm",
+        "role": "default",
+        "provider": str(_VLM.get("provider") or "llamacpp"),
+        "model": _VLM_MODEL,
+        "endpoint": _VLM_URL,
+        "timeout_s": _VLM_TIMEOUT_S,
+        "max_edge": _VLM_MAX_EDGE,
+        "max_tokens": effective_max_tokens,
+        "max_input_tokens": max_input_tokens,
+        "max_calls_per_attempt": 1,
+        "usage_kind": "vision",
+        "usage_tier": "vlm:default",
+    }
 
 
 def _describe_prompt(lang: str) -> str:
@@ -222,6 +262,12 @@ def describe_image(img_path, *, lang: str | None = None,
         request_timeout = _remaining_timeout()
         if request_timeout <= 0:
             return _vlm_fail("deadline_exhausted")
+        started_at = time.perf_counter()
+        try:
+            import llm_telemetry
+            llm_telemetry.mark_call_started()
+        except Exception:
+            pass
         with urllib.request.urlopen(req, timeout=request_timeout) as resp:
             raw = resp.read().decode("utf-8")
     except urllib.error.URLError as e:
@@ -244,7 +290,40 @@ def describe_image(img_path, *, lang: str | None = None,
 
     try:
         out = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return _vlm_fail("resp_unparseable")
+    usage = out.get("usage") if isinstance(out, dict) else None
+    try:
         text = out["choices"][0]["message"]["content"]
-    except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+    except (KeyError, IndexError, TypeError):
+        text = ""
+    try:
+        import llm_telemetry
+        llm_telemetry.record(
+            provider=str(_VLM.get("provider") or "llamacpp"),
+            model=str(model),
+            system=str(prompt or _describe_prompt(lang)),
+            user="[image]",
+            result=SimpleNamespace(
+                text=str(text),
+                in_tokens=(
+                    usage.get("prompt_tokens") if isinstance(usage, dict) else None
+                ),
+                out_tokens=(
+                    usage.get("completion_tokens") if isinstance(usage, dict) else None
+                ),
+                latency_ms=max(0, int((time.perf_counter() - started_at) * 1000)),
+                cost_micros=(
+                    usage.get("cost_micros") if isinstance(usage, dict) else None
+                ),
+            ),
+            kind="vision",
+            tier="vlm:default",
+        )
+    except Exception:
+        # Telemetry is observational; missing counters are handled fail-closed
+        # by the durable bridge when a plan requires model accounting.
+        pass
+    if not text:
         return _vlm_fail("resp_unparseable")
     return _parse_vlm_text(text)
