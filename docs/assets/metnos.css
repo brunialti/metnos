@@ -1015,6 +1015,13 @@ body.wiki-enabled .provider {
 body.wiki-enabled .provider h2,
 body.wiki-enabled .provider p { color: var(--wiki-panel-ink) !important; }
 
+/* Older architecture pages carry a redundant sticky breadcrumb.  The wiki
+   shell supplies the single canonical navigation header, so hide the legacy
+   bar while retaining the source text for non-JavaScript readers. */
+body.wiki-enabled .wiki-view > div[style*="position:sticky"] {
+  display: none !important;
+}
+
 @media print {
   body.wiki-enabled { display: block; padding: 0; }
   .wiki-sidebar, .wiki-toggle, .wiki-overlay, .wiki-skip-link { display: none !important; }
