@@ -1,0 +1,55 @@
+{
+  "case_id": "explain-boundary-calendar-create--en",
+  "responses": [
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Crea un nuovo calendario Google chiamato Test.»\n\nPer creare un calendario di prova, utilizza l'executor `create_calendars`. Questo strumento genera un nuovo calendario-contenitore Google, distinto dagli eventi o appuntamenti che verranno successivamente inseriti al suo interno.\n\nEcco i dettagli operativi supportati dal contesto:\n\n*   **Parametro principale (`summary`)**: Specifica il nome del calendario. Ad esempio, puoi usare `summary=\"Test\"` o `summary=\"Calendario di prova\"`. Se non fornisci questo parametro, il sistema assegnerà automaticamente il nome predefinito \"Metnos\".\n*   **Parametro opzionale (`description`)**: Puoi aggiungere una descrizione testuale libera per il calendario, utile per chiarirne lo scopo (ad esempio, \"Calendario usato solo per test\").\n*   **Risultato**: L'operazione restituirà un identificativo univoco (`calendar_id`) e conferma la creazione (`ok`).\n\n**Nota importante sulla gestione**: I calendari creati sono contenitori separati dagli eventi. Se in futuro dovessi voler rimuovere questo calendario di prova, ricorda che l'executor `delete_calendars` è un'operazione distruttiva che eliminerà anche tutti gli eventi al suo interno.\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "final_message_html": "<p>Chiedi a Metnos con una richiesta come quella di questo esempio: «Crea un nuovo calendario Google chiamato Test.»</p>\n<p>Per creare un calendario di prova, utilizza l'executor <code>create_calendars</code>. Questo strumento genera un nuovo calendario-contenitore Google, distinto dagli eventi o appuntamenti che verranno successivamente inseriti al suo interno.</p>\n<p>Ecco i dettagli operativi supportati dal contesto:</p>\n<ul>\n<li><b>Parametro principale (<code>summary</code>)</b>: Specifica il nome del calendario. Ad esempio, puoi usare <code>summary=\"Test\"</code> o <code>summary=\"Calendario di prova\"</code>. Se non fornisci questo parametro, il sistema assegnerà automaticamente il nome predefinito \"Metnos\".</li>\n<li><b>Parametro opzionale (<code>description</code>)</b>: Puoi aggiungere una descrizione testuale libera per il calendario, utile per chiarirne lo scopo (ad esempio, \"Calendario usato solo per test\").</li>\n<li><b>Risultato</b>: L'operazione restituirà un identificativo univoco (<code>calendar_id</code>) e conferma la creazione (<code>ok</code>).</li>\n</ul>\n<p><b>Nota importante sulla gestione</b>: I calendari creati sono contenitori separati dagli eventi. Se in futuro dovessi voler rimuovere questo calendario di prova, ricorda che l'executor <code>delete_calendars</code> è un'operazione distruttiva che eliminerà anche tutti gli eventi al suo interno.</p>\n<p>La spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.</p>",
+      "steps_summary": [],
+      "total_ms": 5432,
+      "turn_id": "d39bcc60f2d34ae5"
+    }
+  ],
+  "turn_records": [
+    {
+      "actor": "host",
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Crea un nuovo calendario Google chiamato Test.»\n\nPer creare un calendario di prova, utilizza l'executor `create_calendars`. Questo strumento genera un nuovo calendario-contenitore Google, distinto dagli eventi o appuntamenti che verranno successivamente inseriti al suo interno.\n\nEcco i dettagli operativi supportati dal contesto:\n\n*   **Parametro principale (`summary`)**: Specifica il nome del calendario. Ad esempio, puoi usare `summary=\"Test\"` o `summary=\"Calendario di prova\"`. Se non fornisci questo parametro, il sistema assegnerà automaticamente il nome predefinito \"Metnos\".\n*   **Parametro opzionale (`description`)**: Puoi aggiungere una descrizione testuale libera per il calendario, utile per chiarirne lo scopo (ad esempio, \"Calendario usato solo per test\").\n*   **Risultato**: L'operazione restituirà un identificativo univoco (`calendar_id`) e conferma la creazione (`ok`).\n\n**Nota importante sulla gestione**: I calendari creati sono contenitori separati dagli eventi. Se in futuro dovessi voler rimuovere questo calendario di prova, ricorda che l'executor `delete_calendars` è un'operazione distruttiva che eliminerà anche tutti gli eventi al suo interno.\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "mode": "tutor",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "redacted": true,
+      "steps": [],
+      "ts_end": 1787430910.181973,
+      "ts_start": 1787430904.749973,
+      "turn_id": "d39bcc60f2d34ae5",
+      "tutor_card_ids": [],
+      "tutor_detection": "semantic_help",
+      "tutor_elapsed_ms": 5432,
+      "tutor_esito": "fondata",
+      "tutor_gap_reason": "",
+      "tutor_handoff_created": false,
+      "tutor_pending_preserved": false,
+      "tutor_probe_statuses": [],
+      "tutor_query_hash": "sha256:4e87736ec5b5e56a7200f50a13d35a896e5409cd847ba9a23c383cde0d537438",
+      "tutor_repair_missing": [],
+      "tutor_repair_pass": 0,
+      "tutor_repair_remaining": [],
+      "tutor_score_band": "high",
+      "tutor_source_ids": [
+        "knowledge:executor-create_calendars-it",
+        "knowledge:executor-create_calendars-arg-c9046f7a37ad-it-01",
+        "knowledge:executor-create_calendars-arg-761b7ad8ad43-it-01",
+        "knowledge:doc-public-domains-a05187101c19-it-0016",
+        "knowledge:executor-delete_calendars-it"
+      ],
+      "user_query": "How could I create a test calendar? Only explain it."
+    }
+  ]
+}

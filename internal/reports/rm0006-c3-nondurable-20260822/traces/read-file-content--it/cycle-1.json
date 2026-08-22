@@ -1,0 +1,112 @@
+{
+  "case_id": "read-file-content--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "METNOS-CERT-NOTE\nseconda riga di prova",
+      "final_message_html": "<p>METNOS-CERT-NOTE<br>seconda riga di prova</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "read_files"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 4155,
+      "ts_end": 1787430757.4872196,
+      "turn_id": "2ec12038c64741b2"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "METNOS-CERT-NOTE\nseconda riga di prova",
+      "intent_verb": "read",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "read_files",
+          "error": null,
+          "exec_ms": 55,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "2ec12038c64741b2",
+            "client": "local",
+            "parse": "auto",
+            "path": "/tmp/metnos-certification-fixture/files/note.txt"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "2ec12038c64741b2",
+            "client": "local",
+            "parse": "auto",
+            "path": "/tmp/metnos-certification-fixture/files/note.txt"
+          },
+          "result": {
+            "content": "METNOS-CERT-NOTE\nseconda riga di prova\n",
+            "metadata": {
+              "bytes": 39,
+              "chars": 39,
+              "encoding": "utf-8",
+              "file_size": 39,
+              "path": "/tmp/metnos-certification-fixture/files/note.txt",
+              "read_mode": "full",
+              "read_offset": 0
+            },
+            "ok": true
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787430757.4872196,
+      "ts_start": 1787430753.3321583,
+      "turn_id": "2ec12038c64741b2",
+      "unbacked_promise_detected": false,
+      "user_query": "Leggi /tmp/metnos-certification-fixture/files/note.txt."
+    }
+  ]
+}

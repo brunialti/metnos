@@ -1,0 +1,15 @@
+{
+  "certification_id": "rm0006-c3-nondurable-v1",
+  "complete": true,
+  "errors": 0,
+  "evaluated_cases": 38,
+  "expected_cases": 38,
+  "failed": 0,
+  "failures": [],
+  "matrix_sha256": "0825a86b259acd9b56ae33f507845305b57993217af09f877f595c035b880cd0",
+  "objective_achieved": true,
+  "passed": 38,
+  "pending": 0,
+  "results_registry_sha256": "095bab00d72bd74443c179536510faa87bfef64b9bf30794d0b53770f17d50af",
+  "schema_version": "metnos.certification-summary/1"
+}

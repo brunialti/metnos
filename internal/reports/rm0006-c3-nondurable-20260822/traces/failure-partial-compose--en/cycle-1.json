@@ -1,0 +1,188 @@
+{
+  "case_id": "failure-partial-compose--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Nessuna operazione eseguita. Operation not applicable for this provider: email via http.",
+      "final_message_html": "<p>Nessuna operazione eseguita. Operation not applicable for this provider: email via http.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "read_files"
+        },
+        {
+          "error_class": null,
+          "ok": false,
+          "step": 2,
+          "tool": "send_messages"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 8290,
+      "ts_end": 1787431057.286891,
+      "turn_id": "fe436bd2e64a4473"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 0,
+        "failures": 1,
+        "items": 0,
+        "mutating_attempted": true,
+        "mutations": 0
+      },
+      "error_class": "wrong_args",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Nessuna operazione eseguita. Operation not applicable for this provider: email via http.",
+      "intent_verb": "read",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "read_files",
+          "error": null,
+          "exec_ms": 49,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "fe436bd2e64a4473",
+            "client": "local",
+            "parse": "auto",
+            "path": "/tmp/metnos-certification-fixture/partial/report.txt"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "fe436bd2e64a4473",
+            "client": "local",
+            "parse": "auto",
+            "path": "/tmp/metnos-certification-fixture/partial/report.txt"
+          },
+          "result": {
+            "content": "METNOS-CERT-PARTIAL-REPORT\n",
+            "metadata": {
+              "bytes": 27,
+              "chars": 27,
+              "encoding": "utf-8",
+              "file_size": 27,
+              "path": "/tmp/metnos-certification-fixture/partial/report.txt",
+              "read_mode": "full",
+              "read_offset": 0
+            },
+            "ok": true
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        },
+        {
+          "canonical_query": "",
+          "chosen_tool": "send_messages",
+          "error": null,
+          "exec_ms": 57,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "fe436bd2e64a4473",
+            "messages": [
+              {
+                "body": "METNOS-CERT-PARTIAL-REPORT\n"
+              }
+            ],
+            "to_user": "sink@cert.invalid",
+            "via_channel": "http"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "fe436bd2e64a4473",
+            "messages": [
+              {
+                "body": "METNOS-CERT-PARTIAL-REPORT\n"
+              }
+            ],
+            "to_user": "sink@cert.invalid",
+            "via_channel": "http"
+          },
+          "result": {
+            "fail_count": 1,
+            "failed": [
+              {
+                "error": "Operation not applicable for this provider: email via http.",
+                "index": 0,
+                "target": "sink@cert.invalid"
+              }
+            ],
+            "ok": false,
+            "ok_count": 0,
+            "results": []
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 2,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787431057.286891,
+      "ts_start": 1787431048.9962564,
+      "turn_id": "fe436bd2e64a4473",
+      "unbacked_promise_detected": false,
+      "user_query": "Read /tmp/metnos-certification-fixture/partial/report.txt and send its contents to sink@cert.invalid through the unavailable simulated HTTP channel."
+    }
+  ]
+}

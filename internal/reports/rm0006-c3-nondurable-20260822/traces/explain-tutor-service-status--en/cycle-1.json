@@ -1,0 +1,66 @@
+{
+  "case_id": "explain-tutor-service-status--en",
+  "responses": [
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami dove posso controllare lo stato dei servizi»\n\nPer visualizzare lo stato dei servizi senza apportare modifiche, devi accedere alla pagina **Settings > Sistema > Servizi** nella chat web di Metnos.\n\n**Percorso di navigazione:**\n1. Apri la chat web di Metnos.\n2. Naviga verso: **Settings > Sistema > Servizi**.\n3. La route associata è `/admin/services`.\n\n**Cosa puoi osservare:**\nQuesta pagina è una vista di sola lettura che si aggiorna automaticamente ogni 15 secondi. Per ogni servizio installato, puoi vedere:\n*   **Stato systemd:** Se il processo è attivo o meno.\n*   **Salute applicativa:** Lo stato di funzionamento del software.\n*   **Installazione:** Se il servizio è correttamente installato.\n*   **PID e Gruppo:** Identificativi del processo.\n*   **Controlli ammessi:** Se disponibili, vengono mostrati i pulsanti per Avvia, Arresta o Riavvia, ma la pagina è progettata principalmente per la supervisione.\n\nI servizi elencati includono il Server HTTP, il Daemon Telegram, il Display laterale, Playwright sidecar, il Modello linguistico locale, SearXNG, il Server geografico, il Traduttore i18n e il LRE (Long Run Engine).\n\nPer ulteriori dettagli tecnici o diagnostici avanzati, puoi consultare la documentazione ufficiale: [Metnos Glossario](https://metnos.com/it/Metnos_Glossario_v1) e [Guida ai Servizi](https://metnos.com/it/system/services).\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "final_message_html": "<p>Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami dove posso controllare lo stato dei servizi»</p>\n<p>Per visualizzare lo stato dei servizi senza apportare modifiche, devi accedere alla pagina <b>Settings &gt; Sistema &gt; Servizi</b> nella chat web di Metnos.</p>\n<p><b>Percorso di navigazione:</b></p>\n<ol>\n<li>Apri la chat web di Metnos.</li>\n<li>Naviga verso: <b>Settings &gt; Sistema &gt; Servizi</b>.</li>\n<li>La route associata è <code>/admin/services</code>.</li>\n</ol>\n<p><b>Cosa puoi osservare:</b><br>Questa pagina è una vista di sola lettura che si aggiorna automaticamente ogni 15 secondi. Per ogni servizio installato, puoi vedere:</p>\n<ul>\n<li><b>Stato systemd:</b> Se il processo è attivo o meno.</li>\n<li><b>Salute applicativa:</b> Lo stato di funzionamento del software.</li>\n<li><b>Installazione:</b> Se il servizio è correttamente installato.</li>\n<li><b>PID e Gruppo:</b> Identificativi del processo.</li>\n<li><b>Controlli ammessi:</b> Se disponibili, vengono mostrati i pulsanti per Avvia, Arresta o Riavvia, ma la pagina è progettata principalmente per la supervisione.</li>\n</ul>\n<p>I servizi elencati includono il Server HTTP, il Daemon Telegram, il Display laterale, Playwright sidecar, il Modello linguistico locale, SearXNG, il Server geografico, il Traduttore i18n e il LRE (Long Run Engine).</p>\n<p>Per ulteriori dettagli tecnici o diagnostici avanzati, puoi consultare la documentazione ufficiale: <a href=\"https://metnos.com/it/Metnos_Glossario_v1\" target=\"_blank\" rel=\"noopener noreferrer\">Metnos Glossario</a> e <a href=\"https://metnos.com/it/system/services\" target=\"_blank\" rel=\"noopener noreferrer\">Guida ai Servizi</a>.</p>\n<p>La spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.</p>",
+      "steps_summary": [],
+      "total_ms": 12695,
+      "turn_id": "85ad7ba009e54c97"
+    }
+  ],
+  "turn_records": [
+    {
+      "actor": "host",
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami dove posso controllare lo stato dei servizi»\n\nPer visualizzare lo stato dei servizi senza apportare modifiche, devi accedere alla pagina **Settings > Sistema > Servizi** nella chat web di Metnos.\n\n**Percorso di navigazione:**\n1. Apri la chat web di Metnos.\n2. Naviga verso: **Settings > Sistema > Servizi**.\n3. La route associata è `/admin/services`.\n\n**Cosa puoi osservare:**\nQuesta pagina è una vista di sola lettura che si aggiorna automaticamente ogni 15 secondi. Per ogni servizio installato, puoi vedere:\n*   **Stato systemd:** Se il processo è attivo o meno.\n*   **Salute applicativa:** Lo stato di funzionamento del software.\n*   **Installazione:** Se il servizio è correttamente installato.\n*   **PID e Gruppo:** Identificativi del processo.\n*   **Controlli ammessi:** Se disponibili, vengono mostrati i pulsanti per Avvia, Arresta o Riavvia, ma la pagina è progettata principalmente per la supervisione.\n\nI servizi elencati includono il Server HTTP, il Daemon Telegram, il Display laterale, Playwright sidecar, il Modello linguistico locale, SearXNG, il Server geografico, il Traduttore i18n e il LRE (Long Run Engine).\n\nPer ulteriori dettagli tecnici o diagnostici avanzati, puoi consultare la documentazione ufficiale: [Metnos Glossario](https://metnos.com/it/Metnos_Glossario_v1) e [Guida ai Servizi](https://metnos.com/it/system/services).\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "mode": "tutor",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "redacted": true,
+      "steps": [],
+      "ts_end": 1787430904.7308729,
+      "ts_start": 1787430892.035873,
+      "turn_id": "85ad7ba009e54c97",
+      "tutor_card_ids": [],
+      "tutor_detection": "semantic_help",
+      "tutor_elapsed_ms": 12695,
+      "tutor_esito": "fondata",
+      "tutor_gap_reason": "",
+      "tutor_handoff_created": false,
+      "tutor_pending_preserved": false,
+      "tutor_probe_statuses": [],
+      "tutor_query_hash": "sha256:5468a3135bd4386e2fd989d46eb5495d295a9029f2b52688746aed21e22fd3a6",
+      "tutor_repair_missing": [],
+      "tutor_repair_pass": 0,
+      "tutor_repair_remaining": [],
+      "tutor_score_band": "high",
+      "tutor_source_ids": [
+        "knowledge:runtime-settings-services-it",
+        "knowledge:runtime-observation-services-status-it",
+        "knowledge:doc-public-metnos-glossario-v1-5a5705674e57-it-0042",
+        "knowledge:doc-public-lre-941fe1d4e055-it-0018",
+        "knowledge:doc-public-tutor-45dbbd53facd-it-0010",
+        "knowledge:doc-public-tutor-45dbbd53facd-it-0007",
+        "knowledge:doc-public-services-fa3726200d09-it-0001",
+        "knowledge:doc-public-skills-backends-04742f8dae1e-it-0003",
+        "knowledge:runtime-ui-settings-facet-05-it",
+        "knowledge:doc-public-sandbox-0757e6560430-it-0012",
+        "knowledge:runtime-ui-timers-facet-04-it",
+        "knowledge:runtime-ui-timers-facet-06-it",
+        "knowledge:doc-public-services-fa3726200d09-it-0005",
+        "knowledge:runtime-ui-settings-facet-01-it",
+        "knowledge:doc-public-observability-b337adae2551-it-0002",
+        "knowledge:doc-public-metnos-quicktour-db8f74de6037-it-0004"
+      ],
+      "user_query": "Explain where I can see service status without changing it."
+    }
+  ]
+}

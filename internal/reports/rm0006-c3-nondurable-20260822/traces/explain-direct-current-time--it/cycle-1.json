@@ -1,0 +1,99 @@
+{
+  "case_id": "explain-direct-current-time--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Sono le 22:32 nel fuso Europe/Rome.",
+      "final_message_html": "<p>Sono le 22:32 nel fuso Europe/Rome.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "get_now"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 61,
+      "ts_end": 1787430737.8329704,
+      "turn_id": "39eb4e1cc1bd44f1"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Sono le 22:32 nel fuso Europe/Rome.",
+      "intent_verb": "",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "get_now",
+          "error": null,
+          "exec_ms": 43,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "timezone": "Europe/Rome"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "timezone": "Europe/Rome"
+          },
+          "result": {
+            "content": "2026-08-22T22:32:17.822670+02:00",
+            "date": "2026-08-22",
+            "metadata": {
+              "date": "2026-08-22",
+              "epoch": 1787430737.82267,
+              "iso8601": "2026-08-22T22:32:17.822670+02:00",
+              "time": "22:32",
+              "timezone": "Europe/Rome"
+            },
+            "now": "22:32",
+            "ok": true,
+            "time": "22:32"
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": true,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787430737.8329704,
+      "ts_start": 1787430737.770998,
+      "turn_id": "39eb4e1cc1bd44f1",
+      "unbacked_promise_detected": false,
+      "user_query": "Che ora è nel fuso configurato?"
+    }
+  ]
+}

@@ -1,0 +1,175 @@
+{
+  "case_id": "failure-credential-revoked--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Non posso risolvere: Resolve the account (revoked_cert): Credentials are required to complete the action... Per procedere: Aggiungi dettagli concreti (percorso, nome, periodo).\n\nAttenzione: 1 non controllati per errore (revoked_cert); il risultato è incompleto.",
+      "final_message_html": "<p>Non posso risolvere: Resolve the account (revoked_cert): Credentials are required to complete the action... Per procedere: Aggiungi dettagli concreti (percorso, nome, periodo).</p>\n<p>Attenzione: 1 non controllati per errore (revoked_cert); il risultato è incompleto.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": false,
+          "step": 1,
+          "tool": "read_messages"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 8423,
+      "ts_end": 1787431048.1088874,
+      "turn_id": "cae3b81fa904401c"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 0,
+        "failures": 1,
+        "items": 0,
+        "mutating_attempted": false,
+        "mutations": 0
+      },
+      "error_class": "wrong_args",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Non posso risolvere: Resolve the account (revoked_cert): Credentials are required to complete the action... Per procedere: Aggiungi dettagli concreti (percorso, nome, periodo).\n\nAttenzione: 1 non controllati per errore (revoked_cert); il risultato è incompleto.",
+      "intent_verb": "read",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "read_messages",
+          "error": null,
+          "exec_ms": 105,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "cae3b81fa904401c",
+            "account": "revoked_cert",
+            "contact_id": "revoked_cert"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "cae3b81fa904401c",
+            "account": "revoked_cert",
+            "contact_id": "revoked_cert"
+          },
+          "result": {
+            "_presentation_contract": {
+              "default_view": "list",
+              "list": {
+                "columns": [
+                  {
+                    "cell_max": 24,
+                    "key": "date",
+                    "nowrap": true,
+                    "source": "date",
+                    "type": "date"
+                  },
+                  {
+                    "cell_max": 32,
+                    "key": "account",
+                    "nowrap": true,
+                    "source": "account",
+                    "type": "string"
+                  },
+                  {
+                    "cell_max": 80,
+                    "key": "from",
+                    "source": "from",
+                    "type": "string"
+                  },
+                  {
+                    "cell_max": 140,
+                    "key": "subject",
+                    "source": "subject",
+                    "type": "string"
+                  },
+                  {
+                    "cell_max": 180,
+                    "derived_by": "describe_entries",
+                    "key": "summary",
+                    "source": [
+                      "summary",
+                      "body_preview"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "cell_max": 32,
+                    "derived_by": "classify_entries",
+                    "fallback": "unclassified",
+                    "key": "category",
+                    "source": "category",
+                    "type": "string"
+                  }
+                ],
+                "max_chars": 16000,
+                "max_rows": 200,
+                "mode": "table",
+                "overflow": "notice"
+              }
+            },
+            "accounts": [
+              "revoked_cert"
+            ],
+            "entries": [],
+            "fail_count": 1,
+            "failed": [
+              {
+                "account": "revoked_cert",
+                "detail": "IMAP authentication rejected: b'[AUTHENTICATIONFAILED] credentials revoked'",
+                "error": "Resolve the account (revoked_cert): Credentials are required to complete the action..",
+                "error_code": "ERR_MAIL_AUTH_REJECTED"
+              }
+            ],
+            "ok": false,
+            "ok_count": 0
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787431048.1088874,
+      "ts_start": 1787431039.6857955,
+      "turn_id": "cae3b81fa904401c",
+      "unbacked_promise_detected": false,
+      "user_query": "Read messages from the revoked_cert test mailbox, whose credential has been revoked."
+    }
+  ]
+}

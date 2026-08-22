@@ -2,10 +2,10 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `in_progress`; C0-C2 completate e verificate il 2026-08-22, C3 in preparazione |
+| Stato | `in_progress`; C0-C3 completate e verificate il 2026-08-22, C4 in preparazione |
 | Creazione | 2026-08-22 |
 | Ultima revisione | 2026-08-22 |
-| Implementazione reale | C0-C2 forniscono schema JSON, matrice bilingue di 24 flussi, coordinatore riprendibile e gate HTTP isolato: gli 8 casi rapidi hanno superato due cicli (16/16); i percorsi interattivi, remoti, durevoli e la certificazione finale restano da completare |
+| Implementazione reale | C0-C3 forniscono schema JSON, matrice bilingue di 24 flussi, coordinatore riprendibile e gate HTTP isolato: il gate rapido ha superato due cicli (16/16) e i 19 flussi non durevoli IT/EN un ciclo qualificante (38/38); dispositivo, LRE, sonde reali e certificazione finale restano da completare |
 | Decisione di prodotto | La Fase 8 misura se Metnos raggiunge davvero il risultato richiesto, con autorita', collocazione, effetti e risposta corretti; non usa il numero di executor o di test come sostituto della qualita' |
 | Nome storico | Fase 8 — «stress logico» |
 | Origine | `internal/design/TODO.md::QUA-001` e §12 di `CLAUDE.mutabile.md` |
@@ -352,6 +352,11 @@ e sintesi in `internal/reports/rm0006-c2-verification-20260822.md`.
 **Uscita:** gli 8 casi rapidi completano due cicli identici senza intervento.
 
 ### C3 — Percorsi logici e interattivi
+
+**Stato:** completata il 2026-08-22. I 19 flussi non durevoli, eseguiti come
+38 casi distinti IT/EN, sono verdi 38/38 nel ciclo qualificante; artefatti in
+`internal/reports/rm0006-c3-nondurable-20260822/` e sintesi in
+`internal/reports/rm0006-c3-verification-20260822.md`.
 
 - abilitare Tutor, L0, L1, planner, composizione, approvazioni e dialoghi;
 - verificare piano, collegamenti, risposta e postcondizione;

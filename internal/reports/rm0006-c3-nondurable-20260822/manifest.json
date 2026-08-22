@@ -1,0 +1,22 @@
+{
+  "case_matrix_sha256": "0825a86b259acd9b56ae33f507845305b57993217af09f877f595c035b880cd0",
+  "catalog_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+  "certification_id": "rm0006-c3-nondurable-v1",
+  "corpus_sha256": "d164560dc8bace187a321c483dc30dc6d65c784c77da8bc8fa9f499d885a8193",
+  "created_at": "2026-08-22T00:00:00Z",
+  "cycles": [
+    1
+  ],
+  "fixture": "rm0006-nondurable-v1",
+  "git_commit": "3392b9ee1809989213b03e5dd6078836e3d0eb02",
+  "llm_config_sha256": "4faed382e5b1102ca3fa599e8009dfe20dd2fff7bff6f200fd1e671818e558f2",
+  "locales": [
+    "en",
+    "it"
+  ],
+  "oracle_version": "rm0006-golden-oracle/3",
+  "platform": "isolated-metnos-http-bilingual",
+  "schema_version": "metnos.certification-manifest/1",
+  "suite_sha256": "9d358201b122a272b888615319a1cb0b029c42c992a5f1200b5b49cb4d46f340",
+  "surface_sha256": "4bd49f473fa43b46c0782e5c6ee27be711afc8b0a16198878328edc78e65b6bd"
+}
