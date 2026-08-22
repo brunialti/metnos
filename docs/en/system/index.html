@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; System overview</title>
+ <meta name="description" content="A practical guide to the Metnos components administered through the HTTP UI: models, services, LRE, safety, users, and devices.">
+ <link rel="canonical" href="https://metnos.com/en/system/">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/system/">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+ <a href="/it/system/" hreflang="it">IT</a><span class="sep">&middot;</span>
+ <a class="active" href="/en/system/" hreflang="en">EN</a>
+</nav>
+
+<h1>System overview</h1>
+
+<p class="lead">The System section explains the components that an
+administrator can inspect or configure through the HTTP UI. It is not an
+inventory of internal implementation details. It shows what each screen
+governs, which actions it permits, and what should be checked after a change.</p>
+
+<h2 id="components">The six areas</h2>
+
+<table>
+ <thead><tr><th>Area</th><th>What it governs</th><th>Typical action</th></tr></thead>
+ <tbody>
+  <tr><td><a href="models.html">Models</a></td><td>The LLM contracts, embedding models, and vision model that are actually configured.</td><td>Inspect a functional tier or change an editable configuration.</td></tr>
+  <tr><td><a href="services.html">Services</a></td><td>Health, desired state, and placement of supervised components.</td><td>Restart a known service and verify that it becomes healthy again.</td></tr>
+  <tr><td><a href="lre.html">LRE (Long Run Engine)</a></td><td>Long-running, persistent tasks divided into accountable units.</td><td>Follow a workload's progress, events, limits, and artifacts.</td></tr>
+  <tr><td><a href="safety.html">Safety</a></td><td>Deterministic signatures that allow, require approval for, or block commands.</td><td>Understand why a particular action was admitted or stopped.</td></tr>
+  <tr><td><a href="users.html">Users</a></td><td>Identity, role, autonomy, paired channels, and preferences.</td><td>Create a guest and grant only the autonomy they need.</td></tr>
+  <tr><td><a href="devices.html">Devices</a></td><td>Paired computers that can run remote executors.</td><td>Pair, inspect, or revoke a device.</td></tr>
+ </tbody>
+</table>
+
+<h2 id="reading">Inspect before acting</h2>
+
+<p>The administrative pages keep several easily confused facts separate. A
+process may be running but unhealthy; a service may be healthy while
+deliberately idle; a feature may be installed but disabled. Likewise, pairing a
+channel or device does not automatically grant every action. Identity,
+autonomy, policy, and executor authority remain separate controls.</p>
+
+<p>A dependable change follows the same rhythm: read the effective state,
+choose an action from the closed catalog, wait for convergence, then re-read
+health and desired state. The UI does not expose a generic shell and does not
+turn arbitrary values into system commands.</p>
+
+<div class="callout note"><p><strong>Administrative access.</strong> These views
+may contain operational configuration and user data. Open them only through a
+trusted administrator session. The public documentation contains neither
+secrets nor personal values.</p></div>
+
+<h2 id="screen">Finding your way around the HTTP UI</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-services-ui-it.png" width="1440" height="1180" loading="lazy" decoding="async" alt="The real Metnos Services screen, showing System navigation and component cards in an Italian-language instance.">
+  <span class="ui-badge" style="--x:8%;--y:48%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:53%;--y:14%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:31%;--y:36%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:61%;--y:66%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:55%;--y:90%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>The Services page is a useful orientation point: it connects the System navigation tree to live operational state.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>System tree.</strong> Direct links to the six areas covered in this section.</li>
+ <li><strong>Overview.</strong> Summarises installed and running services and the refresh interval.</li>
+ <li><strong>Component card.</strong> Separates process state, application health, and desired state.</li>
+ <li><strong>Feature versus process.</strong> The LRE worker can be healthy while the feature remains deliberately disabled.</li>
+ <li><strong>Bounded actions.</strong> The UI displays only actions admitted for that service and state.</li>
+</ol>
+<p class="ui-privacy-note">Captured from the real HTTP UI of an Italian-language instance. Identifying values, where present in this section, have been replaced with anonymous examples.</p>
+
+</body>
+</html>

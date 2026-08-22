@@ -163,6 +163,84 @@ figure figcaption, .fig-note {
   font-family: var(--font-serif);
 }
 
+/* — guide alla HTTP UI: schermata reale + richiami numerici accessibili — */
+.ui-guide { margin: 26px 0 34px; }
+.ui-shot-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--wiki-panel-line);
+  border-radius: 0.65rem;
+  background: var(--surface);
+  box-shadow: 0 0.55rem 1.35rem rgba(76, 55, 35, 0.10);
+}
+.ui-shot-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.ui-badge {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 2px solid #FFFDF8;
+  border-radius: 999px;
+  color: #FFFFFF !important;
+  background: var(--wiki-accent);
+  box-shadow: 0 0.2rem 0.65rem rgba(56, 38, 24, 0.34);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.ui-callout-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem 1.2rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  counter-reset: ui-callout;
+  list-style: none;
+}
+.ui-callout-list li {
+  position: relative;
+  min-height: 2.15rem;
+  margin: 0;
+  padding: 0.15rem 0 0.15rem 2.6rem;
+  color: var(--ink-dim);
+  font-size: 0.91rem;
+}
+.ui-callout-list li::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  width: 1.85rem;
+  height: 1.85rem;
+  place-items: center;
+  border: 1px solid var(--wiki-panel-line);
+  border-radius: 999px;
+  color: var(--wiki-title);
+  background: var(--wiki-panel-active);
+  content: counter(ui-callout);
+  counter-increment: ui-callout;
+  font-weight: 800;
+}
+.ui-callout-list strong {
+  color: var(--wiki-title);
+  font-family: var(--font-serif);
+}
+.ui-privacy-note {
+  margin-top: 0.65rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
 /* — link: bronzo con sottolineatura discreta (tratto editoriale) — */
 a { color: var(--bronze); text-decoration: none;
     border-bottom: 1px solid rgba(160,82,45,0.28);
@@ -940,6 +1018,7 @@ body.wiki-enabled .wiki-view h4 {
     left: 0;
     width: min(21rem, calc(100vw - 2.6rem));
     height: 100dvh;
+    padding-top: 4rem;
     transform: translateX(-105%);
     transition: transform 0.2s ease;
     box-shadow: 5px 0 22px rgba(76, 55, 35, 0.24);
@@ -979,8 +1058,10 @@ body.wiki-enabled .wiki-view h4 {
   :root { --wiki-title-size: 2rem; --wiki-hero-size: 2.45rem; --wiki-section-size: 1.35rem; }
   .executor-guide .three-cols,
   .executor-guide .four-cols,
-  .executor-examples { grid-template-columns: 1fr; }
+  .executor-examples,
+  .ui-callout-list { grid-template-columns: 1fr; }
   .executor-axis { grid-template-columns: 1fr; }
+  .ui-badge { width: 1.7rem; height: 1.7rem; font-size: 0.76rem; }
 }
 
 /* Bespoke pages still carry legacy inline palettes.  The wiki shell owns the

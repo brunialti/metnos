@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Dispositivi</title>
+ <meta name="description" content="Associazione, identità, stato e revoca dei dispositivi che eseguono executor remoti per Metnos.">
+ <link rel="canonical" href="https://metnos.com/it/system/devices">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/devices">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/devices">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>Dispositivi</h1>
+
+<p class="lead">Un dispositivo è un computer associato all'istanza che può
+eseguire executor remoti. Il client Metnos non agisce di propria iniziativa:
+riceve un'invocazione autorizzata, la esegue entro il contratto ammesso, registra
+l'esito e risponde al server.</p>
+
+<h2 id="associazione">Associazione e identità</h2>
+
+<p>L'amministratore sceglie un nome e un proprietario e genera un collegamento
+temporaneo per il computer di destinazione. L'installazione registra
+un'identità Ed25519 del dispositivo; i token iniziali scadono e non sostituiscono
+l'identità persistente. Il fingerprint consente di riconoscere la chiave senza
+esporla per intero.</p>
+
+<p>L'heartbeat indica quando il client ha comunicato di recente e contribuisce
+allo stato <em>raggiungibile</em>. Non dimostra da solo che ogni executor o
+risorsa sia disponibile: collocazione, capacità dichiarate e salute vanno
+valutate insieme.</p>
+
+<h2 id="executor">Che cosa significa “executor remoto”</h2>
+
+<p>Le proprietà di un executor sono indipendenti:</p>
+
+<table>
+ <thead><tr><th>Asse</th><th>Alternative</th><th>Domanda a cui risponde</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Collocazione</strong></td><td>Locale o remoto</td><td>Su quale computer avviene l'esecuzione?</td></tr>
+  <tr><td><strong>Concorrenza</strong></td><td>Seriale o parallelizzabile entro un limite</td><td>Quante invocazioni indipendenti possono procedere insieme?</td></tr>
+  <tr><td><strong>Elaborazione</strong></td><td>Deterministica o assistita da LLM/VLM</td><td>La funzione segue solo codice e dati oppure usa anche un modello?</td></tr>
+  <tr><td><strong>Effetto</strong></td><td>Puro, idempotente, riconciliabile o manuale</td><td>In quali condizioni un tentativo interrotto può essere ripetuto?</td></tr>
+ </tbody>
+</table>
+
+<p>“Remoto” non significa quindi “intelligente”, e “locale” non significa
+“seriale”. Un executor remoto può essere una lettura deterministica; un
+executor locale può usare un modello di visione. Lo scheduler centrale applica
+comunque autorità, disponibilità e limiti di concorrenza.</p>
+
+<h2 id="gestione">Installazione, controllo e revoca</h2>
+
+<ol>
+ <li>Apri <strong>Settings → Sistema → Dispositivi</strong> dal server.</li>
+ <li>Scegli “altro PC”, assegna un nome riconoscibile e il proprietario corretto.</li>
+ <li>Apri il collegamento dal computer di destinazione e attendi che i passaggi arrivino a “client attivo”.</li>
+ <li>Controlla sistema operativo, versione del client, fingerprint, ultimo heartbeat e stato.</li>
+ <li>Usa <strong>Revoca</strong> se il computer non è più affidabile o non deve più ricevere invocazioni.</li>
+</ol>
+
+<p>La revoca fa rifiutare i token futuri di quel dispositivo; non equivale a
+cancellare i dati dell'utente proprietario. Per ambienti senza browser è
+disponibile un percorso manuale, destinato a operatori esperti e basato su un
+token di breve durata.</p>
+
+<div class="callout warning"><p><strong>Confine di rete.</strong> Il canale dei
+dispositivi è destinato alla rete locale o a una rete privata sovrapposta. Non
+pubblicare direttamente su Internet la porta usata dal client.</p></div>
+
+<h2 id="schermata">La schermata Dispositivi</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-devices-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale e anonimizzata dei dispositivi remoti associati a Metnos.">
+  <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:43%;--y:19%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:45%;--y:31%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:70%;--y:33%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:94%;--y:33%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>La schermata riconosce che è aperta sul server e propone esplicitamente il percorso per installare il client su un altro computer.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Sezione Dispositivi.</strong> Raccoglie associazione e stato dei client remoti.</li>
+ <li><strong>Percorso consigliato.</strong> Guida l'installazione senza richiedere comandi da terminale.</li>
+ <li><strong>Identità e proprietario.</strong> Nome, ID e utente rendono esplicito a chi appartiene il dispositivo.</li>
+ <li><strong>Prova di presenza.</strong> Versione, fingerprint, heartbeat e raggiungibilità aiutano a verificare il client.</li>
+ <li><strong>Revoca.</strong> Interrompe la fiducia nel dispositivo con un'azione deliberata.</li>
+</ol>
+<p class="ui-privacy-note">Nome, proprietario, ID, fingerprint e data nell'immagine sono esempi anonimi; l'impaginazione è quella della HTTP UI reale.</p>
+
+</body>
+</html>

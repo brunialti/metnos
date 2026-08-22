@@ -16,6 +16,13 @@
     approval_ux: { it: "/it/architecture/approval_ux.html", en: "/en/architecture/approval_ux.html" },
     multilingual_by_definition: { it: "/it/architecture/multilingual_by_definition.html", en: "/en/architecture/multilingual_by_definition.html" },
     sandbox: { it: "/it/architecture/sandbox.html", en: "/en/architecture/sandbox.html" },
+    system: { it: "/it/system/", en: "/en/system/" },
+    system_models: { it: "/it/system/models.html", en: "/en/system/models.html" },
+    system_services: { it: "/it/system/services.html", en: "/en/system/services.html" },
+    system_lre: { it: "/it/system/lre.html", en: "/en/system/lre.html" },
+    system_safety: { it: "/it/system/safety.html", en: "/en/system/safety.html" },
+    system_users: { it: "/it/system/users.html", en: "/en/system/users.html" },
+    system_devices: { it: "/it/system/devices.html", en: "/en/system/devices.html" },
     architecture: { it: "/it/architecture/index.html", en: "/en/architecture/index.html" },
     agent_runtime: { it: "/it/architecture/agent_runtime.html", en: "/en/architecture/agent_runtime.html" },
     executor_catalog: { it: "/it/architecture/executor_catalog.html", en: "/en/architecture/executor_catalog.html" },
@@ -69,6 +76,9 @@
         ["Concetti fondamentali", "Le basi di autorità, esecuzione e sicurezza.", [
           ["executor", "Executor: azioni e limiti"], ["lifecycle", "Ciclo di vita di una richiesta"], ["policy", "Policy e autorità"], ["approval_ux", "Conferme e controlli"], ["multilingual_by_definition", "Multilingue per definizione"], ["sandbox", "Sandbox"],
         ]],
+        ["Sistema", "Le componenti amministrate dalla HTTP UI e il loro uso quotidiano.", [
+          ["system", "Panoramica del sistema"], ["system_models", "Modelli"], ["system_services", "Servizi"], ["system_lre", "LRE (Long Run Engine)"], ["system_safety", "Safety"], ["system_users", "Utenti"], ["system_devices", "Dispositivi"],
+        ]],
         ["Architettura di esecuzione", "Come i componenti collaborano, anche tra dispositivi.", [
           ["architecture", "Mappa dell'architettura"], ["agent_runtime", "Runtime dell'agente"], ["executor_catalog", "Catalogo degli executor"], ["remote_executors", "Executor remoti"], ["pairing", "Associazione dei dispositivi"], ["channel", "Canali di conversazione"], ["http_api", "Chat web e API HTTP"], ["mail_accounts", "Account di posta"],
         ]],
@@ -107,6 +117,9 @@
         ]],
         ["Core concepts", "The foundations of authority, execution, and safety.", [
           ["executor", "Executors: admitted actions"], ["lifecycle", "The lifecycle of a request"], ["policy", "Policy and authority"], ["approval_ux", "Approval and review"], ["multilingual_by_definition", "Multilingual by definition"], ["sandbox", "Sandbox"],
+        ]],
+        ["System", "Components administered through the HTTP UI and their everyday use.", [
+          ["system", "System overview"], ["system_models", "Models"], ["system_services", "Services"], ["system_lre", "LRE (Long Run Engine)"], ["system_safety", "Safety"], ["system_users", "Users"], ["system_devices", "Devices"],
         ]],
         ["Execution architecture", "How the components cooperate, including across devices.", [
           ["architecture", "Architecture map"], ["agent_runtime", "Agent runtime"], ["executor_catalog", "Executor catalog"], ["remote_executors", "Remote executors"], ["pairing", "Device pairing"], ["channel", "Conversation channels"], ["http_api", "Web chat and HTTP API"], ["mail_accounts", "Mail accounts"],

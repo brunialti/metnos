@@ -90,8 +90,14 @@ docs/en/*
 !docs/en/Metnos_QuickTour.html
 !docs/it/architecture/
 !docs/en/architecture/
+!docs/it/system/
+!docs/en/system/
 docs/it/architecture/*
 docs/en/architecture/*
+docs/it/system/*
+docs/en/system/*
+!docs/it/system/*.html
+!docs/en/system/*.html
 !docs/it/architecture/remote_executors.html
 !docs/en/architecture/remote_executors.html
 !docs/it/architecture/intelligent_executors.html
@@ -106,6 +112,9 @@ docs/en/architecture/*
 !docs/en/architecture/mail_accounts.html
 !docs/assets/
 docs/assets/*
+!docs/assets/images/
+docs/assets/images/*
+!docs/assets/images/system-*-ui-it.png
 !docs/assets/architecture-flow.png
 !docs/assets/metnos.css
 !docs/assets/quicktour-print.css

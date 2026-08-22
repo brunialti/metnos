@@ -731,6 +731,101 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine"/>
   </url>
 
+  <!-- Sistema: componenti amministrate dalla HTTP UI -->
+
+  <url>
+    <loc>https://metnos.com/en/system/</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/system/"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/system/</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/system/"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/system/models</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/models"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/models"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/system/models</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/models"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/models"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/system/services</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/services"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/services"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/system/services</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/services"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/services"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/system/lre</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/lre"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/lre"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/system/lre</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.85</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/lre"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/lre"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/system/safety</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/safety"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/safety"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/system/safety</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/safety"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/safety"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/system/users</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/users"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/users"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/system/users</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/users"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/users"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/system/devices</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/devices"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/devices"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/system/devices</loc>
+    <lastmod>2026-08-22</lastmod><changefreq>monthly</changefreq><priority>0.75</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/system/devices"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/system/devices"/>
+  </url>
+
   <!-- Service -->
 
   <url>

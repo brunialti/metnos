@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Servizi</title>
+ <meta name="description" content="Come interpretare salute, stato desiderato e controlli dei servizi Metnos nella HTTP UI.">
+ <link rel="canonical" href="https://metnos.com/it/system/services">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/services">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/services">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>Servizi</h1>
+
+<p class="lead">La pagina Servizi riunisce i componenti supervisionati che
+formano un'istanza Metnos. Per ciascuno mostra processo, salute applicativa,
+stato desiderato e comandi ammessi. Il catalogo è chiuso: la UI non esegue
+unità o azioni arbitrarie.</p>
+
+<h2 id="stati">Quattro informazioni da non confondere</h2>
+
+<table>
+ <thead><tr><th>Indicazione</th><th>Significato</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Installato</strong></td><td>L'unità prevista è presente nel sistema; non implica che sia attiva.</td></tr>
+  <tr><td><strong>In esecuzione</strong></td><td>Il supervisore vede il processo o il timer nello stato operativo atteso.</td></tr>
+  <tr><td><strong>Salute</strong></td><td>Una verifica adatta al componente conferma che risponde o che il suo stato applicativo è coerente.</td></tr>
+  <tr><td><strong>Stato desiderato</strong></td><td>Indica se Metnos si aspetta che il componente resti avviato o arrestato anche dopo la riconciliazione.</td></tr>
+ </tbody>
+</table>
+
+<p>Un processo attivo può risultare degradato se la verifica applicativa
+fallisce. Viceversa, un timer in attesa o il worker LRE senza funzione attiva
+possono essere sani proprio perché stanno aspettando. Prima di intervenire va
+quindi letta la frase di salute, non soltanto il colore del pallino.</p>
+
+<h2 id="azioni">Avviare, arrestare e riavviare</h2>
+
+<p><strong>Avvia</strong> porta online un servizio arrestato.
+<strong>Arresta</strong> interrompe un servizio attivo e ne aggiorna lo stato
+desiderato quando appartiene al ciclo di vita di Metnos.
+<strong>Riavvia</strong> interrompe e avvia nuovamente un componente già attivo.
+Le azioni disponibili dipendono dal servizio, dalla sua collocazione e dallo
+stato osservato; un pulsante assente non va sostituito con un comando inventato.</p>
+
+<p>Il server HTTP è il piano di controllo che ospita questa stessa pagina: può
+essere riavviato dalla UI, mentre il suo arresto richiede una procedura
+indipendente. Dopo ogni comando la pagina si aggiorna periodicamente; il
+risultato affidabile è la convergenza fra stato effettivo, salute e stato
+desiderato.</p>
+
+<h2 id="lre">Il doppio stato di LRE</h2>
+
+<p>LRE separa intenzionalmente il servizio supervisionato dall'abilitazione
+della funzione. Il worker può essere in esecuzione e sano, ma restare in attesa
+con LRE disattivato. <em>Attiva LRE</em> abilita nuovi invii; disattivarlo
+impedisce nuove attività, senza eliminare stato, cronologia o artefatti già
+registrati. La configurazione non valida chiude il gate in sicurezza.</p>
+
+<div class="callout warning"><p><strong>Prima di un riavvio.</strong> Controlla
+se sono in corso turni interattivi e leggi l'eventuale avviso della pagina. Un
+riavvio non è un semplice aggiornamento visivo: interrompe davvero il processo
+selezionato.</p></div>
+
+<h2 id="schermata">La schermata Servizi</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-services-ui-it.png" width="1440" height="1180" loading="lazy" decoding="async" alt="Schermata reale dei servizi Metnos, con riepilogo, stato di salute e controlli LRE.">
+  <span class="ui-badge" style="--x:8%;--y:48%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:52%;--y:14%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:31%;--y:37%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:61%;--y:66%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:55%;--y:90%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>La funzione LRE è disattivata nell'immagine, mentre il relativo worker è sano e in attesa: i due stati sono distinti.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Sezione Sistema.</strong> Offre accesso stabile a modelli, servizi, safety, utenti e dispositivi.</li>
+ <li><strong>Riepilogo.</strong> Conta componenti in esecuzione e installati e dichiara l'intervallo di aggiornamento.</li>
+ <li><strong>Stato completo.</strong> Processo, salute, unità, gestore e stato desiderato sono mostrati separatamente.</li>
+ <li><strong>Scheda LRE.</strong> Indica sia la salute del worker sia la condizione della funzione.</li>
+ <li><strong>Controlli ammessi.</strong> Riavvio del servizio e attivazione della funzione sono comandi diversi.</li>
+</ol>
+
+</body>
+</html>

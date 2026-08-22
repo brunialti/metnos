@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Panoramica del sistema</title>
+ <meta name="description" content="Guida didattica alle componenti amministrate dalla HTTP UI di Metnos: modelli, servizi, LRE, safety, utenti e dispositivi.">
+ <link rel="canonical" href="https://metnos.com/it/system/">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/system/">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+ <a class="active" href="/it/system/" hreflang="it">IT</a><span class="sep">&middot;</span>
+ <a href="/en/system/" hreflang="en">EN</a>
+</nav>
+
+<h1>Panoramica del sistema</h1>
+
+<p class="lead">La sezione Sistema spiega le componenti che l'amministratore
+può osservare o configurare dalla HTTP UI. Non è un inventario di dettagli
+interni: è una guida per capire che cosa governa ogni schermata, quali azioni
+sono consentite e quale verifica compiere dopo una modifica.</p>
+
+<h2 id="componenti">Le sei aree</h2>
+
+<table>
+ <thead><tr><th>Area</th><th>Che cosa governa</th><th>Azione tipica</th></tr></thead>
+ <tbody>
+  <tr><td><a href="models.html">Modelli</a></td><td>I contratti LLM, l'embedding e il modello di visione effettivamente configurati.</td><td>Controllare un livello funzionale o modificare una configurazione ammessa.</td></tr>
+  <tr><td><a href="services.html">Servizi</a></td><td>Salute, stato desiderato e collocazione dei componenti supervisionati.</td><td>Riavviare un servizio noto e verificare che torni operativo.</td></tr>
+  <tr><td><a href="lre.html">LRE (Long Run Engine)</a></td><td>Attività lunghe, persistenti e suddivise in unità contabilizzabili.</td><td>Seguire avanzamento, eventi, limiti e artefatti di un lavoro.</td></tr>
+  <tr><td><a href="safety.html">Safety</a></td><td>Le firme deterministiche che ammettono, subordinano a conferma o vietano i comandi.</td><td>Capire perché una determinata azione è stata ammessa o fermata.</td></tr>
+  <tr><td><a href="users.html">Utenti</a></td><td>Identità, ruolo, autonomia, canali associati e preferenze.</td><td>Creare un ospite e concedergli soltanto l'autonomia necessaria.</td></tr>
+  <tr><td><a href="devices.html">Dispositivi</a></td><td>Computer associati che possono eseguire executor remoti.</td><td>Associare, controllare o revocare un dispositivo.</td></tr>
+ </tbody>
+</table>
+
+<h2 id="lettura">Osservare prima di agire</h2>
+
+<p>Le pagine amministrative distinguono informazioni che spesso vengono
+confuse: un processo può essere in esecuzione ma non sano; un servizio può
+essere sano ma intenzionalmente inattivo; una funzione può essere installata
+ma disabilitata. Allo stesso modo, associare un canale o un dispositivo non
+concede automaticamente ogni azione: identità, autonomia, policy ed executor
+restano controlli separati.</p>
+
+<p>Una modifica affidabile segue sempre lo stesso ritmo: leggere lo stato
+effettivo, scegliere un comando disponibile nel catalogo chiuso, attendere la
+convergenza e rileggere salute e stato desiderato. La UI non espone un terminale
+generico e non trasforma valori arbitrari in comandi di sistema.</p>
+
+<div class="callout note"><p><strong>Accesso amministrativo.</strong> Le viste
+di questa sezione possono mostrare configurazioni operative e dati degli
+utenti. Vanno aperte soltanto tramite una sessione amministrativa affidabile;
+la documentazione pubblica non contiene segreti né valori personali.</p></div>
+
+<h2 id="schermata">Orientarsi nella HTTP UI</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-services-ui-it.png" width="1440" height="1180" loading="lazy" decoding="async" alt="Schermata reale della pagina Servizi della HTTP UI di Metnos, con navigazione Sistema e schede dei componenti.">
+  <span class="ui-badge" style="--x:8%;--y:48%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:53%;--y:14%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:31%;--y:36%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:61%;--y:66%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:55%;--y:90%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>La pagina Servizi è un buon punto di orientamento: collega la navigazione di Sistema allo stato operativo reale.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Albero Sistema.</strong> Porta direttamente alle sei aree descritte in questa sezione.</li>
+ <li><strong>Quadro d'insieme.</strong> Riassume servizi installati, servizi in esecuzione e frequenza di aggiornamento.</li>
+ <li><strong>Scheda del componente.</strong> Distingue stato del processo, salute applicativa e stato desiderato.</li>
+ <li><strong>Funzione separata dal processo.</strong> LRE può avere un worker sano e restare intenzionalmente disattivato.</li>
+ <li><strong>Azioni circoscritte.</strong> La UI mostra soltanto i comandi ammessi per quel servizio e quello stato.</li>
+</ol>
+<p class="ui-privacy-note">Schermata acquisita dalla HTTP UI reale. Gli eventuali valori identificativi nelle immagini di questa sezione sono sostituiti con esempi anonimi.</p>
+
+</body>
+</html>

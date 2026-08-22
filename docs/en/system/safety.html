@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Safety</title>
+ <meta name="description" content="How Metnos safety signatures allow, require approval for, or block commands.">
+ <link rel="canonical" href="https://metnos.com/en/system/safety">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/safety">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/safety">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>Safety</h1>
+
+<p class="lead">The Safety page makes visible the deterministic signatures
+that govern privileged commands. Before execution, Metnos converts a command
+to a canonical form and compares it with explicit rules. This decision is not
+delegated to a language model.</p>
+
+<h2 id="signatures">What a signature is</h2>
+
+<p>A signature describes the shape of a command, such as its binary, action,
+and target type. The <code>*</code> symbol represents a component admitted as
+variable. Canonicalisation prevents cosmetic differences or displaced
+arguments from bypassing the control.</p>
+
+<table>
+ <thead><tr><th>Class</th><th>Effect</th></tr></thead>
+ <tbody>
+  <tr><td><strong>whitelist</strong></td><td>The command is approved and may proceed without another confirmation.</td></tr>
+  <tr><td><strong>graylist</strong></td><td>The command requires explicit approval before execution.</td></tr>
+  <tr><td><strong>blacklist</strong></td><td>The command is blocked; a deliberate administrative edit can change the rule.</td></tr>
+  <tr><td><strong>forbidden</strong></td><td>The command violates a non-negotiable prohibition and cannot be released by a model or ordinary approval.</td></tr>
+ </tbody>
+</table>
+
+<p>The strongest prohibitions are applied first. Severity describes the
+potential consequence, while source distinguishes distributed, user-curated,
+and eligible usage-derived rules. Usage counts support review, but never turn
+an absolute prohibition into permission by themselves.</p>
+
+<h2 id="boundaries">Safety, authority, and approval</h2>
+
+<p>A whitelisted signature does not grant authority to a user on its own.
+Identity, role, autonomy, data ownership, executor policy, and source scope are
+still checked first. The signature answers a narrower question: may this form
+of command proceed, does it require approval, or must it be stopped?</p>
+
+<p>Approval likewise cannot override <code>forbidden</code>. A model may flag an
+additional risk, but it cannot remove a deterministic block. This order keeps
+persuasive wording from replacing a safety rule.</p>
+
+<h2 id="use">How to read the page</h2>
+
+<p>Use the filters to isolate a class, find the command's canonical signature,
+and inspect severity, source, and match count. If an action was stopped, do not
+add a broader rule than necessary: review the most specific signature and the
+actual target.</p>
+
+<h2 id="screen">The Safety screen</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-safety-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="The real Metnos Safety screen, with class guide, filters, and signature table in an Italian-language instance.">
+  <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:49%;--y:13%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:42%;--y:31%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:52%;--y:42%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:66%;--y:63%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>The table is accompanied by an operational key: a class should not be inferred from colour alone.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Navigation.</strong> Safety is separate from user, service, and executor management.</li>
+ <li><strong>Canonical form.</strong> The guide explains how a command is represented before matching.</li>
+ <li><strong>Classes.</strong> Each class states its effect in words.</li>
+ <li><strong>Filters.</strong> Narrow the table without changing any rule.</li>
+ <li><strong>Provenance.</strong> Signature, class, severity, source, usage, and date support an auditable review.</li>
+</ol>
+
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Utenti</title>
+ <meta name="description" content="Identità host e guest, autonomia, canali e dispositivi nella gestione utenti di Metnos.">
+ <link rel="canonical" href="https://metnos.com/it/system/users">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/users">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/users">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>Utenti</h1>
+
+<p class="lead">Un utente Metnos è un'identità stabile a cui appartengono
+conversazioni, preferenze, canali, dispositivi e dati. La pagina Utenti separa
+tre concetti: il ruolo nell'istanza, il livello di autonomia concesso e i mezzi
+con cui quella persona può collegarsi.</p>
+
+<h2 id="ruoli">Ruolo e autonomia</h2>
+
+<p>L'<strong>host</strong> è l'identità principale dell'istanza. Un
+<strong>guest</strong> appartiene a un host ed è circoscritto al proprio ambito.
+Il ruolo non equivale al livello di autonomia:</p>
+
+<table>
+ <thead><tr><th>Autonomia</th><th>Significato operativo</th></tr></thead>
+ <tbody>
+  <tr><td><code>restricted</code></td><td>Le azioni restano strettamente limitate e le operazioni sensibili richiedono il percorso di approvazione previsto.</td></tr>
+  <tr><td><code>read_only</code></td><td>L'utente può consultare ciò che gli appartiene, senza introdurre modifiche operative.</td></tr>
+  <tr><td><code>full</code></td><td>L'utente può usare tutte le capacità ammesse dal proprio ruolo, dalla policy e dagli executor; non supera i divieti di safety.</td></tr>
+ </tbody>
+</table>
+
+<p>Il principio è concedere il minimo necessario. <code>full</code> non è un
+lasciapassare assoluto: proprietà dei dati, executor firmati, safety e conferme
+continuano ad applicarsi.</p>
+
+<h2 id="canali">Canali associati</h2>
+
+<p>HTTP, Telegram e posta collegano un'identità esterna all'utente Metnos. Il
+collegamento usa un token temporaneo e deve essere verificato; uno stato
+<em>pending</em> indica che il percorso non è ancora concluso. Rimuovere un
+canale revoca quel mezzo di accesso senza confondere o fondere le identità.</p>
+
+<p>La lingua non è una preferenza del singolo utente: appartiene all'istanza
+Metnos. Utenti diversi della stessa istanza condividono quindi la lingua
+configurata, pur mantenendo separati dati, permessi e conversazioni.</p>
+
+<h2 id="dettaglio">Profilo, preferenze e dispositivi</h2>
+
+<p>Il dettaglio consente di aggiornare nome visualizzato, indirizzo, note e
+autonomia, associare o rimuovere canali e consultare i dispositivi posseduti.
+Le preferenze disponibili appartengono a un vocabolario chiuso: la UI non
+accetta chiavi arbitrarie.</p>
+
+<p>La cancellazione è un'operazione di ciclo di vita, non la semplice rimozione
+di una riga. Metnos impedisce all'amministratore attivo di cancellare se stesso
+e protegge l'unico host. Per un utente cancellabile, vengono revocati accessi e
+attività e vengono rimossi i dati secondo il percorso previsto.</p>
+
+<h2 id="schermata">La schermata Utenti</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-users-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale e anonimizzata della gestione utenti di Metnos.">
+  <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:43%;--y:16%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:53%;--y:28%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:65%;--y:33%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:93%;--y:31%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>I nominativi e gli indirizzi sono esempi anonimi; struttura, campi, stati e comandi corrispondono alla HTTP UI reale.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Accesso alla sezione.</strong> Utenti è separato dalla gestione dei dispositivi.</li>
+ <li><strong>Creazione.</strong> Il nuovo guest riceve identità, ruolo e autonomia espliciti.</li>
+ <li><strong>Identità.</strong> Nome tecnico, nome visualizzato e indirizzo restano campi distinti.</li>
+ <li><strong>Ruolo, autonomia e canali.</strong> La tabella evita di ridurli a un solo concetto di “permesso”.</li>
+ <li><strong>Dettaglio.</strong> Apre le operazioni circoscritte a quell'utente.</li>
+</ol>
+<p class="ui-privacy-note">Tutti i dati personali e gli identificativi temporali mostrati nell'immagine sono sintetici.</p>
+
+</body>
+</html>
