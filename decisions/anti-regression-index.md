@@ -52,15 +52,16 @@
 - **`*_tasks` conditional injection**: iniettati nel pool PLANNER solo se query ha marker scheduling (`_TASKS_MARKERS` in `tool_grammar.py`).
 
 **Planner / Praxis / runtime flow**
-- **Nucleo inattivo dei lavori durevoli** (ADR 0213, RM-0004 F0-F2):
-  `runtime/durable_workloads/` apre lo store soltanto su chiamata esplicita e
-  non è collegato a boot, HTTP, agent runtime, scheduler o executor. SQLite v1
-  usa chiavi owner-scoped, migrazione atomica, CAS, eventi e outbox nella stessa
-  transazione; solo `storage.evaluate_completion` può produrre
-  `completed[_with_errors]` dopo i nove controlli. Guard:
-  `tests/runtime/durable_workloads/` e fixture normative in
-  `tests/fixtures/durable_workloads/`. Claim, lease e fencing restano vietati
-  fino a F3.
+- **LRE: ammissione ed esecuzione centralizzate** (ADR 0213-0214, RM-0004):
+  `runtime/lre_submission.py` classifica il piano finalizzato e converge su
+  `admission.submit_candidate`; `runtime/engine/dispatch.py` applica lo stesso
+  controllo a scorciatoie, cache e ripresa prima dell'unico call site statico
+  di `Executor.run()`. Lo schema v7 congela letterali e collocazione, mentre lo
+  store owner-scoped conserva CAS, lease, fencing, eventi, outbox e completezza
+  verificabile. Un'azione lunga riconosciuta non ricade mai nell'esecuzione in
+  linea se l'ammissione fallisce. Guard: `tests/runtime/durable_workloads/`,
+  `tests/runtime/test_lre_submission.py` e
+  `tests/runtime/engine/test_engine_core.py`.
 - **Tutor F2 pre-planner senza contaminazione** (ADR 0197-0198, RM-0003):
   `runtime/tutor_boundary.py` è l'unico adapter HTTP/Telegram; il detector
   richiede due segnali dal `detection_lexicon`, esclude allegati/segreti e

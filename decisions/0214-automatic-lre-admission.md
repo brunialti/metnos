@@ -2,7 +2,7 @@
 id: 0214
 title: Automatic LRE admission from finalized executor plans
 date: 2026-08-22
-status: proposed
+status: accepted
 area: runtime | scheduling | storage | messages
 related:
   - 0193
@@ -26,11 +26,11 @@ behave like a collection of domain-specific workflows.
 The current generic kernel can already invoke an admitted executor locally or
 remotely through the central scheduler. Two pieces are missing for a direct
 invocation: immutable literal arguments and an immutable placement when the
-plan has no source from which to derive a device. The current dispatcher also
-has four paths that can lead to execution—L0, L1, L3 and recovery—so admission
-must happen after their common framework finalization and before every
+plan has no source from which to derive a device. The dispatcher currently has
+seven execution sites: the undo shortcut, two upload defaults, L0, L1, L3 and
+recovery. Admission must therefore pass through one boundary before every
 `Executor.run()` call. An integration that checks only newly proposed plans
-would let cached or recovered long actions bypass LRE.
+would let cached, recovered or deterministic shortcut actions bypass LRE.
 
 The product owner decided on 22 August 2026 that a compatible action which is
 intrinsically long must be served automatically by LRE. The profile must not be
@@ -54,26 +54,40 @@ JSON type. The result uses a generic `metnos.executor-result/1` envelope with a
 required boolean `ok`. No expression, query replay, placeholder or executable
 template is persisted.
 
+The redacted idempotency payload stores argument and placement digests, never
+their values or the device name. The placement digest is mandatory so that one
+delivery key reused with a different target conflicts instead of silently
+returning a workload frozen for the first machine.
+
 An optional closed `placement` object on the stage freezes either `server` or
-one already-resolved device name. Schema version 7 adds only an owner-scoped
+one already-resolved device name. The value must agree with the executor's
+verified placement contract: a server-only or provider-pinned invocation is
+stored as `server`; a device-only invocation without an exact resolved target
+is rejected before admission. Schema version 7 adds only an owner-scoped
 `stage_placements` relation. A stored placement overrides source-derived
 placement; an absent row preserves the previous behavior. The normal executor
 invocation boundary still revalidates device ownership, availability,
 platform and manifest. Failure never falls back to another machine.
 
 The runtime registry is populated once per process from the already verified
-catalog. It admits only active, signed, non-dormant, non-in-process,
-deterministic executors with an explicitly declared effect policy and a closed,
-single-type argument schema. `read_only` maps to durable `pure` with at most
-three attempts. `create_only`, `reversible` and `mutating` map to
+catalog. It admits only intrinsically long, active, signed, non-dormant,
+non-in-process, deterministic executors with an explicitly declared effect
+policy and a closed, single-type argument schema. An omitted
+`additionalProperties` is treated as closed by this boundary, while `true` or
+a dynamic schema is rejected; unknown finalized arguments are always rejected.
+Executors with runtime-resolved arguments remain excluded because those values
+must not be persisted as ordinary literals. Model resource classes are also
+excluded until the direct contract freezes model and prompt bindings, even if
+an inconsistent manifest labels the executor deterministic. `read_only` maps
+to durable `pure` with at most three attempts. `create_only`, `reversible` and `mutating` map to
 `manual_only` with one attempt. `unknown`, `interactive`, undeclared policies
 and intelligent executors without complete frozen model bindings fail closed.
 This is one catalog-derived runner registration, not one user-facing profile
 per executor.
 
 `engine.dispatch.run_turn()` receives an optional callback and remains unaware
-of LRE modules. One helper calls it after framework finalization and before
-execution in L0, L1, L3 and recovery. The callback has three outcomes: `None`
+of LRE modules. One helper calls it before every current inline execution,
+including shortcuts, L0, L1, L3 and recovery. The callback has three outcomes: `None`
 means no long action; a successful receipt terminates the turn; a localized
 rejection also terminates the turn. Once any long step is recognized, internal
 admission failure cannot become `None`. A preceding approval gate may execute
@@ -129,13 +143,16 @@ materialized as literals. Schema migration 7 adds placement rows but does not
 rewrite existing stages. The registry costs one verified catalog pass per
 process and no per-turn catalog reload.
 
-The first automatic path deliberately excludes compound long plans and
-intelligent executors whose complete model use cannot be frozen. It also
+The first automatic path deliberately excludes compound long plans, unresolved
+runtime references, implicit device-only selection and intelligent or
+model-resource executors whose complete model use cannot be frozen. It also
 resumes only at unit boundaries: a monolithic executor that writes a progress
 file but commits no batch remains monolithic. Those limitations are visible
 contract gaps, not reasons to add executor-specific code or claim checkpoints
 that do not exist.
 
-This ADR becomes `accepted` only after every F14 acceptance test passes and the
-public bilingual guide, Tutor build and deployed service describe automatic
-activation without presenting profiles as a prerequisite.
+Accepted on 22 August 2026 after the F14 acceptance matrix, the complete LRE
+suite, the engine integration suite, the bilingual public guide and a signed
+Tutor catalog build all passed. Deployment does not present profiles as a
+prerequisite: compatible long invocations are admitted at the common execution
+boundary, while precompiled plans remain an optimization for known graphs.

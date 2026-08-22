@@ -19,9 +19,9 @@
   `METNOS_LLM_SLOT_ID`, default 1. L'affinità è applicata nei due client
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0213` (skipped: `0055`/`0115`/`0116`/`0121`).
-- **LRE F0-F12 certificato; distribuzione F13 in corso** (22/8, ADR 0213,
-  RM-0004): `runtime/durable_workloads/` contiene contratti, schema
+- **ADR registry**: `0001-0214` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **LRE F0-F14 implementato** (22/8, ADR 0213-0214, RM-0004):
+  `runtime/durable_workloads/` contiene contratti, schema
   SQLite, archivio circoscritto al proprietario, acquisizione, concessioni a
   tempo, segnali di attività, delimitazione dei tentativi, ritentativo e
   ripresa; il worker supervisionato resta separato da HTTP e
@@ -38,11 +38,16 @@
   conserva la consegna fino alla conferma. Il DB resta autorevole: una
   ripetizione identica è idempotente, una delimitazione obsoleta del tentativo
   non modifica lo stato e una pubblicazione diventa definitiva soltanto dopo
-  la rilettura dell'impronta. Nessun vocabolo, comando naturale, Tutor o
-  documentazione pubblica annuncia la funzione prima del progetto pilota e dei
-  controlli di uscita F13. L'installazione crea un solo interruttore privato,
-  persistente e disattivato; worker e HTTP lo interpretano con lo stesso
-  lettore restrittivo.
+  la rilettura dell'impronta. F14 applica l'ammissione in un solo confine prima
+  di ogni esecuzione del piano: una singola invocazione deterministica con
+  durata dichiarata di almeno 600 secondi viene compilata automaticamente se
+  argomenti, effetto e collocazione sono congelabili. Nessun profilo è
+  richiesto; i piani registrati restano ottimizzazioni per grafi noti. Un
+  carico lungo riconosciuto e non ammissibile fallisce in modo esplicito, senza
+  ripiego in linea. L'installazione crea un solo interruttore privato,
+  persistente e disattivato per impostazione predefinita; worker e HTTP lo
+  interpretano con lo stesso lettore restrittivo. Guida bilingue e catalogo
+  Tutor firmato descrivono il comportamento implementato.
 
 ## 3. Synth pipeline (6 stadi)
 

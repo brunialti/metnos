@@ -2,30 +2,29 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F13 completate e distribuite il 2026-08-22; F14 riapre il confine di ammissione per eliminare il profilo come prerequisito e rendere automatica la presa in carico delle azioni intrinsecamente lunghe |
+| Stato | `implemented`; F0-F14 completate il 2026-08-22; l'ammissione automatica elimina il profilo come prerequisito e prende in carico al confine comune le azioni intrinsecamente lunghe compatibili |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-22 |
-| Implementazione reale | Nucleo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato. F9 aggiunge facciata e DTO circoscritti al proprietario, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, ritentativi e localizzazione. F11 registra il preset immagini privato fuori dal nucleo. F12 collega l'autorità locale e remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali. F13 distribuisce l'ingresso firmato `start_lre`, ma il percorso conversazionale consegnato accetta soltanto piani registrati: è un adattatore valido per piani precompilati, non l'ammissione universale richiesta dal mandato. F14 deve collegare il piano di turno finalizzato al compilatore LRE, congelare gli argomenti dell'executor e creare il piano minimo durante il turno, senza profili obbligatori né diramazioni di dominio |
+| Implementazione reale | Nucleo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v7, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e interruttore predefinito disattivato. F9 aggiunge facciata e DTO circoscritti al proprietario, cursori firmati, cronologia e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, ritentativi e localizzazione. F11 registra il preset immagini privato fuori dal nucleo. F12 collega l'autorità locale e remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali. F13 distribuisce l'ingresso firmato `start_lre` per piani precompilati. F14 collega ogni percorso di esecuzione del piano finalizzato a un unico controllo, congela argomenti e collocazione e crea durante il turno il piano minimo per ogni invocazione lunga compatibile, senza profili obbligatori né diramazioni di dominio |
 | Progettazione | Gate V1-V5 ratificati da ADR 0213. `LRE` è il nome architetturale invariabile. Un piano registrato è un'ottimizzazione precompilata per un DAG noto, mai un requisito di ammissione né una scelta richiesta all'utente |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro già committato e senza ripetere automaticamente un effetto ambiguo; l'utente formula il risultato voluto, non sceglie LRE, un profilo o il flusso. Quando Metnos riconosce nel piano finalizzato un'azione intrinsecamente lunga e il relativo contratto è ammissibile, LRE è obbligatorio e viene predisposto durante il turno |
 | Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
 | Autorizzazione F5-F14 | F5-F13 acquisite progressivamente; F14 autorizzata il 2026-08-22 con la decisione esplicita che il profilo non può limitare LRE e che il piano necessario va creato durante il turno |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
-| Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | F14: prova end-to-end che un'azione lunga ammessa, priva di un piano registrato, produca una sola ricevuta LRE e nessuna invocazione interattiva; replay, destinazione, effetto, argomenti e firma devono restare congelati. F13 conserva le proprie evidenze in `internal/reports/rm0004-f12-verification-20260822.md` e `internal/reports/rm0004-f13-verification-20260822.md` |
+| Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207, 0213 e 0214 |
+| Prossimo gate | Nessuno per RM-0004. Evidenze in `internal/reports/rm0004-f12-verification-20260822.md`, `internal/reports/rm0004-f13-verification-20260822.md` e `internal/reports/rm0004-f14-verification-20260822.md` |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito; le guide pubbliche descrivono separatamente il solo comportamento distribuito |
 
 ## 0. Esito della verifica
 
 Al momento della ricognizione, RM-0004 non duplicava una funzione già
 presente: chiedeva una semantica che il codice non possedeva. La roadmap ha
-trasformato quel mandato in un percorso verificabile. F0-F13 sono realizzate,
-collaudate e distribuite, ma la verifica successiva alla consegna ha trovato
-una divergenza di prodotto: il primo ingresso conversazionale richiede un
-piano registrato, mentre il mandato chiede che il piano possa essere compilato
-dal normale piano di turno. F14 corregge questo confine senza riscrivere il
-nucleo già certificato.
+trasformato quel mandato in un percorso verificabile. F0-F13 hanno costruito e
+distribuito il motore e il primo ingresso per piani registrati. La verifica
+successiva ha individuato una divergenza di prodotto: quell'ingresso rendeva
+il profilo un prerequisito. F14 ha corretto il confine senza riscrivere il
+nucleo già certificato e ha completato la roadmap.
 
 La conclusione architetturale è netta:
 
@@ -46,8 +45,8 @@ La conclusione architetturale è netta:
    agente: compila un piano tipizzato, reclama un'unità alla volta e la
    esegue sempre attraverso gli executor ammessi e lo scheduler centrale.
 
-La roadmap torna `active`: le prove F0-F13 restano valide, ma non dimostrano
-ancora l'ammissione dinamica richiesta da F14.
+La roadmap è `implemented`: le prove F0-F13 restano valide e il rapporto F14
+dimostra anche l'ammissione dinamica richiesta.
 ADR 0213 ha chiuso F0; F1 e F2 hanno introdotto un archivio inattivo e
 verificabile; F3 ha dimostrato acquisizione atomica, fencing e ripresa fra
 processi. F4 ha aggiunto il deposito privato indirizzato dal contenuto e la
@@ -55,10 +54,9 @@ pubblicazione interna riconciliabile. F5 ha compilato e ammesso il piano v1;
 F6 ha collegato il contesto equo allo scheduler centrale; F7 ha verificato il
 ponte universale locale, remoto e LLM, inclusa la provenienza durevole. Il
 servizio è installato e l'ammissione è attiva per scelta esplicita
-dell'amministratore; l'attivazione non colma da sola il confine dinamico di
-F14. F8 ha aggiunto il ciclo di vita
+dell'amministratore. F8 ha aggiunto il ciclo di vita
 supervisionato; F11-F13 hanno registrato e verificato i binding eseguibili,
-mentre il gate distribuito resta disattivato. F9 ha congelato il contratto
+mentre l'interruttore distribuito resta sotto il controllo dell'amministratore. F9 ha congelato il contratto
 owner-scoped e le route sottili; nessuna route accetta il proprietario dal body
 o restituisce piano, risultati o istantanee interne. F10 ha aggiunto la console
 web sulla stessa facciata, con timeline SSE riletta dal database, autorizzazioni
@@ -71,8 +69,10 @@ automatico e la prova Telegram esterna autorizzata sono positivi. F13 ha
 installato il servizio, superato un progetto pilota sintetico con riavvio e
 replay, pubblicato la guida bilingue e ricompilato Tutor. Il servizio
 supervisionato resta installato; dopo la certificazione l'amministratore ha
-riattivato esplicitamente i nuovi invii. Nessuna attivazione è implicita e il
-percorso automatico resta oggetto di F14.
+riattivato esplicitamente i nuovi invii. F14 ha poi centralizzato l'ammissione:
+quando il servizio dell'istanza è attivo, una singola azione lunga compatibile
+viene presa in carico automaticamente; l'utente non sceglie LRE né prepara un
+profilo.
 
 ### 0.1 Lessico di verifica
 
@@ -2220,8 +2220,9 @@ inventory
   Metnos. Un piano registrato resta disponibile per DAG complessi già
   ottimizzati, ma una singola invocazione lunga ammissibile deve generare il
   proprio piano durante il turno.
-- **Stato:** autorizzata e in corso. Nessuna prova F13 viene invalidata; lo
-  stato `implemented` potrà essere ripristinato soltanto dopo il gate F14.
+- **Stato:** completata il 2026-08-22. Nessuna prova F13 è stata invalidata;
+  l'evidenza conclusiva è in
+  `internal/reports/rm0004-f14-verification-20260822.md`.
 
 #### Analisi multidimensionale vincolante
 
@@ -2237,7 +2238,7 @@ inventory
 | sicurezza | il piano persistito può contenere dati utente | obiettivo e ricevuta redatti; argomenti accessibili soltanto nello store owner-scoped; niente segreti grezzi | copiare query, credenziali o path nei log e negli eventi |
 | i18n | la durata potrebbe essere cercata con parole italiane o inglesi | decisione su metadati strutturati; ogni esito utente usa chiavi IT/EN | liste di sinonimi nel runtime LRE |
 | prestazioni | ricostruire e verificare tutto il catalogo a ogni turno sarebbe costoso | registro immutabile per processo, costruito una volta dal catalogo firmato | scansione N volte, una per runner, a ogni invio |
-| compatibilità | L0/L1 potrebbero eseguire un piano lungo prima di L3 | stesso controllo dopo la finalizzazione in L0, L1, L3 e recovery | aggancio soltanto al proposer fresco |
+| compatibilità | cache, scorciatoie deterministiche o recovery potrebbero eseguire un piano lungo prima del controllo | un solo confine sui sette punti di esecuzione correnti: undo, due percorsi upload, L0, L1, L3 e recovery | aggancio soltanto al proposer fresco o conteggio manuale non verificato |
 | trasparenza | un errore di ammissione potrebbe cadere nel vecchio executor | esito trivalente `not_long`, `submitted`, `rejected`; gli ultimi due chiudono il turno | `except` che ritorna `None` e avvia il carico in linea |
 | operazioni | worker spento o registro stantio può lasciare lavori non reclamabili | readiness verificata nello stesso confine dell'ammissione; errore esplicito | coda accettata con nessun worker capace |
 
@@ -2277,6 +2278,12 @@ ricrea la tabella `stages`. In esecuzione la collocazione della fase prevale
 sulla derivazione dalla sorgente; l'assenza del record conserva il
 comportamento F7. Il normale `invoke_executor` rivalida proprietario,
 disponibilità, piattaforma e manifest: la fase non concede autorità.
+Il costruttore deve prima rendere coerente la collocazione con il manifest
+verificato: `scope=server` e una capability provider attiva restano sul server;
+un target esplicito diventa `device` soltanto per un executor remotabile;
+`scope=device` senza un nome già risolto viene respinto. È vietato registrare
+`server` e lasciare poi che `invoke_executor` scelga implicitamente un device,
+o registrare un device e consentire un ripiego locale.
 
 **C. Schema di risultato comune.** `core_output_schemas()` registra
 `metnos.executor-result/1`: oggetto JSON, campo `ok` booleano obbligatorio,
@@ -2295,10 +2302,13 @@ esempio `runtime/durable_workloads/direct_invocation.py`, contiene soltanto:
 
 Il contributo viene costruito dal catalogo verificato una volta per processo.
 Include executor attivi, firmati, con digest, non dormienti, non `in-process`,
-con schema argomenti chiuso ed effetto dichiarato diverso da `unknown` e
-`interactive`. Nella prima consegna include soltanto intelligence
-`deterministic`; gli altri entrano quando il loro contratto congela tutti i
-binding. La registrazione assegna a ogni runner lo schema comune e la sola
+intrinsecamente lunghi, con schema argomenti chiuso ed effetto dichiarato
+diverso da `unknown` e `interactive`. Nella prima consegna include soltanto
+intelligence `deterministic`; gli altri entrano quando il loro contratto
+congela tutti i binding. Anche `resource_class=llm|vlm` resta esclusa finché
+binding di modello, prompt, lingua e budget non sono congelati,
+indipendentemente dall'etichetta `intelligence`. La registrazione assegna a
+ogni runner lo schema comune e la sola
 semantica durevole calcolata. Non contiene nomi di executor e non filtra per
 dominio. Il registro del piano immagini e questo contributo confluiscono nel
 medesimo `RuntimeRegistry`; un binding duplicato deve continuare a far fallire
@@ -2330,16 +2340,20 @@ sorgenti, poi chiama questa funzione. Non duplicare transizioni, gestione dei
 replay o recupero della revisione.
 
 La richiesta redatta dinamica contiene soltanto `runner_name`, digest degli
-argomenti, tipo di collocazione e presenza del dispositivo; non contiene
-query, valori degli argomenti o nome del dispositivo. La chiave di invio resta
+argomenti, tipo di collocazione, presenza del dispositivo e digest opaco
+dell'identità di collocazione; non contiene query, valori degli argomenti o
+nome del dispositivo. Il digest della collocazione è necessario: senza di esso
+la stessa chiave consegnata prima a un PC e poi a un altro convergerebbe
+erroneamente sul primo lavoro. La chiave di invio resta
 derivata dall'identità stabile dell'evento di canale. Stessa chiave e stesso
 digest convergono; stessa chiave e dati diversi producono
 `IdempotencyConflictError` e un errore utente localizzato.
 
 **G. Decisione nel motore.** `engine.dispatch.run_turn()` riceve un callback
-opzionale, senza importare LRE. Una funzione privata condivisa lo chiama dopo
-`_finalize_framework_for_run()` e prima di `Executor.run()` nei percorsi L0,
-L1, L3 e recovery. Il callback restituisce:
+opzionale, senza importare LRE. Una funzione privata condivisa lo chiama prima
+di ogni `Executor.run()`. I sette punti correnti sono scorciatoia undo, due
+percorsi predefiniti per gli upload, L0, L1, L3 e recovery; quelli che passano
+da `_finalize_framework_for_run()` conservano quell'ordine. Il callback restituisce:
 
 - `None`: nessuna azione lunga, il percorso continua invariato;
 - dizionario `ok=true`: lavoro accettato, ricevuta come risposta finale;
@@ -2393,7 +2407,7 @@ tipo, evitando cicli di importazione.
 | `runtime/durable_runtime_registry.py` | `default_runtime_registry()` | caricare una volta il catalogo verificato e unire la registrazione diretta a quella precompilata | aggiungere un profilo per executor o tollerare binding duplicati |
 | `runtime/durable_workloads/admission.py` | nuova facciata comune, `submit_registered_local_sources()` | estrarre la sola sequenza draft/admit/queue; lasciare al chiamante la costruzione e la chiusura dell'inventario | duplicare transazioni, sigillare sorgenti nel percorso diretto o cambiare le chiavi di replay |
 | `runtime/lre_submission.py` | callback automatico, helper della ricevuta | classificare l'esito in `None`, successo o rifiuto; applicare readiness e localizzazione già esistenti | catturare un rifiuto come mancata corrispondenza o includere valori sensibili |
-| `runtime/engine/dispatch.py` | `run_turn()`, helper privato unico | invocare il callback sui quattro percorsi dopo la finalizzazione e prima dell'esecuzione | importare moduli LRE, rieseguire il planner o inserire il risultato nelle cache interattive |
+| `runtime/engine/dispatch.py` | `run_turn()`, helper privato unico | invocare il callback prima di tutti i sette call site correnti e mantenere una prova statica che lasci un solo `Executor.run()` | importare moduli LRE, rieseguire il planner o inserire il risultato nelle cache interattive |
 | `runtime/agent_runtime.py` | `_run_engine()` | comporre il callback con catalogo, proprietario, identità stabile della richiesta e target già risolto | ricavare nuovamente target o argomenti dal testo |
 | `runtime/device_shim/messages_i18n.json` | tre chiavi di H, in entrambi i cataloghi | aggiungere testi equivalenti, chiari e privi di dettagli interni | concatenare eccezioni o usare una lingua di ripiego nel codice |
 | `runtime/builtin_executor_contracts/start_lre/manifest.toml` | descrizioni IT/EN | presentare `start_lre` come ingresso tecnico compatibile, non come prerequisito | promettere copertura universale già non provata |
@@ -2405,14 +2419,14 @@ tipo, evitando cicli di importazione.
 importante perché in Python `bool` è una sottoclasse di `int`:
 
 ```text
-json_type(value):
+json_types(value):
     if value is None: reject
-    if type(value) is bool: return "boolean"
-    if type(value) is int: return "integer"
-    if type(value) is float and finite: return "number"
-    if type(value) is str: return "string"
-    if type(value) is list: return "array"
-    if type(value) is dict and every key is str: return "object"
+    if type(value) is bool: return {"boolean"}
+    if type(value) is int: return {"integer", "number"}
+    if type(value) is float and finite: return {"number"}
+    if type(value) is str: return {"string"}
+    if type(value) is list: return {"array"}
+    if type(value) is dict and every key is str: return {"object"}
     otherwise: reject
 ```
 
@@ -2426,7 +2440,7 @@ stretta:
 
 ```text
 is_intrinsically_long(executor) -> bool
-direct_runtime_registration(catalog_snapshot) -> RuntimeRegistration
+direct_runtime_registration(catalog_snapshot) -> RuntimeRegistration | None
 build_direct_candidate(executor, finalized_args, placement) -> (plan, inventory)
 ```
 
@@ -2439,6 +2453,14 @@ quindi produce esattamente le due fasi di E. L'inventario vuoto usa lo schema
 canonico già esistente; non è un dizionario costruito a mano con un digest
 costante.
 
+Prima di congelare i letterali, il costruttore respinge anche `from_step`,
+`from_steps`, le forme annidate `from_step:N` e i segnaposto `{{...}}`: sono
+riferimenti al runtime interattivo, non dati. La collocazione viene calcolata
+con la stessa dichiarazione firmata usata dall'invocazione ordinaria. Un
+executor `scope=device` richiede un dispositivo già risolto; uno
+`scope=server` ignora correttamente un target della chat; una capability
+provider attiva conserva il vincolo al server.
+
 La politica durevole si calcola una volta con questa tabella chiusa:
 
 | `execution.effect` verificato | effetto LRE | tentativi | risultato |
@@ -2447,13 +2469,19 @@ La politica durevole si calcola una volta con questa tabella chiusa:
 | `create_only`, `reversible`, `mutating` | `manual_only` | 1 | ammissibile senza retry automatico |
 | `unknown`, `interactive`, valore assente o non dichiarato | — | 0 | rifiuto |
 
-L'executor diretto è registrabile soltanto se valgono contemporaneamente tutti
+`direct_runtime_registration` restituisce `None` soltanto quando il catalogo
+non contiene alcun candidato; il chiamante omette in tal caso il contributo,
+senza creare una registrazione vuota. L'executor diretto è registrabile soltanto se valgono contemporaneamente tutti
 i predicati seguenti: oggetto proveniente dal catalogo verificato; nome e digest
 non vuoti; `lifecycle == "active"`; `dormant is False`; trasporto diverso da
 `in-process`; `intelligence == "deterministic"`; politica d'esecuzione
-esplicitamente dichiarata; schema argomenti oggetto con
-`additionalProperties is False`; ogni proprietà ha un singolo `type` fra i sei
-di A; ogni argomento obbligatorio è presente dopo la finalizzazione. Un solo
+esplicitamente dichiarata; durata intrinseca sopra soglia; schema argomenti
+oggetto con `properties` e con `additionalProperties` assente oppure `false`;
+ogni proprietà ha un singolo `type` fra i sei di A; nessuna proprietà è
+`runtime_resolved`; ogni argomento obbligatorio è presente dopo la
+finalizzazione. Anche quando `additionalProperties` è assente, il confine
+diretto considera chiuso l'elenco `properties` e respinge ogni chiave estranea;
+un valore `true` o uno schema dinamico vengono respinti. Un solo
 predicato falso rende il contratto non ammissibile; non viene applicato alcun
 valore predefinito permissivo.
 
@@ -2564,18 +2592,20 @@ usa il protocollo BLOCKER di §17.3 e lascia invariato il significato.
 7. Executor mutante certificato soltanto come `manual_only`: al massimo un
    tentativo; arresto dopo l'invocazione porta ad attenzione, mai a retry.
 8. Effetto `unknown` o `interactive`: rifiuto, zero invocazioni.
-9. Executor `llm`/`agentic` senza binding completo: rifiuto, zero invocazioni e
+9. Executor `llm`/`agentic`, oppure con risorsa `llm`/`vlm`, senza binding completo: rifiuto, zero invocazioni e
    nessuna telemetria nascosta.
 10. Destinazione dispositivo: il nome congelato arriva a `invoke_executor`;
-    dispositivo revocato o non raggiungibile non produce esecuzione locale.
+    dispositivo revocato o non raggiungibile non produce esecuzione locale;
+    un executor device-only privo di target esatto non viene accodato e un
+    executor vincolato al server non viene dichiarato remoto.
 11. Piano con gate e fase lunga: primo tratto esegue soltanto il gate; dopo
     approvazione viene accodato un solo lavoro.
 12. Piano composto non ancora rappresentabile: messaggio localizzato e zero
     esecuzioni degli step lunghi.
 13. Feature spenta, configurazione non valida o worker indisponibile: errore
     specifico, nessun ripiego interattivo.
-14. L0, L1, L3 e recovery consegnano lo stesso piano dinamico e la stessa
-    semantica di errore.
+14. Undo, i due percorsi upload, L0, L1, L3 e recovery attraversano lo stesso
+    confine; una prova statica garantisce un solo call site di `Executor.run()`.
 15. Il piano precompilato F13 continua a superare i propri test e non compare
     come requisito nella guida pubblica.
 16. Nessun nome di dominio o executor in `schema.py`, `compiler.py`,
