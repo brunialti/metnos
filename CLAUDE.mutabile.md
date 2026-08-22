@@ -20,24 +20,29 @@
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
 - **ADR registry**: `0001-0213` (skipped: `0055`/`0115`/`0116`/`0121`).
-- **Lavori durevoli F0-F11 implementati, attivazione ancora spenta** (21/8, ADR
-  0213, RM-0004): `runtime/durable_workloads/` contiene contratti, schema
-  SQLite, repository owner-scoped, acquisizione, lease, heartbeat, fencing,
-  ritentativo e ripresa; il worker supervisionato resta separato da HTTP e
-  non riceve binding di produzione. Il preset immagini privato usa contratti
-  OCR firmati, workload logici su `wise`, fan-out tipizzato per elemento e tre
-  artefatti idempotenti nel deposito. Una sorgente locale non viene mai
-  ricostruita dal suo locator redatto: prima dell'attivazione serve un'autorità
-  esplicita di device. Il deposito privato degli artefatti è circoscritto al
-  proprietario, indirizzato per contenuto e dotato di
-  pubblicazione interna riconciliabile, raccolta prudente degli orfani e
-  cancellazione selettiva. La facciata e la console owner-scoped espongono
-  solo dati redatti, eventi SSE persistenti e download con autorizzazione
-  temporanea revocabile; l'outbox Telegram conserva la consegna fino all'ack.
-  Il DB resta autorevole: un replay identico è idempotente, un fence vecchio
+- **LRE F0-F12 certificato; distribuzione F13 in corso** (22/8, ADR 0213,
+  RM-0004): `runtime/durable_workloads/` contiene contratti, schema
+  SQLite, archivio circoscritto al proprietario, acquisizione, concessioni a
+  tempo, segnali di attività, delimitazione dei tentativi, ritentativo e
+  ripresa; il worker supervisionato resta separato da HTTP e
+  compone soltanto collegamenti di produzione registrati. Il preset immagini
+  privato usa contratti OCR firmati, carichi logici su `wise`, diramazione
+  tipizzata per elemento e tre artefatti idempotenti nel deposito. Una sorgente
+  locale non viene mai ricostruita dal suo riferimento oscurato: prima
+  dell'attivazione serve un'autorità esplicita del dispositivo. Il deposito
+  privato degli artefatti è circoscritto al proprietario, indirizzato per
+  contenuto e dotato di pubblicazione interna riconciliabile, raccolta prudente
+  degli orfani e cancellazione selettiva. La facciata e la console circoscritte
+  al proprietario espongono solo dati oscurati, eventi SSE persistenti e
+  scaricamenti con autorizzazione temporanea revocabile; la coda Telegram
+  conserva la consegna fino alla conferma. Il DB resta autorevole: una
+  ripetizione identica è idempotente, una delimitazione obsoleta del tentativo
   non modifica lo stato e una pubblicazione diventa definitiva soltanto dopo
-  la rilettura del digest. Nessun vocabolo, comando naturale, Tutor o
-  documentazione pubblica annuncia la funzione prima dei gate F11-F13.
+  la rilettura dell'impronta. Nessun vocabolo, comando naturale, Tutor o
+  documentazione pubblica annuncia la funzione prima del progetto pilota e dei
+  controlli di uscita F13. L'installazione crea un solo interruttore privato,
+  persistente e disattivato; worker e HTTP lo interpretano con lo stesso
+  lettore restrittivo.
 
 ## 3. Synth pipeline (6 stadi)
 
