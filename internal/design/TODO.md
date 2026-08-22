@@ -500,3 +500,22 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 - Done-gate: zero drift seed/live/device; falsi positivi documentati tramite
   allowlist motivata e minima; test IT/EN sui placeholder; nessuna variazione
   delle stringhe rese a runtime.
+
+### RED-001 - Dominio Reddit e rassegna personale
+
+- Priorita': da assegnare.
+- Stato (22/8/2026): **sospeso in attesa della risposta di Reddit** alla
+  richiesta individuale di accesso alla Data API. Nessuna implementazione e
+  nessun accesso ai dati Reddit sono autorizzati prima della risposta.
+- Obiettivo: elencare i subreddit seguiti dall'utente, rilevare nuove risposte
+  e nuovi post, scartare duplicati e temi non scelti, produrre una rassegna
+  privata con fonti e preparare eventuali bozze di post o commenti.
+- Confine proposto: lettura periodica circoscritta al proprietario; interessi
+  dichiarati dall'utente; elaborazione locale; conservazione minima; nessuno
+  scraping, voto, addestramento sui dati Reddit, messaggio indesiderato o
+  pubblicazione automatica. Ogni post o commento richiede una conferma manuale
+  separata sul testo e sulla destinazione esatti.
+- Condizione di sblocco: risposta scritta di Reddit che chiarisca piattaforma
+  ammessa, permessi OAuth, classificazione e riassunto locali, conservazione e
+  condizioni per un eventuale uso futuro non personale. Solo allora definire
+  backend, executor, contratti, prove e decisione architetturale.
