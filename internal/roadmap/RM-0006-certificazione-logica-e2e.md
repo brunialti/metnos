@@ -2,10 +2,10 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `ready`; confini e criteri definiti, attuazione non iniziata |
+| Stato | `in_progress`; C0 completata e verificata il 2026-08-22, C1 non iniziata |
 | Creazione | 2026-08-22 |
 | Ultima revisione | 2026-08-22 |
-| Implementazione reale | Esistono suite di modulo, simulatore E2E, corpus di turni, equivalenza su piani reali e prove avversariali specialistiche; non esiste ancora una certificazione unica di 20-30 esperienze utente complete |
+| Implementazione reale | C0 fornisce schema JSON, coordinatore indipendente, registro risultati solo in aggiunta, ripresa e lotto sintetico deterministico; i 24 flussi reali e la certificazione finale non esistono ancora |
 | Decisione di prodotto | La Fase 8 misura se Metnos raggiunge davvero il risultato richiesto, con autorita', collocazione, effetti e risposta corretti; non usa il numero di executor o di test come sostituto della qualita' |
 | Nome storico | Fase 8 — «stress logico» |
 | Origine | `internal/design/TODO.md::QUA-001` e §12 di `CLAUDE.mutabile.md` |
@@ -311,6 +311,10 @@ Per evitare ambiguita' con la Fase 8 generale e con F8 di altre roadmap, le
 fasi interne usano il prefisso `C` di certificazione.
 
 ### C0 — Fotografia e contratto degli artefatti
+
+**Stato:** completata il 2026-08-22. Evidenza riproducibile in
+`internal/reports/rm0006-c0-verification-20260822.md`; fotografia in
+`internal/reports/rm0006-c0-snapshot-20260822.json`.
 
 - fotografare suite, corpus, configurazione e superfici correnti;
 - definire schema `CaseSpec`, `CaseResult` e `CertificationManifest`;

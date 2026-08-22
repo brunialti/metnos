@@ -1,0 +1,35 @@
+{
+  "captured_on": "2026-08-22",
+  "configuration": {
+    "catalog_snapshot_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+    "llm_workloads_sha256": "4faed382e5b1102ca3fa599e8009dfe20dd2fff7bff6f200fd1e671818e558f2",
+    "quality_targets_sha256": "75f9f93121a61bfd8751b34e365ae82a9af4a7e9039285c3e6e8d18cc5e29f3a"
+  },
+  "constraints": {
+    "metnos_called": false,
+    "private_requests_persisted": false,
+    "runtime_imported": false
+  },
+  "corpus": {
+    "available": true,
+    "deduplicated_roots": 942,
+    "records": 1113,
+    "sha256": "d164560dc8bace187a321c483dc30dc6d65c784c77da8bc8fa9f499d885a8193"
+  },
+  "git_commit": "2678ac823479198b7f0df7c9c8b18c0688f68380",
+  "schema_version": "metnos.certification-snapshot/1",
+  "suite": {
+    "python_files": 83,
+    "scenario_files": 25,
+    "sha256": "7bcc5a1c320e87e8cd508114c6e4f6165c93b2ec158c232216c8e711e2572afb"
+  },
+  "surfaces": {
+    "files": [
+      "runtime/http_routes_agent.py",
+      "runtime/http_routes_admin.py",
+      "runtime/http_routes_durable_workloads.py",
+      "runtime/ui_surfaces.py"
+    ],
+    "sha256": "4bd49f473fa43b46c0782e5c6ee27be711afc8b0a16198878328edc78e65b6bd"
+  }
+}

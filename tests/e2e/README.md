@@ -5,6 +5,8 @@ Ambiente di test E2E **separato** dal codice Metnos (`runtime/`, `executors/`). 
 1. **ADR 0158 change_intent lifecycle**: `proposed → accepted → applied → observed → finalized` per i 6 kind, rollback fisico, convergence cross-source.
 2. **Skill importer**: mock skill (controllo) e google-workspace reale (con credenziali simulate, copiate dal sistema in dir isolata).
 3. **Qualità chat**: query reali estratte dai turn log, classificate per categoria/dominio, asserzione lint + LLM-as-judge.
+4. **Certificazione logica RM-0006**: coordinatore indipendente, oracoli JSON
+   congelati, registro solo in aggiunta e ripresa per caso/ciclo.
 
 ## Garanzie di separazione
 
@@ -30,6 +32,9 @@ METNOS_E2E_LLM_JUDGE=0 ./run.sh
 # Solo un cluster
 pytest scenarios/test_lifecycle_change_intent.py -v
 
+# C0 sintetico: due cicli, nessuna chiamata a Metnos o a un modello
+python3 -m certification.run_synthetic --output /tmp/metnos-certification-c0
+
 # Gate qualità: suite completa, judge attivo, due esecuzioni pulite consecutive
 ./run.sh --quality-gate
 ```
@@ -50,6 +55,7 @@ tests/e2e/
 ├── README.md
 ├── pyproject.toml       # deps: aiohttp, pytest-asyncio
 ├── conftest.py          # fixture server + driver
+├── certification/       # contratti e coordinatore RM-0006 indipendente
 ├── run.sh               # entry point
 ├── driver/
 │   ├── http_client.py   # admin auth + htmx + chat

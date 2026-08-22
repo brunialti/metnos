@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metnos.local/schemas/e2e-certification-v1.json",
+  "$defs": {
+    "NonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "StringSet": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/NonEmptyString" },
+      "uniqueItems": true
+    },
+    "CaseSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "case_id", "logical_flow_id", "locale", "request",
+        "fixture", "expected_route", "allowed_plans", "forbidden_tools",
+        "expected_placement", "required_approval", "expected_terminal",
+        "required_effects", "forbidden_effects", "postcondition_probes",
+        "response_requirements", "budgets"
+      ],
+      "properties": {
+        "schema_version": { "const": "metnos.certification-case/1" },
+        "case_id": { "$ref": "#/$defs/NonEmptyString" },
+        "logical_flow_id": { "$ref": "#/$defs/NonEmptyString" },
+        "locale": { "enum": ["it", "en"] },
+        "request": { "$ref": "#/$defs/NonEmptyString" },
+        "fixture": { "$ref": "#/$defs/NonEmptyString" },
+        "expected_route": { "$ref": "#/$defs/NonEmptyString" },
+        "allowed_plans": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/NonEmptyString" }
+          }
+        },
+        "forbidden_tools": { "$ref": "#/$defs/StringSet" },
+        "expected_placement": { "$ref": "#/$defs/NonEmptyString" },
+        "required_approval": { "type": "boolean" },
+        "expected_terminal": {
+          "enum": ["completed", "failed", "partial", "waiting_input", "waiting_approval", "cancelled"]
+        },
+        "required_effects": { "$ref": "#/$defs/StringSet" },
+        "forbidden_effects": { "$ref": "#/$defs/StringSet" },
+        "postcondition_probes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/NonEmptyString" },
+          "uniqueItems": true
+        },
+        "response_requirements": { "$ref": "#/$defs/StringSet" },
+        "budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_approvals", "deadline_s", "max_model_calls"],
+          "properties": {
+            "max_approvals": { "type": "integer", "minimum": 0 },
+            "deadline_s": { "type": "integer", "minimum": 1 },
+            "max_model_calls": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "ProbeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "passed", "detail"],
+      "properties": {
+        "name": { "$ref": "#/$defs/NonEmptyString" },
+        "passed": { "type": "boolean" },
+        "detail": { "$ref": "#/$defs/NonEmptyString" }
+      }
+    },
+    "CaseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "certification_id", "case_id", "cycle", "verdict",
+        "started_at", "finished_at", "duration_ms", "observed_route",
+        "observed_plan", "observed_placement", "approval_count", "model_calls",
+        "observed_terminal", "observed_effects", "probe_results",
+        "response_checks", "failure_reasons"
+      ],
+      "properties": {
+        "schema_version": { "const": "metnos.certification-result/1" },
+        "certification_id": { "$ref": "#/$defs/NonEmptyString" },
+        "case_id": { "$ref": "#/$defs/NonEmptyString" },
+        "cycle": { "type": "integer", "minimum": 1 },
+        "verdict": { "enum": ["pass", "fail", "error"] },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "observed_route": { "$ref": "#/$defs/NonEmptyString" },
+        "observed_plan": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/NonEmptyString" }
+        },
+        "observed_placement": { "$ref": "#/$defs/NonEmptyString" },
+        "approval_count": { "type": "integer", "minimum": 0 },
+        "model_calls": { "type": "integer", "minimum": 0 },
+        "observed_terminal": { "$ref": "#/$defs/NonEmptyString" },
+        "observed_effects": { "$ref": "#/$defs/StringSet" },
+        "probe_results": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ProbeResult" }
+        },
+        "response_checks": { "$ref": "#/$defs/StringSet" },
+        "failure_reasons": { "$ref": "#/$defs/StringSet" }
+      }
+    },
+    "CertificationManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "certification_id", "oracle_version", "git_commit",
+        "suite_sha256", "corpus_sha256", "catalog_sha256", "llm_config_sha256",
+        "surface_sha256", "case_matrix_sha256", "platform", "fixture",
+        "locales", "cycles", "created_at"
+      ],
+      "properties": {
+        "schema_version": { "const": "metnos.certification-manifest/1" },
+        "certification_id": { "$ref": "#/$defs/NonEmptyString" },
+        "oracle_version": { "$ref": "#/$defs/NonEmptyString" },
+        "git_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "suite_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "corpus_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "catalog_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "llm_config_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "surface_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "case_matrix_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "platform": { "$ref": "#/$defs/NonEmptyString" },
+        "fixture": { "$ref": "#/$defs/NonEmptyString" },
+        "locales": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["it", "en"] },
+          "uniqueItems": true
+        },
+        "cycles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 1 },
+          "uniqueItems": true
+        },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
