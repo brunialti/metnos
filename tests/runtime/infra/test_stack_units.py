@@ -89,7 +89,9 @@ def test_durable_worker_is_a_bounded_supervised_target_component():
     assert "StartLimitBurst=3" in unit
     assert "TimeoutStopSec=45" in unit
     assert "KillMode=control-group" in unit
-    assert "METNOS_DURABLE_WORKLOADS_ENABLED=0" in unit
+    assert "EnvironmentFile=" not in unit
+    assert "Environment=METNOS_DURABLE_WORKLOADS_ENABLED=" not in unit
+    assert "strict shared parser" in unit
 
 
 def test_telegram_unit_invokes_the_shipped_daemon_module():

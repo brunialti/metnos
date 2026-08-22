@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import config
+from lre_config import feature_enabled
 from process_lock import ProcessLock
 
 from .coordinator import ReconcileOutcome
@@ -103,14 +104,6 @@ class DurableServiceHealth:
                 timespec="seconds"
             ).replace("+00:00", "Z"),
         )
-
-
-def feature_enabled() -> bool:
-    """Read the narrow lifecycle gate; an unknown value fails closed."""
-
-    return os.environ.get("METNOS_DURABLE_WORKLOADS_ENABLED", "0").strip().lower() in {
-        "1", "true", "yes", "on",
-    }
 
 
 def default_health_path() -> Path:

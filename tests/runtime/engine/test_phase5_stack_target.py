@@ -16,6 +16,7 @@ def _wire(monkeypatch, tmp_path, *, legacy: bool, telegram: bool = False):
     calls: list[tuple[str, ...]] = []
     units = tmp_path / "units"
     units.mkdir()
+    monkeypatch.setenv("METNOS_USER_CONFIG", str(tmp_path / "config"))
     monkeypatch.setattr(phase5, "_systemd_user_dir", lambda: units)
     monkeypatch.setattr(phase5, "_repo_dir", lambda: ROOT)
     monkeypatch.setattr(phase5, "_runtime_module_importable", lambda _module: True)
@@ -59,6 +60,11 @@ def test_fresh_install_enables_only_integrated_target(monkeypatch, tmp_path):
     assert (units / "metnos-stack-watchdog.timer").is_file()
     assert (units / "metnos-i18n-translator.service").is_file()
     assert (units / "metnos-i18n-translator.timer").is_file()
+    lre_config = tmp_path / "config" / "lre.env"
+    assert lre_config.is_file()
+    assert "METNOS_DURABLE_WORKLOADS_ENABLED=0" in lre_config.read_text()
+    assert notes["lre_config_created"] is True
+    assert notes["lre_enabled_by_default"] is False
     assert notes["i18n_translator_enabled"] is True
     assert (
         units / "metnos-side-display.service.d" / "10-metnos-target.conf"
@@ -84,6 +90,19 @@ def test_upgrade_with_active_system_http_installs_but_does_not_cut_over(
     assert ("enable", "--now", "metnos-i18n-translator.timer") in calls
     assert notes["i18n_translator_enabled"] is True
     assert not any("stop" in call or "disable" in call for call in calls)
+
+
+def test_upgrade_preserves_the_existing_lre_feature_choice(monkeypatch, tmp_path):
+    calls = _wire(monkeypatch, tmp_path, legacy=True)
+    path = tmp_path / "config" / "lre.env"
+    path.parent.mkdir(parents=True)
+    path.write_text("METNOS_DURABLE_WORKLOADS_ENABLED=1\n")
+
+    notes = phase5.run(SimpleNamespace())
+
+    assert notes["lre_config_created"] is False
+    assert path.read_text() == "METNOS_DURABLE_WORKLOADS_ENABLED=1\n"
+    assert ("enable", "--now", "metnos.target") not in calls
 
 
 def test_upgrade_records_migration_even_when_target_venv_is_not_ready(

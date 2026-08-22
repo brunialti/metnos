@@ -21,9 +21,8 @@ Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
 Environment=METNOS_USER_DATA=@DATA_DIR@
 Environment=METNOS_USER_CONFIG=@CONFIG_DIR@
 Environment=METNOS_USER_STATE=@STATE_DIR@
-# The shipped lifecycle is safe by default. F11 adds only registered runtime
-# bindings before an administrator can enable this gate through a drop-in.
-Environment=METNOS_DURABLE_WORKLOADS_ENABLED=0
+# The worker reads the private lre.env through Metnos' strict shared parser.
+# systemd must not interpret the file with different acceptance rules.
 SyslogIdentifier=metnos-durable-worker
 
 [Install]

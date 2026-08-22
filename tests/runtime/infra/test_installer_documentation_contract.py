@@ -45,6 +45,14 @@ def test_install_manifest_is_current_parseable_inventory() -> None:
         model["name"] == "embedding_text_bge_m3" and model["required"]
         for model in manifest["models"]["entry"]
     )
+    assert "jsonschema==4.10.3" in manifest["runtime"]["python_packages"][
+        "required"
+    ]
+    lre_config = next(
+        entry for entry in manifest["config_files"]["entry"]
+        if entry["path"].endswith("/lre.env")
+    )
+    assert lre_config["mode"] == "0600"
     for stale_name in ("myclaw", "suprastructure", "giorgio2", "minilm"):
         assert stale_name not in text.lower()
 

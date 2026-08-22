@@ -40,6 +40,7 @@ required = [
     "rich==14.3.4",
     "httpx==0.28.1",
     "croniter",
+    "jsonschema==4.10.3",
     "psutil",
     "python-dateutil",
     "tomli-w",
@@ -199,7 +200,7 @@ name = "metnos-durable-worker.service"
 type = "systemd-user"
 unit_file_local = "install/units/metnos-durable-worker.service.tmpl"
 unit_file_dest = "~/.config/systemd/user/metnos-durable-worker.service"
-description = "Worker supervisionato per il motore interno dei lavori durevoli; l'esecuzione resta disabilitata finché non sono presenti binding registrati e un'esplicita abilitazione."
+description = "Worker supervisionato di LRE; l'esecuzione resta disattivata fino a un'abilitazione esplicita."
 enabled_at_install = true
 owner = "metnos.target"
 
@@ -321,6 +322,11 @@ mode = "0600"
 [[config_files.entry]]
 path = "~/.config/metnos/runtime.toml"
 purpose = "Impostazioni persistenti del runtime."
+mode = "0600"
+
+[[config_files.entry]]
+path = "~/.config/metnos/lre.env"
+purpose = "Interruttore persistente di LRE, creato in stato disattivato e interpretato in modo restrittivo."
 mode = "0600"
 
 [[secrets.entry]]

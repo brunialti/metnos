@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,31 @@ def _venv_dir() -> Path:
     if configured:
         return Path(configured)
     return _repo_dir() / ".venv"
+
+
+def _config_dir() -> Path:
+    return Path(os.environ.get(
+        "METNOS_USER_CONFIG", Path.home() / ".config" / "metnos",
+    ))
+
+
+def _ensure_lre_feature_config() -> tuple[Path, bool]:
+    """Install the private disabled gate without replacing upgrade intent."""
+
+    runtime_dir = str(_repo_dir() / "runtime")
+    if runtime_dir not in sys.path:
+        sys.path.insert(0, runtime_dir)
+    from lre_config import (  # imported only during the write phase
+        FEATURE_CONFIG_FILENAME,
+        ensure_default_feature_configuration,
+    )
+
+    path = _config_dir() / FEATURE_CONFIG_FILENAME
+    created = ensure_default_feature_configuration(path=path)
+    ui.ok(
+        f"{'wrote' if created else 'preserved existing'} {path}"
+    )
+    return path, created
 
 
 def _completion_env_line() -> str:
@@ -298,6 +324,10 @@ def run(args: Any) -> dict[str, Any]:
         _install_unit(
             tmpl_dir / template_name, unit_name, port, lang, http_host,
         )
+    lre_config_path, lre_config_created = _ensure_lre_feature_config()
+    notes["lre_config_path"] = str(lre_config_path)
+    notes["lre_config_created"] = lre_config_created
+    notes["lre_enabled_by_default"] = False
     notes["stack_units_installed"] = True
 
     # 1b. Persistent virtual graphical surface for the Playwright Side browser.
