@@ -36,7 +36,7 @@ def load_flows(path: Path = FLOW_PATH) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if value.get("schema_version") != "metnos.golden-flows/1":
         raise MatrixError("unsupported golden-flow schema")
-    if value.get("oracle_version") != "rm0006-golden-oracle/2":
+    if value.get("oracle_version") != "rm0006-golden-oracle/3":
         raise MatrixError("unexpected oracle version")
     flows = value.get("flows")
     if not isinstance(flows, list):

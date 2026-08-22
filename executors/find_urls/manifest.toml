@@ -7,7 +7,11 @@ executor_standard = "metnos.executor/1.0"
 name        = "find_urls"
 version     = "0.3.0"
 intelligence = "llm"
-timeout_s   = 900
+# Interactive discovery remains below the automatic LRE threshold (600 s).
+# Deep/archive work is represented by explicit durable plans; classifying this
+# optional-LLM executor as a generic direct LRE runner rejects every normal web
+# search because its model binding is intentionally not durable.
+timeout_s   = 599
 author      = "Roberto Brunialti"
 # Affinity bilingue IT+EN (§9.3): "informazioni/notizie/novità/information"
 # sono il campo semantico dell'info-seeking generico ("cerca informazioni su

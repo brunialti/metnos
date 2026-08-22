@@ -15,7 +15,7 @@ en = "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, ki
 
 [code]
 files  = ["filter_entries.py"]
-digest = "sha256:b6de779b387dee8f01f77f10170b7665479882569104ee60d58f8d74eab8e7d1"
+digest = "sha256:250f2a1f31970fb8c49444aff15f1d9fa1ff995934b11b70e96a4baa39998853"
 
 [args]
 type     = "object"
@@ -116,14 +116,21 @@ items       = { type = "string" }
 it = "Pattern esclusi per where_field; supporta glob `*`/`?` e si combina in AND con where_in."
 en = "Excluded patterns for where_field; supports `*`/`?` globs and combines with where_in using AND."
 
+[args.properties.where_present]
+type        = "boolean"
+
+[args.properties.where_present.description]
+it = "Se true mantiene le entry in cui where_field esiste ed è non vuoto; se false mantiene quelle con campo assente o vuoto."
+en = "When true, keeps entries where where_field exists and is non-empty; when false, keeps entries where it is missing or empty."
+
 [args.properties.where_value]
 type        = "string"
 
 # Executor puro: la capability compute:pure non concede I/O esterno.
 
 [args.properties.where_value.description]
-it = "Shortcut per where_in=['x']. Es. where_field='relevance', where_value='high'. Richiede where_field. Se passi sia where_value che where_in vince where_in."
-en = "Shortcut for where_in=['x']. E.g. where_field='relevance', where_value='high'. Requires where_field. If you pass both where_value and where_in, where_in wins."
+it = "Shortcut per where_in=['x']. Es. where_field='relevance', where_value='high'. Richiede where_field. Se passi sia where_value che where_in vince where_in. Per presenza/assenza usa where_present."
+en = "Shortcut for where_in=['x']. E.g. where_field='relevance', where_value='high'. Requires where_field. If you pass both where_value and where_in, where_in wins. Use where_present for presence/absence."
 
 [args.properties.where_starts_with]
 type        = "string"

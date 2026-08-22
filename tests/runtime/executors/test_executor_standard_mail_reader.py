@@ -131,6 +131,31 @@ def test_empty_mailbox_is_honest_and_never_returns_or_logs_password(
     assert sentinel not in caplog.text
 
 
+def test_rejected_imap_login_is_actionable_and_not_a_network_retry(
+        monkeypatch) -> None:
+    import imaplib
+    import mail_client
+
+    monkeypatch.setattr(mail_client, "list_known_accounts",
+                        lambda: ["revoked_cert"])
+    monkeypatch.setattr(mail_client, "resolve_account", lambda name: name)
+    monkeypatch.setattr(
+        mail_client, "open_imap",
+        lambda _account: (_ for _ in ()).throw(
+            imaplib.IMAP4.error("[AUTHENTICATIONFAILED] credentials revoked")
+        ),
+    )
+
+    result = email_metnos.read({"account": "revoked_cert"})
+
+    assert result["fail_count"] == 1
+    failure = result["failed"][0]
+    assert failure["error_code"] == "ERR_MAIL_AUTH_REJECTED"
+    assert "revoked_cert" in failure["error"]
+    assert any(token in failure["error"].casefold()
+               for token in ("credenzial", "credential"))
+
+
 def test_multi_account_reads_are_parallel_and_globally_capped(
         monkeypatch) -> None:
     import mail_client

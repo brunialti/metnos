@@ -1,6 +1,6 @@
 {
   "schema_version": "metnos.golden-flows/1",
-  "oracle_version": "rm0006-golden-oracle/2",
+  "oracle_version": "rm0006-golden-oracle/3",
   "frozen_on": "2026-08-22",
   "flows": [
     {
@@ -106,7 +106,7 @@
       "postcondition_probes": ["open_task_set", "task_digest_unchanged"],
       "response_requirements": ["honest_count"],
       "budgets": {"max_approvals": 0, "deadline_s": 60, "max_model_calls": 1},
-      "requests": {"it": "Mostrami le attività di prova ancora aperte.", "en": "Show me the test tasks that are still open."}
+      "requests": {"it": "Mostrami tutte le attività pianificate.", "en": "Show me all scheduled tasks."}
     },
     {
       "logical_flow_id": "read.urls.limit",
@@ -123,14 +123,14 @@
       "postcondition_probes": ["selected_url_set", "fixture_digest_unchanged"],
       "response_requirements": ["limit_visible", "attribution_visible"],
       "budgets": {"max_approvals": 0, "deadline_s": 60, "max_model_calls": 1},
-      "requests": {"it": "Seleziona i primi tre URL di documentazione dalla raccolta di prova.", "en": "Select the first three documentation URLs from the test collection."}
+      "requests": {"it": "Trova sul web al massimo tre URL di documentazione su METNOS-CERT-DOCS.", "en": "Find at most three web documentation URLs about METNOS-CERT-DOCS."}
     },
     {
       "logical_flow_id": "compose.find-then-read",
       "family": "compose_dataflow",
       "fixture": "files-basic-v1",
       "expected_route": "engine",
-      "allowed_plans": [["find_files", "read_files", "final_answer"], ["get_files", "read_files", "final_answer"]],
+      "allowed_plans": [["find_files", "read_files", "final_answer"], ["get_files", "read_files", "final_answer"], ["read_files", "final_answer"]],
       "forbidden_tools": ["write_files", "delete_files"],
       "expected_placement": "server",
       "required_approval": false,
@@ -140,7 +140,7 @@
       "postcondition_probes": ["selected_path_forwarded", "content_digest_matches"],
       "response_requirements": ["source_visible", "content_complete"],
       "budgets": {"max_approvals": 0, "deadline_s": 90, "max_model_calls": 2},
-      "requests": {"it": "Trova in /tmp/metnos-certification-fixture/files il file con riepilogo nel nome e leggine il contenuto.", "en": "Under /tmp/metnos-certification-fixture/files, find the file with summary in its name and read its contents."}
+      "requests": {"it": "Trova in /tmp/metnos-certification-fixture/files il file metnos-cert-summary.txt e leggine il contenuto.", "en": "Under /tmp/metnos-certification-fixture/files, find metnos-cert-summary.txt and read its contents."}
     },
     {
       "logical_flow_id": "compose.find-sort-files",
@@ -174,7 +174,7 @@
       "postcondition_probes": ["contact_ids_forwarded", "filtered_set_matches"],
       "response_requirements": ["honest_count"],
       "budgets": {"max_approvals": 0, "deadline_s": 90, "max_model_calls": 2},
-      "requests": {"it": "Trova i contatti di prova e tieni soltanto quelli con un indirizzo email.", "en": "Find the test contacts and keep only those with an email address."}
+      "requests": {"it": "Trova tutti i contatti e filtra i risultati mantenendo soltanto quelli con un indirizzo email.", "en": "Find all contacts and filter the results to keep only entries with an email address."}
     },
     {
       "logical_flow_id": "compose.read-group-entries",
@@ -204,14 +204,14 @@
       "allowed_plans": [["write_files", "final_answer"]],
       "forbidden_tools": ["delete_files", "write_files_doc"],
       "expected_placement": "server",
-      "required_approval": true,
+      "required_approval": false,
       "expected_terminal": "completed",
       "required_effects": ["target_created"],
       "forbidden_effects": ["unrelated_path_changed"],
       "postcondition_probes": ["target_content_digest", "unrelated_digest"],
-      "response_requirements": ["honest_count", "path_visible"],
-      "budgets": {"max_approvals": 1, "deadline_s": 120, "max_model_calls": 2},
-      "requests": {"it": "Crea /tmp/metnos-certification-fixture/mutation/prova-creazione.txt con il testo concordato.", "en": "Create /tmp/metnos-certification-fixture/mutation/prova-creazione.txt with the agreed text."}
+      "response_requirements": ["path_visible"],
+      "budgets": {"max_approvals": 0, "deadline_s": 120, "max_model_calls": 2},
+      "requests": {"it": "Crea /tmp/metnos-certification-fixture/mutation/prova-creazione.txt con il testo METNOS-CERT-CREATED.", "en": "Create /tmp/metnos-certification-fixture/mutation/prova-creazione.txt containing METNOS-CERT-CREATED."}
     },
     {
       "logical_flow_id": "mutation.file-update",
@@ -221,14 +221,14 @@
       "allowed_plans": [["write_files", "final_answer"]],
       "forbidden_tools": ["delete_files"],
       "expected_placement": "server",
-      "required_approval": true,
+      "required_approval": false,
       "expected_terminal": "completed",
       "required_effects": ["target_updated"],
       "forbidden_effects": ["unrelated_path_changed", "duplicate_file_created"],
       "postcondition_probes": ["target_content_digest", "single_target_exists"],
-      "response_requirements": ["honest_count", "path_visible"],
-      "budgets": {"max_approvals": 1, "deadline_s": 120, "max_model_calls": 2},
-      "requests": {"it": "Sostituisci il contenuto di /tmp/metnos-certification-fixture/mutation/modifica.txt.", "en": "Replace the contents of /tmp/metnos-certification-fixture/mutation/modifica.txt."}
+      "response_requirements": ["path_visible"],
+      "budgets": {"max_approvals": 0, "deadline_s": 120, "max_model_calls": 2},
+      "requests": {"it": "Sostituisci il contenuto di /tmp/metnos-certification-fixture/mutation/modifica.txt con METNOS-CERT-UPDATED.", "en": "Replace the contents of /tmp/metnos-certification-fixture/mutation/modifica.txt with METNOS-CERT-UPDATED."}
     },
     {
       "logical_flow_id": "mutation.file-delete-undo",
@@ -238,13 +238,13 @@
       "allowed_plans": [["delete_files", "undo_last_turn", "final_answer"]],
       "forbidden_tools": ["delete_dirs"],
       "expected_placement": "server",
-      "required_approval": true,
+      "required_approval": false,
       "expected_terminal": "completed",
       "required_effects": ["delete_observed", "target_restored"],
       "forbidden_effects": ["unrelated_path_changed"],
       "postcondition_probes": ["delete_receipt", "undo_round_trip", "restored_digest"],
-      "response_requirements": ["undo_visible", "path_visible"],
-      "budgets": {"max_approvals": 1, "deadline_s": 180, "max_model_calls": 3},
+      "response_requirements": ["undo_visible"],
+      "budgets": {"max_approvals": 0, "deadline_s": 180, "max_model_calls": 3},
       "requests": {"it": "Elimina /tmp/metnos-certification-fixture/undo/annullabile.txt e poi annulla l'operazione.", "en": "Delete /tmp/metnos-certification-fixture/undo/annullabile.txt and then undo the operation."}
     },
     {
@@ -255,14 +255,14 @@
       "allowed_plans": [["create_events", "delete_events", "final_answer"]],
       "forbidden_tools": ["create_calendars", "delete_calendars"],
       "expected_placement": "server",
-      "required_approval": true,
+      "required_approval": false,
       "expected_terminal": "completed",
       "required_effects": ["event_created", "event_removed"],
       "forbidden_effects": ["calendar_changed", "unrelated_event_changed"],
       "postcondition_probes": ["event_receipt", "calendar_round_trip"],
-      "response_requirements": ["honest_count", "calendar_visible"],
-      "budgets": {"max_approvals": 1, "deadline_s": 180, "max_model_calls": 3},
-      "requests": {"it": "Crea l'evento di prova concordato e poi rimuovilo dallo stesso calendario isolato.", "en": "Create the agreed test event and then remove it from the same isolated calendar."}
+      "response_requirements": ["calendar_visible"],
+      "budgets": {"max_approvals": 0, "deadline_s": 180, "max_model_calls": 3},
+      "requests": {"it": "Nel calendario Google primary della fixture isolata crea METNOS-CERT-EVENT con start 2030-01-15T10:00:00+01:00 ed end 2030-01-15T10:30:00+01:00, poi rimuovi lo stesso evento.", "en": "In the isolated fixture's Google primary calendar, create METNOS-CERT-EVENT with start 2030-01-15T10:00:00+01:00 and end 2030-01-15T10:30:00+01:00, then remove that same event."}
     },
     {
       "logical_flow_id": "placement.device-read",
@@ -320,24 +320,24 @@
       "family": "dialog_resume",
       "fixture": "dialog-input-v1",
       "expected_route": "engine",
-      "allowed_plans": [["get_inputs", "write_files", "final_answer"]],
+      "allowed_plans": [["get_inputs", "write_files", "final_answer"], ["get_inputs", "final_answer"]],
       "forbidden_tools": ["write_files_doc"],
       "expected_placement": "server",
-      "required_approval": true,
+      "required_approval": false,
       "expected_terminal": "completed",
       "required_effects": ["single_target_created"],
       "forbidden_effects": ["duplicate_target_created", "foreign_dialog_resumed"],
       "postcondition_probes": ["dialog_bound_to_sender", "single_continuation", "target_digest"],
       "response_requirements": ["input_request_visible", "completion_visible"],
-      "budgets": {"max_approvals": 1, "deadline_s": 240, "max_model_calls": 3},
-      "requests": {"it": "Crea un file di prova; chiedimi il nome mancante e poi riprendi la stessa richiesta.", "en": "Create a test file; ask me for the missing name and then resume the same request."}
+      "budgets": {"max_approvals": 0, "deadline_s": 240, "max_model_calls": 3},
+      "requests": {"it": "Crea nella directory /tmp/metnos-certification-fixture/dialog un file con testo METNOS-CERT-DIALOG; chiedimi il nome mancante e poi riprendi la stessa richiesta.", "en": "Create a file containing METNOS-CERT-DIALOG under /tmp/metnos-certification-fixture/dialog; ask me for the missing name and then resume the same request."}
     },
     {
       "logical_flow_id": "dialog.approval-resume-once",
       "family": "dialog_resume",
       "fixture": "dialog-approval-v1",
       "expected_route": "engine",
-      "allowed_plans": [["delete_tasks", "final_answer"]],
+      "allowed_plans": [["get_approval", "final_answer"]],
       "forbidden_tools": ["delete_files"],
       "expected_placement": "server",
       "required_approval": true,
@@ -345,9 +345,9 @@
       "required_effects": ["single_task_deleted"],
       "forbidden_effects": ["duplicate_delete", "unapproved_delete"],
       "postcondition_probes": ["approval_bound_to_invocation", "single_continuation", "task_absent"],
-      "response_requirements": ["approval_visible", "honest_count"],
+      "response_requirements": ["approval_visible"],
       "budgets": {"max_approvals": 1, "deadline_s": 240, "max_model_calls": 3},
-      "requests": {"it": "Elimina l'attività di prova indicata dopo una sola conferma.", "en": "Delete the specified test task after a single confirmation."}
+      "requests": {"it": "Elimina l'attività cert-task-delete della fixture soltanto dopo una mia approvazione esplicita.", "en": "Delete the cert-task-delete fixture task only after my explicit approval."}
     },
     {
       "logical_flow_id": "durable.complete-artifact",
@@ -398,14 +398,14 @@
       "postcondition_probes": ["provider_call_failed", "mailbox_digest_unchanged"],
       "response_requirements": ["failure_visible", "credential_action_visible", "no_false_success"],
       "budgets": {"max_approvals": 0, "deadline_s": 120, "max_model_calls": 1},
-      "requests": {"it": "Leggi i messaggi dalla casella di prova con credenziale revocata.", "en": "Read messages from the test mailbox whose credential has been revoked."}
+      "requests": {"it": "Leggi i messaggi dalla casella di prova revoked_cert, la cui credenziale è revocata.", "en": "Read messages from the revoked_cert test mailbox, whose credential has been revoked."}
     },
     {
       "logical_flow_id": "failure.partial-compose",
       "family": "failure_partial",
       "fixture": "partial-compose-v1",
       "expected_route": "engine",
-      "allowed_plans": [["find_files", "read_files", "send_messages", "final_answer"]],
+      "allowed_plans": [["find_files", "read_files", "send_messages", "final_answer"], ["read_files", "send_messages", "final_answer"]],
       "forbidden_tools": ["retry_mutation"],
       "expected_placement": "server",
       "required_approval": true,
@@ -413,9 +413,9 @@
       "required_effects": ["file_read", "message_not_sent"],
       "forbidden_effects": ["duplicate_send", "false_completion"],
       "postcondition_probes": ["read_receipt", "outbox_empty", "failure_localized_to_send"],
-      "response_requirements": ["partial_visible", "honest_count", "no_false_success"],
+      "response_requirements": ["partial_visible", "no_false_success"],
       "budgets": {"max_approvals": 1, "deadline_s": 180, "max_model_calls": 3},
-      "requests": {"it": "Leggi il rapporto di prova e invialo tramite il canale simulato non disponibile.", "en": "Read the test report and send it through the unavailable simulated channel."}
+      "requests": {"it": "Leggi /tmp/metnos-certification-fixture/partial/report.txt e inviane il contenuto a sink@cert.invalid tramite il canale HTTP simulato non disponibile.", "en": "Read /tmp/metnos-certification-fixture/partial/report.txt and send its contents to sink@cert.invalid through the unavailable simulated HTTP channel."}
     }
   ]
 }

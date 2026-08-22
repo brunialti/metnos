@@ -1085,13 +1085,14 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
         import concurrent.futures as _cf
 
         def _invoca():
-            return agent_runtime.invoke_executor(
-                ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+            # Use the canonical by-name dispatcher: catalog entries for
+            # builtins (delete_tasks, set_tasks, ...) are virtual contracts,
+            # not subprocess programs.  Calling invoke_executor directly on
+            # one of them yields an empty/non-JSON process instead of invoking
+            # its in-process handler.
+            return agent_runtime.invoke_tool_by_name(
+                executor, args, catalog=list(cat.executors.values()),
                 actor=actor, channel=channel,
-                # Un'azione approvata torna dove appartiene: senza
-                # destinazione ogni ripresa girava sul server, anche quando la
-                # domanda era stata posta su un altro computer (turno
-                # a97056e1, 17/8/2026).
                 target_device=target_device,
                 owner_user_id=owner_user_id)
 
@@ -1946,8 +1947,23 @@ def _process_resume_planner_with_dialog_values(
     # METNOS_ENGINE_RESUME, fallback legacy su engine-None).
     try:
         import agent_runtime
+        # `get_inputs` is intentionally removed from executable seed steps so
+        # it cannot shift `${stepN}` references.  Preserve its authoritative
+        # values in the continuation request instead: otherwise the proposer
+        # sees the original "ask me for the missing value" instruction and
+        # opens the same dialog forever.  JSON is bounded by the dialog schema
+        # and keeps names/values exact without inventing natural-language
+        # paraphrases.
+        import json as _json
+        values_note = _json.dumps(
+            dict(values or {}), ensure_ascii=False, sort_keys=True)
+        resumed_query = (
+            original_query
+            + "\n\nDIALOG VALUES ALREADY COLLECTED; do not ask again: "
+            + values_note
+        )
         new_log = agent_runtime.run_turn(
-            original_query,
+            resumed_query,
             actor=actor or "host",
             channel=channel or "",
             conversation_id=conversation_id,

@@ -86,6 +86,15 @@ def test_explicit_already_set_is_respected():
     assert out.get("client") == "local"
 
 
+def test_explicit_provider_reports_only_user_marker():
+    assert br.explicit_provider(
+        "events", "create it on Google primary calendar") == "google_workspace"
+    assert br.explicit_provider(
+        "events", "in the fixture's Google primary calendar") == "google_workspace"
+    assert br.explicit_provider("events", "create it in my calendar") is None
+    assert br.explicit_provider("unknown", "on Google") is None
+
+
 def test_dirs_object_registered_like_files():
     """dirs mono→multi (7/7/2026): default local §10.3, gw solo su marker
     esplicito — stesso modello di files, owner = OBJECT_BACKENDS["dirs"]."""

@@ -183,6 +183,11 @@ def _seed_realistic_into(user_data: Path, user_state: Path,
         try:
             if src.is_dir():
                 shutil.copytree(src, dst, dirs_exist_ok=True)
+            elif name == "tutor_catalog.sqlite":
+                # Detached signature authenticates the exact SQLite bytes.
+                # sqlite3.backup() is logically equivalent but rewrites page
+                # bytes and invalidates the copied signature.
+                shutil.copy2(src, dst)
             else:
                 _copy_db_with_wal(src, dst)
         except (OSError, shutil.Error):
@@ -237,6 +242,9 @@ def _seed_realistic_into(user_data: Path, user_state: Path,
         "runtime.toml", "owned_domains.json", "blocked_origins.json",
         "trusted_origins.json", "mail.env", "github_watched_repos.json",
         "llm_tiers.toml",
+        # Public half only: validates the realistic signed Tutor catalog in
+        # the isolated process without exposing/copying the author private key.
+        "keys/author_pub.bin",
     ]
     for name in items_config:
         src = _LIVE_USER_CONFIG / name
@@ -244,6 +252,7 @@ def _seed_realistic_into(user_data: Path, user_state: Path,
             continue
         dst = user_config / name
         try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dst)
         except (OSError, shutil.Error):
             pass

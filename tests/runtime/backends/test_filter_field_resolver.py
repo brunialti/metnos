@@ -84,6 +84,55 @@ def test_existing_name_contract_is_never_reinterpreted():
     assert resolver.resolve_filter_field("filter_entries", args, "") == args
 
 
+def test_explicit_collection_field_repairs_name_regex_and_inherent_kind():
+    args = {
+        "name_regex": ".*@.*",
+        "kind": "contact",
+        "entries": [
+            {"name": "Ada", "emails": ["ada@example.test"]},
+            {"name": "Bruno", "emails": []},
+        ],
+    }
+    out = resolver.resolve_filter_field(
+        "filter_entries", args,
+        "Find all contacts with an email address")
+    assert "name_regex" not in out
+    assert "kind" not in out
+    assert out["where_field"] == "emails"
+    assert out["where_regex"] == ".*@.*"
+    assert filter_entries.invoke(out)["metadata"]["count_out"] == 1
+
+
+def test_semantic_type_maps_to_unique_collection_presence():
+    """Exact C3 failure shape: type=email is shorthand for emails non-empty."""
+    args = {
+        "kind": "contact",
+        "type": "email",
+        "entries": [
+            {"id": "ada", "name": "Ada", "emails": ["ada@example.test"]},
+            {"id": "bruno", "name": "Bruno", "emails": []},
+            {"id": "cora", "name": "Cora", "emails": ["cora@example.test"]},
+        ],
+    }
+    out = resolver.resolve_filter_field(
+        "filter_entries", args, "Find all contacts with an email address")
+    assert "type" not in out
+    assert "kind" not in out
+    assert out["where_field"] == "emails"
+    assert out["where_present"] is True
+    result = filter_entries.invoke(out)
+    assert [entry["id"] for entry in result["entries"]] == ["ada", "cora"]
+
+
+def test_semantic_type_presence_fails_closed_when_field_is_ambiguous():
+    args = {
+        "type": "tag",
+        "entries": [{"tags": ["x"], "tag": "x"}],
+    }
+    assert resolver.resolve_filter_field(
+        "filter_entries", args, "entries with a tag") == args
+
+
 def test_ambiguous_matching_fields_fail_closed():
     args = {"name_regex": "luxor", "entries": [
         {"destinazione": "Luxor", "descrizione": "Hotel Luxor"},
@@ -104,3 +153,30 @@ def test_invalid_regex_remains_for_executor_error():
     result = filter_entries.invoke(args)
     assert result["ok"] is False
     assert result["error_code"] == "invalid_name_regex"
+
+
+def test_presence_filter_resolves_direct_singular_plural_field():
+    entries = [
+        {"id": "ada", "emails": ["ada@example.test"]},
+        {"id": "bruno", "emails": []},
+        {"id": "cora", "emails": ["cora@example.test"]},
+    ]
+    result = filter_entries.invoke({
+        "entries": entries,
+        "where_field": "email",
+        "where_present": True,
+    })
+    assert result["ok"] is True
+    assert result["metadata"]["criteria"]["where_field"] == "emails"
+    assert [entry["id"] for entry in result["entries"]] == ["ada", "cora"]
+
+
+def test_legacy_not_empty_value_maps_to_typed_presence_filter():
+    result = filter_entries.invoke({
+        "entries": [{"id": "a", "tags": ["x"]}, {"id": "b", "tags": []}],
+        "where_field": "tags",
+        "where_value": "not_empty",
+    })
+    assert result["ok"] is True
+    assert result["metadata"]["criteria"]["where_present"] is True
+    assert [entry["id"] for entry in result["entries"]] == ["a"]

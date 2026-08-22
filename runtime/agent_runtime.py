@@ -5798,6 +5798,7 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
                         actor: str | None = None,
                         channel: str | None = None,
                         owner_user_id: str | None = None,
+                        target_device: str | None = None,
                         turn_id: str | None = None,
                         source_request_id: str | None = None) -> dict:
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
@@ -5821,7 +5822,8 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
                 "error_class": "tool_unknown"}
     result = invoke_executor(
         exec_obj, args, timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
-        actor=actor, channel=channel, owner_user_id=owner_user_id)
+        actor=actor, channel=channel, owner_user_id=owner_user_id,
+        target_device=target_device)
     contract = getattr(exec_obj, "presentation", None)
     if isinstance(result, dict) and contract:
         result = dict(result)
@@ -6510,6 +6512,11 @@ def _run_engine(
 
     runtime_ctx = {
         "actor": actor or "",
+        # The dispatch layer rewrites pending dialog callbacks after executor
+        # execution.  Keep the authenticated immutable owner in that context:
+        # actor/channel alone identify the conversation endpoint, not the
+        # authorization scope used by dialog_pending.
+        "owner_user_id": owner_user_id or "",
         "lang": lang,
         "channel": channel or "",
         # Preferenze di presentazione dell'utente del turno. Consumate SOLO dal

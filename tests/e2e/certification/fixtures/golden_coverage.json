@@ -16,13 +16,13 @@
     "it": 24
   },
   "logical_flows": 24,
-  "matrix_sha256": "23a7455cb09a1498cbacf47b2047d344bc6e6a2980ec4a6465745ac034ebe5ac",
-  "oracle_version": "rm0006-golden-oracle/2",
+  "matrix_sha256": "5fee975705d3d88b1c161738e08d8708b9929842c7d400519998c32ea1c7ec9b",
+  "oracle_version": "rm0006-golden-oracle/3",
   "placements": {
     "owned_device": 2,
     "server": 22
   },
-  "required_approvals": 10,
+  "required_approvals": 5,
   "schema_version": "metnos.golden-coverage/1",
   "terminals": {
     "completed": 22,

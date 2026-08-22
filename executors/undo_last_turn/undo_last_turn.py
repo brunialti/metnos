@@ -350,13 +350,21 @@ def invoke(args):
             # Non incrementiamo undone se il reverse non ha ribaltato veramente.
             skipped += 1
 
-    return {
+    result = {
         "ok": skipped == 0,
         "undone_count": undone,
         "skipped_count": skipped,
         "details": details,
         "turn_id": records[0].get("turn_id") if records else None,
     }
+    if undone and details:
+        first = details[0]
+        result["final_message_hint"] = _msg(
+            "MSG_UNDO_AUTO_FINAL",
+            executor=first.get("executor") or "azione",
+            count=first.get("ok_count") or undone,
+        )
+    return result
 
 
 def main():

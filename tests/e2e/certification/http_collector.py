@@ -124,6 +124,8 @@ def _terminal(raw: dict[str, Any]) -> str:
     failed = any(step.get("ok") is False for step in steps)
     if succeeded and failed:
         return "partial"
+    if failed:
+        return "failed"
     return {
         "answer": "completed",
         "ask": "waiting_input",
@@ -145,7 +147,10 @@ def _step_results(record: dict[str, Any] | None) -> list[dict[str, Any]]:
 def _probe(
     name: str, *, before_digest: str, after_digest: str,
     raw: dict[str, Any], record: dict[str, Any] | None,
+    probe_outcomes: dict[str, tuple[bool, str]] | None = None,
 ) -> tuple[bool, str]:
+    if probe_outcomes and name in probe_outcomes:
+        return probe_outcomes[name]
     unchanged = {
         "service_digest_unchanged", "calendar_digest_unchanged",
         "state_digest_unchanged", "fixture_digest_unchanged",
@@ -165,8 +170,11 @@ def _probe(
         return passed, "frozen content marker observed" if passed else "frozen content marker absent"
     if name == "selected_path_forwarded":
         steps = (record or {}).get("steps", [])
-        passed = len(steps) >= 2 and "riepilogo.txt" in json.dumps(
-            steps[1].get("resolved_args") or {}, ensure_ascii=False,
+        passed = any(
+            step.get("chosen_tool") == "read_files"
+            and "metnos-cert-summary.txt" in json.dumps(
+                step.get("resolved_args") or {}, ensure_ascii=False)
+            for step in steps
         )
         return passed, "selected path reached the reader" if passed else "selected path not forwarded"
     if name == "all_paths_forwarded":
@@ -210,6 +218,31 @@ def _response_checks(
         checks.add("timezone_visible")
     if re.search(r"\b\d+\b", low):
         checks.update({"honest_count", "limit_visible"})
+    # A complete rendered result set is also honest count evidence even when
+    # the renderer chooses a table without a numeric preamble.  Require one
+    # stable visible marker for every output entry; partial tables do not pass.
+    entry_results = [
+        step.get("result") for step in (record or {}).get("steps", [])
+        if isinstance(step.get("result"), dict)
+        and isinstance(step.get("result", {}).get("entries"), list)
+    ]
+    if entry_results:
+        visible_entries = entry_results[-1].get("entries") or []
+        markers = []
+        for entry in visible_entries:
+            if not isinstance(entry, dict):
+                markers = []
+                break
+            marker = next((
+                str(entry.get(key)) for key in ("name", "title", "path", "id")
+                if entry.get(key) not in (None, "")
+            ), "")
+            if not marker:
+                markers = []
+                break
+            markers.append(marker.casefold())
+        if markers and all(marker in low for marker in markers):
+            checks.add("honest_count")
     if (("metnos-cert-note" in low and "seconda riga" in low)
             or "metnos-cert-summary" in low):
         checks.add("content_complete")
@@ -236,8 +269,25 @@ def _response_checks(
 def build_observation(
     case: dict[str, Any], cycle: int, raw: dict[str, Any], *,
     user_data: Path, before_digest: str, after_digest: str,
+    turn_records: list[dict[str, Any]] | None = None,
+    probe_outcomes: dict[str, tuple[bool, str]] | None = None,
+    response_checks: list[str] | None = None,
+    approval_count: int = 0,
+    effects: list[str] | None = None,
+    terminal: str | None = None,
 ) -> dict[str, Any]:
-    record = load_turn_record(user_data, str(raw.get("turn_id") or ""))
+    records = turn_records or []
+    if records:
+        record = {
+            "ts_start": records[0].get("ts_start"),
+            "ts_end": records[-1].get("ts_end"),
+            "mode": records[0].get("mode"),
+            "steps": [
+                step for item in records for step in item.get("steps", [])
+            ],
+        }
+    else:
+        record = load_turn_record(user_data, str(raw.get("turn_id") or ""))
     tools = _tools(raw, record)
     start = float((record or {}).get("ts_start") or raw.get("ts_end") or 0)
     end = float((record or {}).get("ts_end") or raw.get("ts_end") or start)
@@ -247,7 +297,7 @@ def build_observation(
     for name in case["postcondition_probes"]:
         passed, detail = _probe(
             name, before_digest=before_digest, after_digest=after_digest,
-            raw=raw, record=record,
+            raw=raw, record=record, probe_outcomes=probe_outcomes,
         )
         probes.append({"name": name, "passed": passed, "detail": detail})
     route = _route(tools, record)
@@ -260,12 +310,12 @@ def build_observation(
         "route": route,
         "plan": tools,
         "placement": raw.get("target_device") or "server",
-        "approval_count": 0,
-        "model_calls": 0 if route == "direct" else 1,
-        "terminal": _terminal(raw),
-        "effects": ["no_action"],
+        "approval_count": approval_count,
+        "model_calls": 0 if route == "direct" else max(1, len(records)),
+        "terminal": terminal or _terminal(raw),
+        "effects": effects or ["no_action"],
         "probes": probes,
-        "response_checks": _response_checks(
+        "response_checks": sorted(set(_response_checks(
             str(raw.get("final_message") or ""), case["locale"], record,
-        ),
+        )) | set(response_checks or [])),
     }

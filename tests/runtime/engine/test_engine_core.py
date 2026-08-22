@@ -570,6 +570,45 @@ class TestExecutorPlaceholders(unittest.TestCase):
             {"install"},
         )
 
+        # RM-0006 C3: ``email`` is the field used by a filter predicate, not
+        # an implicit send action.  The whole-query lexical bag used to invent
+        # a missing send step and reject an otherwise complete pipeline.
+        contacts_intent = Intent(verb="find", object="contacts", actions=[
+            {"verb": "find", "object": "contacts"},
+            {"verb": "filter", "object": "entries"},
+        ])
+        contacts_plan = Framework(steps=[
+            StepSpec(tool="find_contacts", args={}),
+            StepSpec(tool="filter_entries", args={"from_step": 1}),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        contacts_query = (
+            "Trova tutti i contatti e filtra i risultati mantenendo soltanto "
+            "quelli con un indirizzo email"
+        )
+        self.assertEqual(
+            _dropped_required_verbs(
+                contacts_plan, contacts_query, contacts_intent), set())
+
+        create_file_intent = Intent(
+            verb="create", object="files", actions=[])
+        write_file_plan = Framework(steps=[
+            StepSpec(tool="write_files", args={
+                "path": "/tmp/new.txt", "content": "new",
+            }),
+            StepSpec(tool="final_answer", args={}),
+        ])
+        self.assertEqual(
+            _dropped_required_verbs(
+                write_file_plan, "crea /tmp/new.txt con testo new",
+                create_file_intent), set())
+        write_primary_for_create = Intent(
+            verb="write", object="files", actions=[])
+        self.assertEqual(
+            _dropped_required_verbs(
+                write_file_plan, "crea /tmp/new.txt con testo new",
+                write_primary_for_create), set())
+
     def test_populated_create_satisfies_spurious_same_object_write_action(self):
         """Initial population is part of create, not a second artifact."""
         from engine.dispatch import _dropped_required_verbs
