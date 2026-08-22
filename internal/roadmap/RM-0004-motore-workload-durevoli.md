@@ -2,7 +2,7 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F11 completate; F12 ha superato il gate automatico il 2026-08-22, con smoke esterno autorizzato ancora da eseguire |
+| Stato | `active`; F0-F12 completate il 2026-08-22; F13 non avviata e servizio LRE disattivato |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-22 |
 | Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato. F9 aggiunge facciata e DTO owner-scoped, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, retry e localizzazione. F11 aggiunge il preset immagini privato come registrazione esterna al nucleo. F12 collega l'autorità locale/remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali; nessuna route di ammissione pubblica è abilitata |
@@ -12,14 +12,15 @@
 | Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | Eseguire lo smoke esterno F12 soltanto con destinatario autorizzato; poi aprire F13 senza abilitazioni implicite. Evidenza in `internal/reports/rm0004-f12-verification-20260822.md` |
+| Prossimo gate | Autorizzare e pianificare separatamente F13: migrazione, documentazione pubblica, progetto pilota e distribuzione, senza abilitazioni implicite. Evidenza F12 in `internal/reports/rm0004-f12-verification-20260822.md` |
 | Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
 
 ## 0. Esito della verifica
 
-RM-0004 non duplicava una funzione già presente: chiedeva una semantica che il
-codice non possiede ancora. Questa revisione trasforma il mandato in una
-roadmap attuabile, senza dichiarare costruito alcun componente futuro.
+Al momento della ricognizione, RM-0004 non duplicava una funzione già
+presente: chiedeva una semantica che il codice non possedeva. La roadmap ha
+trasformato quel mandato in un percorso verificabile; F0-F12 sono ora
+realizzate, mentre F13 resta esplicitamente futura.
 
 La conclusione architetturale è netta:
 
@@ -27,10 +28,10 @@ La conclusione architetturale è netta:
    sandbox e concorrenza di una singola invocazione**;
 2. dispone di primitive parziali per pianificazioni temporali, consegna remota,
    undo, eventi SSE e attività asincrone specialistiche;
-3. non dispone di un'autorità persistente che rappresenti un corpus, le sue
-   unità, i tentativi, i checkpoint, le dipendenze e il commit finale;
-4. nessuna composizione delle primitive esistenti, senza un nuovo store e un
-   coordinatore durevole, soddisfa ripresa dopo arresto, fencing e completezza;
+3. F1-F4 hanno introdotto l'autorità persistente per corpus, unità, tentativi,
+   punti di ripresa, dipendenze, commit e artefatti;
+4. F5-F12 hanno aggiunto compilazione, pianificazione equa, esecuzione
+   universale, superfici circoscritte e certificazione avversariale;
 5. il percorso corretto è un **organo interno di Metnos**, non un secondo
    agente: compila un piano tipizzato, reclama un'unità alla volta e la
    esegue sempre attraverso gli executor ammessi e lo scheduler centrale.
@@ -38,9 +39,9 @@ La conclusione architetturale è netta:
 La direzione resta `active`, ma il suo fondamento non è più soltanto proposto.
 ADR 0213 ha chiuso F0; F1 e F2 hanno introdotto un archivio inattivo e
 verificabile; F3 ha dimostrato acquisizione atomica, fencing e ripresa fra
-processi. F4 ha aggiunto il deposito privato content-addressed e la
+processi. F4 ha aggiunto il deposito privato indirizzato dal contenuto e la
 pubblicazione interna riconciliabile. F5 ha compilato e ammesso il piano v1;
-F6 ha collegato il contesto fair allo scheduler centrale; F7 ha verificato il
+F6 ha collegato il contesto equo allo scheduler centrale; F7 ha verificato il
 ponte universale locale, remoto e LLM, inclusa la provenienza durevole. Il
 pacchetto resta inattivo per nuovi invii nel runtime corrente. F8 ha aggiunto
 il ciclo di vita supervisionato, ma il gate distribuito resta disattivato e i
@@ -53,8 +54,9 @@ iniziale né espone percorsi, payload di risultato o link pubblici. F11 dispone
 ora di contratti e prove E2E sintetiche. F12 collega al factory l'autorità
 esplicita delle sorgenti locali e remote, verifica il corpus da 980 file con
 arresti reali e mantiene il preset fuori dal nucleo generico. Il gate
-automatico è positivo, ma il servizio distribuito resta spento: manca ancora
-lo smoke esterno autorizzato e F13 non può essere anticipata.
+automatico e la prova Telegram esterna autorizzata sono positivi. Il servizio
+distribuito resta comunque spento: F13 non è stata avviata e non può essere
+anticipata implicitamente.
 
 ### 0.1 Lessico di verifica
 
@@ -2011,15 +2013,16 @@ inventory
 - **Dipendenze:** gate I2 con F8-F11 integrati.
 - **Scopo:** tentare di falsificare le promesse prima della distribuzione.
 
-- **Stato:** gate automatico superato il 2026-08-22. Il corpus sintetico da
+- **Stato:** gate di uscita superato il 2026-08-22. Il corpus sintetico da
   980 sorgenti usa uno spool senza copia monolitica, sopravvive a `SIGKILL`
   reali al 30%, al 60% e durante il commit dell'artefatto; la pubblicazione è
   riconciliata dopo un ulteriore arresto reale. Autorità locale e attestatore
   remoto sono collegati al factory. Comandi, semi, tempi, limiti e matrice
   delle prove sono in
-  `internal/reports/rm0004-f12-verification-20260822.md`. Lo smoke verso un
-  trasporto Telegram esterno non è stato eseguito senza un destinatario
-  autorizzato: il gate operativo e F13 restano quindi chiusi.
+  `internal/reports/rm0004-f12-verification-20260822.md`. La prova esterna,
+  autorizzata sulla chat verificata dell'amministratore, ha prodotto un solo
+  messaggio, una ricevuta redatta e nessun reinvio; il destinatario ne ha
+  confermato l'arrivo. F13 resta una fase distinta e non è stata avviata.
 
 - **File ammessi:** infrastruttura e dati di prova sotto `tests/`, strumenti di
   test interni e rapporto riservato. Il runtime si modifica solo con correzioni

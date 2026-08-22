@@ -1,9 +1,10 @@
 # RM-0004 — verifica privata F12 (2026-08-22)
 
-Stato: **gate automatico superato; prova operativa esterna non eseguita**.
+Stato: **gate automatico e prova operativa esterna superati**.
 Questo rapporto è interno: non va pubblicato, incluso in Tutor o usato per
-presentare LRE come funzione distribuita. Il servizio è rimasto disattivato
-durante tutte le prove.
+presentare LRE come funzione distribuita. L'unità systemd è rimasta assente e
+inattiva; l'interruttore è stato attivato soltanto nel processo circoscritto
+della prova esterna e ripristinato subito dopo.
 
 ## Esito sintetico
 
@@ -13,7 +14,7 @@ hanno osservato duplicazioni, sorgenti fuori dal denominatore o commit con un
 fence obsoleto. Il corpus da 980 file usa il contenitore su spool: né il
 sigillo né la validazione costruiscono una seconda copia integrale in memoria.
 
-F12 ha inoltre corretto quattro lacune emerse durante la certificazione:
+F12 ha inoltre corretto cinque lacune emerse durante la certificazione:
 
 1. il factory di produzione ora collega esplicitamente l'attestatore delle
    sorgenti remote;
@@ -22,15 +23,19 @@ F12 ha inoltre corretto quattro lacune emerse durante la certificazione:
 3. transazioni e operazioni filesystem critiche espongono punti di arresto
    nominati e condivisi;
 4. il preset immagini è composto nel registro di distribuzione, non importato
-   dal nucleo LRE. Il nucleo non contiene nomi OCR, immagini, `98` o `980`.
+   dal nucleo LRE. Il nucleo non contiene nomi OCR, immagini, `98` o `980`;
+5. la conferma dell'outbox conserva ora il solo identificativo del messaggio
+   restituito da Telegram, sufficiente per la ricevuta operativa, senza
+   registrare chat, destinatario o risposta completa del fornitore.
 
-Resta deliberatamente escluso un invio alla vera Bot API Telegram: il mandato
-non autorizza a scegliere un destinatario né a produrre un messaggio esterno.
-Il test usa l'intero percorso di produzione fino al solo confine di rete,
-sostituito con un trasporto deterministico. Analogamente, il test HTTP usa la
-route `aiohttp` reale ma sostituisce il turno semantico con un risultato
-deterministico. Queste due sostituzioni sono dichiarate e non valgono come
-progetto pilota o certificazione di distribuzione.
+Il 22 agosto 2026 Roberto ha autorizzato esplicitamente la chat Telegram
+dell'amministratore. La prova ha attraversato il metodo del daemon, il gate,
+l'autorità di associazione, la localizzazione, l'outbox e la vera Bot API. Un
+solo messaggio è stato confermato dal fornitore e dal destinatario; il ciclo
+successivo non ha prodotto duplicati. Il test HTTP usa invece la route
+`aiohttp` reale ma sostituisce ancora il turno semantico con un risultato
+deterministico. Questa sostituzione è dichiarata e non equivale a un progetto
+pilota o alla distribuzione della funzione.
 
 ## Modifiche verificate
 
@@ -75,14 +80,23 @@ restano indipendenti dal dominio.
 |---|---|---|
 | Gate integrato F8-F12 | `timeout --signal=TERM --kill-after=15s 420s pytest -q tests/runtime/durable_workloads tests/runtime/executors/test_read_files_ocr_agentic.py tests/runtime/executors/test_executor_scheduler_durable.py tests/runtime/http/test_durable_workloads_api.py tests/runtime/http/test_http_server.py tests/runtime/channels/test_telegram_offset_ack.py tests/runtime/engine/test_finalize_framework_universal.py tests/runtime/infra/test_provenance_equivalence.py tests/runtime/infra/test_guard_corpus_equivalence.py` | 363 passati in 47,19 s |
 | Corpus 980 + processi reali | `timeout --signal=TERM --kill-after=15s 420s pytest -q tests/runtime/durable_workloads/test_image_preset_e2e.py::test_full_image_preset_survives_real_sigkill_at_30_60_and_artifact_commit` | 1 passato in 26,89 s |
-| Suite completa | `timeout --signal=TERM --kill-after=15s 900s pytest -q` | 6.761 passati, 102 esclusi e 1.074 subtest passati in 493,07 s |
+| Suite completa | `timeout --signal=TERM --kill-after=15s 900s pytest -q` | 6.762 passati, 102 esclusi e 1.074 subtest passati in 498,20 s |
 | Golden dei piani reali | `pytest -q tests/runtime/infra/test_guard_corpus_equivalence.py` | 804 piani equivalenti; 7 impronte aggiornate e spiegate per i selettori termici |
 | Controlli di sintassi | `git diff --check` e `python3 -m compileall -q ...` | nessun errore |
+| Telegram esterno | processo monouso `PYTHONPATH=runtime python3`, database temporaneo e `ChannelDaemon._push_durable_workload_notices()` | gate spento: coda immutata; gate acceso: un invio confermato con ricevuta redatta; secondo ciclo: zero invii; conferma del destinatario acquisita |
 
 La suite completa emette quattro avvisi di deprecazione da
 `test_audit_jsonl_bounded.py`: il test combina thread e `fork`. Non sono errori
 LRE, ma l'avviso va eliminato prima di rendere quel test portabile su sistemi
 nei quali `fork` dopo l'avvio di thread non è sicuro.
+
+Una ripetizione precedente della suite ha inoltre intercettato un difetto
+intermittente estraneo a LRE: una traduzione completata al cambio di secondo
+poteva apparire più recente della propria sorgente e diventare falsamente
+autorevole. `align_messages()` distingue ora le traduzioni derivate tramite la
+provenienza persistita e usa il tempo soltanto fra modifiche indipendenti. La
+prova deterministica copre sia la traduzione più recente della sorgente sia una
+vera modifica umana nella lingua di destinazione.
 
 ## Iniezioni e condizioni avverse
 
@@ -161,25 +175,26 @@ produce artefatti né viene presentato come completato.
   Telegram reclama una sola riga outbox, formatta con il canale reale e la
   marca `sent` una volta.
 - Replay: nessun secondo invio.
+- Prova esterna autorizzata: una notifica localizzata è arrivata alla chat
+  verificata dell'amministratore. L'outbox ha registrato `sent`, un solo
+  tentativo e l'identificativo redatto del messaggio; il destinatario ne ha
+  confermato la ricezione.
 - Stato macchina al termine della prova: nessuna unità
   `metnos-durable-worker.service` installata o attiva; il template conserva
   `METNOS_DURABLE_WORKLOADS_ENABLED=0`.
 
-## Limiti e gate residuo
+## Limiti residui e confine F13
 
-1. Non è stato inviato alcun messaggio Telegram esterno. Per farlo servono un
-   destinatario di prova autorizzato e un momento concordato; un invio non può
-   essere inferito dal mandato tecnico.
-2. OCR, LLM e device del corpus sono sostituti deterministici. La prova misura
+1. OCR, LLM e device del corpus sono sostituti deterministici. La prova misura
    il control plane, non durata, qualità, costo o affidabilità dei provider
    reali.
-3. L'ambiente `.venv` locale non contiene `jsonschema==4.10.3`, pur dichiarato
+2. L'ambiente `.venv` locale non contiene `jsonschema==4.10.3`, pur dichiarato
    in `requirements.txt`; i comandi sopra hanno usato il Python di sistema,
    che contiene la versione richiesta. Questa anomalia dell'ambiente non è
    stata mascherata né attribuita al runtime.
-4. F13, installazione dell'unità, attivazione, documentazione pubblica e
+3. F13, installazione dell'unità, attivazione, documentazione pubblica e
    progetto pilota restano fuori da F12.
 
-Conclusione: l'implementazione e il gate automatico F12 sono positivi. Il gate
-operativo resta aperto soltanto per lo smoke esterno autorizzato; fino ad
-allora non si abilita il worker e non si descrive LRE come funzione pubblica.
+Conclusione: F12 ha superato sia il gate automatico sia quello operativo. Ciò
+non abilita implicitamente F13: il worker resta spento e LRE non viene ancora
+presentato come funzione distribuita.
