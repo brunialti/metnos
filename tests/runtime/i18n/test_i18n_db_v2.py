@@ -460,15 +460,50 @@ class TestAlignMessagesLayer3(unittest.TestCase):
             f"EN should be marked needs_translation=1; results={results}")
 
     def test_align_messages_in_sync_no_op(self):
-        """IT + EN allineati → align_messages no-op."""
+        """Una traduzione più recente resta derivata dalla propria sorgente."""
         self.i18n.set("greeting", "it", "Ciao")
         self.i18n.set("greeting", "en", "Hi", source_lang="it")
         self.i18n.set_translated("greeting", "en", "Hi")
+        # Rende deterministico il confine che prima falliva soltanto quando
+        # set_translated attraversava il secondo dell'inserimento sorgente.
+        c = self.i18n._open()
+        c.execute(
+            "UPDATE i18n SET updated_at="
+            "strftime('%Y-%m-%dT%H:%M:%SZ','now', '+2 seconds') "
+            "WHERE key=? AND lang=?",
+            ("greeting", "en"),
+        )
+        c.commit()
         from i18n_translator import align_messages
         results = align_messages(target_langs=["it", "en"])
         for r in results:
             if r.get("key") == "greeting":
                 self.assertEqual(r.get("status"), "in_sync")
+                self.assertEqual(r.get("edit_source"), "it")
+
+    def test_align_messages_accepts_a_newer_independent_target_edit(self):
+        """Una modifica umana perde la provenienza derivata e diventa sorgente."""
+        self.i18n.set("greeting", "it", "Ciao")
+        self.i18n.set("greeting", "en", "Hi", source_lang="it")
+        self.i18n.set_translated("greeting", "en", "Hi")
+        self.i18n.set("greeting", "en", "Hello, edited")
+        c = self.i18n._open()
+        c.execute(
+            "UPDATE i18n SET updated_at="
+            "strftime('%Y-%m-%dT%H:%M:%SZ','now', '+2 seconds') "
+            "WHERE key=? AND lang=?",
+            ("greeting", "en"),
+        )
+        c.commit()
+
+        from i18n_translator import align_messages
+        result = next(
+            row for row in align_messages(target_langs=["it", "en"])
+            if row.get("key") == "greeting"
+        )
+
+        self.assertEqual(result.get("edit_source"), "en")
+        self.assertEqual(result.get("marked_for_retranslate"), ["it"])
 
     def test_align_messages_dry_run_no_modify(self):
         """dry_run=True: niente UPDATE."""

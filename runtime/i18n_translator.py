@@ -1431,16 +1431,17 @@ def align_messages(*, target_langs: list[str] | None = None,
     """
     conn = i18n._open()
     rows = conn.execute(
-        "SELECT key, lang, text, version_hash, source_text_hash, updated_at "
+        "SELECT key, lang, text, version_hash, source_lang, "
+        "source_text_hash, updated_at "
         "FROM i18n WHERE text IS NOT NULL"
     ).fetchall()
     if not rows:
         return []
 
     # Group per key.
-    by_key: dict[str, list[tuple[str, str, str | None, str | None, str]]] = {}
+    by_key: dict[str, list[dict[str, str | None]]] = {}
     for row in rows:
-        key, lang, text, vhash, src_hash, upd_at = row
+        key, lang, text, vhash, source_lang, src_hash, upd_at = row
         # Backfill version_hash on the fly se mancante.
         if not vhash:
             vhash = _sha256_text(text)
@@ -1449,7 +1450,14 @@ def align_messages(*, target_langs: list[str] | None = None,
                     "UPDATE i18n SET version_hash=? WHERE key=? AND lang=?",
                     (vhash, key, lang),
                 )
-        by_key.setdefault(key, []).append((lang, text, vhash, src_hash, upd_at))
+        by_key.setdefault(key, []).append({
+            "lang": lang,
+            "text": text,
+            "version_hash": vhash,
+            "source_lang": source_lang,
+            "source_text_hash": src_hash,
+            "updated_at": upd_at,
+        })
     if not dry_run:
         conn.commit()
 
@@ -1462,19 +1470,44 @@ def align_messages(*, target_langs: list[str] | None = None,
         if len(entries) < 2:
             results.append({"key": key, "status": "single_lang"})
             continue
-        # Edit-source: row con updated_at piu' recente, tie-break alfabetico
-        # sul lang.
-        sorted_entries = sorted(entries, key=lambda e: (e[4], e[0]), reverse=True)
-        edit_src_lang, edit_src_text, edit_src_vhash, _, _ = sorted_entries[0]
-        # Per ogni altra lang in target_langs: se source_text_hash !=
-        # edit_src_vhash → mark needs_translation=1.
+        versions = {
+            str(entry["lang"]): entry["version_hash"] for entry in entries
+        }
+        # Una riga che dichiara come sorgente un'altra lingua presente è una
+        # traduzione derivata: il suo timestamp di completamento non può
+        # renderla più autorevole della sorgente. Tra le sole modifiche
+        # indipendenti resta il criterio latest-wins deterministico. Il
+        # fallback copre cataloghi legacy nei quali tutte le righe formano un
+        # ciclo di provenienza malformato.
+        independent = [
+            entry for entry in entries
+            if not (
+                entry["source_lang"]
+                and entry["source_lang"] != entry["lang"]
+                and entry["source_lang"] in versions
+            )
+        ]
+        candidates = independent or entries
+        edit_source = sorted(
+            candidates,
+            key=lambda entry: (entry["updated_at"], entry["lang"]),
+            reverse=True,
+        )[0]
+        edit_src_lang = str(edit_source["lang"])
+        edit_src_vhash = edit_source["version_hash"]
+        # Per ogni altra lingua: provenienza e hash devono riferirsi entrambi
+        # alla versione autorevole corrente.
         needing: list[str] = []
-        for lang, _text, _vh, src_hash, _upd in entries:
+        for entry in entries:
+            lang = str(entry["lang"])
             if lang == edit_src_lang:
                 continue
             if lang not in target_langs:
                 continue
-            if src_hash != edit_src_vhash:
+            if (
+                entry["source_lang"] != edit_src_lang
+                or entry["source_text_hash"] != edit_src_vhash
+            ):
                 needing.append(lang)
                 n_marked += 1
                 if not dry_run:
