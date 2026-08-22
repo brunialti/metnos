@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; LRE (Long Run Engine)</title>
+ <meta name="description" content="Guida a LRE, il motore universale di Metnos per attività lunghe, persistenti, riprendibili e governate.">
+ <link rel="canonical" href="https://metnos.com/it/system/lre">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/lre">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/lre">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>LRE (Long Run Engine)</h1>
+
+<p class="lead">LRE è il motore universale con cui Metnos gestisce attività
+troppo lunghe o troppo ampie per restare legate a un singolo turno di chat. Il
+lavoro viene registrato, suddiviso in unità verificabili e affidato a un worker
+supervisionato. La chat restituisce subito una ricevuta; l'esecuzione continua
+in modo indipendente e può riprendere dopo un riavvio.</p>
+
+<h2 id="non-preset">Un motore, più tipi di lavoro</h2>
+
+<p>Il nucleo di LRE non conosce immagini, posta, database o altri domini. Riceve
+soltanto piani registrati che dichiarano sorgenti, dipendenze, schemi di uscita,
+risorse, limiti, tempi e comportamento in caso di errore. Un nuovo tipo di
+attività si aggiunge come registrazione verificata; non crea un ramo speciale
+nel motore.</p>
+
+<p>La prima registrazione distribuita elabora raccolte di immagini e produce
+domande, soluzioni, appunti e formulario. È un caso d'uso collaudato del
+percorso generale, non la definizione di LRE. Altri lavori potranno usare lo
+stesso motore quando disporranno di contratti e prove equivalenti.</p>
+
+<h2 id="flusso">Che cosa accade dopo una richiesta</h2>
+
+<ol>
+ <li><strong>Ammissione.</strong> Metnos riconosce un profilo registrato, verifica che LRE sia abilitato e controlla autorità, sorgenti, piano e budget.</li>
+ <li><strong>Inventario sigillato.</strong> Le sorgenti ricevono identità e ordine stabili; il denominatore del lavoro diventa verificabile.</li>
+ <li><strong>Pianificazione persistente.</strong> Fasi e unità vengono registrate in una revisione immutabile.</li>
+ <li><strong>Esecuzione governata.</strong> Il coordinatore propone unità pronte; lo scheduler centrale assegna risorse e concorrenza.</li>
+ <li><strong>Consolidamento.</strong> Riduzioni gerarchiche evitano di caricare un corpus intero in memoria o in un unico prompt.</li>
+ <li><strong>Chiusura.</strong> LRE dichiara il completamento soltanto dopo aver contabilizzato le unità e convalidato gli artefatti richiesti.</li>
+</ol>
+
+<p>Non esiste un limite nascosto di 98 o 980 elementi. Ogni revisione ha però
+limiti finiti e visibili, coerenti con le risorse approvate. Raccolte grandi
+avanzano per lotti e riduzioni; non vengono accumulate senza controllo. Se un
+budget si esaurisce, il lavoro espone uno stato strutturato invece di fingere
+una copertura completa.</p>
+
+<h2 id="executor">Executor locali, remoti e intelligenti</h2>
+
+<p>Ogni fase dichiara <em>dove</em> e <em>come</em> può essere eseguita. Un
+executor locale opera sul server; un executor remoto opera su un dispositivo
+associato. Entrambi possono essere deterministici oppure usare un modello
+linguistico o di visione. La collocazione non determina l'intelligenza: sono
+due proprietà indipendenti.</p>
+
+<p>Le unità indipendenti possono procedere in parallelo, ma non creano gruppi di
+thread o processi privati. Tutta la concorrenza passa dallo scheduler centrale,
+che applica limiti globali, per proprietario, per lavoro, per modello e per
+dispositivo. Il valore mostrato come “concorrenza massima” è un tetto, non una
+promessa di usare sempre tutti gli slot.</p>
+
+<h2 id="ripresa">Interruzioni, ritentativi e duplicazioni</h2>
+
+<table>
+ <thead><tr><th>Situazione</th><th>Comportamento di LRE</th></tr></thead>
+ <tbody>
+  <tr><td>Worker o computer riavviato</td><td>Lo stato resta nel deposito persistente; lease scadute e unità incompiute vengono riconciliate per lotti.</td></tr>
+  <tr><td>Tentativo recuperabile interrotto</td><td>Può essere eseguito almeno una volta di nuovo, con ritardo e numero di tentativi registrati.</td></tr>
+  <tr><td>Due tentativi terminano per la stessa unità</td><td>Il fencing e il commit condizionale ammettono un solo risultato per unità e revisione.</td></tr>
+  <tr><td>Stessa richiesta HTTP riconsegnata con la stessa chiave di idempotenza</td><td>Restituisce lo stesso lavoro; non crea una seconda revisione o un secondo corpus.</td></tr>
+  <tr><td>Effetto esterno dal risultato ambiguo</td><td>Non viene ripetuto automaticamente se non è idempotente o riconciliabile; richiede attenzione.</td></tr>
+ </tbody>
+</table>
+
+<div class="callout note"><p><strong>Garanzia corretta.</strong> LRE usa
+tentativi “almeno una volta” e un solo commit valido per unità. Può rendere un
+effetto osservabile una sola volta quando l'operazione è pura, idempotente o
+riconciliabile. Non promette un <em>exactly once</em> universale fra database,
+filesystem, fornitori e dispositivi remoti.</p></div>
+
+<h2 id="coerenza">Coerenza durante l'evoluzione del lavoro</h2>
+
+<p>Piano, inventario e collegamenti agli executor o ai modelli sono congelati
+nella revisione ammessa. Una modifica incompatibile crea una nuova revisione;
+non cambia in silenzio metà del lavoro già avviato. I risultati possono essere
+riusati soltanto quando i digest delle dipendenze coincidono. Se cambia una
+sorgente, si invalidano l'unità interessata e i suoi discendenti, non i fratelli
+indipendenti.</p>
+
+<p>La pausa impedisce nuovi reclami ma consente a un commit già in corso di
+chiudersi in sicurezza. L'annullamento è cooperativo e impedisce nuove unità.
+I comandi di pausa, ripresa, annullamento e decisione su un errore usano una
+versione attesa e una chiave di idempotenza, così anche il comando può essere
+riconsegnato senza moltiplicarne gli effetti.</p>
+
+<h2 id="uso">Come si usa</h2>
+
+<ol>
+ <li>In <a href="services.html">Sistema → Servizi</a>, verifica che il worker LRE sia sano e attiva la funzione. Nelle nuove installazioni è disattivata per impostazione predefinita.</li>
+ <li>Descrivi in chat l'esito desiderato e indica le sorgenti autorizzate. Metnos può ammettere soltanto profili già registrati.</li>
+ <li>Conserva la ricevuta con il <code>workload_id</code> e apri <code>/agent/workloads</code>.</li>
+ <li>Controlla stato, denominatore, budget, fasi ed eventi. Usa i comandi mostrati soltanto quando sono abilitati per lo stato corrente.</li>
+ <li>Al termine, verifica digest e convalida degli artefatti prima di scaricarli.</li>
+</ol>
+
+<p>Disattivare la funzione ferma i nuovi invii ma non cancella cronologia e
+artefatti. La cancellazione dei dati segue invece il ciclo di vita del
+proprietario e le regole di conservazione. Download e viste restano
+circoscritti all'identità autorizzata.</p>
+
+<h2 id="problemi">Se qualcosa non avanza</h2>
+
+<ul>
+ <li><strong>Worker non disponibile:</strong> controlla salute e stato desiderato in Servizi; non riattivare ripetutamente il gate.</li>
+ <li><strong>Unità in attesa:</strong> apri eventi e unità per distinguere un ritentativo programmato da una richiesta di attenzione.</li>
+ <li><strong>Modello o dispositivo indisponibile:</strong> ripristina il collegamento registrato; non sostituirlo a metà revisione.</li>
+ <li><strong>Spazio insufficiente:</strong> libera spazio senza rimuovere manualmente blob referenziati; una mancanza viene rilevata come errore di integrità.</li>
+ <li><strong>Effetto ambiguo:</strong> verifica l'esito sul sistema autorevole prima di autorizzare un nuovo tentativo.</li>
+</ul>
+
+<h2 id="schermata">La console LRE</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-lre-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale della console LRE con elenco dei lavori, dettaglio, digest, budget e fasi.">
+  <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:34%;--y:17%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:58%;--y:22%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:76%;--y:37%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:77%;--y:62%" aria-hidden="true">5</span>
+  <span class="ui-badge" style="--x:76%;--y:88%" aria-hidden="true">6</span>
+ </div>
+ <figcaption>Un lavoro pilota completato: la console espone il denominatore reale, i limiti ammessi e la composizione del piano.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Navigazione generale.</strong> La console LRE conserva la stessa struttura della HTTP UI amministrativa.</li>
+ <li><strong>Elenco dei lavori.</strong> Stato e avanzamento restano consultabili dopo refresh, logout o riavvio.</li>
+ <li><strong>Quadro del lavoro.</strong> Mostra priorità, stato, unità contabilizzate e data di creazione.</li>
+ <li><strong>Digest della revisione.</strong> Rendono riconoscibili piano e inventario effettivamente ammessi.</li>
+ <li><strong>Budget approvato.</strong> Espone tetti di unità, tentativi, durata, byte, token, artefatti e concorrenza.</li>
+ <li><strong>Fasi.</strong> Per ogni fase indica executor, avanzamento, tempo massimo, obbligatorietà e risorse.</li>
+</ol>
+<p class="ui-privacy-note">Il corpus mostrato è sintetico e non sensibile; l'identificativo è operativo e non contiene dati personali.</p>
+
+</body>
+</html>

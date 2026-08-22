@@ -323,6 +323,42 @@ def write_private_text(path: Path, text: str, *, encoding: str = "utf-8") -> Non
             pass
 
 
+def create_private_text(
+    path: Path,
+    text: str,
+    *,
+    encoding: str = "utf-8",
+) -> bool:
+    """Create one private file without replacing a concurrent writer.
+
+    A crash can leave an incomplete file, which every security-sensitive
+    reader must reject.  This is preferable to overwriting configuration that
+    another installer or administrator created between an existence check and
+    the write.
+    """
+
+    path = Path(path)
+    ensure_private_dir(path.parent)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except FileExistsError:
+        return False
+    try:
+        os.fchmod(descriptor, 0o600)
+    except (AttributeError, OSError):
+        pass
+    with os.fdopen(descriptor, "w", encoding=encoding) as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    ensure_private_file(path)
+    # A failed write intentionally leaves a fail-closed partial file. Removing
+    # it here could unlink a replacement installed after a platform failure.
+    return True
+
+
 def append_private_bytes(path: Path, data: bytes) -> None:
     """Append one complete record to a private file under an advisory lock."""
 

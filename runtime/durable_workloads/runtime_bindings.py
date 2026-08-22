@@ -7,6 +7,7 @@ through the same small interface, and duplicate authority fails at startup.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -33,6 +34,7 @@ from .coordinator import WorkerCapabilities
 from .execution import DurableExecutionBridge
 from .internal_runners import approved_internal_runners
 from .models import DurableEffect, RunnerKind
+from .schema import validate_plan
 from .source_authority import RemoteAttestor, SourceAuthority
 from .storage import DurableWorkloadStore, StoreNotReadyError
 from .worker import DurableWorker
@@ -65,6 +67,7 @@ class RuntimeRegistration:
     output_schemas: OutputSchemaResolver
     output_schema_names: tuple[str, ...]
     workload_invoker: Callable[[str, Mapping[str, Any], object], object] | None = None
+    candidate_plan_factory: Callable[[], Mapping[str, Any]] | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not _REGISTRATION_RE.fullmatch(self.name):
@@ -91,6 +94,11 @@ class RuntimeRegistration:
             raise ValueError("runtime output schema names are not canonical")
         if len(self.output_schema_names) != len(set(self.output_schema_names)):
             raise ValueError("runtime output schema names are duplicated")
+        if (
+            self.candidate_plan_factory is not None
+            and not callable(self.candidate_plan_factory)
+        ):
+            raise TypeError("runtime candidate plan factory must be callable")
 
 
 class _RunnerRouter:
@@ -205,6 +213,7 @@ class RuntimeRegistry:
         self._workload_invokers: dict[
             str, Callable[[str, Mapping[str, Any], object], object]
         ] = {}
+        self._candidate_plan_json: dict[str, str] = {}
         for registration in self._registrations:
             for kind, name in registration.runner_bindings:
                 if RunnerKind(kind) is not RunnerKind.WORKLOAD:
@@ -213,6 +222,38 @@ class RuntimeRegistry:
                 if name in self._workload_invokers:
                     raise ValueError("duplicate runtime workload invoker")
                 self._workload_invokers[name] = registration.workload_invoker
+            if registration.candidate_plan_factory is not None:
+                try:
+                    candidate = registration.candidate_plan_factory()
+                    canonical = validate_plan(candidate)
+                    validated = json.loads(canonical)
+                except Exception as exc:
+                    raise ValueError(
+                        "runtime candidate plan declaration is invalid"
+                    ) from exc
+                if validated["plan_id"] != registration.name:
+                    raise ValueError(
+                        "runtime candidate plan identity does not match its registration"
+                    )
+                self._candidate_plan_json[registration.name] = canonical
+
+    @property
+    def admission_names(self) -> tuple[str, ...]:
+        """Return the closed, canonical set of plans open to admission."""
+
+        return tuple(sorted(self._candidate_plan_json, key=str.encode))
+
+    def candidate_plan(self, name: str) -> dict[str, Any]:
+        """Return a fresh admitted-plan candidate from the closed registry."""
+
+        try:
+            canonical = self._candidate_plan_json[name]
+        except KeyError as exc:
+            raise LookupError("candidate plan is not registered for LRE") from exc
+        value = json.loads(canonical)
+        if not isinstance(value, dict):  # guarded by validate_plan at registration
+            raise RuntimeError("registered candidate plan is not an object")
+        return value
 
     def invoke_workload(
         self,

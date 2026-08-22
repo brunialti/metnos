@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,32 @@ def _venv_dir() -> Path:
     if configured:
         return Path(configured)
     return _repo_dir() / ".venv"
+
+
+def _config_dir() -> Path:
+    return Path(os.environ.get(
+        "METNOS_USER_CONFIG", Path.home() / ".config" / "metnos",
+    ))
+
+
+def _ensure_lre_feature_config() -> tuple[Path, bool]:
+    """Install the private disabled gate without replacing upgrade intent."""
+
+    runtime_dir = str(_repo_dir() / "runtime")
+    if runtime_dir not in sys.path:
+        sys.path.insert(0, runtime_dir)
+    from lre_config import (  # imported only during the write phase
+        FEATURE_CONFIG_FILENAME,
+        ensure_default_feature_configuration,
+    )
+
+    path = _config_dir() / FEATURE_CONFIG_FILENAME
+    created = ensure_default_feature_configuration(path=path)
+    ui.ok(i18n.t(
+        "p5_lre_config_created" if created else "p5_lre_config_preserved",
+        path=path,
+    ))
+    return path, created
 
 
 def _completion_env_line() -> str:
@@ -183,6 +210,19 @@ def _systemctl_system(*args: str) -> subprocess.CompletedProcess:
     )
 
 
+def _start_legacy_companion(unit: str) -> tuple[bool, str]:
+    """Persist and start one non-listening user unit beside legacy HTTP."""
+
+    wanted = _systemctl_user("add-wants", "default.target", unit)
+    if wanted.returncode != 0:
+        return False, (wanted.stderr or wanted.stdout).strip()
+    started = _systemctl_user("start", unit)
+    return (
+        started.returncode == 0,
+        (started.stderr or started.stdout).strip(),
+    )
+
+
 def _legacy_system_http_active() -> bool:
     """Fail closed unless the system manager proves no legacy listener."""
     result = _systemctl_system(
@@ -220,7 +260,11 @@ def _runtime_module_importable(module: str) -> bool:
     if not venv_py.exists() or not repo.is_dir():
         return False
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(repo) + ":" + env.get("PYTHONPATH", "")
+    search_roots = [str(repo), str(repo / "runtime")]
+    inherited = env.get("PYTHONPATH", "")
+    if inherited:
+        search_roots.append(inherited)
+    env["PYTHONPATH"] = os.pathsep.join(search_roots)
     r = subprocess.run(
         [str(venv_py), "-c", f"import {module}"],
         env=env, capture_output=True, text=True, timeout=15,
@@ -298,6 +342,10 @@ def run(args: Any) -> dict[str, Any]:
         _install_unit(
             tmpl_dir / template_name, unit_name, port, lang, http_host,
         )
+    lre_config_path, lre_config_created = _ensure_lre_feature_config()
+    notes["lre_config_path"] = str(lre_config_path)
+    notes["lre_config_created"] = lre_config_created
+    notes["lre_enabled_by_default"] = False
     notes["stack_units_installed"] = True
 
     # 1b. Persistent virtual graphical surface for the Playwright Side browser.
@@ -346,11 +394,18 @@ def run(args: Any) -> dict[str, Any]:
         "runtime.metnos_http_server")
     i18n_runtime_importable = _runtime_module_importable(
         "runtime.admin.i18n_cli")
-    runtime_importable = http_runtime_importable and i18n_runtime_importable
+    lre_runtime_importable = _runtime_module_importable(
+        "durable_workloads.service")
+    runtime_importable = (
+        http_runtime_importable
+        and i18n_runtime_importable
+        and lre_runtime_importable
+    )
     missing_core_modules = [
         name for name, available in (
             ("runtime.metnos_http_server", http_runtime_importable),
             ("runtime.admin.i18n_cli", i18n_runtime_importable),
+            ("durable_workloads.service", lre_runtime_importable),
         )
         if not available
     ]
@@ -374,29 +429,37 @@ def run(args: Any) -> dict[str, Any]:
         notes["http_healthy"] = _wait_for_http(port)
         if runtime_importable:
             ui.step("Enabling bounded watchdog for the legacy baseline")
-            wanted = _systemctl_user(
-                "add-wants", "default.target", "metnos-stack-watchdog.timer")
-            started = (
-                _systemctl_user("start", "metnos-stack-watchdog.timer")
-                if wanted.returncode == 0 else wanted
+            notes["watchdog_enabled"], watchdog_detail = (
+                _start_legacy_companion("metnos-stack-watchdog.timer")
             )
-            notes["watchdog_enabled"] = (
-                wanted.returncode == 0 and started.returncode == 0)
             if notes["watchdog_enabled"]:
                 ui.ok("metnos-stack-watchdog.timer enabled")
             else:
                 ui.warn(
                     "watchdog timer could not be enabled: "
-                    f"{(started.stderr or wanted.stderr).strip()}"
+                    f"{watchdog_detail}"
                 )
+
+            ui.step(i18n.t("p5_step_lre_worker"))
+            notes["lre_worker_enabled"], lre_detail = (
+                _start_legacy_companion("metnos-durable-worker.service")
+            )
+            if notes["lre_worker_enabled"]:
+                ui.ok(i18n.t("p5_lre_worker_running"))
+            else:
+                ui.warn(i18n.t(
+                    "p5_lre_worker_failed", detail=lre_detail,
+                ))
         else:
             notes["watchdog_enabled"] = False
+            notes["lre_worker_enabled"] = False
     elif not runtime_importable:
         notes["http_enabled"] = False
         notes["http_healthy"] = False
         notes["target_enabled"] = False
         notes["migration_required"] = False
         notes["watchdog_enabled"] = False
+        notes["lre_worker_enabled"] = False
     else:
         # Remove an upgrade-era direct default.target symlink without stopping
         # the service.  metnos.target now owns the start/stop relationship.
@@ -416,6 +479,7 @@ def run(args: Any) -> dict[str, Any]:
             notes["target_enabled"] = True
         notes["migration_required"] = False
         notes["watchdog_enabled"] = bool(notes.get("target_enabled"))
+        notes["lre_worker_enabled"] = bool(notes.get("target_enabled"))
 
         # 5. Health probe (only if start succeeded)
         if notes["http_enabled"]:
@@ -430,13 +494,19 @@ def run(args: Any) -> dict[str, Any]:
     # 6. Telegram (optional, only if unit was installed)
     if telegram_module_ok:
         ui.step("Starting metnos-telegram-daemon.service")
-        r = _systemctl_user("enable", "--now", "metnos-telegram-daemon.service")
-        if r.returncode != 0:
-            ui.warn(f"telegram daemon failed to start: {r.stderr.strip()}")
-            notes["telegram_started"] = False
+        if legacy_http_active:
+            telegram_started, telegram_detail = _start_legacy_companion(
+                "metnos-telegram-daemon.service")
         else:
+            result = _systemctl_user(
+                "enable", "--now", "metnos-telegram-daemon.service")
+            telegram_started = result.returncode == 0
+            telegram_detail = (result.stderr or result.stdout).strip()
+        notes["telegram_started"] = telegram_started
+        if telegram_started:
             ui.ok("telegram daemon running")
-            notes["telegram_started"] = True
+        else:
+            ui.warn(f"telegram daemon failed to start: {telegram_detail}")
 
     # 7. The i18n timer is a required dependency of the integrated target.
     #    A legacy system-HTTP installation cannot start that target safely, so
@@ -444,14 +514,13 @@ def run(args: Any) -> dict[str, Any]:
     if notes.get("target_enabled"):
         notes["i18n_translator_enabled"] = True
     elif runtime_importable and legacy_http_active:
-        r = _systemctl_user(
-            "enable", "--now", "metnos-i18n-translator.timer")
-        if r.returncode != 0:
-            ui.warn(f"i18n translator timer failed to enable: {r.stderr.strip()}")
-            notes["i18n_translator_enabled"] = False
-        else:
+        enabled, detail = _start_legacy_companion(
+            "metnos-i18n-translator.timer")
+        notes["i18n_translator_enabled"] = enabled
+        if enabled:
             ui.ok("i18n translator timer enabled")
-            notes["i18n_translator_enabled"] = True
+        else:
+            ui.warn(f"i18n translator timer failed to enable: {detail}")
     else:
         notes["i18n_translator_enabled"] = False
 

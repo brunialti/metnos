@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Safety</title>
+ <meta name="description" content="Come le firme di safety ammettono, subordinano a conferma o bloccano i comandi in Metnos.">
+ <link rel="canonical" href="https://metnos.com/it/system/safety">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/safety">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/safety">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>Safety</h1>
+
+<p class="lead">La pagina Safety rende visibili le firme deterministiche che
+governano i comandi privilegiati. Prima dell'esecuzione, Metnos trasforma il
+comando in una forma canonica e la confronta con regole esplicite. Questa
+decisione non è affidata a un modello linguistico.</p>
+
+<h2 id="firme">Che cos'è una firma</h2>
+
+<p>Una firma descrive la forma di un comando, per esempio binario, azione e tipo
+di bersaglio. Il simbolo <code>*</code> rappresenta una parte ammessa come
+variabile. La canonicalizzazione evita che differenze cosmetiche o argomenti
+fuori posizione aggirino il controllo.</p>
+
+<table>
+ <thead><tr><th>Classe</th><th>Effetto</th></tr></thead>
+ <tbody>
+  <tr><td><strong>whitelist</strong></td><td>Il comando è approvato e può procedere senza una nuova conferma.</td></tr>
+  <tr><td><strong>graylist</strong></td><td>Il comando richiede una conferma esplicita prima dell'esecuzione.</td></tr>
+  <tr><td><strong>blacklist</strong></td><td>Il comando è bloccato; una modifica amministrativa deliberata può cambiare la regola.</td></tr>
+  <tr><td><strong>forbidden</strong></td><td>Il comando viola un divieto non negoziabile e non può essere sbloccato da un modello o da una conferma ordinaria.</td></tr>
+ </tbody>
+</table>
+
+<p>Il controllo applica prima i divieti più forti. La severità descrive la
+conseguenza potenziale, mentre l'origine distingue regole distribuite, curate
+dall'utente o maturate dal processo previsto. Il conteggio degli usi aiuta a
+revisionare le regole, ma non trasforma da solo un divieto assoluto in un
+permesso.</p>
+
+<h2 id="confini">Safety, autorità e conferma</h2>
+
+<p>Una firma in whitelist non concede da sola l'autorità a un utente. Prima
+restano validi identità, ruolo, autonomia, proprietario, policy dell'executor e
+ambito della sorgente. La firma risponde a una domanda più circoscritta: quella
+forma di comando è ammessa, richiede conferma o deve essere fermata?</p>
+
+<p>Allo stesso modo, una conferma non può superare <code>forbidden</code>. Il
+modello può segnalare un rischio aggiuntivo, ma non rimuovere un blocco
+deterministico. Questo ordine evita che una formulazione persuasiva sostituisca
+una regola di sicurezza.</p>
+
+<h2 id="uso">Come leggere la pagina</h2>
+
+<p>Usa i filtri per isolare una classe, cerca la firma canonica del comando e
+controlla severità, origine e numero di corrispondenze. Se un'azione è stata
+fermata, non aggiungere una regola più ampia del necessario: correggi la firma
+più specifica e riesamina il bersaglio reale.</p>
+
+<h2 id="schermata">La schermata Safety</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-safety-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale Safety della HTTP UI, con guida alle classi, filtri e tabella delle firme.">
+  <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:49%;--y:13%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:42%;--y:31%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:52%;--y:42%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:66%;--y:63%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>La pagina accompagna la tabella con una legenda operativa: la classe non va interpretata soltanto dal colore.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Navigazione.</strong> Safety è una componente distinta da utenti, servizi ed executor.</li>
+ <li><strong>Forma canonica.</strong> La guida spiega come viene rappresentato un comando prima del confronto.</li>
+ <li><strong>Classi.</strong> Ogni classe dichiara con parole esplicite il proprio effetto.</li>
+ <li><strong>Filtri.</strong> Restringono la tabella senza modificare le regole.</li>
+ <li><strong>Provenienza.</strong> Firma, classe, severità, origine, usi e data consentono una revisione verificabile.</li>
+</ol>
+
+</body>
+</html>

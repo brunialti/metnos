@@ -45,6 +45,20 @@ log = get_logger(__name__)
 VERSION = "1.1"  # versione dell'HTTP API (ADR 0078), DISTINTA dalla product version
 
 
+def _http_source_request_id(
+    request: web.Request,
+    *,
+    fallback_turn_id: str = "",
+) -> str:
+    """Namespace an accepted HTTP delivery identity before runtime hashing."""
+
+    headers = getattr(request, "headers", None) or {}
+    supplied = str(headers.get("Idempotency-Key", "") or "").strip()
+    if supplied:
+        return f"http-idempotency:{supplied}"
+    return f"http-turn:{fallback_turn_id}" if fallback_turn_id else ""
+
+
 class TutorBoundaryBusy(RuntimeError):
     """The bounded HTTP Tutor admission gate has no free worker."""
 
@@ -1783,6 +1797,7 @@ async def _turn_json(request: web.Request, agent_runtime, query: str, actor: str
             query, actor=actor, channel="http",
             owner_user_id=user_id,
             conversation_id=conv_id,
+            source_request_id=_http_source_request_id(request),
             reference_images=refs or None,
             credential_meta=credential_meta,
             credentials_prepared=True,
@@ -1860,6 +1875,7 @@ async def _turn_sse(request: web.Request, agent_runtime,
             query, actor=actor, channel="http", progress=progress,
             owner_user_id=user_id,
             conversation_id=conv_id,
+            source_request_id=_http_source_request_id(request),
             reference_images=refs or None,
             credential_meta=credential_meta,
             credentials_prepared=True,
@@ -3252,6 +3268,10 @@ async def turn_submit(request: web.Request) -> web.Response:
     from turn_events import TurnEventLog, TurnEventProgress
     event_log = TurnEventLog.get()
     turn_id = _turn_id_for_preprocessed(data)
+    source_request_id = _http_source_request_id(
+        request,
+        fallback_turn_id=turn_id,
+    )
     # conversation_id/actor/query: consentono a turns_recent di ritrovare il
     # turn ancora running se il client ricarica la pagina (navigazione chat →
     # dashboard → chat). Il turn non è ancora nei JSONL persistiti.
@@ -3369,6 +3389,7 @@ async def turn_submit(request: web.Request) -> web.Response:
                     query_to_run, actor=actor, channel="http",
                     owner_user_id=user_id,
                     conversation_id=conv_id,
+                    source_request_id=source_request_id,
                     progress=progress,
                     reference_images=refs or None,
                     credential_meta=runtime_credentials,

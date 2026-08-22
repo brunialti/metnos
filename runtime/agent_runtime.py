@@ -22,6 +22,7 @@ Aggiornato dopo ciclo finale POC (26/4):
       il default storico qwen3:8b di ADR 0044)
 """
 import functools
+import hashlib
 import json
 import os
 import re
@@ -117,6 +118,7 @@ from skill_admin import (
 from user_preferences import (
     handle_get_preferences, handle_set_preferences, handle_delete_preferences,
 )
+from lre_submission import handle_start_lre
 from undo import UndoLog
 from vaglio import guard_check
 import config as _C  # §7.11
@@ -5590,6 +5592,7 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "get_preferences": handle_get_preferences,
     "set_preferences": handle_set_preferences,
     "delete_preferences": handle_delete_preferences,
+    "start_lre": handle_start_lre,
 }
 
 
@@ -5720,7 +5723,8 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
                               actor: str | None = None,
                               channel: str | None = None,
                               turn_id: str | None = None,
-                              owner_user_id: str | None = None) -> dict:
+                              owner_user_id: str | None = None,
+                              source_request_id: str | None = None) -> dict:
     """Universal §7.9 wrapper: invoca handler builtin passando solo i kwargs
     che la signature accetta (introspection). Risolve crash su
     list_tasks/create_tasks/delete_tasks (kwarg actor/channel required).
@@ -5752,6 +5756,8 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
         kwargs["turn_id"] = turn_id or ""
     if "owner_user_id" in accepts:
         kwargs["owner_user_id"] = owner_user_id or ""
+    if "source_request_id" in accepts:
+        kwargs["source_request_id"] = source_request_id or ""
     # Se signature ha **_ catch-all, possiamo passare safe.
     def _call_handler() -> dict:
         return annotate_skipped_known(handler(args, **kwargs), _treated_info)
@@ -5791,7 +5797,9 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
 def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
                         actor: str | None = None,
                         channel: str | None = None,
-                        owner_user_id: str | None = None) -> dict:
+                        owner_user_id: str | None = None,
+                        turn_id: str | None = None,
+                        source_request_id: str | None = None) -> dict:
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
     dai percorsi di ripresa (post-gate/post-input, orchestration).
 
@@ -5804,7 +5812,8 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     if tool_name in _BUILTIN_TOOL_HANDLERS:
         return _invoke_builtin_handler(
             tool_name, args, actor=actor, channel=channel,
-            owner_user_id=owner_user_id)
+            owner_user_id=owner_user_id, turn_id=turn_id,
+            source_request_id=source_request_id)
     exec_obj = next((e for e in (catalog or [])
                      if getattr(e, "name", None) == tool_name), None)
     if exec_obj is None:
@@ -6056,6 +6065,7 @@ def _run_engine(
     actor: str | None,
     channel: str | None,
     owner_user_id: str,
+    source_request_id: str = "",
     lang: str = "it",
     verbose: bool = False,
     progress=None,
@@ -6412,7 +6422,8 @@ def _run_engine(
         if tool_name in _BUILTIN_TOOL_HANDLERS:
             return _invoke_builtin_handler(
                 tool_name, args, actor=actor or "host", channel=channel or "",
-                owner_user_id=owner_user_id)
+                owner_user_id=owner_user_id, turn_id=turn_id,
+                source_request_id=source_request_id)
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None:
             return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
@@ -6509,6 +6520,9 @@ def _run_engine(
         # create-only per generare destinazioni nuove senza timestamp inventati
         # dal planner e senza rischio di overwrite su replay concorrenti.
         "turn_id": turn_id or "",
+        # Identità stabile dell'evento accettato dal canale. Non entra nel
+        # prompt: i sink durevoli la usano soltanto per convergere sui replay.
+        "source_request_id": source_request_id or "",
         "_gate_approved": bool(pre_approved_gate),
         "conversation_id": conversation_id or "",
         # Destinazione del turno (nome device, ""=server): i gate la usano nel
@@ -6945,11 +6959,38 @@ def _owner_scoped_turn(function):
     return guarded
 
 
+def _opaque_source_request_id(
+    value: object,
+    *,
+    owner_user_id: str = "",
+    conversation_id: str = "",
+    channel: str = "",
+) -> str:
+    """Scope and pseudonymize a channel delivery identity before persistence."""
+
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return ""
+    if re.fullmatch(r"sha256:[a-f0-9]{64}", value):
+        return value
+    encoded = value.encode("utf-8")
+    if len(encoded) > 512:
+        return ""
+    scope = json.dumps(
+        [owner_user_id or "", conversation_id or "", channel or ""],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(
+        b"metnos:source-request:2\x00" + scope + b"\x00" + encoded
+    ).hexdigest()
+
+
 @_owner_scoped_turn
 def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
              cap_steps=DEFAULT_CAP_STEPS, cap_same=DEFAULT_CAP_SAME_EXECUTOR,
              scratchpad_threshold=SCRATCHPAD_THRESHOLD_BYTES,
              actor="host", channel="", conversation_id="", owner_user_id="",
+             source_request_id="",
              reference_images=None,
              resume_with_scratchpad=None,
              pre_approved_gate=False,
@@ -6981,6 +7022,13 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
     fast_path / seed_step (sono inutili: il context ha gia' steps).
     Determinismo §7.9.
     """
+    source_request_id = _opaque_source_request_id(
+        source_request_id,
+        owner_user_id=owner_user_id or actor or "host",
+        conversation_id=conversation_id,
+        channel=channel,
+    )
+
     # La lingua appartiene al contesto della richiesta, non al processo. Il
     # middleware HTTP e il daemon di canale impostano il ContextVar i18n per il
     # proprietario del turno; conservarne qui un solo snapshot evita che prompt,
@@ -7110,6 +7158,13 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
 
     turn_id = uuid.uuid4().hex[:16]
     log.turn_id = turn_id
+    if not source_request_id:
+        source_request_id = _opaque_source_request_id(
+            f"turn:{turn_id}",
+            owner_user_id=owner_user_id or actor or "host",
+            conversation_id=conversation_id,
+            channel=channel,
+        )
     sp = Scratchpad.open()
     sp.gc()  # cleanup periodico
 
@@ -7131,6 +7186,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 user_query_for_run, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
                 owner_user_id=owner_user_id,
+                source_request_id=source_request_id,
                 lang=_turn_lang, verbose=verbose, progress=progress,
                 pre_approved_gate=pre_approved_gate,
                 conversation_id=conversation_id,
@@ -7382,6 +7438,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                     _query_for_planning, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
                     owner_user_id=owner_user_id,
+                    source_request_id=source_request_id,
                     lang=_turn_lang, verbose=verbose, progress=progress,
                     pre_approved_gate=pre_approved_gate,
                     conversation_id=conversation_id,
@@ -7431,6 +7488,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 _query_for_planning, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
                 owner_user_id=owner_user_id,
+                source_request_id=source_request_id,
                 lang=_turn_lang, verbose=verbose, progress=progress,
                 pre_approved_gate=pre_approved_gate,
                 conversation_id=conversation_id,

@@ -531,6 +531,7 @@ _INPROC_TOOL_MODULE_PATHS: tuple[str, ...] = (
     "classify_entries",
     "extract_entries",
     "user_preferences",  # get/set/delete_preferences — preferenze personali
+    "lre_submission",  # start_lre — ammissione universale dei lavori LRE
 )
 
 

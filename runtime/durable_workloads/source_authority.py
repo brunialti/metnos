@@ -578,6 +578,19 @@ class SourceAuthority:
 
         try:
             with self._transaction():
+                # A retry replaces the workload's complete sealed set.  Mark
+                # every previous grant first; register() reactivates only the
+                # sources present in the new inventory.  The transaction rolls
+                # the marks back if discovery or hashing fails.
+                self._connection.execute(
+                    """
+                    UPDATE source_grants
+                    SET checked_at=?, revoked_at=?
+                    WHERE owner_user_id=? AND workload_id=?
+                      AND revoked_at IS NULL
+                    """,
+                    (current_text, current_text, owner, workload),
+                )
                 inventory = seal_local_inventory(
                     roots,
                     device_id=device,

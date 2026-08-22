@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; LRE (Long Run Engine)</title>
+ <meta name="description" content="A guide to LRE, the universal Metnos engine for long-running, persistent, resumable, and governed tasks.">
+ <link rel="canonical" href="https://metnos.com/en/system/lre">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/lre">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/lre">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>LRE (Long Run Engine)</h1>
+
+<p class="lead">LRE is the universal engine Metnos uses for work that is too
+long or too broad to remain attached to a single chat turn. The workload is
+recorded, divided into verifiable units, and handed to a supervised worker.
+Chat immediately returns a receipt; execution continues independently and can
+resume after a restart.</p>
+
+<h2 id="not-a-preset">One engine, multiple kinds of work</h2>
+
+<p>The LRE core knows nothing about images, mail, databases, or other domains.
+It consumes registered plans that declare sources, dependencies, output
+schemas, resources, limits, timeouts, and failure behaviour. A new task type is
+added as a verified registration; it does not add a special branch to the
+engine.</p>
+
+<p>The first distributed registration processes image collections and produces
+questions, solutions, notes, and a formula reference. It is a tested use of the
+general path, not the definition of LRE. Other workloads can use the same
+engine once they have equivalent contracts and evidence.</p>
+
+<h2 id="flow">What happens after a request</h2>
+
+<ol>
+ <li><strong>Admission.</strong> Metnos recognises a registered profile, verifies that LRE is enabled, and checks authority, sources, plan, and budget.</li>
+ <li><strong>Sealed inventory.</strong> Sources receive stable identities and ordering, making the denominator verifiable.</li>
+ <li><strong>Persistent planning.</strong> Stages and units are stored in an immutable revision.</li>
+ <li><strong>Governed execution.</strong> The coordinator proposes ready units; the central scheduler assigns resources and concurrency.</li>
+ <li><strong>Consolidation.</strong> Hierarchical reductions avoid loading an entire corpus into memory or a single prompt.</li>
+ <li><strong>Completion.</strong> LRE reports completion only after accounting for all units and validating required artifacts.</li>
+</ol>
+
+<p>There is no hidden 98- or 980-item corpus ceiling. Each revision does,
+however, have finite and visible limits consistent with its admitted resources.
+Large collections advance in batches and reductions instead of accumulating
+without bounds. If a budget is exhausted, the workload exposes a structured
+state rather than pretending that coverage is complete.</p>
+
+<h2 id="executors">Local, remote, and intelligent executors</h2>
+
+<p>Each stage declares <em>where</em> and <em>how</em> it may run. A local executor
+runs on the server; a remote executor runs on a paired device. Either can be
+deterministic or use a language or vision model. Placement does not determine
+intelligence: they are independent properties.</p>
+
+<p>Independent units may run in parallel, but they do not create private pools
+of threads or processes. All concurrency passes through the central scheduler,
+which enforces global, owner, workload, model, and device limits. “Maximum
+concurrency” is a ceiling, not a promise to occupy every slot at all times.</p>
+
+<h2 id="recovery">Interruptions, retries, and duplicates</h2>
+
+<table>
+ <thead><tr><th>Situation</th><th>LRE behaviour</th></tr></thead>
+ <tbody>
+  <tr><td>Worker or computer restarts</td><td>State remains in persistent storage; expired leases and unfinished units are reconciled in bounded batches.</td></tr>
+  <tr><td>A recoverable attempt is interrupted</td><td>It may be attempted at least once again, with the delay and attempt number recorded.</td></tr>
+  <tr><td>Two attempts finish for the same unit</td><td>Fencing and conditional commit admit one result only for that unit and revision.</td></tr>
+  <tr><td>The same HTTP request is redelivered with the same idempotency key</td><td>It returns the same workload instead of creating a second revision or corpus.</td></tr>
+  <tr><td>An external effect has an ambiguous outcome</td><td>It is not retried automatically unless it is idempotent or reconcilable; human attention is required.</td></tr>
+ </tbody>
+</table>
+
+<div class="callout note"><p><strong>The precise guarantee.</strong> LRE uses
+at-least-once attempts and admits one valid commit per unit. It can make an
+observable effect effectively once when the operation is pure, idempotent, or
+reconcilable. It does not promise universal <em>exactly once</em> semantics
+across databases, filesystems, providers, and remote devices.</p></div>
+
+<h2 id="consistency">Consistency as a workload evolves</h2>
+
+<p>The admitted plan, inventory, and executor or model bindings are frozen in
+the revision. An incompatible change creates a new revision instead of silently
+altering half of a running workload. Results may be reused only when dependency
+digests match. When one source changes, LRE invalidates that unit and its
+descendants, not independent siblings.</p>
+
+<p>Pausing prevents new claims while allowing a commit already in flight to
+finish safely. Cancellation is cooperative and prevents new units from being
+claimed. Pause, resume, cancel, and error-resolution commands carry both an
+expected version and an idempotency key, so redelivering a command does not
+multiply its effects.</p>
+
+<h2 id="use">How to use it</h2>
+
+<ol>
+ <li>Under <a href="services.html">System → Services</a>, check that the LRE worker is healthy and enable the feature. It is disabled by default on new installations.</li>
+ <li>Describe the desired outcome in chat and identify authorised sources. Metnos can admit registered profiles only.</li>
+ <li>Keep the receipt containing the <code>workload_id</code> and open <code>/agent/workloads</code>.</li>
+ <li>Inspect state, denominator, budget, stages, and events. Use a control only when it is enabled for the current state.</li>
+ <li>On completion, check artifact digests and validation before downloading them.</li>
+</ol>
+
+<p>Disabling the feature stops new submissions but does not delete history or
+artifacts. Data deletion follows the owner's lifecycle and retention rules.
+Downloads and views remain scoped to the authorised identity.</p>
+
+<h2 id="problems">When progress stops</h2>
+
+<ul>
+ <li><strong>Worker unavailable:</strong> inspect health and desired state under Services; do not toggle the gate repeatedly.</li>
+ <li><strong>Waiting unit:</strong> open events and units to distinguish a scheduled retry from a request for attention.</li>
+ <li><strong>Model or device unavailable:</strong> restore the recorded binding instead of replacing it midway through a revision.</li>
+ <li><strong>Insufficient storage:</strong> free space without manually removing referenced blobs; missing data is reported as an integrity failure.</li>
+ <li><strong>Ambiguous effect:</strong> verify the outcome in the authoritative external system before allowing another attempt.</li>
+</ul>
+
+<h2 id="screen">The LRE console</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-lre-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="The real LRE console, showing workload list, detail, digests, budget, and stages in an Italian-language instance.">
+  <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:34%;--y:17%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:58%;--y:22%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:76%;--y:37%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:77%;--y:62%" aria-hidden="true">5</span>
+  <span class="ui-badge" style="--x:76%;--y:88%" aria-hidden="true">6</span>
+ </div>
+ <figcaption>A completed pilot workload: the console exposes the real denominator, admitted limits, and plan composition.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>General navigation.</strong> The LRE console uses the same structure as the administrative HTTP UI.</li>
+ <li><strong>Workload list.</strong> State and progress remain available after refresh, logout, or restart.</li>
+ <li><strong>Workload facts.</strong> Priority, state, accounted units, and creation time.</li>
+ <li><strong>Revision digests.</strong> Identify the plan and inventory that were actually admitted.</li>
+ <li><strong>Admitted budget.</strong> Ceilings for units, attempts, duration, bytes, tokens, artifacts, and concurrency.</li>
+ <li><strong>Stages.</strong> Each stage reports executor, progress, timeout, requirement status, and resources.</li>
+</ol>
+<p class="ui-privacy-note">The displayed corpus is synthetic and non-sensitive; its operational identifier contains no personal data.</p>
+
+</body>
+</html>

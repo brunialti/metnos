@@ -11,6 +11,8 @@ from collections.abc import Callable
 
 from durable_workloads.image_preset import (
     ImagePresetWorkloadInvoker,
+    PRESET_ID,
+    image_questions_plan,
     output_schemas,
     registered_output_schema_names,
     registered_runner_bindings,
@@ -26,17 +28,21 @@ from durable_workloads.storage import DurableWorkloadStore
 from durable_workloads.worker import DurableWorker
 
 
+ADMISSION_NAMES = (PRESET_ID,)
+
+
 def default_runtime_registry() -> RuntimeRegistry:
     """Build the closed registry from approved package contributions."""
 
     schemas = output_schemas()
     image_questions = RuntimeRegistration(
-        name="images.questions.v1",
+        name=PRESET_ID,
         runner_bindings=registered_runner_bindings(),
         runners=runner_resolver(),
         output_schemas=schemas,
         output_schema_names=registered_output_schema_names(schemas),
         workload_invoker=ImagePresetWorkloadInvoker(),
+        candidate_plan_factory=image_questions_plan,
     )
     return RuntimeRegistry((image_questions,))
 
@@ -49,4 +55,4 @@ def production_factories() -> tuple[
     return factory.worker, factory.bridge
 
 
-__all__ = ["default_runtime_registry", "production_factories"]
+__all__ = ["ADMISSION_NAMES", "default_runtime_registry", "production_factories"]

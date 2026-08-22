@@ -24,6 +24,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import config as _C
+from lre_config import (
+    feature_configuration_lock,
+    read_feature_configuration,
+    write_feature_configuration,
+)
 
 
 @dataclass(frozen=True)
@@ -166,6 +171,23 @@ _SHOW_PROPERTIES = (
 _INTEGRATED_USER_AUXILIARIES = (
     "metnos-i18n-translator.service",
 )
+_LRE_HEALTH_MESSAGE_KEYS = {
+    "feature_disabled": "UI_SERVICES_LRE_HEALTH_FEATURE_DISABLED",
+    "runtime_bindings_unavailable": "UI_SERVICES_LRE_HEALTH_BINDINGS_UNAVAILABLE",
+    "already_active": "UI_SERVICES_LRE_HEALTH_ALREADY_ACTIVE",
+    "schema_incompatible": "UI_SERVICES_LRE_HEALTH_SCHEMA_INCOMPATIBLE",
+    "database_unavailable": "UI_SERVICES_LRE_HEALTH_DATABASE_UNAVAILABLE",
+    "startup_failed": "UI_SERVICES_LRE_HEALTH_STARTUP_FAILED",
+    "recovery_incomplete": "UI_SERVICES_LRE_HEALTH_RECOVERY_INCOMPLETE",
+    "recovery_failed": "UI_SERVICES_LRE_HEALTH_RECOVERY_FAILED",
+    "worker_cycle_failed": "UI_SERVICES_LRE_HEALTH_WORKER_CYCLE_FAILED",
+    "execution_deadline_exceeded": "UI_SERVICES_LRE_HEALTH_DEADLINE_EXCEEDED",
+    "stopped": "UI_SERVICES_LRE_HEALTH_STOPPED",
+    "health_unavailable": "UI_SERVICES_LRE_HEALTH_UNAVAILABLE",
+    "health_stale": "UI_SERVICES_LRE_HEALTH_STALE",
+    "feature_config_invalid": "UI_SERVICES_LRE_HEALTH_CONFIG_INVALID",
+    "feature_state_mismatch": "UI_SERVICES_LRE_HEALTH_STATE_MISMATCH",
+}
 
 
 def catalog() -> tuple[ServiceSpec, ...]:
@@ -520,6 +542,11 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
                  deadline_at: float | None = None) -> dict:
     state = resolve_target(spec, deadline_at=deadline_at)
     url = health_url(spec)
+    feature = (
+        read_feature_configuration()
+        if spec.key == "durable_workloads" else None
+    )
+    feature_converged: bool | None = None
     if not probe_endpoint:
         healthy, health_detail = None, ""
     elif spec.health_policy == "process":
@@ -531,8 +558,30 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
             from durable_workloads.service import health_snapshot
 
             application_health = health_snapshot()
-            healthy = application_health.get("state") == "ready"
+            ready = application_health.get("state") == "ready"
+            if feature is None:
+                healthy = ready
+            else:
+                observed_enabled = application_health.get("enabled")
+                feature_converged = (
+                    isinstance(observed_enabled, bool)
+                    and observed_enabled == feature.enabled
+                )
+                feature_disabled = (
+                    feature.valid
+                    and feature_converged
+                    and observed_enabled is False
+                    and application_health.get("reason_code")
+                    == "feature_disabled"
+                )
+                healthy = (
+                    ready and feature.valid and feature_converged
+                ) or feature_disabled
             health_detail = str(application_health.get("reason_code") or "")[:64]
+            if feature is not None and not feature.valid:
+                health_detail = "feature_config_invalid"
+            elif feature is not None and not feature_converged:
+                health_detail = "feature_state_mismatch"
         except Exception:
             healthy, health_detail = False, "health_unavailable"
     else:
@@ -551,6 +600,18 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
         "desired_state": target_state,
         "managed_by": "metnos.target" if spec.integrated else "",
     }
+    if feature is not None:
+        row.update({
+            "feature_enabled": feature.enabled,
+            "feature_config_valid": feature.valid,
+            "feature_converged": feature_converged,
+            "feature_configurable": (
+                installed and feature.source != "environment"
+            ),
+            "health_message_key": _LRE_HEALTH_MESSAGE_KEYS.get(
+                health_detail, "",
+            ),
+        })
     row["status"] = _canonical_status(
         row, required=spec.required, healthy=healthy,
     )
@@ -563,7 +624,7 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
 
 def _failed_snapshot(spec: ServiceSpec, reason: str) -> dict:
     target = spec.targets[0]
-    return {
+    row = {
         **asdict(spec),
         "unit": target.unit,
         "scope": target.scope,
@@ -581,6 +642,16 @@ def _failed_snapshot(spec: ServiceSpec, reason: str) -> dict:
         "in_desired_state": False,
         "status": "failed" if spec.required else "missing",
     }
+    if spec.key == "durable_workloads":
+        feature = read_feature_configuration()
+        row.update({
+            "feature_enabled": feature.enabled,
+            "feature_config_valid": feature.valid,
+            "feature_converged": None,
+            "feature_configurable": False,
+            "health_message_key": _LRE_HEALTH_MESSAGE_KEYS.get(reason, ""),
+        })
+    return row
 
 
 def _safe_snapshot(spec: ServiceSpec, probe_endpoints: bool,
@@ -695,5 +766,70 @@ def control(key: str, action: str) -> tuple[bool, str]:
                 )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
         return False, type(exc).__name__
+    detail = (result.stderr or result.stdout or "").strip()[-300:]
+    return result.returncode == 0, detail
+
+
+def configure_lre_feature(enabled: bool) -> tuple[bool, str]:
+    """Persist and converge the closed LRE gate on its exact user unit.
+
+    Enabling rolls the file back to its previous safe value if systemd rejects
+    the restart.  Disabling keeps the file off even when restart fails and
+    makes one bounded stop attempt, so a future restart cannot re-enable work.
+    """
+
+    if not isinstance(enabled, bool):
+        return False, "invalid LRE feature state"
+    spec = _BY_KEY["durable_workloads"]
+    state = resolve_target(spec)
+    target_identity = (state.get("scope"), state.get("unit"))
+    allowed_targets = {(target.scope, target.unit) for target in spec.targets}
+    if (
+        state.get("load_state") in {"not-found", "error"}
+        or target_identity not in allowed_targets
+    ):
+        return False, "LRE service unit is not installed"
+
+    effective = read_feature_configuration()
+    if effective.source == "environment":
+        return False, "LRE feature state is overridden by the process environment"
+    target = ServiceTarget(str(state["unit"]), str(state["scope"]))
+    cmd, env = _systemctl(
+        target, "--no-block", "restart", target.unit,
+    )
+
+    try:
+        with _CONTROL_LOCK:
+            with feature_configuration_lock():
+                current = read_feature_configuration()
+                if current.source == "environment":
+                    return False, (
+                        "LRE feature state is overridden by the process environment"
+                    )
+                previous_enabled = current.enabled if current.valid else False
+                try:
+                    write_feature_configuration(enabled)
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=30,
+                        check=False, env=env,
+                    )
+                except Exception:
+                    if enabled:
+                        write_feature_configuration(previous_enabled)
+                    raise
+                if result.returncode != 0 and enabled:
+                    write_feature_configuration(previous_enabled)
+                elif result.returncode != 0:
+                    stop_cmd, stop_env = _systemctl(
+                        target, "--no-block", "stop", target.unit,
+                    )
+                    subprocess.run(
+                        stop_cmd, capture_output=True, text=True, timeout=30,
+                        check=False, env=stop_env,
+                    )
+    except (FileNotFoundError, OSError, ValueError,
+            subprocess.TimeoutExpired) as exc:
+        return False, type(exc).__name__
+
     detail = (result.stderr or result.stdout or "").strip()[-300:]
     return result.returncode == 0, detail

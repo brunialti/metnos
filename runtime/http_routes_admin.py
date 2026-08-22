@@ -220,6 +220,32 @@ async def admin_service_action(request: web.Request) -> web.Response:
     raise web.HTTPFound(f"/admin/services?{query}{anchor}")
 
 
+async def admin_lre_feature_action(request: web.Request) -> web.Response:
+    """POST the closed LRE deployment gate; no arbitrary unit is accepted."""
+
+    action = request.match_info["action"]
+    enabled = action == "enable"
+    ok = False
+    try:
+        ok, detail = await asyncio.to_thread(
+            services_registry.configure_lre_feature, enabled,
+        )
+        if not ok:
+            log.warning(
+                "LRE feature action failed action=%s: %s", action, detail,
+            )
+    except Exception:  # noqa: BLE001 — the admin page must remain reachable
+        log.exception("LRE feature action failed action=%s", action)
+    query = urllib.parse.urlencode({
+        "notice": "accepted" if ok else "failed",
+        "service": "durable_workloads",
+        "action": f"{action}_feature",
+    })
+    raise web.HTTPFound(
+        f"/admin/services?{query}#service-durable_workloads"
+    )
+
+
 # --- /admin (root) -----------------------------------------------------------
 
 def _summary_proposals() -> dict:
@@ -2046,6 +2072,7 @@ ROUTES = (
     ("POST", r"/admin/virt/{family:llm|vlm}/reset", admin_virt_reset),
     ("GET",  "/admin/services",                  admin_services),
     ("POST", r"/admin/services/{name}/{action:start|stop|restart}", admin_service_action),
+    ("POST", r"/admin/services/durable_workloads/feature/{action:enable|disable}", admin_lre_feature_action),
     # /admin/skills/{id}/history rimossa 13/6/2026: store Praxis dismesso (Engine v2).
     ("GET",  "/admin/timers",                     admin_timers),
     ("POST", r"/admin/timers/{name}/{action:enable|disable|fire}", admin_timer_action),

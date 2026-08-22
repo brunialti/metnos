@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Devices</title>
+ <meta name="description" content="Pairing, identity, status, and revocation for devices that run remote Metnos executors.">
+ <link rel="canonical" href="https://metnos.com/en/system/devices">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/devices">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/devices">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
+ <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+</head>
+<body>
+<h1>Devices</h1>
+
+<p class="lead">A device is a computer paired with the instance that can run
+remote executors. The Metnos client never acts on its own initiative: it
+receives an authorised invocation, runs it within the admitted contract,
+records the outcome, and replies to the server.</p>
+
+<h2 id="pairing">Pairing and identity</h2>
+
+<p>The administrator chooses a name and owner and generates a temporary link
+for the target computer. Installation registers an Ed25519 device identity;
+initial tokens expire and do not replace that persistent identity. The
+fingerprint makes the public key recognisable without exposing it in full.</p>
+
+<p>A heartbeat reports when the client last communicated and contributes to
+the <em>reachable</em> state. It does not prove that every executor or resource
+is available. Placement, declared capability, and health must be read together.</p>
+
+<h2 id="executors">What “remote executor” means</h2>
+
+<p>An executor's properties are independent:</p>
+
+<table>
+ <thead><tr><th>Axis</th><th>Alternatives</th><th>Question it answers</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Placement</strong></td><td>Local or remote</td><td>On which computer does execution take place?</td></tr>
+  <tr><td><strong>Concurrency</strong></td><td>Serial or parallelisable within a limit</td><td>How many independent invocations may proceed together?</td></tr>
+  <tr><td><strong>Processing</strong></td><td>Deterministic or assisted by an LLM/VLM</td><td>Does the function use code and data only, or does it also use a model?</td></tr>
+  <tr><td><strong>Effect</strong></td><td>Pure, idempotent, reconcilable, or manual</td><td>When may an interrupted attempt be repeated?</td></tr>
+ </tbody>
+</table>
+
+<p>“Remote” therefore does not mean “intelligent”, and “local” does not mean
+“serial”. A remote executor may perform a deterministic read; a local executor
+may use a vision model. The central scheduler still applies authority,
+availability, and concurrency limits.</p>
+
+<h2 id="management">Install, inspect, and revoke</h2>
+
+<ol>
+ <li>Open <strong>Settings → System → Devices</strong> on the server.</li>
+ <li>Choose “another PC”, then assign a recognisable name and the correct owner.</li>
+ <li>Open the link on the target computer and wait for the flow to reach “client active”.</li>
+ <li>Check operating system, client version, fingerprint, last heartbeat, and state.</li>
+ <li>Use <strong>Revoke</strong> if the computer is no longer trusted or must stop receiving invocations.</li>
+</ol>
+
+<p>Revocation causes future tokens from that device to be rejected; it does not
+delete the owning user's data. A manual path is available for environments
+without a browser. It is intended for experienced operators and uses a
+short-lived token.</p>
+
+<div class="callout warning"><p><strong>Network boundary.</strong> The device
+channel is intended for a local network or private overlay. Do not expose the
+client port directly to the public Internet.</p></div>
+
+<h2 id="screen">The Devices screen</h2>
+
+<figure class="ui-guide">
+ <div class="ui-shot-frame">
+  <img src="/assets/images/system-devices-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="The real, anonymised Metnos remote-devices screen in an Italian-language instance.">
+  <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
+  <span class="ui-badge" style="--x:43%;--y:19%" aria-hidden="true">2</span>
+  <span class="ui-badge" style="--x:45%;--y:31%" aria-hidden="true">3</span>
+  <span class="ui-badge" style="--x:70%;--y:33%" aria-hidden="true">4</span>
+  <span class="ui-badge" style="--x:94%;--y:33%" aria-hidden="true">5</span>
+ </div>
+ <figcaption>The screen detects that it is open on the server and explicitly offers the flow for installing the client on another computer.</figcaption>
+</figure>
+<ol class="ui-callout-list">
+ <li><strong>Devices section.</strong> Brings together pairing and remote-client status.</li>
+ <li><strong>Recommended flow.</strong> Guides installation without requiring terminal commands.</li>
+ <li><strong>Identity and owner.</strong> Name, ID, and user make device ownership explicit.</li>
+ <li><strong>Presence evidence.</strong> Version, fingerprint, heartbeat, and reachability help verify the client.</li>
+ <li><strong>Revocation.</strong> Deliberately ends trust in the device.</li>
+</ol>
+<p class="ui-privacy-note">The name, owner, ID, fingerprint, and timestamp are anonymous examples; the layout is the real HTTP UI.</p>
+
+</body>
+</html>

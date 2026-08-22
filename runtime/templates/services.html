@@ -10,7 +10,7 @@
 .service-head{display:flex;align-items:center;gap:.65rem}.service-head h3{font-size:1rem;margin:0;flex:1}.scope{font-size:.7rem;padding:.14rem .4rem;border:1px solid var(--border);border-radius:999px;color:var(--muted)}
 .dot{width:11px;height:11px;border-radius:50%;background:#9ca3af;flex:0 0 auto}.dot.running{background:#16a34a;box-shadow:0 0 0 4px #dcfce7}.dot.failed{background:#dc2626;box-shadow:0 0 0 4px #fee2e2}.dot.degraded,.dot.transitioning{background:#d97706;box-shadow:0 0 0 4px #fef3c7}
 .service-desc{margin:.3rem 0 0;color:var(--muted);font-size:.82rem}.service-meta{color:var(--muted);font-size:.8rem;line-height:1.6;margin:.8rem 0}.service-state{color:var(--text);text-transform:capitalize}
-.service-actions{display:flex;gap:.45rem;flex-wrap:wrap}.service-actions form{margin:0}.service-actions button{border:1px solid var(--border-strong);background:var(--surface);border-radius:var(--r-1);padding:.38rem .68rem;cursor:pointer}.service-actions button:hover{background:var(--surface-2)}.service-actions button:disabled{opacity:.35;cursor:not-allowed}
+.service-actions{display:flex;gap:.45rem;flex-wrap:wrap}.service-actions form{margin:0}.service-actions button{border:1px solid var(--border-strong);background:var(--surface);border-radius:var(--r-1);padding:.38rem .68rem;cursor:pointer}.service-actions button:hover{background:var(--surface-2)}.service-actions button:disabled{opacity:.35;cursor:not-allowed}.service-feature{margin:.65rem 0}.service-feature p{margin:.25rem 0 0}
 .health{font-weight:600}.health.ok{color:#15803d}.health.bad{color:#b91c1c}.service-notice{padding:.7rem .85rem;border-radius:var(--r-1);margin:.8rem 0}.service-notice.ok{background:#dcfce7;color:#166534}.service-notice.bad{background:#fee2e2;color:#991b1b}
 .service-alerts{border:1px solid var(--border);border-radius:var(--r-2);padding:1rem;margin:1rem 0;background:var(--surface)}.service-alerts h2{font-size:.9rem;margin:0 0 .6rem}.service-alert{padding:.55rem 0;border-top:1px solid var(--border);font-size:.82rem}.service-alert:first-of-type{border-top:0}.service-alert.critical strong{color:#b91c1c}.service-alert.info strong{color:#15803d}.service-alert time{color:var(--muted);font-size:.72rem}.service-intent{font-weight:600}.service-intent.mismatch{color:#b45309}.service-control-note{color:var(--muted);font-size:.75rem;margin:.55rem 0 0}
 @media(max-width:640px){.service-grid{grid-template-columns:1fr}.service-hero{padding:1rem}.service-card:hover{transform:none}}
@@ -19,7 +19,7 @@
 {% block body %}
 <p class="eyebrow">{{ msg("UI_SERVICES_EYEBROW") }}</p>
 <h1>{{ msg("UI_SERVICES_TITLE") }}</h1>
-{% if notice == 'accepted' and notice_service and notice_action in ('start', 'stop', 'restart') %}<div class="service-notice ok" role="status">{{ msg("UI_SERVICES_NOTICE_ACCEPTED", action=msg("UI_SERVICES_ACTION_" ~ notice_action|upper), service=notice_service) }}</div>{% elif notice == 'failed' %}<div class="service-notice bad" role="alert">{{ msg("UI_SERVICES_NOTICE_FAILED", service=notice_service or notice_service_key) }}</div>{% endif %}
+{% if notice == 'accepted' and notice_service and notice_action in ('start', 'stop', 'restart', 'enable_feature', 'disable_feature') %}<div class="service-notice ok" role="status">{{ msg("UI_SERVICES_NOTICE_ACCEPTED", action=msg("UI_SERVICES_ACTION_" ~ notice_action|upper), service=notice_service) }}</div>{% elif notice == 'failed' %}<div class="service-notice bad" role="alert">{{ msg("UI_SERVICES_NOTICE_FAILED", service=notice_service or notice_service_key) }}</div>{% endif %}
 {% set running = services|selectattr('status', 'equalto', 'running')|list|length %}
 {% set degraded = services|selectattr('status', 'equalto', 'degraded')|list|length %}
 {% set installed = services|selectattr('installed')|list|length %}
@@ -45,17 +45,24 @@
     <p class="service-desc">{{ s.description }}</p>
     <div class="service-meta">
       <div class="service-state"><strong>{{ msg('UI_SERVICES_STATUS_' ~ s.status|upper) }}</strong> · {{ s.sub_state|default('—') }}</div>
-      {% if s.healthy is not none %}<div class="health {{ 'ok' if s.healthy else 'bad' }}">{{ msg("UI_SERVICES_HEALTH") }} {{ msg("UI_SERVICES_OK") if s.healthy else msg("UI_SERVICES_DOWN") }}{% if s.health_detail %} · {{ s.health_detail }}{% endif %}</div>{% endif %}
+      {% if s.healthy is not none %}<div class="health {{ 'ok' if s.healthy else 'bad' }}">{{ msg("UI_SERVICES_HEALTH") }} {{ msg("UI_SERVICES_OK") if s.healthy else msg("UI_SERVICES_DOWN") }}{% if s.health_message_key %} · {{ msg(s.health_message_key) }}{% elif s.health_detail %} · {{ s.health_detail }}{% endif %}</div>{% endif %}
       {% if s.installed %}<div>{{ s.unit }} · {{ msg("UI_SERVICES_PID", pid=s.main_pid|default('—')) }}</div>{% else %}<div>{{ msg("UI_SERVICES_NOT_INSTALLED") }}</div>{% endif %}
       {% if s.managed_by %}<div>{{ msg("UI_SERVICES_LIFECYCLE", manager=s.managed_by) }}</div>{% endif %}
       <div class="service-intent{% if not s.in_desired_state %} mismatch{% endif %}">{{ msg("UI_SERVICES_DESIRED", state=msg("UI_SERVICES_DESIRED_" ~ s.desired_state|upper)) }}</div>
       {% if s.active_since %}<div>{{ msg("UI_SERVICES_ACTIVE_SINCE", value=s.active_since) }}</div>{% endif %}
     </div>
+    {% if s.key == 'durable_workloads' and s.installed %}<div class="callout service-feature {{ 'warn' if not s.feature_config_valid or s.feature_converged is sameas false else 'ok' if s.feature_enabled else '' }}">
+      <strong>{{ msg("UI_SERVICES_LRE_FEATURE_LABEL") }}</strong> ·
+      {% if not s.feature_config_valid %}<span class="chip warn">{{ msg("UI_SERVICES_LRE_FEATURE_INVALID") }}</span>{% elif s.feature_enabled %}<span class="chip ok">{{ msg("UI_SERVICES_LRE_FEATURE_ENABLED") }}</span>{% else %}<span class="chip muted">{{ msg("UI_SERVICES_LRE_FEATURE_DISABLED") }}</span>{% endif %}
+      {% if s.feature_converged is sameas false %}<p>{{ msg("UI_SERVICES_LRE_FEATURE_PENDING") }}</p>{% endif %}
+      <p>{{ msg("UI_SERVICES_LRE_FEATURE_HELP") }}</p>
+    </div>{% endif %}
     {% set active_now = s.active_state == 'active' %}
     {% if s.actionable and s.status != 'transitioning' %}<div class="service-actions">
       {% if s.status == 'stopped' and 'start' in s.allowed_actions %}<form method="post" action="/admin/services/{{ s.key }}/start"><button type="submit">{{ msg("UI_SERVICES_ACTION_START") }}</button></form>{% endif %}
       {% if active_now and 'stop' in s.allowed_actions %}<form method="post" action="/admin/services/{{ s.key }}/stop" data-confirm="{{ msg('UI_SERVICES_CONFIRM_STOP', service=s.label) }}"><button type="submit">{{ msg("UI_SERVICES_ACTION_STOP") }}</button></form>{% endif %}
       {% if (active_now or s.status == 'failed') and 'restart' in s.allowed_actions %}<form method="post" action="/admin/services/{{ s.key }}/restart" data-confirm="{{ msg('UI_SERVICES_CONFIRM_RESTART', service=s.label) }}"><button type="submit">{{ msg("UI_SERVICES_ACTION_RESTART") }}</button></form>{% endif %}
+      {% if s.key == 'durable_workloads' and s.feature_configurable %}{% if s.feature_enabled %}<form method="post" action="/admin/services/durable_workloads/feature/disable" data-confirm="{{ msg('UI_SERVICES_LRE_CONFIRM_DISABLE') }}"><button class="btn" type="submit">{{ msg("UI_SERVICES_ACTION_DISABLE_FEATURE") }}</button></form>{% else %}<form method="post" action="/admin/services/durable_workloads/feature/enable" data-confirm="{{ msg('UI_SERVICES_LRE_CONFIRM_ENABLE') }}"><button class="btn ok" type="submit">{{ msg("UI_SERVICES_ACTION_ENABLE_FEATURE") }}</button></form>{% endif %}{% endif %}
     </div>{% endif %}
     {% if s.key == 'http' %}<p class="service-control-note">{{ msg("UI_SERVICES_CONTROL_PLANE_NOTE") }}</p>{% elif s.managed_by %}<p class="service-control-note">{{ msg("UI_SERVICES_MANUAL_OVERRIDE") }}</p>{% endif %}
   </article>

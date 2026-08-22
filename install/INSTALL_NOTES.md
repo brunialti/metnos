@@ -179,10 +179,31 @@ only checking whether a port is open. Coordinated lifecycle operations use
 `runtime/stack_reconcile.py` and must first establish that there is no active
 turn or browser session that would be interrupted.
 
+Phase 5 also installs the supervised LRE worker and creates
+`~/.config/metnos/lre.env` with mode `0600` only when the file does not already
+exist. A fresh installation is disabled. An update preserves the existing file
+byte for byte, including an invalid file that requires operator attention;
+missing, linked, oversized, ambiguous or malformed configuration fails closed.
+The worker and the HTTP control plane read this file through the same strict
+runtime parser. The unit must not load it as a systemd `EnvironmentFile`, which
+would introduce a second parser with different acceptance rules. The Services
+page writes only the canonical form and restarts the exact catalogued user
+unit. Disabling LRE never removes its store or artifacts, and the idle worker
+continues to publish health state.
+
+The phase-5 import preflight must reproduce both supported Python package
+roots: the installation root for `runtime.*` modules and its `runtime/`
+directory for top-level runtime packages such as `durable_workloads`. It uses
+the same installation virtual environment as the rendered units.
+
 If a system-level `metnos-http.service` is already active, phase 5 installs the
 user units but does not start a competing listener and does not disable the
 working baseline. The guarded migration procedure in `systemd/README.md` must
-prove the replacement and its rollback before ownership changes.
+prove the replacement and its rollback before ownership changes. Non-listening
+companions that must survive a reboot—including the idle LRE worker, the i18n
+timer and the watchdog—are attached directly to the user `default.target`
+during this transition. They are the same units later owned by
+`metnos.target`; the compatibility path does not create duplicate services.
 
 The HTTP health endpoint proves reachability, not planning quality or end-to-end
 operation. A release installation is complete only after a harmless natural-
