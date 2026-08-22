@@ -118,7 +118,7 @@ from skill_admin import (
 from user_preferences import (
     handle_get_preferences, handle_set_preferences, handle_delete_preferences,
 )
-from lre_submission import handle_start_lre
+from lre_submission import handle_start_lre, submit_automatic_lre
 from undo import UndoLog
 from vaglio import guard_check
 import config as _C  # §7.11
@@ -6594,6 +6594,16 @@ def _run_engine(
     # mancanti → Validator falsa `tool_unknown` (§11, fix wiring B).
     catalog_v2 = _engine_v2_catalog_with_builtins(catalog)
 
+    def _admit_long_work(framework):
+        return submit_automatic_lre(
+            framework,
+            catalog=catalog_v2,
+            owner_user_id=owner_user_id or actor or "host",
+            turn_id=turn_id,
+            source_request_id=source_request_id,
+            target_device=_target_name,
+        )
+
     try:
         result = _dispatch.run_turn(
             query=query, intent=intent, catalog=catalog_v2,
@@ -6605,6 +6615,7 @@ def _run_engine(
             vaglio_guard=guard_check,  # guardia forbidden-path PRE-invoke (§sicurezza)
             runtime_ctx=runtime_ctx,
             seed_state=seed_state,  # foto allegate @uploaded (ADR 0177 M1)
+            admit_long_work_cb=_admit_long_work,
             turn_id=turn_id, lang=lang, verbose=verbose,
             progress=progress)
     except Exception as ex:

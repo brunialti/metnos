@@ -57,6 +57,52 @@ class DispatchResult:
     needs_inputs_obs: Optional[dict] = None
 
 
+def _admit_finalized_long_work(
+    framework: Framework,
+    callback: Optional[Callable[[Framework], Optional[dict]]],
+    *,
+    started_at: float,
+) -> Optional[DispatchResult]:
+    """Translate the optional durable-admission port into a terminal result."""
+
+    if callback is None:
+        return None
+    try:
+        outcome = callback(framework)
+    except Exception as exc:  # a callback failure must never execute inline
+        from messages import get as _msg_get
+
+        log.warning("automatic durable admission failed: %s", type(exc).__name__)
+        outcome = {
+            "ok": False,
+            "error": _msg_get("ERR_LRE_SUBMISSION_FAILED"),
+            "error_class": "operation_failed",
+        }
+    if outcome is None:
+        return None
+    if not isinstance(outcome, dict) or not isinstance(outcome.get("ok"), bool):
+        from messages import get as _msg_get
+
+        outcome = {
+            "ok": False,
+            "error": _msg_get("ERR_LRE_SUBMISSION_FAILED"),
+            "error_class": "contract_violation",
+        }
+    accepted = outcome["ok"] is True
+    final_text = outcome.get("final_message_hint") or outcome.get("error") or ""
+    return DispatchResult(
+        final_text=str(final_text),
+        final_kind="answer" if accepted else "error",
+        match_source="lre",
+        framework_hash=compute_framework_hash(framework),
+        elapsed_ms=int((time.time() - started_at) * 1000),
+        framework=framework,
+        error_class="" if accepted else str(
+            outcome.get("error_class") or "operation_failed"
+        ),
+    )
+
+
 def _error_disambiguation_form(run, query: str) -> Optional[dict]:
     """§2.11 ERRORE-RUNTIME → FORM (25/6). Traduttore GENERALE: se l'ultimo step
     fallito porta nel result un segnale `disambiguation` strutturato, costruisce
@@ -6811,6 +6857,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
               remediate_args_cb: Optional[Callable] = None,
               runtime_ctx: Optional[dict] = None,
               seed_state: Optional[list] = None,
+              admit_long_work_cb: Optional[
+                  Callable[[Framework], Optional[dict]]
+              ] = None,
               turn_id: str = "",
               lang: str = "it",
               verbose: bool = False,
@@ -6885,6 +6934,24 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         catalog=catalog,
     )
 
+    def _execute_with_lre_boundary(
+        framework_to_run: Framework,
+    ) -> tuple[Optional[DispatchResult], Optional[RunResult]]:
+        """Use the single durable boundary before every inline execution."""
+
+        durable = _admit_finalized_long_work(
+            framework_to_run, admit_long_work_cb, started_at=t_start,
+        )
+        if durable is not None:
+            return durable, None
+        return None, executor.run(
+            framework_to_run,
+            query=query,
+            runtime_ctx=runtime_ctx,
+            remediate_args_cb=remediate_args_cb,
+            progress=progress,
+        )
+
     # ── Undo SAFETY-CRITICAL (§4.5, §7.9) ────────────────────────────────
     # Query che INIZIA con un prefisso UNDO («annulla …», «undo …»,
     # «ripristina …») → undo_last_turn DETERMINISTICO, bypassa il routing LLM.
@@ -6900,8 +6967,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             from .types import Framework as _Fw, StepSpec as _St
             _undo_fw = _Fw(steps=[_St(tool="undo_last_turn", args={}),
                                   _St(tool="final_answer", args={})])
-            run = executor.run(_undo_fw, query=query, runtime_ctx=runtime_ctx,
-                               remediate_args_cb=remediate_args_cb, progress=progress)
+            durable, run = _execute_with_lre_boundary(_undo_fw)
+            if durable is not None:
+                return durable
             return DispatchResult(
                 final_text=run.final_text, final_kind=run.final_kind,
                 match_source="undo", framework_hash=run.framework_hash,
@@ -6935,9 +7003,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 from .types import Framework as _Fw, StepSpec as _St
                 _fw = _Fw(steps=[_St(tool=_face, args={}),
                                  _St(tool="final_answer", args={})])
-                run = executor.run(_fw, query=query, runtime_ctx=runtime_ctx,
-                                   remediate_args_cb=remediate_args_cb,
-                                   progress=progress)
+                durable, run = _execute_with_lre_boundary(_fw)
+                if durable is not None:
+                    return durable
                 # Volto non risolto → descrivi + cerca per contenuto.
                 if (run.final_kind != "answer"
                         and "describe_images" in _cat
@@ -6950,9 +7018,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                             args={"query_text": "${step2.query_text}",
                                   "idx": "scene"}),
                         _St(tool="final_answer", args={})])
-                    run2 = executor.run(_fw2, query=query, runtime_ctx=runtime_ctx,
-                                        remediate_args_cb=remediate_args_cb,
-                                        progress=progress)
+                    durable, run2 = _execute_with_lre_boundary(_fw2)
+                    if durable is not None:
+                        return durable
                     if run2.final_kind == "answer":
                         # Descrizione VLM in testa + foto simili solo se
                         # separazione netta (banda piatta = rumore, §7.9).
@@ -7016,10 +7084,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # `get_now -> @count` continuava a rispondere “Totale: 0”.
             fp_hit.framework = _finalize_framework_for_run(
                 fp_hit.framework, intent, query, catalog, runtime_ctx)
-            run = executor.run(fp_hit.framework, query=query,
-                                runtime_ctx=runtime_ctx,
-                                remediate_args_cb=remediate_args_cb,
-                                progress=progress)
+            durable, run = _execute_with_lre_boundary(fp_hit.framework)
+            if durable is not None:
+                return durable
             # Self-healing su ERRORE (1/7/2026, §2.8): un piano cachato che ora
             # FALLISCE (drift ambiente/schema) non va ri-servito come errore
             # secco a ogni ripetizione — l'hit rinfresca last_used (l'aging non
@@ -7111,10 +7178,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # drift fra piani cached e piani freschi su presentazione e gate.
             ap_hit.framework = _finalize_framework_for_run(
                 ap_hit.framework, intent, query, catalog, runtime_ctx)
-            run = executor.run(ap_hit.framework, query=query,
-                                runtime_ctx=runtime_ctx,
-                                remediate_args_cb=remediate_args_cb,
-                                progress=progress)
+            durable, run = _execute_with_lre_boundary(ap_hit.framework)
+            if durable is not None:
+                return durable
             # Self-healing su ERRORE (1/7/2026, gemello di L0): il champion che
             # ora fallisce NON viene ritornato secco — fall-through a L3
             # (proposer+recovery). Niente delete qui: il demote del champion
@@ -7329,10 +7395,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             framework=framework, error_class="capability_missing")
 
     # Execute
-    run = executor.run(framework, query=query,
-                        runtime_ctx=runtime_ctx,
-                        remediate_args_cb=remediate_args_cb,
-                        progress=progress)
+    durable, run = _execute_with_lre_boundary(framework)
+    if durable is not None:
+        return durable
     _inject_gate_resume_if_paused(run, query, runtime_ctx, framework=framework)
 
     # Record observation (per future feedback). Skip se non cacheabile
@@ -7439,10 +7504,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     log.info("[L3 recovery] SKIP: finalized plan unchanged")
                     framework_alt = None
             if framework_alt is not None:
-                run2 = executor.run(framework_alt, query=query,
-                                     runtime_ctx=runtime_ctx,
-                                     remediate_args_cb=remediate_args_cb,
-                                progress=progress)
+                durable, run2 = _execute_with_lre_boundary(framework_alt)
+                if durable is not None:
+                    return durable
                 # Gate in PAUSA (final_kind='ask' + gate_dialog_id): la pipeline
                 # attende il consenso umano → cabla il resume e ritorna la
                 # richiesta d'input, NON un errore. §2.11.

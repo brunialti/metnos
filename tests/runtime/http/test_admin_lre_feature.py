@@ -30,6 +30,14 @@ def test_lre_feature_route_is_exact_and_closed():
 def test_lre_feature_route_passes_only_a_boolean_and_redirects(
         monkeypatch, action, enabled):
     seen = []
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    # This unit test verifies only the closed HTTP boundary.  Keep the actual
+    # thread-pool lifecycle in the service integration tests: restricted test
+    # sandboxes may not provide a worker thread to ``asyncio.to_thread``.
+    monkeypatch.setattr(http_routes_admin.asyncio, "to_thread", run_inline)
     monkeypatch.setattr(
         http_routes_admin.services_registry,
         "configure_lre_feature",

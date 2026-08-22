@@ -234,6 +234,19 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         import users
 
         users.set_pref(self.owner(), "lang", "it")
+        denied = await self.client.get(
+            "/admin/lre", headers={"Accept": "text/html"},
+        )
+        self.assertEqual(denied.status, 403)
+        navigable = await self.client.get(
+            "/admin/lre",
+            headers={**self.headers(), "Accept": "text/html"},
+        )
+        self.assertEqual(navigable.status, 200)
+        navigable_html = await navigable.text()
+        self.assertIn('href="/admin/lre"', navigable_html)
+        self.assertIn('id="durableWorkloads"', navigable_html)
+
         response = await self.client.get(
             "/agent/workloads",
             headers={**self.headers(), "Accept": "text/html"},

@@ -4,18 +4,18 @@ executor_standard = "metnos.executor/1.0"
 name = "start_lre"
 version = "1.0.0"
 author = "Metnos builtin maintainers"
-affinity = ["lre", "long run", "lavoro lungo", "in background", "riprendi dopo riavvio", "intero corpus", "tutta la cartella", "attività prolungata", "resume after restart", "whole folder", "large corpus", "molti file", "many files"]
+affinity = ["start_lre", "profilo lre registrato", "registered lre profile"]
 platforms = ["linux"]
 revertible = false
 lifecycle = "active"
 
 [description]
-it = "SCOPO: Affida a LRE una richiesta lunga basata su un profilo registrato. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/percorso/assoluto\"]). USA: corpus ampio o attività oltre il turno. NON: letture brevi, sorgenti remote o input inventati. OUT: identificativo, stato, numero di sorgenti e collegamento alla console LRE."
-en = "SCOPO: Submits a long-running request to LRE through a registered profile. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/absolute/path\"]). USE: large corpora or work beyond the turn. NON: short reads, remote sources, invented profiles or paths. OUT: identifier, state, source count, and LRE console link."
+it = "SCOPO: Avvia, per compatibilità tecnica, un piano LRE già registrato. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/percorso/assoluto\"]). USA: soltanto integrazioni che conoscono già il profilo registrato. NON: non usarlo per decidere se un’attività debba usare LRE; il normale motore affida automaticamente le azioni lunghe ammissibili. OUT: identificativo, stato, numero di sorgenti e collegamento alla console LRE."
+en = "SCOPO: Starts an already registered LRE plan for technical compatibility. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/absolute/path\"]). USE: only integrations that already know the registered profile. NON: do not use it to decide whether work should use LRE; the normal engine automatically submits eligible long actions. OUT: identifier, state, source count, and LRE console link."
 
 [code]
 files = ["../../lre_submission.py"]
-digest = "sha256:4867f561b7ba8910b696657f73a1c3666f71ae38e96979d2b1818715c1bba1dd"
+digest = "sha256:e2819eed3a4c73f25bec4465e8573a7e90adab7d6324ef46dffd1f909fd7634d"
 
 [args]
 type = "object"

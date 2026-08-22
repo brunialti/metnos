@@ -194,6 +194,14 @@ async def admin_services(request: web.Request) -> web.Response:
     )
 
 
+async def admin_lre_console(request: web.Request) -> web.Response:
+    """GET /admin/lre — navigable Settings entry for the owner-scoped console."""
+
+    from http_routes_durable_workloads import workload_console
+
+    return await workload_console(request)
+
+
 async def admin_service_action(request: web.Request) -> web.Response:
     """POST /admin/services/{name}/{action}; only catalog entries are allowed."""
     name = request.match_info["name"]
@@ -2071,6 +2079,7 @@ ROUTES = (
     ("POST", r"/admin/virt/{family:llm|vlm}/save", admin_virt_save),
     ("POST", r"/admin/virt/{family:llm|vlm}/reset", admin_virt_reset),
     ("GET",  "/admin/services",                  admin_services),
+    ("GET",  "/admin/lre",                       admin_lre_console),
     ("POST", r"/admin/services/{name}/{action:start|stop|restart}", admin_service_action),
     ("POST", r"/admin/services/durable_workloads/feature/{action:enable|disable}", admin_lre_feature_action),
     # /admin/skills/{id}/history rimossa 13/6/2026: store Praxis dismesso (Engine v2).

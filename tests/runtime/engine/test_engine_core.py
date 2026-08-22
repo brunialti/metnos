@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import os
+import inspect
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -23,9 +25,107 @@ from engine import cluster as eng_cluster
 from engine import executor as eng_executor
 from engine import fastpath as eng_fastpath
 from engine import autopath as eng_autopath
+from engine import dispatch as eng_dispatch
 from engine.recovery import classify_error, is_recoverable
 from engine.validator import Validator
 from engine.terminator import SimpleTerminator
+
+
+class TestDurableAdmissionBoundary(unittest.TestCase):
+    def setUp(self):
+        self.framework = Framework(steps=[StepSpec("long_fixture", {})])
+
+    def _admit(self, callback):
+        return eng_dispatch._admit_finalized_long_work(
+            self.framework,
+            callback,
+            started_at=time.time(),
+        )
+
+    def test_short_work_falls_through(self):
+        self.assertIsNone(self._admit(lambda _framework: None))
+
+    def test_acceptance_and_rejection_are_terminal(self):
+        accepted = self._admit(lambda _framework: {
+            "ok": True,
+            "final_message_hint": "queued",
+        })
+        rejected = self._admit(lambda _framework: {
+            "ok": False,
+            "error": "not admitted",
+            "error_class": "dependency_unavailable",
+        })
+
+        self.assertEqual((accepted.final_kind, accepted.match_source),
+                         ("answer", "lre"))
+        self.assertEqual(accepted.final_text, "queued")
+        self.assertEqual((rejected.final_kind, rejected.match_source),
+                         ("error", "lre"))
+        self.assertEqual(rejected.error_class, "dependency_unavailable")
+
+    @mock.patch("messages.get", return_value="safe failure")
+    def test_callback_exception_and_malformed_result_fail_closed(self, _message):
+        raised = self._admit(
+            lambda _framework: (_ for _ in ()).throw(RuntimeError("fixture")),
+        )
+        malformed = self._admit(lambda _framework: {"decision": "accepted"})
+
+        self.assertEqual(raised.final_kind, "error")
+        self.assertEqual(raised.final_text, "safe failure")
+        self.assertEqual(malformed.final_kind, "error")
+        self.assertEqual(malformed.error_class, "contract_violation")
+
+    def test_every_inline_execution_leg_has_the_same_last_chance_boundary(self):
+        source = inspect.getsource(eng_dispatch.run_turn)
+
+        self.assertEqual(source.count("executor.run("), 1)
+        self.assertEqual(source.count("_admit_finalized_long_work("), 1)
+        self.assertEqual(source.count("_execute_with_lre_boundary("), 8)
+
+    def test_l3_acceptance_returns_receipt_without_inline_invocation(self):
+        proposed = Framework(steps=[
+            StepSpec("find_files_hash", {"base_path": "/fixture"}),
+            StepSpec("final_answer", {}),
+        ])
+        proposer = mock.Mock()
+        proposer.propose.return_value = proposed
+        invoked = []
+        admitted = []
+        catalog = [type("ExecutorFixture", (), {
+            "name": "find_files_hash",
+            "args_schema": {
+                "type": "object",
+                "properties": {"base_path": {"type": "string"}},
+            },
+            "capabilities": (),
+        })()]
+        environment = {
+            "METNOS_ENGINE": "simple",
+            "METNOS_FASTPATH": "0",
+            "METNOS_AUTOPATH": "0",
+            "METNOS_VALIDATOR": "0",
+        }
+
+        def accept(framework):
+            admitted.append(framework)
+            return {"ok": True, "final_message_hint": "queued"}
+
+        with mock.patch.dict(os.environ, environment), \
+             mock.patch("engine.proposer.get_proposer", return_value=proposer), \
+             mock.patch("engine.cluster.embed", return_value=None):
+            result = eng_dispatch.run_turn(
+                query="trova tutti i duplicati",
+                intent=Intent(verb="find", object="files"),
+                catalog=catalog,
+                invoke_executor_cb=lambda name, args: invoked.append((name, args)),
+                admit_long_work_cb=accept,
+                turn_id="turn-auto-l3",
+            )
+
+        self.assertEqual(result.match_source, "lre")
+        self.assertEqual(result.final_text, "queued")
+        self.assertEqual(invoked, [])
+        self.assertEqual(len(admitted), 1)
 
 
 class TestCluster(unittest.TestCase):
