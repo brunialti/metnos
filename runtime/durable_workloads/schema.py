@@ -40,6 +40,7 @@ _INTERNAL_RUNNERS = frozenset({
     "artifact_store_publish",
 })
 _REFERENCE_KINDS = frozenset({
+    "literal",
     "revision.inventory",
     "source.path",
     "source.record",
@@ -226,7 +227,12 @@ def _validate_stage(stage: Any, index: int) -> Mapping[str, Any]:
         "cardinality", "input_bindings", "output_schema", "retry", "timeout_s",
         "invalidation_keys", "resources", "required",
     }
-    item = _object(stage, context=context, required=fields, allowed=fields)
+    item = _object(
+        stage,
+        context=context,
+        required=fields,
+        allowed=fields | {"placement"},
+    )
     key = _string(item["key"], context=f"{context}.key", maximum=64)
     if not _KEY_RE.fullmatch(key):
         raise SchemaValidationError(f"{context}.key is not a closed key")
@@ -328,14 +334,31 @@ def _validate_stage(stage: Any, index: int) -> Mapping[str, Any]:
     for name, raw_reference in bindings.items():
         if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name):
             raise SchemaValidationError(f"{context}.input_bindings has an invalid key")
+        reference_context = f"{context}.input_bindings.{name}"
         reference = _object(
-            raw_reference, context=f"{context}.input_bindings.{name}",
-            required={"ref"}, allowed={"ref", "stage", "field"},
+            raw_reference,
+            context=reference_context,
+            required={"ref"},
+            allowed={"ref", "stage", "field", "value"},
         )
         ref = reference["ref"]
         if ref not in _REFERENCE_KINDS:
             raise SchemaValidationError(f"{context}.input_bindings.{name}.ref is unknown")
-        if str(ref).startswith("dependency."):
+        if ref == "literal":
+            if "value" not in reference:
+                raise SchemaValidationError(
+                    f"{reference_context}.value is required for a literal"
+                )
+            if "stage" in reference or "field" in reference:
+                raise SchemaValidationError(
+                    f"{reference_context} literal cannot use stage or field"
+                )
+            canonical_json(reference["value"], max_bytes=MAX_PLAN_JSON_BYTES)
+        elif "value" in reference:
+            raise SchemaValidationError(
+                f"{reference_context}.value is only valid for a literal"
+            )
+        elif str(ref).startswith("dependency."):
             dependency_stage = reference.get("stage")
             if dependency_stage not in dependencies:
                 raise SchemaValidationError(
@@ -414,6 +437,32 @@ def _validate_stage(stage: Any, index: int) -> Mapping[str, Any]:
         )
     if not isinstance(item["required"], bool):
         raise SchemaValidationError(f"{context}.required must be boolean")
+
+    if "placement" in item:
+        placement = _object(
+            item["placement"],
+            context=f"{context}.placement",
+            required={"target"},
+            allowed={"target", "device"},
+        )
+        target = placement["target"]
+        if target == "server":
+            if "device" in placement:
+                raise SchemaValidationError(
+                    f"{context}.placement.device is invalid for server"
+                )
+        elif target == "device":
+            device = _string(
+                placement.get("device"),
+                context=f"{context}.placement.device",
+                maximum=128,
+            )
+            if "\x00" in device:
+                raise SchemaValidationError(
+                    f"{context}.placement.device contains NUL"
+                )
+        else:
+            raise SchemaValidationError(f"{context}.placement.target is unknown")
 
     if stage_type is StageType.INVENTORY:
         if dependencies or runner_kind is not RunnerKind.INTERNAL or runner_name != "sealed_inventory":

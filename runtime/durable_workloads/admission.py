@@ -18,7 +18,7 @@ from .compiler import (
 from .inventory import InventoryLimits
 from .models import RevisionRecord, WorkloadRecord, WorkloadState
 from .source_authority import SourceAuthority
-from .storage import DurableWorkloadStore
+from .storage import DurableWorkloadStore, VersionConflictError
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +42,75 @@ class RegisteredPlanRegistry(Protocol):
     output_schemas: OutputSchemaResolver
 
     def candidate_plan(self, name: str) -> dict[str, Any]: ...
+
+
+def submit_candidate(
+    store: DurableWorkloadStore,
+    registry: RegisteredPlanRegistry,
+    owner_user_id: str,
+    request_key: str,
+    candidate: Mapping[str, Any],
+    inventory: Mapping[str, Any],
+    *,
+    redacted_request: Mapping[str, Any],
+    admission_boundary: Callable[[], AbstractContextManager[Any]] | None = None,
+) -> SubmissionResult:
+    """Admit and queue one already-built candidate exactly once.
+
+    Inventory construction remains a caller concern.  This function owns the
+    sole draft/admit/queue sequence shared by registered and dynamic plans.
+    """
+
+    workload = store.create_draft(
+        owner_user_id,
+        request_key,
+        redacted_request=redacted_request,
+    )
+    revision = None
+    if workload.state in {WorkloadState.DRAFT, WorkloadState.ADMITTED}:
+        boundary = (
+            admission_boundary() if admission_boundary is not None
+            else nullcontext()
+        )
+        with boundary:
+            # Each successful operation advances exactly one state.  Bounded
+            # owner-scoped rereads make concurrent identical deliveries
+            # converge even when the optional outer lock is absent.
+            for _step in range(4):
+                workload = store.get_workload(
+                    owner_user_id, workload.workload_id,
+                )
+                try:
+                    if workload.state is WorkloadState.DRAFT:
+                        revision = admit_candidate(
+                            store,
+                            owner_user_id,
+                            workload.workload_id,
+                            candidate,
+                            inventory,
+                            expected_version=workload.version,
+                            runners=registry.runners,
+                            output_schemas=registry.output_schemas,
+                        ).revision
+                        continue
+                    if workload.state is WorkloadState.ADMITTED:
+                        workload = store.transition_workload(
+                            owner_user_id,
+                            workload.workload_id,
+                            WorkloadState.QUEUED,
+                            expected_version=workload.version,
+                        )
+                    break
+                except VersionConflictError:
+                    continue
+            else:
+                raise VersionConflictError(
+                    "concurrent submission did not converge"
+                )
+    workload = store.get_workload(owner_user_id, workload.workload_id)
+    if revision is None and workload.active_revision_id is not None:
+        revision = store.get_revision(owner_user_id, workload.active_revision_id)
+    return SubmissionResult(workload=workload, revision=revision)
 
 
 def admit_candidate(
@@ -142,12 +211,6 @@ def submit_registered_local_sources(
         request_key,
         redacted_request=redacted_request,
     )
-    revision = (
-        store.get_revision(owner_user_id, workload.active_revision_id)
-        if workload.active_revision_id is not None
-        else None
-    )
-
     inventory: Mapping[str, Any] | None = None
     try:
         if workload.state is WorkloadState.DRAFT:
@@ -160,50 +223,22 @@ def submit_registered_local_sources(
                 valid_until=_authority_expiry(candidate),
             )
 
-        if workload.state in {WorkloadState.DRAFT, WorkloadState.ADMITTED}:
-            boundary = (
-                admission_boundary() if admission_boundary is not None
-                else nullcontext()
-            )
-            with boundary:
-                # Another delivery of the same request may have crossed this
-                # boundary while this caller sealed its inventory.  Re-read
-                # under the shared gate before making execution reachable.
-                workload = store.get_workload(
-                    owner_user_id, workload.workload_id,
-                )
-                if workload.state is WorkloadState.DRAFT:
-                    if inventory is None:
-                        raise RuntimeError(
-                            "draft admission lost its sealed inventory"
-                        )
-                    admitted = admit_candidate(
-                        store,
-                        owner_user_id,
-                        workload.workload_id,
-                        candidate,
-                        inventory,
-                        expected_version=workload.version,
-                        runners=registry.runners,
-                        output_schemas=registry.output_schemas,
-                    )
-                    revision = admitted.revision
-                workload = store.get_workload(
-                    owner_user_id, workload.workload_id,
-                )
-                if workload.state is WorkloadState.ADMITTED:
-                    workload = store.transition_workload(
-                        owner_user_id,
-                        workload.workload_id,
-                        WorkloadState.QUEUED,
-                        expected_version=workload.version,
-                    )
+        if workload.state is WorkloadState.DRAFT and inventory is None:
+            raise RuntimeError("draft admission lost its sealed inventory")
+        result = submit_candidate(
+            store,
+            registry,
+            owner_user_id,
+            request_key,
+            candidate,
+            inventory or {},
+            redacted_request=redacted_request,
+            admission_boundary=admission_boundary,
+        )
     finally:
         if inventory is not None:
             close = getattr(inventory, "close", None)
             if callable(close):
                 close()
 
-    if revision is None and workload.active_revision_id is not None:
-        revision = store.get_revision(owner_user_id, workload.active_revision_id)
-    return SubmissionResult(workload=workload, revision=revision)
+    return result

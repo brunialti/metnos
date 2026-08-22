@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import json
 import re
 from typing import Any
 
@@ -471,7 +472,19 @@ class DurableExecutionBridge:
             reference = _mapping(raw_reference, context="input_binding")
             expected = input_types.get(str(argument))
             reference_kind = str(reference["ref"])
-            if reference_kind == "revision.inventory":
+            if reference_kind == "literal":
+                try:
+                    value = json.loads(canonical_json(
+                        reference["value"], max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+                    ))
+                except (KeyError, SchemaValidationError) as exc:
+                    raise self._failure(
+                        "contract_violation",
+                        code="execution.literal_invalid",
+                        message_key="ERR_DURABLE_CONTRACT_CHANGED",
+                        retry="never",
+                    ) from exc
+            elif reference_kind == "revision.inventory":
                 value: object = facts["inventory"]
             elif reference_kind == "source.record":
                 if not isinstance(source, Mapping):
@@ -579,7 +592,15 @@ class DurableExecutionBridge:
         for argument, raw_reference in bindings.items():
             reference = _mapping(raw_reference, context="input_binding")
             reference_kind = str(reference["ref"])
-            if reference_kind == "revision.inventory":
+            if reference_kind == "literal":
+                value = {
+                    "digest": digest_json(
+                        "durable-literal",
+                        reference["value"],
+                        max_bytes=MAX_SNAPSHOT_JSON_BYTES,
+                    ),
+                }
+            elif reference_kind == "revision.inventory":
                 inventory = _mapping(facts["inventory"], context="inventory")
                 value: object = {
                     "digest": inventory.get("digest"),
@@ -882,7 +903,27 @@ class DurableExecutionBridge:
                     details={"stage_key": str(stage["key"])},
                 ) from exc
         source = facts.get("source")
-        device_id = self._device_selector(source if isinstance(source, Mapping) else None)
+        placement_target = stage.get("placement_target")
+        placement_device = stage.get("placement_device")
+        if placement_target == "server" and placement_device is None:
+            device_id = None
+        elif (
+            placement_target == "device"
+            and isinstance(placement_device, str)
+            and placement_device
+        ):
+            device_id = placement_device
+        elif placement_target is None and placement_device is None:
+            device_id = self._device_selector(
+                source if isinstance(source, Mapping) else None
+            )
+        else:
+            raise self._failure(
+                "contract_violation",
+                code="execution.placement_invalid",
+                message_key="ERR_DURABLE_CONTRACT_CHANGED",
+                retry="never",
+            )
         executor_snapshot = {
             "schema_version": "metnos.durable-executor-snapshot/2",
             "mode": "verified",

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Final
 
 
-CURRENT_SCHEMA_VERSION: Final[int] = 6
+CURRENT_SCHEMA_VERSION: Final[int] = 7
 BUSY_TIMEOUT_MS: Final[int] = 5_000
 
 
@@ -1320,6 +1320,76 @@ _V6_STATEMENTS: tuple[str, ...] = (
 )
 
 
+# A stage without sealed sources still needs an immutable execution target.
+# Keep placement relational and owner-scoped instead of changing the v1 stage
+# row or hiding authority-relevant data inside a free-form snapshot.
+_V7_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE stage_placements (
+        owner_user_id TEXT NOT NULL,
+        revision_id TEXT NOT NULL,
+        stage_id TEXT NOT NULL,
+        target_kind TEXT NOT NULL CHECK (target_kind IN ('server', 'device')),
+        target_device TEXT CHECK (
+            (target_kind='server' AND target_device IS NULL)
+            OR (
+                target_kind='device'
+                AND length(target_device) BETWEEN 1 AND 128
+                AND instr(target_device, char(0))=0
+            )
+        ),
+        PRIMARY KEY (owner_user_id, stage_id),
+        FOREIGN KEY (owner_user_id, stage_id, revision_id)
+            REFERENCES stages(owner_user_id, id, revision_id) ON DELETE CASCADE
+    ) WITHOUT ROWID
+    """,
+    """
+    CREATE TRIGGER admitted_stage_placements_insert_guard
+    BEFORE INSERT ON stage_placements
+    WHEN EXISTS (
+        SELECT 1 FROM revisions revision
+        WHERE revision.owner_user_id=NEW.owner_user_id
+          AND revision.id=NEW.revision_id
+          AND revision.admitted_at IS NOT NULL
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'admitted stage placement is immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER admitted_stage_placements_update_guard
+    BEFORE UPDATE ON stage_placements
+    WHEN EXISTS (
+        SELECT 1 FROM revisions revision
+        WHERE revision.owner_user_id=OLD.owner_user_id
+          AND revision.id=OLD.revision_id
+          AND revision.admitted_at IS NOT NULL
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'admitted stage placement is immutable');
+    END
+    """,
+    """
+    CREATE TRIGGER admitted_stage_placements_delete_guard
+    BEFORE DELETE ON stage_placements
+    WHEN EXISTS (
+        SELECT 1 FROM revisions revision
+        WHERE revision.owner_user_id=OLD.owner_user_id
+          AND revision.id=OLD.revision_id
+          AND revision.admitted_at IS NOT NULL
+    )
+      AND EXISTS (
+        SELECT 1 FROM workloads workload
+        WHERE workload.owner_user_id=OLD.owner_user_id
+          AND workload.active_revision_id=OLD.revision_id
+    )
+    BEGIN
+        SELECT RAISE(ABORT, 'active admitted stage placement is immutable');
+    END
+    """,
+)
+
+
 _REQUIRED_V1_TABLES = frozenset({
     "durable_schema",
     "workloads",
@@ -1489,6 +1559,31 @@ def _validate_schema_shape(connection: sqlite3.Connection, version: int) -> None
                 "schema v6 is missing service indexes: "
                 + repr(missing_indexes)
             )
+    if version >= 7:
+        if "stage_placements" not in present:
+            raise MigrationError("schema v7 is missing stage placements")
+        placement_columns = {
+            str(row[1])
+            for row in connection.execute("PRAGMA table_info(stage_placements)")
+        }
+        if placement_columns != {
+            "owner_user_id", "revision_id", "stage_id", "target_kind",
+            "target_device",
+        }:
+            raise MigrationError("schema v7 has incompatible placement columns")
+        placement_foreign_keys = connection.execute(
+            "PRAGMA foreign_key_list(stage_placements)"
+        ).fetchall()
+        placement_ownership = {
+            (str(row[2]), str(row[3]), str(row[4]), str(row[6]).upper())
+            for row in placement_foreign_keys
+        }
+        if placement_ownership != {
+            ("stages", "owner_user_id", "owner_user_id", "CASCADE"),
+            ("stages", "stage_id", "id", "CASCADE"),
+            ("stages", "revision_id", "revision_id", "CASCADE"),
+        }:
+            raise MigrationError("schema v7 has incompatible placement ownership")
 
 
 def migrate(
@@ -1567,6 +1662,16 @@ def migrate(
                 (6, utc_now()),
             )
             current = 6
+        if current == 6:
+            for index, statement in enumerate(_V7_STATEMENTS, start=1):
+                if _before_statement is not None:
+                    _before_statement(index, statement)
+                connection.execute(statement)
+            connection.execute(
+                "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
+                (7, utc_now()),
+            )
+            current = 7
         _validate_schema_shape(connection, current)
         # A corrupted database may contain an arbitrary number of violations;
         # startup needs only bounded evidence to fail closed.

@@ -7,6 +7,7 @@ catalog/configuration ports.  It never invokes an executor or an LLM.
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -23,6 +24,7 @@ from llm_pricing import cost_policy
 from .models import DurableEffect, RunnerKind
 from .reduction import hierarchical_node_bound
 from .schema import (
+    MAX_PLAN_JSON_BYTES,
     MAX_RESULT_JSON_BYTES,
     MAX_SNAPSHOT_JSON_BYTES,
     canonical_json,
@@ -217,6 +219,15 @@ def core_output_schemas() -> OutputSchemaRegistry:
 
     digest = {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
     return OutputSchemaRegistry((
+        ApprovedOutputSchema.create(
+            "metnos.executor-result/1",
+            {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {"ok": {"type": "boolean"}},
+                "required": ["ok"],
+            },
+        ),
         ApprovedOutputSchema.create(
             "metnos.internal-artifacts/1",
             {
@@ -904,7 +915,28 @@ def _validate_binding_fields(
         dependency = reference.get("stage")
         field = reference.get("field")
         provided_types: set[str]
-        if ref.startswith("dependency."):
+        if ref == "literal":
+            value = reference["value"]
+            canonical_json(value, max_bytes=MAX_PLAN_JSON_BYTES)
+            if value is None:
+                provided_types = set()
+            elif type(value) is bool:
+                provided_types = {"boolean"}
+            elif type(value) is int:
+                provided_types = {"integer", "number"}
+            elif type(value) is float and math.isfinite(value):
+                provided_types = {"number"}
+            elif type(value) is str:
+                provided_types = {"string"}
+            elif type(value) is list:
+                provided_types = {"array"}
+            elif type(value) is dict and all(
+                isinstance(key, str) for key in value
+            ):
+                provided_types = {"object"}
+            else:
+                provided_types = set()
+        elif ref.startswith("dependency."):
             schema = schemas_by_stage.get(str(dependency))
             if schema is None:
                 raise CompilationError(

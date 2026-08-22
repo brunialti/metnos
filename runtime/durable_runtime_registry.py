@@ -8,6 +8,9 @@ storage, recovery and execution never import or branch on a task domain.
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import lru_cache
+
+from durable_workloads.direct_invocation import direct_runtime_registration
 
 from durable_workloads.image_preset import (
     ImagePresetWorkloadInvoker,
@@ -31,6 +34,14 @@ from durable_workloads.worker import DurableWorker
 ADMISSION_NAMES = (PRESET_ID,)
 
 
+@lru_cache(maxsize=1)
+def _verified_catalog_snapshot():
+    from loader import load_catalog
+
+    return load_catalog(verify=True, lang="en")
+
+
+@lru_cache(maxsize=1)
 def default_runtime_registry() -> RuntimeRegistry:
     """Build the closed registry from approved package contributions."""
 
@@ -44,7 +55,11 @@ def default_runtime_registry() -> RuntimeRegistry:
         workload_invoker=ImagePresetWorkloadInvoker(),
         candidate_plan_factory=image_questions_plan,
     )
-    return RuntimeRegistry((image_questions,))
+    registrations = [image_questions]
+    direct = direct_runtime_registration(_verified_catalog_snapshot())
+    if direct is not None:
+        registrations.append(direct)
+    return RuntimeRegistry(tuple(registrations))
 
 
 def production_factories() -> tuple[
