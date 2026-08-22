@@ -227,20 +227,17 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 
 ### QUA-001 - Flussi d'oro e affidabilita' percepita
 
-- Stato: aperto.
-- Obiettivo: scegliere 20-30 flussi rappresentativi che Metnos deve eseguire
-  molto bene, invece di usare il numero di executor come proxy di qualita'.
-- Dimensioni: correttezza, completezza, latenza, recupero, onesta' dell'errore,
-  numero di approvazioni, ripresa della sessione e comprensibilita' della
-  risposta.
-- Aspetto interattivo: misurare carico cognitivo, fiducia calibrata e possibilita'
-  di capire cosa sta accadendo. Ridurre approvazioni ripetitive senza ampliare il
-  mandato; distinguere chiaramente attesa, bisogno di input, risultato parziale
-  e fallimento.
-- Metriche minime: success rate per flusso, completezza degli item, p50/p95,
-  prompt di approvazione per turno, recovery rate, sessioni appese e falsi
-  successi. Obiettivo di release: due cicli E2E completi consecutivi senza
-  errori, mantenendo anche soglie prestazionali e semantiche.
+- Stato: promosso il 22/8/2026 nella roadmap persistente
+  `internal/roadmap/RM-0006-certificazione-logica-e2e.md`; attuazione non
+  iniziata.
+- Decisione: la Fase 8 non e' piu' uno «stress logico» generico. Certifica 24
+  flussi d'oro in italiano e inglese, con oracoli congelati per piano ammesso,
+  autorita', effetti, postcondizioni, risposta e recupero.
+- Esecuzione: Metnos esegue la matrice in lotti tramite i normali confini; un
+  coordinatore esterno e deterministico conserva l'indipendenza dell'oracolo.
+  Il revisore apre tutte le anomalie e soltanto un campione dei successi.
+- Confine: QUA-001 resta il puntatore breve. Matrice, fasi, costi, artefatti e
+  criteri misurabili sono definiti esclusivamente in RM-0006.
 
 ### RLS-001 - Installazione, aggiornamento e rollback ripetibili
 
