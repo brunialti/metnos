@@ -137,6 +137,9 @@ tests/stress/**/results_*
 decisions/executor_requests.jsonl
 decisions/executor_diary.md
 *.jsonl
+!tests/e2e/certification/fixtures/cases.jsonl
+!tests/e2e/certification/fixtures/observations.jsonl
+!tests/e2e/certification/fixtures/golden_cases.jsonl
 
 # --- Sqlite full (non solo WAL/SHM) --------------------------------------
 *.sqlite
