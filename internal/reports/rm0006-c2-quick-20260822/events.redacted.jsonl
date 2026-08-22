@@ -1,0 +1,16 @@
+{"case_id":"explain-tutor-service-status--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"explain-boundary-calendar-create--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"explain-direct-current-time--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"read-files-filtered--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"read-file-content--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"compose-find-then-read--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"compose-find-sort-files--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"compose-read-group-entries--it","certification_id":"rm0006-c2-quick-v1","cycle":1,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"explain-tutor-service-status--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"explain-boundary-calendar-create--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"explain-direct-current-time--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"read-files-filtered--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"read-file-content--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"compose-find-then-read--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"compose-find-sort-files--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
+{"case_id":"compose-read-group-entries--it","certification_id":"rm0006-c2-quick-v1","cycle":2,"event":"case_evaluated","schema_version":"metnos.certification-event/1","verdict":"pass"}
