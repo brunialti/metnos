@@ -10,7 +10,7 @@
 | Nome storico | Fase 8 — «stress logico» |
 | Origine | `internal/design/TODO.md::QUA-001` e §12 di `CLAUDE.mutabile.md` |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita |
-| Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel Tutor o pubblicato |
+| Riservatezza | Specifica dettagliata interna. Soltanto una sintesi marcata `tutor-exclude` compare nelle roadmap pubbliche IT/EN |
 
 ## 1. Sintesi
 
@@ -421,3 +421,5 @@ La certificazione non e' una campagna monouso:
 - `tests/runtime/infra/test_guard_corpus_equivalence.py`
 - `internal/reports/rm0004-f12-verification-20260822.md`
 - `internal/reports/rm0004-f14-verification-20260822.md`
+- `docs/it/roadmap.html`
+- `docs/en/roadmap.html`
