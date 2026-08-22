@@ -249,7 +249,12 @@ def test_durable_telegram_cycle_is_inert_off_and_delivers_once_on(
     assert len(sends) == 1
     with DurableWorkloadStore.open(database) as store:
         row = store._connection.execute(
-            "SELECT state, attempt_count FROM outbox WHERE owner_user_id=?",
+            "SELECT state, attempt_count, ack_json FROM outbox "
+            "WHERE owner_user_id=?",
             (owner,),
         ).fetchone()
-        assert tuple(row) == ("sent", 1)
+        assert tuple(row) == (
+            "sent",
+            1,
+            '{"delivery":"sent","provider_message_id":1}',
+        )

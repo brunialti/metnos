@@ -159,6 +159,25 @@ class TelegramOutboxAdapter:
 
         return OutboundMessage(text=text)
 
+    @staticmethod
+    def _delivery_ack(outcome: Mapping[str, Any]) -> dict[str, Any]:
+        """Keep only the non-sensitive Telegram receipt needed for audit."""
+
+        acknowledgement: dict[str, Any] = {"delivery": "sent"}
+        result = outcome.get("result")
+        raw_message_id = (
+            result.get("message_id")
+            if isinstance(result, Mapping)
+            else outcome.get("message_id")
+        )
+        if (
+            isinstance(raw_message_id, int)
+            and not isinstance(raw_message_id, bool)
+            and raw_message_id >= 0
+        ):
+            acknowledgement["provider_message_id"] = raw_message_id
+        return acknowledgement
+
     def _retry_or_cancel(self, record: OutboxRecord, *, now: datetime) -> str:
         """Bound a definitely-unsent retry loop and report the actual CAS."""
 
@@ -283,7 +302,7 @@ class TelegramOutboxAdapter:
                 if self._store.confirm_outbox(
                     record,
                     worker_id=self._worker_id,
-                    acknowledgement={"delivery": "sent"},
+                    acknowledgement=self._delivery_ack(outcome),
                     now=current,
                 ):
                     sent += 1

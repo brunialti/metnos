@@ -235,8 +235,14 @@ def test_telegram_adapter_never_retries_an_uncertain_send(store, monkeypatch):
     assert len(uncertain.messages) == 1
 
     delivered_event = _event(store, number=30, event_type=EventType.COMPLETED)
-    _enqueue(store, delivered_event)
-    delivered = _Sender({"ok": True})
+    delivered_row = _enqueue(store, delivered_event)
+    delivered = _Sender({
+        "ok": True,
+        "result": {
+            "message_id": 4321,
+            "chat": {"id": "must-not-enter-the-outbox"},
+        },
+    })
     adapter_delivered = TelegramOutboxAdapter(
         store,
         delivered,
@@ -246,6 +252,12 @@ def test_telegram_adapter_never_retries_an_uncertain_send(store, monkeypatch):
     )
     assert adapter_delivered.deliver_once(now=NOW).sent == 1
     assert len(delivered.messages) == 1
+    receipt = store._connection.execute(
+        "SELECT ack_json FROM outbox WHERE owner_user_id=? AND id=?",
+        (OWNER, delivered_row.outbox_id),
+    ).fetchone()[0]
+    assert receipt == '{"delivery":"sent","provider_message_id":4321}'
+    assert "chat" not in receipt
 
 
 def test_started_delivery_is_not_reclaimed_after_worker_crash(store):
