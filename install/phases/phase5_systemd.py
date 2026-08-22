@@ -260,7 +260,11 @@ def _runtime_module_importable(module: str) -> bool:
     if not venv_py.exists() or not repo.is_dir():
         return False
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(repo) + ":" + env.get("PYTHONPATH", "")
+    search_roots = [str(repo), str(repo / "runtime")]
+    inherited = env.get("PYTHONPATH", "")
+    if inherited:
+        search_roots.append(inherited)
+    env["PYTHONPATH"] = os.pathsep.join(search_roots)
     r = subprocess.run(
         [str(venv_py), "-c", f"import {module}"],
         env=env, capture_output=True, text=True, timeout=15,

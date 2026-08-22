@@ -1,6 +1,7 @@
 """Installer fresh/upgrade behavior for the integrated user target."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -245,4 +246,6 @@ def test_runtime_import_probe_uses_resolved_default_venv(monkeypatch, tmp_path):
 
     assert phase5._runtime_module_importable("runtime.metnos_http_server")
     assert seen["command"][0] == str(python)
-    assert seen["env"]["PYTHONPATH"].split(":", 1)[0] == str(ROOT)
+    assert seen["env"]["PYTHONPATH"].split(os.pathsep)[:2] == [
+        str(ROOT), str(ROOT / "runtime"),
+    ]

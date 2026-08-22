@@ -191,6 +191,11 @@ page writes only the canonical form and restarts the exact catalogued user
 unit. Disabling LRE never removes its store or artifacts, and the idle worker
 continues to publish health state.
 
+The phase-5 import preflight must reproduce both supported Python package
+roots: the installation root for `runtime.*` modules and its `runtime/`
+directory for top-level runtime packages such as `durable_workloads`. It uses
+the same installation virtual environment as the rendered units.
+
 If a system-level `metnos-http.service` is already active, phase 5 installs the
 user units but does not start a competing listener and does not disable the
 working baseline. The guarded migration procedure in `systemd/README.md` must
