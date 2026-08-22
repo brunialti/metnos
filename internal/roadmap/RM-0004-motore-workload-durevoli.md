@@ -2,25 +2,26 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `active`; F0-F12 completate il 2026-08-22; F13 non avviata e servizio LRE disattivato |
+| Stato | `implemented`; F0-F13 completate e distribuite il 2026-08-22; al termine del progetto pilota i nuovi invii LRE sono stati nuovamente disattivati |
 | Creazione | 2026-08-17; mandato ricevuto in data anteriore, non tracciata |
 | Ultima revisione | 2026-08-22 |
-| Implementazione reale | Nucleo interno disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato. F9 aggiunge facciata e DTO owner-scoped, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, retry e localizzazione. F11 aggiunge il preset immagini privato come registrazione esterna al nucleo. F12 collega l'autorità locale/remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali; nessuna route di ammissione pubblica è abilitata |
-| Progettazione | Gate V1-V5 ratificati da ADR 0213. Il nome pubblico è rinviato per decisione; la topologia futura è congelata ma non installata |
+| Implementazione reale | Nucleo disponibile in `runtime/durable_workloads/`: modelli chiusi, schema SQLite v1, repository circoscritto al proprietario, acquisizione atomica, lease, heartbeat, fencing del commit, ritentativo deterministico, riconciliazione, deposito privato degli artefatti, compilatore/ammissione del piano v1, contesto equo nello scheduler centrale e ponte generico di esecuzione locale, remota e LLM con provenienza completa. F8 aggiunge un servizio systemd supervisionato, con lock locale non autorevole, migrazione e ripresa per lotti, stato di salute chiuso e gate predefinito disattivato. F9 aggiunge facciata e DTO circoscritti al proprietario, cursori firmati, timeline e unità redatte, oltre alle sole route di lettura e ai comandi espliciti con versione e idempotenza. F10 aggiunge una console web paginata con modello di lettura privo di dati riservati, SSE persistente, download autenticato tramite autorizzazione temporanea revocabile e outbox Telegram con lease, ritentativi e localizzazione. F11 registra il preset immagini privato fuori dal nucleo. F12 collega l'autorità locale e remota delle sorgenti, introduce punti di arresto nominati, inventario su spool senza copia monolitica e prove con processi reali. F13 distribuisce il solo ingresso firmato `start_lre`, limitato ai piani registrati, al gate predefinito disattivato e a una chiave opaca di riconsegna; installazione, progetto pilota con riavvio, replay idempotente, documentazione pubblica, Tutor e distribuzione sono completati |
+| Progettazione | Gate V1-V5 ratificati da ADR 0213. `LRE` è il nome architetturale invariabile; `start_lre` è un nome di sistema esatto e non introduce un oggetto nel vocabolario pubblico |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita di Roberto |
 | Decisione di prodotto acquisita | Un carico lungo interrotto deve poter riprendere senza perdere il lavoro svolto e senza ripetere un effetto già prodotto; l'utente formula il risultato voluto, non il flusso |
 | Autorizzazione F0-F4 | Acquisita da Roberto il 2026-08-20; attuazione limitata al nucleo interno inattivo, a callable fittizi e al deposito privato Metnos |
+| Autorizzazione F5-F13 | Acquisita progressivamente da Roberto; F13 autorizzata esplicitamente il 2026-08-22 con la richiesta «procedi f13» |
 | Origini | Mandato integrale in calce; `internal/design/TODO.md::JOB-001` |
 | Decisioni applicabili | ADR 0183, 0186, 0190, 0193, 0196, 0201, 0204, 0205, 0207 e 0213 |
-| Prossimo gate | Autorizzare e pianificare separatamente F13: migrazione, documentazione pubblica, progetto pilota e distribuzione, senza abilitazioni implicite. Evidenza F12 in `internal/reports/rm0004-f12-verification-20260822.md` |
-| Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito finché il comportamento non è implementato e verificato |
+| Prossimo gate | Nessun gate di implementazione residuo. Misurare nell'uso operativo costi, latenze, qualità e interventi umani senza riaprire il contratto di consistenza. Evidenze in `internal/reports/rm0004-f12-verification-20260822.md` e `internal/reports/rm0004-f13-verification-20260822.md` |
+| Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel catalogo Tutor o pubblicato sul sito; le guide pubbliche descrivono separatamente il solo comportamento distribuito |
 
 ## 0. Esito della verifica
 
 Al momento della ricognizione, RM-0004 non duplicava una funzione già
 presente: chiedeva una semantica che il codice non possedeva. La roadmap ha
-trasformato quel mandato in un percorso verificabile; F0-F12 sono ora
-realizzate, mentre F13 resta esplicitamente futura.
+trasformato quel mandato in un percorso verificabile; F0-F13 sono ora
+realizzate, collaudate e distribuite.
 
 La conclusione architetturale è netta:
 
@@ -32,20 +33,24 @@ La conclusione architetturale è netta:
    punti di ripresa, dipendenze, commit e artefatti;
 4. F5-F12 hanno aggiunto compilazione, pianificazione equa, esecuzione
    universale, superfici circoscritte e certificazione avversariale;
-5. il percorso corretto è un **organo interno di Metnos**, non un secondo
+5. F13 ha completato ingresso conversazionale, installazione, progetto pilota,
+   documentazione pubblica, Tutor e distribuzione, lasciando disattivati per
+   impostazione predefinita i nuovi invii;
+6. il percorso corretto è un **organo interno di Metnos**, non un secondo
    agente: compila un piano tipizzato, reclama un'unità alla volta e la
    esegue sempre attraverso gli executor ammessi e lo scheduler centrale.
 
-La direzione resta `active`, ma il suo fondamento non è più soltanto proposto.
+La roadmap è `implemented`: ogni fase ha ora prove riferite.
 ADR 0213 ha chiuso F0; F1 e F2 hanno introdotto un archivio inattivo e
 verificabile; F3 ha dimostrato acquisizione atomica, fencing e ripresa fra
 processi. F4 ha aggiunto il deposito privato indirizzato dal contenuto e la
 pubblicazione interna riconciliabile. F5 ha compilato e ammesso il piano v1;
 F6 ha collegato il contesto equo allo scheduler centrale; F7 ha verificato il
 ponte universale locale, remoto e LLM, inclusa la provenienza durevole. Il
-pacchetto resta inattivo per nuovi invii nel runtime corrente. F8 ha aggiunto
-il ciclo di vita supervisionato, ma il gate distribuito resta disattivato e i
-binding eseguibili non sono ancora configurati. F9 ha congelato il contratto
+pacchetto resta inattivo per nuovi invii nel runtime corrente per una scelta
+esplicita di configurazione, non per una lacuna. F8 ha aggiunto il ciclo di vita
+supervisionato; F11-F13 hanno registrato e verificato i binding eseguibili,
+mentre il gate distribuito resta disattivato. F9 ha congelato il contratto
 owner-scoped e le route sottili; nessuna route accetta il proprietario dal body
 o restituisce piano, risultati o istantanee interne. F10 ha aggiunto la console
 web sulla stessa facciata, con timeline SSE riletta dal database, autorizzazioni
@@ -54,9 +59,11 @@ iniziale né espone percorsi, payload di risultato o link pubblici. F11 dispone
 ora di contratti e prove E2E sintetiche. F12 collega al factory l'autorità
 esplicita delle sorgenti locali e remote, verifica il corpus da 980 file con
 arresti reali e mantiene il preset fuori dal nucleo generico. Il gate
-automatico e la prova Telegram esterna autorizzata sono positivi. Il servizio
-distribuito resta comunque spento: F13 non è stata avviata e non può essere
-anticipata implicitamente.
+automatico e la prova Telegram esterna autorizzata sono positivi. F13 ha
+installato il servizio, superato un progetto pilota sintetico con riavvio e
+replay, pubblicato la guida bilingue e ricompilato Tutor. Il servizio
+supervisionato resta installato, mentre i nuovi invii sono nuovamente
+disattivati: nessuna attivazione è implicita.
 
 ### 0.1 Lessico di verifica
 
@@ -68,9 +75,11 @@ Nel testo analitico sono usate quattro etichette:
 - **[PROPOSTA]**: disegno futuro, privo di autorità finché non è approvato;
 - **[GATE]**: decisione che blocca il pacchetto dipendente.
 
-Il termine interno provvisorio è *lavoro durevole*. I nomi di pacchetti e tabelle
-riportati più avanti servono a rendere concrete le istruzioni; non introducono
-un nuovo oggetto nel vocabolario pubblico.
+Il nome architetturale interno è **LRE (Long Run Engine)** e non viene tradotto.
+«Lavoro» indica una singola esecuzione affidata a LRE, non è la traduzione del
+nome del motore. I nomi di pacchetti e tabelle riportati più avanti servono a
+rendere concrete le istruzioni; non introducono un nuovo oggetto nel
+vocabolario pubblico.
 
 ### 0.2 Provenienza e integrità del mandato
 
@@ -2022,7 +2031,8 @@ inventory
   `internal/reports/rm0004-f12-verification-20260822.md`. La prova esterna,
   autorizzata sulla chat verificata dell'amministratore, ha prodotto un solo
   messaggio, una ricevuta redatta e nessun reinvio; il destinatario ne ha
-  confermato l'arrivo. F13 resta una fase distinta e non è stata avviata.
+  confermato l'arrivo. F13 è rimasta una fase distinta ed è stata poi
+  certificata nel rapporto F13.
 
 - **File ammessi:** infrastruttura e dati di prova sotto `tests/`, strumenti di
   test interni e rapporto riservato. Il runtime si modifica solo con correzioni
@@ -2065,6 +2075,16 @@ inventory
 - **Dipendenze:** F12.
 - **Scopo:** introdurre la funzione senza trasformare la roadmap in
   documentazione di un comportamento non ancora distribuito.
+
+- **Stato:** completata il 2026-08-22. L'ingresso di sistema firmato è
+  circoscritto ai piani registrati e conserva una chiave opaca dell'evento
+  accettato dal canale. La riconsegna dello stesso aggiornamento Telegram o
+  della stessa richiesta HTTP identificata da `Idempotency-Key` converge sul
+  medesimo lavoro anche quando cambia il `turn_id` interno. Installazione,
+  sequenza disattivato-attivato-disattivato, progetto pilota sintetico con
+  riavvio reale, documentazione pubblica, ricompilazione di Tutor e
+  distribuzione sono documentati in
+  `internal/reports/rm0004-f13-verification-20260822.md`.
 
 - **File ammessi:** interruttore di funzionalità e configurazione, migrazione
   selettiva dei percorsi specialistici approvati, documentazione pubblica,

@@ -280,3 +280,58 @@ tests before enabling the worker. F3 must prove lease expiry and fencing with
 real concurrent processes. F4 must prove filesystem reconciliation. F11 must
 adapt and sign the image-preset contracts. Public naming, routes, UI, Tutor
 material and external publication remain closed until their later gates.
+
+## Amendment — F13 controlled activation boundary (2026-08-22)
+
+After F3-F12 had passed their recorded gates, the product owner explicitly
+authorized F13. This amendment changes the activation boundary; it does not
+weaken the consistency and effect rules above.
+
+`LRE` (Long Run Engine) is the invariant internal architecture name and is not
+translated. The exact system executor `start_lre` is admitted as the sole
+planner-visible submission entry for the first controlled release. It accepts
+only a plan identifier already present in the closed runtime registry and
+absolute local source roots. This exact-name exception does not add `jobs`,
+`workloads`, `lre`, or any equivalent object to the public naming grammar, and
+it gives Synt no authority to invent a plan, executor, runner, or profile.
+
+New submissions remain disabled by default. The final transition from draft to
+an executable state shares a bounded cross-process lock with feature
+configuration changes and rechecks both configuration and worker readiness.
+The accepted channel event is pseudonymized before it enters persistent dialog
+state; the resulting stable identity is used as the owner-scoped submission
+key. Redelivery of the same Telegram update, or of an HTTP request carrying
+the same `Idempotency-Key`, therefore converges on the same workload even when
+the internal turn identifier changes. A changed payload under the same key
+fails closed.
+
+This amendment does not certify F13. Installation still requires the user's
+installer consent; a non-sensitive pilot must demonstrate a real restart and
+no duplicate committed work. Public documentation and Tutor may describe the
+submission path only after that deployed proof, and RM-0004 remains `active`
+until every F13 exit gate is evidenced.
+
+## Amendment — F13 certification and release (2026-08-22)
+
+The product owner accepted the installer disclosure, and the supervised user
+unit was installed without replacing the existing HTTP service baseline. The
+feature was exercised through an explicit off/on/off sequence and was left
+disabled after certification; disabling admission does not remove historical
+workloads or stop owner-scoped reads.
+
+The non-sensitive pilot processed four synthetic images. A controlled worker
+restart occurred after eight committed units and one active attempt. The new
+process resumed the same workload and completed 23 units with 23 attempts, 23
+distinct committed result digests, and three validated artifacts. Replaying
+the accepted HTTP delivery converged on the same workload and revision and did
+not change those counts. A preceding failed workload remains recorded as a
+failure, demonstrating that an invalid model result cannot become a false
+completion.
+
+The signed `start_lre` contract, public bilingual System guide, rebuilt Tutor
+catalog, personal-information gate, incremental public release and Cloudflare
+deployment all passed their recorded checks. Detailed private evidence is in
+`internal/reports/rm0004-f13-verification-20260822.md`. This amendment certifies
+F13 and permits RM-0004 to move to `implemented`; it does not change the
+default-disabled admission policy or promise exactly-once execution of
+arbitrary external effects.
