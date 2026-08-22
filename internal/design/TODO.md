@@ -203,7 +203,7 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   descrizioni argomento strutturate o generate da metadati comuni; budget
   elastico invariato; revisione motivata dei cap soltanto se i benchmark
   dimostrano che il limite, e non il testo, e' errato.
-- Done-gate: zero regressioni nei corpus routing IT/EN e nei flussi d'oro;
+- Done-gate: zero regressioni nei corpus routing IT/EN e nei flussi di riferimento;
   equivalenza di args/output/autorita'; nessuna perdita dei boundary critici;
   nessun nuovo falso positivo o falso negativo del linter; firme valide e due
   cicli di test consecutivi. Quantificare warning eliminati, token risparmiati,
@@ -225,13 +225,13 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   catalogo, threat model, matrice semantica e decisione esplicita prima del
   primo cambiamento al runtime.
 
-### QUA-001 - Flussi d'oro e affidabilita' percepita
+### QUA-001 - Flussi di riferimento e affidabilita' percepita
 
 - Stato: promosso il 22/8/2026 nella roadmap persistente
   `internal/roadmap/RM-0006-certificazione-logica-e2e.md`; attuazione non
   iniziata.
 - Decisione: la Fase 8 non e' piu' uno «stress logico» generico. Certifica 24
-  flussi d'oro in italiano e inglese, con oracoli congelati per piano ammesso,
+  flussi di riferimento in italiano e inglese, con oracoli congelati per piano ammesso,
   autorita', effetti, postcondizioni, risposta e recupero.
 - Esecuzione: Metnos esegue la matrice in lotti tramite i normali confini; un
   coordinatore esterno e deterministico conserva l'indipendenza dell'oracolo.

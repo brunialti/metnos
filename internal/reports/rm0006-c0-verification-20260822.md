@@ -4,7 +4,7 @@
 
 C0 e' completata. Il coordinatore indipendente vive in
 `tests/e2e/certification/`, non importa il runtime Metnos e nel lotto sintetico
-non contatta server o modelli. C1, la selezione dei 24 flussi d'oro, non e'
+non contatta server o modelli. C1, la selezione dei 24 flussi di riferimento, non e'
 stata avviata.
 
 ## Contratto prodotto

@@ -20,7 +20,7 @@ carico e non ripete le verifiche specialistiche gia' presenti. Attraversa
 insieme interpretazione, instradamento, piano, autorita', approvazione,
 collocazione, executor, risposta, annullamento e recupero.
 
-La certificazione usa **24 flussi d'oro**, ciascuno con formulazione italiana e
+La certificazione usa **24 flussi di riferimento**, ciascuno con formulazione italiana e
 inglese. Un flusso e' un contratto logico, non una frase: puo' ammettere piu'
 piani equivalenti, ma congela prima dell'esecuzione risultato, effetti,
 divieti, postcondizioni e limiti. Due cicli completi sulla stessa revisione
@@ -129,7 +129,7 @@ La promessa verificata non e' «Metnos possiede molti strumenti». E':
 - dichiarare affidabilita' universale per provider esterni sulla base di
   sostituti deterministici.
 
-## 5. Matrice dei 24 flussi d'oro
+## 5. Matrice dei 24 flussi di riferimento
 
 Ogni riga sotto rappresenta una famiglia. I casi concreti vengono scelti da
 turni reali anonimizzati, incidenti documentati e contratti correnti. Nessuna

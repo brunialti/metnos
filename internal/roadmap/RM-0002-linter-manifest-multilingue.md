@@ -891,7 +891,7 @@ prima di qualunque scrittura.
 - rieseguire due cicli completi consecutivi.
 
 **Uscita:** nessun errore certo nel catalogo attivo e nessuna regressione nei
-flussi d'oro.
+flussi di riferimento.
 
 ### F5 — Estensione oltre IT/EN
 
