@@ -8,47 +8,83 @@
  <link rel="canonical" href="https://metnos.com/it/system/lre">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/lre">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/lre">
- <link rel="stylesheet" href="/assets/metnos.css?v=20260822-1">
- <script defer src="/assets/wiki-shell.js?v=20260822-1"></script>
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head>
 <body>
 <h1>LRE (Long Run Engine)</h1>
 
 <p class="lead">LRE è il motore universale con cui Metnos gestisce attività
 troppo lunghe o troppo ampie per restare legate a un singolo turno di chat. Il
-lavoro viene registrato, suddiviso in unità verificabili e affidato a un worker
-supervisionato. La chat restituisce subito una ricevuta; l'esecuzione continua
-in modo indipendente e può riprendere dopo un riavvio.</p>
+lavoro viene registrato come una o più unità verificabili e affidato a un
+servizio di esecuzione supervisionato. La chat restituisce subito una ricevuta;
+l'esecuzione continua in modo indipendente e può riprendere dopo un riavvio.
+L'utente descrive il risultato voluto: è Metnos a decidere automaticamente se
+usare LRE.</p>
 
 <h2 id="non-preset">Un motore, più tipi di lavoro</h2>
 
-<p>Il nucleo di LRE non conosce immagini, posta, database o altri domini. Riceve
-soltanto piani registrati che dichiarano sorgenti, dipendenze, schemi di uscita,
-risorse, limiti, tempi e comportamento in caso di errore. Un nuovo tipo di
-attività si aggiunge come registrazione verificata; non crea un ramo speciale
-nel motore.</p>
+<p>Il nucleo di LRE non conosce immagini, posta, banche dati o altri domini.
+Riceve piani tipizzati che dichiarano sorgenti, dipendenze, risultati, risorse,
+limiti, tempi e comportamento in caso di errore. Nel percorso ordinario il
+runtime costruisce direttamente il piano minimo dall'executor già scelto e dai
+suoi argomenti definitivi. Per lavori composti e collaudati può invece usare un
+piano registrato in anticipo: è un'ottimizzazione tecnica, non un requisito per
+l'utente e non un profilo da configurare.</p>
 
-<p>La prima registrazione distribuita elabora raccolte di immagini e produce
-domande, soluzioni, appunti e formulario. È un caso d'uso collaudato del
-percorso generale, non la definizione di LRE. Altri lavori potranno usare lo
-stesso motore quando disporranno di contratti e prove equivalenti.</p>
+<p>Il primo piano composto distribuito elabora raccolte di immagini e produce
+domande, soluzioni, appunti e formulario. Dimostra il percorso a più fasi, ma
+non definisce LRE e non limita l'ammissione automatica: ogni executor ordinario
+compatibile entra attraverso lo stesso compilatore generale, senza codice
+dedicato al suo dominio.</p>
+
+<div class="callout note"><p><strong>Che cosa significa “universale”.</strong>
+Il motore è indipendente dal dominio e non usa un elenco di profili come filtro.
+“Universale” non significa però “privo di verifiche”: LRE prende in carico
+automaticamente ogni azione lunga che può rappresentare senza perdere
+argomenti, autorità, collocazione o garanzie di ripresa. Se non può farlo,
+l'azione non parte in linea di nascosto: Metnos spiega il limite.</p></div>
+
+<h2 id="decisione">Quando LRE si attiva</h2>
+
+<p>Metnos prepara prima il normale piano del turno. Subito prima dell'esecuzione,
+un unico controllo centrale esamina il piano definitivo e il contratto firmato
+dell'executor. Nella prima versione automatica un'azione è considerata
+<strong>intrinsecamente lunga</strong> quando il tempo massimo dichiarato è di
+almeno dieci minuti. La decisione dipende da questo metadato strutturato, non da
+parole come “lungo”, “in background” o “molti file”.</p>
+
+<table>
+ <thead><tr><th>Condizione</th><th>Decisione di Metnos</th></tr></thead>
+ <tbody>
+  <tr><td>Il piano non contiene azioni sopra la soglia.</td><td>Metnos usa il percorso interattivo ordinario. LRE non viene coinvolto.</td></tr>
+  <tr><td>Il piano contiene una sola azione lunga indipendente; l'executor è attivo, firmato e deterministico; argomenti, effetto e destinazione possono essere congelati.</td><td>Metnos crea il piano LRE durante il turno, accoda il lavoro e restituisce una ricevuta. Non serve alcun profilo.</td></tr>
+  <tr><td>Prima dell'azione lunga è richiesta una conferma.</td><td>Metnos esegue soltanto la conferma. Dopo l'approvazione ricontrolla il piano e, se ammissibile, lo affida una sola volta a LRE.</td></tr>
+  <tr><td>L'interruttore dell'istanza è disattivato.</td><td>Nessun nuovo lavoro entra in LRE. La chat ordinaria e la consultazione dei lavori esistenti continuano a funzionare.</td></tr>
+  <tr><td>Una fase lunga è riconosciuta, ma il piano contiene più azioni dipendenti, riferimenti ancora da risolvere, un modello non completamente congelato o una destinazione remota ambigua.</td><td>Metnos dichiara che il lavoro non è partito. Non esegue in linea la parte lunga e non inventa una ripresa che non potrebbe garantire.</td></tr>
+  <tr><td>La configurazione non è valida o il servizio di esecuzione non è disponibile.</td><td>L'ammissione fallisce con una spiegazione precisa. Nessuna unità aggira il controllo.</td></tr>
+ </tbody>
+</table>
 
 <h2 id="flusso">Che cosa accade dopo una richiesta</h2>
 
 <ol>
- <li><strong>Ammissione.</strong> Metnos riconosce un profilo registrato, verifica che LRE sia abilitato e controlla autorità, sorgenti, piano e budget.</li>
- <li><strong>Inventario sigillato.</strong> Le sorgenti ricevono identità e ordine stabili; il denominatore del lavoro diventa verificabile.</li>
+ <li><strong>Decisione.</strong> Il controllo centrale riconosce l'azione lunga nel piano definitivo e verifica che possa essere rappresentata fedelmente.</li>
+ <li><strong>Ammissione.</strong> Metnos verifica l'interruttore dell'istanza, la firma, l'autorità, gli argomenti, la collocazione, l'effetto e i limiti.</li>
+ <li><strong>Stato congelato.</strong> Argomenti e destinazione entrano nella revisione tramite impronte verificabili; per i piani a corpus anche sorgenti, identità e ordine vengono sigillati.</li>
  <li><strong>Pianificazione persistente.</strong> Fasi e unità vengono registrate in una revisione immutabile.</li>
- <li><strong>Esecuzione governata.</strong> Il coordinatore propone unità pronte; lo scheduler centrale assegna risorse e concorrenza.</li>
+ <li><strong>Esecuzione governata.</strong> Il coordinatore propone le unità pronte; il pianificatore centrale delle risorse assegna capacità e concorrenza.</li>
  <li><strong>Consolidamento.</strong> Riduzioni gerarchiche evitano di caricare un corpus intero in memoria o in un unico prompt.</li>
  <li><strong>Chiusura.</strong> LRE dichiara il completamento soltanto dopo aver contabilizzato le unità e convalidato gli artefatti richiesti.</li>
 </ol>
 
 <p>Non esiste un limite nascosto di 98 o 980 elementi. Ogni revisione ha però
-limiti finiti e visibili, coerenti con le risorse approvate. Raccolte grandi
-avanzano per lotti e riduzioni; non vengono accumulate senza controllo. Se un
-budget si esaurisce, il lavoro espone uno stato strutturato invece di fingere
-una copertura completa.</p>
+limiti finiti e visibili, coerenti con le risorse approvate. I piani che
+espongono unità e riduzioni avanzano per lotti, senza accumulare un corpus in
+memoria. Un executor monolitico resta invece una sola unità: LRE può governarne
+il tentativo, ma non può inventare punti di ripresa interni. Se un limite si
+esaurisce, il lavoro espone uno stato strutturato invece di fingere una
+copertura completa.</p>
 
 <h2 id="executor">Executor locali, remoti e intelligenti</h2>
 
@@ -58,11 +94,18 @@ associato. Entrambi possono essere deterministici oppure usare un modello
 linguistico o di visione. La collocazione non determina l'intelligenza: sono
 due proprietà indipendenti.</p>
 
-<p>Le unità indipendenti possono procedere in parallelo, ma non creano gruppi di
-thread o processi privati. Tutta la concorrenza passa dallo scheduler centrale,
-che applica limiti globali, per proprietario, per lavoro, per modello e per
-dispositivo. Il valore mostrato come “concorrenza massima” è un tetto, non una
-promessa di usare sempre tutti gli slot.</p>
+<p>Il motore LRE sa eseguire tutte queste classi attraverso porte comuni. Il
+percorso automatico diretto, oggi, ammette però soltanto executor
+deterministici. Un executor che usa modelli entra quando piano, prompt, modello,
+lingua, costo e numero di chiamate sono già congelati da un contratto completo,
+come avviene nei piani composti verificati. Questa distinzione evita di
+promettere una ripresa che cambierebbe modello a metà lavoro.</p>
+
+<p>Le unità indipendenti possono procedere in parallelo, ma non creano gruppi
+privati di processi. Tutta la concorrenza passa dal pianificatore centrale delle
+risorse, che applica limiti globali, per proprietario, per lavoro, per modello e
+per dispositivo. Il valore mostrato come “concorrenza massima” è un tetto, non
+una promessa di occupare sempre tutti i posti disponibili.</p>
 
 <h2 id="ripresa">Interruzioni, ritentativi e duplicazioni</h2>
 
@@ -76,6 +119,11 @@ promessa di usare sempre tutti gli slot.</p>
   <tr><td>Effetto esterno dal risultato ambiguo</td><td>Non viene ripetuto automaticamente se non è idempotente o riconciliabile; richiede attenzione.</td></tr>
  </tbody>
 </table>
+
+<p>Nel piano automatico diretto, una lettura pura può avere al massimo tre
+tentativi. Un'azione che modifica dati ha un solo tentativo automatico: se il
+servizio si interrompe dopo averla invocata ma prima di registrarne il
+risultato, LRE richiede attenzione invece di rischiare un secondo effetto.</p>
 
 <div class="callout note"><p><strong>Garanzia corretta.</strong> LRE usa
 tentativi “almeno una volta” e un solo commit valido per unità. Può rendere un
@@ -98,13 +146,19 @@ I comandi di pausa, ripresa, annullamento e decisione su un errore usano una
 versione attesa e una chiave di idempotenza, così anche il comando può essere
 riconsegnato senza moltiplicarne gli effetti.</p>
 
-<h2 id="uso">Come si usa</h2>
+<h2 id="uso">Attivazione dell'istanza e uso quotidiano</h2>
+
+<div class="callout note"><p><strong>Una sola attivazione per istanza.</strong>
+L'interruttore in Servizi non abilita il singolo lavoro. Stabilisce se l'intera
+istanza di Metnos può accettare nuovi lavori LRE. Non è un'impostazione per
+utente e non va azionato prima di ogni richiesta.</p></div>
 
 <ol>
- <li>In <a href="services.html">Sistema → Servizi</a>, verifica che il worker LRE sia sano e attiva la funzione. Nelle nuove installazioni è disattivata per impostazione predefinita.</li>
- <li>Descrivi in chat l'esito desiderato e indica le sorgenti autorizzate. Metnos può ammettere soltanto profili già registrati.</li>
- <li>Conserva la ricevuta con il <code>workload_id</code> e apri <code>/agent/workloads</code>.</li>
- <li>Controlla stato, denominatore, budget, fasi ed eventi. Usa i comandi mostrati soltanto quando sono abilitati per lo stato corrente.</li>
+ <li><strong>Configurazione iniziale dell'amministratore.</strong> In <a href="services.html">Sistema → Servizi</a>, verifica che il worker LRE sia sano e abilita l'accettazione dei lavori. Nelle nuove installazioni è disattivata per impostazione predefinita; l'impostazione rimane valida finché non viene cambiata.</li>
+ <li><strong>Uso normale.</strong> Descrivi in chat l'esito desiderato e indica le sorgenti autorizzate, senza impartire comandi a LRE.</li>
+ <li><strong>Scelta automatica.</strong> Se il piano definitivo contiene un'azione intrinsecamente lunga e compatibile, Metnos crea il piano LRE e restituisce una ricevuta con il <code>workload_id</code>. Non devi conoscere né scegliere un profilo.</li>
+ <li><strong>Esito trasparente.</strong> Un'azione breve continua nel turno. Un'azione lunga non ancora rappresentabile viene fermata con una spiegazione: non prosegue in linea senza protezione.</li>
+ <li><strong>Controllo facoltativo.</strong> Puoi chiudere la pagina e continuare a usare Metnos. Quando vuoi, apri <code>Settings → Sistema → LRE</code> per controllare stato, denominatore, budget, fasi ed eventi.</li>
  <li>Al termine, verifica digest e convalida degli artefatti prima di scaricarli.</li>
 </ol>
 
@@ -112,6 +166,24 @@ riconsegnato senza moltiplicarne gli effetti.</p>
 artefatti. La cancellazione dei dati segue invece il ciclo di vita del
 proprietario e le regole di conservazione. Download e viste restano
 circoscritti all'identità autorizzata.</p>
+
+<h2 id="limiti">Limiti attuali e percorso di estensione</h2>
+
+<p>I limiti seguenti distinguono ciò che LRE può garantire oggi da ciò che può
+essere aggiunto senza perdere tracciabilità o sicurezza.</p>
+
+<table>
+ <thead><tr><th>Limite attuale</th><th>Effetto pratico</th><th>Come superarlo correttamente</th></tr></thead>
+ <tbody>
+  <tr><td>Piani automatici composti</td><td>La prima versione automatica accoda una sola azione lunga indipendente. Se il piano contiene più passaggi eseguibili o dipendenze ancora da risolvere, il lavoro non parte.</td><td>Compilare l'intero piano definitivo nel grafo tipizzato di LRE, con riferimenti e controlli espliciti; non conservarlo come blocco opaco.</td></tr>
+  <tr><td>Executor intelligenti</td><td>Il percorso diretto esclude per ora gli executor che usano modelli linguistici o di visione senza un legame completo e immutabile.</td><td>Congelare prompt, lingua, modello, limiti di chiamata, token e costo nello stesso contratto; poi usare la medesima porta generale.</td></tr>
+  <tr><td>Destinazione remota implicita</td><td>Un executor utilizzabile soltanto su un dispositivo non viene accodato finché il dispositivo esatto non è stato risolto.</td><td>Indicare il dispositivo nella richiesta oppure aggiungere una risoluzione deterministica e verificabile prima dell'ammissione.</td></tr>
+  <tr><td>Executor monolitico</td><td>LRE vede una sola unità e non può riprendere a metà di un ciclo interno non dichiarato.</td><td>Esporre l'attività come unità generali, identificabili e idempotenti, oppure come riduzione a lotti; non aggiungere casi speciali per dominio.</td></tr>
+  <tr><td>Effetti esterni non sempre ripetibili</td><td>Una scrittura su un servizio o dispositivo può avere un esito ignoto dopo un'interruzione.</td><td>Usare chiavi native di idempotenza o una lettura autorevole di riconciliazione; in assenza di entrambe, fermarsi e richiedere una decisione.</td></tr>
+  <tr><td>Risorse e costi finiti</td><td>Ogni revisione ha tetti di unità, tentativi, tempo, byte, token e concorrenza. Un budget esaurito arresta il lavoro in modo esplicito.</td><td>Regolare i limiti su misure reali e aggiungere capacità locale o remota attraverso lo scheduler centrale; non eliminare i limiti.</td></tr>
+  <tr><td>Piano congelato durante l'esecuzione</td><td>Un executor, un modello o una sorgente non vengono sostituiti silenziosamente a metà lavoro.</td><td>Creare una nuova revisione e riusare soltanto i risultati le cui dipendenze non sono cambiate.</td></tr>
+ </tbody>
+</table>
 
 <h2 id="problemi">Se qualcosa non avanza</h2>
 
@@ -124,6 +196,15 @@ circoscritti all'identità autorizzata.</p>
 </ul>
 
 <h2 id="schermata">La console LRE</h2>
+
+<p>La console è il registro operativo dei lavori, non il comando che li avvia.
+Si apre nella chat web da <code>Settings → Sistema → LRE</code>. Il riquadro a
+sinistra elenca i lavori visibili al proprietario: premi <strong>Apri</strong>
+su una riga per caricare nel riquadro destro revisione, avanzamento, limiti,
+fasi, eventi, unità e artefatti. Se l'elenco è vuoto, non esistono lavori LRE
+per quell'identità; se la pagina è indisponibile, controlla il servizio in
+<code>Settings → Sistema → Servizi</code>. Non occorre lasciare aperta la
+console perché il lavoro continui.</p>
 
 <figure class="ui-guide">
  <div class="ui-shot-frame">
@@ -138,8 +219,8 @@ circoscritti all'identità autorizzata.</p>
  <figcaption>Un lavoro pilota completato: la console espone il denominatore reale, i limiti ammessi e la composizione del piano.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>Navigazione generale.</strong> La console LRE conserva la stessa struttura della HTTP UI amministrativa.</li>
- <li><strong>Elenco dei lavori.</strong> Stato e avanzamento restano consultabili dopo refresh, logout o riavvio.</li>
+ <li><strong>Navigazione generale.</strong> Apri <code>Settings → Sistema → LRE</code>; la voce resta visibile nella colonna di navigazione della HTTP UI.</li>
+ <li><strong>Elenco dei lavori.</strong> Ogni riga mostra stato e avanzamento; il pulsante <strong>Apri</strong> carica il dettaglio senza avviare una nuova esecuzione.</li>
  <li><strong>Quadro del lavoro.</strong> Mostra priorità, stato, unità contabilizzate e data di creazione.</li>
  <li><strong>Digest della revisione.</strong> Rendono riconoscibili piano e inventario effettivamente ammessi.</li>
  <li><strong>Budget approvato.</strong> Espone tetti di unità, tentativi, durata, byte, token, artefatti e concorrenza.</li>

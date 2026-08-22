@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Roadmap</title>
+ <meta name="description" content="Linea temporale delle roadmap di Metnos, con stato verificato e date di definizione e implementazione.">
+ <link rel="canonical" href="https://metnos.com/it/roadmap">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/roadmap">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/roadmap">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/roadmap">
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+</head>
+<body>
+<h1>Roadmap</h1>
+
+<p class="lead">Questa linea temporale raccoglie le direzioni di sviluppo
+formalmente definite per Metnos. Distingue ciò che è stato realizzato da ciò
+che è pronto o in attesa, così una specifica futura non viene scambiata per
+una funzione già disponibile.</p>
+
+<p>Le date indicano quando una direzione è stata definita e, quando esiste una
+prova di completamento, quando è stata implementata. I documenti tecnici
+interni, le analisi e le decisioni architetturali non sono pubblicati.</p>
+
+<ul class="roadmap-legend" aria-label="Legenda degli stati">
+ <li class="is-done">Completata</li>
+ <li class="is-ready">Pronta o da realizzare</li>
+ <li class="is-waiting">In attesa</li>
+</ul>
+
+<ol class="roadmap-timeline" aria-label="Linea temporale delle roadmap di Metnos">
+ <li class="roadmap-item roadmap-item--waiting tutor-exclude">
+  <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <span class="roadmap-id">RM-001</span><h2>Conoscenza locale dell'utente</h2>
+   <span class="roadmap-status">In attesa</span>
+   <p>Memoria personale locale, controllabile e separata fra gli utenti. La direzione è progettata, ma non è pianificata: la valutazione attuale non giustifica ancora il costo dell'intero sistema.</p>
+   <dl class="roadmap-facts"><dt>Definizione</dt><dd>23 luglio 2026</dd><dt>Implementazione</dt><dd>Non iniziata</dd></dl>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--ready tutor-exclude">
+  <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <span class="roadmap-id">RM-002</span><h2>Controllo multilingue dei manifest</h2>
+   <span class="roadmap-status">Da realizzare</span>
+   <p>Un unico controllo deterministico per mantenere allineati contratti, argomenti e descrizioni degli executor in tutte le lingue disponibili.</p>
+   <dl class="roadmap-facts"><dt>Definizione</dt><dd>23 luglio 2026</dd><dt>Implementazione</dt><dd>Non iniziata</dd></dl>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done">
+  <time class="roadmap-date" datetime="2026-07-23">23 luglio 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <span class="roadmap-id">RM-003</span><h2>Tutor integrato</h2>
+   <span class="roadmap-status">Completata</span>
+   <p>Guida operativa che usa la documentazione pubblica e i contratti ammessi per rispondere senza diventare un secondo pianificatore.</p>
+   <dl class="roadmap-facts"><dt>Definizione</dt><dd>23 luglio 2026</dd><dt>Implementazione</dt><dd>30 luglio 2026</dd></dl>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--done">
+  <time class="roadmap-date" datetime="2026-08-17">17 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <span class="roadmap-id">RM-004</span><h2>LRE (Long Run Engine)</h2>
+   <span class="roadmap-status">Completata</span>
+   <p>Motore universale per affidare automaticamente attività lunghe a un'esecuzione persistente, tracciabile, riprendibile e governata, senza profili da scegliere.</p>
+   <dl class="roadmap-facts"><dt>Definizione</dt><dd>17 agosto 2026</dd><dt>Implementazione</dt><dd>22 agosto 2026</dd></dl>
+  </article>
+ </li>
+ <li class="roadmap-item roadmap-item--ready tutor-exclude">
+  <time class="roadmap-date" datetime="2026-08-21">21 agosto 2026</time><span class="roadmap-marker" aria-hidden="true"></span>
+  <article class="roadmap-card">
+   <span class="roadmap-id">RM-005</span><h2>Multilinguismo completo e auto-localizzazione</h2>
+   <span class="roadmap-status">Pronta per lo sviluppo</span>
+   <p>Estensione del multilinguismo a messaggi, manifest, lessici, pianificazione, prompt e Tutor, con completamento automatico della lingua scelta per l'istanza.</p>
+   <dl class="roadmap-facts"><dt>Definizione</dt><dd>21 agosto 2026</dd><dt>Implementazione</dt><dd>Non completata; fondamenta già disponibili</dd></dl>
+  </article>
+ </li>
+</ol>
+
+<div class="callout note"><p><strong>Come leggere lo stato.</strong> “Completata” richiede prove nel sistema distribuito. “Pronta” indica una direzione definita ma non ancora disponibile nella sua interezza. “In attesa” significa che non esiste un impegno di realizzazione.</p></div>
+</body>
+</html>

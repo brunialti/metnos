@@ -54,6 +54,7 @@
     glossary: { it: "/it/Metnos_Glossario_v1.html", en: "/en/Metnos_Glossary_v1.html" },
     code: { it: "/it/code.html", en: "/en/code.html" },
     security: { en: "/security/" },
+    roadmap: { it: "/it/roadmap.html", en: "/en/roadmap.html" },
   };
 
   const copy = {
@@ -97,6 +98,9 @@
         ["Progetto", "Codice sorgente e segnalazioni di sicurezza.", [
           ["code", "Il codice di Metnos"], ["security", "Segnalare una vulnerabilità"],
         ]],
+        ["Roadmap", "Direzioni del progetto e stato verificato della loro realizzazione.", [
+          ["roadmap", "Linea temporale delle roadmap"],
+        ]],
       ],
     },
     en: {
@@ -138,6 +142,9 @@
         ]],
         ["Project", "Source code and vulnerability reporting.", [
           ["code", "The Metnos codebase"], ["security", "Report a vulnerability"],
+        ]],
+        ["Roadmap", "Project directions and their verified implementation status.", [
+          ["roadmap", "Roadmap timeline"],
         ]],
       ],
     },

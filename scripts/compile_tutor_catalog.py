@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Build and verify the complete signed Tutor catalog for a release.
+"""Build and verify the complete signed Tutor catalog from local sources.
 
 The compiler always materializes a complete candidate database.  It may reuse
 an unchanged embedding vector only when both the source text hash and the
 embedding-model fingerprint match; every card and knowledge unit is still
-written to, signed, and verified in the new candidate.
+written to, signed, and verified in the new candidate. Public documentation is
+read from this repository's ``docs/`` directory; no website is downloaded.
 """
 
 from __future__ import annotations

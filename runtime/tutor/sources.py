@@ -1,9 +1,11 @@
 """Compile bounded F2 knowledge units from admitted, local sources.
 
-Public HTML comes from the same bounded inventory deployed on metnos.com;
-``tutor/sources.toml`` is reserved for selected supplemental sources. Executor
-facts come only from the verified live loader. The resulting units are data
-for the signed Tutor catalog, not an alternate mutable store.
+Public HTML is read directly from the repository's local ``docs/`` directory.
+The compiler never fetches metnos.com; canonical website URLs are retained only
+as user-facing citations. ``tutor/sources.toml`` is reserved for selected local
+supplemental sources. Executor facts come only from the verified live loader.
+The resulting units are data for the signed Tutor catalog, not an alternate
+mutable store.
 """
 
 from __future__ import annotations

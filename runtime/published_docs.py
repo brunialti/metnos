@@ -1,8 +1,9 @@
-"""Canonical inventory of the HTML documents published on metnos.com.
+"""Canonical local inventory of the HTML documents published on metnos.com.
 
-The deployment root is also the Tutor publication boundary.  This module is
-used both by the deploy preflight and by the Tutor knowledge compiler so a
-public document is never registered twice in two independent inventories.
+Both deployment and Tutor compilation read the repository's ``docs/`` tree.
+The website is an output destination, never a Tutor input. This shared local
+inventory prevents a public document from being registered twice in two
+independent inventories.
 """
 
 from __future__ import annotations
