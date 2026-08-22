@@ -131,4 +131,7 @@ for format and discipline; see `_template.md` for the template.
 > model and decoding policy now belong only to the configured tier.
 > Latest: `0213` freezes the internal durable-workload contracts and completes
 > dormant F0-F2 storage foundations. It adds no public noun, route, worker or
-> executor; claim, lease, fencing and activation remain later gates.
+> executor; claim, lease, fencing and activation remain later gates. Latest:
+> `0214` proposes automatic, profile-free LRE admission from finalized long
+> executor plans, with typed literal arguments, frozen placement and no inline
+> fallback after a long action is recognized.

@@ -13,6 +13,10 @@ related:
   - 0207
 ---
 
+> Modified by ADR 0214: after F13 certification, a compatible finalized long
+> executor invocation is admitted automatically; `start_lre` and registered
+> plans remain compatibility and optimized-DAG entries, not admission gates.
+
 ## Context
 
 Metnos can execute one admitted invocation locally or remotely, constrain it
