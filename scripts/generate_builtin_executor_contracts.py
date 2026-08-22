@@ -142,6 +142,12 @@ _META = {
         [("llm:local", ["extraction"]), ("llm:online", ["extraction"])],
         "{ok: bool, entries: Array<object>, partial?: bool, truncated?: bool, error?: str}",
     ),
+    "start_lre": (
+        "Affida a LRE una richiesta lunga basata su un profilo registrato.",
+        "Submits a long-running request to LRE through a registered profile.",
+        [("metnos:write", ["lre"])],
+        "{ok: bool, decision?: 'accepted', workload_id?: str, revision_id?: str, state?: str, expected_sources?: int, plan_summary?: {stage_count: int, required_stage_count: int}, limits?: object, status_url?: str, final_message_hint?: str, error?: str}",
+    ),
 }
 
 
@@ -193,6 +199,7 @@ _ARG_EN = {
     "max_total": "Maximum records across all sources.",
     "max_sources": "Maximum number of independent sources to process.",
     "drill_down": "Allow bounded follow-up extraction on nested content.",
+    "profile": "Exact registered LRE profile selected for the requested result.",
 }
 
 # Override per-tool: lo stesso nome d'argomento puo' significare cose diverse
@@ -208,6 +215,16 @@ _ARG_EN = {
 # sceglieva `set_preferences` con un valore inventato invece di
 # `delete_preferences`, che pure era primo nel pool di routing.
 _CHAPTERS = {
+    "start_lre": (
+        "PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/percorso/assoluto\"]). "
+        "USA: corpus ampio o attività oltre il turno. NON: letture brevi, sorgenti "
+        "remote o input inventati. OUT: identificativo, stato, numero "
+        "di sorgenti e collegamento alla console LRE.",
+        "PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/absolute/path\"]). "
+        "USE: large corpora or work beyond the turn. NON: short reads, remote "
+        "sources, invented profiles or paths. OUT: identifier, state, source count, "
+        "and LRE console link.",
+    ),
     "get_preferences": (
         "PATTERN: get_preferences(). NON: non elenca i task schedulati "
         "(list_tasks), le skill installate (list_skills) o il profilo "
@@ -220,28 +237,21 @@ _CHAPTERS = {
     ),
     "set_preferences": (
         "PATTERN: set_preferences(key=\"reply_length\", value=\"breve\"). "
-        "NON: togliere una preferenza, azzerarla o riportarla al valore "
-        "predefinito e' delete_preferences — mai questo tool con un valore "
-        "inventato; non cambia la configurazione di sistema (admin) ne' lo "
-        "stato di una skill (set_skills). OUT: results=[{key, value, "
+        "NON: per rimuovere o ripristinare il valore predefinito usa "
+        "delete_preferences; non modifica sistema o skill. OUT: results=[{key, value, "
         "applied}].",
         "PATTERN: set_preferences(key=\"reply_length\", value=\"breve\"). "
-        "NON: removing a preference, clearing it or restoring its default is "
-        "delete_preferences — never this tool with an invented value; it does "
-        "not change system configuration (admin) or skill state (set_skills). "
+        "NON: use delete_preferences to remove or restore a default; it does "
+        "not alter system or skill settings. "
         "OUT: results=[{key, value, applied}].",
     ),
     "delete_preferences": (
-        "PATTERN: delete_preferences(keys=[\"tone\"]) oppure "
-        "delete_preferences(all=true). USA QUESTO quando l'utente vuole "
-        "togliere, azzerare o dimenticare una preferenza, o rimetterla al "
-        "valore predefinito. NON: non cancella utenti (delete_persons) ne' "
-        "task (delete_tasks). OUT: results=[{key, removed, previous}].",
+        "PATTERN: delete_preferences(keys=[\"tone\"]) o "
+        "delete_preferences(all=true). USA: rimuovere o ripristinare preferenze. "
+        "NON: utenti o task. OUT: results=[{key, removed, previous}].",
         "PATTERN: delete_preferences(keys=[\"tone\"]) or "
-        "delete_preferences(all=true). USE THIS when the user wants to "
-        "remove, clear or forget a preference, or restore its default. "
-        "NON: it does not delete users (delete_persons) or tasks "
-        "(delete_tasks). OUT: results=[{key, removed, previous}].",
+        "delete_preferences(all=true). USE: remove or restore preferences. "
+        "NON: users or tasks. OUT: results=[{key, removed, previous}].",
     ),
 }
 
@@ -285,7 +295,11 @@ def _preference_arg_en() -> dict:
 
 def _arg_en(tool_name: str, arg_name: str) -> str:
     per_tool = _preference_arg_en().get(tool_name) or {}
+    static = {
+        ("start_lre", "paths"): "Absolute local files or directories to include.",
+    }
     return (per_tool.get(arg_name)
+            or static.get((tool_name, arg_name))
             or _ARG_EN.get(arg_name)
             or f"Argument {arg_name}.")
 
@@ -294,7 +308,7 @@ def _arg_en(tool_name: str, arg_name: str) -> str:
 # delle spec e per il recupero dei termini di affinity.
 _SPEC_MODULES = (
     "recurring_tasks", "skill_admin", "store_entries",
-    "compare_entries", "describe_images", "user_preferences",
+    "compare_entries", "describe_images", "user_preferences", "lre_submission",
 )
 
 
@@ -308,6 +322,13 @@ _EXECUTION = {
         "resource_class": "llm",
         "concurrency_key": "none",
         "equivalence_gate": "verified",
+    },
+    "start_lre": {
+        "effect": "create_only",
+        "parallelism_class": 0,
+        "resource_class": "local_io",
+        "concurrency_key": "none",
+        "equivalence_gate": "unverified",
     },
 }
 
@@ -390,7 +411,10 @@ def _render(name: str, tool_spec: dict, module_path: Path) -> str:
     for arg_name, raw_spec in properties.items():
         spec = dict(raw_spec) if isinstance(raw_spec, dict) else {"type": "string"}
         lines.extend(['', f'[args.properties.{arg_name}]'])
-        for key in ("type", "default", "enum", "minimum", "maximum"):
+        for key in (
+            "type", "default", "enum", "minimum", "maximum",
+            "minItems", "maxItems",
+        ):
             if key in spec:
                 lines.append(f'{key} = {_q(spec[key])}')
         if "type" not in spec:

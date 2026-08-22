@@ -6635,6 +6635,8 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                             (runtime_ctx or {}).get("user_query_raw") or query),
                         "conversation_id": (
                             (runtime_ctx or {}).get("conversation_id") or ""),
+                        "source_request_id": (
+                            (runtime_ctx or {}).get("source_request_id") or ""),
                     })
                     payload["on_complete"] = callback
                     log.info("[input_resume] coda preservata per %s (%d step)",
@@ -6701,6 +6703,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                     framework.final_message or "", idx_map),
                 "original_query": rc.get("user_query_raw") or query,
                 "conversation_id": rc.get("conversation_id") or "",
+                "source_request_id": rc.get("source_request_id") or "",
             }
             _dp.save_pending(sender, did, st)
             log.info("[gate_resume] dialog %s → executor-tail (%s, %d step)",
@@ -6716,6 +6719,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             # 981ddc9f 6/7: fragile e potenzialmente cross-host).
             "original_query": rc.get("user_query_raw") or query,
             "conversation_id": rc.get("conversation_id") or "",
+            "source_request_id": rc.get("source_request_id") or "",
             "gate_approve_value": oc.get("approve_value", "approve"),
             "gate_on_reject": oc.get("on_reject"),
         }

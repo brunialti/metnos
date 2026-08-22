@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime, timedelta, timezone
+import os
+from typing import Any, Protocol
 
 from .compiler import (
     CompiledPlan,
@@ -12,7 +15,9 @@ from .compiler import (
     RunnerContractResolver,
     compile_plan,
 )
-from .models import RevisionRecord
+from .inventory import InventoryLimits
+from .models import RevisionRecord, WorkloadRecord, WorkloadState
+from .source_authority import SourceAuthority
 from .storage import DurableWorkloadStore
 
 
@@ -20,6 +25,23 @@ from .storage import DurableWorkloadStore
 class AdmissionResult:
     revision: RevisionRecord
     compiled: CompiledPlan
+
+
+@dataclass(frozen=True, slots=True)
+class SubmissionResult:
+    """Stable outcome of one idempotent registered-plan submission."""
+
+    workload: WorkloadRecord
+    revision: RevisionRecord | None
+
+
+class RegisteredPlanRegistry(Protocol):
+    """Small structural boundary consumed by the generic submit path."""
+
+    runners: RunnerContractResolver
+    output_schemas: OutputSchemaResolver
+
+    def candidate_plan(self, name: str) -> dict[str, Any]: ...
 
 
 def admit_candidate(
@@ -59,3 +81,129 @@ def admit_candidate(
         revision_id=revision_id,
     )
     return AdmissionResult(revision=revision, compiled=compiled)
+
+
+def _inventory_limits(candidate: Mapping[str, Any]) -> InventoryLimits:
+    contract = candidate.get("inventory")
+    if not isinstance(contract, Mapping):
+        raise ValueError("registered plan has no inventory contract")
+    return InventoryLimits(
+        max_sources=contract.get("max_sources"),
+        max_total_bytes=contract.get("max_total_bytes"),
+        max_depth=contract.get("max_depth"),
+    )
+
+
+def _authority_expiry(candidate: Mapping[str, Any]) -> datetime:
+    budgets = candidate.get("budgets")
+    if not isinstance(budgets, Mapping):
+        raise ValueError("registered plan has no budget contract")
+    wall_time = budgets.get("max_wall_time_s")
+    if isinstance(wall_time, bool) or not isinstance(wall_time, int):
+        raise ValueError("registered plan has an invalid wall-time budget")
+    # The mandate outlives the plan deadline just enough for reconciliation;
+    # it never exceeds SourceAuthority's closed one-year boundary.
+    lifetime = min(timedelta(days=365), timedelta(seconds=wall_time, days=1))
+    return datetime.now(timezone.utc) + lifetime
+
+
+def submit_registered_local_sources(
+    store: DurableWorkloadStore,
+    authority: SourceAuthority,
+    registry: RegisteredPlanRegistry,
+    registration_name: str,
+    owner_user_id: str,
+    request_key: str,
+    roots: Sequence[str | os.PathLike[str]],
+    *,
+    redacted_request: Mapping[str, Any],
+    device_id: str = "server",
+    admission_boundary: Callable[[], AbstractContextManager[Any]] | None = None,
+) -> SubmissionResult:
+    """Seal local sources, admit a registered plan, and queue it exactly once.
+
+    The function contains no task-domain branch.  A deployment registration
+    supplies the immutable candidate plan; the shared compiler re-attests all
+    runners and schemas before the first executable state becomes reachable.
+    Replaying the same request key converges on the existing workload.
+    """
+
+    if isinstance(roots, (str, bytes)) or not isinstance(roots, Sequence):
+        raise TypeError("roots must be a sequence")
+    selected_roots = tuple(roots)
+    if not 1 <= len(selected_roots) <= 1024:
+        raise ValueError("roots must contain 1..1024 entries")
+    candidate = registry.candidate_plan(registration_name)
+    if candidate.get("plan_id") != registration_name:
+        raise ValueError("registered plan identity changed")
+
+    workload = store.create_draft(
+        owner_user_id,
+        request_key,
+        redacted_request=redacted_request,
+    )
+    revision = (
+        store.get_revision(owner_user_id, workload.active_revision_id)
+        if workload.active_revision_id is not None
+        else None
+    )
+
+    inventory: Mapping[str, Any] | None = None
+    try:
+        if workload.state is WorkloadState.DRAFT:
+            inventory = authority.seal_and_register(
+                selected_roots,
+                owner_user_id=owner_user_id,
+                workload_id=workload.workload_id,
+                device_id=device_id,
+                limits=_inventory_limits(candidate),
+                valid_until=_authority_expiry(candidate),
+            )
+
+        if workload.state in {WorkloadState.DRAFT, WorkloadState.ADMITTED}:
+            boundary = (
+                admission_boundary() if admission_boundary is not None
+                else nullcontext()
+            )
+            with boundary:
+                # Another delivery of the same request may have crossed this
+                # boundary while this caller sealed its inventory.  Re-read
+                # under the shared gate before making execution reachable.
+                workload = store.get_workload(
+                    owner_user_id, workload.workload_id,
+                )
+                if workload.state is WorkloadState.DRAFT:
+                    if inventory is None:
+                        raise RuntimeError(
+                            "draft admission lost its sealed inventory"
+                        )
+                    admitted = admit_candidate(
+                        store,
+                        owner_user_id,
+                        workload.workload_id,
+                        candidate,
+                        inventory,
+                        expected_version=workload.version,
+                        runners=registry.runners,
+                        output_schemas=registry.output_schemas,
+                    )
+                    revision = admitted.revision
+                workload = store.get_workload(
+                    owner_user_id, workload.workload_id,
+                )
+                if workload.state is WorkloadState.ADMITTED:
+                    workload = store.transition_workload(
+                        owner_user_id,
+                        workload.workload_id,
+                        WorkloadState.QUEUED,
+                        expected_version=workload.version,
+                    )
+    finally:
+        if inventory is not None:
+            close = getattr(inventory, "close", None)
+            if callable(close):
+                close()
+
+    if revision is None and workload.active_revision_id is not None:
+        revision = store.get_revision(owner_user_id, workload.active_revision_id)
+    return SubmissionResult(workload=workload, revision=revision)

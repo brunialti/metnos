@@ -555,6 +555,57 @@ class TestExecutorPlaceholders(unittest.TestCase):
                         "describe_entries con style esplicito skippato")
         self.assertEqual(run.final_text, "riassunto LLM")
 
+    def test_accepted_receipt_stops_later_planner_steps(self):
+        """A durable async receipt owns the tail of the requested work."""
+
+        from engine.executor import Executor
+
+        called = []
+
+        def _fake_invoke(name, _args):
+            called.append(name)
+            if name == "deferred_submitter":
+                return {
+                    "ok": True,
+                    "decision": "accepted",
+                    "final_message_hint": "Attività registrata.",
+                }
+            raise AssertionError("a step after an accepted receipt must not run")
+
+        framework = Framework(
+            steps=[
+                StepSpec(tool="deferred_submitter", args={}),
+                StepSpec(tool="unrelated_follow_up", args={}),
+                StepSpec(tool="final_answer", args={}),
+            ],
+            final_message="This planner text must not replace the receipt.",
+        )
+        run = Executor(invoke_executor=_fake_invoke).run(framework)
+
+        self.assertEqual(called, ["deferred_submitter"])
+        self.assertEqual(run.final_kind, "answer")
+        self.assertEqual(run.final_text, "Attività registrata.")
+
+    def test_malformed_accepted_receipt_does_not_hide_a_later_error(self):
+        from engine.executor import Executor
+
+        called = []
+
+        def _fake_invoke(name, _args):
+            called.append(name)
+            if name == "bad_submitter":
+                return {"ok": True, "decision": "accepted"}
+            return {"ok": False, "error_class": "invalid_args"}
+
+        framework = Framework(steps=[
+            StepSpec(tool="bad_submitter", args={}),
+            StepSpec(tool="follow_up", args={}),
+        ])
+        run = Executor(invoke_executor=_fake_invoke).run(framework)
+
+        self.assertEqual(called, ["bad_submitter", "follow_up"])
+        self.assertEqual(run.final_kind, "error")
+
     def test_keep_required_unresolved_errors(self):
         # Placeholder su arg REQUIRED → NON droppato (resta unresolved error,
         # executor non invocato).

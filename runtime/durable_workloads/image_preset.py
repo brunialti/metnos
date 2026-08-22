@@ -242,49 +242,84 @@ _WORKLOAD_SPECS: Mapping[str, Mapping[str, Any]] = {
         "output": "metnos.images.question-occurrences/1",
         "inputs": {"ocr_entries": "array", "source": "object"},
         "required": ("ocr_entries", "source"),
-        "prompt": "Extract every visible question as questions[{text,coordinate_locale,confidence}]. Return JSON only.",
+        "prompt": (
+            "Extract every question or problem that requires an answer. Join "
+            "a related instruction to its question; do not emit a standalone "
+            "instruction as another question. Return exactly one JSON object "
+            "with this shape: "
+            '{"questions":[{"text":"...","coordinate_locale":"...",'
+            '"confidence":0.0}]}. Use an empty questions array when none exist.'
+        ),
     },
     "durable.images.deduplicate": {
         "output": "metnos.images.canonical-questions/1",
         "inputs": {"occurrences": "array"},
         "required": ("occurrences",),
-        "prompt": "Optionally propose semantic merge_groups[{keys,confidence}]. Never merge below confidence 0.98. Return JSON only.",
+        "prompt": (
+            "Optionally propose semantic duplicates. Never merge below "
+            "confidence 0.98. Return exactly one JSON object with this shape: "
+            '{"merge_groups":[{"keys":["...","..."],"confidence":0.98}]}.'
+        ),
     },
     "durable.images.answer": {
         "output": "metnos.images.answers/1",
         "inputs": {"question": "object"},
         "required": ("question",),
-        "prompt": "Return status, answer, reason and confidence for the canonical question. Return JSON only.",
+        "prompt": (
+            "Answer the canonical question. Return exactly one JSON object "
+            "with this shape: "
+            '{"status":"answered","answer":"...","reason":"...",'
+            '"confidence":0.0}. Use status "unresolved" when a reliable '
+            "answer is not possible."
+        ),
     },
     "durable.images.validate": {
         "output": "metnos.images.answer-validation/1",
         "inputs": {"answer": "object"},
         "required": ("answer",),
-        "prompt": "Return valid and reason for the supplied answer. Return JSON only.",
+        "prompt": (
+            "Verify the supplied answer. Return exactly one JSON object with "
+            'this shape: {"valid":true,"reason":"..."}.'
+        ),
     },
     "durable.images.reduce_notes": {
         "output": "metnos.images.reduction/1",
         "inputs": {"answers": "array"},
         "required": ("answers",),
-        "prompt": "Return Markdown notes as markdown. Return JSON only.",
+        "prompt": (
+            "Prepare concise Markdown notes. Return exactly one JSON object "
+            'with this shape: {"markdown":"..."}.'
+        ),
     },
     "durable.images.reduce_solutions": {
         "output": "metnos.images.reduction/1",
         "inputs": {"answers": "array"},
         "required": ("answers",),
-        "prompt": "Return a verified Markdown solution document as markdown. Return JSON only.",
+        "prompt": (
+            "Prepare a verified Markdown solution document. Return exactly "
+            'one JSON object with this shape: {"markdown":"..."}.'
+        ),
     },
     "durable.images.reduce_formulae": {
         "output": "metnos.images.reduction/1",
         "inputs": {"answers": "array"},
         "required": ("answers",),
-        "prompt": "Return a Markdown formula sheet as markdown. Return JSON only.",
+        "prompt": (
+            "Prepare a Markdown formula sheet. Return exactly one JSON object "
+            'with this shape: {"markdown":"..."}.'
+        ),
     },
     "durable.images.assemble": {
         "output": "metnos.images.assembly/1",
         "inputs": {"solutions": "array", "notes": "array", "formulae": "array"},
         "required": ("solutions", "notes", "formulae"),
-        "prompt": "Return artifacts[{logical_name,markdown}] for solutions_markdown, notes_markdown and formulae_markdown. Return JSON only.",
+        "prompt": (
+            "Return exactly one JSON object containing all three artifacts: "
+            '{"artifacts":[{"logical_name":"solutions_markdown",'
+            '"markdown":"..."},{"logical_name":"notes_markdown",'
+            '"markdown":"..."},{"logical_name":"formulae_markdown",'
+            '"markdown":"..."}]}.'
+        ),
     },
 }
 
@@ -399,7 +434,19 @@ def runner_resolver(
     )
 
 
-def _clean_json_object(value: object) -> Mapping[str, Any]:
+def _clean_json_object(
+    value: object,
+    *,
+    list_key: str | None = None,
+) -> Mapping[str, Any]:
+    """Decode one model response without weakening its typed contract.
+
+    Small local models sometimes return the requested array as the JSON root,
+    even when the prompt asks for an object containing that array. Registered
+    adapters may name the one admissible wrapper key; item validation remains
+    unchanged and every other root shape still fails closed.
+    """
+
     if isinstance(value, Mapping):
         return value
     if not isinstance(value, str):
@@ -409,9 +456,11 @@ def _clean_json_object(value: object) -> Mapping[str, Any]:
         lines = text.splitlines()
         text = "\n".join(lines[1:-1] if len(lines) > 2 and lines[-1].startswith("```") else lines[1:])
     parsed = json.loads(text)
-    if not isinstance(parsed, Mapping):
-        raise ValueError("workload response is not an object")
-    return parsed
+    if isinstance(parsed, Mapping):
+        return parsed
+    if list_key is not None and isinstance(parsed, list):
+        return {list_key: parsed}
+    raise ValueError("workload response is not an object")
 
 
 def _normalized_question(value: object) -> str:
@@ -484,6 +533,11 @@ class ImagePresetWorkloadInvoker:
         if spec is None or not isinstance(args, Mapping):
             return self._failure()
         try:
+            list_key = {
+                "durable.images.extract_questions": "questions",
+                "durable.images.deduplicate": "merge_groups",
+                "durable.images.assemble": "artifacts",
+            }.get(name)
             raw = _clean_json_object(self._invoke(
                 name,
                 _workload_prompt(
@@ -492,7 +546,7 @@ class ImagePresetWorkloadInvoker:
                 ),
                 args,
                 _context,
-            ))
+            ), list_key=list_key)
             if name == "durable.images.extract_questions":
                 return self._extract_questions(raw, args)
             if name == "durable.images.deduplicate":

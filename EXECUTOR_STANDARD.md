@@ -136,6 +136,12 @@ The following rules are mandatory:
   domain-equivalent declared field.
 - An empty valid result is different from an execution failure. The executor
   MUST preserve that distinction.
+- A successfully admitted asynchronous operation MAY return
+  `decision = "accepted"` with a non-empty, localized `final_message_hint`.
+  This is a terminal receipt for the current interactive pipeline: the runtime
+  MUST show that receipt and MUST NOT execute speculative later steps. Both
+  fields and the receipt data MUST be declared in the output schema. A failed,
+  missing, or non-localized receipt does not acquire this terminal behavior.
 
 ### 3.4 Presentation contract
 

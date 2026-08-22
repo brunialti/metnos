@@ -473,11 +473,16 @@ class SimpleProposer:
                 and intent.verb and not _is_compound):
             try:
                 from tool_grammar import filter_pool_by_intent_verb
+                from vocab import SYSTEM_EXECUTOR_NAMES
                 pool_objs = [next((e for e in catalog if e.name == n), None) for n in pool] \
                             if catalog else []
                 pool_objs = [p for p in pool_objs if p is not None]
                 if pool_objs:
-                    kept, excluded = filter_pool_by_intent_verb(pool_objs, intent.verb)
+                    kept, excluded = filter_pool_by_intent_verb(
+                        pool_objs,
+                        intent.verb,
+                        always_include=SYSTEM_EXECUTOR_NAMES,
+                    )
                     if kept:
                         effective_pool = [e.name for e in kept]
                         log.info("verb-aware filter: pool %d → %d (verb=%s)",

@@ -2478,6 +2478,12 @@ class ChannelDaemon:
                 self._send_text(msg.sender_id,
                                  _msg("MSG_PHOTO_DOWNLOAD_FAILED"),
                                  reply_to=msg.message_id)
+            delivery_id = (
+                (msg.extra or {}).get("update_id") or msg.message_id or ""
+            )
+            source_request_id = (
+                f"{self.channel.name}:{delivery_id}" if delivery_id else ""
+            )
             # Propaga actor (multi-user 1/5/2026) e channel a run_turn cosi' che
             # tool atomici (get_location, undo_last_turn, request_location_from_user,
             # ecc.) operino sull'actor giusto invece di hardcodare "host".
@@ -2488,6 +2494,7 @@ class ChannelDaemon:
                                  trusted_principal.get("user_id") or
                                  actor_for_pending),
                              conversation_id=msg.sender_id,
+                             source_request_id=source_request_id,
                              credential_meta=credential_meta,
                              credentials_prepared=True,
                              redacted_fields=prepared_fields,

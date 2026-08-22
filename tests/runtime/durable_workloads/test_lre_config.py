@@ -7,6 +7,7 @@ import pytest
 from lre_config import (
     FEATURE_ENV,
     ensure_default_feature_configuration,
+    feature_configuration_lock,
     read_feature_configuration,
     write_feature_configuration,
 )
@@ -116,3 +117,29 @@ def test_explicit_environment_override_has_closed_semantics(
 def test_non_boolean_write_is_rejected(tmp_path):
     with pytest.raises(TypeError):
         write_feature_configuration(1, path=tmp_path / "lre.env")  # type: ignore[arg-type]
+
+
+def test_feature_configuration_lock_is_private_and_bounded(tmp_path):
+    path = tmp_path / "private" / "lre.env"
+
+    with feature_configuration_lock(path=path):
+        lock_path = path.with_name("lre.env.lock")
+        assert oct(lock_path.stat().st_mode & 0o777) == "0o600"
+        with pytest.raises(TimeoutError, match="busy"):
+            with feature_configuration_lock(path=path, timeout_s=0.05):
+                pass
+
+
+def test_feature_configuration_lock_never_follows_a_link(tmp_path):
+    path = tmp_path / "lre.env"
+    target = tmp_path / "unrelated.lock"
+    target.write_text("operator-owned", encoding="utf-8")
+    try:
+        path.with_name("lre.env.lock").symlink_to(target)
+    except OSError:
+        return
+
+    with pytest.raises(OSError):
+        with feature_configuration_lock(path=path):
+            pass
+    assert target.read_text(encoding="utf-8") == "operator-owned"

@@ -1297,6 +1297,7 @@ def _carry_executor_tail_to_nested_gate(
         "tail_final_message": parent_callback.get("tail_final_message") or "",
         "original_query": parent_callback.get("original_query") or "",
         "conversation_id": parent_callback.get("conversation_id") or "",
+        "source_request_id": parent_callback.get("source_request_id") or "",
     }
     dialog_pending.save_pending(sender, dialog_id, state)
     log.info("orchestration: coda executor trasferita al gate annidato %s "
@@ -1344,6 +1345,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                     on_complete.get("tail_final_message") or ""),
                 "original_query": on_complete.get("original_query") or "",
                 "conversation_id": on_complete.get("conversation_id") or "",
+                "source_request_id": on_complete.get("source_request_id") or "",
             })
             payload["on_complete"] = nested_callback
         conversation_id = str(on_complete.get("conversation_id") or "")
@@ -1419,7 +1421,9 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             # coda non e' mai un falso `tool_unknown` (§7.3).
             return agent_runtime.invoke_tool_by_name(
                 tool_name, args, catalog=catalog, actor=actor, channel=channel,
-                owner_user_id=str(on_complete.get("owner_user_id") or ""))
+                owner_user_id=str(on_complete.get("owner_user_id") or ""),
+                source_request_id=str(
+                    on_complete.get("source_request_id") or ""))
 
         seed = StepRun(
             step_idx=1, tool="@approved_executor_gate", args={},
@@ -1432,6 +1436,8 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                     "owner_user_id": on_complete.get("owner_user_id") or "",
                     "user_query_raw": on_complete.get("original_query") or "",
                     "conversation_id": on_complete.get("conversation_id") or "",
+                    "source_request_id": (
+                        on_complete.get("source_request_id") or ""),
                 })
         if getattr(run, "gate_dialog_id", ""):
             from engine.dispatch import _inject_gate_resume_if_paused
@@ -1440,7 +1446,9 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                 {"actor": actor or "host", "channel": channel or "",
                  "owner_user_id": on_complete.get("owner_user_id") or "",
                  "user_query_raw": on_complete.get("original_query") or "",
-                 "conversation_id": on_complete.get("conversation_id") or ""},
+                 "conversation_id": on_complete.get("conversation_id") or "",
+                 "source_request_id": (
+                     on_complete.get("source_request_id") or "")},
                 framework=framework)
 
         attachments = []
@@ -1502,6 +1510,8 @@ def _process_resume_engine_gate(on_complete: dict, values: dict, *,
             channel=channel or "",
             conversation_id=conversation_id,
             owner_user_id=str(on_complete.get("owner_user_id") or ""),
+            source_request_id=str(
+                on_complete.get("source_request_id") or ""),
             pre_approved_gate=True,
         )
     except (RuntimeError, TypeError, ImportError) as ex:
@@ -1611,6 +1621,7 @@ def _process_resume_executor_values_tail(on_complete: dict, values: dict, *,
         "tail_final_message": on_complete.get("tail_final_message") or "",
         "original_query": on_complete.get("original_query") or "",
         "conversation_id": on_complete.get("conversation_id") or "",
+        "source_request_id": on_complete.get("source_request_id") or "",
     }
     return _process_resume_executor_gate_tail(
         callback, {"decision": "approve"},

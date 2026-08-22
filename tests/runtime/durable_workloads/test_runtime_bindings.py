@@ -82,6 +82,7 @@ def _registration(
     schema_name: str,
     kind: str = "executor",
     invoker=None,
+    candidate_plan_factory=None,
 ) -> RuntimeRegistration:
     schema = ApprovedOutputSchema.create(
         schema_name,
@@ -95,6 +96,7 @@ def _registration(
         output_schemas=OutputSchemaRegistry((schema,)),
         output_schema_names=(schema_name,),
         workload_invoker=invoker,
+        candidate_plan_factory=candidate_plan_factory,
     )
 
 
@@ -118,6 +120,51 @@ def test_default_registry_exposes_generic_core_and_registered_capabilities():
     assert registry.output_schemas.resolve(
         "metnos.inventory-seal/1"
     ).name == "metnos.inventory-seal/1"
+    assert registry.admission_names == ("images.questions.v1",)
+
+    first = registry.candidate_plan("images.questions.v1")
+    first["objective_redacted"] = "mutated outside the registry"
+    assert registry.candidate_plan(
+        "images.questions.v1"
+    )["objective_redacted"] != first["objective_redacted"]
+
+
+def test_registry_validates_candidate_plans_and_their_exact_identity():
+    invalid = _registration(
+        "tests.invalid-plan.v1",
+        runner_name="runner_invalid_plan",
+        schema_name="tests.invalid-plan/1",
+        candidate_plan_factory=lambda: {},
+    )
+    with pytest.raises(ValueError, match="candidate plan declaration"):
+        RuntimeRegistry((invalid,))
+
+    candidate = plan()
+    mismatch = _registration(
+        "tests.mismatched-plan.v1",
+        runner_name="runner_mismatched_plan",
+        schema_name="tests.mismatched-plan/1",
+        candidate_plan_factory=lambda: candidate,
+    )
+    with pytest.raises(ValueError, match="identity does not match"):
+        RuntimeRegistry((mismatch,))
+
+
+def test_registry_returns_only_declared_candidate_plans():
+    candidate = plan()
+    candidate["plan_id"] = "tests.admitted-plan.v1"
+    registered = _registration(
+        candidate["plan_id"],
+        runner_name="runner_admitted_plan",
+        schema_name="tests.admitted-plan/1",
+        candidate_plan_factory=lambda: candidate,
+    )
+    registry = RuntimeRegistry((registered,))
+
+    assert registry.admission_names == (candidate["plan_id"],)
+    assert registry.candidate_plan(candidate["plan_id"]) == candidate
+    with pytest.raises(LookupError, match="not registered"):
+        registry.candidate_plan("tests.unknown-plan.v1")
 
 
 def test_core_runtime_composition_does_not_import_a_task_domain():

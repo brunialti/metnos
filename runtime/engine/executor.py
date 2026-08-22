@@ -2706,6 +2706,20 @@ class Executor:
                 result.gate_dialog_id = r.get("dialog_id") or ""
                 break
 
+            # A successful asynchronous admission is a terminal receipt for
+            # this interactive turn. The executor has accepted ownership of
+            # the remaining work, so later planner steps would duplicate or
+            # contradict that mandate. The protocol is result-based and
+            # executor-name independent; a non-localized or failed receipt is
+            # not allowed to short-circuit the ordinary honesty path.
+            _receipt = r.get("final_message_hint")
+            if (r.get("decision") == "accepted" and sr.ok
+                    and isinstance(_receipt, str) and _receipt.strip()
+                    and not _receipt.lstrip().startswith("<missing:")):
+                result.final_kind = "answer"
+                result.final_text = _receipt.strip()
+                break
+
             # Vaglio post-step (opt-in)
             if self.vaglio is not None:
                 try:

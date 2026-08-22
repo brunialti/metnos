@@ -112,6 +112,37 @@ def test_image_workload_invoker_derives_stable_question_identities():
     assert entry["canonical_question_key"].startswith("sha256:")
 
 
+def test_image_workload_invoker_normalizes_a_fenced_root_question_array():
+    """The local model's common root-array variant keeps strict item checks."""
+
+    invoker = ImagePresetWorkloadInvoker(
+        lambda _name, _prompt, _args, _context: """```json
+[{"text":"Quanto fa 12 x 7?","coordinate_locale":null,"confidence":0.95}]
+```"""
+    )
+
+    result = invoker(
+        "durable.images.extract_questions",
+        {"source": {"source_id": "source_00000000"}, "ocr_entries": []},
+        SimpleNamespace(language="it"),
+    )
+
+    assert result["entries"][0]["original_text"] == "Quanto fa 12 x 7?"
+    assert result["entries"][0]["coordinate_locale"] == "whole_image"
+
+
+def test_image_workload_invoker_rejects_a_root_array_for_scalar_contracts():
+    invoker = ImagePresetWorkloadInvoker(
+        lambda _name, _prompt, _args, _context: [{"valid": True, "reason": "ok"}]
+    )
+
+    assert invoker(
+        "durable.images.validate",
+        {"answer": {"canonical_question_key": "question-a"}},
+        SimpleNamespace(language="it"),
+    ) == {"ok": False, "error_class": "contract_violation"}
+
+
 def test_image_workload_prompt_uses_the_frozen_language_without_translating_sources():
     prompts = []
 

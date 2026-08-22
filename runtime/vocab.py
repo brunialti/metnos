@@ -628,7 +628,9 @@ SYSTEM_VERBS = frozenset({"admin", "undo", "synthesize", "consult"})
 
 # Nomi runtime esatti ammessi fuori dalla grammatica user-domain. Non sono
 # token proponibili dal synt: l'eccezione e' chiusa sul nome completo.
-SYSTEM_EXECUTOR_NAMES = frozenset({"undo_last_turn", "consult_frontier"})
+SYSTEM_EXECUTOR_NAMES = frozenset({
+    "undo_last_turn", "consult_frontier", "start_lre",
+})
 
 # Operazioni intrinsecamente singolari ratificate da ADR 0002. Anche queste
 # sono eccezioni chiuse sul nome completo; non aprono gli oggetti `now` o

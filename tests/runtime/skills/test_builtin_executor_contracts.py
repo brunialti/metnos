@@ -20,7 +20,8 @@ BUILTIN_NAMES = {
     "delete_entries", "delete_preferences", "delete_tasks", "describe_entries",
     "describe_images", "extract_entries", "find_entries", "get_preferences",
     "list_skills", "list_tasks", "read_tasks", "read_tasks_history",
-    "set_preferences", "set_skills", "set_tasks", "write_entries",
+    "set_preferences", "set_skills", "set_tasks", "start_lre",
+    "write_entries",
 }
 
 GITHUB_BUILTIN_REQUIRED = {
@@ -84,6 +85,7 @@ def test_loader_admits_builtins_only_from_their_signed_contracts() -> None:
     "set_skills", "find_entries", "write_entries",
     "delete_entries", "compare_entries", "describe_images",
     "describe_entries", "classify_entries", "extract_entries",
+    "start_lre",
 ])
 def test_builtin_domains_reject_missing_required_input(name: str) -> None:
     import agent_runtime

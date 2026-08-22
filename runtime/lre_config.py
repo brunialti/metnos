@@ -9,10 +9,12 @@ I/O and creates no files.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
 import stat
+import time
 from typing import Mapping
 
 
@@ -123,6 +125,57 @@ def feature_enabled() -> bool:
     return read_feature_configuration().enabled
 
 
+@contextmanager
+def feature_configuration_lock(
+    *,
+    path: str | Path | None = None,
+    timeout_s: float = 5.0,
+):
+    """Serialize a gate change with the final admission transaction.
+
+    Discovery and hashing remain outside this short lock.  A submitter takes
+    it only to re-read the switch and make the admitted revision reachable;
+    disabling LRE therefore cannot cross that boundary unnoticed.
+    """
+
+    if (
+        isinstance(timeout_s, bool)
+        or not isinstance(timeout_s, (int, float))
+        or not 0 < float(timeout_s) <= 30
+    ):
+        raise ValueError("timeout_s must be in (0, 30]")
+    import config
+    import fcntl
+
+    selected = Path(path) if path is not None else default_feature_config_path()
+    lock_path = selected.with_name(selected.name + ".lock")
+    config.ensure_private_dir(lock_path.parent)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(lock_path, flags, 0o600)
+    acquired = False
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("LRE feature lock is not a regular file")
+        os.fchmod(descriptor, 0o600)
+        deadline = time.monotonic() + float(timeout_s)
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("LRE feature lock is busy") from None
+                time.sleep(0.05)
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
 def _canonical_text(enabled: bool) -> str:
     value = "1" if enabled else "0"
     return (
@@ -170,6 +223,7 @@ __all__ = [
     "LREFeatureConfiguration",
     "default_feature_config_path",
     "ensure_default_feature_configuration",
+    "feature_configuration_lock",
     "feature_enabled",
     "read_feature_configuration",
     "write_feature_configuration",

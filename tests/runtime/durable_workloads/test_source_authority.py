@@ -341,6 +341,54 @@ def test_authority_expiry_revocation_and_bounded_pruning(tmp_path):
         assert authority.prune(limit=1) == 1
 
 
+def test_resealing_replaces_stale_grants_without_leaving_authority_active(
+    tmp_path,
+):
+    path = tmp_path / "source.txt"
+    path.write_text("first version", encoding="utf-8")
+    with SourceAuthority.open(
+        tmp_path / "private" / "authority.sqlite3",
+        clock=lambda: NOW,
+    ) as authority:
+        first_inventory = authority.seal_and_register(
+            [path],
+            owner_user_id="owner-a",
+            workload_id="workload-a",
+            device_id="server",
+            limits=_limits(),
+            valid_until=NOW + timedelta(days=1),
+        )
+        first = first_inventory["sources"][0]
+
+        path.write_text("second version with a new identity", encoding="utf-8")
+        second_inventory = authority.seal_and_register(
+            [path],
+            owner_user_id="owner-a",
+            workload_id="workload-a",
+            device_id="server",
+            limits=_limits(),
+            valid_until=NOW + timedelta(days=1),
+        )
+        second = second_inventory["sources"][0]
+
+        assert first["source_id"] != second["source_id"]
+        with pytest.raises(SourceAuthorityError, match="unavailable"):
+            authority.resolve(first, _context("owner-a", "workload-a"))
+        assert Path(authority.resolve(
+            second, _context("owner-a", "workload-a"),
+        ).value).read_text(encoding="utf-8") == (
+            "second version with a new identity"
+        )
+        assert authority._connection.execute(
+            """
+            SELECT COUNT(*) FROM source_grants
+            WHERE owner_user_id='owner-a' AND workload_id='workload-a'
+              AND revoked_at IS NULL
+            """
+        ).fetchone()[0] == 1
+        assert authority.prune(limit=10) == 1
+
+
 def test_workload_reconciliation_rotates_and_revokes_terminal_scopes(tmp_path):
     path = tmp_path / "source.txt"
     path.write_text("stable", encoding="utf-8")

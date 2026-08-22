@@ -132,6 +132,13 @@ def _required_service_alert_keys() -> tuple[str, ...]:
 # Chiavi user-facing introdotte dal flusso gate-resume/consenso (20/6) +
 # gate mutazioni-di-massa (6/7).
 _REQUIRED_KEYS = (
+    "ERR_LRE_REQUEST_INVALID",
+    "ERR_LRE_CONFIG_INVALID",
+    "ERR_LRE_DISABLED",
+    "ERR_LRE_WORKER_UNAVAILABLE",
+    "ERR_LRE_SUBMISSION_FAILED",
+    "MSG_LRE_SUBMITTED",
+    "MSG_LRE_SUBMITTED_WITH_SUMMARY",
     "MSG_CREDENTIAL_KIND_TITLE",
     "MSG_CREDENTIAL_KIND_PROMPT",
     "MSG_CREDENTIAL_KIND_OPTION_MAIL",

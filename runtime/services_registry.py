@@ -25,6 +25,7 @@ from pathlib import Path
 
 import config as _C
 from lre_config import (
+    feature_configuration_lock,
     read_feature_configuration,
     write_feature_configuration,
 )
@@ -792,7 +793,6 @@ def configure_lre_feature(enabled: bool) -> tuple[bool, str]:
     effective = read_feature_configuration()
     if effective.source == "environment":
         return False, "LRE feature state is overridden by the process environment"
-    previous_enabled = effective.enabled if effective.valid else False
     target = ServiceTarget(str(state["unit"]), str(state["scope"]))
     cmd, env = _systemctl(
         target, "--no-block", "restart", target.unit,
@@ -800,28 +800,35 @@ def configure_lre_feature(enabled: bool) -> tuple[bool, str]:
 
     try:
         with _CONTROL_LOCK:
-            write_feature_configuration(enabled)
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30,
-                check=False, env=env,
-            )
-            if result.returncode != 0 and enabled:
-                write_feature_configuration(previous_enabled)
-            elif result.returncode != 0:
-                stop_cmd, stop_env = _systemctl(
-                    target, "--no-block", "stop", target.unit,
-                )
-                subprocess.run(
-                    stop_cmd, capture_output=True, text=True, timeout=30,
-                    check=False, env=stop_env,
-                )
+            with feature_configuration_lock():
+                current = read_feature_configuration()
+                if current.source == "environment":
+                    return False, (
+                        "LRE feature state is overridden by the process environment"
+                    )
+                previous_enabled = current.enabled if current.valid else False
+                try:
+                    write_feature_configuration(enabled)
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=30,
+                        check=False, env=env,
+                    )
+                except Exception:
+                    if enabled:
+                        write_feature_configuration(previous_enabled)
+                    raise
+                if result.returncode != 0 and enabled:
+                    write_feature_configuration(previous_enabled)
+                elif result.returncode != 0:
+                    stop_cmd, stop_env = _systemctl(
+                        target, "--no-block", "stop", target.unit,
+                    )
+                    subprocess.run(
+                        stop_cmd, capture_output=True, text=True, timeout=30,
+                        check=False, env=stop_env,
+                    )
     except (FileNotFoundError, OSError, ValueError,
             subprocess.TimeoutExpired) as exc:
-        if enabled:
-            try:
-                write_feature_configuration(previous_enabled)
-            except (OSError, ValueError):
-                pass
         return False, type(exc).__name__
 
     detail = (result.stderr or result.stdout or "").strip()[-300:]
