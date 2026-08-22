@@ -102,6 +102,7 @@ def _registration(
 
 def test_default_registry_exposes_generic_core_and_registered_capabilities():
     registry = default_runtime_registry()
+    assert default_runtime_registry() is registry
     capabilities = registry.capabilities({
         "cpu": 1,
         "local_io": 1,

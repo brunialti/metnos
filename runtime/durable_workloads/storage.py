@@ -1203,6 +1203,23 @@ class DurableWorkloadStore:
                         cardinality_contract.get("max_input_bytes"), now,
                     ),
                 )
+                placement = stage.get("placement")
+                if placement is not None:
+                    connection.execute(
+                        """
+                        INSERT INTO stage_placements(
+                            owner_user_id, revision_id, stage_id,
+                            target_kind, target_device
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            owner,
+                            chosen_revision,
+                            stage_id,
+                            placement["target"],
+                            placement.get("device"),
+                        ),
+                    )
             for stage in plan["stages"]:
                 for ordinal, dependency in enumerate(stage["depends_on"]):
                     connection.execute(
@@ -4441,6 +4458,8 @@ class DurableWorkloadStore:
                 s.input_bindings_json, s.output_schema_json, s.retry_json,
                 s.resources_json, s.timeout_s, s.reduction_fan_in,
                 s.reduction_input, s.reduction_max_input_bytes,
+                placement.target_kind AS placement_target,
+                placement.target_device AS placement_device,
                 src.source_id, src.ordinal AS source_ordinal,
                 src.device_id AS source_device_id,
                 src.locator_redacted AS source_locator_redacted,
@@ -4464,6 +4483,10 @@ class DurableWorkloadStore:
             JOIN stages s
               ON s.owner_user_id=u.owner_user_id AND s.id=u.stage_id
              AND s.revision_id=u.revision_id
+            LEFT JOIN stage_placements placement
+              ON placement.owner_user_id=s.owner_user_id
+             AND placement.revision_id=s.revision_id
+             AND placement.stage_id=s.id
             LEFT JOIN attempts a
               ON a.owner_user_id=u.owner_user_id AND a.id=?
              AND a.unit_id=u.id
@@ -5693,6 +5716,14 @@ class DurableWorkloadStore:
                     "execution dependency lineage is incomplete or oversized"
                 )
             input_bindings = json.loads(str(row["input_bindings_json"]))
+            literal_bytes = sum(
+                len(canonical_json(
+                    reference["value"], max_bytes=MAX_PLAN_JSON_BYTES,
+                ).encode("utf-8"))
+                for reference in input_bindings.values()
+                if isinstance(reference, Mapping)
+                and reference.get("ref") == "literal"
+            )
             needs_inventory = any(
                 isinstance(reference, Mapping)
                 and reference.get("ref") == "revision.inventory"
@@ -5770,7 +5801,10 @@ class DurableWorkloadStore:
                     source_bytes += len(canonical_json(
                         source, max_bytes=MAX_EVENT_JSON_BYTES,
                     ).encode("utf-8"))
-            input_bytes = inventory_bytes + source_bytes + dependency_bytes
+            input_bytes = (
+                inventory_bytes + source_bytes + dependency_bytes
+                + literal_bytes
+            )
             attempt_metrics = json.loads(str(row["metrics_json"]))
             already_accounted = attempt_metrics.get(
                 "input_bytes_accounted", False,
@@ -5828,6 +5862,8 @@ class DurableWorkloadStore:
                     "runner_kind": str(row["runner_kind"]),
                     "runner_name": str(row["runner_name"]),
                     "effect_profile": str(row["effect_profile"]),
+                    "placement_target": row["placement_target"],
+                    "placement_device": row["placement_device"],
                     "input_bindings": input_bindings,
                     "output_schema": json.loads(str(row["output_schema_json"])),
                     "timeout_s": int(row["timeout_s"]),
@@ -8261,7 +8297,8 @@ class DurableWorkloadStore:
                 "DELETE FROM workloads WHERE owner_user_id=?", (owner,)
             )
             for table in (
-                "workloads", "revisions", "stages", "stage_dependencies",
+                "workloads", "revisions", "stages", "stage_placements",
+                "stage_dependencies",
                 "stage_materialization", "revision_usage", "sources",
                 "units", "attempts",
                 "results", "unit_dependencies", "dependencies",

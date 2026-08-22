@@ -6,6 +6,9 @@ executor_standard = "metnos.executor/1.0"
 
 name        = "create_images_indices"
 version     = "0.3.0"
+# Build VLM+ArcFace su 30k+ foto può richiedere ore: il timeout appartiene
+# al contratto dell'executor, non alla sezione dello schema di output.
+timeout_s   = 14400
 intelligence = "llm"
 author      = "Roberto Brunialti"
 affinity    = ["indicizza", "indicizza foto", "indicizza cartella",
@@ -19,9 +22,6 @@ reverse_pattern = "module.reverse"
 
 [output]
 schema_inline = "{ ok: bool, schema_version?: integer, base_path?: string, ok_count?: integer, fail_count?: integer, n_entries_total?: integer, refreshed_count?: integer, last_refresh_at?: number, index_path?: string, index_created?: bool, model_text?: string, model_vlm?: string, model_face?: string, model_image?: string, dim_text?: integer, dim_image?: integer, dry_run?: bool, would_index_count?: integer, n_other_files?: integer, visited_dirs?: integer, walk_workers?: integer, est_time_s?: number, est_size_mb?: number, truncated?: bool, truncated_what?: string, used?: integer, cap_field?: string, cap_value?: integer, warning?: string, error?: string }"
-
-# Build VLM+ArcFace su 30k+ foto puo' richiedere ore: timeout esteso.
-timeout_s = 14400
 
 [execution]
 effect            = "mutating"

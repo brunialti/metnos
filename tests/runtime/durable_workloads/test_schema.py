@@ -22,6 +22,22 @@ from durable_workloads.migrations import (
 from helpers import inventory, plan, source
 
 
+def _prepare_schema_version(connection, target: int) -> None:
+    from durable_workloads import migrations
+
+    applied_at = migrations.utc_now()
+    for statement in migrations._V1_STATEMENTS:
+        connection.execute(statement.replace("__APPLIED_AT__", applied_at))
+    for version in range(2, target + 1):
+        statements = getattr(migrations, f"_V{version}_STATEMENTS")
+        for statement in statements:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE durable_schema SET version=?, applied_at=? WHERE singleton=1",
+            (version, migrations.utc_now()),
+        )
+
+
 @pytest.fixture
 def store(tmp_path):
     from durable_workloads.storage import DurableWorkloadStore
@@ -352,6 +368,53 @@ def test_upgrade_from_previous_schema_fixture():
             "scheduler_credits_sequence_idx",
             "scheduler_credits_owner_sequence_idx",
         } <= indexes
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("source_version", range(1, CURRENT_SCHEMA_VERSION))
+def test_upgrade_from_every_supported_schema_version(source_version):
+    connection = open_db(":memory:")
+    try:
+        _prepare_schema_version(connection, source_version)
+        assert schema_version(connection) == source_version
+
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
+        assert connection.execute(
+            "SELECT COUNT(*) FROM stage_placements"
+        ).fetchone()[0] == 0
+        ownership = {
+            (row[2], row[3], row[4], row[6].upper())
+            for row in connection.execute(
+                "PRAGMA foreign_key_list(stage_placements)"
+            )
+        }
+        assert ownership == {
+            ("stages", "owner_user_id", "owner_user_id", "CASCADE"),
+            ("stages", "stage_id", "id", "CASCADE"),
+            ("stages", "revision_id", "revision_id", "CASCADE"),
+        }
+    finally:
+        connection.close()
+
+
+def test_v7_migration_rolls_back_partial_placement_schema():
+    connection = open_db(":memory:")
+    try:
+        _prepare_schema_version(connection, 6)
+
+        def fail_second_statement(statement_number, _statement):
+            if statement_number == 2:
+                raise RuntimeError("injected v7 migration fault")
+
+        with pytest.raises(RuntimeError, match="injected v7"):
+            migrate(connection, _before_statement=fail_second_statement)
+
+        assert schema_version(connection) == 6
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='stage_placements'"
+        ).fetchone() is None
+        assert migrate(connection) == CURRENT_SCHEMA_VERSION
     finally:
         connection.close()
 
