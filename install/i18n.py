@@ -626,6 +626,26 @@ _CATALOG: dict[str, dict[str, str]] = {
               "di installazione: {modules}. Il target integrato non verra' "
               "avviato; ripara l'ambiente e riesegui la fase 5.",
     },
+    "p5_lre_config_created": {
+        "en": "created the disabled LRE switch: {path}",
+        "it": "creato l'interruttore LRE disattivato: {path}",
+    },
+    "p5_lre_config_preserved": {
+        "en": "preserved the existing LRE configuration: {path}",
+        "it": "conservata la configurazione LRE esistente: {path}",
+    },
+    "p5_step_lre_worker": {
+        "en": "Starting the disabled-by-default LRE worker",
+        "it": "Avvio del processo LRE, disattivato per impostazione predefinita",
+    },
+    "p5_lre_worker_running": {
+        "en": "LRE worker available",
+        "it": "Processo LRE disponibile",
+    },
+    "p5_lre_worker_failed": {
+        "en": "LRE worker could not be made available: {detail}",
+        "it": "Impossibile rendere disponibile il processo LRE: {detail}",
+    },
     "p5_step_enable_http": {
         "en": "Enabling and starting metnos-http.service",
         "it": "Abilitazione e avvio di metnos-http.service",

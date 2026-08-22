@@ -194,7 +194,11 @@ continues to publish health state.
 If a system-level `metnos-http.service` is already active, phase 5 installs the
 user units but does not start a competing listener and does not disable the
 working baseline. The guarded migration procedure in `systemd/README.md` must
-prove the replacement and its rollback before ownership changes.
+prove the replacement and its rollback before ownership changes. Non-listening
+companions that must survive a reboot—including the idle LRE worker, the i18n
+timer and the watchdog—are attached directly to the user `default.target`
+during this transition. They are the same units later owned by
+`metnos.target`; the compatibility path does not create duplicate services.
 
 The HTTP health endpoint proves reachability, not planning quality or end-to-end
 operation. A release installation is complete only after a harmless natural-

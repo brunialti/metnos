@@ -65,6 +65,7 @@ def test_fresh_install_enables_only_integrated_target(monkeypatch, tmp_path):
     assert "METNOS_DURABLE_WORKLOADS_ENABLED=0" in lre_config.read_text()
     assert notes["lre_config_created"] is True
     assert notes["lre_enabled_by_default"] is False
+    assert notes["lre_worker_enabled"] is True
     assert notes["i18n_translator_enabled"] is True
     assert (
         units / "metnos-side-display.service.d" / "10-metnos-target.conf"
@@ -87,7 +88,15 @@ def test_upgrade_with_active_system_http_installs_but_does_not_cut_over(
         "add-wants", "default.target", "metnos-stack-watchdog.timer"
     ) in calls
     assert ("start", "metnos-stack-watchdog.timer") in calls
-    assert ("enable", "--now", "metnos-i18n-translator.timer") in calls
+    assert (
+        "add-wants", "default.target", "metnos-durable-worker.service"
+    ) in calls
+    assert ("start", "metnos-durable-worker.service") in calls
+    assert notes["lre_worker_enabled"] is True
+    assert (
+        "add-wants", "default.target", "metnos-i18n-translator.timer"
+    ) in calls
+    assert ("start", "metnos-i18n-translator.timer") in calls
     assert notes["i18n_translator_enabled"] is True
     assert not any("stop" in call or "disable" in call for call in calls)
 
@@ -117,9 +126,44 @@ def test_upgrade_records_migration_even_when_target_venv_is_not_ready(
     assert notes["http_enabled"] is True
     assert notes["http_healthy"] is True
     assert notes["watchdog_enabled"] is False
+    assert notes["lre_worker_enabled"] is False
     assert notes["i18n_translator_enabled"] is False
     assert ("enable", "--now", "metnos.target") not in calls
     assert not any("metnos-stack-watchdog.timer" in call for call in calls)
+
+
+def test_lre_runtime_is_required_before_any_integrated_start(
+        monkeypatch, tmp_path):
+    calls = _wire(monkeypatch, tmp_path, legacy=False)
+    monkeypatch.setattr(
+        phase5, "_runtime_module_importable",
+        lambda module: module != "durable_workloads.service",
+    )
+
+    notes = phase5.run(SimpleNamespace())
+
+    assert notes["target_enabled"] is False
+    assert notes["lre_worker_enabled"] is False
+    assert ("enable", "--now", "metnos.target") not in calls
+
+
+def test_legacy_companion_does_not_start_after_persistence_failure(monkeypatch):
+    calls = []
+
+    def systemctl(*args, **_kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args, 1, stdout="", stderr="cannot persist",
+        )
+
+    monkeypatch.setattr(phase5, "_systemctl_user", systemctl)
+
+    assert phase5._start_legacy_companion("metnos-test.service") == (
+        False, "cannot persist",
+    )
+    assert calls == [
+        ("add-wants", "default.target", "metnos-test.service"),
+    ]
 
 
 def test_upgrade_preserves_existing_optional_unit_bodies(monkeypatch, tmp_path):
@@ -140,7 +184,10 @@ def test_upgrade_preserves_existing_optional_unit_bodies(monkeypatch, tmp_path):
         assert (
             units / f"{name}.d" / "10-metnos-target.conf"
         ).is_file()
-    assert ("enable", "--now", "metnos-telegram-daemon.service") in calls
+    assert (
+        "add-wants", "default.target", "metnos-telegram-daemon.service"
+    ) in calls
+    assert ("start", "metnos-telegram-daemon.service") in calls
 
 
 def test_legacy_system_http_probe_fails_closed(monkeypatch):
