@@ -1,0 +1,32 @@
+{
+  "cases": 48,
+  "families": {
+    "compose_dataflow": 4,
+    "device_owner": 3,
+    "dialog_resume": 2,
+    "durable_work": 2,
+    "explain_tutor": 3,
+    "failure_partial": 2,
+    "mutation_undo": 4,
+    "read_select": 4
+  },
+  "frozen_on": "2026-08-22",
+  "locales": {
+    "en": 24,
+    "it": 24
+  },
+  "logical_flows": 24,
+  "matrix_sha256": "0cf76d34824b7d076d570dd23f2ba6bc53f4cd966eebfb4c0e6bb0c41eb2c9d5",
+  "oracle_version": "rm0006-golden-oracle/1",
+  "placements": {
+    "owned_device": 2,
+    "server": 22
+  },
+  "required_approvals": 10,
+  "schema_version": "metnos.golden-coverage/1",
+  "terminals": {
+    "completed": 22,
+    "failed": 1,
+    "partial": 1
+  }
+}

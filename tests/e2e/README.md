@@ -35,6 +35,9 @@ pytest scenarios/test_lifecycle_change_intent.py -v
 # C0 sintetico: due cicli, nessuna chiamata a Metnos o a un modello
 python3 -m certification.run_synthetic --output /tmp/metnos-certification-c0
 
+# Verifica che i 24 flussi / 48 casi C1 coincidano con la matrice congelata
+python3 -m certification.golden_matrix --check
+
 # Gate qualità: suite completa, judge attivo, due esecuzioni pulite consecutive
 ./run.sh --quality-gate
 ```

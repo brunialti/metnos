@@ -2,7 +2,7 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `in_progress`; C0 completata e verificata il 2026-08-22, C1 non iniziata |
+| Stato | `in_progress`; C0-C1 completate e verificate il 2026-08-22, C2 in preparazione |
 | Creazione | 2026-08-22 |
 | Ultima revisione | 2026-08-22 |
 | Implementazione reale | C0 fornisce schema JSON, coordinatore indipendente, registro risultati solo in aggiunta, ripresa e lotto sintetico deterministico; i 24 flussi reali e la certificazione finale non esistono ancora |
@@ -325,6 +325,10 @@ fasi interne usano il prefisso `C` di certificazione.
 fixture sintetica.
 
 ### C1 — Selezione e congelamento dei 24 flussi
+
+**Stato:** completata il 2026-08-22. Matrice sorgente e sua espansione
+immutabile in `tests/e2e/certification/fixtures/`; evidenza in
+`internal/reports/rm0006-c1-verification-20260822.md`.
 
 - estrarre candidati dal corpus anonimizzato e dagli incidenti documentati;
 - coprire tutte le famiglie della matrice senza sovrappeso del dominio file;
