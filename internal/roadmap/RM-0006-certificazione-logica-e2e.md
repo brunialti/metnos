@@ -2,10 +2,10 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `in_progress`; C0-C1 completate e verificate il 2026-08-22, C2 in preparazione |
+| Stato | `in_progress`; C0-C2 completate e verificate il 2026-08-22, C3 in preparazione |
 | Creazione | 2026-08-22 |
 | Ultima revisione | 2026-08-22 |
-| Implementazione reale | C0 fornisce schema JSON, coordinatore indipendente, registro risultati solo in aggiunta, ripresa e lotto sintetico deterministico; i 24 flussi reali e la certificazione finale non esistono ancora |
+| Implementazione reale | C0-C2 forniscono schema JSON, matrice bilingue di 24 flussi, coordinatore riprendibile e gate HTTP isolato: gli 8 casi rapidi hanno superato due cicli (16/16); i percorsi interattivi, remoti, durevoli e la certificazione finale restano da completare |
 | Decisione di prodotto | La Fase 8 misura se Metnos raggiunge davvero il risultato richiesto, con autorita', collocazione, effetti e risposta corretti; non usa il numero di executor o di test come sostituto della qualita' |
 | Nome storico | Fase 8 — «stress logico» |
 | Origine | `internal/design/TODO.md::QUA-001` e §12 di `CLAUDE.mutabile.md` |
@@ -338,6 +338,10 @@ immutabile in `tests/e2e/certification/fixtures/`; evidenza in
 **Uscita:** 24 contratti approvati, 48 formulazioni e rapporto di copertura.
 
 ### C2 — Coordinatore isolato
+
+**Stato:** completata il 2026-08-22. Due cicli qualificanti, 16/16 casi
+verdi, evidenze append-only in `internal/reports/rm0006-c2-quick-20260822/`
+e sintesi in `internal/reports/rm0006-c2-verification-20260822.md`.
 
 - estendere `tests/e2e/` con esecuzione riprendibile e scadenze finite;
 - usare soltanto HTTP e superfici pubbliche per comandare il Metnos sotto

@@ -121,8 +121,10 @@ def _append_jsonl(path: Path, record: dict[str, Any]) -> None:
         os.fsync(handle.fileno())
 
 
-def _observation_map(observations: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    mapped: dict[str, dict[str, Any]] = {}
+def _observation_map(
+    observations: list[dict[str, Any]],
+) -> dict[tuple[str, int | None], dict[str, Any]]:
+    mapped: dict[tuple[str, int | None], dict[str, Any]] = {}
     required = {
         "case_id", "started_at", "finished_at", "duration_ms", "route", "plan",
         "placement", "approval_count", "model_calls", "terminal", "effects",
@@ -130,16 +132,20 @@ def _observation_map(observations: list[dict[str, Any]]) -> dict[str, dict[str, 
     }
     for observation in observations:
         missing = required - set(observation)
-        extra = set(observation) - required
+        extra = set(observation) - required - {"cycle"}
         if missing or extra:
             raise CertificationError(
                 f"observation fields for {observation.get('case_id', '?')}: "
                 f"missing={sorted(missing)}, extra={sorted(extra)}"
             )
         case_id = observation["case_id"]
-        if case_id in mapped:
-            raise CertificationError(f"duplicate observation: {case_id}")
-        mapped[case_id] = observation
+        cycle = observation.get("cycle")
+        if cycle is not None and (not isinstance(cycle, int) or cycle < 1):
+            raise CertificationError(f"invalid observation cycle: {case_id}/{cycle}")
+        key = (case_id, cycle)
+        if key in mapped:
+            raise CertificationError(f"duplicate observation: {case_id}/{cycle}")
+        mapped[key] = observation
     return mapped
 
 
@@ -293,9 +299,13 @@ def run_batch(
         raise CertificationError("manifest case_matrix_sha256 does not match cases")
 
     obs_by_case = _observation_map(observations)
-    missing_observations = seen_case_ids - set(obs_by_case)
+    missing_observations = [
+        (case_id, cycle)
+        for cycle in manifest["cycles"] for case_id in seen_case_ids
+        if (case_id, cycle) not in obs_by_case and (case_id, None) not in obs_by_case
+    ]
     if missing_observations:
-        raise CertificationError(f"missing observations: {sorted(missing_observations)}")
+        raise CertificationError(f"missing observations: {missing_observations}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     _write_immutable(output_dir / "manifest.json", manifest)
@@ -349,7 +359,11 @@ def run_batch(
                 continue
             if max_new_cases is not None and written >= max_new_cases:
                 break
-            result = evaluate_case(manifest, case, cycle, obs_by_case[case["case_id"]])
+            observation = obs_by_case.get(
+                (case["case_id"], cycle), obs_by_case.get((case["case_id"], None)),
+            )
+            assert observation is not None
+            result = evaluate_case(manifest, case, cycle, observation)
             _append_jsonl(results_path, result)
             _append_jsonl(events_path, {
                 "schema_version": "metnos.certification-event/1",
@@ -362,7 +376,7 @@ def run_batch(
             if result["verdict"] != "pass":
                 _write_immutable(
                     output_dir / "failures" / case["case_id"] / f"cycle-{cycle}.json",
-                    {"case": case, "observation": obs_by_case[case["case_id"]], "result": result},
+                    {"case": case, "observation": observation, "result": result},
                 )
             completed.add(key)
             written += 1

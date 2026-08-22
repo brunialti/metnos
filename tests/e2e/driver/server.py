@@ -158,6 +158,10 @@ def _seed_realistic_into(user_data: Path, user_state: Path,
     """
     items_data = [
         "turns", "i18n.sqlite", "skills", "synth_proposals",
+        # Derived, signed and free of user content.  Keeping the admitted
+        # snapshot lets isolated HTTP tests exercise Tutor immediately while
+        # the ordinary background bootstrap checks whether a rebuild is due.
+        "tutor_catalog.sqlite", "tutor_catalog.sqlite.sig",
         "telos_proposals.jsonl", "turn_feedback.jsonl",
         "executor_aliases.json", "rejected_patterns.jsonl",
         "introvertiva", "scratchpad.db", "multi_tool_paths.sqlite",

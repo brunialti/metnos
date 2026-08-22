@@ -100,6 +100,70 @@ class TestManifestPresentation(unittest.TestCase):
         self.assertEqual(out.final_message, "${step1.@table}")
 
 
+class TestCompoundTerminalPresentation(unittest.TestCase):
+    def test_find_then_read_uses_terminal_read_mode(self):
+        fw = _fw([
+            ("find_files", {"base_path": "/tmp"}),
+            ("read_files", {"from_step": 1}),
+            ("final_answer", {}),
+        ], final="${step2.content}")
+        intent = Intent(
+            verb="find", object="files",
+            actions=[
+                {"verb": "find", "object": "files"},
+                {"verb": "read", "object": "files"},
+            ],
+        )
+
+        out, info = normalize_terminal(
+            fw, intent, "trova il file e leggine il contenuto")
+
+        self.assertEqual(info["mode"], T)
+        self.assertEqual(info["intent_class"], "read")
+        self.assertEqual(info["action"], "content")
+        self.assertEqual(out.final_message, "${step2.@content}")
+
+    def test_scalar_file_read_drops_lossy_describe(self):
+        fw = _fw([
+            ("read_files", {"path": "/tmp/note.txt"}),
+            ("describe_entries", {"entries": []}),
+            ("final_answer", {}),
+        ], final="${step2.summary}")
+
+        out, info = normalize_terminal(
+            fw, Intent(verb="read", object="files"), "leggi il file")
+
+        self.assertEqual(info["mode"], T)
+        self.assertEqual(info["action"], "drop_describe+content")
+        self.assertEqual([step.tool for step in out.steps], [
+            "read_files", "final_answer",
+        ])
+        self.assertEqual(out.final_message, "${step1.@content}")
+
+    def test_structured_reader_group_uses_terminal_transform_mode(self):
+        fw = _fw([
+            ("read_files_csv", {"paths": ["/tmp/expenses.csv"]}),
+            ("group_entries", {"from_step": 1, "cross_domain_key": "category"}),
+            ("sort_entries", {"from_step": 2, "by": "category"}),
+            ("final_answer", {}),
+        ])
+        intent = Intent(
+            verb="read", object="files",
+            actions=[
+                {"verb": "read", "object": "files"},
+                {"verb": "group", "object": None},
+            ],
+        )
+
+        out, info = normalize_terminal(
+            fw, intent, "leggi il CSV e raggruppa per categoria")
+
+        self.assertEqual(info["mode"], L)
+        self.assertEqual(info["intent_class"], "transform")
+        self.assertEqual(info["action"], "final_only")
+        self.assertEqual(out.final_message, "${step3.@table}")
+
+
 class TestNormalizeScalar(unittest.TestCase):
     def test_time_scalar_preserves_value_instead_of_counting_zero(self):
         fw = _fw([("get_now", {}), ("final_answer", {})],

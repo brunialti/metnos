@@ -1,6 +1,6 @@
 {
   "schema_version": "metnos.golden-flows/1",
-  "oracle_version": "rm0006-golden-oracle/1",
+  "oracle_version": "rm0006-golden-oracle/2",
   "frozen_on": "2026-08-22",
   "flows": [
     {
@@ -69,14 +69,17 @@
       "postcondition_probes": ["selected_file_set", "fixture_digest_unchanged"],
       "response_requirements": ["honest_count", "limit_visible"],
       "budgets": {"max_approvals": 0, "deadline_s": 60, "max_model_calls": 1},
-      "requests": {"it": "Trova al massimo due file di testo con report nel nome nella cartella di prova.", "en": "Find at most two text files with report in the name in the test folder."}
+      "requests": {"it": "Trova al massimo due file di testo con report nel nome in /tmp/metnos-certification-fixture/files.", "en": "Find at most two text files with report in the name under /tmp/metnos-certification-fixture/files."}
     },
     {
       "logical_flow_id": "read.file.content",
       "family": "read_select",
       "fixture": "files-basic-v1",
       "expected_route": "engine",
-      "allowed_plans": [["read_files", "final_answer"]],
+      "allowed_plans": [
+        ["read_files", "final_answer"],
+        ["read_files", "describe_entries", "final_answer"]
+      ],
       "forbidden_tools": ["write_files", "delete_files"],
       "expected_placement": "server",
       "required_approval": false,
@@ -86,7 +89,7 @@
       "postcondition_probes": ["content_digest_matches", "fixture_digest_unchanged"],
       "response_requirements": ["content_complete"],
       "budgets": {"max_approvals": 0, "deadline_s": 60, "max_model_calls": 1},
-      "requests": {"it": "Leggi il file note.txt nella cartella di prova.", "en": "Read the note.txt file in the test folder."}
+      "requests": {"it": "Leggi /tmp/metnos-certification-fixture/files/note.txt.", "en": "Read /tmp/metnos-certification-fixture/files/note.txt."}
     },
     {
       "logical_flow_id": "read.tasks.open",
@@ -137,7 +140,7 @@
       "postcondition_probes": ["selected_path_forwarded", "content_digest_matches"],
       "response_requirements": ["source_visible", "content_complete"],
       "budgets": {"max_approvals": 0, "deadline_s": 90, "max_model_calls": 2},
-      "requests": {"it": "Trova il file con riepilogo nel nome e leggine il contenuto.", "en": "Find the file with summary in its name and read its contents."}
+      "requests": {"it": "Trova in /tmp/metnos-certification-fixture/files il file con riepilogo nel nome e leggine il contenuto.", "en": "Under /tmp/metnos-certification-fixture/files, find the file with summary in its name and read its contents."}
     },
     {
       "logical_flow_id": "compose.find-sort-files",
@@ -154,7 +157,7 @@
       "postcondition_probes": ["all_paths_forwarded", "order_matches"],
       "response_requirements": ["honest_count", "ordering_visible"],
       "budgets": {"max_approvals": 0, "deadline_s": 90, "max_model_calls": 2},
-      "requests": {"it": "Trova i file di prova e ordinali dal più recente al meno recente.", "en": "Find the test files and sort them from newest to oldest."}
+      "requests": {"it": "Trova i file in /tmp/metnos-certification-fixture/files e ordinali dal più recente al meno recente.", "en": "Find the files under /tmp/metnos-certification-fixture/files and sort them from newest to oldest."}
     },
     {
       "logical_flow_id": "compose.contacts-filter",
@@ -178,17 +181,20 @@
       "family": "compose_dataflow",
       "fixture": "entries-basic-v1",
       "expected_route": "engine",
-      "allowed_plans": [["read_files_csv", "group_entries", "final_answer"]],
+      "allowed_plans": [
+        ["read_files_csv", "group_entries", "final_answer"],
+        ["read_files_csv", "group_entries", "sort_entries", "final_answer"]
+      ],
       "forbidden_tools": ["write_files_spreadsheet"],
       "expected_placement": "server",
       "required_approval": false,
       "expected_terminal": "completed",
       "required_effects": ["no_action"],
       "forbidden_effects": ["source_changed"],
-      "postcondition_probes": ["rows_forwarded_once", "group_totals_match"],
+      "postcondition_probes": ["rows_forwarded_once", "group_members_match"],
       "response_requirements": ["honest_count", "grouping_visible"],
       "budgets": {"max_approvals": 0, "deadline_s": 90, "max_model_calls": 2},
-      "requests": {"it": "Leggi le spese CSV di prova e raggruppale per categoria.", "en": "Read the test expense CSV and group the rows by category."}
+      "requests": {"it": "Leggi /tmp/metnos-certification-fixture/entries/expenses.csv e raggruppa le righe per categoria.", "en": "Read /tmp/metnos-certification-fixture/entries/expenses.csv and group the rows by category."}
     },
     {
       "logical_flow_id": "mutation.file-create",
@@ -205,7 +211,7 @@
       "postcondition_probes": ["target_content_digest", "unrelated_digest"],
       "response_requirements": ["honest_count", "path_visible"],
       "budgets": {"max_approvals": 1, "deadline_s": 120, "max_model_calls": 2},
-      "requests": {"it": "Crea il file prova-creazione.txt con il testo concordato nella cartella isolata.", "en": "Create prova-creazione.txt with the agreed text in the isolated folder."}
+      "requests": {"it": "Crea /tmp/metnos-certification-fixture/mutation/prova-creazione.txt con il testo concordato.", "en": "Create /tmp/metnos-certification-fixture/mutation/prova-creazione.txt with the agreed text."}
     },
     {
       "logical_flow_id": "mutation.file-update",
@@ -222,7 +228,7 @@
       "postcondition_probes": ["target_content_digest", "single_target_exists"],
       "response_requirements": ["honest_count", "path_visible"],
       "budgets": {"max_approvals": 1, "deadline_s": 120, "max_model_calls": 2},
-      "requests": {"it": "Sostituisci il contenuto del file modifica.txt nella cartella isolata.", "en": "Replace the contents of modifica.txt in the isolated folder."}
+      "requests": {"it": "Sostituisci il contenuto di /tmp/metnos-certification-fixture/mutation/modifica.txt.", "en": "Replace the contents of /tmp/metnos-certification-fixture/mutation/modifica.txt."}
     },
     {
       "logical_flow_id": "mutation.file-delete-undo",
@@ -239,7 +245,7 @@
       "postcondition_probes": ["delete_receipt", "undo_round_trip", "restored_digest"],
       "response_requirements": ["undo_visible", "path_visible"],
       "budgets": {"max_approvals": 1, "deadline_s": 180, "max_model_calls": 3},
-      "requests": {"it": "Elimina il file annullabile.txt nella cartella isolata e poi annulla l'operazione.", "en": "Delete annullabile.txt in the isolated folder and then undo the operation."}
+      "requests": {"it": "Elimina /tmp/metnos-certification-fixture/undo/annullabile.txt e poi annulla l'operazione.", "en": "Delete /tmp/metnos-certification-fixture/undo/annullabile.txt and then undo the operation."}
     },
     {
       "logical_flow_id": "mutation.event-create-delete",

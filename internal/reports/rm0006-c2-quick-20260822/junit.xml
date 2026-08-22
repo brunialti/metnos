@@ -1,0 +1,18 @@
+<testsuite name="rm0006-certification" tests="16" failures="0" errors="0" time="104.253">
+  <testcase classname="cycle-1" name="explain-tutor-service-status--it" time="7.615" />
+  <testcase classname="cycle-1" name="explain-boundary-calendar-create--it" time="8.038" />
+  <testcase classname="cycle-1" name="explain-direct-current-time--it" time="0.061" />
+  <testcase classname="cycle-1" name="read-files-filtered--it" time="12.651" />
+  <testcase classname="cycle-1" name="read-file-content--it" time="4.596" />
+  <testcase classname="cycle-1" name="compose-find-then-read--it" time="7.536" />
+  <testcase classname="cycle-1" name="compose-find-sort-files--it" time="7.117" />
+  <testcase classname="cycle-1" name="compose-read-group-entries--it" time="6.776" />
+  <testcase classname="cycle-2" name="explain-tutor-service-status--it" time="10.793" />
+  <testcase classname="cycle-2" name="explain-boundary-calendar-create--it" time="7.002" />
+  <testcase classname="cycle-2" name="explain-direct-current-time--it" time="0.063" />
+  <testcase classname="cycle-2" name="read-files-filtered--it" time="5.987" />
+  <testcase classname="cycle-2" name="read-file-content--it" time="4.539" />
+  <testcase classname="cycle-2" name="compose-find-then-read--it" time="7.529" />
+  <testcase classname="cycle-2" name="compose-find-sort-files--it" time="7.060" />
+  <testcase classname="cycle-2" name="compose-read-group-entries--it" time="6.890" />
+</testsuite>

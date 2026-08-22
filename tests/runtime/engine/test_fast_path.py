@@ -69,6 +69,16 @@ def test_ora_attuale():
     assert hit is not None
 
 
+def test_configured_timezone_is_direct_and_visible():
+    hit = try_fast_path("Che ora è nel fuso configurato?", lang="it")
+    assert hit is not None
+    assert hit["executor"] == "get_now"
+    assert hit["args"]["timezone"] == "Europe/Rome"
+    rendered = hit["render"](_MOCK_OBS)
+    assert "14:35" in rendered
+    assert "Europe/Rome" in rendered
+
+
 # ── Match positivi: data ───────────────────────────────────────────
 
 def test_che_data_e_oggi():

@@ -73,4 +73,4 @@ Ogni roadmap deve inoltre separare chiaramente:
 | [RM-0003](RM-0003-tutor-integrato.md) | Tutor integrato: guida operativa intelligente | `closed` | F2/F3/F4 implementate, certificate e distribuite | 2026-07-30 |
 | [RM-0004](RM-0004-motore-workload-durevoli.md) | Motore generico per lavori lunghi, persistenti e paralleli | `implemented` | F0-F14 completate; ammissione automatica centralizzata, senza profilo obbligatorio | 2026-08-22 |
 | [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `ready` | pipeline parziale; completamento non iniziato | 2026-08-21 |
-| [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `ready` | infrastrutture parziali; matrice dei 24 flussi e certificazione non iniziate | 2026-08-22 |
+| [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `in_progress` | C0-C2 completate; gate rapido HTTP 16/16, C3 in preparazione | 2026-08-22 |

@@ -3,11 +3,20 @@
 ## Esito
 
 C1 e' completata. La matrice contiene 24 flussi logici e 48 casi obbligatori:
-24 formulazioni italiane e 24 inglesi. La sua impronta congelata e':
+24 formulazioni italiane e 24 inglesi. La sua impronta congelata, nella
+revisione v2 usata dai cicli qualificanti, e':
 
 ```text
-0cf76d34824b7d076d570dd23f2ba6bc53f4cd966eebfb4c0e6bb0c41eb2c9d5
+23a7455cb09a1498cbacf47b2047d344bc6e6a2980ec4a6465745ac034ebe5ac
 ```
+
+La v1 e' stata riaperta durante la preparazione di C2, prima di qualsiasi
+ciclo qualificante: i percorsi generici «cartella di prova» non rendevano la
+fixture eseguibile, la sonda di raggruppamento chiedeva somme non richieste
+dalla frase e due piani equivalenti gia' ammessi dall'architettura non erano
+elencati. La v2 rende espliciti i path isolati, verifica i membri dei gruppi e
+ammette le alternative non distruttive. Da quel congelamento in poi i due
+cicli C2 non hanno modificato richieste, sonde, piani o limiti.
 
 ## Metodo di selezione
 
@@ -55,7 +64,7 @@ python3 -m pytest scenarios/test_certification_c0.py \
 
 ## Limite
 
-C1 congela gli oracoli prima dell'esecuzione, ma non afferma che Metnos li
-superi. L'esecuzione HTTP, le fixture isolate e le prove rapide appartengono a
-C2; eventuali difetti del prodotto non autorizzano a modificare questa
-matrice per adattarla all'uscita osservata.
+C1 congela gli oracoli prima dei cicli qualificanti, ma non afferma che Metnos
+li superi. L'esecuzione HTTP, le fixture isolate e le prove rapide appartengono
+a C2; dopo il congelamento v2 eventuali difetti del prodotto non autorizzano a
+modificare questa matrice per adattarla all'uscita osservata.

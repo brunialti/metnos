@@ -211,6 +211,35 @@ class TestExecutorPlaceholders(unittest.TestCase):
         self.assertEqual(fw.steps[2].args, group_args)
         self.assertFalse(eng_fastpath._has_absolute_temporal_literal(fw))
 
+    def test_empty_helper_payload_uses_scalar_reader_content(self):
+        """A scalar read followed by an empty helper is not a zero result."""
+        from engine.executor import Executor
+
+        seen = {}
+
+        def _fake_invoke(name, args):
+            if name == "read_scalar":
+                return {
+                    "ok": True,
+                    "content": "line one\nline two\n",
+                    "metadata": {"path": "/tmp/note.txt"},
+                }
+            if name == "describe_entries":
+                seen.update(args)
+                return {"ok": True, "summary": "line one line two"}
+            return {"ok": True}
+
+        fw = Framework(steps=[
+            StepSpec("read_scalar", {}),
+            StepSpec("describe_entries", {"entries": []}),
+        ])
+        Executor(invoke_executor=_fake_invoke).run(fw, query="read note")
+
+        self.assertEqual(seen["entries"], [{
+            "content": "line one\nline two\n",
+            "path": "/tmp/note.txt",
+        }])
+
     def _run_single(self, tool, args, args_schema):
         """Esegue UN executor via Engine con invoke fittizio che cattura gli
         args effettivamente passati. Ritorna gli args visti dall'executor."""

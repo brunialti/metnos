@@ -113,3 +113,21 @@ def test_resume_repairs_event_after_result_first_crash(tmp_path: Path):
     )
     assert summary["objective_achieved"] is True
     assert len(read_jsonl(output / "events.redacted.jsonl")) == 6
+
+
+def test_each_cycle_can_keep_a_distinct_observation(tmp_path: Path):
+    manifest, cases, observations = _fixture()
+    per_cycle = []
+    for cycle in (1, 2):
+        for observation in observations:
+            item = copy.deepcopy(observation)
+            item["cycle"] = cycle
+            item["duration_ms"] += cycle
+            per_cycle.append(item)
+    summary = run_batch(
+        output_dir=tmp_path / "batch", manifest=manifest, cases=cases,
+        observations=per_cycle,
+    )
+    assert summary["objective_achieved"] is True
+    results = read_jsonl(tmp_path / "batch" / "results.jsonl")
+    assert [result["duration_ms"] for result in results[:2]] == [121, 241]

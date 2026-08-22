@@ -132,7 +132,10 @@ class E2EClient:
         async with self.session.post(
             self.base_url + "/agent/turn",
             json=body,
-            headers={"Accept": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.admin_key}",
+            },
             timeout=timeout,
         ) as r:
             text = await r.text()

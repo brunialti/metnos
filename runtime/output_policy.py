@@ -304,6 +304,24 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
     verb = getattr(intent, "verb", None)
     if verb is None:
         verb = intent if isinstance(intent, str) else ""
+    # In a compound workflow the primary intent names the first operation,
+    # while presentation belongs to the terminal operation.  For example,
+    # find_files -> read_files must show the read content, not a metadata
+    # listing merely because the first verb was ``find``.  The extractor's
+    # ordered actions are authoritative; do not infer this from query text.
+    actions = getattr(intent, "actions", None)
+    producer_verb = (producer or "").split("_", 1)[0]
+    if isinstance(actions, list) and actions:
+        terminal_action = actions[-1]
+        terminal_verb = (terminal_action.get("verb")
+                         if isinstance(terminal_action, dict) else "")
+        if terminal_verb == producer_verb:
+            verb = terminal_verb
+        elif terminal_verb and any(
+                (step.tool or "").split("_", 1)[0] == terminal_verb
+                for step in steps[ppos:]
+                if step.tool in _ENTRIES_HELPERS):
+            verb = terminal_verb
     declared_presentation = {}
     for executor in (catalog or []):
         if getattr(executor, "name", "") == producer:
@@ -317,6 +335,38 @@ def normalize_terminal(framework, intent, query: str = "", catalog=None):
     from engine.types import StepSpec, Framework  # lazy: evita import circolari
 
     mode = r["mode"]
+    if mode == T and producer == "read_files":
+        # Reading file contents is not an enumeration.  A metadata table (or
+        # a relevance summarizer) can hide the very bytes requested by the
+        # user.  Keep the reader as the authority and render its bounded text
+        # payload directly, also for find -> read compound workflows.
+        drop = {i + 1 for i, step in enumerate(steps)
+                if i + 1 > ppos and step.tool == "describe_entries"}
+        mapping: dict[int, int] = {}
+        new_pos = 0
+        for position in range(1, len(steps) + 1):
+            if position in drop:
+                continue
+            new_pos += 1
+            mapping[position] = new_pos
+        new_steps = [
+            StepSpec(
+                tool=step.tool,
+                args=_remap_value(dict(step.args or {}), mapping),
+                if_prev_entries_nonempty=step.if_prev_entries_nonempty,
+            )
+            for position, step in enumerate(steps, start=1)
+            if position not in drop
+        ]
+        k = mapping[ppos]
+        info["action"] = "drop_describe+content" if drop else "content"
+        return Framework(
+            steps=new_steps,
+            fillers=framework.fillers,
+            final_message=f"${{step{k}.@content}}",
+            runtime_step_cap=int(
+                getattr(framework, "runtime_step_cap", 0) or 0),
+        ), info
     if mode in (G, S, L):
         # Drop describe_entries A VALLE del producer terminale.
         drop = {i + 1 for i, s in enumerate(steps)

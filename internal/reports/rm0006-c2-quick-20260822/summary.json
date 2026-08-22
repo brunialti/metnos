@@ -1,0 +1,15 @@
+{
+  "certification_id": "rm0006-c2-quick-v1",
+  "complete": true,
+  "errors": 0,
+  "evaluated_cases": 16,
+  "expected_cases": 16,
+  "failed": 0,
+  "failures": [],
+  "matrix_sha256": "43980ba31c6e630e6083598c8001ee4a4ad2bfb04ebafccaa0752c427839ecaa",
+  "objective_achieved": true,
+  "passed": 16,
+  "pending": 0,
+  "results_registry_sha256": "f24051d15c1ecd1dc2f9822ae9c21f434687c0846f4d2a6dd250a99860bd0efb",
+  "schema_version": "metnos.certification-summary/1"
+}
