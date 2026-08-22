@@ -113,7 +113,11 @@ def test_llm_resolves_supported_system_installation(monkeypatch):
     assert row["active_state"] == "active"
 
 
-def test_durable_worker_uses_the_closed_application_health_snapshot(monkeypatch):
+def test_durable_worker_disabled_by_policy_is_running_and_healthy(
+        monkeypatch, tmp_path):
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
     monkeypatch.setattr(
         registry, "resolve_target", lambda _spec, **_kwargs: {
             "unit": "metnos-durable-worker.service", "scope": "user",
@@ -125,12 +129,162 @@ def test_durable_worker_uses_the_closed_application_health_snapshot(monkeypatch)
     import durable_workloads.service as durable_service
 
     monkeypatch.setattr(durable_service, "health_snapshot", lambda: {
-        "state": "degraded", "reason_code": "feature_disabled",
+        "state": "degraded", "enabled": False,
+        "reason_code": "feature_disabled",
     })
     row = registry.snapshot_one(registry.get("durable_workloads"))
     assert (row["status"], row["healthy"], row["health_detail"]) == (
-        "degraded", False, "feature_disabled",
+        "running", True, "feature_disabled",
     )
+    assert row["feature_converged"] is True
+    assert row["health_message_key"] == (
+        "UI_SERVICES_LRE_HEALTH_FEATURE_DISABLED"
+    )
+
+
+def test_durable_worker_detects_config_process_mismatch(monkeypatch, tmp_path):
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
+    monkeypatch.setattr(
+        registry, "resolve_target", lambda _spec, **_kwargs: {
+            "unit": "metnos-durable-worker.service", "scope": "user",
+            "load_state": "loaded", "active_state": "active",
+            "sub_state": "running", "main_pid": "42",
+            "active_since": "", "unit_state": "enabled",
+        },
+    )
+    import durable_workloads.service as durable_service
+
+    monkeypatch.setattr(durable_service, "health_snapshot", lambda: {
+        "state": "ready", "enabled": True, "reason_code": "none",
+    })
+
+    row = registry.snapshot_one(registry.get("durable_workloads"))
+
+    assert row["status"] == "degraded"
+    assert row["healthy"] is False
+    assert row["feature_converged"] is False
+    assert row["health_detail"] == "feature_state_mismatch"
+
+
+def _installed_lre(monkeypatch):
+    monkeypatch.setattr(
+        registry, "resolve_target", lambda _spec: {
+            "unit": "metnos-durable-worker.service", "scope": "user",
+            "load_state": "loaded", "active_state": "active",
+        },
+    )
+
+
+def test_lre_feature_enable_is_persisted_and_restarts_exact_unit(
+        monkeypatch, tmp_path):
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
+    _installed_lre(monkeypatch)
+    seen = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(registry.subprocess, "run", fake_run)
+
+    assert registry.configure_lre_feature(True) == (True, "")
+    assert registry.read_feature_configuration(environ={}).enabled is True
+    assert seen == [[
+        "systemctl", "--user", "--no-block", "restart",
+        "metnos-durable-worker.service",
+    ]]
+
+
+def test_lre_feature_environment_override_cannot_be_changed_from_ui(
+        monkeypatch, tmp_path):
+    monkeypatch.setenv("METNOS_DURABLE_WORKLOADS_ENABLED", "0")
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
+    _installed_lre(monkeypatch)
+    monkeypatch.setattr(
+        registry.subprocess, "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("systemctl must not run")
+        ),
+    )
+
+    ok, detail = registry.configure_lre_feature(True)
+
+    assert ok is False
+    assert "environment" in detail
+    assert registry.read_feature_configuration(environ={}).enabled is False
+
+
+def test_lre_feature_enable_rolls_back_if_restart_is_rejected(
+        monkeypatch, tmp_path):
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
+    _installed_lre(monkeypatch)
+    monkeypatch.setattr(
+        registry.subprocess, "run",
+        lambda cmd, **_kwargs: subprocess.CompletedProcess(
+            cmd, 1, stdout="", stderr="restart rejected",
+        ),
+    )
+
+    assert registry.configure_lre_feature(True) == (
+        False, "restart rejected",
+    )
+    assert registry.read_feature_configuration(environ={}).enabled is False
+
+
+def test_lre_feature_disable_stays_closed_if_restart_is_rejected(
+        monkeypatch, tmp_path):
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(True)
+    _installed_lre(monkeypatch)
+    seen = []
+
+    def fake_run(cmd, **_kwargs):
+        seen.append(cmd)
+        code = 1 if "restart" in cmd else 0
+        return subprocess.CompletedProcess(
+            cmd, code, stdout="", stderr="restart rejected" if code else "",
+        )
+
+    monkeypatch.setattr(registry.subprocess, "run", fake_run)
+
+    assert registry.configure_lre_feature(False) == (
+        False, "restart rejected",
+    )
+    assert registry.read_feature_configuration(environ={}).enabled is False
+    assert [command[-2] for command in seen] == ["restart", "stop"]
+
+
+def test_lre_feature_control_rejects_a_target_outside_the_catalog(
+        monkeypatch, tmp_path):
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
+    monkeypatch.setattr(
+        registry, "resolve_target", lambda _spec: {
+            "unit": "unrelated.service", "scope": "user",
+            "load_state": "loaded", "active_state": "active",
+        },
+    )
+    monkeypatch.setattr(
+        registry.subprocess, "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("systemctl must not run")
+        ),
+    )
+
+    ok, detail = registry.configure_lre_feature(True)
+
+    assert ok is False
+    assert detail == "LRE service unit is not installed"
+    assert registry.read_feature_configuration(environ={}).enabled is False
 
 
 def test_user_manager_gets_explicit_bus_environment(monkeypatch):
@@ -301,6 +455,45 @@ def test_template_distinguishes_start_from_restart():
     assert "/admin/services/running/start" not in running
     assert "/admin/services/running/stop" in running
     assert "/admin/services/running/restart" in running
+
+
+def test_template_exposes_the_closed_lre_feature_control(monkeypatch, tmp_path):
+    monkeypatch.delenv("METNOS_DURABLE_WORKLOADS_ENABLED", raising=False)
+    monkeypatch.setattr(registry._C, "PATH_USER_CONFIG", tmp_path)
+    registry.write_feature_configuration(False)
+    monkeypatch.setattr(
+        registry, "resolve_target", lambda _spec, **_kwargs: {
+            "unit": "metnos-durable-worker.service", "scope": "user",
+            "load_state": "loaded", "active_state": "active",
+            "sub_state": "running", "main_pid": "42",
+            "active_since": "", "unit_state": "enabled",
+        },
+    )
+    import durable_workloads.service as durable_service
+
+    monkeypatch.setattr(durable_service, "health_snapshot", lambda: {
+        "state": "degraded", "enabled": False,
+        "reason_code": "feature_disabled",
+    })
+    row = registry.snapshot_one(registry.get("durable_workloads"))
+    from i18n import language_context
+
+    with language_context("it"):
+        italian = render_template(
+            "services.html", services=registry.localized([row], "it"),
+            notice="", notifications=[],
+        )
+    with language_context("en"):
+        english = render_template(
+            "services.html", services=registry.localized([row], "en"),
+            notice="", notifications=[],
+        )
+
+    assert "/admin/services/durable_workloads/feature/enable" in italian
+    assert "Attiva LRE" in italian
+    assert "feature_disabled" not in italian
+    assert "Enable LRE" in english
+    assert "missing:UI_SERVICES" not in italian + english
 
 
 def test_snapshot_failure_is_isolated(monkeypatch):
