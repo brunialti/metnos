@@ -2,7 +2,7 @@
 <html lang="it"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Metnos — Aprire e usare Metnos</title>
-<meta name="description" content="A che indirizzo si apre Metnos, come si entra la prima volta e i passi esatti per creare un nuovo utente e dargli accesso.">
+<meta name="description" content="Dove aprire Metnos, come effettuare il primo accesso e come creare un nuovo utente e autorizzarne l'accesso.">
 <meta name="robots" content="index, follow">
 <link rel="canonical" href="https://metnos.com/it/webui">
 <link rel="alternate" hreflang="it" href="https://metnos.com/it/webui">
@@ -15,88 +15,88 @@
 </style><script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head><body>
 <div class="shell">
-<nav><a href="index.html">← Metnos</a><a href="interface.html">Mappa dell'interfaccia</a><a href="domains.html">Riferimento dei domini</a><a href="architecture/http_api.html">Chat web e API HTTP</a><a href="/en/webui.html" hreflang="en">EN</a></nav>
+<nav><a href="index.html">← Metnos</a><a href="interface.html">Mappa dell'interfaccia</a><a href="domains.html">Reference dei domini</a><a href="architecture/http_api.html">Chat web e API HTTP</a><a href="/en/webui.html" hreflang="en">EN</a></nav>
 
 <header class="hero">
   <div>
     <div class="eyebrow">Guida pratica · primo accesso e prime operazioni</div>
     <h1>Aprire e usare Metnos</h1>
-    <p class="lead">A che indirizzo si apre, come si entra la prima volta, che cosa si fa nella chat e quali sono i passi esatti per aggiungere una persona. Se cerchi la mappa delle pagine di amministrazione, quella sta nella <a href="interface.html">guida all'interfaccia</a>.</p>
+    <p class="lead">Questa guida spiega dove aprire Metnos, come effettuare il primo accesso, come usare la chat e come aggiungere una persona. La struttura delle pagine di amministrazione è descritta separatamente nella <a href="interface.html">guida all'interfaccia</a>.</p>
   </div>
-  <div class="hero-note"><strong>8770</strong><span>la porta della chat web</span><strong>/admin/users</strong><span>dove si creano gli utenti</span></div>
+  <div class="hero-note"><strong>8770</strong><span>porta della chat web</span><strong>/admin/users</strong><span>gestione degli utenti</span></div>
 </header>
 
-<p class="contract">Metnos gira su un computer tuo, in casa o in ufficio. Non c'è un sito pubblico su cui accedere: l'indirizzo è quello della macchina su cui l'hai installato. Tutto quello che segue vale su quella macchina e sulla rete locale in cui si trova.</p>
+<p class="contract">Metnos viene eseguito su un computer locale, a casa o in ufficio. Non si accede attraverso un sito pubblico: l'indirizzo dipende dalla macchina su cui è installato. Le indicazioni che seguono riguardano quella macchina e la rete locale a cui è collegata.</p>
 
-<div class="jump"><a href="#indirizzo">A che indirizzo si apre</a><a href="#entrare">Entrare la prima volta</a><a href="#chat">Che cosa si fa nella chat</a><a href="#settings">Dove sono le impostazioni</a><a href="#utente">Creare un nuovo utente</a><a href="#chiedi">Se non trovi qualcosa</a></div>
+<div class="jump"><a href="#indirizzo">Indirizzo della chat</a><a href="#entrare">Primo accesso</a><a href="#chat">Usare la chat</a><a href="#settings">Impostazioni</a><a href="#utente">Creare un utente</a><a href="#chiedi">Chiedere al Tutor</a></div>
 
 <section id="indirizzo">
-  <div class="section-title"><span>01</span><h2>A che indirizzo si apre</h2></div>
-  <p class="prose">La chat web risponde sulla <strong>porta 8770</strong>. L'installazione guidata la espone di norma a tutta la rete locale, così puoi usarla anche dal telefono o dal portatile; nella fase 4 puoi invece limitarla al solo computer che la ospita.</p>
+  <div class="section-title"><span>01</span><h2>Dove aprire Metnos</h2></div>
+  <p class="prose">La chat web è disponibile sulla <strong>porta 8770</strong>. Di norma, l'installazione guidata la rende raggiungibile dalla rete locale, così da poterla usare anche da un telefono o da un portatile. Durante la fase 4 è possibile limitarne l'accesso al solo computer che ospita Metnos.</p>
   <div class="wrap"><table>
-    <tr><th>Da dove apri</th><th>Indirizzo</th></tr>
+    <tr><th>Dispositivo da cui ti colleghi</th><th>Indirizzo</th></tr>
     <tr><td>Dal computer che ospita Metnos</td><td><code>http://127.0.0.1:8770/</code></td></tr>
-    <tr><td>Da un altro dispositivo sulla stessa rete di casa</td><td><code>http://&lt;indirizzo-del-computer&gt;:8770/</code></td></tr>
+    <tr><td>Da un altro dispositivo della stessa rete locale</td><td><code>http://&lt;indirizzo-del-computer&gt;:8770/</code></td></tr>
   </table></div>
-  <p class="prose">Non devi indovinare l'indirizzo: al termine dell'installazione Metnos stampa gli indirizzi esatti da usare e li salva in <code>~/.local/share/metnos/install_summary.md</code>. Se li hai persi, riapri quel file.</p>
-  <div class="warn"><strong>Una cosa da non fare.</strong> Non aprire la porta 8770 sul router e non esporre Metnos direttamente su internet. È pensato per una rete privata di cui ti fidi.</div>
+  <p class="prose">Non occorre ricostruire l'indirizzo: al termine dell'installazione Metnos mostra gli indirizzi disponibili e li registra in <code>~/.local/share/metnos/install_summary.md</code>. Per recuperarli in seguito, è sufficiente consultare quel file.</p>
+  <div class="warn"><strong>Da evitare.</strong> Non aprire la porta 8770 sul router e non esporre Metnos direttamente a internet. L'accesso diretto è progettato per una rete privata considerata affidabile.</div>
 </section>
 
 <section id="entrare">
-  <div class="section-title"><span>02</span><h2>Entrare la prima volta</h2></div>
-  <p class="prose">Al termine dell'installazione Metnos ti dà un indirizzo completo che contiene già un codice d'accesso monouso: aprilo così com'è, senza modificarlo. Se ci sono più indirizzi, uno è per il computer stesso e gli altri per gli altri dispositivi della rete.</p>
-  <p class="prose">Se quel codice è scaduto hai due strade: rieseguire l'ultima fase dell'installazione, che ne emette uno nuovo, oppure aprire <code>/admin/login</code> e incollare la chiave di amministrazione. La chiave è un file di testo sul computer che ospita Metnos, in <code>~/.config/metnos/admin.key</code>: si legge solo da lì, e non va inviata a nessuno.</p>
+  <div class="section-title"><span>02</span><h2>Effettuare il primo accesso</h2></div>
+  <p class="prose">Al termine dell'installazione Metnos fornisce un indirizzo completo, già provvisto di un codice di accesso monouso. Aprilo senza modificarlo. Se vengono mostrati più indirizzi, uno è destinato al computer che ospita Metnos e gli altri ai dispositivi collegati alla stessa rete.</p>
+  <p class="prose">Se il codice è scaduto, puoi generarne uno nuovo ripetendo l'ultima fase dell'installazione. In alternativa, apri <code>/admin/login</code> e inserisci la chiave di amministrazione. La chiave è conservata sul computer che ospita Metnos, nel file <code>~/.config/metnos/admin.key</code>: deve essere letta soltanto da quella macchina e non deve essere comunicata ad altri.</p>
   <pre><code>./.venv/bin/python -m install --force-phase 6</code></pre>
-  <p class="prose">Una volta entrato, il browser conserva l'accesso e non ti richiede la chiave a ogni visita.</p>
+  <p class="prose">Dopo il primo accesso, il browser conserva la sessione e non richiede la chiave a ogni visita.</p>
 </section>
 
 <section id="chat">
-  <div class="section-title"><span>03</span><h2>Che cosa si fa nella chat</h2></div>
-  <p class="prose">La pagina principale è una conversazione: gli scrivi in italiano quello che ti serve e lui lo fa. Non c'è una lista di comandi da imparare. Quando una richiesta comporta una modifica vera — cancellare, spostare, mandare qualcosa fuori — Metnos si ferma e ti chiede conferma prima di procedere.</p>
-  <p class="prose">Puoi parlargli anche da Telegram. È lo stesso sistema, con la stessa identità e gli stessi permessi, ma ciascun canale tiene la propria conversazione e la propria cronologia. Le pagine di amministrazione esistono soltanto nella chat web: se da Telegram ti viene indicato un percorso di Settings, quel percorso si apre nel browser.</p>
-  <p class="prose">Per sapere che cosa puoi chiedere, il <a href="domains.html">riferimento dei domini</a> elenca gli argomenti che Metnos sa trattare, con esempi di richieste scritte come le scriveresti a voce.</p>
+  <div class="section-title"><span>03</span><h2>Usare la chat</h2></div>
+  <p class="prose">La pagina principale ospita una conversazione: puoi formulare in italiano ciò che desideri ottenere, senza imparare un elenco di comandi. Quando una richiesta richiede una conferma in base ai permessi, al livello di autonomia e alle policy applicabili, Metnos presenta l'operazione prevista e attende il consenso prima di procedere.</p>
+  <p class="prose">È possibile usare Metnos anche da Telegram. Il sistema, l'identità e i permessi restano gli stessi, mentre ciascun canale conserva una conversazione e una cronologia proprie. Le pagine di amministrazione sono disponibili soltanto nell'interfaccia web: un percorso di <strong>Settings</strong> indicato su Telegram deve quindi essere aperto nel browser.</p>
+  <p class="prose">La <a href="domains.html">Reference dei domini</a> descrive gli ambiti in cui l'installazione può operare e propone esempi di richieste formulate in linguaggio naturale.</p>
 </section>
 
 <section id="settings">
-  <div class="section-title"><span>04</span><h2>Dove sono le impostazioni</h2></div>
-  <p class="prose">Dalla chat web si raggiunge <strong>Settings</strong>, la parte amministrativa. Si apre su una panoramica dello stato e si dirama in quattro sezioni; ogni pagina risponde a un indirizzo che comincia per <code>/admin</code>. La <a href="interface.html">mappa completa delle pagine</a> è una pagina a parte, ed è generata dal registro del sistema, quindi resta allineata a ciò che hai davvero installato.</p>
-  <p class="prose">Le pagine sotto <code>/admin</code> le apre solo l'amministratore dell'istanza: un ospite invitato usa la chat, non le impostazioni.</p>
+  <div class="section-title"><span>04</span><h2>Accedere alle impostazioni</h2></div>
+  <p class="prose">Dalla chat web si accede a <strong>Settings</strong>, l'area amministrativa. La pagina iniziale offre una panoramica dello stato del sistema e conduce a quattro sezioni; gli indirizzi delle pagine amministrative cominciano con <code>/admin</code>. La <a href="interface.html">mappa completa dell'interfaccia</a> è generata dal registro del sistema e rimane quindi allineata ai componenti effettivamente installati.</p>
+  <p class="prose">Le pagine sotto <code>/admin</code> sono riservate all'amministratore dell'istanza. Un ospite invitato può usare la chat, ma non accedere alle impostazioni.</p>
 </section>
 
 <section id="utente">
   <div class="section-title"><span>05</span><h2>Creare un nuovo utente</h2></div>
-  <p class="prose">Serve quando vuoi che un'altra persona — un familiare, un ospite — possa parlare con il tuo Metnos con una propria identità, una propria cronologia e permessi propri. Sono due momenti distinti: prima crei la scheda della persona, poi le dai un modo per entrare.</p>
+  <p class="prose">Questa procedura consente a un'altra persona, per esempio un familiare o un ospite, di usare l'istanza con un'identità, una cronologia e permessi propri. L'operazione comprende due passaggi distinti: la creazione del profilo e l'associazione di un canale di accesso.</p>
 
-  <h3>Primo momento: creare la scheda</h3>
+  <h3>Primo passaggio: creare il profilo</h3>
   <ol>
     <li>Dalla chat web apri <strong>Settings &gt; Sistema &gt; Utenti</strong>, cioè <code>/admin/users</code>.</li>
-    <li>In cima alla pagina c'è il riquadro per creare un nuovo ospite. Compila i campi:
+    <li>Nella parte superiore della pagina trovi il riquadro per creare un nuovo ospite. Compila i campi richiesti:
       <div class="wrap"><table>
-        <tr><th>Campo</th><th>Che cosa metterci</th></tr>
-        <tr><td>nome</td><td>Un identificativo breve, solo lettere minuscole, cifre e trattino basso: <code>lucia</code>, <code>marco_r</code>. È obbligatorio.</td></tr>
-        <tr><td>nome visualizzato</td><td>Il nome come lo leggi tu: <code>Lucia Rossi</code>.</td></tr>
-        <tr><td>email</td><td>L'indirizzo della persona, se ne ha uno.</td></tr>
-        <tr><td>ruolo</td><td><code>guest</code> per un ospite, <code>host</code> per un secondo proprietario. Nel dubbio lascia <code>guest</code>.</td></tr>
-        <tr><td>autonomia</td><td>Quanto può fare da solo: <code>read_only</code> guarda e basta, <code>restricted</code> chiede conferma per le operazioni che modificano, <code>full</code> procede da solo. Nel dubbio lascia <code>restricted</code>.</td></tr>
+        <tr><th>Campo</th><th>Valore</th></tr>
+        <tr><td>nome</td><td>Un identificativo breve composto soltanto da lettere minuscole, cifre e trattino basso, per esempio <code>lucia</code> o <code>marco_r</code>. Il campo è obbligatorio.</td></tr>
+        <tr><td>nome visualizzato</td><td>Il nome mostrato nell'interfaccia, per esempio <code>Lucia Rossi</code>.</td></tr>
+        <tr><td>email</td><td>L'indirizzo della persona, se disponibile.</td></tr>
+        <tr><td>ruolo</td><td><code>guest</code> per un ospite; <code>host</code> per un secondo proprietario. Se non occorre attribuire il ruolo di proprietario, scegli <code>guest</code>.</td></tr>
+        <tr><td>autonomia</td><td>Il livello entro cui l'utente può operare: <code>read_only</code> consente soltanto la consultazione, <code>restricted</code> richiede conferma per le operazioni che modificano lo stato, <code>full</code> consente di procedere senza conferma. Se non hai esigenze diverse, scegli <code>restricted</code>.</td></tr>
       </table></div>
     </li>
-    <li>Premi <strong>crea</strong>. La persona compare nell'elenco sotto, ancora senza alcun canale collegato: esiste, ma non può ancora entrare.</li>
+    <li>Premi <strong>Crea</strong>. Il profilo compare nell'elenco, ma non dispone ancora di un canale associato e non può quindi accedere all'istanza.</li>
   </ol>
 
-  <h3>Secondo momento: darle accesso</h3>
-  <p class="prose">Apri il nome della persona nell'elenco per andare al suo dettaglio, e da lì emetti un codice di collegamento per il canale che userà. Il codice vale <strong>un'ora</strong> ed è <strong>monouso</strong>.</p>
+  <h3>Secondo passaggio: associare un canale di accesso</h3>
+  <p class="prose">Seleziona il nome della persona per aprirne la pagina di dettaglio, quindi genera un codice di collegamento per il canale prescelto. Il codice è <strong>monouso</strong> e rimane valido per <strong>un'ora</strong>.</p>
   <ul>
-    <li><strong>Chat web.</strong> Metnos genera un indirizzo completo. Lo mandi alla persona, lei lo apre sul proprio telefono o computer e da quel momento entra direttamente, senza dover inserire nulla.</li>
-    <li><strong>Telegram.</strong> Metnos genera un codice. La persona apre una conversazione con il bot Telegram della tua istanza e gli invia <code>/start</code> seguito dal codice; il bot risponde confermando.</li>
+    <li><strong>Chat web.</strong> Metnos genera un indirizzo completo. Condividilo con la persona, che dovrà aprirlo sul proprio telefono o computer. L'associazione viene completata senza richiedere l'inserimento manuale di altri dati.</li>
+    <li><strong>Telegram.</strong> Metnos genera un codice. La persona apre una conversazione con il bot Telegram associato all'istanza e invia <code>/start</code> seguito dal codice; il bot conferma l'avvenuto collegamento.</li>
   </ul>
-  <div class="warn"><strong>Manda il codice solo per una via di cui ti fidi</strong> — di persona, o su una conversazione privata. Chi ha quell'indirizzo entra come quella persona. Se scade prima di essere usato, torna sul dettaglio dell'utente e generane un altro: quello vecchio non serve più.</div>
-  <p class="prose">Dalla stessa pagina di dettaglio puoi in seguito modificare i dati della persona, scollegare un canale, cambiare le sue preferenze o eliminarla.</p>
+  <div class="warn"><strong>Trasmetti il codice soltanto attraverso un canale affidabile</strong>, di persona oppure in una conversazione privata. Chiunque possieda il collegamento può accedere con l'identità a cui è destinato. Se il codice scade prima dell'uso, torna alla pagina di dettaglio dell'utente e generane uno nuovo: quello precedente non sarà più valido.</div>
+  <p class="prose">Dalla stessa pagina puoi successivamente modificare i dati della persona, scollegare un canale, aggiornare le preferenze o eliminare l'utente.</p>
 </section>
 
 <section id="chiedi">
-  <div class="section-title"><span>06</span><h2>Se non trovi qualcosa</h2></div>
-  <p class="prose">Non devi memorizzare niente di tutto questo. Chiedilo a Metnos nella chat, con parole tue: «dove si cambia il modello?», «come faccio a invitare una persona?». Risponde con il percorso e l'indirizzo della pagina, e descrive quello che c'è nella <em>tua</em> installazione. Se una pagina da te non esiste te lo dice, invece di inventarla.</p>
+  <div class="section-title"><span>06</span><h2>Chiedere indicazioni al Tutor</h2></div>
+  <p class="prose">Non è necessario ricordare tutti i percorsi. Puoi chiedere indicazioni direttamente nella chat, con espressioni naturali come «dove si cambia il modello?» oppure «come posso invitare una persona?». Il Tutor indica il percorso e l'indirizzo appropriati e descrive ciò che è effettivamente disponibile nella <em>tua</em> installazione. Se una pagina non esiste, lo dichiara senza suggerire un percorso inesistente.</p>
 </section>
 
-<footer>Guida introduttiva alla chat web di Metnos. Il dettaglio tecnico del server, delle rotte e dell'identità sta in <a href="architecture/http_api.html">Chat web e API HTTP</a>; la mappa delle pagine di amministrazione in <a href="interface.html">L'interfaccia di Metnos</a>.</footer>
+<footer>Guida introduttiva alla chat web di Metnos. I dettagli tecnici del server, delle route e dell'identità sono raccolti in <a href="architecture/http_api.html">Chat web e API HTTP</a>; la struttura delle pagine di amministrazione è descritta in <a href="interface.html">L'interfaccia di Metnos</a>.</footer>
 </div></body></html>

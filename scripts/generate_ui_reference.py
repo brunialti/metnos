@@ -36,104 +36,101 @@ TEXT = {
     "it": {
         "title": "L'interfaccia di Metnos",
         "description": (
-            "Com'è fatta l'interfaccia di Metnos: due canali di conversazione "
-            "e le pagine di amministrazione dentro Settings."),
+            "Struttura dell'interfaccia di Metnos: i due canali di "
+            "conversazione e le pagine amministrative raccolte in Settings."),
         "nav_home": "Metnos",
         "nav_start": "Aprire e usare Metnos",
         "nav_manual": "Guida all'architettura",
-        "nav_domains": "Riferimento dei domini",
+        "nav_domains": "Reference dei domini",
         "nav_tutor": "Come funziona il Tutor",
         "eyebrow": "Guida introduttiva · mappa derivata dal registro delle superfici",
-        "lead": "Due canali, una sola istanza e le pagine che la governano",
+        "lead": "Due canali, un'unica istanza e le pagine da cui governarla",
         "intro": (
-            "Metnos si usa parlandogli. L'interfaccia esiste per due cose che "
-            "la conversazione da sola non fa bene: mostrarti lo stato del "
-            "sistema e farti intervenire su ciò che lo governa. Questa pagina "
-            "ti dice com'è organizzata, così non devi cercarla a tentoni."),
+            "Il modo principale di usare Metnos è la conversazione. "
+            "L'interfaccia rende visibile ciò che il dialogo non rappresenta "
+            "altrettanto bene: lo stato del sistema e i controlli con cui "
+            "governarlo. Questa pagina ne descrive la struttura e indica dove "
+            "trovare ciascuna funzione amministrativa."),
         "count_pages": "pagine di amministrazione",
         "count_sections": "sezioni di Settings",
         "contract": (
-            "La prosa di questa pagina è curata; l'elenco delle pagine, i loro "
-            "percorsi e gli indirizzi derivano dal registro delle superfici "
-            "del runtime, quindi restano allineati al "
-            "prodotto. Qui trovi la mappa, non l'inventario: i campi visibili, "
-            "i comandi e le procedure di ogni pagina vivono una volta sola nel "
-            "registro; il Tutor li descrive su richiesta."),
+            "L'elenco delle pagine, i percorsi di navigazione e gli indirizzi "
+            "derivano dal registro delle superfici del runtime e restano così "
+            "allineati al prodotto. Questa è una mappa, non un inventario dei "
+            "controlli: campi, comandi e procedure sono definiti una sola volta "
+            "nel registro e il Tutor li descrive su richiesta."),
         "jump_channels": "Due canali, una stessa identità",
-        "jump_settings": "Com'è organizzato Settings",
-        "jump_access": "Chi può vedere che cosa",
-        "jump_ask": "Se non trovi una pagina",
+        "jump_settings": "Struttura di Settings",
+        "jump_access": "Accesso e visibilità",
+        "jump_ask": "Chiedere al Tutor",
         "channels_title": "Due canali, una stessa identità",
         "channels_body": (
-            "Puoi parlare con Metnos dalla chat web dell'istanza o da "
-            "Telegram. Ritrovi lo stesso sistema, la stessa identità e le "
-            "stesse autorizzazioni, ma ciascun canale conserva la propria "
-            "conversazione e la propria cronologia. Le pagine di "
-            "amministrazione esistono soltanto nella chat "
-            "web. Se stai scrivendo da Telegram e una risposta ti indica un "
-            "percorso di Settings, quel percorso va aperto nella chat web, non "
-            "dentro Telegram. Nel canale web, se apri la chat da un secondo "
-            "dispositivo mentre il primo è attivo, Metnos offre tre scelte: "
-            "«Annulla» non cambia nulla e lascia il nuovo browser in sola "
-            "lettura; «Rendi attiva questa sessione» usa la conversazione già "
-            "presente nel nuovo browser; «Continua la sessione precedente» "
-            "trasferisce al nuovo browser la conversazione del primo "
-            "dispositivo. Le due cronologie non vengono fuse e il browser "
-            "revocato diventa di sola lettura. Queste sessioni e le relative "
-            "cronologie sono indipendenti per ciascun utente: un conflitto "
-            "nella sessione del proprietario non coinvolge un ospite, e "
+            "Metnos è accessibile dalla chat web dell'istanza e da Telegram. "
+            "Entrambi i canali riconoscono la stessa identità e le stesse "
+            "autorizzazioni, ma conservano conversazioni e cronologie separate. "
+            "Le pagine di amministrazione appartengono esclusivamente "
+            "all'interfaccia web: un percorso di Settings indicato su Telegram "
+            "deve quindi essere aperto nel browser. Se la chat web viene aperta "
+            "su un secondo dispositivo mentre una sessione è già attiva, "
+            "Metnos propone tre alternative. «Annulla» conserva la sessione "
+            "esistente e lascia il nuovo browser in sola lettura; «Rendi attiva "
+            "questa sessione» attiva la conversazione già presente nel nuovo "
+            "browser; «Continua la sessione precedente» trasferisce sul nuovo "
+            "dispositivo la conversazione del primo. Le cronologie non vengono "
+            "unite e il browser a cui è revocata la sessione attiva passa in "
+            "sola lettura. Sessioni e cronologie sono separate per utente: un "
+            "conflitto che riguarda il proprietario non coinvolge un ospite, e "
             "viceversa."),
-        "settings_title": "Com'è organizzato Settings",
+        "settings_title": "Struttura di Settings",
         "settings_body": (
-            "Settings è la parte amministrativa della chat web. Si apre su una "
-            "panoramica dello stato e si dirama in quattro sezioni. Ogni pagina "
-            "si raggiunge come «Settings &gt; Sezione &gt; Pagina» e risponde a "
-            "un indirizzo che comincia per <code>/admin</code>. Le etichette "
-            "sono disponibili in italiano e inglese; in una lingua non ancora "
-            "tradotta l'interfaccia mostra la versione inglese. Il Tutor cita "
-            "il percorso nella stessa "
-            "forma in cui compare nell'interfaccia."),
+            "Settings è l'area amministrativa dell'interfaccia web. La pagina "
+            "iniziale presenta una panoramica dello stato del sistema e conduce "
+            "a quattro sezioni. Ogni pagina è raggiungibile seguendo il percorso "
+            "«Settings &gt; Sezione &gt; Pagina» e ha un indirizzo che comincia "
+            "con <code>/admin</code>. Le etichette sono disponibili in italiano "
+            "e in inglese; se la lingua scelta non è ancora tradotta, "
+            "l'interfaccia usa la versione inglese. Il Tutor riporta il percorso "
+            "con le stesse etichette mostrate nell'interfaccia."),
         "root_label": "Panoramica",
         "map_title": "Mappa dell'interfaccia di Metnos",
         "map_desc": (
-            "Dai due canali di conversazione a Settings, e da Settings alle "
-            "quattro sezioni con le pagine di amministrazione, ognuna con il "
-            "proprio indirizzo."),
+            "La mappa collega i due canali di conversazione a Settings e alle "
+            "quattro sezioni amministrative, indicando l'indirizzo di ciascuna "
+            "pagina."),
         "map_conversation": "stessa identità · cronologie separate",
         "map_chip_web": "chat web",
         "map_chip_telegram": "Telegram",
         "map_only_web": "Settings si apre solo qui",
         "map_root_note": "panoramica dello stato",
         "map_caption": (
-            "Mappa di riferimento: percorsi e indirizzi sono quelli del "
-            "registro delle superfici. Che cosa mostra ogni pagina, e che cosa "
-            "puoi farci, lo descrive il Tutor usando l'istanza che hai davanti."),
-        "access_title": "Chi può vedere che cosa",
+            "Percorsi e indirizzi provengono dal registro delle superfici. Il "
+            "Tutor descrive i contenuti e i controlli di ciascuna pagina in base "
+            "all'installazione effettivamente in uso."),
+        "access_title": "Accesso e visibilità",
         "access_body": (
             "Le pagine sotto <code>/admin</code> richiedono il ruolo di "
-            "amministratore dell'istanza: un ospite invitato non le apre. "
-            "Sapere che una pagina esiste e che cosa contiene è un'altra cosa "
-            "dall'aprirla, e le due autorizzazioni sono distinte: il Tutor "
-            "spiega una pagina a chi è ammesso a conoscerla, anche quando "
-            "l'accesso resta riservato all'amministratore."),
-        "ask_title": "Se non trovi una pagina",
+            "amministratore dell'istanza e non sono accessibili agli ospiti. Il "
+            "diritto di conoscere l'esistenza e il contenuto di una pagina è "
+            "distinto dal diritto di aprirla: il Tutor fornisce spiegazioni "
+            "soltanto a chi è autorizzato a riceverle, anche quando l'accesso "
+            "operativo rimane riservato all'amministratore."),
+        "ask_title": "Chiedere al Tutor",
         "ask_body": (
-            "Non serve memorizzare questa mappa. Chiedi a Metnos con una "
-            "richiesta come quella di questo esempio: «Mostrami quale "
-            "embedder è configurato in Settings &gt; Sistema &gt; Modelli e "
-            "guidami per raggiungere la pagina dalla chat web». Il Tutor "
-            "risponde sia dalla chat "
-            "web sia da Telegram, ma il percorso indicato si apre sempre "
-            "nella chat web. Quando chiedi dove si trova qualcosa, o che "
-            "cosa contiene una pagina, "
-            "risponde con il percorso, l'indirizzo e i contenuti attestati "
-            "dall'istanza che hai davanti, non da una documentazione generica. "
-            "Se la pagina non esiste nella tua installazione te lo dice, "
-            "invece di inventarla."),
+            "Non è necessario memorizzare la mappa. Puoi chiedere, per esempio: "
+            "«Mostrami quale embedder è configurato in Settings &gt; Sistema "
+            "&gt; Modelli e indicami come raggiungere la pagina dalla chat web». "
+            "Il Tutor risponde sia dalla chat web sia da Telegram, ma i percorsi "
+            "amministrativi si aprono sempre nel browser. Quando chiedi dove si "
+            "trovi una funzione o che cosa contenga una pagina, la risposta usa "
+            "il percorso, l'indirizzo e i contenuti attestati dall'istanza in "
+            "uso, non una descrizione generica. Se la pagina non è disponibile "
+            "nell'installazione, il Tutor lo dichiara senza suggerire un percorso "
+            "inesistente."),
         "footer": (
             "Pagina generata da <code>scripts/generate_ui_reference.py</code> "
-            "a partire dal registro delle superfici del runtime. I dettagli "
-            "correnti di ogni pagina appartengono all'istanza: chiedili al Tutor."),
+            "a partire dal registro delle superfici del runtime. Per conoscere "
+            "i dati e i controlli effettivamente disponibili in una specifica "
+            "installazione, consulta il Tutor."),
     },
     "en": {
         "title": "The Metnos interface",
