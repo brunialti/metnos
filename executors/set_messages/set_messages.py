@@ -78,6 +78,11 @@ def invoke(args):
     return normalize_vector_result(backend.labels(args), entry_key="results")
 
 
+def reverse(plan, results):
+    """Ripristina i soli delta di label registrati dal forward firmato."""
+    return gmail_google_workspace.reverse_labels(results)
+
+
 def main():
     run_stdio(invoke)
 

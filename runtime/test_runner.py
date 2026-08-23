@@ -60,6 +60,7 @@ def run_shell(cmd, test_env=None):
 
 
 def run_executor(executor_path, args, test_env=None):
+    import tempfile
     payload = json.dumps(args)
     # Stesso contratto env di agent_runtime.invoke_executor: gli executor
     # importano moduli runtime per nome (skill_wrapper, messages, ...) e
@@ -81,13 +82,18 @@ def run_executor(executor_path, args, test_env=None):
     if test_env:
         for k, v in test_env.items():
             env[str(k)] = str(v).replace("{RUNTIME}", runtime_path)
-    result = subprocess.run(
-        ["python3", str(executor_path)],
-        input=payload,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    # Every birth invocation gets an isolated writable undo store.  This is a
+    # runtime facility, not executor test data; destructive executors must not
+    # depend on the developer account's persistent history directory.
+    with tempfile.TemporaryDirectory(prefix="metnos-birth-history-") as history:
+        env.setdefault("METNOS_HISTORY_DIR", history)
+        result = subprocess.run(
+            ["python3", str(executor_path)],
+            input=payload,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
     try:
         parsed = json.loads(result.stdout)
         return result.returncode, parsed, result.stderr

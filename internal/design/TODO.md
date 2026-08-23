@@ -236,14 +236,17 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 
 ### UND-001 - Completare gli annullamenti con ricevute esatte
 
-- Stato: audit completato il 23/8/2026; implementazione non iniziata.
+- Stato: primo lotto implementato il 23/8/2026; progettazioni residue in attesa
+  di input esplicito.
 - Evidenza: `internal/reports/executor-undo-audit-20260823.md`.
-- Priorita' certa: `open_sites`, `delete_dirs`, `set_messages` e
-  `set_signatures` hanno un inverso esatto ottenibile da identificatori o stato
-  precedente, ma il contratto firmato non lo dichiara ancora.
-- Progettazione richiesta: `create_processes`, `login_urls`, `set_credentials`
-  e `set_persons` richiedono rispettivamente un'operazione client di arresto o
-  ricevute protette per stato sensibile/preesistente.
+- Implementato: `delete_dirs` usa una ricevuta generale di relocation atomica
+  locale o gli ID Drive nel cestino; `set_messages` usa il delta effettivo
+  prima/dopo delle label. Test: `test_exact_undo_receipts.py`.
+- Progettazione pronta, codice non autorizzato: `open_sites`, `set_signatures`,
+  `create_processes`, `login_urls`; specifica
+  `internal/design/undo-redesign-spec-20260823.md`.
+- Decisione di prodotto: `set_credentials` e `set_persons` restano non
+  annullabili; cancellazione soltanto su richiesta utente esplicita.
 - Vincolo: nessun inverso per nome, query o testo naturale; soltanto ricevute
   sigillate, stato precedente sufficiente e ripristino verificabile.
 - Esecuzione: Metnos esegue la matrice in lotti tramite i normali confini; un

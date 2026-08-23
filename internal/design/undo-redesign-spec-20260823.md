@@ -1,0 +1,148 @@
+# Specifica proposta per gli annullamenti che richiedono riprogettazione
+
+Stato: **analisi e specifica; nessuna implementazione autorizzata**.
+
+Data: 23 agosto 2026.
+
+## Confine comune
+
+Un executor non diventa annullabile perche' esiste un'azione dal nome
+contrario. L'esecuzione deve produrre una ricevuta non ricostruibile dal testo
+utente, legata all'istanza esatta creata o allo stato precedente esatto. Il
+reverse deve verificare che il bersaglio non sia stato sostituito nel frattempo
+e deve dichiarare separatamente successo, fallimento, parzialita' e assenza di
+effetto.
+
+Il broker di undo non deve contenere nomi di executor, provider, pacchetti,
+domini, label o percorsi speciali. Per i rami misti serve un contratto firmato
+generale di ricevuta per-esecuzione: un ramo mutante e reversibile consegna la
+ricevuta; un ramo riuscito senza effetto viene chiuso come `no_effect`; un ramo
+intenzionalmente irreversibile non viene presentato come annullabile. Questo
+contratto e' una modifica architetturale e non va implementato senza una
+decisione esplicita.
+
+## `open_sites`
+
+### Stato attuale
+
+`open_sites` puo' creare un nuovo contesto browser oppure riusare una sessione
+autenticata compatibile. Il risultato espone `session_id` e `reused`. Chiudere
+un ID appena creato e' un inverso esatto; chiudere una sessione riusata
+distruggerebbe invece stato precedente al turno. Il riuso si limita a
+verificare e toccare la sessione, non naviga verso una nuova pagina.
+
+### Contratto proposto
+
+Per ogni entry riuscita il forward deve emettere `created=true|false`. La
+ricevuta deve contenere soltanto gli ID con `created=true`, owner implicito
+autenticato e pattern standard di cancellazione per ID. Un risultato composto
+da soli riusi deve terminare come `no_effect`, senza apparire nella pila di
+undo. Un batch misto chiude soltanto i nuovi ID. Il reverse fallisce se il
+broker non conferma ownership e chiusura dell'ID esatto; non cerca per host,
+URL, titolo o label.
+
+### Gate
+
+Test nuovi/riusati/misti, owner differente, sessione gia' scaduta, ricevuta
+vuota o alterata, doppio undo e prova reale con apertura e chiusura dello stesso
+ID. Nessun cambiamento prima dell'approvazione del contratto per rami misti.
+
+## `set_signatures`
+
+### Stato attuale
+
+Lo stesso executor esegue upsert di whitelist/blacklist, rimozione verso
+`unknown` e creazione possibile di una severity `forbidden`. La Legge 1 vieta
+di cancellare una signature `forbidden`; quindi un semplice
+`revertible=true` sarebbe falso almeno per quel ramo. Inoltre l'upsert corrente
+non usa compare-and-swap contro modifiche successive.
+
+### Contratto proposto
+
+Per i soli rami ammessi all'undo, il forward deve registrare la riga completa
+prima e dopo, compresi source, contatori, timestamp, peso e versione seed. Il
+reverse deve procedere solo se la riga corrente coincide con lo snapshot
+`after`: se prima era assente elimina la riga creata, altrimenti ripristina lo
+snapshot `before` in una transazione. Una postcondizione `forbidden` non emette
+mai una ricevuta reversibile. Anche questo richiede il contratto generale per
+rami misti; in alternativa l'intero executor resta non annullabile.
+
+### Gate
+
+Round-trip insert/update/delete, conflitto concorrente, riga seed, contatori e
+timestamp, `forbidden` mai cancellato, ricevuta incompleta, doppio undo e
+transazione interrotta. Nessun codice prima della scelta fra annullabilita'
+condizionale e permanenza dell'intero executor fra i non annullabili.
+
+## `create_processes`
+
+### Perche' oggi non basta
+
+Il client restituisce `package_id`, `lifetime` e un booleano derivato dalla
+stringa diagnostica `already_running`. Non restituisce l'identita' del processo
+avviato. Terminare per `package_id` potrebbe uccidere un'istanza preesistente,
+una seconda istanza avviata dopo il turno o un processo figlio non creato da
+Metnos. Con `lifetime=persistent` esiste inoltre una seconda mutazione: la
+registrazione di avvio automatico, distinta dal processo corrente.
+
+### Contratto proposto
+
+L'helper autenticato deve esporre un'operazione tipizzata `start` che restituisca
+una ricevuta per pacchetto con almeno:
+
+- `created_process=false` per un'istanza gia' attiva, oppure un handle opaco
+  firmato che leghi PID, creation-time del kernel e pacchetto risolto;
+- `created_startup_registration=false` oppure l'ID opaco della registrazione
+  persistente appena creata;
+- versione del protocollo helper e identita' del dispositivo.
+
+Il gemello tipizzato `stop` deve accettare esclusivamente tali handle, verificare
+PID **e** creation-time per impedire il riuso del PID, rimuovere soltanto la
+registrazione creata dal forward e riportare le due postcondizioni. Se il
+processo e' gia' terminato, quella componente e' `no_effect`; se l'ID ora
+designa un'altra istanza, il reverse fallisce senza terminarla. Non sono
+ammessi nomi processo, path, comandi o ricerca per package nel reverse.
+
+### Gate
+
+Gia' attivo, nuova istanza, PID riusato, uscita spontanea, sessione e
+persistent, registrazione preesistente, batch parziale, restart client,
+ownership dispositivo, doppio undo e test reale Windows. Questa e' una
+modifica del protocollo helper/Rust e richiede approvazione separata.
+
+## `login_urls`
+
+### Perche' oggi non basta
+
+Con `force=false` un cookie jar valido viene riusato e non c'e' effetto. Negli
+altri casi viene costruito un jar nuovo e salvato sul path 0600 del dominio,
+sovrascrivendo eventualmente un file precedente. Per fare undo bisogna
+distinguere file assente, file precedente e riuso; il contenuto del jar e' un
+segreto di sessione e non puo' essere duplicato nel JSONL di undo.
+
+### Contratto proposto
+
+Prima del login il backend deve creare, nello store protetto dell'attore, un
+backup opaco cifrato o una sostituzione atomica del file precedente. Il journal
+conserva soltanto un handle non predicibile, il digest del file `after`, il path
+canonico gia' autorizzato e l'esito `created|replaced|no_effect`. Il reverse
+opera con compare-and-swap: procede solo se il cookie jar corrente ha ancora il
+digest `after`; `created` elimina quel file, `replaced` ripristina atomicamente
+il backup. Il backup usa mode 0600, cifratura e chiave dello stesso vault,
+owner binding, TTL, purge e cancellazione dopo undo. Nessun cookie o campo
+credenziale entra nel journal, nei log o nell'output.
+
+### Gate
+
+Cache hit, creazione, sostituzione, jar modificato dopo il login, crash prima e
+dopo rename, permessi 0600, isolamento utenti, scadenza/purge, ricevuta forgiata,
+doppio undo e login reale controllato. Prima del codice vanno approvati TTL e
+politica di retention del backup protetto.
+
+## Casi esclusi per decisione di prodotto
+
+`set_credentials` e `set_persons` restano intenzionalmente non annullabili.
+Credenziali e dati biometrici vengono rimossi soltanto tramite una richiesta
+esplicita dell'utente agli executor di cancellazione. Il comando generico
+"annulla" non deve eliminare automaticamente questi dati ne' conservare copie
+aggiuntive per rendere possibile un ripristino.

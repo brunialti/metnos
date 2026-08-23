@@ -328,8 +328,18 @@ def undo_history_extras(executor, *, turn_id=None) -> list[Path]:
     patterns = getattr(executor, "reverse_pattern", None)
     if isinstance(patterns, str):
         patterns = [patterns]
-    if (not isinstance(patterns, list)
-            or "restore_blob_backup" not in patterns):
+    if not isinstance(patterns, list):
+        return []
+
+    # Signed reverse patterns grant only their managed leaf.  The registry is
+    # about receipt/storage kinds, never executor names or user paths.
+    history_leaves = {
+        "restore_blob_backup": "blob",
+        "restore_archived_directory": "dirs",
+    }
+    leaves = sorted({history_leaves[pattern] for pattern in patterns
+                     if pattern in history_leaves})
+    if not leaves:
         return []
 
     key = str(turn_id) if turn_id is not None else "no_turn"
@@ -339,9 +349,12 @@ def undo_history_extras(executor, *, turn_id=None) -> list[Path]:
         import config as _C
         history_root = Path(os.environ.get("METNOS_HISTORY_DIR") or (
             Path(_C.PATH_USER_DATA) / "_history"))
-        blob_dir = history_root.expanduser() / key / "blob"
-        blob_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        return [blob_dir]
+        paths = []
+        for leaf in leaves:
+            managed_dir = history_root.expanduser() / key / leaf
+            managed_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            paths.append(managed_dir)
+        return paths
     except OSError:
         # The executor will report the backup failure and will not delete.
         return []

@@ -55,6 +55,7 @@ from messages import get as _msg  # noqa: E402
 from parallel_walk import parallel_map_ordered, parallel_walk  # noqa: E402
 from executor_helpers import (  # noqa: E402
     apply_skipped_branches as _apply_skipped_branches,
+    archive_directory_for_undo,
     backup_file_for_undo, format_exact_integer, restore_file_from_undo_backup,
     vector_result, walk_failure as _walk_failure,
 )
@@ -1856,28 +1857,35 @@ def reverse_create_dirs(plan, results):
 # --- delete_dirs -----------------------------------------------------------
 
 
-def _remove_one(path_arg, force):
+def _archive_dir_for_undo(path_arg, force, history_dir: Path, turn_id: str):
+    """Remove a directory by atomically moving it to the undo store.
+
+    The operation deliberately requires the archive and the target to live on
+    the same filesystem.  Falling back to copy+rmtree would make a crash in
+    the middle indistinguishable from a complete, reversible deletion.
+    """
     target = Path(os.path.expanduser(path_arg)).resolve()
     if not target.exists():
-        return False, str(target), "path does not exist"
-    if not target.is_dir():
-        return False, str(target), "not a directory"
+        return False, str(target), None, "path does not exist"
+    if target.is_symlink() or not target.is_dir():
+        return False, str(target), None, "not a directory"
     try:
         children = list(target.iterdir())
     except OSError as e:
-        return False, str(target), f"cannot list: {e}"
+        return False, str(target), None, f"cannot list: {e}"
     if children and not force:
-        return False, str(target), f"directory not empty ({len(children)} items); use force=true for recursive remove"
+        return (False, str(target), None,
+                f"directory not empty ({len(children)} items); "
+                "use force=true for recursive remove")
     try:
-        if force and children:
-            shutil.rmtree(target)
-        else:
-            target.rmdir()
+        archived = archive_directory_for_undo(
+            target, history_dir=history_dir, turn_id=turn_id)
     except PermissionError as e:
-        return False, str(target), f"permission denied (possibly outside allowed scope): {e}"
+        return (False, str(target), None,
+                f"permission denied (possibly outside allowed scope): {e}")
     except OSError as e:
-        return False, str(target), f"os error: {e}"
-    return True, str(target), None
+        return False, str(target), None, f"os error: {e}"
+    return True, str(target), archived, None
 
 
 def _file_revision(value: os.stat_result) -> tuple[int, int, int, int, int]:
@@ -2125,7 +2133,7 @@ def delete_files(args: dict) -> dict:
 
 
 def delete_dirs(args: dict) -> dict:
-    """Rimuove directory (vettoriale). Args: paths, force."""
+    """Rimuove directory con archivio atomico per un undo esatto."""
     paths = args.get("paths")
     force = bool(args.get("force", False))
 
@@ -2136,6 +2144,9 @@ def delete_dirs(args: dict) -> dict:
                           reason="must be a list"),
         }])
 
+    history_dir = Path(os.environ.get("METNOS_HISTORY_DIR") or (
+        _C.PATH_USER_DATA / "_history"))
+    turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
     results = []
     failed = []
     for i, p in enumerate(paths):
@@ -2149,14 +2160,24 @@ def delete_dirs(args: dict) -> dict:
         if ambig is not None:
             failed.append({"index": i, "path": p, **ambig})
             continue
-        ok, target, info = _remove_one(p, force)
+        ok, target, archived, info = _archive_dir_for_undo(
+            p, force, history_dir, turn_id)
         if ok:
-            results.append({"path": target, "removed": True})
+            results.append({
+                "path": target, "removed": True,
+                "src": target, "dst": archived,
+            })
         else:
             failed.append({"index": i, "path": target,
                            "error_code": "ERR_DIR_OP_FAILED", "error": info})
 
-    return _dir_vector_result(results, failed)
+    out = _dir_vector_result(results, failed)
+    if results:
+        out["_undo"] = {
+            "reverse_pattern": "restore_archived_directory",
+            "scope": {"client": "local"},
+        }
+    return out
 
 
 # --- spreadsheet (LOCAL, default client) -----------------------------------

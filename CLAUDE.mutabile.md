@@ -19,7 +19,7 @@
   `METNOS_LLM_SLOT_ID`, default 1. L'affinità è applicata nei due client
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0215` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **ADR registry**: `0001-0216` (skipped: `0055`/`0115`/`0116`/`0121`).
 - **LRE F0-F14 implementato** (22/8, ADR 0213-0214, RM-0004):
   `runtime/durable_workloads/` contiene contratti, schema
   SQLite, archivio circoscritto al proprietario, acquisizione, concessioni a

@@ -158,6 +158,37 @@ def restore_file_from_undo_backup(path, blob_path: str | None) -> bool:
         return False
 
 
+def archive_directory_for_undo(path, *, history_dir, turn_id: str) -> str:
+    """Atomically move a directory into the canonical undo store.
+
+    This is the container counterpart of :func:`backup_file_for_undo`.
+    Cross-filesystem copies are intentionally refused: only an atomic rename
+    provides an unambiguous completed/not-completed boundary after a crash.
+    The returned opaque path is the exact locator consumed by
+    ``swap_src_dst``; callers must never reconstruct it.
+    """
+    import os
+    import re
+    import uuid
+    from pathlib import Path
+
+    source = Path(path).resolve()
+    safe_turn_id = turn_id if re.fullmatch(
+        r"[A-Za-z0-9_.:-]{1,128}", str(turn_id or "")) else "no_turn"
+    archive_root = (Path(history_dir) / safe_turn_id / "dirs").resolve(
+        strict=False)
+    # Check before mkdir: a rejected request must not create state inside the
+    # very tree it asked to remove.
+    if archive_root == source or archive_root.is_relative_to(source):
+        raise OSError("undo store is inside the directory being deleted")
+    archive_root.mkdir(parents=True, exist_ok=True)
+    if os.stat(archive_root).st_dev != os.lstat(source).st_dev:
+        raise OSError("undo store is on a different filesystem")
+    archived = archive_root / f"{uuid.uuid4().hex}-{source.name}"
+    source.rename(archived)
+    return str(archived)
+
+
 def assigned_workers(*, default: int = 1, maximum: int = 32) -> int:
     """Worker budget assigned by the central executor scheduler.
 
