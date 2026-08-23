@@ -105,6 +105,16 @@ executor_standard = "metnos.executor/1.0"
 - Common natural-language near-misses MUST be normalized by shared helpers when
   the correction is unambiguous. Domain code MUST NOT grow site-, provider-, or
   query-specific patches for general coercion problems.
+- An array argument MAY declare `from_entries_key` to project one typed field
+  from every upstream entry. A mutating consumer that must not act on a partial
+  resolution SHOULD also declare `from_entries_complete = true`; the runtime
+  then rejects the projection if any source entry lacks that field instead of
+  silently dropping unresolved elements.
+- `[planning].companions` MAY declare signed compositional tools such as a
+  consumer, resolver, or prerequisite. `[planning].object_aliases` MAY list
+  canonical input-domain objects represented by the executor in addition to
+  the object in its public name. Routing MUST consume these declarations
+  generically and MUST NOT maintain executor-name or natural-language maps.
 - Runtime-owned arguments MUST declare `runtime_resolved = true`, remain absent
   from `required`, and never be requested from the model or user. The `_` prefix
   MAY be used for opaque control values, but it is not an authority boundary:

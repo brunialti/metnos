@@ -82,6 +82,10 @@ ACTIONS = (
     # e' lo STESSO verbo con la direzione dichiarata negli argomenti: un
     # verbo separato raddoppierebbe il vocabolario per una direzione.
     "install",
+    # Avvio di SOFTWARE gia' installato (ADR 0218): produce un processo senza
+    # accettare comandi, path o script arbitrari. Distinto da `open`, che resta
+    # riservato alle sessioni browser persistenti del dominio sites.
+    "run",
 )
 
 # Oggetti ammessi (plurale).
@@ -497,7 +501,7 @@ ACTION_CATEGORIES = {
     "order": "ordinamento-persistente",
     "share": "outbound-consent",
     "open": "web-session", "login": "web-session", "act": "web-session",
-    "install": "system",
+    "install": "system", "run": "system",
 }
 
 # ── Classificazione operativa per il runtime ──────────────────────────
@@ -520,7 +524,7 @@ COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
     "send", "create", "write", "move", "delete", "share",
     # `install` modifica una macchina: se la query lo chiede e il piano
     # non lo porta, la decomposizione e' monca — non un dettaglio.
-    "install",
+    "install", "run",
     # sites F1: azioni web esplicite da portare a termine (open precursore di
     # login; login autentica). `act` (F2) si aggiunge quando l'executor esiste.
     "open", "login"})
@@ -544,7 +548,7 @@ DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "extract",
                                # un senso piu' forte degli altri: l'ambiente
                                # cambia e non si torna indietro con un undo
                                # (ADR 0209 D3).
-                               "install"})
+                               "install", "run"})
 
 # Verbi candidati per precursor injection (chi può "popolare entries"
 # upstream di un consumer come describe/filter/move/...).
@@ -566,7 +570,7 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "events":     "create",
     "contacts":   "set",
     "places":     None,        # places sono entita' lookup-only
-    "processes":  None,        # kill/start sono fuori vocab §2.2
+    "processes":  None,        # un processo nominato non implica avviarlo
     "urls":       None,        # urls sono fetched, non creati dall'utente
     "numbers":    None,        # numeri sono compute-only
     "images":     "create",
@@ -849,6 +853,16 @@ ACTION_MAPPING = {
         "boundary": {
             "it": "Mette o toglie SOFTWARE su una macchina tramite il suo gestore di pacchetti (winget su Windows, apt/dnf su Linux). Input = identificativo del pacchetto, mai una riga di comando. La DISINSTALLAZIONE e' lo stesso verbo con la direzione negli argomenti, non un verbo diverso. NON create (fa nascere un oggetto nostro: file, cartella, evento) · NON write (scrive contenuto in un file) · NON get (scarica e basta, senza installare: get_urls) · NON admin (esegue un comando qualunque). «Controlla se X e' installato» NON e' install: e' find_packages.",
             "en": "Puts SOFTWARE on a machine or takes it off, through the machine's package manager (winget on Windows, apt/dnf on Linux). Input = a package identifier, never a command line. UNINSTALLING is the same verb with the direction in the arguments, not a different verb. NOT create (brings one of our own objects into being: file, directory, event) · NOT write (writes content into a file) · NOT get (downloads only, without installing: get_urls) · NOT admin (runs an arbitrary command). «Check whether X is installed» is NOT install: that is find_packages.",
+        },
+    },
+    "run": {
+        "it": ["avvia", "avviare", "lancia-programma", "esegui-programma",
+               "fai-partire"],
+        "en": ["run", "start", "launch", "run-program", "start-program",
+               "launch-program"],
+        "boundary": {
+            "it": "Avvia SOFTWARE GIA' INSTALLATO su un dispositivo tramite l'identificativo registrato del pacchetto e produce un processo. Un nome umano viene prima risolto dalla sorgente software del dispositivo; ambiguita' o assenza non autorizzano supposizioni. NON open (apre una sessione browser persistente del dominio sites) · NON install (aggiunge o rimuove software) · NON admin (esegue comandi arbitrari) · NON create (crea oggetti del dominio). Non accetta path, righe di comando o script.",
+            "en": "Starts ALREADY-INSTALLED SOFTWARE on a device through its registered package identifier and produces a process. A human name is first resolved against the device software source; ambiguity or absence never permits guessing. NOT open (opens a persistent browser session in the sites domain) · NOT install (adds or removes software) · NOT admin (runs arbitrary commands) · NOT create (creates domain objects). It does not accept paths, command lines, or scripts.",
         },
     },
 }

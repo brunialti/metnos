@@ -172,6 +172,8 @@ _AFFINITY_BY_VERB = {
                  "interact", "perform action"],
     "install":  ["installa", "disinstalla", "metti su", "install",
                  "uninstall", "set up"],
+    "run":      ["avvia programma", "lancia programma", "run program",
+                 "start program", "launch program"],
 }
 
 

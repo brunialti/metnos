@@ -43,6 +43,25 @@ from executor_helpers import run_stdio  # noqa: E402
 # reach the package manager as an option, not as a name.
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:@-]{0,127}$")
 
+# Human software names are not identifiers and may contain spaces or Unicode
+# letters (for example a localized display name). Validation is character-
+# class based, not language- or product-based: path separators, controls,
+# globs and option prefixes never pass, while ordinary localized names do.
+_HUMAN_NAME_PUNCTUATION = frozenset(" ._+:@-'\u2019()&#")
+
+
+def _is_human_program_name(value: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    value = value.strip()
+    return bool(
+        value
+        and len(value) <= 128
+        and value[0].isalnum()
+        and all(char.isalnum() or char in _HUMAN_NAME_PUNCTUATION
+                for char in value)
+    )
+
 # One probe should answer in about a second; winget on a cold source can take
 # several. Beyond this the machine is not going to answer, and waiting longer
 # only holds the turn open.
@@ -141,10 +160,10 @@ def _probe_linux(package_id, manager, tool_path, by_name=False):
         rows.sort(key=lambda r: (len(r[0]), r[0]))
         name, version = rows[0]
         hit = {"name": name, "version": version, "source": "dpkg"}
-        if by_name:
+        if by_name and len(rows) > 1:
+            hit["also_matched"] = [r[0] for r in rows[1:6]]
+        else:
             hit["resolved_id"] = name
-            if len(rows) > 1:
-                hit["also_matched"] = [r[0] for r in rows[1:6]]
         return hit
     if manager == "rpm":
         rc, out = _run([tool_path, "-q", "--qf",
@@ -153,15 +172,16 @@ def _probe_linux(package_id, manager, tool_path, by_name=False):
             return None
         name, _, version = out.strip().partition("\t")
         return {"name": name or package_id, "version": version.strip(),
-                "source": "rpm"}
+                "source": "rpm", "resolved_id": name or package_id}
     if manager == "pacman":
         rc, out = _run([tool_path, "-Q", package_id])
         if rc != 0 or not out.strip():
             return None
         parts = out.strip().split()
-        return {"name": parts[0] if parts else package_id,
+        resolved_id = parts[0] if parts else package_id
+        return {"name": resolved_id,
                 "version": parts[1] if len(parts) > 1 else "",
-                "source": "pacman"}
+                "source": "pacman", "resolved_id": resolved_id}
     return None
 
 
@@ -235,10 +255,10 @@ def _probe_windows(package_id, tool_path, by_name=False):
     rows.sort(key=lambda r: (len(r[0]), r[0]))
     name, pkg_id, version = rows[0]
     hit = {"name": name, "version": version, "source": "winget"}
-    if by_name:
+    if by_name and len(rows) > 1:
+        hit["also_matched"] = [r[0] for r in rows[1:6]]
+    else:
         hit["resolved_id"] = pkg_id
-        if len(rows) > 1:
-            hit["also_matched"] = [r[0] for r in rows[1:6]]
     return hit
 
 
@@ -254,8 +274,10 @@ def _probe_path(package_id):
 
 def _probe(package_id, ctx):
     hit, match = None, ""
+    exact_identifier = bool(_ID_RE.fullmatch(package_id))
     if ctx["os"] == "windows" and ctx["winget"]:
-        hit = _probe_windows(package_id, ctx["winget"])
+        hit = (_probe_windows(package_id, ctx["winget"])
+               if exact_identifier else None)
         match = "exact" if hit else ""
         if hit is None:
             # The identifier missed. People name programs, not identifiers,
@@ -263,13 +285,14 @@ def _probe(package_id, ctx):
             hit = _probe_windows(package_id, ctx["winget"], by_name=True)
             match = "name" if hit else ""
     elif ctx["manager"]:
-        hit = _probe_linux(package_id, ctx["manager"], ctx["manager_path"])
+        hit = (_probe_linux(package_id, ctx["manager"], ctx["manager_path"])
+               if exact_identifier else None)
         match = "exact" if hit else ""
         if hit is None:
             hit = _probe_linux(package_id, ctx["manager"],
                                ctx["manager_path"], by_name=True)
             match = "name" if hit else ""
-    if hit is None:
+    if hit is None and exact_identifier:
         hit = _probe_path(package_id)
         match = "path" if hit else ""
     if hit is None:
@@ -328,13 +351,13 @@ def invoke(args: dict) -> dict:
 
     for raw in requested:
         package_id = raw.strip() if isinstance(raw, str) else ""
-        if not _ID_RE.match(package_id):
-            # A malformed identifier is that element's problem, not the
-            # call's: the others are still answered.
+        if not _is_human_program_name(package_id):
+            # Neither an identifier nor a safe human display name: this
+            # element never reaches a package-manager process.
             failed.append({
                 "package_id": str(raw)[:128],
                 "error": _msg("ERR_ARG_INVALID", arg="packages",
-                              reason="package identifier required"),
+                              reason="package identifier or program name required"),
                 "error_class": "invalid_input",
                 "error_code": "package_id_invalid",
             })

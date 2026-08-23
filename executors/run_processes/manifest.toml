@@ -1,15 +1,15 @@
 manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
-name         = "create_processes"
-version      = "0.3.0"
+name         = "run_processes"
+version      = "0.4.0"
 intelligence = "deterministic"
 timeout_s    = 30
 platforms    = ["windows"]
 author       = "Roberto Brunialti"
 affinity     = [
   "avvia", "avviare", "lancia", "lanciare", "fai partire",
-  "start", "launch", "run program", "start program"
+  "esegui programma", "start", "launch", "run program", "start program"
 ]
 revertible = true
 reverse_pattern = "module.reverse"
@@ -24,22 +24,33 @@ concurrency_key   = "device"
 equivalence_gate  = "unverified"
 
 [description]
-it = "SCOPO: avvia pacchetti già installati sul dispositivo e registra l'identità esatta per annullare i soli processi di sessione creati. PATTERN: create_processes(programs=['Publisher.Package']). NON: percorsi, comandi, script o programmi non registrati. OUT: chiede se mantenerli fino al riavvio o a ogni accensione, poi restituisce results e failed; la persistenza resta irreversibile."
-en = "SCOPO: starts packages already installed on the device and records exact identity to undo only newly created session processes. PATTERN: create_processes(programs=['Publisher.Package']). NON: paths, commands, scripts, or unregistered programs. OUT: asks whether to keep them until restart or at every startup, then returns results and failed; persistence remains irreversible."
+it = "SCOPO: avvia software installato con ricevuta dei processi creati. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: sessioni web (-> open_sites), path, comandi, script o id non registrati. OUT: chiede sessione o persistenza, poi restituisce results e failed."
+en = "SCOPO: runs installed software with receipts for created processes. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: web sessions (-> open_sites), paths, commands, scripts, or unregistered ids. OUT: asks for session or persistence, then returns results and failed."
 
 [code]
-files  = ["create_processes.py"]
-digest = "sha256:13caf150160b4fe2535d24511ba5758b0d2b70e69a548a6447f4c23c840173d0"
+files  = ["run_processes.py"]
+digest = "sha256:1537a8926171da6912622c48f18ddac26ea420f06c54b1da8abf35902af775f5"
 
 [args]
 type     = "object"
 required = ["programs"]
+from_step_alternatives = ["programs"]
+
+[args.properties.from_step]
+type = "integer"
+minimum = 1
+
+[args.properties.from_step.description]
+it = "Passo find_packages che ha risolto tutti i nomi in identificativi esatti. Preferiscilo per richieste in linguaggio naturale."
+en = "The find_packages step that resolved every name to an exact identifier. Prefer it for natural-language requests."
 
 [args.properties.programs]
 type        = "array"
 uniqueItems = true
 minItems    = 1
 maxItems    = 10
+from_entries_key = "resolved_id"
+from_entries_complete = true
 items       = { type = "string", maxLength = 128 }
 
 [args.properties.programs.description]
@@ -85,6 +96,14 @@ schema_inline = """
 
 [undo]
 outcome = "per_execution"
+
+[planning]
+# Relazione firmata e generica: prima di avviare, rende disponibile il
+# resolver del dominio software. Il motore non contiene nomi di executor.
+companions = ["find_packages"]
+# Il nome pubblico descrive il processo prodotto; l'identita' consumata
+# appartiene al dominio canonico del software installato.
+object_aliases = ["packages"]
 
 [[capabilities]]
 name = "system:admin"

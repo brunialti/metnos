@@ -664,10 +664,15 @@ class Executor:
     # temperature o budget: i consumer selezionano un workload e la relativa
     # policy vive esclusivamente nei tier LLM (ADR 0207).
     complexity: str = ""
-    # Relazioni dichiarative producer→consumer. Il producer nomina strumenti
-    # che possono consumarne naturalmente l'output; il routing li rende
+    # Relazioni dichiarative fra strumenti che possono comporre un piano
+    # naturale (consumer, resolver o prerequisito). Il routing le rende
     # visibili senza mantenere una tabella di eccezioni nel motore.
     planning_companions: list[str] = field(default_factory=list)
+    # Oggetti canonici di ingresso rappresentati dall'executor oltre
+    # all'oggetto nel nome. Esempio generale: un'azione puo' produrre l'oggetto
+    # nominato ma consumare l'identita' di un altro dominio. Il ranking legge
+    # soltanto questa dichiarazione firmata, mai nomi o parole naturali.
+    planning_object_aliases: list[str] = field(default_factory=list)
     # Piattaforme device supportate (W3.2, executor remoti §16.3 design doc):
     # {"linux","windows","macos"}. Default ["linux"] se il manifest non lo
     # dichiara (tutto il parco esistente e' nato POSIX, §16.0: default onesto,
@@ -1545,6 +1550,20 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             continue
         _companions = list(dict.fromkeys(
             value.strip() for value in _companions_raw))
+        _object_aliases_raw = _planning.get("object_aliases") or []
+        try:
+            from vocab import OBJECTS as _CANONICAL_OBJECTS
+        except Exception:
+            _CANONICAL_OBJECTS = ()
+        if (not isinstance(_object_aliases_raw, list)
+                or any(not isinstance(value, str) or not value.strip()
+                       or value.strip() not in _CANONICAL_OBJECTS
+                       for value in _object_aliases_raw)):
+            catalog.rejected.append((
+                str(sub), "invalid_planning_object_aliases"))
+            continue
+        _object_aliases = list(dict.fromkeys(
+            value.strip() for value in _object_aliases_raw))
 
         try:
             _managed = _managed_dependencies(
@@ -1595,6 +1614,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             if isinstance(manifest.get("undo"), dict) else {},
             complexity=_complexity,
             planning_companions=_companions,
+            planning_object_aliases=_object_aliases,
             platforms=_platforms,
             digest=str((manifest.get("code") or {}).get("digest") or ""),
             executor_standard=str(manifest.get("executor_standard") or ""),

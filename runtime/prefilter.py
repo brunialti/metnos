@@ -980,7 +980,9 @@ def rank_with_intent(query, catalog, intent, *, k=3):
             s = 0
         else:
             continue
-        if obj and obj in parts:
+        declared_objects = set(
+            getattr(e, "planning_object_aliases", None) or ())
+        if obj and (obj in parts or obj in declared_objects):
             # L'oggetto è il confine di dominio dell'intento: un tool del
             # dominio giusto con verbo fratello deve precedere un verbo esatto
             # applicato all'oggetto sbagliato. Il match esatto verbo+oggetto

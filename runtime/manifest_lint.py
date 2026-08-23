@@ -46,7 +46,8 @@ try:
 except Exception:  # pragma: no cover - fallback se vocab non importabile
     PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
     DESTRUCTIVE_VERBS = frozenset(
-        {"move", "delete", "send", "write", "extract", "create", "share"})
+        {"move", "delete", "send", "write", "extract", "create", "share",
+         "install", "run"})
 
 # Il Proposer usa questo come budget MEDIO per tool; il pool redistribuisce lo
 # spazio inutilizzato entro un hard cap. Il check per-manifest resta volutamente

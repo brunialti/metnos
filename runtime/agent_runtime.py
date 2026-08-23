@@ -5949,9 +5949,29 @@ def _declared_managed_package(executor, observation: object) -> str:
     return matches[0] if len(matches) == 1 else ""
 
 
+def _unique_executor_with_capability_hint(catalog: list, hint: str):
+    """Return the sole executor declaring a signed capability hint.
+
+    Capability hints describe a role; executor names describe an
+    implementation. Keeping discovery on the former lets implementations be
+    renamed or replaced without a runtime name table. Ambiguity fails closed.
+    """
+    matches = []
+    for executor in catalog:
+        capabilities = getattr(executor, "capabilities", ()) or ()
+        if any(
+            isinstance(capability, dict)
+            and hint in (capability.get("hint") or ())
+            for capability in capabilities
+        ):
+            matches.append(executor)
+    return matches[0] if len(matches) == 1 else None
+
+
 def _bind_managed_dependency_resume(
         start_result: object, *, package_id: str, resume_tool: str,
-        resume_args: dict, target_device: str) -> dict | None:
+        resume_args: dict, target_device: str,
+        starter_tool: str) -> dict | None:
     """Bind a validated package-start dialog to one deterministic retry."""
 
     if not isinstance(start_result, dict):
@@ -5972,7 +5992,7 @@ def _bind_managed_dependency_resume(
     branches: dict[str, dict] = {}
     for lifetime in ("session", "persistent"):
         branch = raw_branches.get(lifetime)
-        if not isinstance(branch, dict) or branch.get("tool") != "create_processes":
+        if not isinstance(branch, dict) or branch.get("tool") != starter_tool:
             return None
         branch_args = branch.get("args")
         if (not isinstance(branch_args, dict)
@@ -5986,7 +6006,7 @@ def _bind_managed_dependency_resume(
                 or any(char not in "0123456789abcdef" for char in token)):
             return None
         branches[lifetime] = {
-            "tool": "create_processes",
+            "tool": starter_tool,
             "args": dict(branch_args),
         }
 
@@ -6536,7 +6556,8 @@ def _run_engine(
                 owner_user_id=owner_user_id)
             package_id = _declared_managed_package(exec_obj, result)
             if package_id:
-                starter = _catalog_by_name.get("create_processes")
+                starter = _unique_executor_with_capability_hint(
+                    list(_catalog_by_name.values()), "managed-package-start")
                 if starter is not None:
                     start_result = invoke_executor(
                         starter, {"programs": [package_id]},
@@ -6552,6 +6573,7 @@ def _run_engine(
                         resume_tool=tool_name,
                         resume_args=args,
                         target_device=_target_name or "",
+                        starter_tool=starter.name,
                     )
                     if bound is not None:
                         result = bound
