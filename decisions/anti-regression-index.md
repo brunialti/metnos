@@ -313,10 +313,13 @@
   `undo.jsonl` conserva soltanto handle opaco e digest. Gate:
   `test_set_signatures_undo.py`, `test_protected_undo.py` e
   `test_login_urls.py`.
-- **Stop Windows per identita' kernel** (ADR 0217): il protocollo tipizzato
-  lega package, PID e creation-time; nessuno stop per nome, path o PID solo.
-  La persistenza resta irreversibile finche' la registrazione di startup non
-  ha identita' equivalente. Gate: prove Rust, cross-build Windows,
+- **Stop Windows per coorte verificata** (ADR 0217/0221): la ricevuta lega
+  pacchetto, confine di attivazione e identita' PID+creation-time preesistenti;
+  l'inverso segue i passaggi fra processi usando soltanto identita' del pacchetto
+  o la sua radice registrata da Windows. Nessun arresto per nome, percorso libero
+  o PID solo; senza attestazione `restored=true` l'undo fallisce. La persistenza
+  resta irreversibile finche' la registrazione di startup non ha identita'
+  equivalente. Verifica: prove Rust, compilazione incrociata Windows,
   `test_helper_wire_contract.py` e `test_run_processes.py`.
 - **Scrittore undo al choke-point**: `agent_runtime._undo_pending/_undo_done` in `invoke_executor` (pending pre-exec, done post-ok, campo `device`) — la regressione af6c7b8 (writer nel planner cancellato) non può ripetersi: `test_undo_chokepoint.py` fa il round-trip reale.
 - **Scrittore uso-executor al choke-point**: `executor_scheduler.ExecutorScheduler.invoke` → `executor_aging.record_invocation` — l'ALTRO scrittore che af6c7b8 aveva cancellato col planner, rimasto morto un mese (124 righe su 193 senza `last_used_at`, mentre aging e change_observer decidevano su quei numeri). Sta nello scheduler perché è l'unico punto attraversato da sottoprocesso, remoto, builtin e onda parallela: nell'anello del motore non passano né i turni serviti da L0 né i builtin. Discriminante `code_path` (gli slot interni del Tutor non hanno ciclo di vita), niente registrazione sotto pytest; `test_executor_usage_recording.py`.

@@ -153,7 +153,8 @@ for format and discipline; see `_template.md` for the template.
 > registry, structural and semantic gates, public-only device/Tutor
 > reconciliation and an explicit atomic instance activation.
 > Latest: `0221` adds typed current-user Windows packaged-app activation from
-> authoritative package/AUMID identities, with an exact kernel process receipt
-> and no command or application table. Latest: `0222` adds a capability-gated,
-> signed `reverse` entrypoint for the same remote executor bundle and preserves
-> dialog turn identity through completion callbacks.
+> authoritative package/AUMID identities, with an exact post-activation process
+> cohort and no command or application table. Latest: `0222` adds a
+> capability-gated, signed `reverse` entrypoint for the same remote executor
+> bundle, requires a semantic restoration attestation and preserves dialog turn
+> identity through completion callbacks.

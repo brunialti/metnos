@@ -19,7 +19,7 @@ def windows(monkeypatch):
             return {"ok": True, "aligned": True}
         if arguments[0] == "stop":
             return {"ok": True, "aligned": True,
-                    "payload": {"stopped": True}}
+                    "payload": {"restored": True, "stopped": True}}
         lifetime = arguments[-1]
         return {
             "ok": True,
@@ -122,12 +122,18 @@ def test_appx_uses_user_session_client_and_offers_only_session(monkeypatch):
         if arguments[0] == "query":
             return {"ok": True, "lifetimes": ["session"]}
         if arguments[0] == "stop":
-            return {"ok": True, "payload": {"stopped": True}}
+            return {"ok": True,
+                    "payload": {"restored": True, "stopped": True}}
         return {
             "ok": True,
             "payload": {
                 "created_process": True,
                 "process": {"pid": 5151, "creation_time": 133700000000000001},
+                "activation_boundary": 133700000000000000,
+                "preexisting_processes": [{
+                    "pid": 4040,
+                    "creation_time": 133600000000000000,
+                }],
                 "persistent_registration_changed": False,
             },
         }
@@ -156,7 +162,40 @@ def test_appx_uses_user_session_client_and_offers_only_session(monkeypatch):
     assert reversed_result["ok"] is True
     assert calls[-1] == (
         "stop", "--package-id", package_id,
-        "--pid", "5151", "--creation-time", "133700000000000001")
+        "--pid", "5151", "--creation-time", "133700000000000001",
+        "--activation-boundary", "133700000000000000",
+        "--preexisting-process", "4040:133600000000000000")
+
+
+def test_reverse_rejects_provider_ok_without_restored_postcondition(
+        windows, monkeypatch):
+    forward = run_processes.invoke(
+        _approved(["Vendor.Sensor"], "session"))
+    monkeypatch.setattr(run_processes, "_helper_call", lambda *_: {
+        "ok": True,
+        "payload": {"stopped": False},
+    })
+
+    result = run_processes.reverse({}, forward)
+
+    assert result["ok"] is False
+    assert result["ok_count"] == 0
+    assert result["fail_count"] == 1
+    assert result["failed"][0]["error_class"] == "postcondition_failed"
+
+
+def test_reverse_accepts_attested_already_restored_state(windows, monkeypatch):
+    forward = run_processes.invoke(
+        _approved(["Vendor.Sensor"], "session"))
+    monkeypatch.setattr(run_processes, "_helper_call", lambda *_: {
+        "ok": True,
+        "payload": {"restored": True, "stopped": False},
+    })
+
+    result = run_processes.reverse({}, forward)
+
+    assert result["ok"] is True
+    assert result["results"][0]["stopped"] is False
 
 
 def test_appx_persistent_choice_is_rejected_before_activation(monkeypatch):

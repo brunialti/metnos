@@ -49,6 +49,11 @@
   (sola sessione con PID+creation-time) e `login_urls` usano ricevute esatte;
   i segreti precedenti stanno cifrati in `protected_undo`, non nel JSONL.
   Persistenza Windows e `delete_dirs` locale restano non annullabili.
+- **Arresto AppX verificato** (23/8, ADR 0221-0222): client Windows 0.2.62.
+  La ricevuta di `run_processes` lega confine di attivazione e processi
+  preesistenti; l'inverso segue la coorte del pacchetto anche quando il processo di
+  attivazione passa l'esecuzione, esclude identita' precedenti e dichiara
+  successo soltanto con attestazione positiva di ripristino.
 - **LRE F0-F14 implementato** (22/8, ADR 0213-0214, RM-0004):
   `runtime/durable_workloads/` contiene contratti, schema
   SQLite, archivio circoscritto al proprietario, acquisizione, concessioni a
@@ -161,7 +166,7 @@ Il nucleo dei manifest generati e' centralizzato in `generated_executor_contract
 ## 12. Fasi di sviluppo
 
 - **Fasi 1-5 chiuse** (POC / test framework / synt 5 stadi / reality check+Telegram / vaglio+sandbox+dispatcher).
-- **Fase 6** voce — STANDBY. **Fase 7** (client Rust executor remoti) — **CHIUSA** (8-9/7): topic 1 MVP + C7 mutanti (write/move/delete remoti, undo device-aware ADR 0183); topic 2 multi-user (device→users.id, owner-filter), multi-OS = Windows+Linux (macOS ESCLUSO da Roberto); robustezza (blob-TTL, co-location consumer↔producer, device-i18n bundleato). **W4 AppContainer pienamente in prod**: `appcontainer::gate_on()` default ON su Windows (opt-OUT `METNOS_SANDBOX_APPCONTAINER=0`), + skip AppContainer per `code:exec` (get_processes/tasklist con CPU nativa Win32); **self-update robusto/automatico** (launcher-loop, respawn `Stdio::null()`) validato live (auto-update 0.2.21→0.2.22 in ~13s zero-manuale). PC su **0.2.25**. Handoff `project_w4_prod_enable_followup` = OBSOLETO. **Fase 8 — CHIUSA** (23/8, ADR 0215, RM-0006): 24 flussi di riferimento IT/EN, cinque sonde reali e due cicli finali 96/96; non e' una prova di carico. Metnos esegue i casi, mentre oracolo, postcondizioni e verifica restano esterni al processo sotto prova.
+- **Fase 6** voce — STANDBY. **Fase 7** (client Rust executor remoti) — **CHIUSA** (8-9/7): topic 1 MVP + C7 mutanti (write/move/delete remoti, undo device-aware ADR 0183); topic 2 multi-user (device→users.id, owner-filter), multi-OS = Windows+Linux (macOS ESCLUSO da Roberto); robustezza (blob-TTL, co-location consumer↔producer, device-i18n bundleato). **W4 AppContainer pienamente in prod**: `appcontainer::gate_on()` default ON su Windows (opt-OUT `METNOS_SANDBOX_APPCONTAINER=0`), + skip AppContainer per `code:exec` (get_processes/tasklist con CPU nativa Win32); **self-update robusto/automatico** (launcher-loop, respawn `Stdio::null()`) validato live (auto-update 0.2.21→0.2.22 in ~13s zero-manuale). PC su **0.2.62**. Handoff `project_w4_prod_enable_followup` = OBSOLETO. **Fase 8 — CHIUSA** (23/8, ADR 0215, RM-0006): 24 flussi di riferimento IT/EN, cinque sonde reali e due cicli finali 96/96; non e' una prova di carico. Metnos esegue i casi, mentre oracolo, postcondizioni e verifica restano esterni al processo sotto prova.
 
 ## 14. HTTP API
 

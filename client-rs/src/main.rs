@@ -141,7 +141,7 @@ enum PackageAppCmd {
         #[arg(long, value_enum)]
         lifetime: HelperStartLifetime,
     },
-    /// Stop only the process bound to a managed-start receipt.
+    /// Restore the package-process cohort captured by a managed-start receipt.
     Stop {
         #[arg(long)]
         package_id: String,
@@ -149,6 +149,10 @@ enum PackageAppCmd {
         pid: u32,
         #[arg(long)]
         creation_time: u64,
+        #[arg(long)]
+        activation_boundary: Option<u64>,
+        #[arg(long = "preexisting-process")]
+        preexisting_processes: Vec<appx_activation::ProcessIdentity>,
     },
 }
 
@@ -731,7 +735,15 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
                     package_id,
                     pid,
                     creation_time,
-                } => appx_activation::stop(&package_id, pid, creation_time),
+                    activation_boundary,
+                    preexisting_processes,
+                } => appx_activation::stop(
+                    &package_id,
+                    pid,
+                    creation_time,
+                    activation_boundary,
+                    &preexisting_processes,
+                ),
             };
             println!("{result}");
         }

@@ -466,7 +466,10 @@ pub fn stop(package_id: &str, pid: u32, creation_time: u64) -> Outcome {
     };
     if process.is_null() {
         return if unsafe { GetLastError() } == ERROR_INVALID_PARAMETER {
-            Outcome::success_with_payload(serde_json::json!({"stopped": false}))
+            Outcome::success_with_payload(serde_json::json!({
+                "restored": true,
+                "stopped": false,
+            }))
         } else {
             Outcome::failure(
                 "package_process_probe_failed",
@@ -486,7 +489,10 @@ pub fn stop(package_id: &str, pid: u32, creation_time: u64) -> Outcome {
             } else if unsafe { WaitForSingleObject(process, 5000) } != WAIT_OBJECT_0 {
                 Outcome::failure("package_stop_unverified", "package_stop_unverified")
             } else {
-                Outcome::success_with_payload(serde_json::json!({"stopped": true}))
+                Outcome::success_with_payload(serde_json::json!({
+                    "restored": true,
+                    "stopped": true,
+                }))
             }
         }
         Err(code) => Outcome::failure(code, code),

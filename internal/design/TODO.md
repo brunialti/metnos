@@ -198,8 +198,9 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   `open_sites`, `set_signatures`, `run_processes` e `login_urls` usano
   l'esito firmato per singola esecuzione di ADR 0217. Segreti undo cifrati
   fuori dal journal; stop Windows soltanto con identita' applicativa,
-  PID+creation-time. Il round trip reale AppX e il protocollo generale
-  `module.reverse` sullo stesso device sono chiusi da ADR 0221-0222.
+  confine di attivazione e coorte PID+creation-time. La prova completa reale AppX,
+  incluso il passaggio fra processi, e il protocollo generale `module.reverse`
+  sullo stesso dispositivo sono chiusi da ADR 0221-0222 e client 0.2.62.
 - Progettazione aperta: `delete_dirs`; specifica
   `internal/design/undo-redesign-spec-20260823.md`. La modalita' persistente di
   `run_processes` resta irreversibile finche' la registrazione di startup
@@ -445,6 +446,7 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 - **QUA-001** — completato il 23/8/2026: RM-0006 C0-C6, cinque sonde reali e
   due cicli finali 96/96.
 - **RUN-001** — completato il 23/8/2026: identita' AppX tipizzata, attivazione
-  nella sessione del proprietario e undo remoto esatto. Turno live
-  `f0d1477159f7446a`, invocazione reverse `inv-18ce81fccb1cc9115c5033cf`;
-  ADR 0221-0222, client Windows 0.2.58.
+  nella sessione del proprietario e undo remoto esatto anche attraverso il
+  passaggio del processo di attivazione. Turno live `5b1cc75b42aa4aeb`,
+  invocazione reverse `inv-18ce87c4bcce8dcbde1f61c5`; ADR 0221-0222,
+  client Windows 0.2.62, `stopped=true` e finestra osservata chiusa.

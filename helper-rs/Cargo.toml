@@ -1,6 +1,6 @@
 [package]
 name = "metnos-helper"
-version = "0.2.58"
+version = "0.2.62"
 edition = "2021"
 description = "Metnos elevated helper for Windows package operations (ADR 0210)"
 license = "AGPL-3.0-only"

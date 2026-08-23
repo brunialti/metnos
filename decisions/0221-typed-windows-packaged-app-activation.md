@@ -46,14 +46,22 @@ desktop. No path, command line, arguments, guessed executable or product name
 crosses this boundary. The portable-package helper path remains unchanged and
 the two identity families are dispatched by their typed prefixes.
 
-The activation receipt binds the package identity, AUMID, PID and Windows
-process creation time. The process is considered created by the turn only when
-its kernel creation time is on or after the activation boundary; an existing
-instance is a no-effect outcome. Reverse reopens that PID, verifies the AUMID
-and creation time again, and terminates only the exact object. AppX activation
-advertises only session lifetime. Persistent startup is not offered until
-Windows startup registrations have an equally exact, user-owned identity and
-verified inverse.
+The activation receipt binds the package identity, AUMID, activation boundary,
+the PID returned by Windows and its creation time. It also records the bounded
+set of package processes that existed before activation, as exact PID and
+creation-time pairs. Reverse derives the post-activation process cohort from
+Windows package identity; for full-trust packaged applications whose launcher
+hands execution to another process, the only fallback is an executable image
+inside the immutable registered package root returned by Windows. It excludes
+every pre-existing identity and terminates only verified processes born after
+the boundary, repeating the bounded scan to follow a handoff.
+
+Disappearance of the activation PID alone is not proof of restoration. If the
+client cannot identify and stop at least one eligible process, it returns a
+causal failure; the executor accepts success only with an explicit positive
+restoration attestation. AppX activation advertises only session lifetime.
+Persistent startup is not offered until Windows startup registrations have an
+equally exact, user-owned identity and verified inverse.
 
 ## Alternatives considered
 
@@ -71,6 +79,10 @@ proof.
 Any single-entry packaged application discovered through authoritative Windows
 metadata can use the same flow. Ambiguous packages remain discoverable but are
 not mutated. Portable and AppX applications share the public `run_processes`
-contract while retaining separate OS-native authorities. The Windows client
-0.2.57 proved real Notepad activation on PC-ROBERTO; the full remote reverse
-round trip is completed by ADR 0222 and client 0.2.58.
+contract while retaining separate OS-native authorities. Client 0.2.57 proved
+real packaged-app activation. A later live observation showed that the first
+PID can hand execution to another package process, invalidating the original
+0.2.58 stop attestation. Client 0.2.62 closes that general gap with cohort
+tracking; live turn `5b1cc75b42aa4aeb` and reverse invocation
+`inv-18ce87c4bcce8dcbde1f61c5` returned `stopped=true`, with the application
+window observed closed by the user.

@@ -50,6 +50,12 @@ undo without an executor-name registry, a domain switch or a second code
 bundle. Closed filesystem patterns continue to use ADR 0183's ordinary
 executor-call translation.
 
+Transport completion and semantic restoration are distinct. The signed result
+payload passes through unchanged, and each custom reverse must attest its own
+postcondition. `run_processes.reverse` therefore requires `restored=true` from
+the client provider; an outer `ok=true`, a vanished launcher PID or an empty
+candidate set cannot close the undo record as successful.
+
 Dialog creation copies a non-empty `origin_turn_id` into the persisted callback
 unless that callback deliberately carries another turn ID. All completion
 paths therefore send the originating identity to the common executor dispatch.
@@ -71,8 +77,12 @@ explicit protocol capability negotiation.
 
 `module.reverse` now has the same-device guarantee as the closed reverse
 patterns. Older clients fail before queue admission and cannot silently treat
-a reverse payload as a forward call. Client 0.2.58 completed the real
-PC-ROBERTO round trip: the recorded Notepad AUMID/PID/creation-time receipt was
-verified on the device, the exact process was stopped, and the undo record was
-closed. New consent continuations retain one coherent turn boundary; malformed
-legacy empty records cannot make one undo reach unrelated historical effects.
+a reverse payload as a forward call. The initial 0.2.58 round trip proved the
+protocol but exposed an insufficient application postcondition: a packaged app
+could hand execution away from its activation PID while the window remained
+open. Client 0.2.62 and the revised executor require a verified, post-boundary
+package-process cohort plus a positive restoration attestation. Live turn
+`5b1cc75b42aa4aeb` and reverse invocation
+`inv-18ce87c4bcce8dcbde1f61c5` closed the application and the undo record.
+New consent continuations retain one coherent turn boundary; malformed legacy
+empty records cannot make one undo reach unrelated historical effects.
