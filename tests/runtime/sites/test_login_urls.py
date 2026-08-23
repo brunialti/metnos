@@ -24,6 +24,7 @@ _state = {
     "good_pwd": "testpwd",
     "csrf_token": "csrf-fixed-12345",
     "next_status": 200,  # POST login: 200 ok, 401 fail
+    "cookie_value": "fake-session-abc",
     "post_log": [],
 }
 
@@ -82,7 +83,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html")
         self.send_header(
             "Set-Cookie",
-            "SESSION_ID=fake-session-abc; Path=/; HttpOnly",
+            f'SESSION_ID={_state["cookie_value"]}; Path=/; HttpOnly',
         )
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -107,18 +108,32 @@ class TestLoginUrls(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         import credentials
         import login_urls
+        import protected_undo
         self._old_cred = credentials.CRED_DIR
+        self._old_cred_key = credentials.ADMIN_KEY_PATH
         self._old_cook = login_urls.COOKIES_DIR
+        self._old_undo_blobs = protected_undo.BLOB_DIR
+        self._old_undo_key = protected_undo.ADMIN_KEY_PATH
+        key_path = Path(self.tmp) / "admin.key"
+        key_path.write_text("a" * 64, encoding="utf-8")
         credentials.CRED_DIR = Path(self.tmp) / "credentials"
+        credentials.ADMIN_KEY_PATH = key_path
         login_urls.COOKIES_DIR = Path(self.tmp) / "cookies"
+        protected_undo.BLOB_DIR = Path(self.tmp) / "undo_blobs"
+        protected_undo.ADMIN_KEY_PATH = key_path
         _state["next_status"] = 200
+        _state["cookie_value"] = "fake-session-abc"
         _state["post_log"] = []
 
     def tearDown(self):
         import credentials
         import login_urls
+        import protected_undo
         credentials.CRED_DIR = self._old_cred
+        credentials.ADMIN_KEY_PATH = self._old_cred_key
         login_urls.COOKIES_DIR = self._old_cook
+        protected_undo.BLOB_DIR = self._old_undo_blobs
+        protected_undo.ADMIN_KEY_PATH = self._old_undo_key
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _store_test_creds(self, domain="login.test.metnos"):
@@ -173,6 +188,7 @@ class TestLoginUrls(unittest.TestCase):
         self.assertTrue(out2["cached"], out2)
         self.assertEqual(len(_state["post_log"]), n_posts,
                          "cached call should not POST again")
+        self.assertEqual(out2["_undo"], {"outcome": "no_effect"})
 
     def test_force_relogin(self):
         import login_urls
@@ -183,6 +199,47 @@ class TestLoginUrls(unittest.TestCase):
         self.assertTrue(out2["ok"], out2)
         self.assertFalse(out2["cached"])
         self.assertEqual(len(_state["post_log"]), n_posts + 1)
+
+    def test_undo_new_cookie_jar_removes_only_the_created_state(self):
+        import login_urls
+        domain = self._store_test_creds()
+        out = login_urls.invoke({"domain": domain})
+        cookie_path = Path(out["cookie_file"])
+
+        reversed_out = login_urls.reverse({}, out)
+
+        self.assertTrue(reversed_out["ok"], reversed_out)
+        self.assertFalse(cookie_path.exists())
+
+    def test_force_relogin_restores_exact_prior_secret_state(self):
+        import login_urls
+        domain = self._store_test_creds()
+        first = login_urls.invoke({"domain": domain})
+        cookie_path = Path(first["cookie_file"])
+        before = cookie_path.read_bytes()
+        _state["cookie_value"] = "replacement-session"
+        second = login_urls.invoke({"domain": domain, "force": True})
+        self.assertEqual(second["_undo"]["outcome"], "reversible")
+        self.assertNotEqual(cookie_path.read_bytes(), before)
+
+        reversed_out = login_urls.reverse({}, second)
+
+        self.assertTrue(reversed_out["ok"], reversed_out)
+        self.assertEqual(cookie_path.read_bytes(), before)
+
+    def test_undo_refuses_concurrent_cookie_change(self):
+        import login_urls
+        domain = self._store_test_creds()
+        out = login_urls.invoke({"domain": domain})
+        cookie_path = Path(out["cookie_file"])
+        concurrent = b"concurrent-cookie-state"
+        cookie_path.write_bytes(concurrent)
+
+        reversed_out = login_urls.reverse({}, out)
+
+        self.assertFalse(reversed_out["ok"])
+        self.assertEqual(reversed_out["error_class"], "state_conflict")
+        self.assertEqual(cookie_path.read_bytes(), concurrent)
 
 
 if __name__ == "__main__":

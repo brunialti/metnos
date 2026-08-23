@@ -61,6 +61,10 @@ def test_executor_catalog_exposes_three_state_undo_contract():
         "restore_blob_backup", "delete_created_paths")
     assert by_name["share_files"].undo_state == module.UNDOABLE
     assert by_name["share_files"].reverse_patterns == ("module.reverse",)
+    assert by_name["open_sites"].undo_outcome_contract == "per_execution"
+    assert by_name["set_signatures"].undo_outcome_contract == "per_execution"
+    assert by_name["create_processes"].undo_outcome_contract == "per_execution"
+    assert by_name["login_urls"].undo_outcome_contract == "per_execution"
     assert by_name["read_files"].undo_state == module.NOT_APPLICABLE
     assert by_name["consult_frontier"].undo_state == module.NOT_APPLICABLE
     assert by_name["consult_frontier"].execution_effect == "read_only"
@@ -76,6 +80,16 @@ def test_executor_catalog_exposes_three_state_undo_contract():
         entry.execution_effect != "read_only"
         and entry.verb is not None and entry.verb not in SAFE_VERBS
         for entry in entries if entry.undo_state == module.NOT_UNDOABLE)
+    counts = {
+        state: sum(entry.undo_state == state for entry in entries)
+        for state in (
+            module.UNDOABLE, module.NOT_UNDOABLE, module.NOT_APPLICABLE)
+    }
+    assert counts == {
+        module.UNDOABLE: 23,
+        module.NOT_UNDOABLE: 13,
+        module.NOT_APPLICABLE: 49,
+    }
 
     for lang in ("it", "en"):
         content = module.render(entries, lang)

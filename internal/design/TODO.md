@@ -236,14 +236,18 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 
 ### UND-001 - Completare gli annullamenti con ricevute esatte
 
-- Stato: primo lotto implementato il 23/8/2026; progettazioni residue in attesa
-  di input esplicito.
+- Stato: contratto generale e quattro riprogettazioni implementati il
+  23/8/2026; resta aperta l'architettura locale di `delete_dirs` e la prova
+  reale Windows dello stop tipizzato.
 - Evidenza: `internal/reports/executor-undo-audit-20260823.md`.
-- Implementato: `set_messages` usa il delta effettivo prima/dopo delle label.
-  Test: `test_exact_undo_receipts.py`.
-- Progettazione pronta, codice non autorizzato: `open_sites`, `delete_dirs`,
-  `set_signatures`, `create_processes`, `login_urls`; specifica
-  `internal/design/undo-redesign-spec-20260823.md`.
+- Implementato: `set_messages` usa il delta effettivo prima/dopo delle label;
+  `open_sites`, `set_signatures`, `create_processes` e `login_urls` usano
+  l'esito firmato per singola esecuzione di ADR 0217. Segreti undo cifrati
+  fuori dal journal; stop Windows soltanto con PID+creation-time.
+- Progettazione aperta: `delete_dirs`; specifica
+  `internal/design/undo-redesign-spec-20260823.md`. La modalita' persistente di
+  `create_processes` resta irreversibile finche' la registrazione di startup
+  non ha un'identita' verificabile equivalente.
 - Decisione di prodotto: `set_credentials` e `set_persons` restano non
   annullabili; cancellazione soltanto su richiesta utente esplicita.
 - Vincolo: nessun inverso per nome, query o testo naturale; soltanto ricevute

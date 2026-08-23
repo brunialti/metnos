@@ -1,7 +1,7 @@
 manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 name        = "set_signatures"
-version     = "0.2.0"
+version     = "0.3.0"
 author      = "Roberto Brunialti"
 affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
                 "curatela", "gestione signatures", "configura permessi",
@@ -9,10 +9,14 @@ affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
                 "authorize command", "allow command", "deny command",
                 "blacklist command", "whitelist command", "remove signature"]
 
-revertible       = false
+revertible       = true
+reverse_pattern  = "module.reverse"
 
 [output]
-schema_inline = "{ ok: bool, signature?: string, kind?: string, severity?: string, source?: string, removed?: bool, previous_kind?: string, message?: string, error?: string }"
+schema_inline = "{ ok: bool, signature?: string, kind?: string, severity?: string, source?: string, removed?: bool, previous_kind?: string, message?: string, error?: string, _undo: {outcome: string, state_receipt?: object} }"
+
+[undo]
+outcome = "per_execution"
 
 [[capabilities]]
 name = "fs:write"
@@ -24,12 +28,12 @@ input = { signature = "x" }
 expect = { ok = false }
 
 [description]
-it = "SCOPO: imposta o rimuove signature dalla curatela. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolo -> compute_signatures; lettura -> get_signatures. OUT: {signature,kind,removed?,previous_kind?,message}; non annullabile."
-en = "SCOPO: sets or removes signatures from user curation. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; read -> get_signatures. OUT: {signature,kind,removed?,previous_kind?,message}; not undoable."
+it = "SCOPO: imposta o rimuove signature e registra lo stato esatto per l'annullamento, salvo `forbidden`. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolo -> compute_signatures; lettura -> get_signatures. OUT: {signature,kind,removed?,message,_undo}."
+en = "SCOPO: sets or removes signatures and records exact state for undo, except `forbidden`. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; read -> get_signatures. OUT: {signature,kind,removed?,message,_undo}."
 
 [code]
 files  = ["set_signatures.py"]
-digest = "sha256:f271a4981d0e62b6c4ae669f1c44ed4db782367c369d5153204860934296ca88"
+digest = "sha256:5e975030b99cfac4b61a8b35fe4410f2cf20bed0d4b4703b152da117bb69b173"
 
 [args]
 type     = "object"

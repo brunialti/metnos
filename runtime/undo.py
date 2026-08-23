@@ -26,6 +26,31 @@ import config as _C  # §7.11
 DEFAULT_LOG = _C.PATH_USER_DATA / "undo.jsonl"
 DEFAULT_BLOBS = _C.PATH_USER_DATA / "undo_blobs"
 
+PER_EXECUTION_OUTCOME = "per_execution"
+UNDO_OUTCOMES = frozenset({"reversible", "no_effect", "irreversible"})
+
+
+def _mutated_result(results: object) -> bool:
+    """Return whether a legacy unconditional receipt reports an effect."""
+    if not isinstance(results, dict):
+        return False
+    return (bool(results.get("ok")) or bool(results.get("ok_count"))
+            or bool(results.get("results")))
+
+
+def execution_undo_outcome(results: object, *, contract: str = "") -> str:
+    """Classify one execution without knowing its executor or provider.
+
+    Unconditional reversible manifests retain their historical contract: a
+    successful/mutating result is reversible.  Manifests that opt into the
+    signed ``per_execution`` contract must emit ``_undo.outcome``.
+    """
+    if contract != PER_EXECUTION_OUTCOME:
+        return "reversible" if _mutated_result(results) else "no_effect"
+    metadata = results.get("_undo") if isinstance(results, dict) else None
+    outcome = metadata.get("outcome") if isinstance(metadata, dict) else None
+    return outcome if outcome in UNDO_OUTCOMES else "invalid"
+
 
 class UndoLog:
     def __init__(self, path: Path = DEFAULT_LOG):
@@ -45,7 +70,9 @@ class UndoLog:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
-    def append_pending(self, op_id: str, turn_id: str, executor: str, args: dict, plan: dict, actor: str = "host", channel: str = "", device: str = "") -> None:
+    def append_pending(self, op_id: str, turn_id: str, executor: str, args: dict,
+                       plan: dict, actor: str = "host", channel: str = "",
+                       device: str = "", outcome_contract: str = "") -> None:
         # `device`: id del device remoto quando l'op ha girato LI' (C7 CP4) —
         # l'undo deve ribaltare sullo STESSO host, mai sul server (§2.9).
         self._append({
@@ -59,10 +86,38 @@ class UndoLog:
             "executor": executor,
             "args": args,
             "plan": plan,
+            **({"outcome_contract": outcome_contract}
+               if outcome_contract else {}),
         })
 
     def append_done(self, op_id: str, results: dict) -> None:
         self._append({"type": "done", "op_id": op_id, "ts": time.time(), "results": results})
+
+    def append_closed(self, op_id: str, outcome: str, *, reason: str = "") -> None:
+        """Close a pending operation that has no reversible receipt."""
+        if outcome not in {"no_effect", "irreversible"}:
+            raise ValueError("invalid closed undo outcome")
+        self._append({
+            "type": "closed", "op_id": op_id, "ts": time.time(),
+            "outcome": outcome,
+            **({"reason": reason} if reason else {}),
+        })
+
+    def append_completion(self, op_id: str, results: dict, *,
+                          outcome_contract: str = "") -> str:
+        """Close one pending operation according to its signed contract."""
+        outcome = execution_undo_outcome(results, contract=outcome_contract)
+        if outcome == "reversible":
+            self.append_done(op_id, results)
+        elif outcome in {"no_effect", "irreversible"}:
+            self.append_closed(op_id, outcome)
+        else:
+            # A conditional mutation without a valid receipt cannot be
+            # offered as reversible.  Close it honestly instead of leaving a
+            # false crash marker or guessing an inverse from arguments.
+            self.append_closed(
+                op_id, "irreversible", reason="invalid_execution_receipt")
+        return outcome
 
     def close_pending_for_turn(self, turn_id: str, results: dict,
                                device: str | None = None) -> int:
@@ -78,13 +133,17 @@ class UndoLog:
         closed = 0
         for op_id, op in self._aggregate_ops().items():
             p = op.get("pending")
-            if not p or "done" in op or "undone" in op:
+            if (not p or "done" in op or "closed" in op
+                    or "undone" in op):
                 continue
             if p.get("turn_id") != turn_id:
                 continue
             if device is not None and (p.get("device") or "") != device:
                 continue
-            self.append_done(op_id, results)
+            self.append_completion(
+                op_id, results,
+                outcome_contract=str(p.get("outcome_contract") or ""),
+            )
             closed += 1
         return closed
 
@@ -126,23 +185,35 @@ class UndoLog:
         che dice «annulla» NON deve ribaltare l'operazione di un altro utente.
         """
         ops = self._aggregate_ops()
-        # Filtra ops con done E senza undone
-        completed_ops = [
-            (op["pending"], op["done"])
-            for op in ops.values()
-            if "pending" in op and "done" in op and "undone" not in op
-        ]
+        # A closed no-effect/irreversible operation is a turn boundary even
+        # though it has nothing to reverse.  Otherwise "undo" after such an
+        # action could unexpectedly reach into an older turn.
+        completed_ops = []
+        for op in ops.values():
+            pending = op.get("pending")
+            completion = (op.get("undone") or op.get("closed")
+                          or op.get("done"))
+            if pending and completion:
+                completed_ops.append((
+                    pending, completion,
+                    op.get("done") if "undone" not in op else None,
+                ))
         if actor is not None:
-            completed_ops = [(p, d) for (p, d) in completed_ops
-                             if (p.get("actor") or "host") == actor]
+            completed_ops = [
+                (p, completion, done)
+                for (p, completion, done) in completed_ops
+                if (p.get("actor") or "host") == actor
+            ]
         if not completed_ops:
             return []
-        # Trova l'ultimo turn_id (quello del done piu' recente)
-        completed_ops.sort(key=lambda pd: pd[1]["ts"])
+        completed_ops.sort(key=lambda item: item[1]["ts"])
         latest_turn_id = completed_ops[-1][0]["turn_id"]
-        # Restituisci tutte le ops del medesimo turno, in ordine di esecuzione
-        same_turn = [(p, d) for (p, d) in completed_ops if p["turn_id"] == latest_turn_id]
-        same_turn.sort(key=lambda pd: pd[1]["ts"])
+        same_turn = [
+            (pending, done)
+            for (pending, _completion, done) in completed_ops
+            if pending["turn_id"] == latest_turn_id and done is not None
+        ]
+        same_turn.sort(key=lambda item: item[1]["ts"])
         return [
             {**pending, "results": done["results"]}
             for (pending, done) in same_turn
@@ -154,7 +225,8 @@ class UndoLog:
         return [
             op["pending"]
             for op in ops.values()
-            if "pending" in op and "done" not in op and "undone" not in op
+            if ("pending" in op and "done" not in op
+                and "closed" not in op and "undone" not in op)
         ]
 
     def open_ops_for_executor(self, executor_name: str) -> list[dict]:

@@ -294,6 +294,10 @@ letta come contratto del modulo e non come garanzia dell'intero sistema.
 La reversibilit&agrave; &egrave; un contratto distinto dalla matrice di autonomia. Un executor conforme allo standard che dichiara <code>revertible = true</code> deve indicare un <code>reverse_pattern</code>. Il runtime conserva i dati di esecuzione necessari e <code>undo_last_turn</code> prova ad applicare il percorso inverso, riferendo anche gli eventuali fallimenti.
 </p>
 
+<p>
+Per un executor con rami diversi, il manifest firmato pu&ograve; inoltre dichiarare <code>[undo] outcome = &quot;per_execution&quot;</code>. La singola esecuzione restituisce allora uno fra <code>reversible</code>, <code>no_effect</code> e <code>irreversible</code>. Solo il primo porta una ricevuta al percorso inverso; gli altri chiudono comunque il turno e impediscono che un comando di annullamento raggiunga per errore un turno pi&ugrave; vecchio. Il runtime non deduce mai l'inverso dal nome dell'executor. Stato precedente sensibile, come un cookie di sessione, resta cifrato fuori dal journal; nel journal compaiono soltanto handle opachi e impronte.
+</p>
+
 <p>Il catalogo chiuso in <code>runtime/reverse_patterns.py</code> comprende, fra gli altri:</p>
 
 <ul>

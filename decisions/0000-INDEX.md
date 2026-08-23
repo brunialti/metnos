@@ -141,3 +141,7 @@ for format and discipline; see `_template.md` for the template.
 > Latest: `0216` adopts exact, general receipts for effective membership
 > deltas; container, mixed and sensitive undo branches remain specified but
 > unimplemented pending explicit approval.
+> Latest: `0217` adds a signed per-execution undo outcome, exact compare-and-
+> swap receipts, encrypted actor-bound secret backups and kernel-bound Windows
+> process stop; persistent startup and local directory deletion remain outside
+> undo until they have equally strong storage identities.

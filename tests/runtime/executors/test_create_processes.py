@@ -17,7 +17,22 @@ def windows(monkeypatch):
         calls.append(arguments)
         if arguments[0] == "query":
             return {"ok": True, "aligned": True}
-        return {"ok": True, "aligned": True, "detail": "started_session"}
+        if arguments[0] == "stop":
+            return {"ok": True, "aligned": True,
+                    "payload": {"stopped": True}}
+        lifetime = arguments[-1]
+        return {
+            "ok": True,
+            "aligned": True,
+            "payload": ({
+                "created_process": True,
+                "process": {"pid": 4242, "creation_time": 133700000000000000},
+                "persistent_registration_changed": False,
+            } if lifetime == "session" else {
+                "created_process": True,
+                "persistent_registration_changed": True,
+            }),
+        }
 
     monkeypatch.setattr(create_processes.sys, "platform", "win32")
     monkeypatch.setattr(create_processes, "_helper_call", helper)
@@ -73,6 +88,54 @@ def test_approved_choice_starts_only_the_exact_package(windows, lifetime):
         "start", "--package-id", "Vendor.Sensor", "--lifetime", lifetime,
     )]
     assert result["results"][0]["package_id"] == "Vendor.Sensor"
+    assert result["_undo"]["outcome"] == (
+        "reversible" if lifetime == "session" else "irreversible")
+
+
+def test_session_undo_stops_only_exact_receipt_identity(windows):
+    forward = create_processes.invoke(
+        _approved(["Vendor.Sensor"], "session"))
+
+    result = create_processes.reverse({}, forward)
+
+    assert result["ok"] is True
+    assert result["results"] == [{
+        "package_id": "Vendor.Sensor",
+        "pid": 4242,
+        "ok": True,
+        "stopped": True,
+    }]
+    assert windows[-1] == (
+        "stop", "--package-id", "Vendor.Sensor",
+        "--pid", "4242", "--creation-time", "133700000000000000",
+    )
+
+
+def test_already_running_session_is_no_effect(windows, monkeypatch):
+    monkeypatch.setattr(create_processes, "_helper_call", lambda *_: {
+        "ok": True, "aligned": True,
+        "payload": {"created_process": False,
+                    "persistent_registration_changed": False},
+    })
+
+    result = create_processes.invoke(
+        _approved(["Vendor.Sensor"], "session"))
+
+    assert result["_undo"] == {"outcome": "no_effect"}
+    assert result["results"][0]["already_running"] is True
+
+
+def test_session_without_strong_process_identity_fails_closed(windows, monkeypatch):
+    monkeypatch.setattr(create_processes, "_helper_call", lambda *_: {
+        "ok": True, "aligned": True,
+        "payload": {"created_process": True},
+    })
+
+    result = create_processes.invoke(
+        _approved(["Vendor.Sensor"], "session"))
+
+    assert result["ok"] is False
+    assert result["_undo"] == {"outcome": "irreversible"}
 
 
 def test_consent_is_bound_to_package_and_lifetime(windows):
@@ -185,7 +248,9 @@ def test_vector_result_preserves_success_and_failure(windows, monkeypatch):
         package_id = arguments[2]
         if package_id == "Vendor.Bad":
             return {"ok": False, "error_code": "package_start_failed"}
-        return {"ok": True, "aligned": True, "detail": "already_running"}
+        return {"ok": True, "aligned": True,
+                "payload": {"created_process": False,
+                            "persistent_registration_changed": False}}
 
     monkeypatch.setattr(create_processes, "_helper_call", helper)
     packages = ["Vendor.Good", "Vendor.Bad"]
@@ -216,6 +281,9 @@ def test_new_message_keys_exist_in_both_languages(monkeypatch):
         "ERR_CREATE_PROCESSES_PROCESS_PROBE_FAILED",
         "ERR_CREATE_PROCESSES_START_FAILED",
         "ERR_CREATE_PROCESSES_CONSENT_INVALID",
+        "ERR_CREATE_PROCESSES_STOP_FAILED",
+        "ERR_CREATE_PROCESSES_STOP_IDENTITY",
+        "ERR_CREATE_PROCESSES_STOP_UNVERIFIED",
     ]
     for language in ("it", "en"):
         monkeypatch.setenv("METNOS_LANG", language)

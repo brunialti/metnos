@@ -187,6 +187,11 @@ fn execute_action(action: &Action, appaiamento: &pairing::Pairing) -> service::O
             package_id,
             lifetime,
         } => crate::win_activation::start(package_id, *lifetime),
+        Action::ManagedStop {
+            package_id,
+            pid,
+            creation_time,
+        } => crate::win_activation::stop(package_id, *pid, *creation_time),
         Action::ManagedProvider {
             package_id,
             interface,

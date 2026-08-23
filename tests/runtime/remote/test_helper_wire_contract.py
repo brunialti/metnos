@@ -39,6 +39,10 @@ _ATTESA = re.compile(r'"(install\\u\{1f\}winget\\u\{1f\}[^"]+)"')
 _START_ATTESO = re.compile(
     r'"(managed-start\\u\{1f\}winget\\u\{1f\}LibreHardwareMonitor'
     r'\.LibreHardwareMonitor\\u\{1f\}session\\u\{1f\}[^"]+)"')
+_STOP_ATTESO = re.compile(
+    r'"(managed-stop\\u\{1f\}winget\\u\{1f\}LibreHardwareMonitor'
+    r'\.LibreHardwareMonitor\\u\{1f\}4242\\u\{1f\}'
+    r'133700000000000000\\u\{1f\}[^\"]+)"')
 _PROVIDER_GRANT_TEMPLATE = re.compile(
     r'"(managed-provider-grant(?:\\u\{1f\}\{\}){10})"')
 _PROVIDER_REQUEST_TEMPLATE = re.compile(
@@ -88,6 +92,27 @@ def test_il_corpo_managed_start_combacia_senza_aggiungere_un_verbo():
         bodies.append(found[0])
     assert bodies[0] == bodies[1]
     assert bodies[0].count("u{1f}") == 4
+
+
+def test_il_corpo_managed_stop_combacia_e_lega_lidentita_kernel():
+    bodies = []
+    for path in (AIUTANTE, CLIENT):
+        found = _STOP_ATTESO.findall(path.read_text(encoding="utf-8"))
+        assert len(found) == 1, (path, found)
+        bodies.append(found[0])
+    assert bodies[0] == bodies[1]
+    assert bodies[0].count("u{1f}") == 5
+
+    helper_source = AIUTANTE.read_text(encoding="utf-8")
+    shape = re.search(
+        r"pub struct ManagedStopRequest \{(.*?)\n\}", helper_source, re.S)
+    assert shape
+    fields = set(re.findall(r"pub (\w+):", shape.group(1)))
+    assert fields == {
+        "source", "package_id", "pid", "creation_time",
+        "idempotency_key", "signature",
+    }
+    assert fields.isdisjoint({"path", "command", "args", "process_name"})
 
 
 @pytest.mark.parametrize(

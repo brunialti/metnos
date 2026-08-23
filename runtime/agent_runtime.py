@@ -3211,36 +3211,43 @@ def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
     Ritorna op_id o None."""
     if not getattr(executor, "revertible", False):
         return None
-    if executor.name == "undo_last_turn":
-        return None  # §4.5: mai undo dell'undo
     try:
         import uuid as _uuid
         _op = _uuid.uuid4().hex
+        _undo_contract = getattr(executor, "undo", None) or {}
+        _outcome_contract = str(
+            _undo_contract.get("outcome") or ""
+        ) if isinstance(_undo_contract, dict) else ""
         UndoLog().append_pending(
             _op, turn_id or "", executor.name, args, plan={},
-            actor=actor or "host", channel=channel or "", device=device)
+            actor=actor or "host", channel=channel or "", device=device,
+            outcome_contract=_outcome_contract)
         return _op
     except Exception as _ue:
         log.warning("[undo] append_pending fallita (fail-open): %r", _ue)
         return None
 
 
-def _undo_done(op_id, obs):
-    """Chiude il record undo quando l'op ha REALMENTE mutato qualcosa.
+def _undo_done(op_id, obs, *, executor=None):
+    """Chiude il record undo secondo il contratto firmato dell'esecuzione.
 
     Bug live 981ddc9f (6/7): delete di 489 con 1 rifiuto (desktop.ini system
     file) → ok=False MA ok_count=488 e results[] pieni di blob. Gating su
     `ok` puro lasciava l'op ORFANA: 488 file cancellati e non annullabili
-    (§2.8). Esito PARZIALE = comunque done (il reverse ribalta i results
-    presenti); pending senza done resta = crashed/0-effetto."""
+    (§2.8). Gli executor incondizionatamente annullabili conservano questa
+    regola; quelli condizionali dichiarano l'esito nella ricevuta. Anche
+    ``no_effect`` chiude il pending e non viene scambiato per un crash."""
     if not op_id or not isinstance(obs, dict):
         return
-    mutated = bool(obs.get("ok")) or bool(obs.get("ok_count")) \
-        or bool(obs.get("results"))
-    if not mutated:
-        return
     try:
-        UndoLog().append_done(op_id, obs)
+        _undo_contract = getattr(executor, "undo", None) or {}
+        _outcome_contract = str(
+            _undo_contract.get("outcome") or ""
+        ) if isinstance(_undo_contract, dict) else ""
+        outcome = UndoLog().append_completion(
+            op_id, obs, outcome_contract=_outcome_contract)
+        if outcome == "invalid":
+            log.error("[undo] ricevuta per-esecuzione non valida")
     except Exception as _ue:
         log.warning("[undo] append_done fallita (fail-open): %r", _ue)
 
@@ -3492,7 +3499,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:
                 _obs.setdefault("_ran_on_device", target_device)
-            _undo_done(_undo_op, _obs)
+            _undo_done(_undo_op, _obs, executor=executor)
             return _obs
 
     # Runtime-resolved values are server-owned observations or registries.
@@ -3685,7 +3692,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             )
     except Exception:
         pass
-    _undo_done(_undo_op, parsed_result)
+    _undo_done(_undo_op, parsed_result, executor=executor)
     return parsed_result
 
 

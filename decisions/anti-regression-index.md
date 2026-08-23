@@ -282,6 +282,23 @@
   membership registrano prima/dopo e il delta effettivo; l'inverso applica
   soltanto quel delta senza sovrascrivere variazioni estranee. Gate:
   `tests/runtime/backends/test_exact_undo_receipts.py`.
+- **Esito undo per singola esecuzione** (ADR 0217): un manifest firmato puo'
+  dichiarare `undo.outcome=per_execution`; il risultato deve essere
+  `reversible|no_effect|irreversible`. Il runtime non conosce nomi di executor
+  e una ricevuta assente/malformata fallisce chiusa. Anche un turno chiuso
+  senza ricevuta resta barriera e il secondo undo non raggiunge turni piu'
+  vecchi. Gate: `test_undo_execution_outcome.py`.
+- **Stato esatto e segreti fuori dal journal** (ADR 0217): snapshot generici
+  prima/dopo si ripristinano solo con compare-and-swap; lo stato sensibile usa
+  `protected_undo`, cifrato, legato ad attore/namespace e alla retention undo.
+  `undo.jsonl` conserva soltanto handle opaco e digest. Gate:
+  `test_set_signatures_undo.py`, `test_protected_undo.py` e
+  `test_login_urls.py`.
+- **Stop Windows per identita' kernel** (ADR 0217): il protocollo tipizzato
+  lega package, PID e creation-time; nessuno stop per nome, path o PID solo.
+  La persistenza resta irreversibile finche' la registrazione di startup non
+  ha identita' equivalente. Gate: prove Rust, cross-build Windows,
+  `test_helper_wire_contract.py` e `test_create_processes.py`.
 - **Scrittore undo al choke-point**: `agent_runtime._undo_pending/_undo_done` in `invoke_executor` (pending pre-exec, done post-ok, campo `device`) — la regressione af6c7b8 (writer nel planner cancellato) non può ripetersi: `test_undo_chokepoint.py` fa il round-trip reale.
 - **Scrittore uso-executor al choke-point**: `executor_scheduler.ExecutorScheduler.invoke` → `executor_aging.record_invocation` — l'ALTRO scrittore che af6c7b8 aveva cancellato col planner, rimasto morto un mese (124 righe su 193 senza `last_used_at`, mentre aging e change_observer decidevano su quei numeri). Sta nello scheduler perché è l'unico punto attraversato da sottoprocesso, remoto, builtin e onda parallela: nell'anello del motore non passano né i turni serviti da L0 né i builtin. Discriminante `code_path` (gli slot interni del Tutor non hanno ciclo di vita), niente registrazione sotto pytest; `test_executor_usage_recording.py`.
 - **Reverse sullo stesso host §2.9**: record con `device` → `undo_last_turn._reverse_on_device` accoda le chiamate-reverse AL device (`reverse_patterns.build_remote_reverse_calls`, deterministico); mai apply_patterns sul filesystem del server per op remote.

@@ -149,7 +149,7 @@ def _approval_dialog(package_ids: list[str]) -> dict:
     }
 
 
-def _helper_error(package_id: str, answer: dict | None) -> dict:
+def _helper_error(package_id: str, answer: dict | None, *, stopping: bool = False) -> dict:
     if answer is None:
         return {
             "package_id": package_id,
@@ -175,7 +175,12 @@ def _helper_error(package_id: str, answer: dict | None) -> dict:
             "error_class": "capability_missing",
         }
     code = str(answer.get("error_code") or "package_start_failed")
-    message_key = {
+    message_key = ({
+        "package_process_identity_mismatch": "ERR_CREATE_PROCESSES_STOP_IDENTITY",
+        "package_stop_failed": "ERR_CREATE_PROCESSES_STOP_FAILED",
+        "package_stop_unverified": "ERR_CREATE_PROCESSES_STOP_UNVERIFIED",
+        "package_process_probe_failed": "ERR_CREATE_PROCESSES_STOP_FAILED",
+    } if stopping else {
         "package_not_registered": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
         "package_operation_failed": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
         "package_start_unsupported": "ERR_CREATE_PROCESSES_UNSUPPORTED",
@@ -188,7 +193,9 @@ def _helper_error(package_id: str, answer: dict | None) -> dict:
         "package_persistence_failed": "ERR_CREATE_PROCESSES_PERSISTENCE_FAILED",
         "package_start_failed": "ERR_CREATE_PROCESSES_START_FAILED",
         "package_start_unverified": "ERR_CREATE_PROCESSES_START_UNVERIFIED",
-    }.get(code, "ERR_CREATE_PROCESSES_START_FAILED")
+    }).get(code, (
+        "ERR_CREATE_PROCESSES_STOP_FAILED"
+        if stopping else "ERR_CREATE_PROCESSES_START_FAILED"))
     return {
         "package_id": package_id,
         "ok": False,
@@ -286,7 +293,8 @@ def invoke(args: dict) -> dict:
             error_class="policy_denied",
         )
 
-    results, failed = [], []
+    results, failed, process_receipts = [], [], []
+    untracked_mutation = False
     for package_id in package_ids:
         answer = _helper_call(
             "start",
@@ -296,16 +304,42 @@ def invoke(args: dict) -> dict:
             lifetime,
         )
         if answer and answer.get("ok") and answer.get("aligned") is not False:
-            detail = str(answer.get("detail") or "")
+            payload = answer.get("payload")
+            payload = payload if isinstance(payload, dict) else {}
+            created_process = payload.get("created_process") is True
+            if lifetime == "session" and created_process:
+                process = payload.get("process")
+                pid = process.get("pid") if isinstance(process, dict) else None
+                creation_time = (
+                    process.get("creation_time") if isinstance(process, dict)
+                    else None)
+                if (not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0
+                        or not isinstance(creation_time, int)
+                        or isinstance(creation_time, bool) or creation_time <= 0):
+                    untracked_mutation = True
+                    failed.append(_helper_error(package_id, {
+                        "error_code": "managed_start_receipt_invalid"}))
+                    continue
+                process_receipts.append({
+                    "package_id": package_id,
+                    "pid": pid,
+                    "creation_time": creation_time,
+                })
             results.append({
                 "package_id": package_id,
                 "ok": True,
                 "lifetime": lifetime,
-                "already_running": detail.startswith("already_running"),
+                "already_running": not created_process,
             })
         else:
             failed.append(_helper_error(package_id, answer))
 
+    outcome = (
+        "irreversible" if untracked_mutation
+        else "irreversible" if lifetime == "persistent" and results
+        else "reversible" if process_receipts
+        else "no_effect"
+    )
     return {
         "ok": not failed,
         "started": bool(results),
@@ -315,11 +349,71 @@ def invoke(args: dict) -> dict:
         "ok_count": len(results),
         "fail_count": len(failed),
         "partial": bool(results and failed),
+        "_undo": {
+            "outcome": outcome,
+            **({"processes": process_receipts}
+               if outcome == "reversible" else {}),
+        },
         **({
             "error": failed[0]["error"],
             "error_code": failed[0]["error_code"],
             "error_class": failed[0]["error_class"],
         } if failed else {}),
+    }
+
+
+def reverse(_plan: dict, results: dict) -> dict:
+    metadata = results.get("_undo") if isinstance(results, dict) else None
+    receipts = metadata.get("processes") if isinstance(metadata, dict) else None
+    if (not isinstance(receipts, list) or not receipts
+            or len(receipts) > _MAX_PACKAGES):
+        return {"ok": False, "results": [], "failed": [],
+                "ok_count": 0, "fail_count": 1,
+                "error_class": "invalid_receipt"}
+
+    reversed_results, failed = [], []
+    seen = set()
+    for receipt in reversed(receipts):
+        if not isinstance(receipt, dict):
+            failed.append({"ok": False, "error_class": "invalid_receipt"})
+            continue
+        package_id = receipt.get("package_id")
+        pid = receipt.get("pid")
+        creation_time = receipt.get("creation_time")
+        identity = (package_id, pid, creation_time)
+        if (not isinstance(package_id, str)
+                or not _PACKAGE_ID.fullmatch(package_id)
+                or not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0
+                or not isinstance(creation_time, int)
+                or isinstance(creation_time, bool) or creation_time <= 0
+                or identity in seen):
+            failed.append({"package_id": package_id, "ok": False,
+                           "error_class": "invalid_receipt"})
+            continue
+        seen.add(identity)
+        answer = _helper_call(
+            "stop", "--package-id", package_id,
+            "--pid", str(pid), "--creation-time", str(creation_time),
+        )
+        if answer and answer.get("ok") and answer.get("aligned") is not False:
+            payload = answer.get("payload")
+            stopped = (payload.get("stopped") is True
+                       if isinstance(payload, dict) else False)
+            reversed_results.append({
+                "package_id": package_id,
+                "pid": pid,
+                "ok": True,
+                "stopped": stopped,
+            })
+        else:
+            failed.append(_helper_error(package_id, answer, stopping=True))
+    return {
+        "ok": not failed,
+        "results": reversed_results,
+        "failed": failed,
+        "ok_count": len(reversed_results),
+        "fail_count": len(failed),
+        "partial": bool(reversed_results and failed),
     }
 
 

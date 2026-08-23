@@ -19,8 +19,9 @@ usano nomi, query, destinatari o testo naturale per ritrovare il bersaglio.
 Un elemento era classificato nella categoria sbagliata: `consult_frontier` non
 lascia stato utente da ripristinare. Il suo manifest ora dichiara l'effetto
 `read_only` e il generatore usa questa proprieta' firmata, oltre alla tassonomia
-canonica, per assegnare `not_applicable`. Dopo il primo lotto implementato il
-censimento diventa 19 `undoable`, 17 `not_undoable` e 49 `not_applicable`.
+canonica, per assegnare `not_applicable`. Dopo il contratto per-esecuzione di
+ADR 0217 il censimento e' 23 `undoable`, 13 `not_undoable` e 49
+`not_applicable`.
 
 Una omissione tecnica e' stata chiusa senza introdurre casi speciali nel
 broker:
@@ -29,22 +30,29 @@ broker:
 |---|---|---|
 | `set_messages` | lettura prima/dopo e delta canonico dei membri effettivamente aggiunti/rimossi | implementato e provato; il reverse applica soltanto il delta, preservando variazioni estranee |
 
-Cinque casi richiedono una scelta architetturale prima del codice. Analisi e
-specifiche sono in `internal/design/undo-redesign-spec-20260823.md`:
+Quattro casi sono stati riprogettati con il contratto generale per-esecuzione.
+Analisi e specifiche sono in
+`internal/design/undo-redesign-spec-20260823.md`:
 
-| Executor | Perche' non basta una compensazione | Prerequisito |
+| Executor | Perche' non basta una compensazione | Esito implementato |
 |---|---|---|
-| `open_sites` | il batch puo' contenere sessioni nuove e sessioni riusate, che non devono essere chiuse | contratto generale di ricevuta per-esecuzione e stato terminale `no_effect` |
-| `delete_dirs` | Drive ha un cestino esatto; nel sandbox locale target e history sono mount distinti e il rename atomico fallisce con `EXDEV` | contratto per rami misti e scelta fra cestino per-filesystem indicizzato o archivio a due fasi riprendibile |
-| `set_signatures` | il ramo `forbidden` non puo' essere cancellato per Legge 1, mentre altri rami avrebbero uno snapshot ripristinabile | scegliere annullabilita' condizionale con compare-and-swap oppure mantenere tutto l'executor non annullabile |
-| `create_processes` | fermare per nome potrebbe colpire un processo preesistente e la persistenza all'avvio e' un secondo stato | il client deve restituire identita' di processo/registrazione create e offrire uno stop autenticato su quelle identita' |
-| `login_urls` | sovrascrive un cookie jar 0600; copiarlo nel journal duplicherebbe un segreto | snapshot protetto fuori dal journal, con cancellazione o ripristino atomico del file esatto |
+| `open_sites` | il batch puo' contenere sessioni nuove e sessioni riusate, che non devono essere chiuse | ricevuta dei soli ID creati; soli riusi = `no_effect` |
+| `set_signatures` | il ramo `forbidden` non puo' essere cancellato per Legge 1 | snapshot completo prima/dopo, compare-and-swap; `forbidden` = `irreversible` |
+| `create_processes` | fermare per nome potrebbe colpire un processo preesistente e la persistenza all'avvio e' un secondo stato | sessione nuova legata a PID+creation-time; persistenza ancora `irreversible` |
+| `login_urls` | sovrascrive un cookie jar 0600; copiarlo nel journal duplicherebbe un segreto | backup cifrato actor-bound fuori dal journal e compare-and-swap per digest |
+
+`delete_dirs` resta l'unico caso aperto: Drive ha un cestino esatto, ma nel
+sandbox locale target e history sono mount distinti e il rename atomico
+fallisce con `EXDEV`. Serve scegliere fra cestino per-filesystem indicizzato e
+archivio a due fasi riprendibile; nessuna copia seguita da `rmtree` viene
+presentata come rollback.
 
 `set_credentials` e `set_persons` restano intenzionalmente non annullabili per
 decisione dell'utente: segreti e dati biometrici si cancellano soltanto con
 un'azione esplicita, mai tramite il comando generico di undo.
 
-I dodici restanti sono correttamente `not_undoable` con il contratto e i
+I dodici casi elencati sotto, insieme a `delete_dirs`, sono correttamente
+`not_undoable` con il contratto e i
 provider o le decisioni di prodotto attuali:
 
 | Executor | Motivo |
@@ -62,15 +70,13 @@ provider o le decisioni di prodotto attuali:
 | `undo_last_turn` | annulla un turno; il redo non e' implementato e non e' equivalente a ripetere le azioni originali |
 | `write_images_google_photos` | la Library API espone creazione/lettura/aggiornamento degli elementi creati dall'app, ma non un metodo di eliminazione |
 
-## Ordine raccomandato
+## Stato di chiusura
 
-1. Completare verifica, documentazione pubblica e deploy di `set_messages`.
-2. Decidere il contratto generale per rami misti prima di modificare
-   `open_sites` o `set_signatures`.
-3. Valutare separatamente lo storage locale di `delete_dirs`, l'estensione del
-   protocollo Windows per `create_processes` e la retention cifrata per
-   `login_urls`.
-4. Non progettare undo automatico per `set_credentials` o `set_persons`.
+Il contratto comune, `open_sites`, `set_signatures`, la sessione di
+`create_processes` e `login_urls` sono implementati e provati automaticamente.
+Restano la prova reale Windows dello stop tipizzato e la decisione di storage
+per `delete_dirs`. Non si progetta undo automatico per `set_credentials` o
+`set_persons`.
 
 Ogni promozione richiede test di round-trip reale tramite `undo_last_turn`,
 idempotenza del secondo undo, fallimento onesto se la ricevuta e' incompleta e

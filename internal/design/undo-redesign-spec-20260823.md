@@ -1,6 +1,7 @@
-# Specifica proposta per gli annullamenti che richiedono riprogettazione
+# Specifica degli annullamenti che richiedono riprogettazione
 
-Stato: **analisi e specifica; nessuna implementazione autorizzata**.
+Stato: **contratto comune e quattro executor implementati secondo ADR 0217;
+`delete_dirs` resta in progettazione**.
 
 Data: 23 agosto 2026.
 
@@ -18,8 +19,8 @@ domini, label o percorsi speciali. Per i rami misti serve un contratto firmato
 generale di ricevuta per-esecuzione: un ramo mutante e reversibile consegna la
 ricevuta; un ramo riuscito senza effetto viene chiuso come `no_effect`; un ramo
 intenzionalmente irreversibile non viene presentato come annullabile. Questo
-contratto e' una modifica architetturale e non va implementato senza una
-decisione esplicita.
+contratto e' ora parte dello standard firmato: il runtime interpreta
+esclusivamente l'esito generico e non conosce gli executor che lo usano.
 
 ## `open_sites`
 
@@ -45,7 +46,14 @@ URL, titolo o label.
 
 Test nuovi/riusati/misti, owner differente, sessione gia' scaduta, ricevuta
 vuota o alterata, doppio undo e prova reale con apertura e chiusura dello stesso
-ID. Nessun cambiamento prima dell'approvazione del contratto per rami misti.
+ID.
+
+### Implementazione
+
+`open_sites` emette `created` per ogni successo e registra soltanto gli ID
+creati. Un batch di soli riusi chiude il turno come `no_effect`; il reverse
+chiude gli ID esatti con l'owner autenticato. I test automatici coprono nuovo,
+riuso e batch misto.
 
 ## `delete_dirs`
 
@@ -110,8 +118,14 @@ rami misti; in alternativa l'intero executor resta non annullabile.
 
 Round-trip insert/update/delete, conflitto concorrente, riga seed, contatori e
 timestamp, `forbidden` mai cancellato, ricevuta incompleta, doppio undo e
-transazione interrotta. Nessun codice prima della scelta fra annullabilita'
-condizionale e permanenza dell'intero executor fra i non annullabili.
+transazione interrotta.
+
+### Implementazione
+
+E' stata scelta l'annullabilita' condizionale. `set_signatures` acquisisce una
+transazione immediata, registra la riga completa prima/dopo e ripristina con
+compare-and-swap. Creare `forbidden` produce `irreversible`; una riga
+`forbidden` esistente non viene modificata ne' cancellata.
 
 ## `create_processes`
 
@@ -129,8 +143,9 @@ registrazione di avvio automatico, distinta dal processo corrente.
 L'helper autenticato deve esporre un'operazione tipizzata `start` che restituisca
 una ricevuta per pacchetto con almeno:
 
-- `created_process=false` per un'istanza gia' attiva, oppure un handle opaco
-  firmato che leghi PID, creation-time del kernel e pacchetto risolto;
+- `created_process=false` per un'istanza gia' attiva, oppure PID e
+  creation-time del kernel legati al pacchetto risolto; la richiesta inversa
+  firma questa identita' completa;
 - `created_startup_registration=false` oppure l'ID opaco della registrazione
   persistente appena creata;
 - versione del protocollo helper e identita' del dispositivo.
@@ -146,8 +161,17 @@ ammessi nomi processo, path, comandi o ricerca per package nel reverse.
 
 Gia' attivo, nuova istanza, PID riusato, uscita spontanea, sessione e
 persistent, registrazione preesistente, batch parziale, restart client,
-ownership dispositivo, doppio undo e test reale Windows. Questa e' una
-modifica del protocollo helper/Rust e richiede approvazione separata.
+ownership dispositivo, doppio undo e test reale Windows.
+
+### Implementazione
+
+Il protocollo helper 4 e le build client/helper 0.2.56 aggiungono lo stop
+tipizzato e firmato. L'helper riapre l'oggetto processo, confronta percorso
+canonico e creation-time prima di terminarlo. Sessione nuova e' reversibile,
+istanza gia' attiva e' `no_effect`; `persistent` resta `irreversible` perche'
+la registrazione di startup non ha ancora un'identita' verificabile analoga.
+Test Rust, contratto wire e cross-build Windows sono verdi; la prova su una
+macchina Windows reale resta un gate di rilascio.
 
 ## `login_urls`
 
@@ -161,7 +185,8 @@ segreto di sessione e non puo' essere duplicato nel JSONL di undo.
 
 ### Contratto proposto
 
-Prima del login il backend deve creare, nello store protetto dell'attore, un
+Immediatamente prima della sostituzione il backend deve creare, nello store
+protetto dell'attore, un
 backup opaco cifrato o una sostituzione atomica del file precedente. Il journal
 conserva soltanto un handle non predicibile, il digest del file `after`, il path
 canonico gia' autorizzato e l'esito `created|replaced|no_effect`. Il reverse
@@ -175,8 +200,18 @@ credenziale entra nel journal, nei log o nell'output.
 
 Cache hit, creazione, sostituzione, jar modificato dopo il login, crash prima e
 dopo rename, permessi 0600, isolamento utenti, scadenza/purge, ricevuta forgiata,
-doppio undo e login reale controllato. Prima del codice vanno approvati TTL e
-politica di retention del backup protetto.
+doppio undo e login reale controllato. La retention coincide con
+`METNOS_UNDO_RETENTION_DAYS` (30 giorni di default) e non introduce una seconda
+politica temporale.
+
+### Implementazione
+
+`protected_undo` cifra backup generici con chiave derivata e separata per
+dominio, handle casuale, binding attore/namespace, mode privati, scadenza e
+purge. `login_urls` salva atomicamente, registra soltanto handle e digest e
+ripristina soltanto se lo stato corrente coincide con `after`. I test coprono
+cache hit, creazione, sostituzione, ripristino esatto, conflitto concorrente,
+binding e purge.
 
 ## Casi esclusi per decisione di prodotto
 

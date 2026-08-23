@@ -106,6 +106,15 @@ enum HelperCmd {
         #[arg(long, value_enum)]
         lifetime: HelperStartLifetime,
     },
+    /// Stop only the exact process identified by a managed-start receipt.
+    Stop {
+        #[arg(long)]
+        package_id: String,
+        #[arg(long)]
+        pid: u32,
+        #[arg(long)]
+        creation_time: u64,
+    },
     /// Bring the helper onto this machine and install it. Windows asks for
     /// confirmation once; from then on nothing asks again.
     Setup,
@@ -383,15 +392,22 @@ fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
         {
             return Ok(helper_state);
         }
-        let (operazione, package_id, versione, avvio) = match what {
+        let richiesta = match what {
             HelperCmd::Check => unreachable!("check returned after the version handshake"),
-            HelperCmd::Query { package_id } => (Some(Operation::Query), package_id, None, None),
+            HelperCmd::Query { package_id } => {
+                helper_client::build_request(id, Operation::Query, &package_id, None)
+            }
             HelperCmd::Install {
                 package_id,
                 version,
-            } => (Some(Operation::Install), package_id, version, None),
+            } => helper_client::build_request(
+                id,
+                Operation::Install,
+                &package_id,
+                version.as_deref(),
+            ),
             HelperCmd::Uninstall { package_id } => {
-                (Some(Operation::Uninstall), package_id, None, None)
+                helper_client::build_request(id, Operation::Uninstall, &package_id, None)
             }
             HelperCmd::Start {
                 package_id,
@@ -401,8 +417,13 @@ fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
                     HelperStartLifetime::Session => helper_client::StartLifetime::Session,
                     HelperStartLifetime::Persistent => helper_client::StartLifetime::Persistent,
                 };
-                (None, package_id, None, Some(lifetime))
+                helper_client::build_start_request(id, &package_id, lifetime)
             }
+            HelperCmd::Stop {
+                package_id,
+                pid,
+                creation_time,
+            } => helper_client::build_stop_request(id, &package_id, pid, creation_time),
             // `setup` non e' un'operazione DELL'aiutante: e' come l'aiutante
             // arriva. Lo smistamento lo prende prima, e questo ramo esiste
             // perche' il compilatore non lo sappia per caso: se domani
@@ -411,15 +432,8 @@ fn run_helper(what: HelperCmd, id: &identity::Identity) -> serde_json::Value {
                 return Ok(serde_json::json!({
                     "ok": false, "error_code": "wrong_entry_point",
                     "detail": "helper setup is installed, not requested over the channel"
-                }))
+                }));
             }
-        };
-        let richiesta = match (operazione, avvio) {
-            (Some(operation), None) => {
-                helper_client::build_request(id, operation, &package_id, versione.as_deref())
-            }
-            (None, Some(lifetime)) => helper_client::build_start_request(id, &package_id, lifetime),
-            _ => unreachable!("helper request shape is closed"),
         }
         // A request that cannot be composed never reaches the channel.
         .map_err(|_| helper_client::ChannelRefusal::NotAvailable)?;

@@ -78,3 +78,45 @@ def test_una_sessione_aperta_qui_viene_chiusa(open_sites, monkeypatch) -> None:
     open_sites.invoke({"urls": ["https://a.test/", "https://b.test/"]})
 
     assert chiuse == ["aperta-ora"]
+
+
+def test_undo_chiude_solo_le_sessioni_create(open_sites, monkeypatch) -> None:
+    esiti = iter([
+        {"ok": True, "session_id": "preesistente",
+         "url": "https://a.test/", "title": "A", "reused": True},
+        {"ok": True, "session_id": "creata-qui",
+         "url": "https://b.test/", "title": "B"},
+    ])
+    chiuse: list[dict] = []
+    monkeypatch.setattr(open_sites.session_client, "session_open",
+                        lambda **_kw: next(esiti))
+    monkeypatch.setattr(
+        open_sites.session_client, "session_close",
+        lambda **kw: chiuse.append(dict(kw)) or {
+            "ok": True, "closed": [kw["session_id"]], "count": 1,
+        })
+    monkeypatch.setenv("METNOS_ACTOR", "owner-test")
+
+    forward = open_sites.invoke({
+        "urls": ["https://a.test/", "https://b.test/"],
+    })
+    reverse = open_sites.reverse({}, forward)
+
+    assert forward["_undo"] == {
+        "outcome": "reversible", "session_ids": ["creata-qui"],
+    }
+    assert [entry["created"] for entry in forward["entries"]] == [False, True]
+    assert reverse["ok"] is True and reverse["ok_count"] == 1
+    assert chiuse == [{"session_id": "creata-qui", "owner": "owner-test"}]
+
+
+def test_solo_riuso_e_no_effect(open_sites, monkeypatch) -> None:
+    monkeypatch.setattr(open_sites.session_client, "session_open", lambda **kw: {
+        "ok": True, "session_id": "preesistente", "url": kw["url"],
+        "title": "A", "reused": True,
+    })
+
+    result = open_sites.invoke({"urls": ["https://a.test/"]})
+
+    assert result["entries"][0]["created"] is False
+    assert result["_undo"] == {"outcome": "no_effect"}
