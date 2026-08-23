@@ -1,15 +1,6 @@
 # RM-0005 — Multilinguismo full e auto-localizzazione dell’istanza
 
-| Campo | Valore |
-|---|---|
-| Stato | `in_progress`; F0 e il tratto verticale del vocabolario azioni implementati |
-| Creazione | 2026-08-21 |
-| Ultima revisione | 2026-08-23 |
-| Implementazione reale | Pipeline ancora parziale. F0 fornisce autorità firmata e atomica della lingua d'istanza, normalizzazione BCP-47, avvio sicuro e contesto non sostituibile. Il vocabolario azioni è un tratto F2/F3/F6/F8 completo |
-| Decisione di prodotto | La lingua è una proprietà dell’istanza Metnos. Non esistono lingue diverse per utente, canale o turno |
-| Nome pubblico | Multilinguismo per definizione |
-| Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita |
-| Riservatezza | Documento interno. Non va copiato in `docs/`, incluso nel Tutor o pubblicato |
+> `RM-0005` · status `implemented` · defined `2026-08-21` · implemented `2026-08-23` · decisione: una sola lingua firmata per istanza · documento interno, escluso da `docs/` e Tutor
 
 ## 1. Sintesi
 
@@ -60,7 +51,7 @@ chiavi, permessi e semantica.
 
 ## 2. Stato verificato al 23 agosto 2026
 
-### 2.1 Già disponibile
+### 2.1 Implementazione conclusa
 
 - `install/disclaimer.py` accetta un tag BCP-47 strutturalmente valido; conserva
   la scelta accettata e la fase 3 materializza una richiesta firmata,
@@ -68,12 +59,15 @@ chiavi, permessi e semantica.
 - `runtime/config.py` è l'autorità unica di `INSTANCE_LANG`, `REQUESTED_LANG` e
   `LOCALIZATION_STATE`; verifica la firma al riavvio e non blocca l'avvio per
   input o documenti invalidi.
-- `runtime/i18n.py` fornisce catalogo SQLite, hash di provenienza, fallback
-  `lingua dell’istanza → en → it` e marcatura delle traduzioni da completare.
+- `runtime/i18n.py` fornisce catalogo SQLite, hash di provenienza e fallback
+  `lingua dell’istanza → lingua bootstrap`.
 - `runtime/i18n_translator.py` distingue testi user-facing e testi destinati a
   un altro LLM; traduce prompt lunghi, descrizioni dei manifest e messaggi.
-- `deploy/run_prompts_translator.sh` ha tre livelli espliciti: prompt, manifest,
-  database i18n. Il timer dei prompt è previsto alle 04:30.
+- `runtime/i18n_registry.py`, `i18n_materializer.py`, `i18n_pipeline.py` e
+  `i18n_activation.py` implementano inventario, lease, traduzione, review,
+  promozione e attivazione atomica per ogni tag BCP-47 valido.
+- `deploy/run_prompts_translator.sh` avanza un batch limitato dal registro
+  firmato senza elenchi di lingue e senza attivazione implicita.
 - `runtime/jobs/detection_translate_pending.py` traduce il lessico di
   comprensione quando esistono righe pending, con esclusioni corrette per
   regex e concetti che richiedono revisione umana.
@@ -84,23 +78,19 @@ chiavi, permessi e semantica.
   baseline distribuita; una terza lingua segue lo stesso percorso dati.
 - I manifest hanno mappe linguistiche e `manifest.lang_state.json`; le firme
   vengono ricalcolate dopo una modifica.
-- Tutor compila fonti pubbliche e manifest ammessi in un catalogo bilingue.
+- UI e servizi espongono risorse editoriali enumerate; il device è rigenerato
+  soltanto dal seed pubblico ammesso; Tutor viene ricompilato dopo verifica dei
+  manifest e dichiara lo stato `bootstrap_english` fino all’attivazione.
+- Il gate post-promozione rilegge prompt, manifest, messaggi, lessico,
+  documenti pubblici, device e Tutor; la fixture di accettazione dimostra
+  idempotenza, fallback controllato e una terza lingua sintetica.
 
-### 2.2 Gap verificati
+### 2.2 Limiti intenzionali
 
-- La richiesta firmata esiste, ma non esiste ancora il coordinatore F2/F3 che
-  la trasformi in directory, righe DB, lessici, prompt e obiettivi di tutti i
-  traduttori.
-- I traduttori lavorano soprattutto sulle lingue già presenti sotto
-  `runtime/prompts/`; una lingua nuova non viene ancora materializzata in modo
-  completo e idempotente.
-- `runtime/i18n.py` impedisce già a `language_context` di sostituire la lingua
-  d'istanza. Restano da eliminare in F1 i chiamanti ormai inefficaci e le
-  preferenze linguistiche per utente ancora esposte.
-- La traduzione dei prompt e dei manifest non dimostra da sola la copertura
-  del proposer: servono inventario, test di caricamento e prova di equivalenza.
-- La documentazione pubblica bilingue e il catalogo Tutor non sono ancora una
-  destinazione automatica della lingua scelta all’installazione.
+- Regex e forme di consenso restano in `manual_review`: non sono falsamente
+  conteggiate come tradotte.
+- L’attivazione e il riavvio sono amministrativi ed espliciti; il job notturno
+  prepara e verifica, ma non cambia autonomamente la lingua dell’istanza.
 
 ## 3. Contratto di prodotto futuro
 
@@ -122,9 +112,8 @@ istanza usano quel valore.
 ### 3.2 Installazione di una lingua non ancora disponibile
 
 1. L’installer acquisisce e normalizza il codice lingua.
-2. Se il codice è `it` o `en` e la copertura è certificata, lo usa direttamente.
-3. Per ogni altro codice crea una richiesta di localizzazione firmata e
-   idempotente, con stato `requested`.
+2. Se il corpus del codice è già certificato, lo usa direttamente.
+3. Altrimenti crea una richiesta di localizzazione firmata e idempotente.
 4. Imposta `instance_lang=en`, `target_lang=<codice>` e stato operativo
    `bootstrap_english`.
 5. Avvia normalmente Metnos in inglese; nessuna traduzione mancante può
@@ -161,7 +150,7 @@ Queste istruzioni sono operative e devono essere eseguite in piccoli commit,
 senza modifiche speculative. Ogni agente deve leggere i file indicati, eseguire
 i test della fase e riportare i limiti residui.
 
-### F0 — Inventario e gate di istanza
+### F0 — Inventario e gate di istanza · `implemented`
 
 File: `runtime/config.py`, `runtime/i18n.py`, `install/disclaimer.py`.
 
@@ -181,7 +170,7 @@ risolve una sola autorità, rifiuta alterazioni senza fermarsi e il contesto di
 richiesta può soltanto propagare `instance_lang`. Gate:
 `test_instance_language_config.py` e suite i18n completa.
 
-### F1 — Rimozione degli override per utente/turno
+### F1 — Rimozione degli override per utente/turno · `implemented`
 
 File: `runtime/i18n.py`, `runtime/channels/daemon.py`,
 `runtime/recurring_tasks.py`, `runtime/http_routes_agent.py`.
@@ -194,7 +183,7 @@ File: `runtime/i18n.py`, `runtime/channels/daemon.py`,
 - Vietare in lint ogni chiamata a `language_context` con valore proveniente da
   identità, canale o payload HTTP.
 
-### F2 — Registry delle risorse linguistiche
+### F2 — Registry delle risorse linguistiche · `implemented`
 
 Creare `runtime/i18n_registry.py` con API minima:
 
@@ -209,7 +198,7 @@ coverage(target_lang) -> CoverageReport
 SQLite è sufficiente. Unicità su `(resource_id, target_lang, source_hash)`;
 lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 
-### F3 — Materializzazione della lingua richiesta
+### F3 — Materializzazione della lingua richiesta · `implemented`
 
 - Leggere `requested_locale` e creare, in modo idempotente, le directory
   `runtime/prompts/<lang>/`, gli stati dei manifest, le righe i18n e i lessici
@@ -219,9 +208,9 @@ lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 - Se una risorsa è strutturalmente non traducibile, marcarla `manual_review`;
   non dichiararla completata.
 
-### F4 — Traduzione dei prompt e del proposer
+### F4 — Traduzione dei prompt e del proposer · `implemented`
 
-- Enumerare tutti i `.j2` sotto `runtime/prompts/it/` e i prompt generati dal
+- Enumerare tutti i `.j2` sotto la lingua bootstrap e i prompt generati dal
   proposer/synt.
 - Mascherare Jinja, JSON, identificatori, nomi executor e placeholder.
 - Tradurre con il template LLM-targeted esistente; conservare numero di sezioni,
@@ -229,7 +218,7 @@ lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 - Validare MiniJinja, placeholder, rapporto di lunghezza e assenza di sentinel.
 - Scrivere candidato e hash; il loader usa solo una risorsa con stato ammesso.
 
-### F5 — Traduzione dei manifest e dei contratti
+### F5 — Traduzione dei manifest e dei contratti · `implemented`
 
 - Enumerare `description`, descrizioni degli argomenti, hint e testi di output.
 - Tradurre soltanto valori linguistici; non cambiare chiavi, enum, schema,
@@ -237,7 +226,7 @@ lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 - Rifirmare il manifest dopo ogni modifica atomica.
 - Eseguire `manifest_lint`, test di nascita e verifica della firma.
 
-### F6 — Lessico di comprensione e proposer
+### F6 — Lessico di comprensione e proposer · `implemented`
 
 - Convertire il lessico hardcoded in registri `(concept, lang)`.
 - Tradurre forme naturali e mapping semplici; lasciare a revisione umana regex
@@ -246,14 +235,13 @@ lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 - Testare equivalenza semantica su fixture IT/EN e sulla nuova lingua; vietare
   che la traduzione alteri un identificatore canonico.
 
-**Stato 2026-08-23:** implementato per il sottosistema action vocabulary. Il
+**Stato 2026-08-23:** implementato per l’intero lessico censito. Il
 test `test_action_vocabulary_i18n.py` materializza una terza lingua sintetica,
 verifica detection, rendering, fallback e copertura; il daemon accetta un
 mapping tradotto soltanto se conserva esattamente tutte le chiavi canoniche e
-forme non vuote. Restano da portare nello stesso registry unico gli altri
-strati elencati in F0-F8: questo avanzamento non chiude RM-0005.
+forme non vuote. Regex e consenso sono eccezioni tipizzate a revisione manuale.
 
-### F7 — Runtime, dispositivi e Tutor
+### F7 — Runtime, dispositivi e Tutor · `implemented`
 
 - Allineare messaggi, notifiche e UI tramite il catalogo i18n.
 - Generare il repertorio device dalla lingua ammessa e dalla distribuzione
@@ -263,7 +251,7 @@ strati elencati in F0-F8: questo avanzamento non chiude RM-0005.
 - Il Tutor deve dichiarare chiaramente `bootstrap_english` finché la lingua non
   è abilitata.
 
-### F8 — Gate di attivazione e manutenzione
+### F8 — Gate di attivazione e manutenzione · `implemented`
 
 `coverage(target_lang)` deve verificare almeno:
 
@@ -306,6 +294,11 @@ avvia l’istanza in inglese, completa la pipeline e dimostra dopo riavvio:
 7. ripresa idempotente dopo interruzione del traduttore;
 8. report di copertura riproducibile e zero dati riservati.
 
+**Esito:** criteri dimostrati da
+`tests/runtime/i18n/test_i18n_activation.py::test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale`,
+dalla suite `tests/runtime/i18n/`, dal lint F1 e dalla verifica di tutte le
+firme dei manifest installabili.
+
 ## 7. Rischi e misure
 
 | Rischio | Misura |
@@ -326,5 +319,10 @@ avvia l’istanza in inglese, completa la pipeline e dimostra dopo riavvio:
 - `runtime/i18n_translator.py`
 - `runtime/jobs/i18n_translate_pending.py`
 - `runtime/jobs/detection_translate_pending.py`
+- `runtime/i18n_registry.py`
+- `runtime/i18n_materializer.py`
+- `runtime/i18n_pipeline.py`
+- `runtime/i18n_activation.py`
+- `decisions/0220-versioned-localization-admission.md`
 - `deploy/run_prompts_translator.sh`
 - `install/disclaimer.py`

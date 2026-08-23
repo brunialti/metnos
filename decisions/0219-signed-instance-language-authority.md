@@ -61,7 +61,8 @@ Resolution order at boot is:
    current installation author public key;
 2. a valid `METNOS_LANG` bootstrap value for installations without such a
    request;
-3. Italian with an explicit invalid-configuration diagnostic.
+3. Italian with an explicit invalid-configuration diagnostic for legacy
+   installations that have no valid authority.
 
 An invalid signed document is ignored rather than partially trusted. English
 remains the operational language for an unready requested locale under

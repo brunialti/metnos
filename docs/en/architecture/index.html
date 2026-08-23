@@ -2858,6 +2858,19 @@ Everything else &mdash; code, prompts, conventions &mdash; follows from here.
 
 <div class="principle"><span class="num">7</span><strong>i18n by construction.</strong> Every user-facing string and prompt is per-language data: a new language is a translation pack, not a fork of the code.</div>
 
+<div class="note">
+<strong>One language, admitted as a complete instance resource set.</strong>
+Metnos starts safely in its bootstrap language while a requested BCP-47 locale
+is materialized. A versioned registry covers prompts, executor prose,
+deterministic messages and UI, input lexicons, public documentation, remote
+device messages and Tutor knowledge. Candidates remain outside live runtime
+paths until structural and semantic checks pass. Activation is an explicit
+administrative transaction: it verifies current source hashes, signatures,
+runtime-loadable artifacts and public-only device/Tutor outputs, then changes
+the signed instance language and optionally restarts the service. User,
+channel and turn data cannot override it.
+</div>
+
 <div class="principle"><span class="num">8</span><strong>Understandability as a duty.</strong> If the user does not understand the system, the system is useless. Simplicity is not aesthetics: it is the criterion that selected everything else.</div>
 
 

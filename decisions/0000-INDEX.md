@@ -149,3 +149,6 @@ for format and discipline; see `_template.md` for the template.
 > launcher to `run_processes`, resolves localized program names only through
 > authoritative unique package identities, and keeps routing/composition
 > manifest- and capability-driven.
+> Latest: `0220` admits every localization surface through one versioned
+> registry, structural and semantic gates, public-only device/Tutor
+> reconciliation and an explicit atomic instance activation.

@@ -19,26 +19,29 @@
   `METNOS_LLM_SLOT_ID`, default 1. L'affinità è applicata nei due client
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0219` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **ADR registry**: `0001-0220` (skipped: `0055`/`0115`/`0116`/`0121`).
 - **Avvio software ≠ apertura web** (23/8, ADR 0218): `run` e' il verbo
   canonico bilingue per avviare software gia' installato; `run_processes`
   risolve prima nomi umani Unicode con `find_packages` e accetta soltanto una
   identita' esatta/univoca. `open` resta solo sessione browser `sites`.
   Composizione e launcher gestito derivano da manifest/capability firmati,
   senza nomi di executor o applicazioni nel runtime.
-- **RM-0005 in corso — action vocabulary localizzato** (23/8): identita'
-  canoniche e seed editoriali restano in `vocab`; superfici operative nel
-  concept versionato `vocab.action_surfaces`, confini nelle chiavi i18n
-  `VOCAB_ACTION_*_BOUNDARY`. Prefilter e synt consumano la lingua attiva, il
-  bootstrap accoda output+input e il gate rifiuta mapping parziali; prova IT,
-  EN e terza lingua sintetica. Non equivale alla chiusura di RM-0005.
-- **RM-0005 F0 — lingua unica firmata** (23/8, ADR 0219):
+- **RM-0005 F0-F8 implementato — localizzazione versionata** (23/8,
+  ADR 0219-0220): identità canoniche e seed editoriali restano dati; un
+  registro SQLite versiona prompt, manifest, messaggi/UI, lessico, documenti,
+  device e Tutor per qualunque tag BCP-47 strutturalmente valido. La pipeline
+  materializza prima di tradurre, valida struttura e equivalenza, promuove
+  atomicamente, rifirma i contratti e attiva la lingua solo dopo gate completo.
+  Il job notturno è bounded, idempotente e non attiva autonomamente; device e
+  Tutor ricevono solo risorse pubbliche ammesse. Fixture di terza lingua e
+  suite i18n certificano fallback bootstrap e ripresa.
+- **Lingua unica firmata** (23/8, ADR 0219):
   `runtime.config` definisce `INSTANCE_LANG`, `REQUESTED_LANG` e
   `LOCALIZATION_STATE` da una richiesta BCP-47 firmata Ed25519 e scritta
   atomicamente in fase 3; `METNOS_LANG` e' soltanto l'avvio per installazioni
   prive del documento. Un contesto di richiesta propaga la lingua d'istanza ma
-  non puo' sostituirla. F1 deve ancora rimuovere chiamanti e preferenze ormai
-  inefficaci.
+  non puo' sostituirla; il lint F1 vieta il ritorno di lookup o override
+  operativi per utente, canale e turno.
 - **Undo condizionale** (23/8, ADR 0217): il manifest firmato puo' dichiarare
   `[undo] outcome="per_execution"`; il runtime accetta soltanto
   `reversible|no_effect|irreversible`, chiude sempre il turno e non contiene

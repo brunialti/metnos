@@ -6,6 +6,16 @@
 > Aggiornare QUI (non in CLAUDE.md) quando si aggiunge/rimuove un meccanismo.
 
 **Naming / vocab / grammatica**
+- **Ammissione linguistica versionata e atomica** (ADR 0219-0220, RM-0005):
+  `i18n_registry` censisce risorse e lease; `i18n_materializer` enumera prompt,
+  contratti, messaggi/UI, lessico, documenti, device e Tutor;
+  `i18n_pipeline` conserva struttura e identità canoniche;
+  `i18n_activation.gate` rilegge gli artefatti promossi, verifica equivalenza,
+  firme, corpus pubblico e assenza di nuove forme private prima della modifica
+  firmata di `instance_lang`. Il job notturno è limitato e non attiva. Il lint
+  vieta override per utente/turno; il device non incorpora prosa. Guard:
+  `tests/runtime/i18n/`, in particolare la fixture end-to-end in
+  `test_i18n_activation.py`.
 - **Action vocabulary localizzato e completo** (RM-0005 F2/F3/F6/F8):
   `vocab.action_surfaces` nel detection lexicon conserva le superfici per
   lingua; `VOCAB_ACTION_*_BOUNDARY` nel catalogo i18n conserva i confini. Il
