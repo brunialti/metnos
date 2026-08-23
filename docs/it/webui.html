@@ -62,6 +62,7 @@
   <div class="section-title"><span>04</span><h2>Accedere alle impostazioni</h2></div>
   <p class="prose">Dalla chat web si accede a <strong>Settings</strong>, l'area amministrativa. La pagina iniziale offre una panoramica dello stato del sistema e conduce a quattro sezioni; gli indirizzi delle pagine amministrative cominciano con <code>/admin</code>. La <a href="interface.html">mappa completa dell'interfaccia</a> è generata dal registro del sistema e rimane quindi allineata ai componenti effettivamente installati.</p>
   <p class="prose">Le pagine sotto <code>/admin</code> sono riservate all'amministratore dell'istanza. Un ospite invitato può usare la chat, ma non accedere alle impostazioni.</p>
+  <div class="note"><strong>Prima occorre l'accesso amministrativo.</strong> Scrivere direttamente l'indirizzo di una pagina, per esempio <code>/admin/users</code>, non effettua automaticamente l'accesso come amministratore. Se compare il messaggio <code>admin role required</code>, apri <code>/admin/login</code> nello stesso browser e accedi con la chiave di amministrazione, oppure usa il collegamento monouso prodotto dall'installazione. Per esempio, se Metnos risponde all'indirizzo <code>192.0.2.0</code>, la pagina di accesso è <code>http://192.0.2.0:8770/admin/login</code>. Dopo l'accesso puoi tornare a <code>http://192.0.2.0:8770/admin/users</code>.</div>
 </section>
 
 <section id="utente">
@@ -70,7 +71,7 @@
 
   <h3>Primo passaggio: creare il profilo</h3>
   <ol>
-    <li>Dalla chat web apri <strong>Settings &gt; Sistema &gt; Utenti</strong>, cioè <code>/admin/users</code>.</li>
+    <li>Nel browser in cui hai effettuato l'accesso come amministratore, apri <strong>Settings &gt; Sistema &gt; Utenti</strong>, cioè <code>/admin/users</code>.</li>
     <li>Nella parte superiore della pagina trovi il riquadro per creare un nuovo ospite. Compila i campi richiesti:
       <div class="wrap"><table>
         <tr><th>Campo</th><th>Valore</th></tr>
