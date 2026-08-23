@@ -359,6 +359,7 @@ def test_scheduler_diagnosis_is_typed_bilingual_and_live():
 
 def test_settings_navigation_and_tutor_share_the_canonical_ui_registry():
     from http_render import render_template
+    import i18n
     from tutor.sources import _ui_surface_units, declared_source_files
     from ui_surfaces import catalog, validate_surfaces
 
@@ -384,7 +385,7 @@ def test_settings_navigation_and_tutor_share_the_canonical_ui_registry():
     html = render_template("services.html", services=(), notice="")
     for surface in surfaces:
         assert f'href="{surface.route}"' in html
-        assert surface.label("it") in html
+        assert surface.label(i18n.current_lang()) in html
         assert surface.visible("it")
         assert surface.visible("en")
 
@@ -1796,6 +1797,29 @@ def test_boundary_failure_preserves_operational_fallthrough(monkeypatch):
 
     result = boundary_answer("Leggi le mie email", _principal())
     assert result is not None and result.esito == "tutor_error"
+
+
+def test_tutor_declares_signed_bootstrap_localization_state(monkeypatch):
+    import config
+    import tutor_boundary
+    from tutor.models import TutorAnswer
+
+    monkeypatch.setattr(config, "LOCALIZATION_STATE", "bootstrap_english")
+    monkeypatch.setattr(config, "REQUESTED_LANG", "nl")
+    result = tutor_boundary._declare_localization_state(
+        TutorAnswer(esito="fondata", answer_md="Grounded answer."),
+    )
+    assert result.answer_md.endswith(
+        "`localization_state=bootstrap_english; requested_lang=nl`"
+    )
+
+    # The note is deterministic and idempotent across boundary retries.
+    assert tutor_boundary._declare_localization_state(result) == result
+
+    unavailable = tutor_boundary.unavailable_answer()
+    assert unavailable.answer_md.endswith(
+        "`localization_state=bootstrap_english; requested_lang=nl`"
+    )
 
 
 def test_catalog_failure_cannot_steal_a_semantic_action(monkeypatch):

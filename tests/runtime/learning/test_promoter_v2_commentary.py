@@ -126,7 +126,7 @@ class TestCommentaryFallback(_BaseCommentaryTest):
             text = promoter_example._render_llm_commentary(data, lang="it")
         self.assertEqual(text, "(commento non disponibile)")
 
-    def test_fallback_en_locale(self):
+    def test_call_language_cannot_override_instance_fallback(self):
         from jobs import promoter_example
         with mock.patch("llm_helpers.call_llm",
                           side_effect=RuntimeError("boom")):
@@ -137,7 +137,7 @@ class TestCommentaryFallback(_BaseCommentaryTest):
                 "top_query": "",
             }
             text = promoter_example._render_llm_commentary(data, lang="en")
-        self.assertEqual(text, "(commentary unavailable)")
+        self.assertEqual(text, "(commento non disponibile)")
 
 
 # ─── 3. Integration con render_practical_example: 3 sezioni + marker ──────

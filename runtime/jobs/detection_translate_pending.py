@@ -39,10 +39,6 @@ def _cap_per_fire() -> int:
     return int(os.environ.get("METNOS_DETECTION_CAP_PER_FIRE", "20"))
 
 
-_LANG_NAMES = {"it": "Italian", "en": "English", "fr": "French",
-               "de": "German", "es": "Spanish", "pt": "Portuguese"}
-
-
 def _tier() -> str:
     from llm_workloads import tier_for
     return tier_for("translation.detection")
@@ -85,12 +81,11 @@ _MAPPING_TMPL = (
 
 
 def _human_review_concepts() -> frozenset:
-    """Concepts a model must never localize on its own (consent gates)."""
+    """Concepts a model must never localize, from registry policy."""
     try:
-        from detection_lexicon_seed import HUMAN_REVIEW_CONCEPTS
-        return HUMAN_REVIEW_CONCEPTS
+        return _dl.manual_review_concepts()
     except Exception:  # noqa: BLE001 — better translate less than translate badly
-        return frozenset({"confirm.yes", "confirm.no"})
+        return frozenset()
 
 
 def _extract_json(raw: str):
@@ -116,8 +111,8 @@ def _llm_localize(concept: str, kind: str, source_payload, target_lang: str,
                   source_lang: str, tier: str):
     """Ritorna (localized_payload_or_None, meta). source_payload = oggetto py."""
     from llm_helpers import call_llm
-    tgt = _LANG_NAMES.get(target_lang.lower(), target_lang)
-    src = _LANG_NAMES.get(source_lang.lower(), source_lang)
+    tgt = f"the language identified by BCP-47 tag {target_lang}"
+    src = f"the language identified by BCP-47 tag {source_lang}"
     tmpl = _MAPPING_TMPL if kind == "mapping" else _PHRASES_TMPL
     prompt = tmpl.format(source_name=src, target_name=tgt, concept=concept,
                          payload=json.dumps(source_payload, ensure_ascii=False))

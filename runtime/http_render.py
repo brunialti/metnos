@@ -36,9 +36,11 @@ def _jinja_msg(key: str, **kwargs) -> str:
 _jinja_env.globals["msg"] = _jinja_msg
 
 
-def _settings_navigation(lang: str = "it") -> tuple[dict, ...]:
+def _settings_navigation(lang: str | None = None) -> tuple[dict, ...]:
     from ui_surfaces import settings_navigation
-
+    if lang is None:
+        import i18n
+        lang = i18n.current_lang()
     return settings_navigation(lang)
 
 

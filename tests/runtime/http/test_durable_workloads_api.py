@@ -519,7 +519,7 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         )
         self.assertEqual(denied.status, 404)
 
-    async def test_error_message_is_localized_while_the_api_code_stays_stable(self):
+    async def test_user_preference_cannot_override_instance_error_language(self):
         import users
 
         owner = self.owner()
@@ -532,7 +532,7 @@ class DurableWorkloadApiTests(AioHTTPTestCase):
         self.assertEqual(italian_payload["error"]["code"], english_payload["error"]["code"])
         self.assertEqual(italian_payload["error"]["message_code"], "ERR_OP_FAILED")
         self.assertIn("Operazione fallita", italian_payload["error"]["message"])
-        self.assertIn("Operation failed", english_payload["error"]["message"])
+        self.assertIn("Operazione fallita", english_payload["error"]["message"])
 
 
 def test_durable_workload_routes_contain_no_sql_or_generic_action_route():

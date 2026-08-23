@@ -196,14 +196,12 @@ class TestPerfMarkdown(_BasePerfTest):
         self.assertIn("campione: 3 turni", out)
         self.assertIn("Frequenza: 42 chiamate in 60 giorni", out)
 
-        # Una lingua non ancora presente nel catalogo usa il ripiego EN per
-        # l'intero blocco, senza mescolare etichette italiane.
+        # Un parametro locale non può sostituire la lingua firmata dell'istanza.
         fallback = promoter_example._format_perf_savings_block(
             savings, lang="fr")
-        self.assertIn("## Estimated savings", fallback)
-        self.assertIn("- Time:", fallback)
-        self.assertIn("- Input tokens:", fallback)
-        self.assertNotIn("Tempo:", fallback)
+        self.assertIn("## Stima del risparmio", fallback)
+        self.assertIn("- Tempo:", fallback)
+        self.assertIn("- Token in ingresso:", fallback)
 
     def test_format_with_fallbacks(self):
         from jobs import promoter_example

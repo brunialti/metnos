@@ -1820,23 +1820,9 @@ class ChannelDaemon:
                 "capability_class": rec.capability_class}
 
     def handle_message(self, msg: InboundMessage) -> dict:
-        """Gestisce un messaggio nella lingua del relativo utente.
-
-        La preferenza è risolta dal binding canale→utente e applicata con un
-        contesto locale al turno. Non cambia la lingua dell'istanza e non può
-        contaminare richieste concorrenti su altri canali.
-        """
+        """Gestisce un messaggio nella lingua autorevole dell'istanza."""
         principal = ((msg.extra or {}).get("_principal")
                      or self._callback_principal(msg))
-        preferred = None
-        if principal is not None:
-            try:
-                import users as _users
-                owner = (principal.get("user_id")
-                         or principal.get("actor") or "")
-                preferred = _users.get_pref(owner, "lang", None)
-            except Exception as ex:
-                log.debug("channel user language lookup unavailable: %s", ex)
         import i18n as _i18n
 
         def _dispatch():
@@ -1844,7 +1830,7 @@ class ChannelDaemon:
                 if msg.extra is None:
                     msg.extra = {}
                 msg.extra["_principal"] = principal
-            with _i18n.language_context(preferred):
+            with _i18n.instance_language_context():
                 return self._handle_message_scoped(msg)
 
         owner_user_id = str((principal or {}).get("user_id") or "")

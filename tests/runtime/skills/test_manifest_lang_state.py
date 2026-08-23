@@ -117,7 +117,7 @@ class TestEnumerateTextualResources(unittest.TestCase):
         out = _enumerate_textual_resources(manifest)
         keys = [k for k, _ in out]
         self.assertIn("description", keys)
-        self.assertIn("args.foo.description", keys)
+        self.assertIn("args.properties.foo.description", keys)
         # bar non ha description → non listato.
         self.assertNotIn("args.bar.description", keys)
 

@@ -121,7 +121,7 @@ class Strato3RoutingChangeGuardTests(unittest.TestCase):
         self.addCleanup(setattr, self.PROP, "get_proposer", self._orig_getprop)
         self.assertFalse(self.AR._strato3_routing_changed(QUERY, lang="it"))
 
-    def test_escalation_uses_stable_values_and_localized_labels(self):
+    def test_escalation_uses_stable_values_and_instance_labels(self):
         with mock.patch(
             "orchestration.invoke_get_inputs_internal",
             side_effect=lambda **kwargs: kwargs,
@@ -137,10 +137,10 @@ class Strato3RoutingChangeGuardTests(unittest.TestCase):
             ["retry", "synth", "frontier", "reformulate", "abandon"],
         )
         self.assertEqual(choices[0]["label"],
-                         "Try the same path again: the engine may have changed")
-        self.assertIn("How would you like to proceed", result["title"])
+                         "Riprova lo stesso percorso: il motore potrebbe essere cambiato")
+        self.assertIn("Come vuoi procedere", result["title"])
 
-    def test_untranslated_language_uses_catalog_fallback_without_new_parser(self):
+    def test_request_language_cannot_override_instance_catalog(self):
         with mock.patch(
             "orchestration.invoke_get_inputs_internal",
             side_effect=lambda **kwargs: kwargs,
@@ -152,7 +152,7 @@ class Strato3RoutingChangeGuardTests(unittest.TestCase):
             )
         self.assertEqual(result["dialog"][0]["schema"]["choices"][1]["value"],
                          "synth")
-        self.assertIn("Build a dedicated executor",
+        self.assertIn("Costruisci un executor dedicato",
                       result["dialog"][0]["schema"]["choices"][1]["label"])
 
 

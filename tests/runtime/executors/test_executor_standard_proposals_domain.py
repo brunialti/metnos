@@ -178,7 +178,7 @@ def test_semantic_resource_mounts_only_audit_and_state(
     assert unrelated not in paths
 
 
-def test_proposal_summary_and_detail_follow_runtime_language(monkeypatch) -> None:
+def test_proposal_detail_follows_instance_not_process_environment(monkeypatch) -> None:
     import i18n
 
     seed = ROOT / "install" / "data" / "i18n_seed.sqlite"
@@ -195,14 +195,11 @@ def test_proposal_summary_and_detail_follow_runtime_language(monkeypatch) -> Non
     }
 
     monkeypatch.setenv("METNOS_LANG", "en")
-    monkeypatch.setattr(i18n, "_lang_cache", None)
-    english = get_proposals._render_detail([entry], "dedupe", max_lines=20)
-    assert "Consolidate duplicate" in english
-    assert "Cosa propongo" not in english
+    first = get_proposals._render_detail([entry], "dedupe", max_lines=20)
+    assert "Consolida doppione" in first
+    assert "Proposal:" not in first
 
     monkeypatch.setenv("METNOS_LANG", "it")
-    monkeypatch.setattr(i18n, "_lang_cache", None)
-    italian = get_proposals._render_detail([entry], "dedupe", max_lines=20)
-    assert "Consolida doppione" in italian
-    assert "Proposal:" not in italian
+    second = get_proposals._render_detail([entry], "dedupe", max_lines=20)
+    assert second == first
     conn.close()

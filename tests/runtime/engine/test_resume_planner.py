@@ -197,8 +197,11 @@ def test_process_completion_callback_resume_planner_with_dialog_values(
     # Verifica che original_query, actor, channel, conversation_id siano
     # passati correttamente.
     args_call = mocked_rt.call_args
-    assert (args_call.args[0]
-            == "proponi orari mercoledi e mandami mail")
+    assert args_call.args[0].startswith(
+        "proponi orari mercoledi e mandami mail"
+    )
+    assert "DIALOG VALUES ALREADY COLLECTED" in args_call.args[0]
+    assert '"choice": "1"' in args_call.args[0]
     assert call_kwargs["actor"] == "host"
     assert call_kwargs["channel"] == "http"
     assert call_kwargs["conversation_id"] == "test_conv"

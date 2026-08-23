@@ -67,8 +67,7 @@ def _non_auto_traducibili():
     perche' li' una forma inventata non produce un mancato riconoscimento ma
     un si' che l'utente non ha detto.
     """
-    from detection_lexicon_seed import HUMAN_REVIEW_CONCEPTS
-    return _regex_concepts() | set(HUMAN_REVIEW_CONCEPTS)
+    return _regex_concepts() | set(dl.manual_review_concepts())
 
 
 def test_enqueue_marks_all_pending(tmp_path, monkeypatch):
@@ -96,10 +95,9 @@ def test_daemon_translates_phrases_and_mapping(tmp_path, monkeypatch):
     # messo da parte — resta a zero, e il conto vive in `held_*`. Le due cose
     # restano distinte: una finestra piena di righe da tradurre e una finestra
     # piena di righe che nessun modello puo' toccare non sono lo stesso esito.
-    from detection_lexicon_seed import HUMAN_REVIEW_CONCEPTS
     trattenuti = res["metadata"]["held_regex"] + res["metadata"]["held_consent"]
     assert trattenuti == len(saltati), res["metadata"]
-    assert res["metadata"]["held_consent"] == len(HUMAN_REVIEW_CONCEPTS)
+    assert res["metadata"]["held_consent"] == len(dl.manual_review_concepts())
     assert res["metadata"]["skipped_regex"] == 0
 
 

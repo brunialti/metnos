@@ -37,15 +37,6 @@ log = logging.getLogger("metnos.jobs.i18n_translate_pending")
 # Alzalo per drenare prima il backlog (al costo di burst GPU diurni piu' lunghi).
 CAP_PER_FIRE = int(os.environ.get("METNOS_I18N_CAP_PER_FIRE", "20"))
 
-# Lingue note → nome leggibile per il prompt LLM.
-_LANG_NAMES = {
-    "it": "Italian",
-    "en": "English",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-}
-
 # Default DB e audit dir; override via env per i test.
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -340,8 +331,8 @@ _PROMPT_TMPL = (
 
 
 def _build_prompt(source_text: str, source_lang: str, target_lang: str) -> str:
-    source_name = _LANG_NAMES.get(source_lang.lower(), source_lang)
-    target_name = _LANG_NAMES.get(target_lang.lower(), target_lang)
+    source_name = f"the language identified by BCP-47 tag {source_lang}"
+    target_name = f"the language identified by BCP-47 tag {target_lang}"
     # Doppia chiave nel template: usiamo .format con escape `{{` `}}`.
     return _PROMPT_TMPL.format(
         source_name=source_name, target_name=target_name,

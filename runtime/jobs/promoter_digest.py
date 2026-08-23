@@ -80,24 +80,8 @@ def _resolve_admin_recipient() -> tuple[str | None, str | None]:
 
 
 def _resolve_admin_language() -> str:
-    """Lingua esplicita dell'host destinatario, con ripiego di istanza.
-
-    Il digest e' un messaggio utente prodotto fuori da un turno: non eredita
-    per caso la lingua dell'ultimo richiedente. La preferenza viene quindi
-    risolta di nuovo per il proprietario del canale.
-    """
+    """Lingua firmata dell'istanza, indipendente dal destinatario."""
     import i18n
-    try:
-        import users
-        hosts = users.list_users(role="host")
-        if hosts:
-            return str(
-                users.get_pref(
-                    hosts[0]["id"], "lang", i18n.current_lang(),
-                ) or i18n.current_lang()
-            )
-    except Exception:
-        pass
     return i18n.current_lang()
 
 
@@ -291,11 +275,9 @@ def _task_aggregated(grace_rows: list[dict], *,
             },
         }
 
-    import i18n
-    with i18n.language_context(_resolve_admin_language()):
-        body = _format_aggregated_body(
-            n_total, n_grace, n_review, n_archived)
-        keyboard = _build_aggregated_keyboard()
+    body = _format_aggregated_body(
+        n_total, n_grace, n_review, n_archived)
+    keyboard = _build_aggregated_keyboard()
     sent_ok, send_err = _send_to_admin(recipient, body, keyboard)
     if not sent_ok:
         audit_append({
@@ -418,16 +400,13 @@ def task_promoter_digest(payload: dict | None = None) -> dict:
             },
         }
 
-    import i18n
-    admin_lang = _resolve_admin_language()
     ok_count = 0
     error_count = 0
     for r in rows:
         proposal_id = r.get("proposal_id") or ""
-        with i18n.language_context(admin_lang):
-            body = _format_digest_body(r)
-            chunks = _split_text_for_telegram(body)
-            keyboard = _build_inline_keyboard(proposal_id)
+        body = _format_digest_body(r)
+        chunks = _split_text_for_telegram(body)
+        keyboard = _build_inline_keyboard(proposal_id)
         all_ok = True
         first_err: str | None = None
         for i, chunk in enumerate(chunks):

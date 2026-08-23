@@ -6483,7 +6483,7 @@ def _run_engine(
             if (_users.get_pref(
                 _site_owner, spec["preference_key"], "off") or "off") == "on"
         ]
-        _site_lang = _users.get_pref(_site_owner, "lang", None) or ""
+        _site_lang = _detlex.current_lang()
         # Sblocco automatico delle risorse: preferenza per-utente, default
         # off. Viaggia come arg invisibile al planner, come stealth e
         # browser_mode — il modello non deve poter decidere un confine di rete.
@@ -6493,7 +6493,7 @@ def _run_engine(
         _site_stealth_pref = "off"
         _site_browser_mode = "headless"
         _site_stealth_techniques = []
-        _site_lang = ""
+        _site_lang = _detlex.current_lang()
         _site_auto_allow = False
 
     _catalog_by_name = {
@@ -6950,7 +6950,7 @@ def _orchestrate_strato3_escalation(
         ("reformulate", "MSG_STRATO3_ACTION_REFORMULATE"),
         ("abandon", "MSG_STRATO3_ACTION_ABANDON"),
     )
-    with _i18n.language_context(lang):
+    with _i18n.instance_language_context():
         title = msg("MSG_STRATO3_TITLE")
         descr = msg("MSG_STRATO3_DESCRIPTION", count=consec_errors)
         choices = [

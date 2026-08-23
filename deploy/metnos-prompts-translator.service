@@ -1,27 +1,16 @@
 [Unit]
-Description=Metnos prompts auto-translator (ADR 0092 Phase 3)
+Description=Metnos bounded localization worker (RM-0005)
 After=network-online.target metnos-backup.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Job notturno: scansiona prompts/it/*.j2 modificati negli ultimi 7 giorni
-# e per ognuno, se il corrispondente prompts/<lang>/<role>.j2 ha mtime
-# precedente, triggera translate_prompt_file via i18n_translator.
-#
-# Output: candidati in prompts/<lang>/_pending/ (review umana obbligatoria
-# prima di mark-synced). Notifica via Telegram al host se candidati > 0.
+# Job notturno: legge la richiesta d'istanza firmata, aggiorna il registro
+# versionato, elabora un batch limitato e riesegue i gate. Non attiva la lingua.
 ExecStart=/opt/metnos/deploy/run_prompts_translator.sh
 User=roberto
 WorkingDirectory=/opt/metnos
 Environment=PYTHONPATH=/opt/metnos/runtime
-# Tier LLM per la traduzione. Override via env nel systemd unit:
-#   "fidelity" = contratto locale ad alta fedelta' (default).
-#   "frontier" = Anthropic Opus 4.8 (~$0.015/call, opt-in).
-# Il wrapper `run_prompts_translator.sh` legge anche
-# `~/.config/metnos/translator_tier.toml` (scritto da
-# `metnos-prompts audit-quality --apply`) come fallback se la env var
-# non e' settata.
-Environment=METNOS_TRANSLATOR_QUALITY=fidelity
+Environment=METNOS_LOCALIZATION_CAP_PER_FIRE=20
 # Nota: il timer associato lancia questa unit ogni notte alle 04:30
 # (55 min dopo metnos-backup per evitare contesa CPU/IO con backup).

@@ -79,14 +79,10 @@ def resolve_telegram_recipient(owner_user_id: str) -> str | None:
 
 
 def owner_language(owner_user_id: str) -> str | None:
-    """Read an optional user preference only at the delivery boundary."""
-
-    try:
-        import users
-
-        return users.get_pref(owner_user_id, "lang", None)
-    except Exception:
-        return None
+    """Return the signed instance language for workload delivery."""
+    del owner_user_id
+    import i18n
+    return i18n.current_lang()
 
 
 def terminal_notice(event: EventRecord, *, language: str | None = None) -> str | None:
@@ -102,7 +98,8 @@ def terminal_notice(event: EventRecord, *, language: str | None = None) -> str |
     import i18n
     from messages import get as message
 
-    with i18n.language_context(language):
+    del language
+    with i18n.instance_language_context():
         return message(message_key)
 
 

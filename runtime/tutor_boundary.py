@@ -36,9 +36,31 @@ def unavailable_answer(*, has_pending: bool = False):
     answer = _msg("MSG_TUTOR_UNAVAILABLE")
     if has_pending:
         answer = f"{answer.rstrip()}\n\n{_msg('MSG_TUTOR_PENDING_PRESERVED')}"
-    return BoundaryUnavailable(
+    return _declare_localization_state(BoundaryUnavailable(
         esito="tutor_error",
         answer_md=answer,
+    ))
+
+
+def _declare_localization_state(answer):
+    """Expose the signed bootstrap state without language-specific prose."""
+
+    import config
+    if (
+        config.LOCALIZATION_STATE != "bootstrap_english"
+        or not config.REQUESTED_LANG
+    ):
+        return answer
+    from dataclasses import replace
+    marker = (
+        "`localization_state=bootstrap_english; "
+        f"requested_lang={config.REQUESTED_LANG}`"
+    )
+    if marker in str(answer.answer_md):
+        return answer
+    return replace(
+        answer,
+        answer_md=f"{str(answer.answer_md).rstrip()}\n\n{marker}",
     )
 
 
@@ -128,6 +150,7 @@ def _answer(query: str, principal, *, has_pending: bool,
         # retrieval context (never authority, but still the wrong topic).
         forget(principal)
         return None
+    result = _declare_localization_state(result)
     if result.handoff_query:
         if not has_pending and pending_sender_id:
             try:

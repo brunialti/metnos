@@ -85,19 +85,8 @@ def _write_unlocked(rows: list[dict]) -> None:
 
 
 def admin_language() -> str:
-    """Resolve the host user's language independently of any HTTP request."""
+    """Resolve the signed instance language independently of requests."""
     import i18n
-
-    try:
-        import users
-        hosts = users.list_users(role="host")
-        if hosts:
-            return str(
-                users.get_pref(hosts[0]["id"], "lang", i18n.current_lang())
-                or i18n.current_lang()
-            )
-    except Exception:  # notification fallback must remain available
-        pass
     return i18n.current_lang()
 
 
@@ -193,4 +182,3 @@ def recent(*, limit: int = 20, kind_prefix: str = "") -> list[dict]:
     if kind_prefix:
         rows = [row for row in rows if str(row.get("kind", "")).startswith(kind_prefix)]
     return list(reversed(rows[-cap:])) if cap else []
-

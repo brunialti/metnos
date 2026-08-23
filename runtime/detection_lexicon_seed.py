@@ -52,16 +52,6 @@ _PROVIDER_MARKERS_EN = {
 }
 
 
-# Concepts that decide a CONSENT, and therefore are never localized on their
-# own. A wrong form here does not produce a missed recognition: it produces a
-# consent that was never given. The daemon skips them and leaves them to a
-# person; meanwhile the union with it/en still covers a new language, because
-# «ok», «yes», «no» and «stop» are loanwords written almost everywhere.
-HUMAN_REVIEW_CONCEPTS = frozenset({
-    "confirm.yes", "confirm.no",
-})
-
-
 def register_all() -> None:
     R = _dl.register
 
@@ -398,10 +388,10 @@ def register_all() -> None:
     # `word`: «sinistra» does not contain a yes, «yesterday» does not contain
     # a yes. Accented and unaccented variants are BOTH listed, because people
     # write «piu» and «si» as much as «piu'» and «si'».
-    R("confirm.yes", "phrases", match_mode="word",
+    R("confirm.yes", "phrases", match_mode="word", review_policy="manual",
       it=["si", "sì"],
       en=["yes", "y", "ok", "okay"])
-    R("confirm.no", "phrases", match_mode="word",
+    R("confirm.no", "phrases", match_mode="word", review_policy="manual",
       it=["no", "annulla", "lascia", "niente"],
       en=["n", "stop"])
 

@@ -135,6 +135,7 @@ PATH_LOCALIZATION_REQUEST = (
 )
 LOCALIZATION_REQUEST_SCHEMA = "metnos.localization-request/1"
 LOCALIZATION_STATES = frozenset({"active", "bootstrap_english"})
+BOOTSTRAP_LANGUAGE = "en"
 
 
 def normalize_language_tag(value: str | None) -> str:
@@ -315,7 +316,9 @@ def _validated_localization_payload(value: object) -> LocalizationRequest | None
     ):
         return None
     if state == "bootstrap_english" and (
-        instance != "en" or requested is None or requested == instance
+        instance != BOOTSTRAP_LANGUAGE
+        or requested is None
+        or requested == instance
     ):
         return None
     if state == "active" and requested not in (None, instance):
@@ -483,6 +486,9 @@ def _resolve_instance_localization() -> tuple[
     if configured:
         return configured, None, "active", None if error == "missing" else error
     diagnostic = error if error != "missing" else "invalid_instance_language"
+    # Preserve the historical locale for installations that have neither a
+    # valid signed request nor a valid bootstrap environment. A requested,
+    # unready locale still uses BOOTSTRAP_LANGUAGE through its signed state.
     return "it", None, "fallback_invalid", diagnostic
 
 # Synth executors (synth on-the-fly, ADR 0066)

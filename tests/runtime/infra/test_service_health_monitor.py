@@ -28,17 +28,9 @@ def _capture(events: list[dict]):
     return notifier
 
 
-@pytest.mark.parametrize(
-    ("lang", "title", "service", "status"),
-    (
-        ("it", "Servizio Metnos non disponibile", "Server HTTP", "Errore"),
-        ("en", "Metnos service unavailable", "HTTP server", "Failed"),
-    ),
-)
-def test_down_alert_is_complete_and_localized(
-        monkeypatch, lang, title, service, status):
+def test_down_alert_uses_the_signed_instance_language(monkeypatch):
     events: list[dict] = []
-    monkeypatch.setattr(notify_admin, "admin_language", lambda: lang)
+    monkeypatch.setattr(notify_admin, "admin_language", lambda: "en")
 
     monitor._notification(
         _row("failed"), transition="down", incident_id="http:1",
@@ -46,9 +38,10 @@ def test_down_alert_is_complete_and_localized(
     )
 
     assert len(events) == 1
-    assert events[0]["title"] == title
-    assert service in events[0]["body"]
-    assert status in events[0]["body"]
+    # The delivery helper cannot override the process-wide signed locale.
+    assert events[0]["title"] == "Servizio Metnos non disponibile"
+    assert "Server HTTP" in events[0]["body"]
+    assert "Errore" in events[0]["body"]
     assert "<missing:" not in events[0]["title"] + events[0]["body"]
 
 

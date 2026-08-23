@@ -10,7 +10,7 @@ Problema risolto (§2.8 — no silent failure): i lessici erano hardcoded IT+EN
 sparsi nel runtime. Con `METNOS_LANG` != it/en il matching falliva in
 silenzio. Qui i lessici vivono in un DB traducibile con la STESSA meccanica
 dell'i18n: seed canonico IT+EN nel codice (`detection_lexicon_seed.py`),
-fallback chain `current -> en -> it`, daemon di traduzione automatica
+fallback sulle baseline editoriali registrate, daemon di traduzione automatica
 (`jobs/detection_translate_pending.py`), guard di copertura allo startup.
 
 Per it/en il contenuto seed e' IDENTICO ai costrutti hardcoded preesistenti:
@@ -49,10 +49,9 @@ import i18n as _i18n  # riusa current_lang() — UNICA fonte della lingua
 log = logging.getLogger("metnos.detection_lexicon")
 
 DB_PATH = _C.DB_DETECTION
-SEED_LANGS = ("it", "en")          # lingue seedate nel codice (sempre coperte)
-FALLBACK_CHAIN = ("en", "it")      # tentativi se current_lang non disponibile
 VALID_KINDS = ("phrases", "regex", "mapping")
 VALID_MATCH_MODES = ("substring", "word")
+VALID_REVIEW_POLICIES = ("automatic", "manual")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS detection_lexicon (
@@ -63,6 +62,7 @@ CREATE TABLE IF NOT EXISTS detection_lexicon (
     payload TEXT,                        -- JSON (list | list | object)
     needs_translation INTEGER NOT NULL DEFAULT 0,
     source_lang TEXT,
+    review_policy TEXT NOT NULL DEFAULT 'automatic',
     version_hash TEXT,                   -- sha256 del payload corrente
     source_text_hash TEXT,              -- sha256 del payload sorgente tradotto
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
@@ -78,6 +78,7 @@ _cache: dict[tuple[str, str], tuple] = {}     # (concept, current_lang) -> resol
 _regex_cache: dict[tuple[str, str], list] = {}
 _seeded = False
 _coverage_gaps_logged: set[tuple[str, str]] = set()
+_declared_review_policies: dict[str, str] = {}
 
 
 def _sha256(text: str) -> str:
@@ -104,6 +105,14 @@ def _open() -> sqlite3.Connection:
                     c.execute("PRAGMA journal_mode=WAL")
                     c.execute("PRAGMA busy_timeout=5000")
                     c.executescript(_SCHEMA)
+                    columns = {row[1] for row in c.execute(
+                        "PRAGMA table_info(detection_lexicon)"
+                    )}
+                    if "review_policy" not in columns:
+                        c.execute(
+                            "ALTER TABLE detection_lexicon ADD COLUMN "
+                            "review_policy TEXT NOT NULL DEFAULT 'automatic'"
+                        )
                     c.commit()
                     _conn = c
                 except sqlite3.OperationalError:
@@ -113,6 +122,13 @@ def _open() -> sqlite3.Connection:
                         f"file:{DB_PATH}?mode=ro&immutable=1",
                         uri=True, check_same_thread=False)
     return _conn
+
+
+def _has_column(conn: sqlite3.Connection, column: str) -> bool:
+    """Feature-detect additive schema fields for immutable legacy stores."""
+    return column in {
+        row[1] for row in conn.execute("PRAGMA table_info(detection_lexicon)")
+    }
 
 
 def _invalidate(concept: str | None = None) -> None:
@@ -155,8 +171,8 @@ def ensure_seeded() -> None:
 def _startup_coverage_check() -> None:
     """Guard anti-silenzio (§2.8): se la lingua d'istanza non e' coperta da
     ogni concept, lo rende ESPLICITO nei log invece di lasciar fallire il
-    matching in silenzio. Muto per it/en (sempre seedate). Per lingue nuove
-    indica di eseguire il daemon `detection_translate_pending`."""
+    matching in silenzio. Per lingue nuove indica di eseguire il daemon
+    `detection_translate_pending`."""
     try:
         rep = verify_coverage(current_lang())
     except Exception:
@@ -168,24 +184,25 @@ def _startup_coverage_check() -> None:
             rep["lang"], rep["covered"], rep["total"],
             len(rep["missing"]), ", ".join(rep["missing"][:8]))
         # Turnkey: per una lingua non-seed, accoda i concept scoperti cosi'
-        # il daemon (every_6h) li traduce senza intervento manuale. it/en
-        # sono sempre coperte => questo ramo non scatta in esercizio normale.
-        if rep["lang"] not in SEED_LANGS:
-            try:
-                enqueue_language(rep["lang"])
-            except Exception:
-                log.exception("detection_lexicon: auto-enqueue fallito")
+        # il daemon (every_6h) li traduce senza intervento manuale.
+        try:
+            enqueue_language(rep["lang"])
+        except Exception:
+            log.exception("detection_lexicon: auto-enqueue fallito")
 
 
-def register(concept: str, kind: str, *, it, en,
-             match_mode: str = "substring") -> bool:
-    """Seed di un concept nelle lingue it+en. Idempotente.
+def register(concept: str, kind: str, *, it=None, en=None,
+             translations: dict | None = None,
+             match_mode: str = "substring",
+             review_policy: str = "automatic") -> bool:
+    """Seed a concept from an open language table. Idempotent.
 
     Scrive una riga assente e RIALLINEA una riga che diverge dal seed (kind,
     match_mode o payload). Le lingue non seedate non vengono mai toccate: le
     scrive il daemon di traduzione.
 
-    `it`/`en` sono: list[str] per kind=phrases/regex; dict per kind=mapping.
+    ``it``/``en`` remain compatibility arguments for the distributed corpus;
+    new callers can provide any BCP-47 keys through ``translations``.
     Ritorna True se ha scritto almeno una riga, False se gia' presente.
     Comportamento gemello di `i18n.register_key_if_missing`.
     """
@@ -193,14 +210,29 @@ def register(concept: str, kind: str, *, it, en,
         raise ValueError(f"kind invalido: {kind!r}")
     if match_mode not in VALID_MATCH_MODES:
         raise ValueError(f"match_mode invalido: {match_mode!r}")
+    if review_policy not in VALID_REVIEW_POLICIES:
+        raise ValueError(f"review_policy invalida: {review_policy!r}")
+    # The declaration is useful even when a sandbox can only open a legacy DB
+    # read-only and therefore cannot persist the additive policy column.
+    _declared_review_policies[concept] = review_policy
+    payloads = dict(translations or {})
+    if it is not None:
+        payloads.setdefault("it", it)
+    if en is not None:
+        payloads.setdefault("en", en)
+    if not payloads:
+        raise ValueError("at least one seed translation is required")
     conn = _open()
+    has_review_policy = _has_column(conn, "review_policy")
     wrote = False
     realigned = False
     try:
-        for lang, payload in (("it", it), ("en", en)):
+        for lang, payload in sorted(payloads.items()):
             js = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            policy_expr = "review_policy" if has_review_policy else "'automatic'"
             row = conn.execute(
-                "SELECT kind, match_mode, payload FROM detection_lexicon "
+                "SELECT kind, match_mode, payload, " + policy_expr
+                + " FROM detection_lexicon "
                 "WHERE concept=? AND lang=?",
                 (concept, lang),
             ).fetchone()
@@ -212,27 +244,53 @@ def register(concept: str, kind: str, *, it, en,
                 # would reach a new installation and never an existing one, and
                 # the two would diverge silently.  Compared canonically, so an
                 # unchanged seed still writes nothing and the caches stay warm.
-                if (row[0], row[1], row[2]) == (kind, match_mode, js):
-                    continue
-                conn.execute(
-                    "UPDATE detection_lexicon SET kind=?, match_mode=?, "
-                    "payload=?, needs_translation=0, source_lang=?, "
-                    "version_hash=?, "
-                    "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-                    "WHERE concept=? AND lang=?",
-                    (kind, match_mode, js, lang, _sha256(js), concept, lang),
+                stored = (row[0], row[1], row[2])
+                desired = (kind, match_mode, js)
+                policy_matches = (
+                    not has_review_policy or row[3] == review_policy
                 )
+                if stored == desired and policy_matches:
+                    continue
+                if has_review_policy:
+                    conn.execute(
+                        "UPDATE detection_lexicon SET kind=?, match_mode=?, "
+                        "payload=?, needs_translation=0, source_lang=?, "
+                        "review_policy=?, version_hash=?, "
+                        "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                        "WHERE concept=? AND lang=?",
+                        (kind, match_mode, js, lang, review_policy,
+                         _sha256(js), concept, lang),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE detection_lexicon SET kind=?, match_mode=?, "
+                        "payload=?, needs_translation=0, source_lang=?, "
+                        "version_hash=?, "
+                        "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
+                        "WHERE concept=? AND lang=?",
+                        (kind, match_mode, js, lang, _sha256(js), concept, lang),
+                    )
                 log.info("detection_lexicon: concept %r lingua %r riallineato "
                          "al seed (kind %r -> %r)", concept, lang, row[0], kind)
                 wrote = realigned = True
                 continue
-            conn.execute(
-                "INSERT INTO detection_lexicon(concept, lang, kind, match_mode,"
-                " payload, needs_translation, source_lang, version_hash, "
-                "updated_at) "
-                "VALUES (?,?,?,?,?,0,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
-                (concept, lang, kind, match_mode, js, lang, _sha256(js)),
-            )
+            if has_review_policy:
+                conn.execute(
+                    "INSERT INTO detection_lexicon(concept, lang, kind, match_mode,"
+                    " payload, needs_translation, source_lang, review_policy, "
+                    "version_hash, updated_at) VALUES (?,?,?,?,?,0,?,?,?,"
+                    "strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+                    (concept, lang, kind, match_mode, js, lang,
+                     review_policy, _sha256(js)),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO detection_lexicon(concept, lang, kind, match_mode,"
+                    " payload, needs_translation, source_lang, version_hash, "
+                    "updated_at) VALUES (?,?,?,?,?,0,?,?,"
+                    "strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+                    (concept, lang, kind, match_mode, js, lang, _sha256(js)),
+                )
             wrote = True
         if realigned:
             # When the source changes, translations made from that source are
@@ -240,10 +298,11 @@ def register(concept: str, kind: str, *, it, en,
             # `verify_coverage` would keep reporting "covered" for a payload
             # that no longer matches — and for a concept like confirm.* that
             # means a user who can no longer confirm anything (§2.8).
+            placeholders = ",".join("?" for _ in payloads)
             conn.execute(
                 "UPDATE detection_lexicon SET needs_translation=1 "
-                "WHERE concept=? AND lang NOT IN (?,?)",
-                (concept, "it", "en"),
+                f"WHERE concept=? AND lang NOT IN ({placeholders})",
+                (concept, *sorted(payloads)),
             )
         if wrote:
             # Dentro il try: un commit fallito e' un fallimento di questo
@@ -333,7 +392,7 @@ def resource_for_language(concept: str, lang: str, *, fallback: bool = True,
         return None
     languages = [normalized]
     if fallback:
-        for candidate in FALLBACK_CHAIN:
+        for candidate in baseline_languages(concept):
             if candidate not in languages:
                 languages.append(candidate)
     conn = _open()
@@ -433,16 +492,49 @@ def validate_mapping_payload(source: dict, candidate) -> dict:
     }
 
 
-def _union_langs() -> list[str]:
-    """Lingue da unire al match: corrente + seed (it/en), senza duplicati.
+def baseline_languages(concept: str | None = None) -> list[str]:
+    """Enumerate editorial source languages from registry metadata.
 
-    Per istanze it/en l'insieme e' esattamente {it, en} => comportamento
-    IDENTICO ai costrutti lang-agnostici preesistenti (che gia' univano
-    IT+EN). Per una lingua nuova si AGGIUNGE la sua riga, preservando i
-    comandi-prestito it/en (es. «undo», «send me»).
+    A row is a baseline when it names itself as source. English is ordered
+    first only because it is the signed safe-bootstrap language, not because
+    the runtime owns a finite language list.
     """
+    conn = _open()
+    where = "source_lang=lang AND payload IS NOT NULL"
+    params: tuple = ()
+    if concept is not None:
+        where += " AND concept=?"
+        params = (concept,)
+    return [row[0] for row in conn.execute(
+        "SELECT DISTINCT lang FROM detection_lexicon WHERE " + where
+        + " ORDER BY CASE WHEN lang=? THEN 0 ELSE 1 END, lang",
+        (*params, _C.BOOTSTRAP_LANGUAGE),
+    )]
+
+
+def manual_review_concepts() -> frozenset[str]:
+    """Concepts governed by registry policy rather than a Python name list."""
+    ensure_seeded()
+    conn = _open()
+    declared = {
+        concept for concept, policy in _declared_review_policies.items()
+        if policy == "manual"
+    }
+    if not _has_column(conn, "review_policy"):
+        return frozenset(declared)
+    persisted = {
+        row[0] for row in conn.execute(
+            "SELECT DISTINCT concept FROM detection_lexicon "
+            "WHERE review_policy='manual' ORDER BY concept"
+        )
+    }
+    return frozenset(declared | persisted)
+
+
+def _union_langs(concept: str | None = None) -> list[str]:
+    """Languages to merge: current locale plus registered baselines."""
     langs = [current_lang()]
-    for seed in SEED_LANGS:
+    for seed in baseline_languages(concept):
         if seed not in langs:
             langs.append(seed)
     return langs
@@ -450,11 +542,11 @@ def _union_langs() -> list[str]:
 
 def _resolve(concept: str):
     """Risolve (kind, match_mode, merged_payload, langs) unendo le forme su
-    `{lingua_corrente} ∪ {it,en}`.
+    `{lingua_corrente} ∪ {baseline editoriali registrate}`.
 
     Anti-silenzio: se la lingua corrente non e' seedata e non ha payload
-    nativo, registra il gap (deduplicato). Il match continua via union it/en
-    (best-effort sui prestiti), ma `verify_coverage` allo startup rende il
+    nativo, registra il gap (deduplicato). Il match continua via unione delle
+    baseline (best-effort sui prestiti), ma `verify_coverage` allo startup rende il
     gap ESPLICITO invece di lasciarlo silenzioso.
     """
     ensure_seeded()
@@ -462,13 +554,14 @@ def _resolve(concept: str):
     key = (concept, cur)
     if key in _cache:
         return _cache[key]
-    if cur not in SEED_LANGS and _native(concept, cur) is None:
+    baselines = baseline_languages(concept)
+    if cur not in baselines and _native(concept, cur) is None:
         gap = (concept, cur)
         if gap not in _coverage_gaps_logged:
             _coverage_gaps_logged.add(gap)
             log.warning(
                 "detection_lexicon: concept %r privo di forme native per "
-                "lingua %r — match via union it/en (best-effort); esegui il "
+                "lingua %r — match via baseline editoriali (best-effort); esegui il "
                 "daemon di traduzione per coprire la lingua", concept, cur)
     # The authoritative form comes from the SEED languages, not from the first
     # row that happens to be found. Two reasons, both measured:
@@ -480,16 +573,24 @@ def _resolve(concept: str):
     #    the vote, discard it/en, and leave the user unable to confirm anything
     #    — silently. Letting the seed decide keeps the loanword forms usable.
     kind = match_mode = None
-    for _seed_lang in SEED_LANGS:
+    for _seed_lang in baselines:
         _seed_row = _native(concept, _seed_lang)
         if _seed_row is not None:
-            kind, match_mode = _seed_row[0], _seed_row[1]
-            break
+            if kind is None:
+                kind = _seed_row[0]
+            elif _seed_row[0] != kind:
+                log.warning(
+                    "detection_lexicon: baseline kind disagreement for %r: %r/%r",
+                    concept, kind, _seed_row[0],
+                )
+                continue
+            if match_mode is None or _seed_row[1] == "word":
+                match_mode = _seed_row[1]
     merged_list: list = []
     merged_map: dict = {}
     used: list[str] = []
     seen: set = set()
-    for lang in _union_langs():
+    for lang in _union_langs(concept):
         nat = _native(concept, lang)
         if nat is None:
             continue
@@ -729,21 +830,24 @@ def list_pending(limit: int = 100, exclude_concepts: tuple = (),
             for r in rows]
 
 
-def mark_for_translation(concept: str, target_lang: str,
-                         source_lang: str = "en") -> None:
+def mark_for_translation(
+    concept: str,
+    target_lang: str,
+    source_lang: str = _C.BOOTSTRAP_LANGUAGE,
+) -> None:
     """Placeholder row (payload NULL, needs_translation=1) per lazy translate."""
     conn = _open()
     meta = conn.execute(
-        "SELECT kind, match_mode FROM detection_lexicon WHERE concept=? "
+        "SELECT kind, match_mode, review_policy FROM detection_lexicon WHERE concept=? "
         "AND lang=? LIMIT 1", (concept, source_lang),
     ).fetchone()
     if not meta:
         return
     conn.execute(
         "INSERT OR IGNORE INTO detection_lexicon(concept, lang, kind, "
-        "match_mode, payload, needs_translation, source_lang, updated_at) "
-        "VALUES (?,?,?,?,NULL,1,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
-        (concept, target_lang, meta[0], meta[1], source_lang),
+        "match_mode, payload, needs_translation, source_lang, review_policy, updated_at) "
+        "VALUES (?,?,?,?,NULL,1,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+        (concept, target_lang, meta[0], meta[1], source_lang, meta[2]),
     )
     conn.commit()
     _invalidate(concept)
@@ -756,7 +860,9 @@ def set_translated(concept: str, lang: str, payload) -> None:
         "SELECT source_lang FROM detection_lexicon WHERE concept=? AND lang=?",
         (concept, lang),
     ).fetchone()
-    src_lang = (src_row[0] if src_row else None) or "en"
+    src_lang = (
+        (src_row[0] if src_row else None) or _C.BOOTSTRAP_LANGUAGE
+    )
     src_payload_row = conn.execute(
         "SELECT payload FROM detection_lexicon WHERE concept=? AND lang=?",
         (concept, src_lang),
@@ -779,17 +885,19 @@ def enqueue_language(lang: str) -> int:
 
     Usato a install/aggiunta-lingua: rende l'estensione a una nuova lingua
     una singola operazione (come per l'i18n). Ritorna il numero di concept
-    accodati. Sorgente = en (canonico), fallback it.
+    accodati. La sorgente è la prima baseline editoriale non vuota registrata.
     """
     n = 0
     for c in registered_concepts():
         if has_native(c, lang):
             continue
-        native_en = _native(c, "en")
-        # Una riga en con payload vuoto non e' una sorgente traducibile.
-        # Alcuni concetti additivi sono intenzionalmente solo italiani: in
-        # quel caso il fallback documentato deve scegliere davvero ``it``.
-        src = "en" if native_en and native_en[2] else "it"
+        sources = [
+            candidate for candidate in baseline_languages(c)
+            if (_native(c, candidate) or (None, None, None))[2]
+        ]
+        if not sources:
+            continue
+        src = sources[0]
         mark_for_translation(c, lang, source_lang=src)
         n += 1
     return n

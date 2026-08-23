@@ -13,7 +13,7 @@ def test_format_and_grouping_prompts_follow_instance_language(monkeypatch):
          {"category": "two"}],
     )
 
-    assert "write all user-facing text in English" in formatting
+    assert "write all user-facing text in BCP-47 language en" in formatting
     assert "create 2 sections" in grouping
 
 
@@ -24,8 +24,8 @@ def test_new_instance_language_fallback_keeps_target_instruction(monkeypatch):
         "theme", [{"name": "one"}],
     )
 
-    assert "write all user-facing text in français" in formatting
-    assert "write the result in français" in grouping
+    assert "write all user-facing text in BCP-47 language fr" in formatting
+    assert "write the result in BCP-47 language fr" in grouping
 
 
 def test_health_context_prompt_uses_instance_language(monkeypatch):
@@ -35,4 +35,4 @@ def test_health_context_prompt_uses_instance_language(monkeypatch):
         health_block="CPU: ok",
     )
 
-    assert "write the response in français" in prompt
+    assert "write the response in BCP-47 language fr" in prompt

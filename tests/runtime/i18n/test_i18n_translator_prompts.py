@@ -124,48 +124,31 @@ class TestMaskInvariantSpans(unittest.TestCase):
 
 
 class TestPrescriptiveMap(unittest.TestCase):
-    """Mappa fissa CLAUDE.md §6: DEVI→MUST, NON DEVI→MUST NOT, OK:→OK:,
-    ERRORE:→ERROR:, E' UN ERRORE→THIS IS AN ERROR. Forza l'imperativo."""
+    """No bilingual marker table: semantic force belongs to the gate."""
 
     def test_basic_mapping(self):
         text = "DEVI: fare X.\nNON DEVI: fare Y.\nOK: caso valido.\nERRORE: caso errato.\nQuesto comportamento E' UN ERRORE."
         out = itx._apply_prescriptive_map(text)
-        self.assertIn("MUST: fare X.", out)
-        self.assertIn("MUST NOT: fare Y.", out)
-        self.assertIn("OK: caso valido.", out)
-        self.assertIn("ERROR: caso errato.", out)
-        self.assertIn("THIS IS AN ERROR", out)
-        self.assertNotIn("DEVI:", out)
-        self.assertNotIn("NON DEVI:", out)
-        self.assertNotIn("ERRORE:", out)
+        self.assertEqual(out, text)
 
     def test_accented_E_apostrophe(self):
-        # "È UN ERRORE" anche con E maiuscolo accentato
         text = "Pattern X. È UN ERRORE."
         out = itx._apply_prescriptive_map(text)
-        self.assertIn("THIS IS AN ERROR", out)
+        self.assertEqual(out, text)
 
     def test_direction_en_to_it_canonicalizes_to_italian(self):
-        # Bug 30/6: traduzione EN→IT RI-INGLESIZZAVA i marker (la mappa IT→EN
-        # girava su ogni traduzione). target='it' DEVE produrre marker ITALIANI.
         text = "MUST: fare X.\nMUST NOT: fare Y.\nThis is wrong. THIS IS AN ERROR."
         out = itx._apply_prescriptive_map(text, "it")
-        self.assertIn("DEVI: fare X.", out)
-        self.assertIn("NON DEVI: fare Y.", out)
-        self.assertIn("E' UN ERRORE", out)
-        self.assertNotIn("MUST:", out)
-        self.assertNotIn("MUST NOT:", out)
-        self.assertNotIn("THIS IS AN ERROR", out)
+        self.assertEqual(out, text)
 
     def test_direction_unknown_lang_is_noop(self):
-        # fr/de/es: nessuna mappa fissa → testo invariato (no ri-canonicalizzazione).
+        # Any structurally valid language tag follows the same path.
         text = "DEVI: x. MUST: y."
         self.assertEqual(itx._apply_prescriptive_map(text, "fr"), text)
 
     def test_default_target_is_en_backcompat(self):
-        # Default target='en' → comportamento storico IT→EN preservato.
-        self.assertIn("MUST:", itx._apply_prescriptive_map("DEVI: x.", "en"))
-        self.assertIn("MUST:", itx._apply_prescriptive_map("DEVI: x."))
+        self.assertEqual(itx._apply_prescriptive_map("DEVI: x.", "en"), "DEVI: x.")
+        self.assertEqual(itx._apply_prescriptive_map("DEVI: x."), "DEVI: x.")
 
 
 class TestExtractPlaceholders(unittest.TestCase):
@@ -343,10 +326,10 @@ class TestTranslatePromptFile(unittest.TestCase):
             cand = Path(res["candidate_path"])
             self.assertTrue(cand.is_file())
             cand_text = cand.read_text(encoding="utf-8")
-            # Post-pass deve aver applicato la mappa prescrittiva
-            self.assertIn("MUST:", cand_text)
-            self.assertIn("ERROR:", cand_text)
-            self.assertIn("THIS IS AN ERROR", cand_text)
+            # Nessuna riscrittura bilingue cablata: l'equivalenza è verificata
+            # separatamente prima dell'ammissione.
+            self.assertIn("DEVI:", cand_text)
+            self.assertIn("ERRORE:", cand_text)
             # Sentinel non devono restare nel file finale
             self.assertNotIn("__METNOS_INV_", cand_text)
             # Placeholder Jinja2 deve essere ripristinato

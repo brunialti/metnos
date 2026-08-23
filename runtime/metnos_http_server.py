@@ -82,22 +82,9 @@ LOCKFILE = Path(os.environ.get(
 
 @web.middleware
 async def user_language_middleware(request: web.Request, handler):
-    """Propaga alla richiesta la lingua autorevole dell'istanza.
-
-    La lettura della preferenza del principal resta solo per compatibilità fino
-    a RM-0005/F1: ``language_context`` la ignora se differisce dalla richiesta
-    firmata dell'istanza.
-    """
-    preferred = None
-    if request.get("role", "anonymous") != "anonymous":
-        try:
-            import users as _users
-            user_id = await http_routes_agent._resolve_session_user_id(request)
-            preferred = _users.get_pref(user_id, "lang", None)
-        except Exception as ex:
-            log.debug("user language lookup unavailable: %s", ex)
+    """Propaga alla richiesta la lingua autorevole dell'istanza."""
     import i18n as _i18n
-    with _i18n.language_context(preferred):
+    with _i18n.instance_language_context():
         return await handler(request)
 
 

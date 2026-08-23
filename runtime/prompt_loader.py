@@ -61,6 +61,7 @@ from typing import Optional
 
 import minijinja
 import yaml
+import config as _C
 
 _BASE = Path(__file__).parent / "prompts"
 # Cache per-lang: ogni lingua ha la sua Environment isolata (no pollution).
@@ -116,17 +117,14 @@ _SYNT_ROLES = frozenset({
 })
 
 
-# Lingua di ripiego (§K, 15/6/2026): finché una stringa non è ancora tradotta
-# nella lingua target, il sistema risponde in INGLESE (allineato a
-# `i18n.FALLBACK_CHAIN`). Mai crash, mai IT silenzioso su lingua non-IT.
-_FALLBACK_LANG = "en"
+# La lingua bootstrap e' una proprieta' dell'istanza, non del loader.
+_FALLBACK_LANG = _C.BOOTSTRAP_LANGUAGE
 
-# Nome della lingua iniettato come `{{ lang_name }}` (placeholder dinamico: il
-# modello scrive il final_message in QUESTA lingua). Allineato a
-# `i18n_translator._LANG_NAMES` per le lingue oltre it/en (§K): senza la voce,
-# una lingua nuova mostrerebbe il CODICE ("fr") invece del nome.
-_LANG_NAMES = {"it": "italiano", "en": "English", "fr": "français",
-               "de": "Deutsch", "es": "español"}
+def _language_instruction(lang: str) -> str:
+    """Derive the model instruction from a canonical tag, without a list."""
+    import config
+    normalized = config.normalize_language_tag(lang)
+    return f"BCP-47 language {normalized or _FALLBACK_LANG}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,19 +138,12 @@ class PromptIdentity:
 
 
 def _resolve_prompt_record(
-        root: Path, en_root: Path, name: str,
+        root: Path, bootstrap_root: Path, name: str,
 ) -> tuple[str, str, str, str] | None:
     requested_lang = root.name
     candidates = (
         (root, name, requested_lang, "live"),
-        (root, f"_pending/{name}.candidate", requested_lang, "candidate"),
-        (en_root, name, _FALLBACK_LANG, "fallback_live"),
-        (
-            en_root,
-            f"_pending/{name}.candidate",
-            _FALLBACK_LANG,
-            "fallback_candidate",
-        ),
+        (bootstrap_root, name, _FALLBACK_LANG, "fallback_live"),
     )
     for base, relative_name, effective_lang, source_kind in candidates:
         if not base.is_dir():
@@ -172,22 +163,13 @@ def _resolve_prompt_record(
     return None
 
 
-def _resolve_prompt_source(root: Path, en_root: Path, name: str) -> Optional[str]:
-    """Risolve il testo di un template `name` (es. "intent_extractor.j2" o
-    "planner/_core.j2") con catena DETERMINISTICA §7.9/§K:
+def _resolve_prompt_source(root: Path, bootstrap_root: Path, name: str) -> Optional[str]:
+    """Resolve admitted live text, then the configured bootstrap fallback.
 
-      1. live  `<lang>/<name>`                       — file approvato/canonico
-      2. cand. `<lang>/_pending/<name>.candidate`    — output del daemon, usato
-         SUBITO (l'approvazione manuale è opt-in, non un gate; §K 15/6)
-      3. EN    `en/<name>`                            — ripiego nel frattempo
-      4. EN c. `en/_pending/<name>.candidate`
-
-    Ogni candidato sostituisce-in-vivo il live mancante: una lingua nuova (fr)
-    è subito operativa appena il daemon ha scritto i candidati, e finché non li
-    ha scritti ricade su EN — invece di far crashare il planner. Per IT/EN i
-    live esistono sempre → vince il passo 1 → comportamento invariato (i
-    candidati `_pending` di IT/EN restano ignorati). No `..` escape."""
-    record = _resolve_prompt_record(root, en_root, name)
+    Pending candidates are intentionally excluded until the F8 coverage and
+    equivalence gate promotes them.
+    """
+    record = _resolve_prompt_record(root, bootstrap_root, name)
     return record[0] if record is not None else None
 
 
@@ -277,12 +259,8 @@ def _env_for(lang: str) -> minijinja.Environment:
 
 
 def _lang_has(name: str, lang: str) -> bool:
-    """True se la LINGUA `lang` (non il ripiego) possiede `name` come file live
-    o candidato `_pending`. Usato per decidere la lingua EFFETTIVA del planner
-    (§K): se manca, l'intero planner ricade su EN nel frattempo, invece di
-    mescolare _core in una lingua e sezioni nell'altra."""
-    return ((_BASE / lang / name).is_file()
-            or (_BASE / lang / "_pending" / f"{name}.candidate").is_file())
+    """True only when the language owns an admitted live file."""
+    return (_BASE / lang / name).is_file()
 
 
 def _effective_planner_lang(lang: str) -> str:
@@ -423,9 +401,8 @@ def get(role: str, lang: str, **vars) -> str:
     # lingua di un campo (es. final_message del proposer) via `{{ lang_name }}`,
     # un PLACEHOLDER — così la parola della lingua non viene mai mal-tradotta
     # dal translator automatico (resta dinamica, = lingua corrente).
-    _lang_names = _LANG_NAMES
     merged_vars = {**_default_vars(),
-                   "lang": lang, "lang_name": _lang_names.get(lang, lang),
+                   "lang": lang, "lang_name": _language_instruction(lang),
                    **vars}
     if role in _SYNT_ROLES:
         fmt = _synt_format()
@@ -477,9 +454,8 @@ def get_split(role: str, lang: str, **vars) -> tuple[str, str]:
     m = _STATIC_END_RE.search(source)
     if m is None:
         return get(role, lang, **vars), ""
-    _lang_names = _LANG_NAMES
     merged_vars = {**_default_vars(),
-                   "lang": lang, "lang_name": _lang_names.get(lang, lang),
+                   "lang": lang, "lang_name": _language_instruction(lang),
                    **vars}
     env = _env_for(lang)
     head = env.render_str(source[:m.start()], **merged_vars)
@@ -512,15 +488,6 @@ def list_planner_sections(lang: str) -> tuple[str, ...]:
             for p in sec_dir.rglob(pattern):
                 rel = p.relative_to(sec_dir).with_suffix("")
                 names.add(rel.as_posix())
-    # Candidati §K: una sezione esistente solo come `_pending/.../<n>.j2.candidate`
-    # è già operativa (auto-promote) → enumerala, così compose la include.
-    cand_dir = _BASE / lang / "_pending" / "planner" / "sections"
-    if cand_dir.is_dir():
-        for p in cand_dir.rglob("*.j2.candidate"):
-            name = p.relative_to(cand_dir).as_posix()
-            if name.endswith(".j2.candidate"):
-                name = name[: -len(".j2.candidate")]
-            names.add(name)
     return tuple(sorted(names))
 
 

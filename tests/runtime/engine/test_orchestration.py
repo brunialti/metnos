@@ -15,6 +15,13 @@ _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 _OWNER = "orchestration-test-user"
 
 
+@pytest.fixture(autouse=True)
+def _signed_italian_instance(monkeypatch):
+    """This legacy scenario corpus explicitly exercises Italian rendering."""
+    import i18n
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "it")
+
+
 @pytest.fixture
 def isolated_dirs(tmp_path, monkeypatch):
     """Storage isolati per dialog_pending + credentials + admin key."""
@@ -716,7 +723,7 @@ def test_process_completion_callback_expand_cap_string_yes_tolerant(isolated_dir
     fake_res = {"ok": True, "n_entries": 5, "entries": [{"name": "x"}]}
 
     with mock.patch("loader.load_catalog", return_value=fake_catalog), \
-         mock.patch("agent_runtime.invoke_executor", return_value=fake_res):
+         mock.patch("agent_runtime.invoke_tool_by_name", return_value=fake_res):
         msg = process_completion_callback(
             "host", "exp05", actor="host", owner_user_id=_OWNER).text
 

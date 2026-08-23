@@ -25,9 +25,10 @@ def _legacy_task(*, enabled: int = 1) -> dict:
 
 def test_list_tasks_exposes_authoritative_suspension_and_last_error(monkeypatch):
     import recurring_tasks
+    import i18n
     from scheduler_v2 import client as scheduler_client
 
-    monkeypatch.setenv("METNOS_LANG", "it")
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "it")
     monkeypatch.setattr(recurring_tasks, "list_user_tasks",
                         lambda owner_user_id=None: [_legacy_task(enabled=1)])
     monkeypatch.setattr(scheduler_client, "list_jobs", lambda: [{

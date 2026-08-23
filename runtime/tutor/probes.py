@@ -148,21 +148,20 @@ def _executor_payload(context: ProbeContext) -> ProbePayload:
 
 
 def _service_payload(context: ProbeContext) -> ProbePayload:
-    from services_registry import snapshots
+    from services_registry import localized, snapshots
     from .deadline import remaining
 
     rows = []
-    snapshots_rows = snapshots(timeout_s=remaining(context.deadline_at))
+    snapshots_rows = localized(
+        snapshots(timeout_s=remaining(context.deadline_at)), context.lang,
+    )
     technical_failures = 0
     for row in snapshots_rows:
         if row.get("observation_error"):
             technical_failures += 1
             continue
-        label = row.get("label") if context.lang == "it" else (
-            row.get("label_en") or row.get("label"))
-        description = (
-            row.get("description") if context.lang == "it" else
-            row.get("description_en") or row.get("description"))
+        label = row.get("label")
+        description = row.get("description")
         rows.append({
             "key": str(row.get("key") or "")[:48],
             "label": str(label or "")[:96],

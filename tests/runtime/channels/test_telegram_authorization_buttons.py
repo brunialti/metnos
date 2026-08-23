@@ -86,8 +86,8 @@ def _choice_step(n=3, var="decisione"):
     }
 
 
-def test_channel_turn_uses_the_bound_users_language(fake_daemon, monkeypatch):
-    """La lingua di un utente Telegram non modifica quella dell'istanza."""
+def test_channel_turn_uses_the_signed_instance_language(fake_daemon, monkeypatch):
+    """La preferenza utente non sostituisce la lingua firmata dell'istanza."""
     import i18n
     import users
     from channels import InboundMessage
@@ -109,7 +109,7 @@ def test_channel_turn_uses_the_bound_users_language(fake_daemon, monkeypatch):
         channel="telegram", sender_id="123", text="help",
         message_id="m1", received_at=0.0,
     ))
-    assert result == {"lang": "en"}
+    assert result == {"lang": before}
     assert i18n.current_lang() == before
 
 

@@ -325,12 +325,10 @@ class TestMultiLangIsolation(unittest.TestCase):
             pl._envs = old_envs
 
 
-class TestKFallbackAndAutoPromote(unittest.TestCase):
-    """§K (15/6/2026): catena live→candidato→EN. L'approvazione manuale non è
-    più un gate (i candidati `_pending` sono usati in-vivo); le stringhe non
-    ancora tradotte ricadono su EN nel frattempo."""
+class TestKFallbackAndAdmission(unittest.TestCase):
+    """RM-0005/F4: pending candidates are inert until admitted."""
 
-    def test_candidate_used_without_manual_promote(self):
+    def test_candidate_is_not_used_without_admission(self):
         import prompt_loader as pl
         xx = pl._BASE / "xx_k"
         (xx / "_pending").mkdir(parents=True, exist_ok=True)
@@ -339,7 +337,8 @@ class TestKFallbackAndAutoPromote(unittest.TestCase):
         pl._envs.pop("xx_k", None)
         try:
             out = pl.get("intent_extractor_v4", "xx_k")
-            self.assertEqual(out.strip(), "CAND_xx_k")
+            self.assertNotIn("CAND_", out)
+            self.assertGreater(len(out), 100)
         finally:
             shutil.rmtree(xx, ignore_errors=True)
             pl._envs.pop("xx_k", None)

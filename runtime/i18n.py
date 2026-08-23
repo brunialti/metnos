@@ -5,7 +5,7 @@ Design 1/5/2026 sera (vedi `metnos_design_i18n_final.md`):
 - Una sola lingua operativa per istanza, risolta da runtime.config
 - DB sqlite `~/.local/share/metnos/i18n.sqlite`: (key, lang, text, needs_translation, source_lang)
 - Fetch_key EN canonical
-- Fallback chain runtime: current_lang → en → it → "<missing:{key}>"
+- Fallback chain runtime: current_lang → bootstrap language → "<missing:{key}>"
 - Lazy translation via daemon introspettivo (vedi `i18n_translator.py`, futuro)
 
 API:
@@ -26,8 +26,7 @@ import sqlite3
 
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA
 DB_PATH = _C.DB_I18N
-DEFAULT_LANG = "it"
-FALLBACK_CHAIN = ("en", "it")  # tentativi se current_lang non disponibile
+DEFAULT_LANG = _C.BOOTSTRAP_LANGUAGE
 _SEED_DB_PATH = (
     Path(__file__).resolve().parent.parent / "install/data/i18n_seed.sqlite"
 )
@@ -117,12 +116,27 @@ def language_context(lang: str | None):
         _instance_context.reset(token)
 
 
+@contextmanager
+def instance_language_context():
+    """Propaga esclusivamente la lingua autorevole dell'istanza.
+
+    È il solo contesto ammesso nel codice operativo.  Non accetta input da
+    richieste, utenti o workload e rende quindi impossibile trasformare una
+    preferenza locale in un override della configurazione firmata.
+    """
+    token = _instance_context.set(_C.INSTANCE_LANG)
+    try:
+        yield current_lang()
+    finally:
+        _instance_context.reset(token)
+
+
 def available_languages() -> tuple[str, ...]:
     """Lingue presenti nel catalogo, ordinate per gli strumenti amministrativi.
 
     Il registro i18n, non una lista della UI, è la fonte canonica. Le singole
-    chiavi incomplete ricadono su inglese e italiano secondo la normale catena
-    di fallback; la selezione operativa resta un'azione a livello d'istanza.
+    chiavi incomplete ricadono sulla lingua bootstrap secondo la normale
+    catena di fallback; la selezione operativa resta a livello d'istanza.
     """
     rows = _open().execute(
         "SELECT DISTINCT lower(lang) FROM i18n "
@@ -323,9 +337,9 @@ def _language_chain(lang: str | None = None) -> tuple[str, ...]:
     """
     requested = _normalize_lang(lang) or current_lang()
     ordered = [requested]
-    for fallback in FALLBACK_CHAIN:
-        if fallback not in ordered:
-            ordered.append(fallback)
+    bootstrap = _normalize_lang(_C.BOOTSTRAP_LANGUAGE)
+    if bootstrap and bootstrap not in ordered:
+        ordered.append(bootstrap)
     return tuple(ordered)
 
 
@@ -349,6 +363,39 @@ def get_for_language(key: str, lang: str, /, **kwargs) -> str:
         except (KeyError, IndexError, ValueError):
             return template
     return f"<missing:{key}>"
+
+
+def editorial_text(
+    key: str,
+    lang: str,
+    baselines: dict[str, str],
+) -> str:
+    """Resolve one versioned catalog value without a finite language branch.
+
+    Runtime registries may carry bundled editorial baselines for bootstrap and
+    upgrade compatibility.  An exact, admitted catalog row wins; otherwise the
+    declared baseline map is consulted in deterministic order.  New target
+    languages therefore arrive through the ordinary RM-0005 message registry,
+    without adding fields or conditionals to their consumers.
+    """
+
+    normalized = _normalize_lang(lang) or current_lang()
+    exact = resource_for_language(
+        key, normalized, fallback=False, ready_only=True,
+    )
+    if exact is not None:
+        return str(exact["text"])
+    clean = {
+        (_normalize_lang(code) or str(code)): str(text)
+        for code, text in baselines.items()
+        if text is not None and str(text).strip()
+    }
+    if normalized in clean:
+        return clean[normalized]
+    bootstrap = _normalize_lang(_C.BOOTSTRAP_LANGUAGE)
+    if bootstrap in clean:
+        return clean[bootstrap]
+    return next(iter(clean.values()), f"<missing:{key}>")
 
 
 def resource_for_language(key: str, lang: str, *, fallback: bool = True,
@@ -387,7 +434,7 @@ def resource_for_language(key: str, lang: str, *, fallback: bool = True,
 
 
 def get(key: str, /, **kwargs) -> str:
-    """Fetch testo per chiave. Fallback chain: current → en → it → <missing>.
+    """Fetch testo per chiave. Fallback: current → bootstrap → <missing>.
     `**kwargs` passati a .format() sul template.
 
     La chiave e' POSIZIONALE-SOLTANTO: i `**kwargs` sono segnaposto del
@@ -438,10 +485,11 @@ def keys_for_synth_context(verb: str | None = None,
     """
     conn = _open()
     rows = conn.execute(
-        "SELECT DISTINCT key FROM i18n WHERE lang='it' "
+        "SELECT DISTINCT key FROM i18n WHERE lang=? "
         "AND text IS NOT NULL "
         "AND key GLOB '[A-Z]*_*' "  # solo UPPER_CASE_FAMILY style
-        "ORDER BY key"
+        "ORDER BY key",
+        (_C.BOOTSTRAP_LANGUAGE,),
     ).fetchall()
     by_family: dict[str, list[str]] = {"ERR_": [], "WARN_": [], "MSG_": [], "LOG_": []}
     for (k,) in rows:
@@ -486,7 +534,12 @@ def register_key_if_missing(
     # Due testi completi sono un'unita' editoriale gia' allineata. Scriverli
     # con due set() consecutivi attiverebbe latest-wins sul primo e creerebbe
     # pending stantie. La write atomica registra invece la relazione IT→EN.
-    set_catalog_translations(key, {"it": text_it, "en": text_en})
+    # Positional compatibility contract: this legacy helper historically
+    # receives an Italian editorial source followed by its English rendering.
+    # New language-neutral callers use ``set_catalog_translations`` directly.
+    set_catalog_translations(
+        key, {"it": text_it, "en": text_en}, source_lang="it",
+    )
     if needs_translation:
         # Compat esplicita: se il caller chiede davvero una traduzione,
         # invalida solo EN rispetto alla sorgente IT, mai entrambe le lingue.
