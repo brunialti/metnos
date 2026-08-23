@@ -10,7 +10,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "consult_frontier"
-version     = "0.2.0"
+version     = "0.2.1"
 intelligence = "agentic"
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -23,6 +23,13 @@ affinity    = [
 revertible        = false
 lifecycle         = "active"
 critical          = false
+
+[execution]
+effect            = "read_only"
+parallelism_class = 0
+resource_class    = "llm"
+concurrency_key   = "none"
+equivalence_gate  = "unverified"
 
 [[capabilities]]
 name = "llm:local"

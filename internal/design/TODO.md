@@ -233,6 +233,19 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 - Decisione: la Fase 8 non e' piu' uno «stress logico» generico. Certifica 24
   flussi di riferimento in italiano e inglese, con oracoli congelati per piano ammesso,
   autorita', effetti, postcondizioni, risposta e recupero.
+
+### UND-001 - Completare gli annullamenti con ricevute esatte
+
+- Stato: audit completato il 23/8/2026; implementazione non iniziata.
+- Evidenza: `internal/reports/executor-undo-audit-20260823.md`.
+- Priorita' certa: `open_sites`, `delete_dirs`, `set_messages` e
+  `set_signatures` hanno un inverso esatto ottenibile da identificatori o stato
+  precedente, ma il contratto firmato non lo dichiara ancora.
+- Progettazione richiesta: `create_processes`, `login_urls`, `set_credentials`
+  e `set_persons` richiedono rispettivamente un'operazione client di arresto o
+  ricevute protette per stato sensibile/preesistente.
+- Vincolo: nessun inverso per nome, query o testo naturale; soltanto ricevute
+  sigillate, stato precedente sufficiente e ripristino verificabile.
 - Esecuzione: Metnos esegue la matrice in lotti tramite i normali confini; un
   coordinatore esterno e deterministico conserva l'indipendenza dell'oracolo.
   Il revisore apre tutte le anomalie e soltanto un campione dei successi.

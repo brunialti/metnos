@@ -62,15 +62,19 @@ def test_executor_catalog_exposes_three_state_undo_contract():
     assert by_name["share_files"].undo_state == module.UNDOABLE
     assert by_name["share_files"].reverse_patterns == ("module.reverse",)
     assert by_name["read_files"].undo_state == module.NOT_APPLICABLE
+    assert by_name["consult_frontier"].undo_state == module.NOT_APPLICABLE
+    assert by_name["consult_frontier"].execution_effect == "read_only"
 
     assert all(
         entry.reverse_patterns
         for entry in entries if entry.undo_state == module.UNDOABLE)
     assert all(
-        entry.verb is None or entry.verb in SAFE_VERBS
+        entry.execution_effect == "read_only"
+        or entry.verb is None or entry.verb in SAFE_VERBS
         for entry in entries if entry.undo_state == module.NOT_APPLICABLE)
     assert all(
-        entry.verb is not None and entry.verb not in SAFE_VERBS
+        entry.execution_effect != "read_only"
+        and entry.verb is not None and entry.verb not in SAFE_VERBS
         for entry in entries if entry.undo_state == module.NOT_UNDOABLE)
 
     for lang in ("it", "en"):

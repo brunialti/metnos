@@ -38,6 +38,7 @@ class ExecutorEntry:
     domain: str
     descriptions: dict[str, str]
     critical: bool
+    execution_effect: str
     undo_state: str
     reverse_patterns: tuple[str, ...]
     platforms: tuple[str, ...]
@@ -86,7 +87,10 @@ def _undo_contract(*, name: str, verb: str | None,
     if patterns:
         raise RuntimeError(
             f"non-revertible executor with reverse_pattern: {name}")
-    if verb is None or verb in SAFE_VERBS:
+    execution = manifest.get("execution") or {}
+    effect = (str(execution.get("effect") or "unknown")
+              if isinstance(execution, dict) else "unknown")
+    if effect == "read_only" or verb is None or verb in SAFE_VERBS:
         return NOT_APPLICABLE, ()
     return NOT_UNDOABLE, ()
 
@@ -121,6 +125,8 @@ def load_entries(executors_dir: Path = EXECUTORS_DIR) -> list[ExecutorEntry]:
                 "en": _purpose(descriptions.get("en") or descriptions.get("it")),
             },
             critical=bool(manifest.get("critical")),
+            execution_effect=str((manifest.get("execution") or {}).get(
+                "effect") or "unknown"),
             undo_state=undo_state,
             reverse_patterns=reverse_patterns,
             platforms=tuple(str(p) for p in manifest.get("platforms") or ()),
@@ -140,7 +146,7 @@ _TEXT = {
         "generated": "Documento generato in modo deterministico da {count} manifest firmati in <code>executors/</code>. Non comprende gli executor interni al processo, quelli installati da skill o quelli sintetizzati nella directory dati della singola istanza. Il catalogo completo in esercizio è visibile nella chat web in Settings → Ciclo di vita → Executor.",
         "concept": "Un executor può implementare una procedura diretta oppure essere un <a href=\"intelligent_executors.html\">executor intelligente a mandato ristretto</a>; il contratto pubblico e la collocazione nel dominio non cambiano.",
         "undo_title": "Censimento della possibilità di annullamento",
-        "undo_explanation": "La possibilità di annullamento ha tre stati distinti. <strong>Annullabile</strong> significa che il manifest firmato dichiara <code>revertible = true</code> e uno o più <code>reverse_pattern</code>. <strong>Non annullabile</strong> significa che l'azione modifica stato, ma il contratto non dichiara un percorso inverso. <strong>Non applicabile</strong> identifica letture e calcoli puri: non lasciano stato utente da ripristinare. La classificazione è generata dal contratto firmato e dalla tassonomia canonica delle azioni, non dai nomi interpretati editorialmente.",
+        "undo_explanation": "La possibilità di annullamento ha tre stati distinti. <strong>Annullabile</strong> significa che il manifest firmato dichiara <code>revertible = true</code> e uno o più <code>reverse_pattern</code>. <strong>Non annullabile</strong> significa che l'azione modifica stato, ma il contratto non dichiara un percorso inverso. <strong>Non applicabile</strong> identifica operazioni che non lasciano stato utente da ripristinare, riconosciute dall'effetto firmato <code>read_only</code> o dalla tassonomia canonica delle letture e dei calcoli puri. La classificazione deriva dai contratti firmati, non da un elenco editoriale di executor.",
         "undo_question": "Domanda verificabile dal Tutor: «Quali executor modificano file e, per ciascuno, l'annullamento è supportato, non supportato o non applicabile?»",
         "undoable_list": "Executor annullabili dichiarati",
         "undoable": "annullabile",
@@ -169,7 +175,7 @@ _TEXT = {
         "generated": "This document is deterministically generated from {count} signed manifests under <code>executors/</code>. It excludes in-process executors, skill-installed executors, and executors synthesized in an instance's data directory. The complete live catalog is available in the web chat under Settings → Lifecycle → Executors.",
         "concept": "An executor may implement a direct procedure or be a <a href=\"intelligent_executors.html\">narrow-mandate intelligent executor</a>; its public contract and domain placement do not change.",
         "undo_title": "Undo applicability census",
-        "undo_explanation": "Undo applicability has three distinct states. <strong>Undoable</strong> means the signed manifest declares <code>revertible = true</code> and one or more <code>reverse_pattern</code> values. <strong>Not undoable</strong> means the action changes state but its contract declares no inverse path. <strong>Not applicable</strong> identifies reads and pure computations: they leave no user state to restore. Classification is generated from the signed contract and the canonical action taxonomy, not from an editorial interpretation of names.",
+        "undo_explanation": "Undo applicability has three distinct states. <strong>Undoable</strong> means the signed manifest declares <code>revertible = true</code> and one or more <code>reverse_pattern</code> values. <strong>Not undoable</strong> means the action changes state but its contract declares no inverse path. <strong>Not applicable</strong> identifies operations that leave no user state to restore, recognized from the signed <code>read_only</code> effect or the canonical taxonomy of reads and pure computations. Classification derives from signed contracts, not an editorial list of executors.",
         "undo_question": "A question the Tutor can verify: “Which executors modify files and, for each one, is undo supported, unsupported, or not applicable?”",
         "undoable_list": "Executors declared undoable",
         "undoable": "undoable",
