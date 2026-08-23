@@ -32,11 +32,12 @@
 
 <section id="indirizzo">
   <div class="section-title"><span>01</span><h2>Dove aprire Metnos</h2></div>
-  <p class="prose">La chat web è disponibile sulla <strong>porta 8770</strong>. Di norma, l'installazione guidata la rende raggiungibile dalla rete locale, così da poterla usare anche da un telefono o da un portatile. Durante la fase 4 è possibile limitarne l'accesso al solo computer che ospita Metnos.</p>
+  <p class="prose">La chat web è disponibile sulla <strong>porta 8770</strong>. Per aprirla, scrivi l'indirizzo completo nella barra degli indirizzi del browser, compresi <code>http://</code> e <code>:8770</code>. Sul computer che ospita Metnos puoi usare <code>http://127.0.0.1:8770/</code>. Se, per esempio, l'indirizzo di quel computer nella rete locale è <code>192.0.2.0</code>, da un telefono o da un portatile collegato alla stessa rete devi scrivere <code>http://192.0.2.0:8770/</code>.</p>
+  <p class="prose">Di norma, l'installazione guidata rende la chat raggiungibile dalla rete locale. Durante l'installazione di Metnos, al passaggio 4, è possibile scegliere per maggiore sicurezza di consentire l'accesso soltanto dal computer che ospita il sistema. In questo caso la chat può essere aperta solo con un browser eseguito su quel computer; gli altri dispositivi della rete locale non possono collegarsi.</p>
   <div class="wrap"><table>
-    <tr><th>Dispositivo da cui ti colleghi</th><th>Indirizzo</th></tr>
+    <tr><th>Dispositivo da cui ti colleghi</th><th>Indirizzo da scrivere nel browser</th></tr>
     <tr><td>Dal computer che ospita Metnos</td><td><code>http://127.0.0.1:8770/</code></td></tr>
-    <tr><td>Da un altro dispositivo della stessa rete locale</td><td><code>http://&lt;indirizzo-del-computer&gt;:8770/</code></td></tr>
+    <tr><td>Da un altro dispositivo della stessa rete locale</td><td><code>http://192.0.2.0:8770/</code> <small>(esempio: usa l'indirizzo mostrato dall'installazione)</small></td></tr>
   </table></div>
   <p class="prose">Non occorre ricostruire l'indirizzo: al termine dell'installazione Metnos mostra gli indirizzi disponibili e li registra in <code>~/.local/share/metnos/install_summary.md</code>. Per recuperarli in seguito, è sufficiente consultare quel file.</p>
   <div class="warn"><strong>Da evitare.</strong> Non aprire la porta 8770 sul router e non esporre Metnos direttamente a internet. L'accesso diretto è progettato per una rete privata considerata affidabile.</div>
