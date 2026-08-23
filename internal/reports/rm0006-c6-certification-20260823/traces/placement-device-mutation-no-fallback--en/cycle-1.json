@@ -1,0 +1,216 @@
+{
+  "case_id": "placement-device-mutation-no-fallback--en",
+  "remote_invocations": [
+    {
+      "device_id": "2c9eab8022bd4b6595318780fb480549",
+      "invocation_id": "inv-18ce5c5b6cee63fd81687977",
+      "payload": {
+        "args": {
+          "_actor": "host",
+          "_actor_email": "roberto.brunialti@knowcastle.com",
+          "_channel": "http",
+          "_lang": "it",
+          "_turn_id": "882615443c1e4e38",
+          "client": "local",
+          "content": "METNOS-CERT-DEVICE",
+          "path": "/tmp/metnos-certification-device/output/dispositivo-prova.txt"
+        },
+        "code_sha256": "875ac36fc5019afb58f4df74e481851454aef1c0932d5e1c2d5c88792eddf2a0",
+        "deadline_ms": 30000,
+        "env_injections": {
+          "METNOS_LANG": "it",
+          "METNOS_TURN_ID": "882615443c1e4e38"
+        },
+        "executor": "write_files",
+        "invocation_id": "inv-18ce5c5b6cee63fd81687977",
+        "manifest_sha256": "736577789f42f91d0d7d7784bdb182dffb5343909e6fd5c73d85323c7d954f21",
+        "reversibility": "revertible",
+        "scope": "device",
+        "turn_id": "882615443c1e4e38"
+      },
+      "payload_json": "{\"invocation_id\": \"inv-18ce5c5b6cee63fd81687977\", \"turn_id\": \"882615443c1e4e38\", \"executor\": \"write_files\", \"manifest_sha256\": \"736577789f42f91d0d7d7784bdb182dffb5343909e6fd5c73d85323c7d954f21\", \"code_sha256\": \"875ac36fc5019afb58f4df74e481851454aef1c0932d5e1c2d5c88792eddf2a0\", \"args\": {\"path\": \"/tmp/metnos-certification-device/output/dispositivo-prova.txt\", \"content\": \"METNOS-CERT-DEVICE\", \"_actor\": \"host\", \"_actor_email\": \"roberto.brunialti@knowcastle.com\", \"_lang\": \"it\", \"_channel\": \"http\", \"_turn_id\": \"882615443c1e4e38\", \"client\": \"local\"}, \"scope\": \"device\", \"reversibility\": \"revertible\", \"env_injections\": {\"METNOS_TURN_ID\": \"882615443c1e4e38\", \"METNOS_LANG\": \"it\"}, \"deadline_ms\": 30000}",
+      "result": {
+        "device_id": "2c9eab8022bd4b6595318780fb480549",
+        "elapsed_ms": 64,
+        "entries": [
+          {
+            "bytes_written": 18,
+            "created": true,
+            "encoding": "utf-8",
+            "mode": "overwrite",
+            "path": "/tmp/metnos-certification-device/output/dispositivo-prova.txt"
+          }
+        ],
+        "invocation_id": "inv-18ce5c5b6cee63fd81687977",
+        "n_processed": 1,
+        "ok": true,
+        "payload": {
+          "created_count": 1,
+          "dirs_created": [],
+          "fail_count": 0,
+          "ok": true,
+          "ok_count": 1,
+          "results": [
+            {
+              "bytes_written": 18,
+              "created": true,
+              "encoding": "utf-8",
+              "mode": "overwrite",
+              "path": "/tmp/metnos-certification-device/output/dispositivo-prova.txt"
+            }
+          ],
+          "skipped_count": 0
+        },
+        "sandbox": "bwrap"
+      },
+      "result_json": "{\"device_id\": \"2c9eab8022bd4b6595318780fb480549\", \"elapsed_ms\": 64, \"entries\": [{\"bytes_written\": 18, \"created\": true, \"encoding\": \"utf-8\", \"mode\": \"overwrite\", \"path\": \"/tmp/metnos-certification-device/output/dispositivo-prova.txt\"}], \"invocation_id\": \"inv-18ce5c5b6cee63fd81687977\", \"n_processed\": 1, \"ok\": true, \"payload\": {\"created_count\": 1, \"dirs_created\": [], \"fail_count\": 0, \"ok\": true, \"ok_count\": 1, \"results\": [{\"bytes_written\": 18, \"created\": true, \"encoding\": \"utf-8\", \"mode\": \"overwrite\", \"path\": \"/tmp/metnos-certification-device/output/dispositivo-prova.txt\"}], \"skipped_count\": 0}, \"sandbox\": \"bwrap\"}",
+      "state": "done"
+    }
+  ],
+  "responses": [
+    {
+      "attachments": [
+        {
+          "basename": "dispositivo-prova.txt",
+          "caption": null,
+          "download_url": "/agent/photos/882615443c1e4e38/0?size=file&exp=1787554050&t=53bb3f2b175c246c51f3b04e87b315c5",
+          "kind": "file",
+          "mime": "text/plain"
+        }
+      ],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Il file /tmp/metnos-certification-device/output/dispositivo-prova.txt è stato creato con successo con il contenuto \"METNOS-CERT-DEVICE\".",
+      "final_message_html": "<p>Il file /tmp/metnos-certification-device/output/dispositivo-prova.txt è stato creato con successo con il contenuto \"METNOS-CERT-DEVICE\".</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "write_files"
+        }
+      ],
+      "target_device": "rm0006-device",
+      "total_ms": 5153,
+      "ts_end": 1787467650.9598188,
+      "turn_id": "882615443c1e4e38"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [
+        {
+          "basename": "dispositivo-prova.txt",
+          "kind": "file",
+          "mime": "text/plain",
+          "path": "/tmp/metnos-certification-device/output/dispositivo-prova.txt"
+        }
+      ],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 1,
+        "failures": 0,
+        "items": 0,
+        "mutating_attempted": true,
+        "mutations": 1
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Il file /tmp/metnos-certification-device/output/dispositivo-prova.txt è stato creato con successo con il contenuto \"METNOS-CERT-DEVICE\".",
+      "intent_verb": "write",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "write_files",
+          "error": null,
+          "exec_ms": 216,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "882615443c1e4e38",
+            "client": "local",
+            "content": "METNOS-CERT-DEVICE",
+            "path": "/tmp/metnos-certification-device/output/dispositivo-prova.txt"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "882615443c1e4e38",
+            "client": "local",
+            "content": "METNOS-CERT-DEVICE",
+            "path": "/tmp/metnos-certification-device/output/dispositivo-prova.txt"
+          },
+          "result": {
+            "_ran_on_device": "rm0006-device",
+            "_remote": {
+              "delivered_to_completed_ms": 90,
+              "device_id": "2c9eab8022bd4b6595318780fb480549",
+              "elapsed_ms": 64,
+              "invocation_id": "inv-18ce5c5b6cee63fd81687977",
+              "non_executor_ms": 26,
+              "queue_ms": 52,
+              "roundtrip_ms": 142,
+              "sandbox": "bwrap",
+              "server_observed_ms": 207
+            },
+            "created_count": 1,
+            "dirs_created": [],
+            "fail_count": 0,
+            "ok": true,
+            "ok_count": 1,
+            "results": [
+              {
+                "bytes_written": 18,
+                "created": true,
+                "encoding": "utf-8",
+                "mode": "overwrite",
+                "path": "/tmp/metnos-certification-device/output/dispositivo-prova.txt"
+              }
+            ],
+            "skipped_count": 0
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": "rm0006-device",
+      "ts_end": 1787467650.9598188,
+      "ts_start": 1787467645.8060331,
+      "turn_id": "882615443c1e4e38",
+      "unbacked_promise_detected": false,
+      "user_query": "On my computer create /tmp/metnos-certification-device/output/dispositivo-prova.txt containing METNOS-CERT-DEVICE without falling back to the server."
+    }
+  ]
+}

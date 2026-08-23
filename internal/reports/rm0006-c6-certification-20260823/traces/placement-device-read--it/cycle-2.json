@@ -1,0 +1,287 @@
+{
+  "case_id": "placement-device-read--it",
+  "remote_invocations": [
+    {
+      "device_id": "6a58fd72f46b4f8e9fc6e34d0d703894",
+      "invocation_id": "inv-18ce5c88fff47d3f180597bc",
+      "payload": {
+        "args": {
+          "_actor": "host",
+          "_actor_email": "roberto.brunialti@knowcastle.com",
+          "_channel": "http",
+          "_lang": "it",
+          "_turn_id": "eba7046bdaff4799",
+          "base_path": "/tmp/metnos-certification-device/files",
+          "client": "local",
+          "patterns": [
+            "*ricevuta*"
+          ]
+        },
+        "code_sha256": "4823c1736c5714c247c0450baf041e302386c4ed625d074c7b56fba88ee4d78f",
+        "deadline_ms": 120000,
+        "env_injections": {
+          "METNOS_EXECUTOR_ASSIGNED_WORKERS": "32",
+          "METNOS_LANG": "it",
+          "METNOS_TURN_ID": "eba7046bdaff4799"
+        },
+        "executor": "find_files",
+        "invocation_id": "inv-18ce5c88fff47d3f180597bc",
+        "manifest_sha256": "62c61b8d17390529ff59f05b0dea438f7a78475c410ae600b55379e056114b03",
+        "reversibility": "read_only",
+        "scope": "device",
+        "turn_id": "eba7046bdaff4799"
+      },
+      "payload_json": "{\"invocation_id\": \"inv-18ce5c88fff47d3f180597bc\", \"turn_id\": \"eba7046bdaff4799\", \"executor\": \"find_files\", \"manifest_sha256\": \"62c61b8d17390529ff59f05b0dea438f7a78475c410ae600b55379e056114b03\", \"code_sha256\": \"4823c1736c5714c247c0450baf041e302386c4ed625d074c7b56fba88ee4d78f\", \"args\": {\"base_path\": \"/tmp/metnos-certification-device/files\", \"patterns\": [\"*ricevuta*\"], \"_actor\": \"host\", \"_actor_email\": \"roberto.brunialti@knowcastle.com\", \"_lang\": \"it\", \"_channel\": \"http\", \"_turn_id\": \"eba7046bdaff4799\", \"client\": \"local\"}, \"scope\": \"device\", \"reversibility\": \"read_only\", \"env_injections\": {\"METNOS_EXECUTOR_ASSIGNED_WORKERS\": \"32\", \"METNOS_TURN_ID\": \"eba7046bdaff4799\", \"METNOS_LANG\": \"it\"}, \"deadline_ms\": 120000}",
+      "result": {
+        "device_id": "6a58fd72f46b4f8e9fc6e34d0d703894",
+        "elapsed_ms": 59,
+        "entries": [
+          {
+            "kind": "text",
+            "mime": "text/plain",
+            "mtime": 1787467839.6049097,
+            "name": "ricevuta-receipt-cert.txt",
+            "path": "/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt",
+            "size": 20,
+            "type": "file"
+          }
+        ],
+        "invocation_id": "inv-18ce5c88fff47d3f180597bc",
+        "n_processed": 1,
+        "ok": true,
+        "payload": {
+          "entries": [
+            {
+              "kind": "text",
+              "mime": "text/plain",
+              "mtime": 1787467839.6049097,
+              "name": "ricevuta-receipt-cert.txt",
+              "path": "/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt",
+              "size": 20,
+              "type": "file"
+            }
+          ],
+          "fail_count": 0,
+          "failed": [],
+          "matches": [
+            "/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt"
+          ],
+          "metadata": {
+            "base_path": "/tmp/metnos-certification-device/files",
+            "case_sensitive": false,
+            "count": 1,
+            "patterns": [
+              "*ricevuta*"
+            ],
+            "recursive": true,
+            "source_complete": true,
+            "truncated": false,
+            "visited": 2,
+            "visited_dirs": 1,
+            "walk_workers": 32
+          },
+          "ok": true,
+          "ok_count": 1
+        },
+        "sandbox": "bwrap"
+      },
+      "result_json": "{\"device_id\": \"6a58fd72f46b4f8e9fc6e34d0d703894\", \"elapsed_ms\": 59, \"entries\": [{\"kind\": \"text\", \"mime\": \"text/plain\", \"mtime\": 1787467839.6049097, \"name\": \"ricevuta-receipt-cert.txt\", \"path\": \"/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt\", \"size\": 20, \"type\": \"file\"}], \"invocation_id\": \"inv-18ce5c88fff47d3f180597bc\", \"n_processed\": 1, \"ok\": true, \"payload\": {\"entries\": [{\"kind\": \"text\", \"mime\": \"text/plain\", \"mtime\": 1787467839.6049097, \"name\": \"ricevuta-receipt-cert.txt\", \"path\": \"/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt\", \"size\": 20, \"type\": \"file\"}], \"fail_count\": 0, \"failed\": [], \"matches\": [\"/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt\"], \"metadata\": {\"base_path\": \"/tmp/metnos-certification-device/files\", \"case_sensitive\": false, \"count\": 1, \"patterns\": [\"*ricevuta*\"], \"recursive\": true, \"source_complete\": true, \"truncated\": false, \"visited\": 2, \"visited_dirs\": 1, \"walk_workers\": 32}, \"ok\": true, \"ok_count\": 1}, \"sandbox\": \"bwrap\"}",
+      "state": "done"
+    }
+  ],
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "| name | path | type | size | mtime |\n| --- | --- | --- | --- | --- |\n| ricevuta-receipt-cert.txt | /tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt | file | 20 | 1787467839.6049097 |",
+      "final_message_html": "<table><thead><tr><th>name</th><th>path</th><th>type</th><th>size</th><th>mtime</th></tr></thead><tbody><tr><td>ricevuta-receipt-cert.txt</td><td>/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt</td><td>file</td><td>20</td><td>1787467839.6049097</td></tr></tbody></table>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "find_files"
+        }
+      ],
+      "target_device": "rm0006-device",
+      "total_ms": 4764,
+      "ts_end": 1787467845.869626,
+      "turn_id": "eba7046bdaff4799"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 1,
+        "failures": 0,
+        "items": 1,
+        "mutating_attempted": false,
+        "mutations": 0
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "| name | path | type | size | mtime |\n| --- | --- | --- | --- | --- |\n| ricevuta-receipt-cert.txt | /tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt | file | 20 | 1787467839.6049097 |",
+      "intent_verb": "find",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "find_files",
+          "error": null,
+          "exec_ms": 212,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "eba7046bdaff4799",
+            "base_path": "/tmp/metnos-certification-device/files",
+            "client": "local",
+            "patterns": [
+              "*ricevuta*"
+            ]
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "eba7046bdaff4799",
+            "base_path": "/tmp/metnos-certification-device/files",
+            "client": "local",
+            "patterns": [
+              "*ricevuta*"
+            ]
+          },
+          "result": {
+            "_presentation_contract": {
+              "default_view": "list",
+              "list": {
+                "columns": [
+                  {
+                    "cell_max": 160,
+                    "key": "name",
+                    "source": [
+                      "name",
+                      "path"
+                    ]
+                  },
+                  {
+                    "cell_max": 240,
+                    "key": "path",
+                    "source": "path"
+                  },
+                  {
+                    "cell_max": 48,
+                    "key": "type",
+                    "source": [
+                      "type",
+                      "kind",
+                      "mime"
+                    ]
+                  },
+                  {
+                    "cell_max": 24,
+                    "key": "size",
+                    "source": "size"
+                  },
+                  {
+                    "cell_max": 32,
+                    "key": "mtime",
+                    "source": "mtime"
+                  }
+                ],
+                "max_chars": 16000,
+                "max_rows": 200,
+                "mode": "table",
+                "overflow": "notice"
+              }
+            },
+            "_ran_on_device": "rm0006-device",
+            "_remote": {
+              "delivered_to_completed_ms": 99,
+              "device_id": "6a58fd72f46b4f8e9fc6e34d0d703894",
+              "elapsed_ms": 59,
+              "invocation_id": "inv-18ce5c88fff47d3f180597bc",
+              "non_executor_ms": 40,
+              "queue_ms": 16,
+              "roundtrip_ms": 115,
+              "sandbox": "bwrap",
+              "server_observed_ms": 207
+            },
+            "entries": [
+              {
+                "kind": "text",
+                "mime": "text/plain",
+                "mtime": 1787467839.6049097,
+                "name": "ricevuta-receipt-cert.txt",
+                "path": "/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt",
+                "size": 20,
+                "type": "file"
+              }
+            ],
+            "fail_count": 0,
+            "failed": [],
+            "matches": [
+              "/tmp/metnos-certification-device/files/ricevuta-receipt-cert.txt"
+            ],
+            "metadata": {
+              "base_path": "/tmp/metnos-certification-device/files",
+              "case_sensitive": false,
+              "count": 1,
+              "patterns": [
+                "*ricevuta*"
+              ],
+              "recursive": true,
+              "source_complete": true,
+              "truncated": false,
+              "visited": 2,
+              "visited_dirs": 1,
+              "walk_workers": 32
+            },
+            "ok": true,
+            "ok_count": 1
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": "rm0006-device",
+      "ts_end": 1787467845.869626,
+      "ts_start": 1787467841.105561,
+      "turn_id": "eba7046bdaff4799",
+      "unbacked_promise_detected": false,
+      "user_query": "Sul mio computer, trova in /tmp/metnos-certification-device/files i file con ricevuta nel nome."
+    }
+  ]
+}

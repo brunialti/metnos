@@ -134,4 +134,7 @@ for format and discipline; see `_template.md` for the template.
 > executor; claim, lease, fencing and activation remain later gates. Latest:
 > `0214` proposes automatic, profile-free LRE admission from finalized long
 > executor plans, with typed literal arguments, frozen placement and no inline
-> fallback after a long action is recognized.
+> fallback after a long action is recognized. Latest: `0215` establishes the
+> external 24-flow bilingual logical certification and requires causal,
+> domain-neutral repairs for syntax polarity, inverse targets and technical LRE
+> resume identity; RM-0006 passed 96/96 cases plus five safe real probes.

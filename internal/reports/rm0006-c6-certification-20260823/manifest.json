@@ -1,0 +1,23 @@
+{
+  "case_matrix_sha256": "3623f900e37e8a8fe966eb2030fc7303ac670a7202d208a007b59ea1fbf00062",
+  "catalog_sha256": "23ae20dbb890042bfdf8778823bb058f3f0c0022bcd13e965964abb76b44153d",
+  "certification_id": "rm0006-c6-two-cycle-v1",
+  "corpus_sha256": "d164560dc8bace187a321c483dc30dc6d65c784c77da8bc8fa9f499d885a8193",
+  "created_at": "2026-08-22T00:00:00Z",
+  "cycles": [
+    1,
+    2
+  ],
+  "fixture": "rm0006-complete-v1",
+  "git_commit": "201342f1269fd366270ee1523f4bca94dd59c393",
+  "llm_config_sha256": "4faed382e5b1102ca3fa599e8009dfe20dd2fff7bff6f200fd1e671818e558f2",
+  "locales": [
+    "en",
+    "it"
+  ],
+  "oracle_version": "rm0006-golden-oracle/4",
+  "platform": "isolated-metnos-http-bilingual-real-device-durable",
+  "schema_version": "metnos.certification-manifest/1",
+  "suite_sha256": "69b5a8a641208a171854e2c778f97519d33d8f87798c5b3b5c9bf368a5dc8943",
+  "surface_sha256": "4bd49f473fa43b46c0782e5c6ee27be711afc8b0a16198878328edc78e65b6bd"
+}

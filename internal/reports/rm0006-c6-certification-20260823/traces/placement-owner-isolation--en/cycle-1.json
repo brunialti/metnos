@@ -1,0 +1,293 @@
+{
+  "case_id": "placement-owner-isolation--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Task pianificati (1):\n- **ID 4** `cert-owner-task` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-OWNER",
+      "final_message_html": "<p>Task pianificati (1):</p>\n<ul>\n<li><b>ID 4</b> <code>cert-owner-task</code> — ogni giorno alle 23:59</li>\n</ul>\n<p>Stato: <b>attivo</b> · Ultima: mai eseguito<br>↳ METNOS-CERT-OWNER</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "list_tasks"
+        },
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 2,
+          "tool": "filter_entries"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 10676,
+      "ts_end": 1787467663.4738503,
+      "turn_id": "e3a257aa36f74f2b"
+    }
+  ],
+  "task_rows": [
+    [
+      "cert-foreign-task",
+      "usr_rm0006_foreign",
+      "daily@23:59",
+      "METNOS-CERT-FOREIGN",
+      1
+    ],
+    [
+      "cert-owner-task",
+      "cc885f5e66a64874",
+      "daily@23:59",
+      "METNOS-CERT-OWNER",
+      1
+    ]
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 1,
+        "failures": 0,
+        "items": 0,
+        "mutating_attempted": false,
+        "mutations": 0
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": true,
+      "final_kind": "answer",
+      "final_message": "Task pianificati (1):\n- **ID 4** `cert-owner-task` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-OWNER",
+      "intent_verb": "filter",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "list_tasks",
+          "error": null,
+          "exec_ms": 4,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "e3a257aa36f74f2b"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "e3a257aa36f74f2b"
+          },
+          "result": {
+            "count": 1,
+            "detail_md": "Task pianificati (1):\n- **ID 4** `cert-owner-task` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-OWNER",
+            "final_message_hint": "Task pianificati (1):\n- **ID 4** `cert-owner-task` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-OWNER",
+            "ok": true,
+            "summary": "Task pianificati (1):\n- **ID 4** `cert-owner-task` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-OWNER",
+            "tasks": [
+              {
+                "actor": "host",
+                "callback_key": "run_user_query",
+                "channel": "http",
+                "chat_id": null,
+                "consecutive_failures": 0,
+                "created_at": "2030-02-01T00:00:00Z",
+                "enabled": true,
+                "fired_count": 0,
+                "frequency_human": "ricorrente infinita",
+                "grace_window_minutes": null,
+                "id": 4,
+                "label": "cert-owner-task",
+                "last_error": "",
+                "last_fire_human": "mai eseguito",
+                "last_status": null,
+                "mandates": "{}",
+                "name": "cert-owner-task",
+                "next_fire_human": "oggi alle 23:59 (fra ~15h11m)",
+                "owner_user_id": "cc885f5e66a64874",
+                "query": "METNOS-CERT-OWNER",
+                "registry_enabled": true,
+                "remaining": null,
+                "schedule": "daily@23:59",
+                "schedule_human": "ogni giorno alle 23:59",
+                "scheduler_enabled": null,
+                "scheduler_name": "user.cc885f5e66a64874.cert-owner-task",
+                "times": null
+              }
+            ]
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        },
+        {
+          "canonical_query": "",
+          "chosen_tool": "filter_entries",
+          "error": null,
+          "exec_ms": 38,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "e3a257aa36f74f2b",
+            "entries": [
+              {
+                "actor": "host",
+                "callback_key": "run_user_query",
+                "channel": "http",
+                "chat_id": null,
+                "consecutive_failures": 0,
+                "created_at": "2030-02-01T00:00:00Z",
+                "enabled": true,
+                "fired_count": 0,
+                "frequency_human": "ricorrente infinita",
+                "grace_window_minutes": null,
+                "id": 4,
+                "label": "cert-owner-task",
+                "last_error": "",
+                "last_fire_human": "mai eseguito",
+                "last_status": null,
+                "mandates": "{}",
+                "name": "cert-owner-task",
+                "next_fire_human": "oggi alle 23:59 (fra ~15h11m)",
+                "owner_user_id": "cc885f5e66a64874",
+                "query": "METNOS-CERT-OWNER",
+                "registry_enabled": true,
+                "remaining": null,
+                "schedule": "daily@23:59",
+                "schedule_human": "ogni giorno alle 23:59",
+                "scheduler_enabled": null,
+                "scheduler_name": "user.cc885f5e66a64874.cert-owner-task",
+                "times": null
+              }
+            ],
+            "where_field": "owner",
+            "where_value": "Roberto"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "e3a257aa36f74f2b",
+            "entries": [
+              {
+                "actor": "host",
+                "callback_key": "run_user_query",
+                "channel": "http",
+                "chat_id": null,
+                "consecutive_failures": 0,
+                "created_at": "2030-02-01T00:00:00Z",
+                "enabled": true,
+                "fired_count": 0,
+                "frequency_human": "ricorrente infinita",
+                "grace_window_minutes": null,
+                "id": 4,
+                "label": "cert-owner-task",
+                "last_error": "",
+                "last_fire_human": "mai eseguito",
+                "last_status": null,
+                "mandates": "{}",
+                "name": "cert-owner-task",
+                "next_fire_human": "oggi alle 23:59 (fra ~15h11m)",
+                "owner_user_id": "cc885f5e66a64874",
+                "query": "METNOS-CERT-OWNER",
+                "registry_enabled": true,
+                "remaining": null,
+                "schedule": "daily@23:59",
+                "schedule_human": "ogni giorno alle 23:59",
+                "scheduler_enabled": null,
+                "scheduler_name": "user.cc885f5e66a64874.cert-owner-task",
+                "times": null
+              }
+            ],
+            "where_field": "owner",
+            "where_value": "Roberto"
+          },
+          "result": {
+            "entries": [],
+            "metadata": {
+              "count_in": 1,
+              "count_out": 0,
+              "criteria": {
+                "kind": null,
+                "mime_prefix": null,
+                "mtime_after": null,
+                "mtime_before": null,
+                "name_glob": null,
+                "name_regex": null,
+                "overlap_dropped": 0,
+                "size_max": null,
+                "size_min": null,
+                "type": null,
+                "where_contains": null,
+                "where_field": "owner",
+                "where_glob": null,
+                "where_in": [
+                  "Roberto"
+                ],
+                "where_not_in": null,
+                "where_present": null,
+                "where_regex": null,
+                "where_starts_with": null
+              },
+              "dropped": 1
+            },
+            "ok": true
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 2,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467663.4738503,
+      "ts_start": 1787467652.797467,
+      "turn_id": "e3a257aa36f74f2b",
+      "unbacked_promise_detected": false,
+      "user_query": "List only my test tasks, not the other user's tasks."
+    }
+  ]
+}

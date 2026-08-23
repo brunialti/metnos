@@ -89,10 +89,10 @@ table.policy-table td:first-child { text-align: left; font-weight: 600; }
  <div class="subtitle"><code>policy</code> &mdash; capability registry and grants</div>
  <div class="meta">A guide to the declarative authorization model</div>
 </div>
-<p><strong>Ask Metnos with a request like this example:</strong> “Explain which
-controls apply when I ask to read a file and which apply when I ask to modify
-it.” The answer must distinguish active runtime controls from the declarative
-matrix documented on this page.</p>
+<p><strong>Ask Metnos with a request like this example:</strong> “What is the
+capability registry, and is <code>policy.py</code> already the general gate for
+every executor?” The answer should distinguish the declarative model documented
+here from controls enforced elsewhere in the current runtime.</p>
 
 <p class="lead"><code>runtime/policy.py</code> provides a canonical registry, a
 deterministic autonomy-level matrix, and persistent grants scoped to a target. These

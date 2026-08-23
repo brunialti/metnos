@@ -1,0 +1,523 @@
+{
+  "case_id": "durable-complete-artifact--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [
+        {
+          "dialog_id": "7509ea3cbc3c4fa1",
+          "fmt": "form",
+          "kind": "get_inputs_response",
+          "sender_for_state": "http:host",
+          "step_total": 1
+        }
+      ],
+      "final_kind": "ask",
+      "final_message": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?\n\nINLINE_FORM:/agent/dialog/7509ea3cbc3c4fa1/form?cap=1787468966.b1a685dbc8094535f02ec19e83f278873ee35552b2ca75ef5d31e13b2e4ca46f",
+      "final_message_html": "<p>Vuoi che start_lre(profile=images.questions.v1, paths=1)?</p>\n<p>INLINE_FORM:/agent/dialog/7509ea3cbc3c4fa1/form?cap=1787468966.b1a685dbc8094535f02ec19e83f278873ee35552b2ca75ef5d31e13b2e4ca46f</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "get_approval"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 721,
+      "ts_end": 1787468066.0235908,
+      "turn_id": "667962a9f0614b83"
+    },
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "LRE registered work wrk_9843f5379b5747b9b08e9c30a20cdc37: 1 sources and 12 stages, with maximum concurrency 1. Full limits and progress are available at /admin/lre.",
+      "final_message_html": "<p>LRE registered work wrk_9843f5379b5747b9b08e9c30a20cdc37: 1 sources and 12 stages, with maximum concurrency 1. Full limits and progress are available at /admin/lre.</p>",
+      "steps_summary": [],
+      "total_ms": 0,
+      "turn_id": "pending"
+    }
+  ],
+  "restarted": false,
+  "snapshot": {
+    "artifacts": [
+      {
+        "blob_ref": "metnos-owner-blob/sha256:4d0fb8fc6b0633e269a56c4b0d68178336273c2d77ac80e00f7c43d492d8df5c",
+        "digest": "sha256:4d0fb8fc6b0633e269a56c4b0d68178336273c2d77ac80e00f7c43d492d8df5c",
+        "digest_verified": 1,
+        "id": "artifact_ed795401de424c24b0fe8fb6dee3e207",
+        "logical_name": "formulae_markdown",
+        "owner_user_id": "cc885f5e66a64874",
+        "postconditions_valid": 1,
+        "schema_valid": 1,
+        "size_bytes": 31,
+        "state": "committed"
+      },
+      {
+        "blob_ref": "metnos-owner-blob/sha256:5733601fb38bc0ca906f23d8931548ab23c866af95326ee8e42e6edb8b4aacd0",
+        "digest": "sha256:5733601fb38bc0ca906f23d8931548ab23c866af95326ee8e42e6edb8b4aacd0",
+        "digest_verified": 1,
+        "id": "artifact_51a6e86703954f2aa2052b651944bcf1",
+        "logical_name": "notes_markdown",
+        "owner_user_id": "cc885f5e66a64874",
+        "postconditions_valid": 1,
+        "schema_valid": 1,
+        "size_bytes": 32,
+        "state": "committed"
+      },
+      {
+        "blob_ref": "metnos-owner-blob/sha256:d1dfc1ce7d3aaed78c23875aa07cdcfadb57a28300826a645d4a16175bc3ad46",
+        "digest": "sha256:d1dfc1ce7d3aaed78c23875aa07cdcfadb57a28300826a645d4a16175bc3ad46",
+        "digest_verified": 1,
+        "id": "artifact_d0d3401275494bae97eeeda894caa45b",
+        "logical_name": "solutions_markdown",
+        "owner_user_id": "cc885f5e66a64874",
+        "postconditions_valid": 1,
+        "schema_valid": 1,
+        "size_bytes": 41,
+        "state": "committed"
+      }
+    ],
+    "attempts": [
+      {
+        "ended_at": "2026-08-23T06:54:26.806138Z",
+        "fence": 1,
+        "id": "att_2107ad51801e4b699d5fe3222fb2fc97",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_089228c3df7f4fadb96dfd40578d6605",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:27.174935Z",
+        "fence": 1,
+        "id": "att_f12053f8cab1484e967b6811b7e4ecff",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_1b9523c4709c4fe0bf6bd0126750c98a",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:26.626563Z",
+        "fence": 1,
+        "id": "att_eccabc73f97848b29c95d5ef68728f1b",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_20c2277c8fd54f11bbf2b8cbcc6f7a15",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:26.685718Z",
+        "fence": 1,
+        "id": "att_dfc80faf16654bda95e447580da37de2",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_21d3c47b83d24d0d93c82d7a31473d70",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:27.049298Z",
+        "fence": 1,
+        "id": "att_130f7aa733ad46bda767e949504099a6",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_3565baae3d6d4a068c731166922a9b8d",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:26.928609Z",
+        "fence": 1,
+        "id": "att_097631aef44f434bae8c07b17d4e2145",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_7644b1e47c984bf69d0978ac872ba628",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:26.867147Z",
+        "fence": 1,
+        "id": "att_e8f33fd2f3624c28970354ea797c21c3",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_8af3ae49280b407392c47cdab470e219",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:26.745512Z",
+        "fence": 1,
+        "id": "att_dd12945160fc4d29ab64a8369a77f835",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_9cff0cc29f514752a3a5006afe436654",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:26.989480Z",
+        "fence": 1,
+        "id": "att_0a542759dde94b888c1a544b26cadd4d",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_ed62f18d803c402bb8df8e205d8c9c3c",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:26.563587Z",
+        "fence": 1,
+        "id": "att_ec5dcc50284148dbae84c1212f82f2ff",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_f1860a22c34741a6a0aa36365a261aa1",
+        "worker_id": "rm0006-3502300"
+      },
+      {
+        "ended_at": "2026-08-23T06:54:27.105739Z",
+        "fence": 1,
+        "id": "att_fde672a8e6b1417bb2f949a12f5fe626",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_ff8d3535c82a4533a5b7f42aed37c167",
+        "worker_id": "rm0006-3502300"
+      }
+    ],
+    "publications": [],
+    "results": [
+      {
+        "attempt_id": "att_2107ad51801e4b699d5fe3222fb2fc97",
+        "digest": "sha256:8f976e5dd67ce29ff9befdaaa5ad4f62e6341c79d305a95dfbe380a6dbe49833",
+        "fence": 1,
+        "id": "res_2060b341aa3a4235a5c1ca466f16a7c1",
+        "unit_id": "unt_089228c3df7f4fadb96dfd40578d6605"
+      },
+      {
+        "attempt_id": "att_f12053f8cab1484e967b6811b7e4ecff",
+        "digest": "sha256:f92f9e67d0a74184520a68a68b4bc0ba66cd6aea38a8e618ac2ff072c03ff2f3",
+        "fence": 1,
+        "id": "res_540f6722f92646d58188f9461af73757",
+        "unit_id": "unt_1b9523c4709c4fe0bf6bd0126750c98a"
+      },
+      {
+        "attempt_id": "att_eccabc73f97848b29c95d5ef68728f1b",
+        "digest": "sha256:154878f6d3f4e6483215eff66f78d330cd8f2eca6fe38476b6abdb7d79d58b65",
+        "fence": 1,
+        "id": "res_91f2e6f3f2434099b9fbe8ce2bdc19cf",
+        "unit_id": "unt_20c2277c8fd54f11bbf2b8cbcc6f7a15"
+      },
+      {
+        "attempt_id": "att_dfc80faf16654bda95e447580da37de2",
+        "digest": "sha256:c1a00854e94356e133c3e49fadada8e4288d66eae4b4d761a007107859e1f34d",
+        "fence": 1,
+        "id": "res_7ed89e86a7034d809036ae6bd7680667",
+        "unit_id": "unt_21d3c47b83d24d0d93c82d7a31473d70"
+      },
+      {
+        "attempt_id": "att_130f7aa733ad46bda767e949504099a6",
+        "digest": "sha256:9a8b999a32612e3b1a505c128fd8d8e709f52ad0ab78c190fc9741db4d0256b6",
+        "fence": 1,
+        "id": "res_61239542922e4d24bec8d4e608a5656b",
+        "unit_id": "unt_3565baae3d6d4a068c731166922a9b8d"
+      },
+      {
+        "attempt_id": "att_097631aef44f434bae8c07b17d4e2145",
+        "digest": "sha256:1ae0fd0be66ff06ed2c96177ef6f680460196068bb0502f8eab9c5a6a077b57e",
+        "fence": 1,
+        "id": "res_19dcba0224cf4b72866b5852eb16cf5b",
+        "unit_id": "unt_7644b1e47c984bf69d0978ac872ba628"
+      },
+      {
+        "attempt_id": "att_e8f33fd2f3624c28970354ea797c21c3",
+        "digest": "sha256:b4b50b92da3a99e79eca7df0b4601c95776c26f5092ade104e0335ba030a1ed9",
+        "fence": 1,
+        "id": "res_d2383093a0b7492399572f72c660cfed",
+        "unit_id": "unt_8af3ae49280b407392c47cdab470e219"
+      },
+      {
+        "attempt_id": "att_dd12945160fc4d29ab64a8369a77f835",
+        "digest": "sha256:637ad1c4e9e26f539cd8b3fa28599ea8016900f9d6069595143853ae517e84b3",
+        "fence": 1,
+        "id": "res_349f22df0bc44d53a224003d672a431d",
+        "unit_id": "unt_9cff0cc29f514752a3a5006afe436654"
+      },
+      {
+        "attempt_id": "att_0a542759dde94b888c1a544b26cadd4d",
+        "digest": "sha256:250855b13850c3718a936f221222ab4fadfc91de52d3ddc55c4bbee550a7d71d",
+        "fence": 1,
+        "id": "res_2ce237292a13458e99ef13479d12a5b8",
+        "unit_id": "unt_ed62f18d803c402bb8df8e205d8c9c3c"
+      },
+      {
+        "attempt_id": "att_ec5dcc50284148dbae84c1212f82f2ff",
+        "digest": "sha256:53619e8c60fa1244c0940ed37f94bb2133a490795b31056260be4292f9234a82",
+        "fence": 1,
+        "id": "res_c89f5bb87ae64f11b10d1f862b9481ad",
+        "unit_id": "unt_f1860a22c34741a6a0aa36365a261aa1"
+      },
+      {
+        "attempt_id": "att_fde672a8e6b1417bb2f949a12f5fe626",
+        "digest": "sha256:3ee5511e13f892f136c850e1a463721cf8dc8bf074946cb06b42ee50315558d9",
+        "fence": 1,
+        "id": "res_c69f8df6d46943a19eac114526854bf0",
+        "unit_id": "unt_ff8d3535c82a4533a5b7f42aed37c167"
+      }
+    ],
+    "units": [
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_c89f5bb87ae64f11b10d1f862b9481ad",
+        "fence": 1,
+        "id": "unt_f1860a22c34741a6a0aa36365a261aa1",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_91f2e6f3f2434099b9fbe8ce2bdc19cf",
+        "fence": 1,
+        "id": "unt_20c2277c8fd54f11bbf2b8cbcc6f7a15",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_7ed89e86a7034d809036ae6bd7680667",
+        "fence": 1,
+        "id": "unt_21d3c47b83d24d0d93c82d7a31473d70",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_349f22df0bc44d53a224003d672a431d",
+        "fence": 1,
+        "id": "unt_9cff0cc29f514752a3a5006afe436654",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_2060b341aa3a4235a5c1ca466f16a7c1",
+        "fence": 1,
+        "id": "unt_089228c3df7f4fadb96dfd40578d6605",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_d2383093a0b7492399572f72c660cfed",
+        "fence": 1,
+        "id": "unt_8af3ae49280b407392c47cdab470e219",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_19dcba0224cf4b72866b5852eb16cf5b",
+        "fence": 1,
+        "id": "unt_7644b1e47c984bf69d0978ac872ba628",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_2ce237292a13458e99ef13479d12a5b8",
+        "fence": 1,
+        "id": "unt_ed62f18d803c402bb8df8e205d8c9c3c",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_61239542922e4d24bec8d4e608a5656b",
+        "fence": 1,
+        "id": "unt_3565baae3d6d4a068c731166922a9b8d",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_c69f8df6d46943a19eac114526854bf0",
+        "fence": 1,
+        "id": "unt_ff8d3535c82a4533a5b7f42aed37c167",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_540f6722f92646d58188f9461af73757",
+        "fence": 1,
+        "id": "unt_1b9523c4709c4fe0bf6bd0126750c98a",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      }
+    ],
+    "workload": {
+      "active_revision_id": "rev_9bdcc765ff714df39c44af76c5277446",
+      "budget_json": "{\"limits\":{},\"schema_version\":\"metnos.durable-draft-budget/1\"}",
+      "created_at": "2026-08-23T06:54:26.367146Z",
+      "id": "wrk_9843f5379b5747b9b08e9c30a20cdc37",
+      "next_event_id": 6,
+      "owner_user_id": "cc885f5e66a64874",
+      "priority": "normal",
+      "redacted_request_json": "{\"payload\":{\"profile\":\"images.questions.v1\",\"source_root_count\":1,\"source_roots_digest\":\"sha256:668539dc44f5bc0d20ed31443138436e27968a30d6ea93e682a066fab0884afa\"},\"schema_version\":\"metnos.redacted-request/1\"}",
+      "request_digest": "sha256:7c59c5159b00a3334196851d39ce6493de75b34adba95ded8e3f031ac8a81e94",
+      "request_key": "lre:2a4c89cb14034578015b571dbe8a73b6f53eb14a6cc85e5b962db22a03580224",
+      "state": "completed",
+      "terminal_reason_json": "{\"completion\":\"verified\",\"with_errors\":false}",
+      "updated_at": "2026-08-23T06:54:27.176043Z",
+      "version": 5
+    },
+    "workload_count": 1
+  },
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [
+        {
+          "dialog_id": "7509ea3cbc3c4fa1",
+          "fmt": "form",
+          "kind": "get_inputs_response",
+          "sender_for_state": "http:host",
+          "step_total": 1
+        }
+      ],
+      "false_success_detected": false,
+      "final_kind": "ask",
+      "final_message": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?\n\nINLINE_FORM:/agent/dialog/7509ea3cbc3c4fa1/form",
+      "intent_verb": "compute",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "get_approval",
+          "error": null,
+          "exec_ms": 46,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "667962a9f0614b83",
+            "actor": "host",
+            "channel": "http",
+            "on_approve": {
+              "args": {
+                "paths": [
+                  "/tmp/metnos-certification-fixture/durable/complete"
+                ],
+                "profile": "images.questions.v1"
+              },
+              "tool": "start_lre"
+            },
+            "prompt": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?",
+            "timeout_s": 3600
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "667962a9f0614b83",
+            "actor": "host",
+            "channel": "http",
+            "on_approve": {
+              "args": {
+                "paths": [
+                  "/tmp/metnos-certification-fixture/durable/complete"
+                ],
+                "profile": "images.questions.v1"
+              },
+              "tool": "start_lre"
+            },
+            "prompt": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?",
+            "timeout_s": 3600
+          },
+          "result": {
+            "decision": "input_required",
+            "dialog_id": "7509ea3cbc3c4fa1",
+            "expandable_caps": [
+              {
+                "dialog_id": "7509ea3cbc3c4fa1",
+                "fmt": "form",
+                "kind": "get_inputs_response",
+                "sender_for_state": "http:host",
+                "step_total": 1
+              }
+            ],
+            "final_message_hint": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?\n\nINLINE_FORM:/agent/dialog/7509ea3cbc3c4fa1/form",
+            "fmt": "form",
+            "metadata": {
+              "actor": "host",
+              "channel": "http",
+              "fmt": "form",
+              "n_steps": 1,
+              "title": "Confirm"
+            },
+            "ok": true,
+            "step_index": 0,
+            "step_total": 1,
+            "values": {}
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787468066.0235908,
+      "ts_start": 1787468065.3022153,
+      "turn_id": "667962a9f0614b83",
+      "unbacked_promise_detected": false,
+      "user_query": "Run start_lre with the registered images.questions.v1 profile on the images in /tmp/metnos-certification-fixture/durable/complete to produce the final artifact."
+    }
+  ],
+  "workload_id": "wrk_9843f5379b5747b9b08e9c30a20cdc37"
+}

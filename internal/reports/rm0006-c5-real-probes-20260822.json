@@ -1,0 +1,62 @@
+{
+  "created_at": "2026-08-22T21:47:51Z",
+  "non_destructive": true,
+  "passed": 5,
+  "probes": [
+    {
+      "contract": "installed stack is ready and its HTTP/sidecar contracts are aligned",
+      "name": "installed_metnos_stack",
+      "observed": {
+        "catalog_count": 122,
+        "contract_aligned": true,
+        "quiescent": true,
+        "ready": true
+      },
+      "passed": true
+    },
+    {
+      "contract": "a real non-mutating turn reaches get_now and returns an answer",
+      "name": "installed_metnos_readonly_turn",
+      "observed": {
+        "final_kind": "answer",
+        "has_message": true,
+        "tools": [
+          "get_now"
+        ]
+      },
+      "passed": true
+    },
+    {
+      "contract": "the configured local inference service exposes an OpenAI-compatible model list",
+      "name": "local_model_catalog",
+      "observed": {
+        "model_count": 1,
+        "object": "list"
+      },
+      "passed": true
+    },
+    {
+      "contract": "the public HTTPS site follows redirects and serves an HTML document",
+      "name": "cloudflare_public_site",
+      "observed": {
+        "final_url": "https://metnos.com/en/",
+        "server": "cloudflare",
+        "status": 200
+      },
+      "passed": true
+    },
+    {
+      "contract": "the configured public origin exposes at least one immutable branch ref",
+      "name": "github_public_remote",
+      "observed": {
+        "branch_count": 1,
+        "branches": [
+          "refs/heads/main"
+        ]
+      },
+      "passed": true
+    }
+  ],
+  "schema_version": "metnos.real-boundary-probes/1",
+  "total": 5
+}

@@ -227,9 +227,9 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 
 ### QUA-001 - Flussi di riferimento e affidabilita' percepita
 
-- Stato: promosso il 22/8/2026 nella roadmap persistente
-  `internal/roadmap/RM-0006-certificazione-logica-e2e.md`; attuazione non
-  iniziata.
+- Stato: completato il 23/8/2026 nella roadmap persistente
+  `internal/roadmap/RM-0006-certificazione-logica-e2e.md`; C0-C6 certificate,
+  cinque sonde reali verdi e due cicli finali 96/96.
 - Decisione: la Fase 8 non e' piu' uno «stress logico» generico. Certifica 24
   flussi di riferimento in italiano e inglese, con oracoli congelati per piano ammesso,
   autorita', effetti, postcondizioni, risposta e recupero.

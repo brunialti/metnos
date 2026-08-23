@@ -1,0 +1,112 @@
+{
+  "case_id": "compose-find-then-read--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "METNOS-CERT-SUMMARY",
+      "final_message_html": "<p>METNOS-CERT-SUMMARY</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "read_files"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 6882,
+      "ts_end": 1787467323.3472087,
+      "turn_id": "3ff8477042ce420d"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "METNOS-CERT-SUMMARY",
+      "intent_verb": "find",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "read_files",
+          "error": null,
+          "exec_ms": 48,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "3ff8477042ce420d",
+            "client": "local",
+            "parse": "auto",
+            "path": "/tmp/metnos-certification-fixture/files/metnos-cert-summary.txt"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "3ff8477042ce420d",
+            "client": "local",
+            "parse": "auto",
+            "path": "/tmp/metnos-certification-fixture/files/metnos-cert-summary.txt"
+          },
+          "result": {
+            "content": "METNOS-CERT-SUMMARY\n",
+            "metadata": {
+              "bytes": 20,
+              "chars": 20,
+              "encoding": "utf-8",
+              "file_size": 20,
+              "path": "/tmp/metnos-certification-fixture/files/metnos-cert-summary.txt",
+              "read_mode": "full",
+              "read_offset": 0
+            },
+            "ok": true
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467323.3472087,
+      "ts_start": 1787467316.4649847,
+      "turn_id": "3ff8477042ce420d",
+      "unbacked_promise_detected": false,
+      "user_query": "Trova in /tmp/metnos-certification-fixture/files il file metnos-cert-summary.txt e leggine il contenuto."
+    }
+  ]
+}

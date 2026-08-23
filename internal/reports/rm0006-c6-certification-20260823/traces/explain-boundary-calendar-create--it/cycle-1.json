@@ -1,0 +1,63 @@
+{
+  "case_id": "explain-boundary-calendar-create--it",
+  "responses": [
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Crea un nuovo calendario Google chiamato Prova.»\n\nPer creare un calendario di prova, devi utilizzare l'executor `create_calendars`, che è progettato specificamente per generare nuovi calendari-contenitore su Google Workspace. Ecco i dettagli operativi basati sulle fonti disponibili:\n\n1.  **Chiarezza sul nome**: L'executor accetta un parametro `summary` (il nome del calendario). Se non lo specifichi, il sistema userà il default \"Metnos\". Per il tuo caso, indica chiaramente \"Prova\" o un nome simile nella tua richiesta.\n2.  **Backend forzato**: Il sistema forza automaticamente l'uso di `google_workspace` come backend, poiché i calendari-contenitore esistono solo su Google. Non è necessario specificare il provider.\n3.  **Descrizione opzionale**: Puoi aggiungere una `description` (testo libero) per chiarire lo scopo del calendario, ma non è obbligatoria.\n4.  **Attenzione alla distruzione**: Tieni presente che eliminare un calendario è un'operazione distruttiva che rimuove anche tutti gli eventi al suo interno. Se in futuro dovessi voler rimuovere questo calendario di prova, dovrai usare l'executor `delete_calendars` specificando il nome del calendario.\n\nIn sintesi, la procedura consiste nel formulare una richiesta naturale a Metnos che includa l'istruzione di creare un calendario e il nome desiderato (\"Prova\"). Metnos gestirà la chiamata tecnica sottostante (`create_calendars(summary=\"Prova\")`) e ti restituirà l'ID del calendario creato.\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "final_message_html": "<p>Chiedi a Metnos con una richiesta come quella di questo esempio: «Crea un nuovo calendario Google chiamato Prova.»</p>\n<p>Per creare un calendario di prova, devi utilizzare l'executor <code>create_calendars</code>, che è progettato specificamente per generare nuovi calendari-contenitore su Google Workspace. Ecco i dettagli operativi basati sulle fonti disponibili:</p>\n<ol>\n<li><b>Chiarezza sul nome</b>: L'executor accetta un parametro <code>summary</code> (il nome del calendario). Se non lo specifichi, il sistema userà il default \"Metnos\". Per il tuo caso, indica chiaramente \"Prova\" o un nome simile nella tua richiesta.</li>\n<li><b>Backend forzato</b>: Il sistema forza automaticamente l'uso di <code>google_workspace</code> come backend, poiché i calendari-contenitore esistono solo su Google. Non è necessario specificare il provider.</li>\n<li><b>Descrizione opzionale</b>: Puoi aggiungere una <code>description</code> (testo libero) per chiarire lo scopo del calendario, ma non è obbligatoria.</li>\n<li><b>Attenzione alla distruzione</b>: Tieni presente che eliminare un calendario è un'operazione distruttiva che rimuove anche tutti gli eventi al suo interno. Se in futuro dovessi voler rimuovere questo calendario di prova, dovrai usare l'executor <code>delete_calendars</code> specificando il nome del calendario.</li>\n</ol>\n<p>In sintesi, la procedura consiste nel formulare una richiesta naturale a Metnos che includa l'istruzione di creare un calendario e il nome desiderato (\"Prova\"). Metnos gestirà la chiamata tecnica sottostante (<code>create_calendars(summary=\"Prova\")</code>) e ti restituirà l'ID del calendario creato.</p>\n<p>La spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.</p>",
+      "steps_summary": [],
+      "total_ms": 7801,
+      "turn_id": "9cdf3cf6f6d642b2"
+    }
+  ],
+  "turn_records": [
+    {
+      "actor": "host",
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Crea un nuovo calendario Google chiamato Prova.»\n\nPer creare un calendario di prova, devi utilizzare l'executor `create_calendars`, che è progettato specificamente per generare nuovi calendari-contenitore su Google Workspace. Ecco i dettagli operativi basati sulle fonti disponibili:\n\n1.  **Chiarezza sul nome**: L'executor accetta un parametro `summary` (il nome del calendario). Se non lo specifichi, il sistema userà il default \"Metnos\". Per il tuo caso, indica chiaramente \"Prova\" o un nome simile nella tua richiesta.\n2.  **Backend forzato**: Il sistema forza automaticamente l'uso di `google_workspace` come backend, poiché i calendari-contenitore esistono solo su Google. Non è necessario specificare il provider.\n3.  **Descrizione opzionale**: Puoi aggiungere una `description` (testo libero) per chiarire lo scopo del calendario, ma non è obbligatoria.\n4.  **Attenzione alla distruzione**: Tieni presente che eliminare un calendario è un'operazione distruttiva che rimuove anche tutti gli eventi al suo interno. Se in futuro dovessi voler rimuovere questo calendario di prova, dovrai usare l'executor `delete_calendars` specificando il nome del calendario.\n\nIn sintesi, la procedura consiste nel formulare una richiesta naturale a Metnos che includa l'istruzione di creare un calendario e il nome desiderato (\"Prova\"). Metnos gestirà la chiamata tecnica sottostante (`create_calendars(summary=\"Prova\")`) e ti restituirà l'ID del calendario creato.\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "mode": "tutor",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "redacted": true,
+      "steps": [],
+      "ts_end": 1787467287.4630783,
+      "ts_start": 1787467279.6620781,
+      "turn_id": "9cdf3cf6f6d642b2",
+      "tutor_card_ids": [
+        "attivita-programmate"
+      ],
+      "tutor_detection": "semantic_help",
+      "tutor_elapsed_ms": 7801,
+      "tutor_esito": "fondata",
+      "tutor_gap_reason": "",
+      "tutor_handoff_created": false,
+      "tutor_pending_preserved": false,
+      "tutor_probe_statuses": [],
+      "tutor_query_hash": "sha256:06365cae2d7cf5e11ab913cd0c3dd0ef6269f1582c407eb952b28feaa3bd9d76",
+      "tutor_repair_missing": [],
+      "tutor_repair_pass": 0,
+      "tutor_repair_remaining": [],
+      "tutor_score_band": "high",
+      "tutor_source_ids": [
+        "knowledge:doc-public-domains-a05187101c19-it-0016",
+        "knowledge:executor-create_calendars-arg-761b7ad8ad43-it-01",
+        "knowledge:executor-create_calendars-arg-c9046f7a37ad-it-01",
+        "knowledge:executor-create_calendars-arg-948fe603f61d-it-01",
+        "knowledge:executor-create_calendars-it",
+        "knowledge:doc-public-executor-653fe35db16a-it-0024",
+        "knowledge:doc-public-domains-a05187101c19-it-0013",
+        "knowledge:executor-delete_calendars-it",
+        "card:attivita-programmate:it",
+        "knowledge:doc-public-index-42cffbc24a34-it-0010",
+        "knowledge:doc-public-domains-a05187101c19-it-0015"
+      ],
+      "user_query": "Come potrei creare un calendario di prova? Spiegamelo soltanto."
+    }
+  ]
+}

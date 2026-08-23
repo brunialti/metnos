@@ -2,10 +2,10 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `in_progress`; C0-C3 completate e verificate il 2026-08-22, C4 in preparazione |
+| Stato | `implemented`; C0-C6 completate e certificate il 2026-08-23 |
 | Creazione | 2026-08-22 |
-| Ultima revisione | 2026-08-22 |
-| Implementazione reale | C0-C3 forniscono schema JSON, matrice bilingue di 24 flussi, coordinatore riprendibile e gate HTTP isolato: il gate rapido ha superato due cicli (16/16) e i 19 flussi non durevoli IT/EN un ciclo qualificante (38/38); dispositivo, LRE, sonde reali e certificazione finale restano da completare |
+| Ultima revisione | 2026-08-23 |
+| Implementazione reale | C0-C6 completate: matrice bilingue di 24 flussi, coordinatore riprendibile, HTTP isolato, client Rust reale, LRE e postcondizioni; cinque sonde reali verdi e certificazione finale 96/96 su due cicli consecutivi |
 | Decisione di prodotto | La Fase 8 misura se Metnos raggiunge davvero il risultato richiesto, con autorita', collocazione, effetti e risposta corretti; non usa il numero di executor o di test come sostituto della qualita' |
 | Nome storico | Fase 8 — «stress logico» |
 | Origine | `internal/design/TODO.md::QUA-001` e §12 di `CLAUDE.mutabile.md` |
@@ -368,6 +368,11 @@ e sintesi in `internal/reports/rm0006-c2-verification-20260822.md`.
 
 ### C4 — Dispositivo, LRE e condizioni avverse
 
+**Stato:** completata il 2026-08-22. Un ciclo completo IT/EN e' verde 48/48;
+evidenza sintetica in
+`internal/reports/rm0006-c4-verification-20260822.md` e prova persistente,
+ripetuta in due cicli, nel pacchetto C6.
+
 - collegare un dispositivo simulato e una sonda controllata su dispositivo
   posseduto;
 - attraversare presa in carico LRE, arresto, ripresa e artefatto;
@@ -377,6 +382,12 @@ e sintesi in `internal/reports/rm0006-c2-verification-20260822.md`.
 **Uscita:** tutti i 24 flussi verdi in un ciclo diagnostico.
 
 ### C5 — Sonde reali e correzioni generali
+
+**Stato:** completata il 2026-08-22. Cinque sonde non distruttive su stack
+installato, turno reale in sola lettura, modello locale, sito Cloudflare e
+origine GitHub pubblica sono verdi 5/5. Evidenze in
+`internal/reports/rm0006-c5-real-probes-20260822.json` e
+`internal/reports/rm0006-c5-verification-20260822.md`.
 
 - eseguire almeno quattro sonde non distruttive su confini reali;
 - classificare ogni difetto per causa, non per frase;
@@ -388,6 +399,12 @@ contratto fra sostituto e sonda reale.
 
 ### C6 — Certificazione finale
 
+**Stato:** completata e verificata il 2026-08-23. I due cicli sulla matrice
+ricongelata sono verdi 96/96, senza errori, esclusioni o fallimenti. Pacchetto
+riproducibile in
+`internal/reports/rm0006-c6-certification-20260823/`; verdetto indipendente in
+`internal/reports/rm0006-c6-verification-20260823.md`.
+
 - eseguire i 96 casi in due cicli consecutivi;
 - verificare automaticamente i criteri del §9;
 - far controllare riepilogo, fallimenti e campione di successi;
@@ -396,6 +413,17 @@ contratto fra sostituto e sonda reale.
 - aggiornare §12 di `CLAUDE.mutabile.md` e lo stato di questa roadmap.
 
 **Uscita:** rapporto finale riproducibile e stato `implemented`.
+
+### Verdetto di chiusura
+
+Tutti i dodici criteri del §9 sono soddisfatti. La matrice finale ha digest
+`3623f900e37e8a8fe966eb2030fc7303ac670a7202d208a007b59ea1fbf00062`;
+il registro dei 96 risultati ha digest
+`a7bc2edd8d64b5584a77331f78573a64becb95fa813dbc0e9f88586bcb409c6d`.
+La revisione tecnica certificata e'
+`201342f1269fd366270ee1523f4bca94dd59c393`.
+RM-0006 passa a `implemented`; RM-0005 resta distinta e non viene promossa da
+questa certificazione bilingue.
 
 ## 11. Rischi e contromisure
 

@@ -1,0 +1,15 @@
+{
+  "certification_id": "rm0006-c6-two-cycle-v1",
+  "complete": true,
+  "errors": 0,
+  "evaluated_cases": 96,
+  "expected_cases": 96,
+  "failed": 0,
+  "failures": [],
+  "matrix_sha256": "3623f900e37e8a8fe966eb2030fc7303ac670a7202d208a007b59ea1fbf00062",
+  "objective_achieved": true,
+  "passed": 96,
+  "pending": 0,
+  "results_registry_sha256": "a7bc2edd8d64b5584a77331f78573a64becb95fa813dbc0e9f88586bcb409c6d",
+  "schema_version": "metnos.certification-summary/1"
+}

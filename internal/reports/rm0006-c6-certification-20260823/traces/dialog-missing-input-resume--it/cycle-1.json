@@ -1,0 +1,150 @@
+{
+  "case_id": "dialog-missing-input-resume--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "ask",
+      "final_message": "Nome del file\nInserisci il nome del file da creare in /tmp/metnos-certification-fixture/dialog\n\nStep 1/1 — Come deve chiamarsi il file (es. output.txt)?\n\nRispondi nel prossimo messaggio. `annulla` per abortire.",
+      "final_message_html": "<p>Nome del file<br>Inserisci il nome del file da creare in /tmp/metnos-certification-fixture/dialog</p>\n<p>Step 1/1 — Come deve chiamarsi il file (es. output.txt)?</p>\n<p>Rispondi nel prossimo messaggio. <code>annulla</code> per abortire.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "get_inputs"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 8340,
+      "ts_end": 1787467386.5296457,
+      "turn_id": "1dbfdcb679394b5e"
+    },
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Operazione completata: 1 elemento/i modificati o rimossi.\n\nRiferimenti della modifica: /tmp/metnos-certification-fixture/dialog/cert-dialog.txt",
+      "final_message_html": "<p>Operazione completata: 1 elemento/i modificati o rimossi.</p>\n<p>Riferimenti della modifica: /tmp/metnos-certification-fixture/dialog/cert-dialog.txt</p>",
+      "steps_summary": [],
+      "total_ms": 0,
+      "turn_id": "pending"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "ask",
+      "final_message": "Nome del file\nInserisci il nome del file da creare in /tmp/metnos-certification-fixture/dialog\n\nStep 1/1 — Come deve chiamarsi il file (es. output.txt)?\n\nRispondi nel prossimo messaggio. `annulla` per abortire.",
+      "intent_verb": "write",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "get_inputs",
+          "error": null,
+          "exec_ms": 46,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "1dbfdcb679394b5e",
+            "description": "Inserisci il nome del file da creare in /tmp/metnos-certification-fixture/dialog",
+            "dialog": [
+              {
+                "prompt": "Come deve chiamarsi il file (es. output.txt)?",
+                "schema": {
+                  "kind": "text"
+                },
+                "var": "filename"
+              }
+            ],
+            "title": "Nome del file"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "1dbfdcb679394b5e",
+            "description": "Inserisci il nome del file da creare in /tmp/metnos-certification-fixture/dialog",
+            "dialog": [
+              {
+                "prompt": "Come deve chiamarsi il file (es. output.txt)?",
+                "schema": {
+                  "kind": "text"
+                },
+                "var": "filename"
+              }
+            ],
+            "title": "Nome del file"
+          },
+          "result": {
+            "decision": "input_required",
+            "dialog_id": "ba013cd5df4249b1",
+            "expandable_caps": [
+              {
+                "dialog_id": "ba013cd5df4249b1",
+                "fmt": "dialogue",
+                "kind": "get_inputs_response",
+                "step_total": 1
+              }
+            ],
+            "final_message_hint": "Nome del file\nInserisci il nome del file da creare in /tmp/metnos-certification-fixture/dialog\n\nStep 1/1 — Come deve chiamarsi il file (es. output.txt)?\n\nRispondi nel prossimo messaggio. `annulla` per abortire.",
+            "fmt": "dialogue",
+            "metadata": {
+              "actor": "host",
+              "channel": "http",
+              "fmt": "dialogue",
+              "n_steps": 1,
+              "title": "Nome del file"
+            },
+            "ok": true,
+            "step_index": 0,
+            "step_total": 1,
+            "values": {}
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467386.5296457,
+      "ts_start": 1787467378.1895905,
+      "turn_id": "1dbfdcb679394b5e",
+      "unbacked_promise_detected": false,
+      "user_query": "Crea nella directory /tmp/metnos-certification-fixture/dialog un file con testo METNOS-CERT-DIALOG; chiedimi il nome mancante e poi riprendi la stessa richiesta."
+    }
+  ]
+}

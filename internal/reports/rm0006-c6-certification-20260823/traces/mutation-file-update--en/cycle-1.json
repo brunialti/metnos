@@ -1,0 +1,138 @@
+{
+  "case_id": "mutation-file-update--en",
+  "responses": [
+    {
+      "attachments": [
+        {
+          "basename": "modifica.txt",
+          "caption": null,
+          "download_url": "/agent/photos/95d5c4e7a1d7435e/0?size=file&exp=1787553958&t=53a9734022434220dd80188cb6a7d470",
+          "kind": "file",
+          "mime": "text/plain"
+        }
+      ],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Il file /tmp/metnos-certification-fixture/mutation/modifica.txt è stato aggiornato con il contenuto 'METNOS-CERT-UPDATED'.",
+      "final_message_html": "<p>Il file /tmp/metnos-certification-fixture/mutation/modifica.txt è stato aggiornato con il contenuto 'METNOS-CERT-UPDATED'.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "write_files"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 4233,
+      "ts_end": 1787467558.2165203,
+      "turn_id": "95d5c4e7a1d7435e"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [
+        {
+          "basename": "modifica.txt",
+          "kind": "file",
+          "mime": "text/plain",
+          "path": "/tmp/metnos-certification-fixture/mutation/modifica.txt"
+        }
+      ],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 1,
+        "failures": 0,
+        "items": 0,
+        "mutating_attempted": true,
+        "mutations": 1
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Il file /tmp/metnos-certification-fixture/mutation/modifica.txt è stato aggiornato con il contenuto 'METNOS-CERT-UPDATED'.",
+      "intent_verb": "write",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "write_files",
+          "error": null,
+          "exec_ms": 51,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "95d5c4e7a1d7435e",
+            "client": "local",
+            "content": "METNOS-CERT-UPDATED",
+            "path": "/tmp/metnos-certification-fixture/mutation/modifica.txt"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "95d5c4e7a1d7435e",
+            "client": "local",
+            "content": "METNOS-CERT-UPDATED",
+            "path": "/tmp/metnos-certification-fixture/mutation/modifica.txt"
+          },
+          "result": {
+            "created_count": 0,
+            "dirs_created": [],
+            "fail_count": 0,
+            "ok": true,
+            "ok_count": 1,
+            "results": [
+              {
+                "bytes_written": 19,
+                "created": false,
+                "encoding": "utf-8",
+                "mode": "overwrite",
+                "path": "/tmp/metnos-certification-fixture/mutation/modifica.txt",
+                "prev_blob_path": "/opt/metnos/tests/e2e/tmp/0bb3aaf5/data/_history/95d5c4e7a1d7435e/blob/34bd95b34b730af5bfc73b2aa607906f8b30983cd14359891603be89bf24fae6.bin"
+              }
+            ],
+            "skipped_count": 0
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467558.2165203,
+      "ts_start": 1787467553.9830737,
+      "turn_id": "95d5c4e7a1d7435e",
+      "unbacked_promise_detected": false,
+      "user_query": "Replace the contents of /tmp/metnos-certification-fixture/mutation/modifica.txt with METNOS-CERT-UPDATED."
+    }
+  ]
+}

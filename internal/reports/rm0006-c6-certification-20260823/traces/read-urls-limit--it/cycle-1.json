@@ -1,0 +1,191 @@
+{
+  "case_id": "read-urls-limit--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "| item |\n| --- |\n| METNOS-CERT-DOCS a |\n| METNOS-CERT-DOCS b |\n| METNOS-CERT-DOCS c |\n\n**Risultati (3) per Trova sul web al massimo tre URL di documentazione su METNOS-CERT-DOCS.**\n**1.** [METNOS-CERT-DOCS a](http://127.0.0.1:37591/docs/a) — score 5.40\n  Documentation fixture a\n**2.** [METNOS-CERT-DOCS b](http://127.0.0.1:37591/docs/b) — score 5.40\n  Documentation fixture b\n**3.** [METNOS-CERT-DOCS c](http://127.0.0.1:37591/docs/c) — score 5.40\n  Documentation fixture c",
+      "final_message_html": "<table><thead><tr><th>item</th></tr></thead><tbody><tr><td>METNOS-CERT-DOCS a</td></tr><tr><td>METNOS-CERT-DOCS b</td></tr><tr><td>METNOS-CERT-DOCS c</td></tr></tbody></table>\n<p><b>Risultati (3) per Trova sul web al massimo tre URL di documentazione su METNOS-CERT-DOCS.</b><br><b>1.</b> <a href=\"http://127.0.0.1:37591/docs/a\" target=\"_blank\" rel=\"noopener noreferrer\">METNOS-CERT-DOCS a</a> — score 5.40<br>Documentation fixture a<br><b>2.</b> <a href=\"http://127.0.0.1:37591/docs/b\" target=\"_blank\" rel=\"noopener noreferrer\">METNOS-CERT-DOCS b</a> — score 5.40<br>Documentation fixture b<br><b>3.</b> <a href=\"http://127.0.0.1:37591/docs/c\" target=\"_blank\" rel=\"noopener noreferrer\">METNOS-CERT-DOCS c</a> — score 5.40<br>Documentation fixture c</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "find_urls"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 5387,
+      "ts_end": 1787467314.962543,
+      "turn_id": "7197dc0125ab4dcf"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 1,
+        "failures": 0,
+        "items": 3,
+        "mutating_attempted": false,
+        "mutations": 0
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "| item |\n| --- |\n| METNOS-CERT-DOCS a |\n| METNOS-CERT-DOCS b |\n| METNOS-CERT-DOCS c |\n\n**Risultati (3) per Trova sul web al massimo tre URL di documentazione su METNOS-CERT-DOCS.**\n**1.** [METNOS-CERT-DOCS a](http://127.0.0.1:37591/docs/a) — score 5.40\n  Documentation fixture a\n**2.** [METNOS-CERT-DOCS b](http://127.0.0.1:37591/docs/b) — score 5.40\n  Documentation fixture b\n**3.** [METNOS-CERT-DOCS c](http://127.0.0.1:37591/docs/c) — score 5.40\n  Documentation fixture c",
+      "intent_verb": "find",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "find_urls",
+          "error": null,
+          "exec_ms": 304,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "7197dc0125ab4dcf",
+            "max_per_domain": 3,
+            "search_query": "METNOS-CERT-DOCS"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "7197dc0125ab4dcf",
+            "max_per_domain": 3,
+            "search_query": "METNOS-CERT-DOCS"
+          },
+          "result": {
+            "_presentation_contract": {
+              "default_view": "list",
+              "list": {
+                "columns": [
+                  {
+                    "cell_max": 240,
+                    "key": "item",
+                    "source": [
+                      "id",
+                      "name",
+                      "title",
+                      "subject",
+                      "path",
+                      "url",
+                      "$entry"
+                    ]
+                  }
+                ],
+                "max_chars": 16000,
+                "max_rows": 200,
+                "mode": "table",
+                "overflow": "notice"
+              }
+            },
+            "discovered_documents": [],
+            "discovery_strategy": "bfs",
+            "entries": [
+              {
+                "content_type": "text/html; charset=utf-8",
+                "depth": 0,
+                "fetched_at": 1787467314.8732836,
+                "lastmod": null,
+                "score": 5.401,
+                "snippet": "Documentation fixture a",
+                "title": "METNOS-CERT-DOCS a",
+                "url": "http://127.0.0.1:37591/docs/a"
+              },
+              {
+                "content_type": "text/html; charset=utf-8",
+                "depth": 0,
+                "fetched_at": 1787467314.8733249,
+                "lastmod": null,
+                "score": 5.401,
+                "snippet": "Documentation fixture b",
+                "title": "METNOS-CERT-DOCS b",
+                "url": "http://127.0.0.1:37591/docs/b"
+              },
+              {
+                "content_type": "text/html; charset=utf-8",
+                "depth": 0,
+                "fetched_at": 1787467314.8733544,
+                "lastmod": null,
+                "score": 5.401,
+                "snippet": "Documentation fixture c",
+                "title": "METNOS-CERT-DOCS c",
+                "url": "http://127.0.0.1:37591/docs/c"
+              }
+            ],
+            "fail_count": 0,
+            "metadata": {
+              "caller_seeds_dropped": [],
+              "discovery_count_documents": 0,
+              "discovery_count_rss": 0,
+              "discovery_count_sitemap": 0,
+              "host_seed": "127.0.0.1",
+              "max_depth_used": 1,
+              "rate_limit_ms_used": 200,
+              "rerank": {
+                "reason": "disabled",
+                "used": false
+              },
+              "search_query": "METNOS-CERT-DOCS",
+              "search_results_used": 3,
+              "search_top_n": 3,
+              "search_wide_n": 30,
+              "tier": 3,
+              "time_window": "all",
+              "topic_terms": [
+                "metnos",
+                "cert",
+                "docs"
+              ]
+            },
+            "ok": true,
+            "ok_count": 3,
+            "robots_skipped": []
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467314.962543,
+      "ts_start": 1787467309.5746741,
+      "turn_id": "7197dc0125ab4dcf",
+      "unbacked_promise_detected": false,
+      "user_query": "Trova sul web al massimo tre URL di documentazione su METNOS-CERT-DOCS."
+    }
+  ]
+}

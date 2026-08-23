@@ -1,0 +1,55 @@
+{
+  "case_id": "explain-tutor-service-status--it",
+  "responses": [
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami lo stato dei servizi»\n\nLo stato dei servizi è visibile nella pagina **Settings > Sistema > Servizi** della chat web di Metnos.\n\n**Percorso di accesso:**\n1. Apri la chat web di Metnos.\n2. Naviga verso: **Settings** > **Sistema** > **Servizi**.\n3. La route diretta è `/admin/services`.\n\n**Cosa puoi vedere:**\nLa pagina mostra un inventario live dei componenti supervisionati, aggiornandosi automaticamente ogni 15 secondi. Per ogni servizio sono riportati:\n*   Stato systemd.\n*   Salute applicativa.\n*   Ambito di installazione (es. Nucleo, Navigazione web, Ricerca e geografia).\n*   PID e gruppo.\n\nI servizi attualmente elencati includono:\n*   **Server HTTP** (API, chat e Settings)\n*   **Daemon Telegram** (Canale Telegram e notifiche)\n*   **Display laterale** (Display grafico virtuale del browser)\n*   **Playwright sidecar** (Browser e sessioni Sites)\n*   **Modello linguistico locale** (Server locale per vari modelli)\n*   **SearXNG** (Motore di ricerca web)\n*   **Server geografico** (Geocoding locale Photon/OSM)\n*   **Traduttore i18n** (Traduzioni differite)\n*   **LRE (Long Run Engine)** (Motore supervisionato per attività LRE)\n\nPer ulteriori dettagli sulla struttura e sul significato dei campi, puoi consultare il [Glossario ufficiale di Metnos](https://metnos.com/it/Metnos_Glossario_v1) o la [documentazione specifica sulla pagina Servizi](https://metnos.com/it/system/services).\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "final_message_html": "<p>Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami lo stato dei servizi»</p>\n<p>Lo stato dei servizi è visibile nella pagina <b>Settings &gt; Sistema &gt; Servizi</b> della chat web di Metnos.</p>\n<p><b>Percorso di accesso:</b></p>\n<ol>\n<li>Apri la chat web di Metnos.</li>\n<li>Naviga verso: <b>Settings</b> &gt; <b>Sistema</b> &gt; <b>Servizi</b>.</li>\n<li>La route diretta è <code>/admin/services</code>.</li>\n</ol>\n<p><b>Cosa puoi vedere:</b><br>La pagina mostra un inventario live dei componenti supervisionati, aggiornandosi automaticamente ogni 15 secondi. Per ogni servizio sono riportati:</p>\n<ul>\n<li>Stato systemd.</li>\n<li>Salute applicativa.</li>\n<li>Ambito di installazione (es. Nucleo, Navigazione web, Ricerca e geografia).</li>\n<li>PID e gruppo.</li>\n</ul>\n<p>I servizi attualmente elencati includono:</p>\n<ul>\n<li><b>Server HTTP</b> (API, chat e Settings)</li>\n<li><b>Daemon Telegram</b> (Canale Telegram e notifiche)</li>\n<li><b>Display laterale</b> (Display grafico virtuale del browser)</li>\n<li><b>Playwright sidecar</b> (Browser e sessioni Sites)</li>\n<li><b>Modello linguistico locale</b> (Server locale per vari modelli)</li>\n<li><b>SearXNG</b> (Motore di ricerca web)</li>\n<li><b>Server geografico</b> (Geocoding locale Photon/OSM)</li>\n<li><b>Traduttore i18n</b> (Traduzioni differite)</li>\n<li><b>LRE (Long Run Engine)</b> (Motore supervisionato per attività LRE)</li>\n</ul>\n<p>Per ulteriori dettagli sulla struttura e sul significato dei campi, puoi consultare il <a href=\"https://metnos.com/it/Metnos_Glossario_v1\" target=\"_blank\" rel=\"noopener noreferrer\">Glossario ufficiale di Metnos</a> o la <a href=\"https://metnos.com/it/system/services\" target=\"_blank\" rel=\"noopener noreferrer\">documentazione specifica sulla pagina Servizi</a>.</p>\n<p>La spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.</p>",
+      "steps_summary": [],
+      "total_ms": 10160,
+      "turn_id": "0f9d81bbec194b56"
+    }
+  ],
+  "turn_records": [
+    {
+      "actor": "host",
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "final_kind": "answer",
+      "final_message": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami lo stato dei servizi»\n\nLo stato dei servizi è visibile nella pagina **Settings > Sistema > Servizi** della chat web di Metnos.\n\n**Percorso di accesso:**\n1. Apri la chat web di Metnos.\n2. Naviga verso: **Settings** > **Sistema** > **Servizi**.\n3. La route diretta è `/admin/services`.\n\n**Cosa puoi vedere:**\nLa pagina mostra un inventario live dei componenti supervisionati, aggiornandosi automaticamente ogni 15 secondi. Per ogni servizio sono riportati:\n*   Stato systemd.\n*   Salute applicativa.\n*   Ambito di installazione (es. Nucleo, Navigazione web, Ricerca e geografia).\n*   PID e gruppo.\n\nI servizi attualmente elencati includono:\n*   **Server HTTP** (API, chat e Settings)\n*   **Daemon Telegram** (Canale Telegram e notifiche)\n*   **Display laterale** (Display grafico virtuale del browser)\n*   **Playwright sidecar** (Browser e sessioni Sites)\n*   **Modello linguistico locale** (Server locale per vari modelli)\n*   **SearXNG** (Motore di ricerca web)\n*   **Server geografico** (Geocoding locale Photon/OSM)\n*   **Traduttore i18n** (Traduzioni differite)\n*   **LRE (Long Run Engine)** (Motore supervisionato per attività LRE)\n\nPer ulteriori dettagli sulla struttura e sul significato dei campi, puoi consultare il [Glossario ufficiale di Metnos](https://metnos.com/it/Metnos_Glossario_v1) o la [documentazione specifica sulla pagina Servizi](https://metnos.com/it/system/services).\n\nLa spiegazione è conclusa. L’azione resta separata e passerà ai normali controlli di Metnos solo dopo la tua conferma.",
+      "mode": "tutor",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "redacted": true,
+      "steps": [],
+      "ts_end": 1787467686.9167142,
+      "ts_start": 1787467676.756714,
+      "turn_id": "0f9d81bbec194b56",
+      "tutor_card_ids": [],
+      "tutor_detection": "semantic_help",
+      "tutor_elapsed_ms": 10160,
+      "tutor_esito": "fondata",
+      "tutor_gap_reason": "",
+      "tutor_handoff_created": false,
+      "tutor_pending_preserved": false,
+      "tutor_probe_statuses": [],
+      "tutor_query_hash": "sha256:0eaf1071c318119bfe1fe18e286b05977cde431eb7d41ca26af5eb3244ad0248",
+      "tutor_repair_missing": [],
+      "tutor_repair_pass": 0,
+      "tutor_repair_remaining": [],
+      "tutor_score_band": "high",
+      "tutor_source_ids": [
+        "knowledge:runtime-observation-services-status-it",
+        "knowledge:runtime-settings-services-it",
+        "knowledge:doc-public-metnos-glossario-v1-5a5705674e57-it-0042",
+        "knowledge:doc-public-services-fa3726200d09-it-0001",
+        "knowledge:doc-public-lre-941fe1d4e055-it-0018"
+      ],
+      "user_query": "Spiegami dove vedo lo stato dei servizi, senza modificarli."
+    }
+  ]
+}

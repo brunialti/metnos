@@ -4,7 +4,7 @@
 >
 > **QUANDO AGGIORNARLO** (ex §13): nuova decisione di runtime (tier LLM, helper universale, vincolo dominio, gate/env); chiusura fase o nuovo macro-topic; sezione contraddetta dal codice (aggiornare PRIMA della PR). **NON aggiornarlo per**: bug fix puntuali (commit message); decisioni temporanee/sperimentali e stato di sessione (→ memorie); dettagli di un singolo ADR (→ l'ADR). Stile: una decisione = poche righe operative + puntatore ADR/spec/test.
 
-## S. Stato corrente (22/8/2026)
+## S. Stato corrente (23/8/2026)
 
 - **Analisi richiesta/intent in corso (8/8)**: prima di riprendere prove di
   normalizzazione o intent extraction leggere
@@ -19,7 +19,7 @@
   `METNOS_LLM_SLOT_ID`, default 1. L'affinità è applicata nei due client
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0214` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **ADR registry**: `0001-0215` (skipped: `0055`/`0115`/`0116`/`0121`).
 - **LRE F0-F14 implementato** (22/8, ADR 0213-0214, RM-0004):
   `runtime/durable_workloads/` contiene contratti, schema
   SQLite, archivio circoscritto al proprietario, acquisizione, concessioni a
@@ -132,7 +132,7 @@ Il nucleo dei manifest generati e' centralizzato in `generated_executor_contract
 ## 12. Fasi di sviluppo
 
 - **Fasi 1-5 chiuse** (POC / test framework / synt 5 stadi / reality check+Telegram / vaglio+sandbox+dispatcher).
-- **Fase 6** voce — STANDBY. **Fase 7** (client Rust executor remoti) — **CHIUSA** (8-9/7): topic 1 MVP + C7 mutanti (write/move/delete remoti, undo device-aware ADR 0183); topic 2 multi-user (device→users.id, owner-filter), multi-OS = Windows+Linux (macOS ESCLUSO da Roberto); robustezza (blob-TTL, co-location consumer↔producer, device-i18n bundleato). **W4 AppContainer pienamente in prod**: `appcontainer::gate_on()` default ON su Windows (opt-OUT `METNOS_SANDBOX_APPCONTAINER=0`), + skip AppContainer per `code:exec` (get_processes/tasklist con CPU nativa Win32); **self-update robusto/automatico** (launcher-loop, respawn `Stdio::null()`) validato live (auto-update 0.2.21→0.2.22 in ~13s zero-manuale). PC su **0.2.25**. Handoff `project_w4_prod_enable_followup` = OBSOLETO. **Fase 8** — certificazione logica E2E su 24 flussi d'oro, non prova di carico: roadmap **RM-0006 `ready`**, attuazione prossima; Metnos esegue i lotti, oracolo e verifica restano indipendenti.
+- **Fase 6** voce — STANDBY. **Fase 7** (client Rust executor remoti) — **CHIUSA** (8-9/7): topic 1 MVP + C7 mutanti (write/move/delete remoti, undo device-aware ADR 0183); topic 2 multi-user (device→users.id, owner-filter), multi-OS = Windows+Linux (macOS ESCLUSO da Roberto); robustezza (blob-TTL, co-location consumer↔producer, device-i18n bundleato). **W4 AppContainer pienamente in prod**: `appcontainer::gate_on()` default ON su Windows (opt-OUT `METNOS_SANDBOX_APPCONTAINER=0`), + skip AppContainer per `code:exec` (get_processes/tasklist con CPU nativa Win32); **self-update robusto/automatico** (launcher-loop, respawn `Stdio::null()`) validato live (auto-update 0.2.21→0.2.22 in ~13s zero-manuale). PC su **0.2.25**. Handoff `project_w4_prod_enable_followup` = OBSOLETO. **Fase 8 — CHIUSA** (23/8, ADR 0215, RM-0006): 24 flussi di riferimento IT/EN, cinque sonde reali e due cicli finali 96/96; non e' una prova di carico. Metnos esegue i casi, mentre oracolo, postcondizioni e verifica restano esterni al processo sotto prova.
 
 ## 14. HTTP API
 

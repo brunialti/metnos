@@ -1,0 +1,307 @@
+{
+  "case_id": "compose-contacts-filter--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "| name | emails | id | phones |\n| --- | --- | --- | --- |\n| Ada Cert | ['ada@cert.invalid'] | ada-cert | [] |\n| Cora Cert | ['cora@cert.invalid'] | cora-cert | [] |",
+      "final_message_html": "<table><thead><tr><th>name</th><th>emails</th><th>id</th><th>phones</th></tr></thead><tbody><tr><td>Ada Cert</td><td>['ada@cert.invalid']</td><td>ada-cert</td><td>[]</td></tr><tr><td>Cora Cert</td><td>['cora@cert.invalid']</td><td>cora-cert</td><td>[]</td></tr></tbody></table>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "find_contacts"
+        },
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 2,
+          "tool": "filter_entries"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 5030,
+      "ts_end": 1787467540.6182132,
+      "turn_id": "18e9b6d901514259"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 2,
+        "failures": 0,
+        "items": 5,
+        "mutating_attempted": false,
+        "mutations": 0
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "| name | emails | id | phones |\n| --- | --- | --- | --- |\n| Ada Cert | ['ada@cert.invalid'] | ada-cert | [] |\n| Cora Cert | ['cora@cert.invalid'] | cora-cert | [] |",
+      "intent_verb": "find",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "find_contacts",
+          "error": null,
+          "exec_ms": 61,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "18e9b6d901514259",
+            "client": "google_workspace",
+            "max_results": 100,
+            "query": ""
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "18e9b6d901514259",
+            "client": "google_workspace",
+            "max_results": 100,
+            "query": ""
+          },
+          "result": {
+            "_presentation_contract": {
+              "default_view": "list",
+              "list": {
+                "columns": [
+                  {
+                    "cell_max": 160,
+                    "key": "name",
+                    "source": [
+                      "name",
+                      "display_name",
+                      "email",
+                      "$entry"
+                    ]
+                  }
+                ],
+                "max_chars": 16000,
+                "max_rows": 200,
+                "mode": "table",
+                "overflow": "notice"
+              }
+            },
+            "available_total": 3,
+            "cap_field": "max_results",
+            "cap_value": 100,
+            "entries": [
+              {
+                "emails": [
+                  "ada@cert.invalid"
+                ],
+                "id": "ada-cert",
+                "name": "Ada Cert",
+                "phones": []
+              },
+              {
+                "emails": [],
+                "id": "bruno-cert",
+                "name": "Bruno Cert",
+                "phones": [
+                  "+39000000001"
+                ]
+              },
+              {
+                "emails": [
+                  "cora@cert.invalid"
+                ],
+                "id": "cora-cert",
+                "name": "Cora Cert",
+                "phones": []
+              }
+            ],
+            "messaging_source": "contacts_google_workspace",
+            "ok": true,
+            "truncated": false,
+            "truncated_what": "contact",
+            "used": 3
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        },
+        {
+          "canonical_query": "",
+          "chosen_tool": "filter_entries",
+          "error": null,
+          "exec_ms": 37,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "18e9b6d901514259",
+            "entries": [
+              {
+                "emails": [
+                  "ada@cert.invalid"
+                ],
+                "id": "ada-cert",
+                "name": "Ada Cert",
+                "phones": []
+              },
+              {
+                "emails": [],
+                "id": "bruno-cert",
+                "name": "Bruno Cert",
+                "phones": [
+                  "+39000000001"
+                ]
+              },
+              {
+                "emails": [
+                  "cora@cert.invalid"
+                ],
+                "id": "cora-cert",
+                "name": "Cora Cert",
+                "phones": []
+              }
+            ],
+            "where_field": "emails",
+            "where_regex": ".*@.*"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "18e9b6d901514259",
+            "entries": [
+              {
+                "emails": [
+                  "ada@cert.invalid"
+                ],
+                "id": "ada-cert",
+                "name": "Ada Cert",
+                "phones": []
+              },
+              {
+                "emails": [],
+                "id": "bruno-cert",
+                "name": "Bruno Cert",
+                "phones": [
+                  "+39000000001"
+                ]
+              },
+              {
+                "emails": [
+                  "cora@cert.invalid"
+                ],
+                "id": "cora-cert",
+                "name": "Cora Cert",
+                "phones": []
+              }
+            ],
+            "where_field": "emails",
+            "where_regex": ".*@.*"
+          },
+          "result": {
+            "entries": [
+              {
+                "emails": [
+                  "ada@cert.invalid"
+                ],
+                "id": "ada-cert",
+                "name": "Ada Cert",
+                "phones": []
+              },
+              {
+                "emails": [
+                  "cora@cert.invalid"
+                ],
+                "id": "cora-cert",
+                "name": "Cora Cert",
+                "phones": []
+              }
+            ],
+            "metadata": {
+              "count_in": 3,
+              "count_out": 2,
+              "criteria": {
+                "kind": null,
+                "mime_prefix": null,
+                "mtime_after": null,
+                "mtime_before": null,
+                "name_glob": null,
+                "name_regex": null,
+                "overlap_dropped": 0,
+                "size_max": null,
+                "size_min": null,
+                "type": null,
+                "where_contains": null,
+                "where_field": "emails",
+                "where_glob": null,
+                "where_in": null,
+                "where_not_in": null,
+                "where_present": null,
+                "where_regex": ".*@.*",
+                "where_starts_with": null
+              },
+              "dropped": 1
+            },
+            "ok": true
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 2,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467540.6182132,
+      "ts_start": 1787467535.587216,
+      "turn_id": "18e9b6d901514259",
+      "unbacked_promise_detected": false,
+      "user_query": "Find all contacts and filter the results to keep only entries with an email address."
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "case_id": "dialog-missing-input-resume--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "ask",
+      "final_message": "Inserisci il nome\n\nStep 1/1 — Inserisci il nome da includere nel file.\n\nRispondi nel prossimo messaggio. `annulla` per abortire.",
+      "final_message_html": "<p>Inserisci il nome</p>\n<p>Step 1/1 — Inserisci il nome da includere nel file.</p>\n<p>Rispondi nel prossimo messaggio. <code>annulla</code> per abortire.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "get_inputs"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 7993,
+      "ts_end": 1787467990.4063842,
+      "turn_id": "6ed09d7352f14a6b"
+    },
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Operazione completata: 1 elemento/i modificati o rimossi.\n\nRiferimenti della modifica: /tmp/metnos-certification-fixture/dialog/cert-dialog.txt",
+      "final_message_html": "<p>Operazione completata: 1 elemento/i modificati o rimossi.</p>\n<p>Riferimenti della modifica: /tmp/metnos-certification-fixture/dialog/cert-dialog.txt</p>",
+      "steps_summary": [],
+      "total_ms": 0,
+      "turn_id": "pending"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "ask",
+      "final_message": "Inserisci il nome\n\nStep 1/1 — Inserisci il nome da includere nel file.\n\nRispondi nel prossimo messaggio. `annulla` per abortire.",
+      "intent_verb": "write",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "get_inputs",
+          "error": null,
+          "exec_ms": 51,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "6ed09d7352f14a6b",
+            "dialog": [
+              {
+                "prompt": "Inserisci il nome da includere nel file.",
+                "schema": {
+                  "kind": "text"
+                },
+                "var": "name"
+              }
+            ],
+            "title": "Inserisci il nome"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "6ed09d7352f14a6b",
+            "dialog": [
+              {
+                "prompt": "Inserisci il nome da includere nel file.",
+                "schema": {
+                  "kind": "text"
+                },
+                "var": "name"
+              }
+            ],
+            "title": "Inserisci il nome"
+          },
+          "result": {
+            "decision": "input_required",
+            "dialog_id": "12178722a30149ac",
+            "expandable_caps": [
+              {
+                "dialog_id": "12178722a30149ac",
+                "fmt": "dialogue",
+                "kind": "get_inputs_response",
+                "step_total": 1
+              }
+            ],
+            "final_message_hint": "Inserisci il nome\n\nStep 1/1 — Inserisci il nome da includere nel file.\n\nRispondi nel prossimo messaggio. `annulla` per abortire.",
+            "fmt": "dialogue",
+            "metadata": {
+              "actor": "host",
+              "channel": "http",
+              "fmt": "dialogue",
+              "n_steps": 1,
+              "title": "Inserisci il nome"
+            },
+            "ok": true,
+            "step_index": 0,
+            "step_total": 1,
+            "values": {}
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467990.4063842,
+      "ts_start": 1787467982.4128225,
+      "turn_id": "6ed09d7352f14a6b",
+      "unbacked_promise_detected": false,
+      "user_query": "Create a file containing METNOS-CERT-DIALOG under /tmp/metnos-certification-fixture/dialog; ask me for the missing name and then resume the same request."
+    }
+  ]
+}

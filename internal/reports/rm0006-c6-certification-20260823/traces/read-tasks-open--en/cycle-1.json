@@ -1,0 +1,160 @@
+{
+  "case_id": "read-tasks-open--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Task pianificati (2):\n- **ID 1** `cert-task-open-a` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-A\n- **ID 2** `cert-task-open-b` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-B",
+      "final_message_html": "<p>Task pianificati (2):</p>\n<ul>\n<li><b>ID 1</b> <code>cert-task-open-a</code> — ogni giorno alle 23:59</li>\n</ul>\n<p>Stato: <b>attivo</b> · Ultima: mai eseguito<br>↳ METNOS-CERT-TASK-A</p>\n<ul>\n<li><b>ID 2</b> <code>cert-task-open-b</code> — ogni giorno alle 23:59</li>\n</ul>\n<p>Stato: <b>attivo</b> · Ultima: mai eseguito<br>↳ METNOS-CERT-TASK-B</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "list_tasks"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 3198,
+      "ts_end": 1787467510.705865,
+      "turn_id": "c9e5a84897fc42c2"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Task pianificati (2):\n- **ID 1** `cert-task-open-a` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-A\n- **ID 2** `cert-task-open-b` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-B",
+      "intent_verb": "list",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "list_tasks",
+          "error": null,
+          "exec_ms": 5,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "c9e5a84897fc42c2"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "c9e5a84897fc42c2"
+          },
+          "result": {
+            "count": 2,
+            "detail_md": "Task pianificati (2):\n- **ID 1** `cert-task-open-a` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-A\n- **ID 2** `cert-task-open-b` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-B",
+            "final_message_hint": "Task pianificati (2):\n- **ID 1** `cert-task-open-a` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-A\n- **ID 2** `cert-task-open-b` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-B",
+            "ok": true,
+            "summary": "Task pianificati (2):\n- **ID 1** `cert-task-open-a` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-A\n- **ID 2** `cert-task-open-b` — ogni giorno alle 23:59\n  Stato: **attivo** · Ultima: mai eseguito\n  ↳ METNOS-CERT-TASK-B",
+            "tasks": [
+              {
+                "actor": "host",
+                "callback_key": "run_user_query",
+                "channel": "http",
+                "chat_id": null,
+                "consecutive_failures": 0,
+                "created_at": "2030-01-01T00:00:00Z",
+                "enabled": true,
+                "fired_count": 0,
+                "frequency_human": "ricorrente infinita",
+                "grace_window_minutes": null,
+                "id": 1,
+                "label": "cert-task-open-a",
+                "last_error": "",
+                "last_fire_human": "mai eseguito",
+                "last_status": null,
+                "mandates": "{}",
+                "name": "cert-task-open-a",
+                "next_fire_human": "oggi alle 23:59 (fra ~15h13m)",
+                "owner_user_id": "cc885f5e66a64874",
+                "query": "METNOS-CERT-TASK-A",
+                "registry_enabled": true,
+                "remaining": null,
+                "schedule": "daily@23:59",
+                "schedule_human": "ogni giorno alle 23:59",
+                "scheduler_enabled": null,
+                "scheduler_name": "user.cc885f5e66a64874.cert-task-open-a",
+                "times": null
+              },
+              {
+                "actor": "host",
+                "callback_key": "run_user_query",
+                "channel": "http",
+                "chat_id": null,
+                "consecutive_failures": 0,
+                "created_at": "2030-01-02T00:00:00Z",
+                "enabled": true,
+                "fired_count": 0,
+                "frequency_human": "ricorrente infinita",
+                "grace_window_minutes": null,
+                "id": 2,
+                "label": "cert-task-open-b",
+                "last_error": "",
+                "last_fire_human": "mai eseguito",
+                "last_status": null,
+                "mandates": "{}",
+                "name": "cert-task-open-b",
+                "next_fire_human": "oggi alle 23:59 (fra ~15h13m)",
+                "owner_user_id": "cc885f5e66a64874",
+                "query": "METNOS-CERT-TASK-B",
+                "registry_enabled": true,
+                "remaining": null,
+                "schedule": "daily@23:59",
+                "schedule_human": "ogni giorno alle 23:59",
+                "scheduler_enabled": null,
+                "scheduler_name": "user.cc885f5e66a64874.cert-task-open-b",
+                "times": null
+              }
+            ]
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467510.705865,
+      "ts_start": 1787467507.5078392,
+      "turn_id": "c9e5a84897fc42c2",
+      "unbacked_promise_detected": false,
+      "user_query": "Show me all scheduled tasks."
+    }
+  ]
+}

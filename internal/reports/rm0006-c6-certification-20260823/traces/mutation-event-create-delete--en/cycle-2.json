@@ -1,0 +1,204 @@
+{
+  "case_id": "mutation-event-create-delete--en",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "L'evento 'METNOS-CERT-EVENT' è stato creato e successivamente rimosso dal calendario.",
+      "final_message_html": "<p>L'evento 'METNOS-CERT-EVENT' è stato creato e successivamente rimosso dal calendario.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "create_events"
+        },
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 2,
+          "tool": "delete_events"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 6732,
+      "ts_end": 1787467981.992795,
+      "turn_id": "27c418c481eb4b50"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 2,
+        "failures": 0,
+        "items": 0,
+        "mutating_attempted": true,
+        "mutations": 2
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "L'evento 'METNOS-CERT-EVENT' è stato creato e successivamente rimosso dal calendario.",
+      "intent_verb": "create",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "create_events",
+          "error": null,
+          "exec_ms": 65,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "27c418c481eb4b50",
+            "client": "google_workspace",
+            "end": "2030-01-15T10:30:00+01:00",
+            "start": "2030-01-15T10:00:00+01:00",
+            "summary": "METNOS-CERT-EVENT"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "27c418c481eb4b50",
+            "client": "google_workspace",
+            "end": "2030-01-15T10:30:00+01:00",
+            "start": "2030-01-15T10:00:00+01:00",
+            "summary": "METNOS-CERT-EVENT"
+          },
+          "result": {
+            "_undo": {
+              "ids": [
+                "rm0006-event-001"
+              ],
+              "reverse_pattern": "delete_events_by_id",
+              "scope": {
+                "calendar_id": "primary",
+                "client": "google_workspace"
+              }
+            },
+            "n_created": 1,
+            "ok": true,
+            "results": [
+              {
+                "calendar_id": "primary",
+                "calendar_source": "google_workspace",
+                "end": "2030-01-15T10:30:00+01:00",
+                "htmlLink": "https://calendar.invalid/rm0006-event-001",
+                "id": "rm0006-event-001",
+                "location": "",
+                "ok": true,
+                "start": "2030-01-15T10:00:00+01:00",
+                "summary": "METNOS-CERT-EVENT",
+                "uid": "rm0006-event-001"
+              }
+            ],
+            "used": 1
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        },
+        {
+          "canonical_query": "",
+          "chosen_tool": "delete_events",
+          "error": null,
+          "exec_ms": 58,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "27c418c481eb4b50",
+            "client": "google_workspace",
+            "event_ids": [
+              "rm0006-event-001"
+            ]
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "27c418c481eb4b50",
+            "client": "google_workspace",
+            "event_ids": [
+              "rm0006-event-001"
+            ]
+          },
+          "result": {
+            "calendar_id": "primary",
+            "calendar_source": "google_workspace",
+            "failed": [],
+            "n_deleted": 1,
+            "not_found": [],
+            "ok": true,
+            "results": [
+              {
+                "id": "rm0006-event-001",
+                "ok": true,
+                "status": "deleted",
+                "uid": "rm0006-event-001"
+              }
+            ],
+            "used": 1
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 2,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467981.992795,
+      "ts_start": 1787467975.2598214,
+      "turn_id": "27c418c481eb4b50",
+      "unbacked_promise_detected": false,
+      "user_query": "In the isolated fixture's Google primary calendar, create METNOS-CERT-EVENT with start 2030-01-15T10:00:00+01:00 and end 2030-01-15T10:30:00+01:00, then remove that same event."
+    }
+  ]
+}

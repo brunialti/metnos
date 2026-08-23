@@ -1,0 +1,523 @@
+{
+  "case_id": "durable-complete-artifact--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [
+        {
+          "dialog_id": "0ccc08d2ae004613",
+          "fmt": "form",
+          "kind": "get_inputs_response",
+          "sender_for_state": "http:host",
+          "step_total": 1
+        }
+      ],
+      "final_kind": "ask",
+      "final_message": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?\n\nINLINE_FORM:/agent/dialog/0ccc08d2ae004613/form?cap=1787468359.648bf51ad470e30ad105e92aa637ca149d10282fd3e76eef01cd8b0f12f146d4",
+      "final_message_html": "<p>Vuoi che start_lre(profile=images.questions.v1, paths=1)?</p>\n<p>INLINE_FORM:/agent/dialog/0ccc08d2ae004613/form?cap=1787468359.648bf51ad470e30ad105e92aa637ca149d10282fd3e76eef01cd8b0f12f146d4</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "get_approval"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 827,
+      "ts_end": 1787467459.6847816,
+      "turn_id": "3cbe4884094940fc"
+    },
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "LRE ha registrato il lavoro wrk_0927f19a21e142ccbb1af2c85fce677e: 1 sorgenti e 12 fasi, con concorrenza massima 1. I limiti completi e l’avanzamento sono disponibili in /admin/lre.",
+      "final_message_html": "<p>LRE ha registrato il lavoro wrk_0927f19a21e142ccbb1af2c85fce677e: 1 sorgenti e 12 fasi, con concorrenza massima 1. I limiti completi e l’avanzamento sono disponibili in /admin/lre.</p>",
+      "steps_summary": [],
+      "total_ms": 0,
+      "turn_id": "pending"
+    }
+  ],
+  "restarted": false,
+  "snapshot": {
+    "artifacts": [
+      {
+        "blob_ref": "metnos-owner-blob/sha256:4d0fb8fc6b0633e269a56c4b0d68178336273c2d77ac80e00f7c43d492d8df5c",
+        "digest": "sha256:4d0fb8fc6b0633e269a56c4b0d68178336273c2d77ac80e00f7c43d492d8df5c",
+        "digest_verified": 1,
+        "id": "artifact_9b1cc3a34adc45abb9ecf4bd63a82d63",
+        "logical_name": "formulae_markdown",
+        "owner_user_id": "cc885f5e66a64874",
+        "postconditions_valid": 1,
+        "schema_valid": 1,
+        "size_bytes": 31,
+        "state": "committed"
+      },
+      {
+        "blob_ref": "metnos-owner-blob/sha256:5733601fb38bc0ca906f23d8931548ab23c866af95326ee8e42e6edb8b4aacd0",
+        "digest": "sha256:5733601fb38bc0ca906f23d8931548ab23c866af95326ee8e42e6edb8b4aacd0",
+        "digest_verified": 1,
+        "id": "artifact_65c9fffade0a491b8eeaf6014ac53c55",
+        "logical_name": "notes_markdown",
+        "owner_user_id": "cc885f5e66a64874",
+        "postconditions_valid": 1,
+        "schema_valid": 1,
+        "size_bytes": 32,
+        "state": "committed"
+      },
+      {
+        "blob_ref": "metnos-owner-blob/sha256:d1dfc1ce7d3aaed78c23875aa07cdcfadb57a28300826a645d4a16175bc3ad46",
+        "digest": "sha256:d1dfc1ce7d3aaed78c23875aa07cdcfadb57a28300826a645d4a16175bc3ad46",
+        "digest_verified": 1,
+        "id": "artifact_22ac6cffb07c4538a472b50b755a46e3",
+        "logical_name": "solutions_markdown",
+        "owner_user_id": "cc885f5e66a64874",
+        "postconditions_valid": 1,
+        "schema_valid": 1,
+        "size_bytes": 41,
+        "state": "committed"
+      }
+    ],
+    "attempts": [
+      {
+        "ended_at": "2026-08-23T06:44:20.384926Z",
+        "fence": 1,
+        "id": "att_93e0a09f792a437eabcbe7377813390b",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_1567d8e609bc488aad54f1d45aea937e",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.873468Z",
+        "fence": 1,
+        "id": "att_7d2754124b2f49f3aed5d7fab5b285b2",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_18b48dc3ffbb4e2988236c85ee68dba3",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.566477Z",
+        "fence": 1,
+        "id": "att_4fb3241dfde040c4a4fcc0ce35390b95",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_2d08dc6f14ac48ca8bdf862320c7812a",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.444469Z",
+        "fence": 1,
+        "id": "att_67484f554ab24321894c96b0a2220630",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_3c1c9e297b604435ae9b61cb271edb98",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.256593Z",
+        "fence": 1,
+        "id": "att_6cdc3be9a25145f8960ca5132eeabf80",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_419efc09dc6845b6baf22b8a1a8fb15d",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.802170Z",
+        "fence": 1,
+        "id": "att_2f6bcc873506463d84b24bbc6b678b0a",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_54effa560b7b4024b47de89c643601c3",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.505505Z",
+        "fence": 1,
+        "id": "att_aef6d247c6af48c09814cae076149375",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_6fa248137a994ae8950adce547071070",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.745857Z",
+        "fence": 1,
+        "id": "att_12482a5df45548a5850e962481cd8f01",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_89e298cee3c24324878ffcbc1ad66aa9",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.624840Z",
+        "fence": 1,
+        "id": "att_b8629e1321b948548da176b4423ba1a1",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_b77e29c65e85434d89043f6868c5a526",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.321178Z",
+        "fence": 1,
+        "id": "att_79a517c0b6a140dabf96a1d366123695",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_d8148365de154b2d94e4a6875cdc0c46",
+        "worker_id": "rm0006-3497369"
+      },
+      {
+        "ended_at": "2026-08-23T06:44:20.685029Z",
+        "fence": 1,
+        "id": "att_ad66fe4622014009914a46c21be1bd45",
+        "number": 1,
+        "state": "succeeded",
+        "unit_id": "unt_dcc1990f25454beba09af6ab50eead57",
+        "worker_id": "rm0006-3497369"
+      }
+    ],
+    "publications": [],
+    "results": [
+      {
+        "attempt_id": "att_93e0a09f792a437eabcbe7377813390b",
+        "digest": "sha256:c1a00854e94356e133c3e49fadada8e4288d66eae4b4d761a007107859e1f34d",
+        "fence": 1,
+        "id": "res_23b027aac7324f8d9562ce1d4e4e4d36",
+        "unit_id": "unt_1567d8e609bc488aad54f1d45aea937e"
+      },
+      {
+        "attempt_id": "att_7d2754124b2f49f3aed5d7fab5b285b2",
+        "digest": "sha256:4799a8cefe4d2bbc646312e6331a6b25cad4828bb74f00128bf2748180f12141",
+        "fence": 1,
+        "id": "res_b60981cbdb394d9db332731778903aad",
+        "unit_id": "unt_18b48dc3ffbb4e2988236c85ee68dba3"
+      },
+      {
+        "attempt_id": "att_4fb3241dfde040c4a4fcc0ce35390b95",
+        "digest": "sha256:b4b50b92da3a99e79eca7df0b4601c95776c26f5092ade104e0335ba030a1ed9",
+        "fence": 1,
+        "id": "res_f1f1a770fa8e466392945f2c6d37a774",
+        "unit_id": "unt_2d08dc6f14ac48ca8bdf862320c7812a"
+      },
+      {
+        "attempt_id": "att_67484f554ab24321894c96b0a2220630",
+        "digest": "sha256:637ad1c4e9e26f539cd8b3fa28599ea8016900f9d6069595143853ae517e84b3",
+        "fence": 1,
+        "id": "res_9e0629e9eb554d2fbc55eae950bba927",
+        "unit_id": "unt_3c1c9e297b604435ae9b61cb271edb98"
+      },
+      {
+        "attempt_id": "att_6cdc3be9a25145f8960ca5132eeabf80",
+        "digest": "sha256:53619e8c60fa1244c0940ed37f94bb2133a490795b31056260be4292f9234a82",
+        "fence": 1,
+        "id": "res_2da304a3756c48d5bbbd44656b4b2e70",
+        "unit_id": "unt_419efc09dc6845b6baf22b8a1a8fb15d"
+      },
+      {
+        "attempt_id": "att_2f6bcc873506463d84b24bbc6b678b0a",
+        "digest": "sha256:3ee5511e13f892f136c850e1a463721cf8dc8bf074946cb06b42ee50315558d9",
+        "fence": 1,
+        "id": "res_0d40d11140a34868ada2c272d0f41d52",
+        "unit_id": "unt_54effa560b7b4024b47de89c643601c3"
+      },
+      {
+        "attempt_id": "att_aef6d247c6af48c09814cae076149375",
+        "digest": "sha256:8f976e5dd67ce29ff9befdaaa5ad4f62e6341c79d305a95dfbe380a6dbe49833",
+        "fence": 1,
+        "id": "res_5376c616c6a24329a9d9014bf4af0d01",
+        "unit_id": "unt_6fa248137a994ae8950adce547071070"
+      },
+      {
+        "attempt_id": "att_12482a5df45548a5850e962481cd8f01",
+        "digest": "sha256:9a8b999a32612e3b1a505c128fd8d8e709f52ad0ab78c190fc9741db4d0256b6",
+        "fence": 1,
+        "id": "res_b55a76faa7ee43c78702bd17b31d5abc",
+        "unit_id": "unt_89e298cee3c24324878ffcbc1ad66aa9"
+      },
+      {
+        "attempt_id": "att_b8629e1321b948548da176b4423ba1a1",
+        "digest": "sha256:1ae0fd0be66ff06ed2c96177ef6f680460196068bb0502f8eab9c5a6a077b57e",
+        "fence": 1,
+        "id": "res_ac05f0d378464919aa3aa53dd1a12ce7",
+        "unit_id": "unt_b77e29c65e85434d89043f6868c5a526"
+      },
+      {
+        "attempt_id": "att_79a517c0b6a140dabf96a1d366123695",
+        "digest": "sha256:154878f6d3f4e6483215eff66f78d330cd8f2eca6fe38476b6abdb7d79d58b65",
+        "fence": 1,
+        "id": "res_0ca4f16d0cd344a499332fb6d837c111",
+        "unit_id": "unt_d8148365de154b2d94e4a6875cdc0c46"
+      },
+      {
+        "attempt_id": "att_ad66fe4622014009914a46c21be1bd45",
+        "digest": "sha256:250855b13850c3718a936f221222ab4fadfc91de52d3ddc55c4bbee550a7d71d",
+        "fence": 1,
+        "id": "res_866e689660874bafae931ad02758f8bf",
+        "unit_id": "unt_dcc1990f25454beba09af6ab50eead57"
+      }
+    ],
+    "units": [
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_2da304a3756c48d5bbbd44656b4b2e70",
+        "fence": 1,
+        "id": "unt_419efc09dc6845b6baf22b8a1a8fb15d",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_0ca4f16d0cd344a499332fb6d837c111",
+        "fence": 1,
+        "id": "unt_d8148365de154b2d94e4a6875cdc0c46",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_23b027aac7324f8d9562ce1d4e4e4d36",
+        "fence": 1,
+        "id": "unt_1567d8e609bc488aad54f1d45aea937e",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_9e0629e9eb554d2fbc55eae950bba927",
+        "fence": 1,
+        "id": "unt_3c1c9e297b604435ae9b61cb271edb98",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_5376c616c6a24329a9d9014bf4af0d01",
+        "fence": 1,
+        "id": "unt_6fa248137a994ae8950adce547071070",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_f1f1a770fa8e466392945f2c6d37a774",
+        "fence": 1,
+        "id": "unt_2d08dc6f14ac48ca8bdf862320c7812a",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_ac05f0d378464919aa3aa53dd1a12ce7",
+        "fence": 1,
+        "id": "unt_b77e29c65e85434d89043f6868c5a526",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_866e689660874bafae931ad02758f8bf",
+        "fence": 1,
+        "id": "unt_dcc1990f25454beba09af6ab50eead57",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_b55a76faa7ee43c78702bd17b31d5abc",
+        "fence": 1,
+        "id": "unt_89e298cee3c24324878ffcbc1ad66aa9",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_0d40d11140a34868ada2c272d0f41d52",
+        "fence": 1,
+        "id": "unt_54effa560b7b4024b47de89c643601c3",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      },
+      {
+        "active_attempt_id": null,
+        "attempt_count": 1,
+        "committed_result_id": "res_b60981cbdb394d9db332731778903aad",
+        "fence": 1,
+        "id": "unt_18b48dc3ffbb4e2988236c85ee68dba3",
+        "lease_expires_at": null,
+        "lease_worker_id": null,
+        "state": "committed"
+      }
+    ],
+    "workload": {
+      "active_revision_id": "rev_22b923a6b84a4a37be8409bf2b699f02",
+      "budget_json": "{\"limits\":{},\"schema_version\":\"metnos.durable-draft-budget/1\"}",
+      "created_at": "2026-08-23T06:44:20.021952Z",
+      "id": "wrk_0927f19a21e142ccbb1af2c85fce677e",
+      "next_event_id": 6,
+      "owner_user_id": "cc885f5e66a64874",
+      "priority": "normal",
+      "redacted_request_json": "{\"payload\":{\"profile\":\"images.questions.v1\",\"source_root_count\":1,\"source_roots_digest\":\"sha256:668539dc44f5bc0d20ed31443138436e27968a30d6ea93e682a066fab0884afa\"},\"schema_version\":\"metnos.redacted-request/1\"}",
+      "request_digest": "sha256:7c59c5159b00a3334196851d39ce6493de75b34adba95ded8e3f031ac8a81e94",
+      "request_key": "lre:7e3e5e4db541fee3bbfbfe575f1a8b39fd071e9f4fc4be9986c85b52664d5109",
+      "state": "completed",
+      "terminal_reason_json": "{\"completion\":\"verified\",\"with_errors\":false}",
+      "updated_at": "2026-08-23T06:44:20.874416Z",
+      "version": 5
+    },
+    "workload_count": 1
+  },
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [
+        {
+          "dialog_id": "0ccc08d2ae004613",
+          "fmt": "form",
+          "kind": "get_inputs_response",
+          "sender_for_state": "http:host",
+          "step_total": 1
+        }
+      ],
+      "false_success_detected": false,
+      "final_kind": "ask",
+      "final_message": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?\n\nINLINE_FORM:/agent/dialog/0ccc08d2ae004613/form",
+      "intent_verb": "find",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "get_approval",
+          "error": null,
+          "exec_ms": 46,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "3cbe4884094940fc",
+            "actor": "host",
+            "channel": "http",
+            "on_approve": {
+              "args": {
+                "paths": [
+                  "/tmp/metnos-certification-fixture/durable/complete"
+                ],
+                "profile": "images.questions.v1"
+              },
+              "tool": "start_lre"
+            },
+            "prompt": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?",
+            "timeout_s": 3600
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "3cbe4884094940fc",
+            "actor": "host",
+            "channel": "http",
+            "on_approve": {
+              "args": {
+                "paths": [
+                  "/tmp/metnos-certification-fixture/durable/complete"
+                ],
+                "profile": "images.questions.v1"
+              },
+              "tool": "start_lre"
+            },
+            "prompt": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?",
+            "timeout_s": 3600
+          },
+          "result": {
+            "decision": "input_required",
+            "dialog_id": "0ccc08d2ae004613",
+            "expandable_caps": [
+              {
+                "dialog_id": "0ccc08d2ae004613",
+                "fmt": "form",
+                "kind": "get_inputs_response",
+                "sender_for_state": "http:host",
+                "step_total": 1
+              }
+            ],
+            "final_message_hint": "Vuoi che start_lre(profile=images.questions.v1, paths=1)?\n\nINLINE_FORM:/agent/dialog/0ccc08d2ae004613/form",
+            "fmt": "form",
+            "metadata": {
+              "actor": "host",
+              "channel": "http",
+              "fmt": "form",
+              "n_steps": 1,
+              "title": "Conferma"
+            },
+            "ok": true,
+            "step_index": 0,
+            "step_total": 1,
+            "values": {}
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467459.6847816,
+      "ts_start": 1787467458.85713,
+      "turn_id": "3cbe4884094940fc",
+      "unbacked_promise_detected": false,
+      "user_query": "Esegui start_lre con il profilo registrato images.questions.v1 sulle immagini in /tmp/metnos-certification-fixture/durable/complete per produrre l'artefatto finale."
+    }
+  ],
+  "workload_id": "wrk_0927f19a21e142ccbb1af2c85fce677e"
+}

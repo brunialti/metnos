@@ -1,0 +1,161 @@
+{
+  "case_id": "dialog-approval-resume-once--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [
+        {
+          "dialog_id": "f23744b8cea240da",
+          "fmt": "form",
+          "kind": "get_inputs_response",
+          "sender_for_state": "http:host",
+          "step_total": 1
+        }
+      ],
+      "final_kind": "ask",
+      "final_message": "Vuoi procedere con l'eliminazione del task 'cert-task-delete'?\n\nINLINE_FORM:/agent/dialog/f23744b8cea240da/form?cap=1787468719.6bcd8c6064f435d7d2fe1836e58a84ac2320cf4cff6696deab5d457271a1d44b",
+      "final_message_html": "<p>Vuoi procedere con l'eliminazione del task 'cert-task-delete'?</p>\n<p>INLINE_FORM:/agent/dialog/f23744b8cea240da/form?cap=1787468719.6bcd8c6064f435d7d2fe1836e58a84ac2320cf4cff6696deab5d457271a1d44b</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "get_approval"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 11012,
+      "ts_end": 1787467819.1412559,
+      "turn_id": "b93c2a809d624378"
+    },
+    {
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "✓ Operazione completata.",
+      "final_message_html": "<p>✓ Operazione completata.</p>",
+      "steps_summary": [],
+      "total_ms": 0,
+      "turn_id": "pending"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": null,
+      "error_class": "",
+      "expandable_caps": [
+        {
+          "dialog_id": "f23744b8cea240da",
+          "fmt": "form",
+          "kind": "get_inputs_response",
+          "sender_for_state": "http:host",
+          "step_total": 1
+        }
+      ],
+      "false_success_detected": false,
+      "final_kind": "ask",
+      "final_message": "Vuoi procedere con l'eliminazione del task 'cert-task-delete'?\n\nINLINE_FORM:/agent/dialog/f23744b8cea240da/form",
+      "intent_verb": "get",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "get_approval",
+          "error": null,
+          "exec_ms": 47,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "b93c2a809d624378",
+            "on_approve": {
+              "args": {
+                "name": "cert-task-delete"
+              },
+              "tool": "delete_tasks"
+            },
+            "prompt": "Vuoi procedere con l'eliminazione del task 'cert-task-delete'?",
+            "title": "Conferma eliminazione task"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "b93c2a809d624378",
+            "on_approve": {
+              "args": {
+                "name": "cert-task-delete"
+              },
+              "tool": "delete_tasks"
+            },
+            "prompt": "Vuoi procedere con l'eliminazione del task 'cert-task-delete'?",
+            "title": "Conferma eliminazione task"
+          },
+          "result": {
+            "decision": "input_required",
+            "dialog_id": "f23744b8cea240da",
+            "expandable_caps": [
+              {
+                "dialog_id": "f23744b8cea240da",
+                "fmt": "form",
+                "kind": "get_inputs_response",
+                "sender_for_state": "http:host",
+                "step_total": 1
+              }
+            ],
+            "final_message_hint": "Vuoi procedere con l'eliminazione del task 'cert-task-delete'?\n\nINLINE_FORM:/agent/dialog/f23744b8cea240da/form",
+            "fmt": "form",
+            "metadata": {
+              "actor": "host",
+              "channel": "http",
+              "fmt": "form",
+              "n_steps": 1,
+              "title": "Conferma eliminazione task"
+            },
+            "ok": true,
+            "step_index": 0,
+            "step_total": 1,
+            "values": {}
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467819.1412559,
+      "ts_start": 1787467808.1291435,
+      "turn_id": "b93c2a809d624378",
+      "unbacked_promise_detected": false,
+      "user_query": "Elimina l'attività cert-task-delete della fixture soltanto dopo una mia approvazione esplicita."
+    }
+  ]
+}

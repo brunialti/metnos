@@ -1,0 +1,417 @@
+{
+  "case_id": "compose-read-group-entries--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "| item |\n| --- |\n| {\"delimiter\": \",\", \"headers\": [\"category\", \"amount\"], \"path\": \"/tmp/metnos-certification-fixture/entries/expenses.csv\", \"row_count\": 3, \"rows\": [{\"amount\": \"10\", \"category\": \"food\"}, {\"amount\": \"20\", \"category\": \"travel\"}, {\"amount\": \"5\", … |",
+      "final_message_html": "<table><thead><tr><th>item</th></tr></thead><tbody><tr><td>{\"delimiter\": \",\", \"headers\": [\"category\", \"amount\"], \"path\": \"/tmp/metnos-certification-fixture/entries/expenses.csv\", \"row_count\": 3, \"rows\": [{\"amount\": \"10\", \"category\": \"food\"}, {\"amount\": \"20\", \"category\": \"travel\"}, {\"amount\": \"5\", …</td></tr></tbody></table>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "read_files_csv"
+        },
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 2,
+          "tool": "group_entries"
+        },
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 3,
+          "tool": "sort_entries"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 7022,
+      "ts_end": 1787467344.981254,
+      "turn_id": "ce1e449d6f8b459c"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 3,
+        "failures": 0,
+        "items": 3,
+        "mutating_attempted": false,
+        "mutations": 0
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "| item |\n| --- |\n| {\"delimiter\": \",\", \"headers\": [\"category\", \"amount\"], \"path\": \"/tmp/metnos-certification-fixture/entries/expenses.csv\", \"row_count\": 3, \"rows\": [{\"amount\": \"10\", \"category\": \"food\"}, {\"amount\": \"20\", \"category\": \"travel\"}, {\"amount\": \"5\", … |",
+      "intent_verb": "read",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "read_files_csv",
+          "error": null,
+          "exec_ms": 38,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "ce1e449d6f8b459c",
+            "paths": [
+              "/tmp/metnos-certification-fixture/entries/expenses.csv"
+            ]
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "ce1e449d6f8b459c",
+            "paths": [
+              "/tmp/metnos-certification-fixture/entries/expenses.csv"
+            ]
+          },
+          "result": {
+            "entries": [
+              {
+                "delimiter": ",",
+                "headers": [
+                  "category",
+                  "amount"
+                ],
+                "path": "/tmp/metnos-certification-fixture/entries/expenses.csv",
+                "row_count": 3,
+                "rows": [
+                  {
+                    "amount": "10",
+                    "category": "food"
+                  },
+                  {
+                    "amount": "20",
+                    "category": "travel"
+                  },
+                  {
+                    "amount": "5",
+                    "category": "food"
+                  }
+                ]
+              }
+            ],
+            "fail_count": 0,
+            "failed": [],
+            "ok": true,
+            "ok_count": 1
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        },
+        {
+          "canonical_query": "",
+          "chosen_tool": "group_entries",
+          "error": null,
+          "exec_ms": 39,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "ce1e449d6f8b459c",
+            "cross_domain_key": "category",
+            "entries": [
+              {
+                "delimiter": ",",
+                "headers": [
+                  "category",
+                  "amount"
+                ],
+                "path": "/tmp/metnos-certification-fixture/entries/expenses.csv",
+                "row_count": 3,
+                "rows": [
+                  {
+                    "amount": "10",
+                    "category": "food"
+                  },
+                  {
+                    "amount": "20",
+                    "category": "travel"
+                  },
+                  {
+                    "amount": "5",
+                    "category": "food"
+                  }
+                ]
+              }
+            ]
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_turn_id": "ce1e449d6f8b459c",
+            "cross_domain_key": "category",
+            "entries": [
+              {
+                "delimiter": ",",
+                "headers": [
+                  "category",
+                  "amount"
+                ],
+                "path": "/tmp/metnos-certification-fixture/entries/expenses.csv",
+                "row_count": 3,
+                "rows": [
+                  {
+                    "amount": "10",
+                    "category": "food"
+                  },
+                  {
+                    "amount": "20",
+                    "category": "travel"
+                  },
+                  {
+                    "amount": "5",
+                    "category": "food"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": {
+            "_presentation_contract": {
+              "default_view": "list",
+              "list": {
+                "columns": [
+                  {
+                    "cell_max": 240,
+                    "key": "item",
+                    "source": "$entry"
+                  }
+                ],
+                "max_chars": 16000,
+                "max_rows": 200,
+                "mode": "table",
+                "overflow": "notice"
+              }
+            },
+            "anchor_reconciliations": 0,
+            "coalesced_source_facts": 0,
+            "conflicts": 0,
+            "dedupes": 0,
+            "dropped_unmatched": 0,
+            "entries": [
+              {
+                "delimiter": ",",
+                "headers": [
+                  "category",
+                  "amount"
+                ],
+                "path": "/tmp/metnos-certification-fixture/entries/expenses.csv",
+                "row_count": 3,
+                "rows": [
+                  {
+                    "amount": "10",
+                    "category": "food"
+                  },
+                  {
+                    "amount": "20",
+                    "category": "travel"
+                  },
+                  {
+                    "amount": "5",
+                    "category": "food"
+                  }
+                ]
+              }
+            ],
+            "fail_count": 0,
+            "failed": [],
+            "match_counts": {},
+            "ok": true,
+            "ok_count": 1,
+            "partial": false,
+            "total_in": 1
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 2,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        },
+        {
+          "canonical_query": "",
+          "chosen_tool": "sort_entries",
+          "error": null,
+          "exec_ms": 36,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_ordering_clause": true,
+            "_turn_id": "ce1e449d6f8b459c",
+            "by": "categoria",
+            "desc": false,
+            "entries": [
+              {
+                "delimiter": ",",
+                "headers": [
+                  "category",
+                  "amount"
+                ],
+                "path": "/tmp/metnos-certification-fixture/entries/expenses.csv",
+                "row_count": 3,
+                "rows": [
+                  {
+                    "amount": "10",
+                    "category": "food"
+                  },
+                  {
+                    "amount": "20",
+                    "category": "travel"
+                  },
+                  {
+                    "amount": "5",
+                    "category": "food"
+                  }
+                ]
+              }
+            ]
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_colocate_server": true,
+            "_lang": "it",
+            "_ordering_clause": true,
+            "_turn_id": "ce1e449d6f8b459c",
+            "by": "categoria",
+            "desc": false,
+            "entries": [
+              {
+                "delimiter": ",",
+                "headers": [
+                  "category",
+                  "amount"
+                ],
+                "path": "/tmp/metnos-certification-fixture/entries/expenses.csv",
+                "row_count": 3,
+                "rows": [
+                  {
+                    "amount": "10",
+                    "category": "food"
+                  },
+                  {
+                    "amount": "20",
+                    "category": "travel"
+                  },
+                  {
+                    "amount": "5",
+                    "category": "food"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": {
+            "count": 1,
+            "desc": false,
+            "entries": [
+              {
+                "delimiter": ",",
+                "headers": [
+                  "category",
+                  "amount"
+                ],
+                "path": "/tmp/metnos-certification-fixture/entries/expenses.csv",
+                "row_count": 3,
+                "rows": [
+                  {
+                    "amount": "10",
+                    "category": "food"
+                  },
+                  {
+                    "amount": "20",
+                    "category": "travel"
+                  },
+                  {
+                    "amount": "5",
+                    "category": "food"
+                  }
+                ]
+              }
+            ],
+            "ok": true,
+            "sorted_by": "categoria",
+            "total_input": 1
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 3,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467344.981254,
+      "ts_start": 1787467337.9584646,
+      "turn_id": "ce1e449d6f8b459c",
+      "unbacked_promise_detected": false,
+      "user_query": "Leggi /tmp/metnos-certification-fixture/entries/expenses.csv e raggruppa le righe per categoria."
+    }
+  ]
+}

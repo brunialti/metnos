@@ -1,0 +1,173 @@
+[
+  {
+    "capabilities": [
+      "fs:write",
+      "provider:access"
+    ],
+    "deprecated_at": null,
+    "execution_policy": {
+      "concurrency_key": "none",
+      "effect": "unknown",
+      "equivalence_gate": "unverified",
+      "parallelism_class": 0,
+      "resource_class": "default"
+    },
+    "executor_standard": "metnos.executor/1.0",
+    "lifecycle": "active",
+    "membership": "builtin",
+    "name": "create_events",
+    "revertible": true,
+    "source": "handcrafted",
+    "standard_state": "declared",
+    "superseded_by": null,
+    "transport": "local-subprocess",
+    "version": "0.5.0"
+  },
+  {
+    "capabilities": [
+      "fs:write",
+      "provider:access"
+    ],
+    "deprecated_at": null,
+    "execution_policy": {
+      "concurrency_key": "none",
+      "effect": "unknown",
+      "equivalence_gate": "unverified",
+      "parallelism_class": 0,
+      "resource_class": "default"
+    },
+    "executor_standard": "metnos.executor/1.0",
+    "lifecycle": "active",
+    "membership": "builtin",
+    "name": "delete_events",
+    "revertible": true,
+    "source": "handcrafted",
+    "standard_state": "declared",
+    "superseded_by": null,
+    "transport": "local-subprocess",
+    "version": "0.6.0"
+  },
+  {
+    "capabilities": [
+      "compute:pure"
+    ],
+    "deprecated_at": null,
+    "execution_policy": {
+      "concurrency_key": "none",
+      "effect": "unknown",
+      "equivalence_gate": "unverified",
+      "parallelism_class": 0,
+      "resource_class": "default"
+    },
+    "executor_standard": "metnos.executor/1.0",
+    "lifecycle": "active",
+    "membership": "builtin",
+    "name": "filter_entries",
+    "revertible": false,
+    "source": "handcrafted",
+    "standard_state": "declared",
+    "superseded_by": null,
+    "transport": "local-subprocess",
+    "version": "0.4.0"
+  },
+  {
+    "capabilities": [
+      "code:exec",
+      "network:http",
+      "provider:access"
+    ],
+    "deprecated_at": null,
+    "execution_policy": {
+      "concurrency_key": "none",
+      "effect": "unknown",
+      "equivalence_gate": "unverified",
+      "parallelism_class": 0,
+      "resource_class": "default"
+    },
+    "executor_standard": "metnos.executor/1.0",
+    "lifecycle": "active",
+    "membership": "builtin",
+    "name": "find_contacts",
+    "revertible": false,
+    "source": "handcrafted",
+    "standard_state": "declared",
+    "superseded_by": null,
+    "transport": "local-subprocess",
+    "version": "0.2.0"
+  },
+  {
+    "capabilities": [
+      "network:http",
+      "network:http"
+    ],
+    "deprecated_at": null,
+    "execution_policy": {
+      "concurrency_key": "none",
+      "effect": "read_only",
+      "equivalence_gate": "verified",
+      "parallelism_class": 3,
+      "resource_class": "network_io"
+    },
+    "executor_standard": "metnos.executor/1.0",
+    "lifecycle": "active",
+    "membership": "builtin",
+    "name": "find_urls",
+    "revertible": false,
+    "source": "handcrafted",
+    "standard_state": "declared",
+    "superseded_by": null,
+    "transport": "local-subprocess",
+    "version": "0.3.0"
+  },
+  {
+    "capabilities": [
+      "mail:read",
+      "provider:access"
+    ],
+    "deprecated_at": null,
+    "execution_policy": {
+      "concurrency_key": "none",
+      "effect": "read_only",
+      "equivalence_gate": "verified",
+      "parallelism_class": 2,
+      "resource_class": "network_io"
+    },
+    "executor_standard": "metnos.executor/1.0",
+    "lifecycle": "active",
+    "membership": "builtin",
+    "name": "read_messages",
+    "revertible": false,
+    "source": "handcrafted",
+    "standard_state": "declared",
+    "superseded_by": null,
+    "transport": "local-subprocess",
+    "version": "0.4.0"
+  },
+  {
+    "capabilities": [
+      "mail:send",
+      "channel:out",
+      "fs:read",
+      "provider:access",
+      "provider:access"
+    ],
+    "deprecated_at": null,
+    "execution_policy": {
+      "concurrency_key": "none",
+      "effect": "unknown",
+      "equivalence_gate": "unverified",
+      "parallelism_class": 0,
+      "resource_class": "default"
+    },
+    "executor_standard": "metnos.executor/1.0",
+    "lifecycle": "active",
+    "membership": "builtin",
+    "name": "send_messages",
+    "revertible": false,
+    "source": "handcrafted",
+    "standard_state": "declared",
+    "superseded_by": null,
+    "transport": "local-subprocess",
+    "version": "0.5.0"
+  }
+]

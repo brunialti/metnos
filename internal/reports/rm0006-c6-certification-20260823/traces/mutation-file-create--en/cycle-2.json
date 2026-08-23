@@ -1,0 +1,137 @@
+{
+  "case_id": "mutation-file-create--en",
+  "responses": [
+    {
+      "attachments": [
+        {
+          "basename": "prova-creazione.txt",
+          "caption": null,
+          "download_url": "/agent/photos/b1e8bb9935e04f9a/0?size=file&exp=1787554354&t=7e1f98dc9a0a106ada199788bde8bbcd",
+          "kind": "file",
+          "mime": "text/plain"
+        }
+      ],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Il file /tmp/metnos-certification-fixture/mutation/prova-creazione.txt è stato creato con successo con il contenuto METNOS-CERT-CREATED.",
+      "final_message_html": "<p>Il file /tmp/metnos-certification-fixture/mutation/prova-creazione.txt è stato creato con successo con il contenuto METNOS-CERT-CREATED.</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "write_files"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 5399,
+      "ts_end": 1787467954.963477,
+      "turn_id": "b1e8bb9935e04f9a"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [
+        {
+          "basename": "prova-creazione.txt",
+          "kind": "file",
+          "mime": "text/plain",
+          "path": "/tmp/metnos-certification-fixture/mutation/prova-creazione.txt"
+        }
+      ],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 1,
+        "failures": 0,
+        "items": 0,
+        "mutating_attempted": true,
+        "mutations": 1
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Il file /tmp/metnos-certification-fixture/mutation/prova-creazione.txt è stato creato con successo con il contenuto METNOS-CERT-CREATED.",
+      "intent_verb": "write",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "write_files",
+          "error": null,
+          "exec_ms": 53,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "b1e8bb9935e04f9a",
+            "client": "local",
+            "content": "METNOS-CERT-CREATED",
+            "path": "/tmp/metnos-certification-fixture/mutation/prova-creazione.txt"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "b1e8bb9935e04f9a",
+            "client": "local",
+            "content": "METNOS-CERT-CREATED",
+            "path": "/tmp/metnos-certification-fixture/mutation/prova-creazione.txt"
+          },
+          "result": {
+            "created_count": 1,
+            "dirs_created": [],
+            "fail_count": 0,
+            "ok": true,
+            "ok_count": 1,
+            "results": [
+              {
+                "bytes_written": 19,
+                "created": true,
+                "encoding": "utf-8",
+                "mode": "overwrite",
+                "path": "/tmp/metnos-certification-fixture/mutation/prova-creazione.txt"
+              }
+            ],
+            "skipped_count": 0
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467954.963477,
+      "ts_start": 1787467949.5641124,
+      "turn_id": "b1e8bb9935e04f9a",
+      "unbacked_promise_detected": false,
+      "user_query": "Create /tmp/metnos-certification-fixture/mutation/prova-creazione.txt containing METNOS-CERT-CREATED."
+    }
+  ]
+}

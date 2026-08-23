@@ -1,0 +1,207 @@
+{
+  "case_id": "mutation-file-delete-undo--it",
+  "responses": [
+    {
+      "attachments": [],
+      "conversation_id": "",
+      "expandable_caps": [],
+      "final_kind": "answer",
+      "final_message": "Annullato: delete_files (1 elementi). Stato precedente ripristinato.\n\nRiferimenti della modifica: /tmp/metnos-certification-fixture/undo/annullabile.txt",
+      "final_message_html": "<p>Annullato: delete_files (1 elementi). Stato precedente ripristinato.</p>\n<p>Riferimenti della modifica: /tmp/metnos-certification-fixture/undo/annullabile.txt</p>",
+      "gallery_url": null,
+      "n_total_matches": 0,
+      "pending_decision": null,
+      "steps_summary": [
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 1,
+          "tool": "delete_files"
+        },
+        {
+          "error_class": null,
+          "ok": true,
+          "step": 2,
+          "tool": "undo_last_turn"
+        }
+      ],
+      "target_device": null,
+      "total_ms": 14839,
+      "ts_end": 1787467370.8657928,
+      "turn_id": "9b69912fe1ea494f"
+    }
+  ],
+  "turn_records": [
+    {
+      "_canonical_recorded": true,
+      "actor": "host",
+      "attachments": [],
+      "candidates": [],
+      "channel": "http",
+      "conversation_id": "",
+      "effect_counts": {
+        "countable": 1,
+        "failures": 0,
+        "items": 0,
+        "mutating_attempted": true,
+        "mutations": 1
+      },
+      "error_class": "",
+      "expandable_caps": [],
+      "false_success_detected": false,
+      "final_kind": "answer",
+      "final_message": "Annullato: delete_files (1 elementi). Stato precedente ripristinato.\n\nRiferimenti della modifica: /tmp/metnos-certification-fixture/undo/annullabile.txt",
+      "intent_verb": "",
+      "mode": "",
+      "n_redacted_fields": 0,
+      "owner_user_id": "cc885f5e66a64874",
+      "pending_location": null,
+      "redacted": false,
+      "steps": [
+        {
+          "canonical_query": "",
+          "chosen_tool": "delete_files",
+          "error": null,
+          "exec_ms": 55,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "9b69912fe1ea494f",
+            "client": "local",
+            "paths": [
+              "/tmp/metnos-certification-fixture/undo/annullabile.txt"
+            ]
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "9b69912fe1ea494f",
+            "client": "local",
+            "paths": [
+              "/tmp/metnos-certification-fixture/undo/annullabile.txt"
+            ]
+          },
+          "result": {
+            "_undo": {
+              "reverse_pattern": "restore_blob_backup",
+              "scope": {
+                "client": "local"
+              }
+            },
+            "fail_count": 0,
+            "failed": [],
+            "ok": true,
+            "ok_count": 1,
+            "results": [
+              {
+                "atime_ns": 1787467355637825069,
+                "blob_path": "/opt/metnos/tests/e2e/tmp/ca88eece/data/_history/9b69912fe1ea494f/blob/d63aaedc95dc14c9e72008b5072593fd4bac5f3e05735d947313491ebf54ebe4.bin",
+                "blob_sha256": "d63aaedc95dc14c9e72008b5072593fd4bac5f3e05735d947313491ebf54ebe4",
+                "mode": 436,
+                "mtime_ns": 1700000015000000000,
+                "path": "/tmp/metnos-certification-fixture/undo/annullabile.txt",
+                "removed": true,
+                "restore_mode": "create"
+              }
+            ]
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 1,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        },
+        {
+          "canonical_query": "",
+          "chosen_tool": "undo_last_turn",
+          "error": null,
+          "exec_ms": 376,
+          "intent_ms": null,
+          "llm_in_tokens": 0,
+          "llm_latency_ms": 0,
+          "llm_out_tokens": 0,
+          "llm_text": "",
+          "llm_thinking": "",
+          "loop_break_total": null,
+          "prefilter_ms": null,
+          "raw_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "9b69912fe1ea494f"
+          },
+          "rerank_ms": null,
+          "resolved_args": {
+            "_actor": "Roberto",
+            "_actor_email": "roberto.brunialti@knowcastle.com",
+            "_channel": "http",
+            "_lang": "it",
+            "_turn_id": "9b69912fe1ea494f"
+          },
+          "result": {
+            "details": [
+              {
+                "executor": "delete_files",
+                "fail_count": 0,
+                "ok_count": 1,
+                "op_id": "11c14d901b3546b6826230360c7bcd2a",
+                "reverse_error": null,
+                "stages": [
+                  {
+                    "pattern": "restore_blob_backup",
+                    "result": {
+                      "fail_count": 0,
+                      "failed": [],
+                      "ok": true,
+                      "ok_count": 1,
+                      "results": [
+                        {
+                          "blob_path": "/opt/metnos/tests/e2e/tmp/ca88eece/data/_history/9b69912fe1ea494f/blob/d63aaedc95dc14c9e72008b5072593fd4bac5f3e05735d947313491ebf54ebe4.bin",
+                          "bytes_restored": 20,
+                          "path": "/tmp/metnos-certification-fixture/undo/annullabile.txt"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "status": "undone"
+              }
+            ],
+            "final_message_hint": "Annullato: delete_files (1 elementi). Stato precedente ripristinato.",
+            "ok": true,
+            "skipped_count": 0,
+            "turn_id": "9b69912fe1ea494f",
+            "undone_count": 1
+          },
+          "scope_violation": null,
+          "seed_step": false,
+          "step_num": 2,
+          "vaglio_approved": false,
+          "vaglio_ms": null,
+          "validation_failures": []
+        }
+      ],
+      "target_device": null,
+      "ts_end": 1787467370.8657928,
+      "ts_start": 1787467356.0262485,
+      "turn_id": "9b69912fe1ea494f",
+      "unbacked_promise_detected": false,
+      "user_query": "Elimina /tmp/metnos-certification-fixture/undo/annullabile.txt e poi annulla l'operazione."
+    }
+  ]
+}
