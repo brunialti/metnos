@@ -82,7 +82,7 @@
 <h2 id="domain-processes">Domain: <code>processes</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Undo</th><th>Location</th></tr></thead><tbody>
 <tr><td><code>get_processes</code></td><td>processes and system health.</td><td>standard; any; linux, windows</td><td><span data-undo-state="not_applicable"><strong>not applicable</strong><br/>no user state to restore</span></td><td><code>executors/get_processes/</code></td></tr>
-<tr><td><code>run_processes</code></td><td>runs installed software with receipts for created processes.</td><td>critical; any; windows</td><td><span data-undo-state="undoable"><strong>undoable</strong><br/>inverse path: <code>module.reverse</code><br/>outcome determined by the individual execution receipt</span></td><td><code>executors/run_processes/</code></td></tr>
+<tr><td><code>run_processes</code></td><td>runs installed software with an exact receipt for the created process cohort.</td><td>critical; any; windows</td><td><span data-undo-state="undoable"><strong>undoable</strong><br/>inverse path: <code>module.reverse</code><br/>outcome determined by the individual execution receipt</span></td><td><code>executors/run_processes/</code></td></tr>
 </tbody></table>
 <h2 id="domain-urls">Domain: <code>urls</code> (5)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Undo</th><th>Location</th></tr></thead><tbody>

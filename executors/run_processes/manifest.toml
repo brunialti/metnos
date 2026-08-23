@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name         = "run_processes"
-version      = "0.5.0"
+version      = "0.5.1"
 intelligence = "deterministic"
 timeout_s    = 30
 platforms    = ["windows"]
@@ -24,12 +24,12 @@ concurrency_key   = "device"
 equivalence_gate  = "unverified"
 
 [description]
-it = "SCOPO: avvia software installato con ricevuta dei processi creati. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: sessioni web (-> open_sites), path, comandi, script o id non registrati. OUT: chiede sessione o persistenza, poi restituisce results e failed."
-en = "SCOPO: runs installed software with receipts for created processes. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: web sessions (-> open_sites), paths, commands, scripts, or unregistered ids. OUT: asks for session or persistence, then returns results and failed."
+it = "SCOPO: avvia software installato con ricevuta esatta della coorte di processi creata. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: sessioni web (-> open_sites), path, comandi, script o id non registrati. OUT: chiede sessione o persistenza, poi restituisce results e failed."
+en = "SCOPO: runs installed software with an exact receipt for the created process cohort. PATTERN: find_packages(...) -> run_processes(from_step=1). NON: web sessions (-> open_sites), paths, commands, scripts, or unregistered ids. OUT: asks for session or persistence, then returns results and failed."
 
 [code]
 files  = ["run_processes.py"]
-digest = "sha256:7ffd76b55200872601a564c723a786c4bc1afc332f67a649cebc95243134ac9c"
+digest = "sha256:47eef328046d85d0e241af373e16bbff7064b9dbc2884ad3f24b975dabaa76b9"
 
 [args]
 type     = "object"
@@ -87,7 +87,7 @@ schema_inline = """
   ok_count: int,
   fail_count: int,
   partial?: bool,
-  _undo: {outcome: str, processes?: Array<{package_id: str, pid: int, creation_time: int}>},
+  _undo: {outcome: str, processes?: Array<{package_id: str, pid: int, creation_time: int, activation_boundary?: int, preexisting_processes?: Array<{pid: int, creation_time: int}>}>},
   error?: str,
   error_code?: str,
   error_class?: str

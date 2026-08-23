@@ -401,11 +401,40 @@ def invoke(args: dict) -> dict:
                     failed.append(_launch_error(package_id, {
                         "error_code": "managed_start_receipt_invalid"}))
                     continue
-                process_receipts.append({
+                receipt = {
                     "package_id": package_id,
                     "pid": pid,
                     "creation_time": creation_time,
-                })
+                }
+                if _identity_family(package_id) == "appx":
+                    activation_boundary = payload.get("activation_boundary")
+                    preexisting_processes = payload.get("preexisting_processes")
+                    if (not isinstance(activation_boundary, int)
+                            or isinstance(activation_boundary, bool)
+                            or activation_boundary <= 0
+                            or not isinstance(preexisting_processes, list)
+                            or len(preexisting_processes) > 64
+                            or any(
+                                not isinstance(previous, dict)
+                                or not isinstance(previous.get("pid"), int)
+                                or isinstance(previous.get("pid"), bool)
+                                or previous["pid"] <= 0
+                                or not isinstance(
+                                    previous.get("creation_time"), int)
+                                or isinstance(
+                                    previous.get("creation_time"), bool)
+                                or previous["creation_time"] <= 0
+                                for previous in preexisting_processes
+                            )):
+                        untracked_mutation = True
+                        failed.append(_launch_error(package_id, {
+                            "error_code": "managed_start_receipt_invalid"}))
+                        continue
+                    receipt.update({
+                        "activation_boundary": activation_boundary,
+                        "preexisting_processes": preexisting_processes,
+                    })
+                process_receipts.append(receipt)
             results.append({
                 "package_id": package_id,
                 "ok": True,
@@ -461,6 +490,8 @@ def reverse(_plan: dict, results: dict) -> dict:
         package_id = receipt.get("package_id")
         pid = receipt.get("pid")
         creation_time = receipt.get("creation_time")
+        activation_boundary = receipt.get("activation_boundary")
+        preexisting_processes = receipt.get("preexisting_processes")
         identity = (package_id, pid, creation_time)
         if (not isinstance(package_id, str)
                 or _identity_family(package_id) is None
@@ -472,20 +503,67 @@ def reverse(_plan: dict, results: dict) -> dict:
                            "error_class": "invalid_receipt"})
             continue
         seen.add(identity)
-        answer = _launch_call(
-            package_id, "stop",
+        arguments = [
             "--pid", str(pid), "--creation-time", str(creation_time),
-        )
+        ]
+        if _identity_family(package_id) == "appx":
+            if (not isinstance(activation_boundary, int)
+                    or isinstance(activation_boundary, bool)
+                    or activation_boundary <= 0
+                    or not isinstance(preexisting_processes, list)
+                    or len(preexisting_processes) > 64):
+                failed.append({"package_id": package_id, "ok": False,
+                               "error_class": "invalid_receipt"})
+                continue
+            encoded_preexisting = []
+            valid_preexisting = True
+            for process in preexisting_processes:
+                if not isinstance(process, dict):
+                    valid_preexisting = False
+                    break
+                previous_pid = process.get("pid")
+                previous_creation = process.get("creation_time")
+                if (not isinstance(previous_pid, int)
+                        or isinstance(previous_pid, bool) or previous_pid <= 0
+                        or not isinstance(previous_creation, int)
+                        or isinstance(previous_creation, bool)
+                        or previous_creation <= 0):
+                    valid_preexisting = False
+                    break
+                encoded_preexisting.append(
+                    f"{previous_pid}:{previous_creation}")
+            if not valid_preexisting:
+                failed.append({"package_id": package_id, "ok": False,
+                               "error_class": "invalid_receipt"})
+                continue
+            arguments.extend([
+                "--activation-boundary", str(activation_boundary),
+            ])
+            for process in encoded_preexisting:
+                arguments.extend(["--preexisting-process", process])
+        answer = _launch_call(package_id, "stop", *arguments)
         if answer and answer.get("ok") and answer.get("aligned") is not False:
             payload = answer.get("payload")
+            restored = (payload.get("restored") is True
+                        if isinstance(payload, dict) else False)
             stopped = (payload.get("stopped") is True
                        if isinstance(payload, dict) else False)
-            reversed_results.append({
-                "package_id": package_id,
-                "pid": pid,
-                "ok": True,
-                "stopped": stopped,
-            })
+            # A transport/provider `ok` is not the undo postcondition.  The
+            # provider must attest that the state was restored; otherwise an
+            # already-dead activation PID can never become a false success.
+            if restored:
+                reversed_results.append({
+                    "package_id": package_id,
+                    "pid": pid,
+                    "ok": True,
+                    "stopped": stopped,
+                })
+            else:
+                failed.append({
+                    "package_id": package_id,
+                    "ok": False,
+                    "error_class": "postcondition_failed",
+                })
         else:
             failed.append(_launch_error(package_id, answer, stopping=True))
     return {

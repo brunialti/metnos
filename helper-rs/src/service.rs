@@ -458,11 +458,17 @@ mod tests {
                         creation_time: 133_700_000_000_000_000,
                     }
                 );
-                Outcome::success_with_payload(serde_json::json!({"stopped": true}))
+                Outcome::success_with_payload(serde_json::json!({
+                    "restored": true,
+                    "stopped": true,
+                }))
             },
         );
         assert!(response.ok);
-        assert_eq!(response.payload, Some(serde_json::json!({"stopped": true})));
+        assert_eq!(
+            response.payload,
+            Some(serde_json::json!({"restored": true, "stopped": true}))
+        );
     }
 
     #[test]

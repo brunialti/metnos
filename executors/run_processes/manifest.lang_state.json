@@ -1,12 +1,12 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:1e470dc9ad44eff19080d9f9ac5e66db4366113bf5ecc13f8910cd4e6fb0b71b",
+      "version_hash": "sha256:c0d3a9c35ace1ccde32d591e42ddccebc2fee07b2c4814285d94082e974524c5",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:9a44adae2bf8eb1f575f7502da2c1fe1222bb03ea552a83d166a593a04d3b3c9",
+      "version_hash": "sha256:bbd577b90a556bbdb2656a0d190a3a69da5598decf161c8836e846e678e594cc",
       "source_lang": null,
       "source_hash": null
     }

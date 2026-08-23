@@ -82,7 +82,7 @@
 <h2 id="domain-processes">Dominio: <code>processes</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Annullamento</th><th>Percorso</th></tr></thead><tbody>
 <tr><td><code>get_processes</code></td><td>processi e salute del sistema.</td><td>standard; any; linux, windows</td><td><span data-undo-state="not_applicable"><strong>non applicabile</strong><br/>nessuno stato utente da ripristinare</span></td><td><code>executors/get_processes/</code></td></tr>
-<tr><td><code>run_processes</code></td><td>avvia software installato con ricevuta dei processi creati.</td><td>critico; any; windows</td><td><span data-undo-state="undoable"><strong>annullabile</strong><br/>percorso inverso: <code>module.reverse</code><br/>esito determinato dalla ricevuta della singola esecuzione</span></td><td><code>executors/run_processes/</code></td></tr>
+<tr><td><code>run_processes</code></td><td>avvia software installato con ricevuta esatta della coorte di processi creata.</td><td>critico; any; windows</td><td><span data-undo-state="undoable"><strong>annullabile</strong><br/>percorso inverso: <code>module.reverse</code><br/>esito determinato dalla ricevuta della singola esecuzione</span></td><td><code>executors/run_processes/</code></td></tr>
 </tbody></table>
 <h2 id="domain-urls">Dominio: <code>urls</code> (5)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Annullamento</th><th>Percorso</th></tr></thead><tbody>
