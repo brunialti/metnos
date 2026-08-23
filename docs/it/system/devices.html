@@ -14,10 +14,15 @@
 <body>
 <h1>Dispositivi</h1>
 
-<p class="lead">Un dispositivo è un computer associato all'istanza che può
-eseguire executor remoti. Il client Metnos non avvia azioni di propria iniziativa:
-riceve un'invocazione autorizzata, la esegue entro il contratto ammesso, registra
-l'esito e risponde al server.</p>
+<p class="lead">Un dispositivo è un computer associato a un utente di Metnos
+sul quale possono essere eseguiti executor remoti. Sul dispositivo viene
+installato un piccolo componente, il client Metnos, che comunica con il server.
+Quando un'azione deve essere eseguita su quel computer, il server invia al client
+una richiesta autorizzata e firmata. Se l'executor necessario non è già
+presente, il client ne scarica la versione firmata e ne verifica l'integrità;
+quindi lo esegue localmente entro i limiti autorizzati, registra l'esito e
+restituisce il risultato al server. L'executor può essere conservato in una
+cache verificata per le esecuzioni successive.</p>
 
 <h2 id="associazione">Associazione e identità</h2>
 
