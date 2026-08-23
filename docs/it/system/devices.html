@@ -15,20 +15,20 @@
 <h1>Dispositivi</h1>
 
 <p class="lead">Un dispositivo è un computer associato all'istanza che può
-eseguire executor remoti. Il client Metnos non agisce di propria iniziativa:
+eseguire executor remoti. Il client Metnos non avvia azioni di propria iniziativa:
 riceve un'invocazione autorizzata, la esegue entro il contratto ammesso, registra
 l'esito e risponde al server.</p>
 
 <h2 id="associazione">Associazione e identità</h2>
 
-<p>L'amministratore sceglie un nome e un proprietario e genera un collegamento
-temporaneo per il computer di destinazione. L'installazione registra
-un'identità Ed25519 del dispositivo; i token iniziali scadono e non sostituiscono
-l'identità persistente. Il fingerprint consente di riconoscere la chiave senza
-esporla per intero.</p>
+<p>L'amministratore assegna un nome e un proprietario e genera un collegamento
+temporaneo per il computer di destinazione. Durante l'installazione viene
+registrata un'identità Ed25519 del dispositivo; i token iniziali scadono e non
+sostituiscono l'identità persistente. Il fingerprint consente di riconoscere la
+chiave senza esporla per intero.</p>
 
-<p>L'heartbeat indica quando il client ha comunicato di recente e contribuisce
-allo stato <em>raggiungibile</em>. Non dimostra da solo che ogni executor o
+<p>L'heartbeat indica quando il client ha comunicato l'ultima volta e contribuisce
+a determinare lo stato <em>raggiungibile</em>. Non dimostra da solo che ogni executor o
 risorsa sia disponibile: collocazione, capacità dichiarate e salute vanno
 valutate insieme.</p>
 
@@ -55,20 +55,20 @@ comunque autorità, disponibilità e limiti di concorrenza.</p>
 
 <ol>
  <li>Apri <strong>Settings → Sistema → Dispositivi</strong> dal server.</li>
- <li>Scegli “altro PC”, assegna un nome riconoscibile e il proprietario corretto.</li>
- <li>Apri il collegamento dal computer di destinazione e attendi che i passaggi arrivino a “client attivo”.</li>
+ <li>Scegli <strong>Altro PC</strong>, quindi assegna un nome riconoscibile e il proprietario corretto.</li>
+ <li>Apri il collegamento dal computer di destinazione e attendi che la procedura raggiunga lo stato <strong>Client attivo</strong>.</li>
  <li>Controlla sistema operativo, versione del client, fingerprint, ultimo heartbeat e stato.</li>
  <li>Usa <strong>Revoca</strong> se il computer non è più affidabile o non deve più ricevere invocazioni.</li>
 </ol>
 
-<p>La revoca fa rifiutare i token futuri di quel dispositivo; non equivale a
+<p>La revoca rende non validi i successivi token di quel dispositivo; non equivale a
 cancellare i dati dell'utente proprietario. Per ambienti senza browser è
 disponibile un percorso manuale, destinato a operatori esperti e basato su un
 token di breve durata.</p>
 
 <div class="callout warning"><p><strong>Confine di rete.</strong> Il canale dei
 dispositivi è destinato alla rete locale o a una rete privata sovrapposta. Non
-pubblicare direttamente su Internet la porta usata dal client.</p></div>
+esporre direttamente a Internet la porta usata dal client.</p></div>
 
 <h2 id="schermata">La schermata Dispositivi</h2>
 
@@ -81,16 +81,16 @@ pubblicare direttamente su Internet la porta usata dal client.</p></div>
   <span class="ui-badge" style="--x:70%;--y:33%" aria-hidden="true">4</span>
   <span class="ui-badge" style="--x:94%;--y:33%" aria-hidden="true">5</span>
  </div>
- <figcaption>La schermata riconosce che è aperta sul server e propone esplicitamente il percorso per installare il client su un altro computer.</figcaption>
+ <figcaption>Quando viene aperta sul server, la pagina propone esplicitamente il percorso per installare il client su un altro computer.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>Sezione Dispositivi.</strong> Raccoglie associazione e stato dei client remoti.</li>
+ <li><strong>Sezione Dispositivi.</strong> Raccoglie le funzioni di associazione e lo stato dei client remoti.</li>
  <li><strong>Percorso consigliato.</strong> Guida l'installazione senza richiedere comandi da terminale.</li>
  <li><strong>Identità e proprietario.</strong> Nome, ID e utente rendono esplicito a chi appartiene il dispositivo.</li>
- <li><strong>Prova di presenza.</strong> Versione, fingerprint, heartbeat e raggiungibilità aiutano a verificare il client.</li>
- <li><strong>Revoca.</strong> Interrompe la fiducia nel dispositivo con un'azione deliberata.</li>
+ <li><strong>Stato osservabile.</strong> Versione, fingerprint, heartbeat e raggiungibilità consentono di verificare il client.</li>
+ <li><strong>Revoca.</strong> Rimuove deliberatamente l'autorizzazione concessa al dispositivo.</li>
 </ol>
-<p class="ui-privacy-note">Nome, proprietario, ID, fingerprint e data nell'immagine sono esempi anonimi; l'impaginazione è quella della HTTP UI reale.</p>
+<p class="ui-privacy-note">Nome, proprietario, ID, fingerprint e data nell'immagine sono esempi anonimi; l'impaginazione è quella dell'interfaccia web reale.</p>
 
 </body>
 </html>

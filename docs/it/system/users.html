@@ -4,7 +4,7 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width, initial-scale=1">
  <title>Metnos &mdash; Utenti</title>
- <meta name="description" content="Identità host e guest, autonomia, canali e dispositivi nella gestione utenti di Metnos.">
+ <meta name="description" content="Ruoli host e guest, livelli di autonomia, canali e dispositivi nella gestione degli utenti di Metnos.">
  <link rel="canonical" href="https://metnos.com/it/system/users">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/users">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/users">
@@ -14,10 +14,10 @@
 <body>
 <h1>Utenti</h1>
 
-<p class="lead">Un utente Metnos è un'identità stabile a cui appartengono
-conversazioni, preferenze, canali, dispositivi e dati. La pagina Utenti separa
-tre concetti: il ruolo nell'istanza, il livello di autonomia concesso e i mezzi
-con cui quella persona può collegarsi.</p>
+<p class="lead">Un utente Metnos è un'identità stabile a cui sono associati
+conversazioni, preferenze, canali, dispositivi e dati. La pagina Utenti mantiene
+distinti tre concetti: il ruolo nell'istanza, il livello di autonomia concesso e
+i canali attraverso i quali la persona può collegarsi.</p>
 
 <h2 id="ruoli">Ruolo e autonomia</h2>
 
@@ -43,7 +43,8 @@ continuano ad applicarsi.</p>
 <p>HTTP, Telegram e posta collegano un'identità esterna all'utente Metnos. Il
 collegamento usa un token temporaneo e deve essere verificato; uno stato
 <em>pending</em> indica che il percorso non è ancora concluso. Rimuovere un
-canale revoca quel mezzo di accesso senza confondere o fondere le identità.</p>
+canale revoca quel mezzo di accesso senza modificare l'identità dell'utente né
+unirla ad altre.</p>
 
 <p>La lingua non è una preferenza del singolo utente: appartiene all'istanza
 Metnos. Utenti diversi della stessa istanza condividono quindi la lingua
@@ -53,7 +54,7 @@ configurata, pur mantenendo separati dati, permessi e conversazioni.</p>
 
 <p>Il dettaglio consente di aggiornare nome visualizzato, indirizzo, note e
 autonomia, associare o rimuovere canali e consultare i dispositivi posseduti.
-Le preferenze disponibili appartengono a un vocabolario chiuso: la UI non
+Le preferenze disponibili appartengono a un vocabolario chiuso: l'interfaccia non
 accetta chiavi arbitrarie.</p>
 
 <p>La cancellazione è un'operazione di ciclo di vita, non la semplice rimozione
@@ -72,14 +73,14 @@ attività e vengono rimossi i dati secondo il percorso previsto.</p>
   <span class="ui-badge" style="--x:65%;--y:33%" aria-hidden="true">4</span>
   <span class="ui-badge" style="--x:93%;--y:31%" aria-hidden="true">5</span>
  </div>
- <figcaption>I nominativi e gli indirizzi sono esempi anonimi; struttura, campi, stati e comandi corrispondono alla HTTP UI reale.</figcaption>
+ <figcaption>I nominativi e gli indirizzi sono esempi anonimi; struttura, campi, stati e comandi corrispondono all'interfaccia web reale.</figcaption>
 </figure>
 <ol class="ui-callout-list">
  <li><strong>Accesso alla sezione.</strong> Utenti è separato dalla gestione dei dispositivi.</li>
- <li><strong>Creazione.</strong> Il nuovo guest riceve identità, ruolo e autonomia espliciti.</li>
+ <li><strong>Creazione.</strong> Per ogni nuovo guest vengono definiti esplicitamente identità, ruolo e autonomia.</li>
  <li><strong>Identità.</strong> Nome tecnico, nome visualizzato e indirizzo restano campi distinti.</li>
- <li><strong>Ruolo, autonomia e canali.</strong> La tabella evita di ridurli a un solo concetto di “permesso”.</li>
- <li><strong>Dettaglio.</strong> Apre le operazioni circoscritte a quell'utente.</li>
+ <li><strong>Ruolo, autonomia e canali.</strong> La tabella li mantiene distinti, senza ridurli a un unico concetto di “permesso”.</li>
+ <li><strong>Dettaglio.</strong> Consente di accedere alle operazioni circoscritte a quell'utente.</li>
 </ol>
 <p class="ui-privacy-note">Tutti i dati personali e gli identificativi temporali mostrati nell'immagine sono sintetici.</p>
 

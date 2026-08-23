@@ -24,19 +24,23 @@ usare LRE.</p>
 
 <h2 id="non-preset">Un motore, più tipi di lavoro</h2>
 
-<p>Il nucleo di LRE non conosce immagini, posta, banche dati o altri domini.
-Riceve piani tipizzati che dichiarano sorgenti, dipendenze, risultati, risorse,
-limiti, tempi e comportamento in caso di errore. Nel percorso ordinario il
-runtime costruisce direttamente il piano minimo dall'executor già scelto e dai
-suoi argomenti definitivi. Per lavori composti e collaudati può invece usare un
-piano registrato in anticipo: è un'ottimizzazione tecnica, non un requisito per
-l'utente e non un profilo da configurare.</p>
+<p>LRE è indipendente dal dominio: governa nello stesso modo l'elaborazione di
+immagini, la posta, le banche dati e altre attività. Per ogni lavoro riceve una
+descrizione strutturata di ciò che deve essere eseguito: le sorgenti da usare,
+le dipendenze fra i passaggi, i risultati attesi, le risorse disponibili, i
+limiti, i tempi e il comportamento previsto in caso di errore. Nei casi
+ordinari Metnos ricava questa descrizione dall'executor già scelto e dagli
+argomenti approvati per la richiesta. Per procedure composte e già collaudate
+può invece riutilizzare una struttura preparata in precedenza. È una scelta
+interna di esecuzione: l'utente non deve configurare profili né conoscere la
+forma del piano.</p>
 
-<p>Il primo piano composto distribuito elabora raccolte di immagini e produce
-domande, soluzioni, appunti e un formulario. Dimostra il percorso a più fasi, ma
-non definisce LRE e non limita l'ammissione automatica: ogni executor ordinario
-compatibile entra attraverso lo stesso compilatore generale, senza codice
-dedicato al suo dominio.</p>
+<p>Un esempio è l'elaborazione di una raccolta di immagini, dalla quale Metnos
+ricava domande, soluzioni, appunti e un formulario. LRE coordina le diverse fasi
+del lavoro e ne conserva lo stato. L'esempio illustra il funzionamento del
+motore, ma non ne circoscrive l'ambito: qualunque executor ordinario compatibile
+può essere ammesso attraverso lo stesso meccanismo generale, senza codice
+costruito per uno specifico dominio.</p>
 
 <div class="callout note"><p><strong>Che cosa significa “universale”.</strong>
 Il motore è indipendente dal dominio e non usa un elenco di profili come filtro.
