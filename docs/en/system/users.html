@@ -4,7 +4,7 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width, initial-scale=1">
  <title>Metnos &mdash; Users</title>
- <meta name="description" content="Host and guest identities, autonomy, channels, and devices in Metnos user administration.">
+ <meta name="description" content="Host and guest roles, autonomy levels, channels, and devices in Metnos user administration.">
  <link rel="canonical" href="https://metnos.com/en/system/users">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/users">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/users">
@@ -14,10 +14,10 @@
 <body>
 <h1>Users</h1>
 
-<p class="lead">A Metnos user is a stable identity that owns conversations,
-preferences, channels, devices, and data. The Users page separates three
-concepts: a person's role in the instance, their granted autonomy, and the
-channels through which they can connect.</p>
+<p class="lead">A Metnos user is a stable identity associated with
+conversations, preferences, channels, devices, and data. The Users page keeps
+three concepts distinct: a person's role in the instance, their granted
+autonomy, and the channels through which they can connect.</p>
 
 <h2 id="roles">Role and autonomy</h2>
 
@@ -42,7 +42,7 @@ ownership, signed executors, safety rules, and approval still apply.</p>
 <p>HTTP, Telegram, and mail connect an external identity to a Metnos user. The
 pairing uses a temporary token and must be verified; a <em>pending</em> state
 means the flow has not finished. Removing a channel revokes that access path
-without merging or confusing identities.</p>
+without changing the user's identity or merging it with another.</p>
 
 <p>Language is not a per-user preference. It belongs to the Metnos instance.
 Users of the same instance therefore share its configured language while their
@@ -52,7 +52,7 @@ data, permissions, and conversations remain separate.</p>
 
 <p>The detail page can update display name, address, notes, and autonomy; pair
 or remove channels; and list devices owned by the user. Available preferences
-come from a closed vocabulary: the UI does not accept arbitrary keys.</p>
+come from a closed vocabulary: the interface does not accept arbitrary keys.</p>
 
 <p>Deletion is a lifecycle operation, not merely removal of a row. Metnos stops
 the active administrator from deleting themselves and protects the sole host.
@@ -70,14 +70,14 @@ through the defined lifecycle.</p>
   <span class="ui-badge" style="--x:65%;--y:33%" aria-hidden="true">4</span>
   <span class="ui-badge" style="--x:93%;--y:31%" aria-hidden="true">5</span>
  </div>
- <figcaption>Names and addresses are anonymous examples; structure, fields, states, and actions match the real HTTP UI.</figcaption>
+ <figcaption>Names and addresses are anonymous examples; structure, fields, states, and actions match the real web interface.</figcaption>
 </figure>
 <ol class="ui-callout-list">
  <li><strong>Section access.</strong> User administration is separate from device management.</li>
- <li><strong>Creation.</strong> A new guest receives an explicit identity, role, and autonomy level.</li>
+ <li><strong>Creation.</strong> Identity, role, and autonomy are defined explicitly for every new guest.</li>
  <li><strong>Identity.</strong> Technical name, display name, and address remain distinct fields.</li>
- <li><strong>Role, autonomy, and channels.</strong> The table keeps them from collapsing into one notion of “permission”.</li>
- <li><strong>Detail.</strong> Opens operations scoped to that user.</li>
+ <li><strong>Role, autonomy, and channels.</strong> The table keeps them distinct rather than reducing them to a single notion of “permission”.</li>
+ <li><strong>Detail.</strong> Provides access to operations scoped to that user.</li>
 </ol>
 <p class="ui-privacy-note">All personal and timestamp values shown in the image are synthetic.</p>
 

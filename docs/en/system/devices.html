@@ -14,21 +14,40 @@
 <body>
 <h1>Devices</h1>
 
-<p class="lead">A device is a computer paired with the instance that can run
-remote executors. The Metnos client never acts on its own initiative: it
-receives an authorised invocation, runs it within the admitted contract,
-records the outcome, and replies to the server.</p>
+<p class="lead">A device is a computer associated with a Metnos user on which
+remote executors can run. A small component called the Metnos client is
+installed on the device and communicates with the server. When an action must
+run on that computer, the server sends the client an authorised, signed
+request. If the required executor is not already present, the client downloads
+its signed version and verifies its integrity. It then runs the executor
+locally within the authorised limits, records the outcome, and returns the
+result to the server. The executor may remain in a verified cache for later
+executions.</p>
 
 <h2 id="pairing">Pairing and identity</h2>
 
-<p>The administrator chooses a name and owner and generates a temporary link
-for the target computer. Installation registers an Ed25519 device identity;
-initial tokens expire and do not replace that persistent identity. The
-fingerprint makes the public key recognisable without exposing it in full.</p>
+<p>To pair a new computer, the administrator gives it a recognisable name and
+selects its owning user. Metnos then creates a link that remains valid for a
+limited time and must be opened on the computer being paired. The client on
+that computer creates an Ed25519 cryptographic key pair: the private key stays
+on the device, while the server records the public key. A digital fingerprint
+derived from the public key lets the administrator check that Metnos is
+communicating with the expected device. Once pairing is complete, the
+temporary link expires; subsequent communications are authenticated with the
+keys.</p>
 
-<p>A heartbeat reports when the client last communicated and contributes to
-the <em>reachable</em> state. It does not prove that every executor or resource
-is available. Placement, declared capability, and health must be read together.</p>
+<p>A <em>heartbeat</em> is an automatic message that one program sends at
+regular intervals to tell another that it is still active. The Metnos client
+sends this message to the server every thirty seconds. It signs the message and
+includes the device identifier and a small technical profile, such as the
+operating system, architecture, client version, and available isolation level.</p>
+
+<p>Whenever the server receives a valid heartbeat, it records the time. If the
+last message is recent, the page marks the device as <em>reachable</em>. This
+means that the client is running, the network connection works, and the server
+has verified its identity. It does not mean that every action can run. Metnos
+separately checks that the device is requesting work, the executor is
+compatible, and the required resources are available.</p>
 
 <h2 id="executors">What “remote executor” means</h2>
 
@@ -53,13 +72,13 @@ availability, and concurrency limits.</p>
 
 <ol>
  <li>Open <strong>Settings → System → Devices</strong> on the server.</li>
- <li>Choose “another PC”, then assign a recognisable name and the correct owner.</li>
- <li>Open the link on the target computer and wait for the flow to reach “client active”.</li>
+ <li>Choose <strong>Another PC</strong>, then assign a recognisable name and the correct owner.</li>
+ <li>Open the link on the target computer and wait for the procedure to reach <strong>Client active</strong>.</li>
  <li>Check operating system, client version, fingerprint, last heartbeat, and state.</li>
  <li>Use <strong>Revoke</strong> if the computer is no longer trusted or must stop receiving invocations.</li>
 </ol>
 
-<p>Revocation causes future tokens from that device to be rejected; it does not
+<p>Revocation invalidates subsequent tokens from that device; it does not
 delete the owning user's data. A manual path is available for environments
 without a browser. It is intended for experienced operators and uses a
 short-lived token.</p>
@@ -79,16 +98,16 @@ client port directly to the public Internet.</p></div>
   <span class="ui-badge" style="--x:70%;--y:33%" aria-hidden="true">4</span>
   <span class="ui-badge" style="--x:94%;--y:33%" aria-hidden="true">5</span>
  </div>
- <figcaption>The screen detects that it is open on the server and explicitly offers the flow for installing the client on another computer.</figcaption>
+ <figcaption>When opened on the server, the page explicitly offers the procedure for installing the client on another computer.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>Devices section.</strong> Brings together pairing and remote-client status.</li>
+ <li><strong>Devices section.</strong> Brings together pairing functions and remote-client status.</li>
  <li><strong>Recommended flow.</strong> Guides installation without requiring terminal commands.</li>
  <li><strong>Identity and owner.</strong> Name, ID, and user make device ownership explicit.</li>
- <li><strong>Presence evidence.</strong> Version, fingerprint, heartbeat, and reachability help verify the client.</li>
- <li><strong>Revocation.</strong> Deliberately ends trust in the device.</li>
+ <li><strong>Observable state.</strong> Version, fingerprint, heartbeat, and reachability help verify the client.</li>
+ <li><strong>Revocation.</strong> Deliberately removes the authority granted to the device.</li>
 </ol>
-<p class="ui-privacy-note">The name, owner, ID, fingerprint, and timestamp are anonymous examples; the layout is the real HTTP UI.</p>
+<p class="ui-privacy-note">The name, owner, ID, fingerprint, and timestamp are anonymous examples; the layout comes from the real web interface.</p>
 
 </body>
 </html>

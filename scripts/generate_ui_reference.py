@@ -135,99 +135,94 @@ TEXT = {
     "en": {
         "title": "The Metnos interface",
         "description": (
-            "How the Metnos interface is arranged: two conversation "
-            "channels, and the administration pages inside Settings."),
+            "Structure of the Metnos interface: its two conversation "
+            "channels and the administration pages collected in Settings."),
         "nav_home": "Metnos",
         "nav_start": "Opening and using Metnos",
         "nav_manual": "Architecture guide",
         "nav_domains": "Domain reference",
         "nav_tutor": "How the Tutor works",
         "eyebrow": "Introductory guide · map derived from the surfaces registry",
-        "lead": "Two channels, one instance, and the pages that govern it",
+        "lead": "Two channels, one instance, and the pages from which to govern it",
         "intro": (
-            "You use Metnos by talking to it. The interface exists for the two "
-            "things a conversation alone does poorly: showing you the state of "
-            "the system and letting you act on what governs it. This page "
-            "tells you how it is arranged, so you do not have to hunt for it."),
+            "Conversation is the primary way to use Metnos. The interface "
+            "makes visible what dialogue represents less effectively: system "
+            "state and the controls used to govern it. This page describes its "
+            "structure and shows where to find each administrative function."),
         "count_pages": "administration pages",
         "count_sections": "Settings sections",
         "contract": (
-            "The prose on this page is curated; the list of pages, their "
-            "navigation paths, and their routes derive from the runtime's "
-            "surfaces registry, so they cannot age separately from the "
-            "product. This is the map, not the inventory: the visible fields, "
-            "controls, and procedures of each page live once in the registry, "
-            "and the Tutor recounts them if you ask."),
+            "The list of pages, navigation paths, and addresses comes from the "
+            "runtime's surfaces registry and therefore remains aligned with "
+            "the product. This is a map, not an inventory of controls: fields, "
+            "commands, and procedures are defined once in the registry, and "
+            "the Tutor describes them on request."),
         "jump_channels": "Two channels, one identity",
-        "jump_settings": "How Settings is arranged",
-        "jump_access": "Who may see what",
-        "jump_ask": "When you cannot find a page",
+        "jump_settings": "Settings structure",
+        "jump_access": "Access and visibility",
+        "jump_ask": "Ask the Tutor",
         "channels_title": "Two channels, one identity",
         "channels_body": (
-            "You can talk to Metnos from the instance's web chat or from "
-            "Telegram. You reach the same system with the same identity and "
-            "authority, but each channel retains its own conversation and "
-            "history. Administration pages exist in the web chat only. If you are "
-            "writing from Telegram and an answer points you to a Settings "
-            "path, open that path in the web chat, not inside Telegram. On "
-            "the web channel, if you open the chat on a second device while "
-            "the first one is active, Metnos offers three choices: Cancel "
-            "changes nothing and leaves the new browser read-only; Make this "
-            "session active uses the conversation already present in the new "
-            "browser; Continue the previous session transfers the first "
-            "device's conversation to the new browser. The two histories are "
-            "not merged, and the revoked browser becomes read-only. These "
-            "sessions and their histories are independent for each user: an "
-            "owner session conflict does not involve a guest, and vice versa."),
-        "settings_title": "How Settings is arranged",
+            "Metnos is available through the instance's web chat and through "
+            "Telegram. Both channels recognise the same identity and authority, "
+            "but keep separate conversations and histories. Administration "
+            "pages belong exclusively to the web interface: a Settings path "
+            "mentioned on Telegram must therefore be opened in a browser. If "
+            "the web chat is opened on a second device while another session "
+            "is active, Metnos offers three choices. Cancel preserves the "
+            "existing session and leaves the new browser read-only; Make this "
+            "session active activates the conversation already present in the "
+            "new browser; Continue the previous session transfers the first "
+            "device's conversation to the new one. Histories are not merged, "
+            "and the browser whose active session is revoked becomes read-only. "
+            "Sessions and histories remain separate for each user: an owner "
+            "session conflict does not involve a guest, and vice versa."),
+        "settings_title": "Settings structure",
         "settings_body": (
-            "Settings is the administrative part of the web chat. It opens on "
-            "a status overview and branches into four sections. Every page is "
-            "reached as “Settings &gt; Section &gt; Page” and answers at an "
-            "address starting with <code>/admin</code>. Labels are available "
-            "in Italian and English; in a language not yet translated, the "
-            "interface shows the English version. The Tutor quotes the path "
-            "exactly as it appears in the "
-            "interface."),
+            "Settings is the administration area of the web interface. Its "
+            "first page provides an overview of system state and leads to four "
+            "sections. Each page is reached through “Settings &gt; Section &gt; "
+            "Page” and has an address beginning with <code>/admin</code>. Labels "
+            "are available in Italian and English; if the selected language is "
+            "not translated yet, the interface uses English. The Tutor reports "
+            "paths using the same labels shown by the interface."),
         "root_label": "Overview",
         "map_title": "Map of the Metnos interface",
         "map_desc": (
-            "From the two conversation channels to Settings, and from Settings "
-            "to the four sections with their administration pages, each with "
-            "its own address."),
+            "The map connects the two conversation channels to Settings and "
+            "its four administration sections, showing each page's address."),
         "map_conversation": "same identity · separate histories",
         "map_chip_web": "web chat",
         "map_chip_telegram": "Telegram",
         "map_only_web": "Settings opens here only",
         "map_root_note": "status overview",
         "map_caption": (
-            "Reference map: paths and addresses are the ones held by the "
-            "surfaces registry. What each page shows, and what you can do "
-            "there, the Tutor recounts on the instance in front of you."),
-        "access_title": "Who may see what",
+            "Paths and addresses come from the surfaces registry. The Tutor "
+            "describes each page's content and controls according to the "
+            "installation currently in use."),
+        "access_title": "Access and visibility",
         "access_body": (
-            "The pages under <code>/admin</code> require the instance "
-            "administrator role: an invited guest cannot open them. Knowing "
-            "that a page exists and what it contains is a different matter "
-            "from opening it, and the two permissions are distinct: the Tutor "
-            "explains a page to whoever is allowed to know it, even when "
-            "access stays reserved to the administrator."),
-        "ask_title": "When you cannot find a page",
+            "Pages under <code>/admin</code> require the instance administrator "
+            "role and are not available to guests. Authority to know that a "
+            "page exists and what it contains is distinct from authority to "
+            "open it: the Tutor provides explanations only to people allowed "
+            "to receive them, even when operational access remains reserved "
+            "for an administrator."),
+        "ask_title": "Ask the Tutor",
         "ask_body": (
-            "You do not need to memorize this map. Ask Metnos with a request "
-            "like this example: “Show me which embedder is configured under "
-            "Settings &gt; System &gt; Models and guide me there from the web "
-            "chat.” The Tutor "
-            "answers in both the web chat and Telegram, but the path it gives "
-            "you always opens in the web chat. When you ask where something "
-            "is or what a page contains, it answers with the path, "
-            "the address, and the contents attested by the instance in front "
-            "of you, not by generic documentation. If the page does not exist "
-            "in your installation it says so, instead of inventing it."),
+            "You do not need to memorise the map. For example, ask: “Show me "
+            "which embedder is configured under Settings &gt; System &gt; Models "
+            "and tell me how to reach the page from the web chat.” The Tutor "
+            "answers in both the web chat and Telegram, but administration "
+            "paths always open in a browser. When you ask where a function is "
+            "or what a page contains, the answer uses the path, address, and "
+            "contents attested by the current installation, not a generic "
+            "description. If the page is unavailable, the Tutor says so rather "
+            "than suggesting a path that does not exist."),
         "footer": (
             "Page generated by <code>scripts/generate_ui_reference.py</code> "
-            "from the runtime's surfaces registry. The live detail of each "
-            "page belongs to the instance: ask the Tutor."),
+            "from the runtime's surfaces registry. Ask the Tutor which data and "
+            "controls are actually available on a specific installation."),
     },
 }
 

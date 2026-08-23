@@ -4,7 +4,7 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width, initial-scale=1">
  <title>Metnos &mdash; Models</title>
- <meta name="description" content="How to inspect and administer LLM, embedding, and vision-model configuration in the Metnos HTTP UI.">
+ <meta name="description" content="How to inspect and administer LLM, embedding-model, and vision-model configuration in the Metnos web interface.">
  <link rel="canonical" href="https://metnos.com/en/system/models">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/models">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/models">
@@ -14,21 +14,21 @@
 <body>
 <h1>Models</h1>
 
-<p class="lead">Metnos does not bind every request to a model selected by
-name. It uses functional contracts: a workload declares the capability it
-needs, and the instance configuration resolves that contract to an effective
-model and provider. This keeps application code independent of a specific
-model and makes substitutions reviewable.</p>
+<p class="lead">Metnos assigns requests through functional contracts, not by
+the name of a specific model. Each activity declares the capability it needs;
+the instance configuration then binds that contract to a model and provider
+that are actually available. The code therefore remains independent of
+individual implementations, and every substitution can be reviewed.</p>
 
 <h2 id="families">Three families with different purposes</h2>
 
 <dl>
  <dt><strong>Language models (LLMs)</strong></dt>
  <dd>They understand, classify, plan, or generate text. They are organised into functional tiers; several tiers may resolve to the same physical model with different parameters.</dd>
- <dt><strong>Embeddings</strong></dt>
- <dd>They turn text or images into comparable vectors used for semantic search, memory, and Tutor. The HTTP UI displays this configuration but does not edit it.</dd>
- <dt><strong>Vision-language model (VLM)</strong></dt>
- <dd>It reads image content when an admitted executor needs it. Its configuration, limits, and timeouts are separate from those of the LLMs.</dd>
+ <dt><strong>Embedding models</strong></dt>
+ <dd>They turn text or images into comparable vectors used in semantic search, memory, and the Tutor. The web interface displays their configuration but does not allow it to be changed.</dd>
+ <dt><strong>Vision-language models (VLMs)</strong></dt>
+ <dd>They interpret image content when an admitted executor needs it. Their configuration, limits, and timeouts remain separate from those of the LLMs.</dd>
 </dl>
 
 <h2 id="tiers">Language tiers</h2>
@@ -40,29 +40,29 @@ model and makes substitutions reviewable.</p>
   <tr><td><code>fast.procedural</code></td><td>Deterministic extraction and classification of short text, when configured.</td></tr>
   <tr><td><code>fast.fidelity</code></td><td>Faithful transformation of long text without creative additions.</td></tr>
   <tr><td><code>middle</code></td><td>Classification, structured extraction, and intermediate evaluation.</td></tr>
-  <tr><td><code>wise</code></td><td>Planning, synthesis, and deliberative work where overall quality matters.</td></tr>
-  <tr><td><code>creative</code></td><td>Variants, proposals, and divergent wording; it is the only tier deliberately configured for greater variation.</td></tr>
+  <tr><td><code>wise</code></td><td>Planning, synthesis, and deliberative work for which overall quality is the priority.</td></tr>
+  <tr><td><code>creative</code></td><td>Variants, proposals, and exploratory wording; it is the only tier deliberately configured for greater variation.</td></tr>
   <tr><td><code>frontier</code></td><td>Explicit, optional use of a highest-capability remote model, never a silent fallback for ordinary production work.</td></tr>
  </tbody>
 </table>
 
-<p>The <code>creative</code> tier does not mean “more precise”; its purpose is to
-produce alternatives. Metnos favours low-variation contracts for faithful or
-verifiable work. The <code>frontier</code> tier may incur external usage and must
-be configured explicitly.</p>
+<p>The <code>creative</code> tier is not more precise; its purpose is to produce
+alternatives. Metnos favours low-variation contracts for faithful or verifiable
+work. The <code>frontier</code> tier may use external resources and must be
+configured explicitly.</p>
 
 <h2 id="editing">What can be changed</h2>
 
 <p>The page can edit LLM and VLM configuration and restore the previous
 version. Before saving, Metnos validates the structure and values and retains a
 recovery copy. Passwords, tokens, credentials, and sensitive URL components
-are neither displayed nor posted by the form; the UI changes visible values
-only.</p>
+are neither exposed nor transmitted through form fields; the interface changes
+visible values only.</p>
 
-<p>Changing a model does not extend Metnos's authority. Executors, policy, user
-identity, and budgets still determine whether an action is admissible. LRE also
-records the model binding in its revision, so an incompatible change must not
-silently mix results produced under different configurations.</p>
+<p>Changing a model does not increase Metnos's authority. Executors, policy,
+user identity, and budgets still determine whether an action is admissible.
+LRE also records the model binding in its revision, so an incompatible change
+must not silently mix results produced under different configurations.</p>
 
 <h2 id="screen">The Models screen</h2>
 
@@ -78,13 +78,13 @@ silently mix results produced under different configurations.</p>
  <figcaption>The screen reports effective configuration, not a promotional model catalog.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>Navigation.</strong> Models is under System in Settings.</li>
+ <li><strong>Navigation.</strong> The <strong>Models</strong> page is under System in Settings.</li>
  <li><strong>Reload.</strong> Re-reads effective configuration after a controlled external change.</li>
  <li><strong>Secret protection.</strong> States which values the form never exposes.</li>
- <li><strong>Edit and restore.</strong> Operate on the admitted family while preserving a recovery path.</li>
- <li><strong>Tier cards.</strong> Show the resolved endpoint, provider, model, and parameters.</li>
+ <li><strong>Edit and restore.</strong> These controls operate on the admitted family while preserving a recovery path.</li>
+ <li><strong>Tier cards.</strong> Show the binding, provider, model, and parameters that were actually resolved.</li>
 </ol>
-<p class="ui-privacy-note">The local path is abbreviated in the image. Structure and labels come from the real HTTP UI.</p>
+<p class="ui-privacy-note">The local path is abbreviated in the image. Structure and labels come from the real web interface.</p>
 
 </body>
 </html>

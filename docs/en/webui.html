@@ -21,7 +21,7 @@
   <div>
     <div class="eyebrow">Practical guide · first access and first operations</div>
     <h1>Opening and using Metnos</h1>
-    <p class="lead">Which address opens it, how to get in the first time, what you do in the chat, and the exact steps to add a person. If you are looking for the map of the administration pages, that is in the <a href="interface.html">interface guide</a>.</p>
+    <p class="lead">This guide explains where to open Metnos, how to sign in for the first time, how to use the chat, and how to add a user. The structure of the administration pages is described separately in the <a href="interface.html">interface guide</a>.</p>
   </div>
   <div class="hero-note"><strong>8770</strong><span>the web chat port</span><strong>/admin/users</strong><span>where users are created</span></div>
 </header>
@@ -32,11 +32,12 @@
 
 <section id="address">
   <div class="section-title"><span>01</span><h2>Which address opens it</h2></div>
-  <p class="prose">The web chat answers on <strong>port 8770</strong>. A guided installation normally exposes it to the whole local network, so you can use it from your phone or laptop too; in phase 4 you can restrict it to the hosting computer only.</p>
+  <p class="prose">The web chat is available on <strong>port 8770</strong>. To open it, type the complete address in your browser's address bar, including <code>http://</code> and <code>:8770</code>. On the computer hosting Metnos, use <code>http://127.0.0.1:8770/</code>. If, for example, that computer's address on the local network is <code>192.0.2.0</code>, type <code>http://192.0.2.0:8770/</code> on a phone or laptop connected to the same network.</p>
+  <p class="prose">By default, the guided installer makes the chat reachable from the local network. During Metnos installation, at step 4, you can choose for greater security to allow access only from the computer hosting the system. With this setting, the chat can be opened only in a browser running on that computer; other devices on the local network cannot connect.</p>
   <div class="wrap"><table>
-    <tr><th>Where you open it from</th><th>Address</th></tr>
+    <tr><th>Where you open it from</th><th>Address to type in the browser</th></tr>
     <tr><td>From the computer hosting Metnos</td><td><code>http://127.0.0.1:8770/</code></td></tr>
-    <tr><td>From another device on the same home network</td><td><code>http://&lt;address-of-the-computer&gt;:8770/</code></td></tr>
+    <tr><td>From another device on the same local network</td><td><code>http://192.0.2.0:8770/</code> <small>(example: use the address shown by the installer)</small></td></tr>
   </table></div>
   <p class="prose">You do not have to guess the address: when the installation ends, Metnos prints the exact addresses to use and saves them in <code>~/.local/share/metnos/install_summary.md</code>. If you lost them, open that file again.</p>
   <div class="warn"><strong>One thing not to do.</strong> Do not forward port 8770 on your router and do not expose Metnos directly to the internet. It is meant for a private network you trust.</div>
@@ -52,15 +53,16 @@
 
 <section id="chat">
   <div class="section-title"><span>03</span><h2>What you do in the chat</h2></div>
-  <p class="prose">The main page is a conversation: you write what you need in your own words and it does it. There is no list of commands to learn. When a request means a real change — deleting, moving, sending something out — Metnos stops and asks you to confirm before going ahead.</p>
+  <p class="prose">The main page contains a conversation: describe the outcome you want in your own words, without learning a list of commands. When a request requires confirmation under the applicable permissions, autonomy level, and policies, Metnos presents the proposed operation and waits for consent before proceeding.</p>
   <p class="prose">You can also talk to it from Telegram. It is the same system, with the same identity and the same permissions, but each channel keeps its own conversation and its own history. The administration pages exist in the web chat only: if Telegram points you to a Settings path, that path opens in the browser.</p>
   <p class="prose">To know what you can ask, the <a href="domains.html">domain reference</a> lists the subjects Metnos can handle, with example requests written the way you would say them.</p>
 </section>
 
 <section id="settings">
   <div class="section-title"><span>04</span><h2>Where the settings are</h2></div>
-  <p class="prose">From the web chat you reach <strong>Settings</strong>, the administration side. It opens on a state overview and branches into four sections; every page answers at an address starting with <code>/admin</code>. The <a href="interface.html">complete map of the pages</a> is a page of its own, generated from the system registry, so it stays aligned with what you actually installed.</p>
-  <p class="prose">The pages under <code>/admin</code> are opened by the instance administrator only: an invited guest uses the chat, not the settings.</p>
+  <p class="prose">From the web chat you can open <strong>Settings</strong>, the administration area. Its first page gives an overview of system state and leads to four sections; administration-page addresses begin with <code>/admin</code>. The <a href="interface.html">complete interface map</a> is generated from the system registry and therefore remains aligned with the components actually installed.</p>
+  <p class="prose">Pages under <code>/admin</code> are reserved for the instance administrator. An invited guest may use the chat but cannot open Settings.</p>
+  <div class="note"><strong>Administrator sign-in comes first.</strong> Typing the address of a page such as <code>/admin/users</code> does not automatically sign the browser in as an administrator. If you see <code>admin role required</code>, open <code>/admin/login</code> in the same browser and sign in with the administration key, or use the single-use link created by the installer. For example, if Metnos is available at <code>192.0.2.0</code>, the sign-in page is <code>http://192.0.2.0:8770/admin/login</code>. After signing in, return to <code>http://192.0.2.0:8770/admin/users</code>.</div>
 </section>
 
 <section id="user">
@@ -69,7 +71,7 @@
 
   <h3>First moment: creating the record</h3>
   <ol>
-    <li>From the web chat open <strong>Settings &gt; System &gt; Users</strong>, that is <code>/admin/users</code>.</li>
+    <li>In the browser where you signed in as an administrator, open <strong>Settings &gt; System &gt; Users</strong>, that is <code>/admin/users</code>.</li>
     <li>At the top of the page there is the box for creating a new guest. Fill in the fields:
       <div class="wrap"><table>
         <tr><th>Field</th><th>What to put in it</th></tr>
