@@ -33,7 +33,7 @@ piano registrato in anticipo: è un'ottimizzazione tecnica, non un requisito per
 l'utente e non un profilo da configurare.</p>
 
 <p>Il primo piano composto distribuito elabora raccolte di immagini e produce
-domande, soluzioni, appunti e formulario. Dimostra il percorso a più fasi, ma
+domande, soluzioni, appunti e un formulario. Dimostra il percorso a più fasi, ma
 non definisce LRE e non limita l'ammissione automatica: ogni executor ordinario
 compatibile entra attraverso lo stesso compilatore generale, senza codice
 dedicato al suo dominio.</p>
@@ -43,13 +43,14 @@ Il motore è indipendente dal dominio e non usa un elenco di profili come filtro
 “Universale” non significa però “privo di verifiche”: LRE prende in carico
 automaticamente ogni azione lunga che può rappresentare senza perdere
 argomenti, autorità, collocazione o garanzie di ripresa. Se non può farlo,
-l'azione non parte in linea di nascosto: Metnos spiega il limite.</p></div>
+l'azione non viene eseguita silenziosamente nel percorso interattivo: Metnos
+spiega il limite.</p></div>
 
 <h2 id="decisione">Quando LRE si attiva</h2>
 
-<p>Metnos prepara prima il normale piano del turno. Subito prima dell'esecuzione,
+<p>Metnos prepara anzitutto il piano ordinario del turno. Subito prima dell'esecuzione,
 un unico controllo centrale esamina il piano definitivo e il contratto firmato
-dell'executor. Nella prima versione automatica un'azione è considerata
+dell'executor. Nell'attuale percorso automatico un'azione è considerata
 <strong>intrinsecamente lunga</strong> quando il tempo massimo dichiarato è di
 almeno dieci minuti. La decisione dipende da questo metadato strutturato, non da
 parole come “lungo”, “in background” o “molti file”.</p>
@@ -59,9 +60,9 @@ parole come “lungo”, “in background” o “molti file”.</p>
  <tbody>
   <tr><td>Il piano non contiene azioni sopra la soglia.</td><td>Metnos usa il percorso interattivo ordinario. LRE non viene coinvolto.</td></tr>
   <tr><td>Il piano contiene una sola azione lunga indipendente; l'executor è attivo, firmato e deterministico; argomenti, effetto e destinazione possono essere congelati.</td><td>Metnos crea il piano LRE durante il turno, accoda il lavoro e restituisce una ricevuta. Non serve alcun profilo.</td></tr>
-  <tr><td>Prima dell'azione lunga è richiesta una conferma.</td><td>Metnos esegue soltanto la conferma. Dopo l'approvazione ricontrolla il piano e, se ammissibile, lo affida una sola volta a LRE.</td></tr>
+  <tr><td>Prima dell'azione lunga è richiesta una conferma.</td><td>Metnos sospende l'esecuzione e richiede la conferma. Dopo l'approvazione ricontrolla il piano e, se ammissibile, lo affida una sola volta a LRE.</td></tr>
   <tr><td>L'interruttore dell'istanza è disattivato.</td><td>Nessun nuovo lavoro entra in LRE. La chat ordinaria e la consultazione dei lavori esistenti continuano a funzionare.</td></tr>
-  <tr><td>Una fase lunga è riconosciuta, ma il piano contiene più azioni dipendenti, riferimenti ancora da risolvere, un modello non completamente congelato o una destinazione remota ambigua.</td><td>Metnos dichiara che il lavoro non è partito. Non esegue in linea la parte lunga e non inventa una ripresa che non potrebbe garantire.</td></tr>
+  <tr><td>Il piano contiene un'azione lunga, ma anche più azioni dipendenti, riferimenti ancora da risolvere, un modello non completamente congelato o una destinazione remota ambigua.</td><td>Metnos dichiara che il lavoro non è partito. Non esegue la parte lunga nel percorso interattivo e non promette una ripresa che non potrebbe garantire.</td></tr>
   <tr><td>La configurazione non è valida o il servizio di esecuzione non è disponibile.</td><td>L'ammissione fallisce con una spiegazione precisa. Nessuna unità aggira il controllo.</td></tr>
  </tbody>
 </table>
@@ -71,18 +72,18 @@ parole come “lungo”, “in background” o “molti file”.</p>
 <ol>
  <li><strong>Decisione.</strong> Il controllo centrale riconosce l'azione lunga nel piano definitivo e verifica che possa essere rappresentata fedelmente.</li>
  <li><strong>Ammissione.</strong> Metnos verifica l'interruttore dell'istanza, la firma, l'autorità, gli argomenti, la collocazione, l'effetto e i limiti.</li>
- <li><strong>Stato congelato.</strong> Argomenti e destinazione entrano nella revisione tramite impronte verificabili; per i piani a corpus anche sorgenti, identità e ordine vengono sigillati.</li>
+ <li><strong>Stato congelato.</strong> Argomenti e destinazione vengono vincolati alla revisione mediante impronte verificabili; nei piani basati su un corpus vengono sigillati anche sorgenti, identità e ordine.</li>
  <li><strong>Pianificazione persistente.</strong> Fasi e unità vengono registrate in una revisione immutabile.</li>
- <li><strong>Esecuzione governata.</strong> Il coordinatore propone le unità pronte; il pianificatore centrale delle risorse assegna capacità e concorrenza.</li>
+ <li><strong>Esecuzione governata.</strong> Il coordinatore rende disponibili le unità pronte; il pianificatore centrale delle risorse assegna capacità e concorrenza.</li>
  <li><strong>Consolidamento.</strong> Riduzioni gerarchiche evitano di caricare un corpus intero in memoria o in un unico prompt.</li>
  <li><strong>Chiusura.</strong> LRE dichiara il completamento soltanto dopo aver contabilizzato le unità e convalidato gli artefatti richiesti.</li>
 </ol>
 
-<p>Non esiste un limite nascosto di 98 o 980 elementi. Ogni revisione ha però
-limiti finiti e visibili, coerenti con le risorse approvate. I piani che
+<p>LRE non impone soglie arbitrarie al numero di elementi. Ogni revisione ha
+però limiti finiti e visibili, coerenti con le risorse approvate. I piani che
 espongono unità e riduzioni avanzano per lotti, senza accumulare un corpus in
 memoria. Un executor monolitico resta invece una sola unità: LRE può governarne
-il tentativo, ma non può inventare punti di ripresa interni. Se un limite si
+il tentativo, ma non può creare punti di ripresa interni. Se un limite si
 esaurisce, il lavoro espone uno stato strutturato invece di fingere una
 copertura completa.</p>
 
@@ -94,18 +95,18 @@ associato. Entrambi possono essere deterministici oppure usare un modello
 linguistico o di visione. La collocazione non determina l'intelligenza: sono
 due proprietà indipendenti.</p>
 
-<p>Il motore LRE sa eseguire tutte queste classi attraverso porte comuni. Il
-percorso automatico diretto, oggi, ammette però soltanto executor
-deterministici. Un executor che usa modelli entra quando piano, prompt, modello,
-lingua, costo e numero di chiamate sono già congelati da un contratto completo,
+<p>Il motore LRE esegue tutte queste classi attraverso interfacce comuni. Al
+momento, il percorso automatico diretto ammette però soltanto executor
+deterministici. Un executor che usa modelli può essere ammesso quando piano,
+prompt, modello, lingua, costo e numero di chiamate sono già congelati da un contratto completo,
 come avviene nei piani composti verificati. Questa distinzione evita di
 promettere una ripresa che cambierebbe modello a metà lavoro.</p>
 
-<p>Le unità indipendenti possono procedere in parallelo, ma non creano gruppi
-privati di processi. Tutta la concorrenza passa dal pianificatore centrale delle
+<p>Le unità indipendenti possono procedere in parallelo, ma non dispongono di
+gruppi privati di processi. Tutta la concorrenza passa dal pianificatore centrale delle
 risorse, che applica limiti globali, per proprietario, per lavoro, per modello e
 per dispositivo. Il valore mostrato come “concorrenza massima” è un tetto, non
-una promessa di occupare sempre tutti i posti disponibili.</p>
+la promessa di occupare sempre tutta la capacità disponibile.</p>
 
 <h2 id="ripresa">Interruzioni, ritentativi e duplicazioni</h2>
 
@@ -113,10 +114,10 @@ una promessa di occupare sempre tutti i posti disponibili.</p>
  <thead><tr><th>Situazione</th><th>Comportamento di LRE</th></tr></thead>
  <tbody>
   <tr><td>Worker o computer riavviato</td><td>Lo stato resta nel deposito persistente; lease scadute e unità incompiute vengono riconciliate per lotti.</td></tr>
-  <tr><td>Tentativo recuperabile interrotto</td><td>Può essere eseguito almeno una volta di nuovo, con ritardo e numero di tentativi registrati.</td></tr>
+  <tr><td>Tentativo recuperabile interrotto</td><td>Può essere eseguito nuovamente secondo una semantica <em>at least once</em>, con ritardo e numero di tentativi registrati.</td></tr>
   <tr><td>Due tentativi terminano per la stessa unità</td><td>Il fencing e il commit condizionale ammettono un solo risultato per unità e revisione.</td></tr>
-  <tr><td>Stessa richiesta HTTP riconsegnata con la stessa chiave di idempotenza</td><td>Restituisce lo stesso lavoro; non crea una seconda revisione o un secondo corpus.</td></tr>
-  <tr><td>Effetto esterno dal risultato ambiguo</td><td>Non viene ripetuto automaticamente se non è idempotente o riconciliabile; richiede attenzione.</td></tr>
+  <tr><td>Stessa richiesta HTTP ripetuta con la medesima chiave di idempotenza</td><td>Restituisce lo stesso lavoro; non crea una seconda revisione o un secondo corpus.</td></tr>
+  <tr><td>Esito ambiguo di un effetto esterno</td><td>L'operazione non viene ripetuta automaticamente se non è idempotente o riconciliabile; richiede attenzione.</td></tr>
  </tbody>
 </table>
 
@@ -126,45 +127,46 @@ servizio si interrompe dopo averla invocata ma prima di registrarne il
 risultato, LRE richiede attenzione invece di rischiare un secondo effetto.</p>
 
 <div class="callout note"><p><strong>Garanzia corretta.</strong> LRE usa
-tentativi “almeno una volta” e un solo commit valido per unità. Può rendere un
+tentativi con semantica <em>at least once</em> e ammette un solo commit valido per unità. Può rendere un
 effetto osservabile una sola volta quando l'operazione è pura, idempotente o
 riconciliabile. Non promette un <em>exactly once</em> universale fra database,
 filesystem, fornitori e dispositivi remoti.</p></div>
 
 <h2 id="coerenza">Coerenza durante l'evoluzione del lavoro</h2>
 
-<p>Piano, inventario e collegamenti agli executor o ai modelli sono congelati
+<p>Piano, inventario e associazioni agli executor o ai modelli sono congelati
 nella revisione ammessa. Una modifica incompatibile crea una nuova revisione;
 non cambia in silenzio metà del lavoro già avviato. I risultati possono essere
 riusati soltanto quando i digest delle dipendenze coincidono. Se cambia una
 sorgente, si invalidano l'unità interessata e i suoi discendenti, non i fratelli
 indipendenti.</p>
 
-<p>La pausa impedisce nuovi reclami ma consente a un commit già in corso di
-chiudersi in sicurezza. L'annullamento è cooperativo e impedisce nuove unità.
+<p>La pausa impedisce l'acquisizione di nuove unità, ma consente a un commit già
+in corso di concludersi in sicurezza. L'annullamento è cooperativo e impedisce
+l'avvio di altre unità.
 I comandi di pausa, ripresa, annullamento e decisione su un errore usano una
 versione attesa e una chiave di idempotenza, così anche il comando può essere
-riconsegnato senza moltiplicarne gli effetti.</p>
+ripetuto senza moltiplicarne gli effetti.</p>
 
 <h2 id="uso">Attivazione dell'istanza e uso quotidiano</h2>
 
 <div class="callout note"><p><strong>Una sola attivazione per istanza.</strong>
 L'interruttore in Servizi non abilita il singolo lavoro. Stabilisce se l'intera
 istanza di Metnos può accettare nuovi lavori LRE. Non è un'impostazione per
-utente e non va azionato prima di ogni richiesta.</p></div>
+utente e non deve essere azionato prima di ogni richiesta.</p></div>
 
 <ol>
  <li><strong>Configurazione iniziale dell'amministratore.</strong> In <a href="services.html">Sistema → Servizi</a>, verifica che il worker LRE sia sano e abilita l'accettazione dei lavori. Nelle nuove installazioni è disattivata per impostazione predefinita; l'impostazione rimane valida finché non viene cambiata.</li>
  <li><strong>Uso normale.</strong> Descrivi in chat l'esito desiderato e indica le sorgenti autorizzate, senza impartire comandi a LRE.</li>
  <li><strong>Scelta automatica.</strong> Se il piano definitivo contiene un'azione intrinsecamente lunga e compatibile, Metnos crea il piano LRE e restituisce una ricevuta con il <code>workload_id</code>. Non devi conoscere né scegliere un profilo.</li>
- <li><strong>Esito trasparente.</strong> Un'azione breve continua nel turno. Un'azione lunga non ancora rappresentabile viene fermata con una spiegazione: non prosegue in linea senza protezione.</li>
+ <li><strong>Esito trasparente.</strong> Un'azione breve continua nel turno. Un'azione lunga non ancora rappresentabile viene fermata con una spiegazione e non viene eseguita nel percorso interattivo senza le necessarie garanzie.</li>
  <li><strong>Controllo facoltativo.</strong> Puoi chiudere la pagina e continuare a usare Metnos. Quando vuoi, apri <code>Settings → Sistema → LRE</code> per controllare stato, denominatore, budget, fasi ed eventi.</li>
- <li>Al termine, verifica digest e convalida degli artefatti prima di scaricarli.</li>
+ <li><strong>Verifica finale.</strong> Al termine, controlla i digest e la convalida degli artefatti prima di scaricarli.</li>
 </ol>
 
-<p>Disattivare la funzione ferma i nuovi invii ma non cancella cronologia e
+<p>Disattivare la funzione impedisce l'invio di nuovi lavori, ma non cancella cronologia e
 artefatti. La cancellazione dei dati segue invece il ciclo di vita del
-proprietario e le regole di conservazione. Download e viste restano
+proprietario e le regole di conservazione. Scaricamento e consultazione restano
 circoscritti all'identità autorizzata.</p>
 
 <h2 id="limiti">Limiti attuali e percorso di estensione</h2>
@@ -173,10 +175,10 @@ circoscritti all'identità autorizzata.</p>
 essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 
 <table>
- <thead><tr><th>Limite attuale</th><th>Effetto pratico</th><th>Come superarlo correttamente</th></tr></thead>
+ <thead><tr><th>Limite attuale</th><th>Effetto pratico</th><th>Estensione corretta</th></tr></thead>
  <tbody>
-  <tr><td>Piani automatici composti</td><td>La prima versione automatica accoda una sola azione lunga indipendente. Se il piano contiene più passaggi eseguibili o dipendenze ancora da risolvere, il lavoro non parte.</td><td>Compilare l'intero piano definitivo nel grafo tipizzato di LRE, con riferimenti e controlli espliciti; non conservarlo come blocco opaco.</td></tr>
-  <tr><td>Executor intelligenti</td><td>Il percorso diretto esclude per ora gli executor che usano modelli linguistici o di visione senza un legame completo e immutabile.</td><td>Congelare prompt, lingua, modello, limiti di chiamata, token e costo nello stesso contratto; poi usare la medesima porta generale.</td></tr>
+  <tr><td>Piani automatici composti</td><td>L'attuale percorso automatico accoda una sola azione lunga indipendente. Se il piano contiene più passaggi eseguibili o dipendenze ancora da risolvere, il lavoro non parte.</td><td>Compilare l'intero piano definitivo nel grafo tipizzato di LRE, con riferimenti e controlli espliciti; non conservarlo come blocco opaco.</td></tr>
+  <tr><td>Executor intelligenti</td><td>Il percorso diretto esclude per ora gli executor che usano modelli linguistici o di visione senza un legame completo e immutabile.</td><td>Congelare prompt, lingua, modello, limiti di chiamata, token e costo nello stesso contratto; poi usare la medesima interfaccia generale.</td></tr>
   <tr><td>Destinazione remota implicita</td><td>Un executor utilizzabile soltanto su un dispositivo non viene accodato finché il dispositivo esatto non è stato risolto.</td><td>Indicare il dispositivo nella richiesta oppure aggiungere una risoluzione deterministica e verificabile prima dell'ammissione.</td></tr>
   <tr><td>Executor monolitico</td><td>LRE vede una sola unità e non può riprendere a metà di un ciclo interno non dichiarato.</td><td>Esporre l'attività come unità generali, identificabili e idempotenti, oppure come riduzione a lotti; non aggiungere casi speciali per dominio.</td></tr>
   <tr><td>Effetti esterni non sempre ripetibili</td><td>Una scrittura su un servizio o dispositivo può avere un esito ignoto dopo un'interruzione.</td><td>Usare chiavi native di idempotenza o una lettura autorevole di riconciliazione; in assenza di entrambe, fermarsi e richiedere una decisione.</td></tr>
@@ -190,7 +192,7 @@ essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 <ul>
  <li><strong>Worker non disponibile:</strong> controlla salute e stato desiderato in Servizi; non riattivare ripetutamente il gate.</li>
  <li><strong>Unità in attesa:</strong> apri eventi e unità per distinguere un ritentativo programmato da una richiesta di attenzione.</li>
- <li><strong>Modello o dispositivo indisponibile:</strong> ripristina il collegamento registrato; non sostituirlo a metà revisione.</li>
+ <li><strong>Modello o dispositivo indisponibile:</strong> ripristina l'associazione registrata; non sostituirla a metà revisione.</li>
  <li><strong>Spazio insufficiente:</strong> libera spazio senza rimuovere manualmente blob referenziati; una mancanza viene rilevata come errore di integrità.</li>
  <li><strong>Effetto ambiguo:</strong> verifica l'esito sul sistema autorevole prima di autorizzare un nuovo tentativo.</li>
 </ul>
@@ -219,10 +221,10 @@ console perché il lavoro continui.</p>
  <figcaption>Un lavoro pilota completato: la console espone il denominatore reale, i limiti ammessi e la composizione del piano.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>Navigazione generale.</strong> Apri <code>Settings → Sistema → LRE</code>; la voce resta visibile nella colonna di navigazione della HTTP UI.</li>
+ <li><strong>Navigazione generale.</strong> Apri <code>Settings → Sistema → LRE</code>; la voce resta visibile nella colonna di navigazione dell'interfaccia web.</li>
  <li><strong>Elenco dei lavori.</strong> Ogni riga mostra stato e avanzamento; il pulsante <strong>Apri</strong> carica il dettaglio senza avviare una nuova esecuzione.</li>
  <li><strong>Quadro del lavoro.</strong> Mostra priorità, stato, unità contabilizzate e data di creazione.</li>
- <li><strong>Digest della revisione.</strong> Rendono riconoscibili piano e inventario effettivamente ammessi.</li>
+ <li><strong>Digest della revisione.</strong> I digest rendono riconoscibili il piano e l'inventario effettivamente ammessi.</li>
  <li><strong>Budget approvato.</strong> Espone tetti di unità, tentativi, durata, byte, token, artefatti e concorrenza.</li>
  <li><strong>Fasi.</strong> Per ogni fase indica executor, avanzamento, tempo massimo, obbligatorietà e risorse.</li>
 </ol>
