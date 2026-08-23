@@ -1,28 +1,24 @@
 # RM-0005 — Multilinguismo full e auto-localizzazione dell’istanza
 
-> `RM-0005` · status `implemented` · defined `2026-08-21` · implemented `2026-08-23` · decisione: una sola lingua firmata per istanza · documento interno, escluso da `docs/` e Tutor
+> `RM-0005` · status `closed` · defined `2026-08-21` · implemented `2026-08-23` · closed `2026-08-23` · decisione: una sola lingua firmata per istanza · documento interno, escluso da `docs/` e Tutor
 
 ## 1. Sintesi
 
-### Istruzione vincolante per gli agenti implementatori
+### Stato del mandato
 
-Questo documento è indirizzato ad agenti di programmazione non-frontier. Gli
-agenti **non devono rifare l’analisi**, dedurre lo stato del progetto o
-reinterpretare il mandato. L’analisi dello stato e la scelta architetturale
-sono già state svolte dal responsabile della roadmap. Un agente deve soltanto:
+Il mandato è concluso. Questo documento conserva il contratto implementato, le
+invarianti e le prove di chiusura; non contiene fasi ancora assegnabili. Una
+manutenzione successiva deve:
 
-1. implementare la fase assegnata seguendo contratto, file e invarianti qui
-   dichiarati;
+1. preservare il contratto e le invarianti qui dichiarati;
 2. non introdurre rami per dominio, lingua o provider;
-3. non cambiare API, schema o semantica fuori dalla fase senza una decisione
+3. non cambiare API, schema o semantica senza una decisione
    esplicita;
-4. eseguire i test indicati e aggiungere i test minimi richiesti;
-5. fermarsi e segnalare un conflitto concreto, senza “risolverlo” con
-   un’interpretazione autonoma.
+4. rieseguire i gate pertinenti e aggiungere prove per ogni estensione;
+5. riaprire o creare una roadmap soltanto se compare nuovo lavoro di prodotto.
 
-Le sezioni sullo stato corrente servono al coordinatore e non sono un compito
-di audit per l’agente. La fase assegnata è completata soltanto quando il suo
-criterio di uscita è dimostrato da test o da un report riproducibile.
+Le fasi seguenti restano come traccia verificabile dell’implementazione, non
+come elenco di attività pendenti.
 
 RM-0005 definisce il **multilinguismo full** di Metnos: una persona installa
 l’istanza, sceglie una lingua qualsiasi ammessa dal codice lingua e il sistema
@@ -92,7 +88,7 @@ chiavi, permessi e semantica.
 - L’attivazione e il riavvio sono amministrativi ed espliciti; il job notturno
   prepara e verifica, ma non cambia autonomamente la lingua dell’istanza.
 
-## 3. Contratto di prodotto futuro
+## 3. Contratto di prodotto implementato
 
 ### 3.1 Lingua per istanza
 
@@ -144,11 +140,10 @@ Il traduttore può usare un modello non-frontier secondo il workload
 `translation.i18n` (qualità `fidelity`). Un modello frontier è soltanto una
 possibile escalation amministrativa; non è una dipendenza del progetto.
 
-## 4. Specifiche d’implementazione per LLM non-frontier
+## 4. Fasi implementate
 
-Queste istruzioni sono operative e devono essere eseguite in piccoli commit,
-senza modifiche speculative. Ogni agente deve leggere i file indicati, eseguire
-i test della fase e riportare i limiti residui.
+Le specifiche seguenti costituiscono il record dei confini realizzati. Ogni
+estensione deve continuare a rispettarne i criteri e i test indicati.
 
 ### F0 — Inventario e gate di istanza · `implemented`
 
@@ -282,7 +277,7 @@ attivo per rilevare drift e tradurre nuove risorse.
 
 ## 6. Criteri di accettazione
 
-RM-0005 è `implemented` soltanto quando una fixture installa una lingua nuova,
+RM-0005 supera il gate tecnico quando una fixture installa una lingua nuova,
 avvia l’istanza in inglese, completa la pipeline e dimostra dopo riavvio:
 
 1. la stessa lingua per chat web, Telegram, attività pianificate e device;
@@ -298,6 +293,18 @@ avvia l’istanza in inglese, completa la pipeline e dimostra dopo riavvio:
 `tests/runtime/i18n/test_i18n_activation.py::test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale`,
 dalla suite `tests/runtime/i18n/`, dal lint F1 e dalla verifica di tutte le
 firme dei manifest installabili.
+
+### 6.1 Closeout
+
+RM-0005 è `closed` dal 23 agosto 2026 perché non restano fasi o gate aperti:
+
+- F0-F8 risultano implementate e referenziate nelle ADR 0219-0220;
+- la suite pertinente ha concluso con 579 test superati e 1.118 subtest;
+- l’export sanificato è pubblicato sul ramo pubblico `main` nel commit
+  `c03f29e587e8f017e7456767b33eaf0fd0cfac8a`;
+- la documentazione bilingue è stata distribuita su Cloudflare Pages e
+  verificata sul dominio canonico `https://metnos.com`;
+- il repository sorgente non presenta modifiche residue dopo la pubblicazione.
 
 ## 7. Rischi e misure
 

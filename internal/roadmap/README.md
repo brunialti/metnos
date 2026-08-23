@@ -1,7 +1,7 @@
 # Roadmap Metnos
 
-Questa directory contiene progetti futuri riconosciuti come utili e meritevoli
-di conservazione, ma non ancora completamente implementati. È una classe
+Questa directory conserva i progetti riconosciuti come utili e meritevoli di
+identità stabile, inclusi quelli già implementati o chiusi. È una classe
 documentale distinta da analisi, rapporti, specifiche correnti, TODO e ADR.
 
 ## Autorità e significato
@@ -28,8 +28,11 @@ Una roadmap con stato non terminale è **persistente**:
   quando viene cancellata esplicitamente.
 
 Il completamento non implica la cancellazione: il documento passa a
-`implemented` e conserva i riferimenti alle prove. Un'eventuale archiviazione o
-rimozione successiva richiede una decisione esplicita.
+`implemented` quando supera i criteri tecnici e a `closed` quando anche il
+closeout dichiarato (documentazione, distribuzione o altri gate richiesti)
+risulta verificato. In entrambi i casi conserva i riferimenti alle prove.
+Un'eventuale archiviazione o rimozione successiva richiede una decisione
+esplicita.
 
 ## Stati ammessi
 
@@ -38,11 +41,13 @@ rimozione successiva richiede una decisione esplicita.
 | `active` | direzione accettata, progettazione o priorità ancora aperte |
 | `ready` | confini e criteri sufficienti per iniziare l'implementazione |
 | `in_progress` | implementazione iniziata e tracciata nel documento |
-| `implemented` | criteri di uscita soddisfatti con prove referenziate |
+| `implemented` | criteri tecnici di uscita soddisfatti con prove referenziate; closeout ancora non dichiarato o non richiesto |
+| `closed` | implementazione e closeout dichiarato completati; nessuna attività residua nella roadmap |
 | `cancelled` | cancellazione della direzione decisa esplicitamente da Roberto |
 
-Solo `implemented` e `cancelled` sono terminali. Inattività, data del file,
-assenza da un TODO o implementazione parziale non sono stati terminali.
+Solo `closed` e `cancelled` sono terminali. Inattività, data del file, assenza
+da un TODO, implementazione parziale o solo completamento tecnico non sono
+stati terminali.
 
 ## Metadati minimi
 
@@ -72,5 +77,5 @@ Ogni roadmap deve inoltre separare chiaramente:
 | [RM-0002](RM-0002-linter-manifest-multilingue.md) | Linter multilingue dei manifest executor | `active` | non iniziata | 2026-07-23 |
 | [RM-0003](RM-0003-tutor-integrato.md) | Tutor integrato: guida operativa intelligente | `closed` | F2/F3/F4 implementate, certificate e distribuite | 2026-07-30 |
 | [RM-0004](RM-0004-motore-workload-durevoli.md) | Motore generico per lavori lunghi, persistenti e paralleli | `implemented` | F0-F14 completate; ammissione automatica centralizzata, senza profilo obbligatorio | 2026-08-22 |
-| [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `implemented` | F0-F8: registro versionato, pipeline, gate e attivazione idempotente verificati | 2026-08-23 |
+| [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `closed` | F0-F8 certificate; export GitHub pubblico e documentazione Cloudflare verificati | 2026-08-23 |
 | [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `implemented` | C0-C6 completate; cinque sonde reali e certificazione finale 96/96 | 2026-08-23 |

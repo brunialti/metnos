@@ -26,7 +26,7 @@
   identita' esatta/univoca. `open` resta solo sessione browser `sites`.
   Composizione e launcher gestito derivano da manifest/capability firmati,
   senza nomi di executor o applicazioni nel runtime.
-- **RM-0005 F0-F8 implementato — localizzazione versionata** (23/8,
+- **RM-0005 F0-F8 chiuso — localizzazione versionata** (23/8,
   ADR 0219-0220): identità canoniche e seed editoriali restano dati; un
   registro SQLite versiona prompt, manifest, messaggi/UI, lessico, documenti,
   device e Tutor per qualunque tag BCP-47 strutturalmente valido. La pipeline
