@@ -87,10 +87,11 @@ def cmd_queue(args):
 
 
 def cmd_add_lang(args):
-    """Bootstrap nuova lingua: per ogni chiave esistente nel default lang,
-    crea placeholder row con needs_translation=1."""
-    new_lang = args.code
-    src_lang = args.source_lang or i18n.DEFAULT_LANG
+    """Bootstrap unitario: catalogo output + lessici input RM-0005."""
+    new_lang = i18n.normalize_language(args.code)
+    src_lang = i18n.normalize_language(args.source_lang or i18n.DEFAULT_LANG)
+    if not new_lang or not src_lang or new_lang == src_lang:
+        raise SystemExit("language codes must be valid and different")
     conn = i18n._open()
     rows = conn.execute("SELECT DISTINCT key FROM i18n WHERE lang=?", (src_lang,)).fetchall()
     n = 0
@@ -103,8 +104,14 @@ def cmd_add_lang(args):
             continue
         i18n.mark_for_translation(key, new_lang, src_lang)
         n += 1
-    print(f"Added language '{new_lang}' (source={src_lang}): {n} placeholder rows created.")
-    print("Daemon translator (TODO) o tool admin riempira' on-demand.")
+    import detection_lexicon
+    detection_lexicon.ensure_seeded()
+    detection_rows = detection_lexicon.enqueue_language(new_lang)
+    print(
+        f"Added language '{new_lang}' (source={src_lang}): "
+        f"output={n} input={detection_rows} placeholder rows created."
+    )
+    print("I daemon di traduzione materializzeranno entrambe le superfici.")
 
 
 def cmd_translate_pending(args):
@@ -135,19 +142,20 @@ def cmd_translate_loop(_args):
 def cmd_validate(args):
     """Validation tool: scan completezza traduzioni.
 
-    Per ogni chiave nel DB, verifica che esista in tutte le lingue dichiarate
-    da vocab.LANGS. Stampa missing + needs_translation. Exit 1 se issues.
+    Per ogni chiave nel DB, verifica tutte le lingue enumerate dal catalogo.
+    Include il gate action-vocabulary (superfici + confini). Exit 1 se issues.
     """
     conn = i18n._open()
-    try:
-        from vocab import LANGS
-    except Exception:
-        LANGS = ("it", "en")
+    from vocab import action_vocabulary_coverage
+    import detection_lexicon
+    detection_lexicon.ensure_seeded()
+    detected_langs = detection_lexicon.stats()["by_lang"]
+    languages = tuple(sorted(set(i18n.available_languages()) | set(detected_langs)))
     # Set di tutte le chiavi
     keys = {r[0] for r in conn.execute("SELECT DISTINCT key FROM i18n")}
     issues = 0
     for key in sorted(keys):
-        for lang in LANGS:
+        for lang in languages:
             row = conn.execute(
                 "SELECT text, needs_translation FROM i18n WHERE key=? AND lang=?",
                 (key, lang),
@@ -160,7 +168,20 @@ def cmd_validate(args):
                 if args.verbose:
                     print(f"  PENDING [{lang}] {key}")
                 issues += 1
-    print(f"\nTot keys: {len(keys)}; LANGS: {LANGS}; issues: {issues}")
+    for lang in languages:
+        coverage = action_vocabulary_coverage(lang)
+        if not coverage.get("ok"):
+            issues += 1
+            if args.verbose:
+                print(f"  ACTION-VOCAB GAP [{lang}] {coverage}")
+        elif args.verbose and coverage.get("ambiguous_surfaces"):
+            print(
+                f"  ACTION-VOCAB POLYSEMY [{lang}] "
+                f"{coverage['ambiguous_surfaces']}"
+            )
+    print(
+        f"\nTot keys: {len(keys)}; languages: {languages}; issues: {issues}"
+    )
     if issues:
         sys.exit(1)
 

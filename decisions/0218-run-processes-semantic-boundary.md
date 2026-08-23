@@ -40,12 +40,16 @@ software, and `admin` remains the separate privileged arbitrary-command
 boundary. The privileged helper protocol and its registered-package-only
 security contract do not change.
 
-The bilingual `ACTION_MAPPING` is the source of truth for surfaces and the
-semantic boundary. Italian `avvia`/`avviare` and English `run`/`start`/`launch`
-map to `run`; site-opening surfaces stay under `open`. Prefilter vocabulary is
-derived from that table and the intent prompt receives the complete localized
-boundary. There is no query, program, language, or executor-name branch in the
-routing engine.
+The canonical action identity and its editorial IT/EN seed live in
+`ACTION_MAPPING`; operational surfaces live in the versioned detection
+resource `vocab.action_surfaces`, and semantic boundaries in the versioned
+i18n keys `VOCAB_ACTION_*_BOUNDARY`. Italian `avvia`/`avviare` and English
+`run`/`start`/`launch` map to `run`; site-opening surfaces stay under `open`.
+The prefilter and intent prompt read the active localized resources, with a
+coverage report and catalogued fallback. There is no query, program, language,
+or executor-name branch in the routing engine. This RM-0005 alignment was
+implemented on 2026-08-23 without changing the canonical `run != open`
+boundary decided here.
 
 A user may supply a localized Unicode display name. `find_packages` validates
 human software names by general character classes, queries the device package

@@ -91,6 +91,11 @@ def _normalize_lang(value: str | None) -> str:
     return candidate
 
 
+def normalize_language(value: str | None) -> str:
+    """API pubblica per la grammatica dei codici lingua del catalogo."""
+    return _normalize_lang(value)
+
+
 def current_lang() -> str:
     """Lingua del contesto corrente, con fallback alla lingua dell'istanza.
 
@@ -321,6 +326,78 @@ def _merge_missing_seed_rows(
         source.close()
 
 
+def _language_chain(lang: str | None = None) -> tuple[str, ...]:
+    """Catena localizzata deterministica senza modificare il contesto.
+
+    ``lang`` e' la lingua di una risorsa da renderizzare o verificare, non un
+    override operativo per utente/turno.  La stessa funzione governa il
+    percorso normale e i generatori RM-0005, evitando due fallback diversi.
+    """
+    requested = _normalize_lang(lang) or current_lang()
+    ordered = [requested]
+    for fallback in FALLBACK_CHAIN:
+        if fallback not in ordered:
+            ordered.append(fallback)
+    return tuple(ordered)
+
+
+def language_chain(lang: str | None = None) -> tuple[str, ...]:
+    """API pubblica della catena di fallback localizzata."""
+    return _language_chain(lang)
+
+
+def get_for_language(key: str, lang: str, /, **kwargs) -> str:
+    """Fetch di una risorsa per lingua esplicita con fallback catalogato.
+
+    Serve ai renderer e ai controlli di localizzazione. Non cambia
+    ``current_lang`` e quindi non consente preferenze linguistiche per
+    richiesta in contrasto con RM-0005.
+    """
+    resource = resource_for_language(key, lang, fallback=True)
+    if resource:
+        template = resource["text"]
+        try:
+            return template.format(**kwargs) if kwargs else template
+        except (KeyError, IndexError, ValueError):
+            return template
+    return f"<missing:{key}>"
+
+
+def resource_for_language(key: str, lang: str, *, fallback: bool = True,
+                          ready_only: bool = False) -> dict | None:
+    """Riga i18n esatta/fallback per renderer e coverage gate.
+
+    Il normale ``get`` continua a usare anche un testo temporaneamente
+    pending; un gate di rilascio passa invece ``ready_only=True`` per contare
+    come coperta soltanto una risorsa allineata alla sorgente corrente.
+    """
+    normalized = _normalize_lang(lang)
+    if not normalized:
+        return None
+    languages = list(_language_chain(normalized)) if fallback else [normalized]
+    conn = _open()
+    for candidate in languages:
+        row = conn.execute(
+            "SELECT text, needs_translation, source_lang, version_hash, "
+            "source_text_hash FROM i18n WHERE key=? AND lang=?",
+            (key, candidate),
+        ).fetchone()
+        if not row or not row[0] or (ready_only and int(row[1] or 0)):
+            continue
+        return {
+            "key": key,
+            "requested_lang": normalized,
+            "lang": candidate,
+            "text": row[0],
+            "needs_translation": bool(row[1]),
+            "source_lang": row[2],
+            "version_hash": row[3],
+            "source_text_hash": row[4],
+            "fallback": candidate != normalized,
+        }
+    return None
+
+
 def get(key: str, /, **kwargs) -> str:
     """Fetch testo per chiave. Fallback chain: current → en → it → <missing>.
     `**kwargs` passati a .format() sul template.
@@ -331,30 +408,7 @@ def get(key: str, /, **kwargs) -> str:
     'key'» invece di rendersi. Il nome del parametro non deve poter collidere
     con il vocabolario dei testi.
     """
-    conn = _open()
-    try_langs = [current_lang()]
-    for fb in FALLBACK_CHAIN:
-        if fb not in try_langs:
-            try_langs.append(fb)
-    for lang in try_langs:
-        row = conn.execute(
-            "SELECT text, needs_translation FROM i18n WHERE key=? AND lang=?",
-            (key, lang),
-        ).fetchone()
-        # needs_translation=1 e' un HINT al daemon traduttore, non un blocco
-        # per get(): se `text` e' popolato e non-vuoto, la traduzione e' usable.
-        # Bug live 12/5/2026: 174 righe MSG_* avevano needs_translation=1
-        # (orphan source_lang NULL) ma text valido in entrambe le lingue.
-        # i18n.get scartava la IT e cadeva in fallback a EN → test +
-        # final_message user-facing in lingua sbagliata. Fix generale:
-        # treat needs_translation come metadato del daemon, non come gate.
-        if row and row[0]:
-            template = row[0]
-            try:
-                return template.format(**kwargs) if kwargs else template
-            except (KeyError, IndexError, ValueError):
-                return template  # template malformato, ritorna grezzo
-    return f"<missing:{key}>"
+    return get_for_language(key, current_lang(), **kwargs)
 
 
 def key_exists(key: str, lang: str | None = None) -> bool:

@@ -19,7 +19,12 @@ la sintesi per lingue nuove la fa il daemon dal word-list tradotto.
 from __future__ import annotations
 
 import detection_lexicon as _dl
-from vocab import PROVIDER_SUFFIXES  # identità provider = vocabolario (SoT unica)
+from vocab import (  # identita' canoniche = vocabolario (SoT unica)
+    ACTIONS,
+    ACTION_MAPPING,
+    ACTION_SURFACES_CONCEPT,
+    PROVIDER_SUFFIXES,
+)
 
 
 # Marker NL (linguistici, i18n) per ogni provider — SOLO i VALORI. Le CHIAVI
@@ -59,6 +64,19 @@ HUMAN_REVIEW_CONCEPTS = frozenset({
 
 def register_all() -> None:
     R = _dl.register
+
+    # ── VOCABOLARIO AZIONI (RM-0005 F2/F3/F6) ────────────────────────
+    # ACTIONS e le chiavi del mapping restano canoniche/non traducibili; solo
+    # le superfici naturali sono risorse linguistiche.  Questo seed distribuisce
+    # la baseline editoriale IT+EN. Qualunque altra lingua viene accodata e
+    # materializzata dal medesimo daemon degli altri mapping di detection.
+    R(
+        ACTION_SURFACES_CONCEPT,
+        "mapping",
+        match_mode="word",
+        it={action: list(ACTION_MAPPING[action]["it"]) for action in ACTIONS},
+        en={action: list(ACTION_MAPPING[action]["en"]) for action in ACTIONS},
+    )
 
     # ── SINTASSI: polarità e cambio di clausola ───────────────────────
     # Dati linguistici generali, consumabili da ogni riconoscitore che debba

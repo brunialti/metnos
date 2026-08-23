@@ -97,9 +97,9 @@ def test_apri_open_agree_read_in_both_sot():
 
 
 def test_avvia_start_launch_resolve_to_run_not_web_open():
-    """Le forme semplici sono derivate dal vocabolario bilingue, non cablate."""
+    """Le forme semplici arrivano dalla risorsa attiva, non da una tabella cablata."""
     for token in ("avvia", "avviare", "run", "start", "launch"):
-        assert prefilter._VERB_TO_CANONICAL.get(token) == "run"
+        assert prefilter.detect_canonical_verb(prefilter.tokenize(token)) == "run"
     open_surfaces = (
         vocab.ACTION_MAPPING["open"].get("it", [])
         + vocab.ACTION_MAPPING["open"].get("en", [])

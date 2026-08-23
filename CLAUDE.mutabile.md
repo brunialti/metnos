@@ -26,6 +26,12 @@
   identita' esatta/univoca. `open` resta solo sessione browser `sites`.
   Composizione e launcher gestito derivano da manifest/capability firmati,
   senza nomi di executor o applicazioni nel runtime.
+- **RM-0005 in corso — action vocabulary localizzato** (23/8): identita'
+  canoniche e seed editoriali restano in `vocab`; superfici operative nel
+  concept versionato `vocab.action_surfaces`, confini nelle chiavi i18n
+  `VOCAB_ACTION_*_BOUNDARY`. Prefilter e synt consumano la lingua attiva, il
+  bootstrap accoda output+input e il gate rifiuta mapping parziali; prova IT,
+  EN e terza lingua sintetica. Non equivale alla chiusura di RM-0005.
 - **Undo condizionale** (23/8, ADR 0217): il manifest firmato puo' dichiarare
   `[undo] outcome="per_execution"`; il runtime accetta soltanto
   `reversible|no_effect|irreversible`, chiude sempre il turno e non contiene

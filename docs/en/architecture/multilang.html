@@ -281,6 +281,14 @@ Metnos continues to recognize Italian and English forms, while explicitly
 reporting that the target language is not fully covered.
 </p>
 
+<p>
+For actions, surfaces and semantic boundaries are no longer an IT/EN table
+embedded in the renderer. The versioned <code>vocab.action_surfaces</code>
+mapping feeds recognition, while <code>VOCAB_ACTION_*_BOUNDARY</code> i18n keys
+feed prompts. Coverage requires every canonical identity, non-empty forms, and
+native boundaries; any polysemy that needs review is reported separately.
+</p>
+
 <h1 id="cap4">4. Prompt language and response language</h1>
 
 <p>

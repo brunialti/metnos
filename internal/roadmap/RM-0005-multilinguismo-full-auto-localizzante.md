@@ -2,10 +2,10 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `ready`; progettazione consolidata, implementazione completa non iniziata |
+| Stato | `in_progress`; progettazione consolidata, primo tratto verticale implementato |
 | Creazione | 2026-08-21 |
-| Ultima revisione | 2026-08-21 |
-| Implementazione reale | Fallback inglese all’installazione di una lingua non ancora disponibile; catalogo i18n, traduttore dei messaggi, traduttore dei prompt, allineamento dei manifest e lessico di detection già presenti in forma parziale |
+| Ultima revisione | 2026-08-23 |
+| Implementazione reale | Pipeline ancora parziale. Il vocabolario azioni è ora un tratto F2/F3/F6/F8 completo: superfici nel detection lexicon versionato, confini nel catalogo i18n, bootstrap congiunto, validazione strutturale, copertura nativa e prova su terza lingua sintetica |
 | Decisione di prodotto | La lingua è una proprietà dell’istanza Metnos. Non esistono lingue diverse per utente, canale o turno |
 | Nome pubblico | Multilinguismo per definizione |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita |
@@ -58,7 +58,7 @@ un sistema che **si auto-localizza**, usando la propria pipeline LLM per
 tradurre il patrimonio operativo, mantenendo invariati identità, contratti,
 chiavi, permessi e semantica.
 
-## 2. Stato verificato al 21 agosto 2026
+## 2. Stato verificato al 23 agosto 2026
 
 ### 2.1 Già disponibile
 
@@ -73,6 +73,11 @@ chiavi, permessi e semantica.
 - `runtime/jobs/detection_translate_pending.py` traduce il lessico di
   comprensione quando esistono righe pending, con esclusioni corrette per
   regex e concetti che richiedono revisione umana.
+- Il vocabolario delle azioni non viene più reso da mappe IT/EN cablate: le
+  superfici sono il concept versionato `vocab.action_surfaces`, i confini sono
+  chiavi `VOCAB_ACTION_*_BOUNDARY`, il prefilter consuma la lingua attiva e il
+  gate rifiuta mapping parziali. Il seed editoriale IT/EN resta soltanto la
+  baseline distribuita; una terza lingua segue lo stesso percorso dati.
 - I manifest hanno mappe linguistiche e `manifest.lang_state.json`; le firme
   vengono ricalcolate dopo una modifica.
 - Tutor compila fonti pubbliche e manifest ammessi in un catalogo bilingue.
@@ -229,6 +234,13 @@ lease con scadenza e tentativi bounded; nessun LLM dentro il registry.
 - Il proposer deve ricevere prompt e lessico nella stessa `instance_lang`.
 - Testare equivalenza semantica su fixture IT/EN e sulla nuova lingua; vietare
   che la traduzione alteri un identificatore canonico.
+
+**Stato 2026-08-23:** implementato per il sottosistema action vocabulary. Il
+test `test_action_vocabulary_i18n.py` materializza una terza lingua sintetica,
+verifica detection, rendering, fallback e copertura; il daemon accetta un
+mapping tradotto soltanto se conserva esattamente tutte le chiavi canoniche e
+forme non vuote. Restano da portare nello stesso registry unico gli altri
+strati elencati in F0-F8: questo avanzamento non chiude RM-0005.
 
 ### F7 — Runtime, dispositivi e Tutor
 

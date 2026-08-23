@@ -63,7 +63,10 @@ def test_share_in_action_mapping_with_boundary():
     share = ACTION_MAPPING["share"]
     assert "it" in share and len(share["it"]) >= 3
     assert "en" in share and len(share["en"]) >= 3
-    assert "OUTBOUND CONSENT" in share["boundary"]
+    assert all(
+        "OUTBOUND CONSENT" in share["boundary"][lang]
+        for lang in ("it", "en")
+    )
 
 
 # ---------------------------------------------------------------------------

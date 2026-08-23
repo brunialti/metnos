@@ -6,6 +6,15 @@
 > Aggiornare QUI (non in CLAUDE.md) quando si aggiunge/rimuove un meccanismo.
 
 **Naming / vocab / grammatica**
+- **Action vocabulary localizzato e completo** (RM-0005 F2/F3/F6/F8):
+  `vocab.action_surfaces` nel detection lexicon conserva le superfici per
+  lingua; `VOCAB_ACTION_*_BOUNDARY` nel catalogo i18n conserva i confini. Il
+  prefilter deriva le sole forme monolessematiche non ambigue dalla risorsa
+  attiva, synt rende una sola lingua e il bootstrap accoda entrambi i cataloghi.
+  Un mapping tradotto parziale o con collisioni non viene promosso; il gate
+  riporta copertura nativa e polisemie. Prove:
+  `test_action_vocabulary_i18n.py`, `test_detection_translate_daemon.py` e
+  `test_verb_canonical_sot.py`.
 - **Executor Standard v1** (ADR 0193): `EXECUTOR_STANDARD.md` e' il contratto
   normativo `metnos.executor/1.0`; `runtime/executor_standard.py` valida i claim
   meccanici, compresi i nomi chiusi di `runtime/policy.py::CAPABILITY_REGISTRY`.

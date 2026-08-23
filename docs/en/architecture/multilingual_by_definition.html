@@ -126,6 +126,15 @@ without pretending that the entire system is already ready.
  </tbody>
 </table>
 
+<p>
+The action vocabulary already applies this contract end to end. Canonical
+names such as <code>run</code> and <code>open</code> are not translated; the
+natural forms used to recognise them live in the versioned detection lexicon,
+while their semantic boundaries are i18n catalog keys. A new language must
+preserve every canonical action: a partial mapping cannot pass the coverage
+check, and ambiguous forms are reported for linguistic validation.
+</p>
+
 <h2 id="fallback">Explicit fallback, not false completeness</h2>
 
 <p>
