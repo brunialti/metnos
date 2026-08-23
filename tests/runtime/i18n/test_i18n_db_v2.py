@@ -178,19 +178,19 @@ class TestI18nSetVersionHash(unittest.TestCase):
         self.assertEqual(pending[0]["source_lang"], "it")
         self.assertEqual(pending[0]["target_lang"], "en")
 
-    def test_language_context_is_nested_and_does_not_mutate_instance_language(self):
-        original_cache = self.i18n._lang_cache
-        self.i18n._lang_cache = "it"
+    def test_language_context_propagates_but_cannot_replace_instance_language(self):
+        original = self.i18n._C.INSTANCE_LANG
+        self.i18n._C.INSTANCE_LANG = "it"
         try:
             self.assertEqual(self.i18n.current_lang(), "it")
             with self.i18n.language_context("EN_us"):
-                self.assertEqual(self.i18n.current_lang(), "en-us")
+                self.assertEqual(self.i18n.current_lang(), "it")
                 with self.i18n.language_context("fr"):
-                    self.assertEqual(self.i18n.current_lang(), "fr")
-                self.assertEqual(self.i18n.current_lang(), "en-us")
+                    self.assertEqual(self.i18n.current_lang(), "it")
+                self.assertEqual(self.i18n.current_lang(), "it")
             self.assertEqual(self.i18n.current_lang(), "it")
         finally:
-            self.i18n._lang_cache = original_cache
+            self.i18n._C.INSTANCE_LANG = original
 
     def test_available_languages_comes_from_catalog(self):
         self.i18n.set_catalog_translations(

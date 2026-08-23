@@ -217,14 +217,15 @@ def test_embedding_is_view_only_even_when_the_query_requests_edit():
     assert _family(payload, "vlm")["ui_editable"] is True
 
 
-def test_settings_shell_and_virt_page_follow_request_language_with_fallback():
+def test_settings_shell_and_virt_page_follow_instance_language_with_fallback(
+        monkeypatch):
     from http_render import render_template
-    from i18n import language_context
+    import i18n
     from virt.configuration import snapshot
 
     payload = snapshot()
-    with language_context("en"):
-        english = render_template("virt.html", snapshot=payload)
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "en")
+    english = render_template("virt.html", snapshot=payload)
     assert '<html lang="en">' in english
     assert "Model configuration" in english
     assert ">System<" in english
@@ -233,8 +234,8 @@ def test_settings_shell_and_virt_page_follow_request_language_with_fallback():
 
     # A newly admitted language uses the catalog fallback without letting the
     # Italian prompt or the instance default leak into the page.
-    with language_context("fr"):
-        fallback = render_template("virt.html", snapshot=payload)
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "fr")
+    fallback = render_template("virt.html", snapshot=payload)
     assert '<html lang="fr">' in fallback
     assert "Model configuration" in fallback
     assert ">System<" in fallback

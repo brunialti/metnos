@@ -38,8 +38,8 @@
 
 <p class="lead">Quando la policy richiede una decisione umana, Metnos non esegue il
 passo. Registra una proposta pendente, la presenta sul canale dell'utente e riprende
-soltanto dopo una decisione valida. Testo, etichette e pulsanti seguono la lingua del
-singolo utente.</p>
+soltanto dopo una decisione valida. Testo, etichette e pulsanti seguono la lingua
+firmata dell'istanza.</p>
 
 <div class="toc">
 <h2>Indice</h2>
@@ -47,7 +47,7 @@ singolo utente.</p>
  <li><a href="#cap1">Quando viene chiesta una decisione</a></li>
  <li><a href="#cap2">Il flusso corrente</a></li>
  <li><a href="#cap3">Chat web e Telegram</a></li>
- <li><a href="#cap4">Lingua e isolamento per utente</a></li>
+ <li><a href="#cap4">Lingua d'istanza e isolamento per utente</a></li>
  <li><a href="#cap5">Esempio in linguaggio naturale</a></li>
  <li><a href="#cap6">Invarianti di sicurezza</a></li>
  <li><a href="#cap7">Confini attuali e riferimenti</a></li>
@@ -103,17 +103,16 @@ usa lo stesso stato.</td></tr>
 a un altro utente: conversazione, sessione attiva e stato pendente restano nello
 spazio del proprietario.</p>
 
-<h1 id="cap4">4. Lingua e isolamento per utente</h1>
+<h1 id="cap4">4. Lingua d'istanza e isolamento per utente</h1>
 
 <p>Le etichette user-facing sono chiavi del catalogo i18n, non stringhe possedute dal
-renderer. La preferenza <code>lang</code> viene risolta dal binding canale&ndash;utente e
-applicata al solo turno tramite un contesto locale. Lo stesso contesto viene propagato
-ai processi che eseguono il pianificatore e al Tutor.</p>
+renderer. La lingua viene risolta una volta dalla richiesta d'istanza firmata e il
+medesimo valore viene propagato a renderer, pianificatore e Tutor. Il binding
+canale&ndash;utente non pu&ograve; sostituirlo.</p>
 
-<p>Due utenti possono quindi usare lingue diverse nello stesso processo senza
-modificare <code>METNOS_LANG</code>. Se viene aggiunta una lingua, la pagina delle
-preferenze ricava l'elenco dal catalogo i18n; una chiave non ancora tradotta segue la
-catena di ripiego lingua utente &rarr; inglese &rarr; italiano.</p>
+<p>Tutti gli utenti della stessa istanza ricevono quindi la stessa lingua. Per offrire
+due lingue operative simultanee servono due istanze distinte. Una chiave non ancora
+tradotta segue la catena di ripiego lingua d'istanza &rarr; inglese &rarr; italiano.</p>
 
 <h1 id="cap5">5. Esempio in linguaggio naturale</h1>
 
@@ -143,8 +142,8 @@ trasferisce l'autorit&agrave; a un'altra persona.</td></tr>
 viene rifiutato.</td></tr>
 <tr><td>Consumo prima dell'esecuzione</td><td>Doppi clic e retry non duplicano l'azione.</td></tr>
 <tr><td>Scadenza</td><td>Una proposta troppo vecchia deve essere generata di nuovo.</td></tr>
-<tr><td>Isolamento per utente</td><td>Stato, lingua, conversazione e decisione non sono
-condivisi fra utenti.</td></tr>
+<tr><td>Isolamento per utente</td><td>Stato, conversazione e decisione non sono
+condivisi fra utenti; la lingua appartiene invece all'istanza.</td></tr>
 <tr><td>Nessuna delega implicita</td><td>Approvare un passo non crea automaticamente un
 permesso generale o permanente.</td></tr>
 </tbody>
@@ -162,7 +161,7 @@ dell'utente.</p>
  <li><code>runtime/channels/daemon.py</code>: stato pendente, consumo e dispatch.</li>
  <li><code>runtime/http_routes_agent.py</code>: percorso equivalente della chat web.</li>
  <li><code>runtime/approval_registry.py</code>: token atomici con TTL e verifica del decisore.</li>
- <li><code>runtime/i18n.py</code>: catalogo e contesto lingua per richiesta.</li>
+ <li><code>runtime/i18n.py</code>: catalogo e propagazione della lingua d'istanza.</li>
  <li><code>tests/runtime/channels/test_telegram_authorization_buttons.py</code> e
  <code>tests/runtime/safety/test_approval_registry_atomic.py</code>: regressioni principali.</li>
 </ul>

@@ -105,8 +105,12 @@ class TestInlineKeyboard(_BaseDigestTest):
     def test_keyboard_uses_context_language(self):
         import i18n
         from jobs.promoter_digest import _build_inline_keyboard
-        with i18n.language_context("en"):
+        original = i18n._C.INSTANCE_LANG
+        try:
+            i18n._C.INSTANCE_LANG = "en"
             kb = _build_inline_keyboard("foo_bar_123")
+        finally:
+            i18n._C.INSTANCE_LANG = original
         self.assertEqual(kb[0][0]["text"], "Confirm")
         self.assertEqual(kb[0][1]["text"], "Roll back")
 
@@ -297,7 +301,7 @@ class TestAggregatedMode(_BaseDigestTest):
         from jobs.promoter_state import pending_notification
         self.assertEqual(len(pending_notification()), 0)
 
-    def test_host_preference_controls_digest_language(self):
+    def test_host_preference_cannot_replace_instance_digest_language(self):
         self._seed_promoted_grace("lang_001", "find_x")
         import users
         users.init_db()
@@ -318,8 +322,8 @@ class TestAggregatedMode(_BaseDigestTest):
             from jobs.promoter_digest import task_promoter_digest
             result = task_promoter_digest()
         self.assertEqual(result["ok_count"], 1)
-        self.assertIn("new executor", sends[0][0])
-        self.assertEqual(sends[0][1][0][0]["text"], "Confirm")
+        self.assertIn("nuovo executor", sends[0][0])
+        self.assertEqual(sends[0][1][0][0]["text"], "Conferma")
 
     def test_persisted_example_is_rebuilt_in_recipient_language(self):
         """Un esempio salvato in IT non deve contaminare un digest EN."""
@@ -347,11 +351,16 @@ class TestAggregatedMode(_BaseDigestTest):
         from jobs.promoter_state import pending_notification
         from jobs.promoter_digest import _localized_practical_example
         row = pending_notification()[0]
-        with i18n.language_context("en"), mock.patch(
-            "jobs.promoter_example._render_llm_commentary",
-            return_value="English commentary.",
-        ):
-            rendered = _localized_practical_example(row)
+        original = i18n._C.INSTANCE_LANG
+        try:
+            i18n._C.INSTANCE_LANG = "en"
+            with mock.patch(
+                "jobs.promoter_example._render_llm_commentary",
+                return_value="English commentary.",
+            ):
+                rendered = _localized_practical_example(row)
+        finally:
+            i18n._C.INSTANCE_LANG = original
         self.assertIn("**Current pipeline**", rendered)
         self.assertIn("## Estimated savings", rendered)
         self.assertNotIn("Pipeline corrente", rendered)

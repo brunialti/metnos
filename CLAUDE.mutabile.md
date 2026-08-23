@@ -19,7 +19,7 @@
   `METNOS_LLM_SLOT_ID`, default 1. L'affinità è applicata nei due client
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0218` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **ADR registry**: `0001-0219` (skipped: `0055`/`0115`/`0116`/`0121`).
 - **Avvio software ≠ apertura web** (23/8, ADR 0218): `run` e' il verbo
   canonico bilingue per avviare software gia' installato; `run_processes`
   risolve prima nomi umani Unicode con `find_packages` e accetta soltanto una
@@ -32,6 +32,13 @@
   `VOCAB_ACTION_*_BOUNDARY`. Prefilter e synt consumano la lingua attiva, il
   bootstrap accoda output+input e il gate rifiuta mapping parziali; prova IT,
   EN e terza lingua sintetica. Non equivale alla chiusura di RM-0005.
+- **RM-0005 F0 — lingua unica firmata** (23/8, ADR 0219):
+  `runtime.config` definisce `INSTANCE_LANG`, `REQUESTED_LANG` e
+  `LOCALIZATION_STATE` da una richiesta BCP-47 firmata Ed25519 e scritta
+  atomicamente in fase 3; `METNOS_LANG` e' soltanto l'avvio per installazioni
+  prive del documento. Un contesto di richiesta propaga la lingua d'istanza ma
+  non puo' sostituirla. F1 deve ancora rimuovere chiamanti e preferenze ormai
+  inefficaci.
 - **Undo condizionale** (23/8, ADR 0217): il manifest firmato puo' dichiarare
   `[undo] outcome="per_execution"`; il runtime accetta soltanto
   `reversible|no_effect|irreversible`, chiude sempre il turno e non contiene

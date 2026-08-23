@@ -405,12 +405,16 @@ def test_acpi_temperature_rendering_is_honest_and_i18n():
             "sensors": [{"kind": "acpi", "value_c": 31.9}],
         },
     }
-    with i18n.language_context("it"):
+    original = i18n._C.INSTANCE_LANG
+    try:
+        i18n._C.INSTANCE_LANG = "it"
         it = orchestration._fmt_health_block(
             health, host="PC-TEST", sections={"thermal"})
-    with i18n.language_context("en"):
+        i18n._C.INSTANCE_LANG = "en"
         en = orchestration._fmt_health_block(
             health, host="PC-TEST", sections={"thermal"})
+    finally:
+        i18n._C.INSTANCE_LANG = original
 
     assert "ACPI 31.9°C" in it
     assert "CPU 31.9°C" not in it

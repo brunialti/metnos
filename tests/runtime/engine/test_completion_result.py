@@ -130,11 +130,11 @@ def test_daemon_sends_resume_media_chunked(monkeypatch):
     assert sent == [("chat9", 10, "Foto 1-10 di 12 per la tua richiesta"),
                     ("chat9", 2, "Foto 11-12 di 12 per la tua richiesta")]
 
-    # La stessa consegna usa la lingua del contesto del destinatario.
+    # La stessa consegna segue una diversa lingua configurata per l'istanza.
     import i18n
     sent.clear()
-    with i18n.language_context("en"):
-        d._send_resume_media("chat9", cr)
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "en")
+    d._send_resume_media("chat9", cr)
     assert sent == [("chat9", 10, "Photos 1-10 of 12 for your request"),
                     ("chat9", 2, "Photos 11-12 of 12 for your request")]
 

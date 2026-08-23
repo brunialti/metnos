@@ -96,12 +96,12 @@ async def test_submit_failure_releases_reserved_capacity():
 
 
 @pytest.mark.asyncio
-async def test_turn_worker_inherits_request_language_context():
+async def test_turn_worker_inherits_instance_language(monkeypatch):
     import i18n
 
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "fr")
     pool = HttpTurnPool(workers=1, queue_slots=0, per_principal=1)
-    with i18n.language_context("fr"):
-        observed = await pool.run("alice", i18n.current_lang)
+    observed = await pool.run("alice", i18n.current_lang)
     assert observed == "fr"
-    assert i18n.current_lang() != "fr"
+    assert i18n.current_lang() == "fr"
     pool.close()

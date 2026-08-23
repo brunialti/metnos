@@ -317,6 +317,10 @@
 - **Chiusura shim stdlib-only**: `test_agent_server_remote.test_shim_bundle_signed` valida gli import a module-load del local.py SPEDITO contro la whitelist della chiusura.
 - **Provider remoto privilegiato senza comando** (ADR 0212): profilo manifest chiuso e dichiarativo, mandato server per invocazione, doppia firma client/server e host di interfaccia tipizzata senza rami per pacchetto. Assembly figlio diretto e tipo sono dati firmati; metodi, proprietà e limiti restano nel codice comune. Guard: `test_managed_dependencies.py`, `test_invocations.py`, `test_helper_wire_contract.py` e prove Rust in `helper-rs/src/{protocol,pairing,provider}.rs`.
 - **Self-update firmato+idempotente (ADR 0184)**: `client selfupdate.rs` — descrittore firmato con chiave server (verify pubkey pinnata), no-loop per sha dell'exe, swap con ripristino su fallimento; e2e `c7-validate-selfupdate.sh` (swap+respawn-che-esegue+un-solo-swap).
+
+**Lingua unica dell'istanza ADR 0219 (23/8/2026)**
+- **Autorità firmata al riavvio**: `runtime.config::{INSTANCE_LANG,REQUESTED_LANG,LOCALIZATION_STATE}` deriva dal documento Ed25519 atomico; documento alterato o tag BCP-47 invalido ricade senza bloccare il boot. Gate: `test_instance_language_config.py`.
+- **Nessun override per richiesta**: `i18n.language_context` può propagare soltanto `INSTANCE_LANG`; una preferenza utente, un canale o un payload non possono sostituirla. La rimozione dei chiamanti residui appartiene a RM-0005/F1.
 **Learning-loop W1 ADR 0185 (5/7/2026)**
 - **Seed shadow solo da ripetizione reale**: `autopath.seed_from_run` — soglie n_steps/n_obs, no-op se autopath active esiste; il ✓ umano conferma (shadow→0), mai degrado inverso. Test `test_learning_loop.py`.
 - **Lacuna→proposta senza resurrezione**: `learning_loop.propose_from_lacuna` nel choke-point `_record_lacuna` — dedup fingerprint + stato REJECTED preservato dall'upsert (testato); classi d'uso (wrong_args) MAI proposte.

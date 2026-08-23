@@ -22,7 +22,8 @@ Env override (tutti opzionali):
   METNOS_USER_DATA      override ~/.local/share/metnos
   METNOS_USER_STATE     override ~/.local/state/metnos
   METNOS_USER_CONFIG    override ~/.config/metnos
-  METNOS_LANG           lingua interfaccia (default 'it')
+  METNOS_LANG           bootstrap lingua d'istanza (default 'it'); una
+                        richiesta firmata valida diventa poi autorevole
   METNOS_CAP_STEPS      max step per turno (default 30)
   METNOS_LOG_LEVEL      logger root (DEBUG|INFO|WARNING|ERROR; default INFO)
   METNOS_LOG_FILE       path file log (default journal-only)
@@ -31,8 +32,14 @@ Env override (tutti opzionali):
 """
 from __future__ import annotations
 
+import base64
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
+import json
 import os
 from pathlib import Path
+import re
 import tempfile
 
 
@@ -119,6 +126,364 @@ PATH_USER_CACHE    = _env_path(
     "METNOS_USER_CACHE",
     Path(os.environ.get("XDG_CACHE_HOME") or (_home() / ".cache")) / "metnos",
 )
+
+# Signed, instance-wide localization request (RM-0005 F0).  This file is the
+# persistent authority once present and valid; METNOS_LANG remains the safe
+# bootstrap source for existing installations that predate the request.
+PATH_LOCALIZATION_REQUEST = (
+    PATH_USER_STATE / "i18n" / "localization_request.json"
+)
+LOCALIZATION_REQUEST_SCHEMA = "metnos.localization-request/1"
+LOCALIZATION_STATES = frozenset({"active", "bootstrap_english"})
+
+
+def normalize_language_tag(value: str | None) -> str:
+    """Validate and normalize a structural BCP-47 language tag.
+
+    The grammar is locale-neutral: it does not contain a language allowlist.
+    Storage uses lowercase because BCP-47 comparison is case-insensitive and
+    the SQLite catalogs and filesystem registries use the same stable form.
+    Empty, private-use-only, duplicate, or malformed tags return ``""`` so a
+    bad administrative value can be rejected without preventing boot.
+    """
+
+    candidate = str(value or "").strip().replace("_", "-")
+    if not candidate or not candidate.isascii():
+        return ""
+    parts = candidate.split("-")
+    if any(not re.fullmatch(r"[A-Za-z0-9]{1,8}", part) for part in parts):
+        return ""
+    if parts[0].casefold() == "x":
+        # A private-use token does not identify the language whose corpus must
+        # be materialized, so it is ambiguous for an instance locale.
+        return ""
+
+    language = parts[0]
+    if not language.isalpha() or not 2 <= len(language) <= 8:
+        return ""
+    offset = 1
+
+    # Up to three extlang subtags may follow a two- or three-letter primary.
+    if len(language) in {2, 3}:
+        extlangs = 0
+        while (
+            offset < len(parts)
+            and len(parts[offset]) == 3
+            and parts[offset].isalpha()
+            and extlangs < 3
+        ):
+            offset += 1
+            extlangs += 1
+
+    if (
+        offset < len(parts)
+        and len(parts[offset]) == 4
+        and parts[offset].isalpha()
+    ):
+        offset += 1
+    if offset < len(parts) and (
+        (len(parts[offset]) == 2 and parts[offset].isalpha())
+        or (len(parts[offset]) == 3 and parts[offset].isdigit())
+    ):
+        offset += 1
+
+    variants: set[str] = set()
+    while offset < len(parts) and (
+        5 <= len(parts[offset]) <= 8
+        or (len(parts[offset]) == 4 and parts[offset][0].isdigit())
+    ):
+        variant = parts[offset].casefold()
+        if variant in variants:
+            return ""
+        variants.add(variant)
+        offset += 1
+
+    singletons: set[str] = set()
+    while (
+        offset < len(parts)
+        and len(parts[offset]) == 1
+        and parts[offset].casefold() != "x"
+    ):
+        singleton = parts[offset].casefold()
+        if singleton in singletons:
+            return ""
+        singletons.add(singleton)
+        offset += 1
+        extension_start = offset
+        while offset < len(parts) and 2 <= len(parts[offset]) <= 8:
+            offset += 1
+        if offset == extension_start:
+            return ""
+
+    if offset < len(parts) and parts[offset].casefold() == "x":
+        offset += 1
+        if offset == len(parts):
+            return ""
+        offset = len(parts)
+    if offset != len(parts):
+        return ""
+    return "-".join(part.casefold() for part in parts)
+
+
+@dataclass(frozen=True, slots=True)
+class LocalizationRequest:
+    instance_lang: str
+    requested_lang: str | None
+    state: str
+    requested_at: str
+    corpus_version: str
+
+
+def _canonical_json_bytes(value: dict) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def localization_corpus_version() -> str:
+    """Content identity of the released localization corpus.
+
+    F0 needs a reproducible version before the F2 resource registry exists.
+    The inventory is layer-based, not language- or provider-specific: prompt
+    resources, deterministic catalogs, executor contracts and public sources.
+    """
+
+    candidates: set[Path] = set()
+    roots_and_names = (
+        (PATH_RUNTIME / "prompts", {".j2", ".yaml"}),
+        (PATH_EXECUTORS, {"manifest.toml", "manifest.lang_state.json"}),
+        (PATH_RUNTIME / "builtin_executor_contracts",
+         {"manifest.toml", "manifest.lang_state.json"}),
+        (PATH_DOCS, {".html"}),
+    )
+    for root, accepted in roots_and_names:
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_symlink() and path.is_file() and (
+                path.name in accepted or path.suffix in accepted
+            ):
+                candidates.add(path)
+    for path in (
+        PATH_ROOT / "install" / "data" / "i18n_seed.sqlite",
+        PATH_RUNTIME / "detection_lexicon_seed.py",
+    ):
+        if path.is_file():
+            candidates.add(path)
+
+    digest = hashlib.sha256()
+    for path in sorted(candidates, key=lambda item: item.as_posix()):
+        try:
+            relative = path.relative_to(PATH_ROOT).as_posix().encode("utf-8")
+            content = path.read_bytes()
+        except (OSError, ValueError):
+            continue
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _validated_localization_payload(value: object) -> LocalizationRequest | None:
+    if not isinstance(value, dict) or set(value) != {
+        "schema", "instance_lang", "requested_lang", "state",
+        "requested_at", "corpus_version",
+    }:
+        return None
+    if value.get("schema") != LOCALIZATION_REQUEST_SCHEMA:
+        return None
+    instance = normalize_language_tag(value.get("instance_lang"))
+    requested_raw = value.get("requested_lang")
+    requested = (
+        normalize_language_tag(requested_raw)
+        if requested_raw is not None else None
+    )
+    state = value.get("state")
+    requested_at = value.get("requested_at")
+    corpus_version = value.get("corpus_version")
+    if (
+        not instance
+        or (requested_raw is not None and not requested)
+        or state not in LOCALIZATION_STATES
+        or not isinstance(requested_at, str)
+        or not re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", requested_at,
+        )
+        or not isinstance(corpus_version, str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", corpus_version)
+    ):
+        return None
+    if state == "bootstrap_english" and (
+        instance != "en" or requested is None or requested == instance
+    ):
+        return None
+    if state == "active" and requested not in (None, instance):
+        return None
+    return LocalizationRequest(
+        instance_lang=instance,
+        requested_lang=requested,
+        state=state,
+        requested_at=requested_at,
+        corpus_version=corpus_version,
+    )
+
+
+def read_localization_request(
+    path: Path | None = None,
+) -> tuple[LocalizationRequest | None, str | None]:
+    """Read and verify the signed instance localization request.
+
+    Returns ``(request, error_code)`` and never prevents boot. Missing state is
+    distinct from an invalid or tampered document so diagnostics stay honest.
+    """
+
+    target = Path(path or PATH_LOCALIZATION_REQUEST)
+    if not target.exists():
+        return None, "missing"
+    try:
+        if target.is_symlink() or target.stat().st_size > 16_384:
+            return None, "invalid_file"
+        document = json.loads(target.read_text(encoding="utf-8"))
+        if (
+            not isinstance(document, dict)
+            or set(document) != {"payload", "signature"}
+        ):
+            return None, "invalid_document"
+        payload = document["payload"]
+        signature = document["signature"]
+        request = _validated_localization_payload(payload)
+        if (
+            request is None
+            or not isinstance(signature, dict)
+            or signature.get("algorithm") != "ed25519"
+            or signature.get("key_id") != "author"
+        ):
+            return None, "invalid_document"
+        encoded = signature.get("value")
+        if not isinstance(encoded, str):
+            return None, "invalid_signature"
+        padding = "=" * (-len(encoded) % 4)
+        signature_bytes = base64.urlsafe_b64decode(encoded + padding)
+        public_bytes = (
+            PATH_USER_CONFIG / "keys" / "author_pub.bin"
+        ).read_bytes()
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        public = Ed25519PublicKey.from_public_bytes(public_bytes)
+        public.verify(signature_bytes, _canonical_json_bytes(payload))
+        return request, None
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return None, "invalid_document"
+    except Exception:
+        return None, "invalid_signature"
+
+
+def write_localization_request(
+    *,
+    instance_lang: str,
+    requested_lang: str | None,
+    state: str,
+    path: Path | None = None,
+    corpus_version: str | None = None,
+) -> tuple[LocalizationRequest, bool]:
+    """Atomically persist an idempotent request signed by the installation."""
+
+    instance = normalize_language_tag(instance_lang)
+    requested = (
+        normalize_language_tag(requested_lang)
+        if requested_lang is not None else None
+    )
+    version = corpus_version or localization_corpus_version()
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )
+    probe = _validated_localization_payload({
+        "schema": LOCALIZATION_REQUEST_SCHEMA,
+        "instance_lang": instance,
+        "requested_lang": requested,
+        "state": state,
+        "requested_at": now,
+        "corpus_version": version,
+    })
+    if probe is None:
+        raise ValueError("invalid localization request")
+
+    target = Path(path or PATH_LOCALIZATION_REQUEST)
+    existing, _error = read_localization_request(target)
+    if existing is not None:
+        same_request = (
+            existing.instance_lang == probe.instance_lang
+            and existing.requested_lang == probe.requested_lang
+            and existing.state == probe.state
+        )
+        if same_request and existing.corpus_version == probe.corpus_version:
+            return existing, False
+        if same_request:
+            probe = LocalizationRequest(
+                instance_lang=probe.instance_lang,
+                requested_lang=probe.requested_lang,
+                state=probe.state,
+                requested_at=existing.requested_at,
+                corpus_version=probe.corpus_version,
+            )
+
+    payload = {
+        "schema": LOCALIZATION_REQUEST_SCHEMA,
+        "instance_lang": probe.instance_lang,
+        "requested_lang": probe.requested_lang,
+        "state": probe.state,
+        "requested_at": probe.requested_at,
+        "corpus_version": probe.corpus_version,
+    }
+    private_path = PATH_USER_CONFIG / "keys" / "author_priv.bin"
+    public_path = PATH_USER_CONFIG / "keys" / "author_pub.bin"
+    if not private_path.is_file() or not public_path.is_file():
+        raise FileNotFoundError("installation signing key unavailable")
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+        Ed25519PublicKey,
+    )
+    private = Ed25519PrivateKey.from_private_bytes(private_path.read_bytes())
+    signature_bytes = private.sign(_canonical_json_bytes(payload))
+    public = Ed25519PublicKey.from_public_bytes(public_path.read_bytes())
+    public.verify(signature_bytes, _canonical_json_bytes(payload))
+    encoded = base64.urlsafe_b64encode(signature_bytes).rstrip(b"=").decode(
+        "ascii"
+    )
+    document = {
+        "payload": payload,
+        "signature": {
+            "algorithm": "ed25519",
+            "key_id": "author",
+            "value": encoded,
+        },
+    }
+    write_private_text(
+        target,
+        json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+    )
+    verified, error = read_localization_request(target)
+    if verified != probe or error is not None:
+        raise OSError("localization request post-write verification failed")
+    return verified, True
+
+
+def _resolve_instance_localization() -> tuple[
+    str, str | None, str, str | None,
+]:
+    request, error = read_localization_request()
+    if request is not None:
+        return (
+            request.instance_lang,
+            request.requested_lang,
+            request.state,
+            None,
+        )
+    configured = normalize_language_tag(os.environ.get("METNOS_LANG"))
+    if configured:
+        return configured, None, "active", None if error == "missing" else error
+    diagnostic = error if error != "missing" else "invalid_instance_language"
+    return "it", None, "fallback_invalid", diagnostic
 
 # Synth executors (synth on-the-fly, ADR 0066)
 PATH_SYNTH_EXECUTORS = PATH_USER_DATA / "executors"
@@ -242,7 +607,10 @@ TIMEOUT_SCRATCHPAD_S   = 3600
 
 # --- Default app ---------------------------------------------------------
 
-DEFAULT_LANG           = _env_str("METNOS_LANG", "it")
+INSTANCE_LANG, REQUESTED_LANG, LOCALIZATION_STATE, LOCALIZATION_ERROR = (
+    _resolve_instance_localization()
+)
+DEFAULT_LANG           = INSTANCE_LANG
 DEFAULT_TIMEZONE       = _env_str("METNOS_TZ", "Europe/Rome")
 DEFAULT_CHANNEL        = "telegram"
 DEFAULT_ACTOR          = "host"

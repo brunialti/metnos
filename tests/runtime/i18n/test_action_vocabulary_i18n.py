@@ -85,13 +85,13 @@ def test_seed_sqlite_contiene_tutti_i_confini_versionati():
 def test_terza_lingua_guida_detection_rendering_e_coverage(tmp_path, monkeypatch):
     _fresh_catalogs(tmp_path, monkeypatch)
     _materialize_synthetic_language("fr")
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "fr")
 
     coverage = vocab.action_vocabulary_coverage("fr")
     assert coverage["ok"], coverage
-    with i18n.language_context("fr"):
-        assert prefilter.detect_canonical_verb(prefilter.tokenize("démarrer")) == "run"
-        rendered = vocab.render_action_mapping_block()
-        boundaries = vocab.render_boundaries()
+    assert prefilter.detect_canonical_verb(prefilter.tokenize("démarrer")) == "run"
+    rendered = vocab.render_action_mapping_block()
+    boundaries = vocab.render_boundaries()
     assert "démarrer" in rendered
     assert "Démarre un programme" in rendered
     assert "Démarre un programme" in boundaries

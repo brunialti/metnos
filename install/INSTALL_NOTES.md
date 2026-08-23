@@ -28,6 +28,12 @@ create Metnos data, configuration, credentials, state or sentinels.
 
 The initial safety notice always requires interactive acceptance. `--yes`
 automates later optional choices only after that acceptance has been recorded.
+The accepted language selection records the operational instance language, an
+optional requested language and the localization state. Phase 3 signs these
+facts with the installation author key and atomically writes
+`$METNOS_USER_STATE/i18n/localization_request.json`. Re-running the installer
+with the same selection and corpus version leaves the signed document byte for
+byte unchanged.
 
 ## Canonical paths and user isolation
 
@@ -59,8 +65,9 @@ turn history, signing keys, session registry or mutable databases.
 2. **Infrastructure** installs the mandatory BGE-M3 text embedder, binds the
    logical LLM tiers and installs only the sidecars explicitly selected.
 3. **Metnos source** verifies `install/`, `runtime/` and `executors/`, creates
-   initial stores, copies the complete i18n seed and signs executors with a key
-   trusted by this installation.
+   initial stores, copies the complete i18n seed, signs executors with a key
+   trusted by this installation and uses the same key to sign the accepted
+   instance-localization request.
 4. **Sensitive data** creates the administrator key and can collect Telegram,
    IMAP/SMTP, Anthropic, OpenAI and GitHub credentials through the encrypted
    runtime store. It also records whether the Web UI listens on every private-

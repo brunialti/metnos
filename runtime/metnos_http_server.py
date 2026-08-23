@@ -82,12 +82,11 @@ LOCKFILE = Path(os.environ.get(
 
 @web.middleware
 async def user_language_middleware(request: web.Request, handler):
-    """Applica la preferenza lingua del principal alla singola richiesta.
+    """Propaga alla richiesta la lingua autorevole dell'istanza.
 
-    Il middleware di autenticazione viene eseguito prima di questo. La lingua
-    vive in un ``ContextVar`` e viene propagata anche al pool dei turni: due
-    utenti concorrenti possono quindi ricevere UI, Tutor, prompt e messaggi in
-    lingue diverse senza mutare ``METNOS_LANG`` né uno stato globale.
+    La lettura della preferenza del principal resta solo per compatibilità fino
+    a RM-0005/F1: ``language_context`` la ignora se differisce dalla richiesta
+    firmata dell'istanza.
     """
     preferred = None
     if request.get("role", "anonymous") != "anonymous":

@@ -173,25 +173,22 @@ class TestLoaderDescriptionLang(unittest.TestCase):
             "Solo italiano",
         )
 
-    def test_request_context_selects_separate_cached_catalogs(self):
+    def test_explicit_resource_language_selects_separate_cached_catalogs(self):
         _build_test_manifest(
             self.tmp,
             name="ex_context",
             description_table={"it": "Descrizione italiana", "en": "English description"},
         )
-        import i18n
         from loader import load_catalog
 
-        with i18n.language_context("it"):
-            cat_it = load_catalog(
-                executors_dir=self.tmp, verify=False,
-                include_synth=False, include_verb_unique=False,
-            )
-        with i18n.language_context("en"):
-            cat_en = load_catalog(
-                executors_dir=self.tmp, verify=False,
-                include_synth=False, include_verb_unique=False,
-            )
+        cat_it = load_catalog(
+            executors_dir=self.tmp, verify=False,
+            include_synth=False, include_verb_unique=False, lang="it",
+        )
+        cat_en = load_catalog(
+            executors_dir=self.tmp, verify=False,
+            include_synth=False, include_verb_unique=False, lang="en",
+        )
 
         self.assertEqual(cat_it.get("ex_context").description,
                          "Descrizione italiana")

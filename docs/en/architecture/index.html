@@ -633,7 +633,7 @@ governing architecture.
 <tr><td><strong>Channels</strong></td><td>Telegram (outbound long-poll, no open ports) + web on port 8770 (chat and admin dashboards), ch. 11.</td></tr>
 <tr><td><strong>Devices</strong></td><td>A controlled part of the catalog can run on registered PCs in the same network through <code>metnos-client</code>: the server remains the point of policy, selection, signing and audit; the device runs only executors declared compatible. Detail: <a href="remote_executors.html">remote executors</a>.</td></tr>
 <tr><td><strong>Senses</strong></td><td>In-process image pipeline: semantics + faces + EXIF in one unified index (ch. 10).</td></tr>
-<tr><td><strong>Language</strong></td><td>Context per user and per request. Prompts, manifest descriptions, visible messages, and the input lexicon have declared sources and fallbacks. Italian and English are fully supported; adding another language requires translation and testing across all four areas.</td></tr>
+<tr><td><strong>Language</strong></td><td>One signed authority per instance, verified at boot. Prompts, manifest descriptions, visible messages, and the input lexicon have declared sources and fallbacks. Italian and English are fully supported; adding another language requires translation and testing across all four areas.</td></tr>
 <tr><td><strong>License / status</strong></td><td>AGPL-3.0; pre-1.0. Public repository: <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> &mdash; the public distribution of code and release materials.</td></tr>
 </tbody>
 </table>
@@ -710,7 +710,7 @@ agent frameworks.
 <tr><td><strong>Routing</strong></td><td>The model may choose freely among ungoverned tools</td><td>A typed pool, grammar, validator, and validity signatures constrain the proposal. A valid cache hit is reproducible; a new LLM proposal may vary (ch. 8)</td></tr>
 <tr><td><strong>Output</strong></td><td>Free-form, different per tool</td><td>Uniform: list in / list out, pipeable between steps (ch. 6)</td></tr>
 <tr><td><strong>Undo</strong></td><td>Rare or best-effort</td><td>First-class: a closed catalog of reverse patterns, moves = COPY-then-DELETE, honest <code>ok_count</code> (ch. 12)</td></tr>
-<tr><td><strong>Language</strong></td><td>English only, strings in code</td><td>Per-user language; prompts, manifests, messages, and lexicon are distinct validated data</td></tr>
+<tr><td><strong>Language</strong></td><td>English only, strings in code</td><td>Signed instance language; prompts, manifests, messages, and lexicon are distinct validated data</td></tr>
 </tbody>
 </table>
 
@@ -2732,7 +2732,7 @@ counterpart at
 </tr>
 <tr>
  <td><a href="approval_ux.html"><code>approval_ux</code></a></td>
- <td>Confirmation flow in web chat and Telegram. Its public contract is semantic rather than a fixed number of lines or buttons: it identifies the action, purpose, and relevant consequences; preserves the user's language and identity; and never turns one confirmation into an implicit persistent grant.</td>
+ <td>Confirmation flow in web chat and Telegram. Its public contract is semantic rather than a fixed number of lines or buttons: it identifies the action, purpose, and relevant consequences; preserves the instance language and the user's identity; and never turns one confirmation into an implicit persistent grant.</td>
 </tr>
 </tbody>
 </table>

@@ -38,7 +38,7 @@
 
 <p class="lead">When policy requires a human decision, Metnos does not execute the
 step. It records a pending proposal, presents it on the user's channel, and resumes
-only after a valid decision. Text, labels, and buttons follow that individual user's
+only after a valid decision. Text, labels, and buttons follow the signed instance
 language.</p>
 
 <div class="toc">
@@ -47,7 +47,7 @@ language.</p>
  <li><a href="#cap1">When a decision is requested</a></li>
  <li><a href="#cap2">The current flow</a></li>
  <li><a href="#cap3">Web chat and Telegram</a></li>
- <li><a href="#cap4">Language and per-user isolation</a></li>
+ <li><a href="#cap4">Instance language and per-user isolation</a></li>
  <li><a href="#cap5">Natural-language example</a></li>
  <li><a href="#cap6">Security invariants</a></li>
  <li><a href="#cap7">Current boundaries and references</a></li>
@@ -102,17 +102,16 @@ pending. A textual yes/no answer uses the same state.</td></tr>
 <p>Transferring a conversation between devices does not transfer identity to another
 user: conversation, active session, and pending state remain in their owner's scope.</p>
 
-<h1 id="cap4">4. Language and per-user isolation</h1>
+<h1 id="cap4">4. Instance language and per-user isolation</h1>
 
 <p>User-facing labels are i18n catalog keys, not prose owned by the renderer. The
-<code>lang</code> preference is resolved from the channel-to-user binding and applied
-only to that turn through a local context. The same context is propagated to workers
-that run the planner and Tutor.</p>
+language is resolved once from the signed instance request, and the same value is
+propagated to the renderer, planner, and Tutor. A channel-to-user binding cannot
+replace it.</p>
 
-<p>Two users may therefore use different languages in the same process without
-changing <code>METNOS_LANG</code>. When a language is added, the preferences page
-derives its list from the i18n catalog; a key not yet translated follows the normal
-user language &rarr; English &rarr; Italian fallback chain.</p>
+<p>All users of one instance therefore receive the same language. Two simultaneously
+active languages require two separate instances. A key that has not yet been
+translated follows the instance language &rarr; English &rarr; Italian fallback chain.</p>
 
 <h1 id="cap5">5. Natural-language example</h1>
 
@@ -139,8 +138,8 @@ transfer authority to another person.</td></tr>
 <tr><td>Current identifier</td><td>A button belonging to an earlier turn is rejected.</td></tr>
 <tr><td>Consume before execution</td><td>Double clicks and retries do not duplicate the action.</td></tr>
 <tr><td>Expiry</td><td>An old proposal must be generated again.</td></tr>
-<tr><td>Per-user isolation</td><td>State, language, conversation, and decision are not
-shared between users.</td></tr>
+<tr><td>Per-user isolation</td><td>State, conversation, and decision are not shared
+between users; language belongs to the instance.</td></tr>
 <tr><td>No implicit delegation</td><td>Approving one step does not automatically create a
 general or permanent grant.</td></tr>
 </tbody>
@@ -157,7 +156,7 @@ frequency, wording, or user silence.</p>
  <li><code>runtime/channels/daemon.py</code>: pending state, consumption, and dispatch.</li>
  <li><code>runtime/http_routes_agent.py</code>: equivalent web-chat path.</li>
  <li><code>runtime/approval_registry.py</code>: atomic tokens with TTL and decider verification.</li>
- <li><code>runtime/i18n.py</code>: catalog and per-request language context.</li>
+ <li><code>runtime/i18n.py</code>: catalog and propagation of the instance language.</li>
  <li><code>tests/runtime/channels/test_telegram_authorization_buttons.py</code> and
  <code>tests/runtime/safety/test_approval_registry_atomic.py</code>: primary regression tests.</li>
 </ul>

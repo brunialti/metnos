@@ -391,7 +391,7 @@ def test_control_is_non_blocking_and_uses_resolved_target(monkeypatch):
     ]
 
 
-def test_template_renders_catalog_and_missing_services():
+def test_template_renders_catalog_and_missing_services(monkeypatch):
     rows = []
     for spec in registry.catalog():
         row = {
@@ -400,12 +400,12 @@ def test_template_renders_catalog_and_missing_services():
             "actionable": False, "status": "missing",
         }
         rows.append(row)
-    from i18n import language_context
+    import i18n
 
-    with language_context("it"):
-        html_it = render_template(
-            "services.html", services=registry.localized(rows, "it"), notice="",
-        )
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "it")
+    html_it = render_template(
+        "services.html", services=registry.localized(rows, "it"), notice="",
+    )
     assert "SearXNG" in html_it
     assert "Server geografico" in html_it
     assert "Stato operativo dei servizi" in html_it
@@ -415,10 +415,10 @@ def test_template_renders_catalog_and_missing_services():
         "<h2>Navigazione web</h2>",
     )
 
-    with language_context("en"):
-        html_en = render_template(
-            "services.html", services=registry.localized(rows, "en"), notice="",
-        )
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "en")
+    html_en = render_template(
+        "services.html", services=registry.localized(rows, "en"), notice="",
+    )
     assert "Geo server" in html_en
     assert "Service operational status" in html_en
     assert "Not installed" in html_en
@@ -476,18 +476,18 @@ def test_template_exposes_the_closed_lre_feature_control(monkeypatch, tmp_path):
         "reason_code": "feature_disabled",
     })
     row = registry.snapshot_one(registry.get("durable_workloads"))
-    from i18n import language_context
+    import i18n
 
-    with language_context("it"):
-        italian = render_template(
-            "services.html", services=registry.localized([row], "it"),
-            notice="", notifications=[],
-        )
-    with language_context("en"):
-        english = render_template(
-            "services.html", services=registry.localized([row], "en"),
-            notice="", notifications=[],
-        )
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "it")
+    italian = render_template(
+        "services.html", services=registry.localized([row], "it"),
+        notice="", notifications=[],
+    )
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "en")
+    english = render_template(
+        "services.html", services=registry.localized([row], "en"),
+        notice="", notifications=[],
+    )
 
     assert "/admin/services/durable_workloads/feature/enable" in italian
     assert "Attiva LRE" in italian

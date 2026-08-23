@@ -208,10 +208,10 @@ class TestPipingFromStep(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("non esiste", errors[0])
 
-    def test_from_step_errors_follow_request_language(self):
+    def test_from_step_errors_follow_instance_language(self):
         """Gli errori standard non contengono piu' testo italiano nel codice."""
         from agent_runtime import resolve_from_step
-        from i18n import language_context
+        import i18n
 
         cases = (
             ({"from_step": "bad"}, [], "intero", "integer"),
@@ -222,17 +222,21 @@ class TestPipingFromStep(unittest.TestCase):
             ({"from_step": 1}, self._hist("source", {"ok": True}),
              "lista utilizzabile", "usable list"),
         )
-        for args, history, expected_it, expected_en in cases:
-            with self.subTest(args=args, language="it"):
-                with language_context("it"):
+        original = i18n._C.INSTANCE_LANG
+        try:
+            for args, history, expected_it, expected_en in cases:
+                with self.subTest(args=args, language="it"):
+                    i18n._C.INSTANCE_LANG = "it"
                     _new_args, errors = resolve_from_step(args, history)
-                self.assertEqual(len(errors), 1)
-                self.assertIn(expected_it, errors[0])
-            with self.subTest(args=args, language="en"):
-                with language_context("en"):
+                    self.assertEqual(len(errors), 1)
+                    self.assertIn(expected_it, errors[0])
+                with self.subTest(args=args, language="en"):
+                    i18n._C.INSTANCE_LANG = "en"
                     _new_args, errors = resolve_from_step(args, history)
-                self.assertEqual(len(errors), 1)
-                self.assertIn(expected_en, errors[0])
+                    self.assertEqual(len(errors), 1)
+                    self.assertIn(expected_en, errors[0])
+        finally:
+            i18n._C.INSTANCE_LANG = original
 
     def test_manifest_declared_target_wins_over_from_step(self):
         """La precedenza sicura deriva dal manifest, non da nomi nel runtime."""

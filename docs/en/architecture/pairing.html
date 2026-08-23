@@ -115,7 +115,7 @@ objects with independent registries and revocation paths.</p>
 <table>
 <thead><tr><th>Object</th><th>What it identifies</th><th>Current source</th></tr></thead>
 <tbody>
-<tr><td><strong>Logical user</strong></td><td>The person who owns a role, preferences, language, and channels.</td><td><code>users.db</code>, <code>users</code> table</td></tr>
+<tr><td><strong>Logical user</strong></td><td>The person who owns a role, preferences, and channels.</td><td><code>users.db</code>, <code>users</code> table</td></tr>
 <tr><td><strong>Channel</strong></td><td>A verified address, such as a Telegram <code>chat_id</code> or a paired browser.</td><td><code>users.db</code>, <code>user_channels</code> table; Telegram also uses <code>pairings.db</code></td></tr>
 <tr><td><strong>Chat session</strong></td><td>The device that currently has write access to the user's web conversation.</td><td><code>users.db</code>, <code>active_sessions</code> and <code>chat_conversations</code> tables</td></tr>
 <tr><td><strong>Remote device</strong></td><td>A machine authorised to run executors for a specified owner.</td><td><code>devices.db</code>, <code>devices</code> table</td></tr>
@@ -135,10 +135,10 @@ unique name, a role, an optional owner, and an autonomy level.
 <code>user_channels</code> links that same user to verified
 <code>telegram</code>, <code>mail</code>, and <code>http</code> channels.</p>
 
-<p>Language and preferences are resolved from the authenticated binding before
-the turn and applied in a request-local context. A change for one user does not
-change another user's language or session. Conversations, pending dialogs, and
-web-chat write authority are also scoped by user and channel.</p>
+<p>Preferences are resolved from the authenticated binding before the turn;
+language instead comes from the signed instance request and is shared by all
+of its users. Conversations, pending dialogs, and web-chat write authority
+remain scoped by user and channel.</p>
 
 <p>The two registries use different vocabularies and they are not
 interchangeable:</p>

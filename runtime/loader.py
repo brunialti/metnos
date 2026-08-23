@@ -852,10 +852,9 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
             # In esercizio l'env isolata non basta a spegnere la catena di
             # fiducia: l'override viene ignorato e la verifica resta attiva.
             log.error("[loader] ignored METNOS_LOADER_VERIFY=0 outside dev/test")
-    # Descrizioni e argomenti model-facing seguono la lingua della richiesta.
-    # ``i18n.current_lang`` usa un ContextVar, quindi richieste concorrenti non
-    # mutano la lingua del processo. La lingua esplicita resta utile per CLI e
-    # test fuori da un contesto di richiesta.
+    # Descrizioni e argomenti model-facing seguono la lingua dell'istanza.
+    # ``i18n.current_lang`` propaga il valore firmato; una lingua esplicita
+    # resta un'API di amministrazione/test, non un override del turno.
     if lang:
         _catalog_lang = str(lang).strip().lower()
     else:

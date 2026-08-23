@@ -63,8 +63,8 @@ def test_transformer_set_derived_from_universal_helpers():
     assert "list" not in IE._ENTRIES_INTENT_VERBS
 
 
-def test_intent_prompt_uses_request_language_context(monkeypatch):
-    """Il prompt non deve ricadere nella lingua globale dell'istanza."""
+def test_intent_prompt_uses_instance_language(monkeypatch):
+    """Il prompt e i confini devono usare la stessa lingua d'istanza."""
     import i18n
 
     observed = {}
@@ -77,12 +77,12 @@ def test_intent_prompt_uses_request_language_context(monkeypatch):
     monkeypatch.setattr(IE.prompt_loader, "get", fake_prompt)
     monkeypatch.setattr(IE, "_vocab_boundaries",
                         lambda lang: f"boundaries:{lang}")
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "fr")
 
-    with i18n.language_context("fr"):
-        out = IE.extract_intent(
-            "classe ces éléments",
-            _llm({"verb": "classify", "object": "entries"}),
-        )
+    out = IE.extract_intent(
+        "classe ces éléments",
+        _llm({"verb": "classify", "object": "entries"}),
+    )
 
     assert out is not None
     assert observed == {

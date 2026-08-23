@@ -163,6 +163,35 @@ def _sign_executors() -> dict[str, Any]:
     return {"signed": True, "report": line}
 
 
+def _persist_localization_request() -> dict[str, Any]:
+    """Create the signed instance-language authority after key generation."""
+
+    from .. import disclaimer
+    selection = disclaimer.read_language_selection()
+    if selection is None:
+        return {"persisted": False, "error": "accepted language unavailable"}
+    try:
+        from runtime import config as runtime_config
+        request, changed = runtime_config.write_localization_request(
+            instance_lang=selection.instance_lang,
+            requested_lang=selection.requested_lang,
+            state=selection.localization_state,
+        )
+    except (OSError, ValueError) as exc:
+        return {
+            "persisted": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    return {
+        "persisted": True,
+        "changed": changed,
+        "instance_lang": request.instance_lang,
+        "requested_lang": request.requested_lang,
+        "state": request.state,
+        "corpus_version": request.corpus_version,
+    }
+
+
 def _compile_tutor_catalog() -> dict[str, Any]:
     """Build the signed Tutor catalog before service readiness is evaluated.
 
@@ -254,6 +283,16 @@ def run(args: Any) -> dict[str, Any]:
     # 4. Firma degli executor (chiave locale) — senza questo il catalogo e' vuoto
     ui.step("Signing executors with a local key (sign-all)")
     notes["sign"] = _sign_executors()
+
+    # The language selection predates the signing key. Materialize its signed,
+    # atomic authority now; repeating phase 3 is byte-idempotent.
+    ui.step("Signing the instance localization request")
+    notes["localization"] = _persist_localization_request()
+    if not notes["localization"].get("persisted"):
+        ui.warn(
+            "instance localization request not persisted; runtime will use "
+            "its safe instance-language bootstrap"
+        )
 
     # 5. Tutor F2 catalog. Documentation and runtime manifests are compiler
     # inputs, so this step automatically rebuilds only when their content stamp

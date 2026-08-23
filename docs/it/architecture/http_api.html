@@ -160,10 +160,9 @@ rotte:</p>
 </table>
 
 <p>I middleware vengono applicati nello stesso ordine a tutte le rotte:
-prima classificano il chiamante, poi impostano nel contesto della richiesta la
-lingua del suo utente. Il contesto linguistico viene copiato anche nel pool che
-esegue i turni, cos&igrave; richieste concorrenti non condividono una variabile di
-lingua globale.</p>
+prima classificano il chiamante, poi propagano nel contesto della richiesta la
+lingua firmata dell'istanza. Il pool che esegue i turni conserva lo stesso valore;
+una preferenza del chiamante non pu&ograve; sostituirlo.</p>
 
 <h2>2.1 Servizi adiacenti</h2>
 
@@ -327,10 +326,10 @@ alcuni aggiornamenti e uPlot soltanto nella vista statistica degli executor.
 Non esiste una fase di compilazione front-end.</p>
 
 <p>Ogni testo visibile deve provenire dal catalogo i18n o da dati gi&agrave;
-localizzati. La lingua &egrave; una preferenza del singolo utente e vive in un
-<code>ContextVar</code> per richiesta; una nuova lingua richiede voci del
-catalogo, lessico di riconoscimento e documentazione corrispondente, non
-condizioni per singole frasi nel template.</p>
+localizzati. La lingua appartiene all'istanza ed &egrave; verificata all'avvio dalla
+richiesta firmata; una nuova lingua richiede voci del catalogo, lessico di
+riconoscimento e documentazione corrispondente, non condizioni per singole
+frasi nel template.</p>
 
 <p>Settings &egrave; l'interfaccia amministrativa interattiva. Il rendiconto HTML
 generato da <code>runtime.observability</code> &egrave; invece un artefatto separato,

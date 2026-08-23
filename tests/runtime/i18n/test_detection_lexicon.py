@@ -156,7 +156,7 @@ def test_union_equals_original_snapshot():
 def test_union_keeps_it_en_on_foreign_lang(monkeypatch):
     """Su una lingua non seedata, l'union it/en preserva i comandi-prestito
     (best-effort) — il matching NON crolla in silenzio."""
-    monkeypatch.setattr(i18n, "_lang_cache", "fr")
+    monkeypatch.setattr(i18n._C, "INSTANCE_LANG", "fr")
     dl._invalidate()
     try:
         assert dl.match("notify.request", "send me the photos")
@@ -165,7 +165,6 @@ def test_union_keeps_it_en_on_foreign_lang(monkeypatch):
         # e una nuova lingua e' segnalata come scoperta dal guard
         assert not dl.verify_coverage("fr")["ok"]
     finally:
-        monkeypatch.setattr(i18n, "_lang_cache", "it")
         dl._invalidate()
 
 

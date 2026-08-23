@@ -2,10 +2,10 @@
 
 | Campo | Valore |
 |---|---|
-| Stato | `in_progress`; progettazione consolidata, primo tratto verticale implementato |
+| Stato | `in_progress`; F0 e il tratto verticale del vocabolario azioni implementati |
 | Creazione | 2026-08-21 |
 | Ultima revisione | 2026-08-23 |
-| Implementazione reale | Pipeline ancora parziale. Il vocabolario azioni è ora un tratto F2/F3/F6/F8 completo: superfici nel detection lexicon versionato, confini nel catalogo i18n, bootstrap congiunto, validazione strutturale, copertura nativa e prova su terza lingua sintetica |
+| Implementazione reale | Pipeline ancora parziale. F0 fornisce autorità firmata e atomica della lingua d'istanza, normalizzazione BCP-47, avvio sicuro e contesto non sostituibile. Il vocabolario azioni è un tratto F2/F3/F6/F8 completo |
 | Decisione di prodotto | La lingua è una proprietà dell’istanza Metnos. Non esistono lingue diverse per utente, canale o turno |
 | Nome pubblico | Multilinguismo per definizione |
 | Conservazione | Roadmap persistente fino a implementazione dimostrata o cancellazione esplicita |
@@ -62,8 +62,12 @@ chiavi, permessi e semantica.
 
 ### 2.1 Già disponibile
 
-- `install/disclaimer.py` accetta `other` e un codice ISO-639-1; registra la
-  lingua desiderata e mantiene l’operatività in inglese.
+- `install/disclaimer.py` accetta un tag BCP-47 strutturalmente valido; conserva
+  la scelta accettata e la fase 3 materializza una richiesta firmata,
+  idempotente e atomica mantenendo l’operatività in inglese quando necessario.
+- `runtime/config.py` è l'autorità unica di `INSTANCE_LANG`, `REQUESTED_LANG` e
+  `LOCALIZATION_STATE`; verifica la firma al riavvio e non blocca l'avvio per
+  input o documenti invalidi.
 - `runtime/i18n.py` fornisce catalogo SQLite, hash di provenienza, fallback
   `lingua dell’istanza → en → it` e marcatura delle traduzioni da completare.
 - `runtime/i18n_translator.py` distingue testi user-facing e testi destinati a
@@ -84,15 +88,15 @@ chiavi, permessi e semantica.
 
 ### 2.2 Gap verificati
 
-- `desired_locale.json` viene scritto dall’installer, ma non esiste ancora un
-  coordinatore unico che trasformi quella richiesta in directory, righe DB,
-  lessici, prompt e target di tutti i traduttori.
+- La richiesta firmata esiste, ma non esiste ancora il coordinatore F2/F3 che
+  la trasformi in directory, righe DB, lessici, prompt e obiettivi di tutti i
+  traduttori.
 - I traduttori lavorano soprattutto sulle lingue già presenti sotto
   `runtime/prompts/`; una lingua nuova non viene ancora materializzata in modo
   completo e idempotente.
-- `runtime/i18n.py` e alcuni canali consentono ancora override per utente o
-  turno (`language_context`). Questo contraddice il contratto di RM-0005 e va
-  rimosso o confinato alle sole prove isolate.
+- `runtime/i18n.py` impedisce già a `language_context` di sostituire la lingua
+  d'istanza. Restano da eliminare in F1 i chiamanti ormai inefficaci e le
+  preferenze linguistiche per utente ancora esposte.
 - La traduzione dei prompt e dei manifest non dimostra da sola la copertura
   del proposer: servono inventario, test di caricamento e prova di equivalenza.
 - La documentazione pubblica bilingue e il catalogo Tutor non sono ancora una
@@ -169,6 +173,13 @@ File: `runtime/config.py`, `runtime/i18n.py`, `install/disclaimer.py`.
   e stato. Scrittura atomica (`tmp` + `os.replace`).
 - Rendere `current_lang()` esclusivamente istance-scoped in produzione.
 - Aggiungere test di riavvio, input invalido e doppia esecuzione installer.
+
+**Stato 2026-08-23:** implementato. La scelta accettata viene firmata in fase 3
+con la chiave autore dell'installazione e scritta atomicamente; il documento
+porta codice operativo, obiettivo, data, versione del corpus e stato. Il boot
+risolve una sola autorità, rifiuta alterazioni senza fermarsi e il contesto di
+richiesta può soltanto propagare `instance_lang`. Gate:
+`test_instance_language_config.py` e suite i18n completa.
 
 ### F1 — Rimozione degli override per utente/turno
 
