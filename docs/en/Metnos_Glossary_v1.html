@@ -431,7 +431,7 @@ Introduced in the prologue of the
 <div class="entry" id="identity">
 <h3>identity of the speaker <span class="tag concept">concept</span></h3>
 <p>The stable user identity to which Metnos associates authorisations,
-preferences, language, sessions and data. Senders from different channels
+preferences, sessions and data. Senders from different channels
 are associated with this identity through authentication or pairing. Data
 and actions remain isolated per user even when several people share one
 installation.</p>
@@ -441,10 +441,10 @@ installation.</p>
 <div class="entry" id="i18n">
 <h3>internationalisation (i18n) <span class="tag concept">mechanism</span></h3>
 <p>The rules and catalogues that keep the interface, dialogs, service
-messages and prompts in the language resolved for the user and turn. UI text
+messages and prompts in the signed instance language. UI text
 comes from the i18n catalogue; a new language joins the inventory through its
-own records and prompts, without language-specific branches in code. One
-user's language never changes another's.</p>
+own records and prompts, without language-specific branches in code. A user
+request or preference cannot change the instance language.</p>
 <p class="xref"><strong>Canonical:</strong> <a href="architecture/multilang.html">Languages and translation</a></p>
 </div>
 

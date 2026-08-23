@@ -632,7 +632,7 @@ collegati cambia il dominio operativo, senza cambiare l'architettura che lo gove
 <tr><td><strong>Canali</strong></td><td>Telegram (interrogazione in uscita, senza porte aperte) e web sulla porta 8770 (chat e pannello amministrativo), cap. 11.</td></tr>
 <tr><td><strong>Dispositivi</strong></td><td>Una parte controllata del catalogo pu&ograve; girare su PC registrati nella stessa rete tramite <code>metnos-client</code>: il server conserva regole, scelta, firma e registro; il dispositivo esegue solo executor dichiarati compatibili. Dettaglio: <a href="remote_executors.html">executor remoti</a>.</td></tr>
 <tr><td><strong>Sensi</strong></td><td>Elaborazione delle immagini nel processo: semantica, volti ed EXIF confluiscono in un indice unificato (cap. 10).</td></tr>
-<tr><td><strong>Lingua</strong></td><td>Contesto per utente e per richiesta. Prompt, descrizioni dei manifest, messaggi visibili e lessico di comprensione hanno fonti e ripieghi dichiarati. Italiano e inglese sono le lingue pienamente supportate; aggiungerne una richiede traduzione e collaudo di tutte e quattro le aree.</td></tr>
+<tr><td><strong>Lingua</strong></td><td>Autorit&agrave; unica per istanza, firmata e verificata all'avvio. Prompt, descrizioni dei manifest, messaggi visibili e lessico di comprensione hanno fonti e ripieghi dichiarati. Italiano e inglese sono le lingue pienamente supportate; aggiungerne una richiede traduzione e collaudo di tutte e quattro le aree.</td></tr>
 <tr><td><strong>Licenza / stato</strong></td><td>AGPL-3.0; pre-1.0. Repository pubblico: <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> &mdash; distribuzione pubblica del codice e dei materiali destinati al rilascio.</td></tr>
 </tbody>
 </table>
@@ -709,7 +709,7 @@ agentiche.
 <tr><td><strong>Instradamento</strong></td><td>Il modello pu&ograve; scegliere liberamente fra strumenti non governati</td><td>Insieme tipizzato, grammatica, validatore e firme di validit&agrave; circoscrivono la proposta. Un piano valido letto dalla cache &egrave; riproducibile; una nuova proposta LLM pu&ograve; variare (cap. 8)</td></tr>
 <tr><td><strong>Risultato</strong></td><td>Libero, diverso per ogni strumento</td><td>Uniforme: lista in ingresso e lista in uscita, componibile fra passi (cap. 6)</td></tr>
 <tr><td><strong>Annullamento</strong></td><td>Raro o senza garanzia completa</td><td>Funzione fondamentale: catalogo chiuso di operazioni inverse, spostamento = COPIA &rarr; verifica &rarr; CANCELLAZIONE, <code>ok_count</code> aderente alle operazioni realmente annullate (cap. 12)</td></tr>
-<tr><td><strong>Lingua</strong></td><td>Inglese, stringhe nel codice</td><td>Lingua per utente; prompt, manifest, messaggi e lessico sono dati distinti e convalidati</td></tr>
+<tr><td><strong>Lingua</strong></td><td>Inglese, stringhe nel codice</td><td>Lingua firmata per istanza; prompt, manifest, messaggi e lessico sono dati distinti e convalidati</td></tr>
 </tbody>
 </table>
 
@@ -2759,7 +2759,7 @@ controparte inglese in
 </tr>
 <tr>
  <td><a href="approval_ux.html"><code>approval_ux</code></a></td>
- <td>Flusso delle richieste di conferma nella chat web e in Telegram. Il contratto pubblico &egrave; semantico, non impone un numero fisso di righe o pulsanti: identifica azione, scopo e conseguenze, conserva lingua e identit&agrave; dell'utente e non trasforma una conferma in un permesso permanente implicito.</td>
+ <td>Flusso delle richieste di conferma nella chat web e in Telegram. Il contratto pubblico &egrave; semantico, non impone un numero fisso di righe o pulsanti: identifica azione, scopo e conseguenze, conserva la lingua dell'istanza e l'identit&agrave; dell'utente e non trasforma una conferma in un permesso permanente implicito.</td>
 </tr>
 </tbody>
 </table>

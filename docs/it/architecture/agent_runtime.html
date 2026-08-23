@@ -94,8 +94,8 @@ prodotti, leggi le tre fonti pi&ugrave; autorevoli e crea un documento di sintes
 cartella Rapporti.&raquo;</p>
 
 <ol>
- <li>Il canale identifica utente, conversazione, lingua, allegati e dispositivo
- eventualmente nominato.</li>
+ <li>Il canale identifica utente, conversazione, allegati e dispositivo
+ eventualmente nominato; il runtime aggiunge la lingua firmata dell'istanza.</li>
  <li>L'estrattore ricava gli intenti ordinati: cercare URL, leggere le fonti e
  creare un documento.</li>
  <li>L'instradamento ricava dal catalogo un insieme pertinente. Un proponente formula
@@ -153,9 +153,9 @@ ambiguo o irraggiungibile, il turno si ferma o propone un differimento esplicito
  richiedono esplicitamente.</li>
 </ul>
 
-<p>La lingua viene risolta per utente e propagata all'intero turno. Prompt,
-messaggi del runtime, moduli di conferma e risposta finale devono usare quella
-lingua. Il testo di un prompt non deve imporre incidentalmente una lingua diversa:
+<p>La lingua viene risolta dalla richiesta firmata dell'istanza e propagata
+all'intero turno. Prompt, messaggi del runtime, moduli di conferma e risposta
+finale devono usare quella lingua. Il testo di un prompt non deve imporre incidentalmente una lingua diversa:
 ogni famiglia di prompt ha una variante localizzata e, per una nuova lingua, una
 risorsa mancante deve essere rilevata in compilazione o produrre un ripiego
 esplicito, non un miscuglio silenzioso.</p>

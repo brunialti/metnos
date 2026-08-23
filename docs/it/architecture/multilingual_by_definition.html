@@ -61,7 +61,7 @@ non è davvero multilingue se lo è soltanto la sua superficie.
 
 <ol class="infographic-key">
  <li><strong>Lingua dell'istanza.</strong> La lingua appartiene all'istanza Metnos ed è condivisa da utenti e canali.</li>
- <li><strong>Contesto isolato.</strong> Ogni richiesta riceve il proprio contesto linguistico, anche durante esecuzioni concorrenti.</li>
+ <li><strong>Vincolo propagato.</strong> Ogni richiesta riceve la lingua dell'istanza e non può sostituirla, anche durante esecuzioni concorrenti.</li>
  <li><strong>Quattro sorgenti coordinate.</strong> Prompt, manifest degli executor, messaggi deterministici e lessico di comprensione restano distinti ma coerenti.</li>
  <li><strong>Ripieghi dichiarati.</strong> Se manca un testo, Metnos segue una catena nota e rende visibile il debito di traduzione.</li>
  <li><strong>Stessa lingua, canali diversi.</strong> La resa resta coerente nella chat web, nelle notifiche e sui dispositivi associati.</li>
@@ -217,8 +217,11 @@ limiti parte del contratto, quindi misurabili e correggibili.
 
 <p>
 Quando, durante l'installazione, viene indicata una lingua diversa da italiano o
-inglese, Metnos non finge che sia già disponibile. Registra la lingua desiderata,
-avvia l'istanza temporaneamente in inglese e mette in coda la localizzazione.
+inglese, Metnos non finge che sia già disponibile. Normalizza il codice BCP-47
+e, dopo la creazione della chiave d'installazione, registra atomicamente una
+richiesta firmata con data, stato e versione del corpus in
+<code>$METNOS_USER_STATE/i18n/localization_request.json</code>. Avvia quindi l'istanza
+temporaneamente in inglese e mette in coda la localizzazione.
 L'inglese è quindi un avvio sicuro e transitorio, non una scelta nascosta per
 singolo utente o turno.
 </p>

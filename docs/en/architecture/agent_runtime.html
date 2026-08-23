@@ -93,8 +93,8 @@ the latest European guidance on digital product passports, read the three most
 authoritative sources, and create a summary document in the Reports folder.”</p>
 
 <ol>
- <li>The channel identifies the user, conversation, language, attachments, and any
- named target device.</li>
+ <li>The channel identifies the user, conversation, attachments, and any named
+ target device; the runtime adds the signed instance language.</li>
  <li>The intent extractor obtains an ordered set of intents: find URLs, read the
  sources, and create a document.</li>
  <li>Routing builds a relevant pool from the catalog. A proposer formulates a
@@ -151,8 +151,8 @@ explicit deferral.</p>
  explicitly.</li>
 </ul>
 
-<p>Language is resolved per user and propagated through the entire turn. Prompts,
-runtime messages, confirmation forms, and the final answer must use that language.
+<p>Language is resolved from the signed instance request and propagated through
+the entire turn. Prompts, runtime messages, confirmation forms, and the final answer must use that language.
 Prompt wording must not accidentally impose another language: each prompt family
 has localized resources, and a missing resource for a new language must be caught
 at compilation time or produce an explicit fallback rather than silent mixing.</p>

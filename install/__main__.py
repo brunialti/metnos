@@ -101,19 +101,25 @@ def _gate_language_and_disclaimer(args: Args) -> str:
 
     Returns the chosen locale ('en' or 'it').
     """
-    existing = disclaimer.read_locale()
+    existing = disclaimer.read_language_selection()
     if existing and disclaimer.already_accepted():
-        ui.info(i18n.t("main_disclaimer_already", existing=existing))
-        return existing
+        disclaimer.persist_localization_request(existing)
+        ui.info(i18n.t(
+            "main_disclaimer_already", existing=existing.instance_lang,
+        ))
+        return existing.instance_lang
 
     if args.yes:
         ui.fail(i18n.t("main_disclaimer_needs_interactive"))
 
-    lang = disclaimer.ask_language()
-    if not disclaimer.show_and_confirm(lang):
+    selection = disclaimer.ask_language()
+    if not disclaimer.show_and_confirm(selection):
         ui.fail(i18n.t("main_disclaimer_not_accepted"), exit_code=3)
-    ui.ok(i18n.t("main_disclaimer_accepted", lang=lang))
-    return lang
+    disclaimer.persist_localization_request(selection)
+    ui.ok(i18n.t(
+        "main_disclaimer_accepted", lang=selection.instance_lang,
+    ))
+    return selection.instance_lang
 
 
 def _confirm_proceed(args: Args) -> bool:

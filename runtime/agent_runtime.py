@@ -7166,10 +7166,9 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
         channel=channel,
     )
 
-    # La lingua appartiene al contesto della richiesta, non al processo. Il
-    # middleware HTTP e il daemon di canale impostano il ContextVar i18n per il
-    # proprietario del turno; conservarne qui un solo snapshot evita che prompt,
-    # fast-path e motore divergano durante la stessa esecuzione.
+    # La lingua appartiene all'istanza. Il middleware HTTP e il daemon di canale
+    # propagano la stessa autorità firmata; conservarne qui un solo snapshot
+    # evita che prompt, fast-path e motore divergano durante l'esecuzione.
     _turn_lang = _detlex.current_lang()
     log = TurnLog(ts_start=time.time(), user_query=user_query,
                    actor=actor or "host", channel=channel or "",

@@ -2,14 +2,14 @@
 """i18n — DB centralizzato testi + fetcher con fallback chain.
 
 Design 1/5/2026 sera (vedi `metnos_design_i18n_final.md`):
-- Single-lang by default (sistema installato e usato in 1 lingua, env METNOS_LANG)
+- Una sola lingua operativa per istanza, risolta da runtime.config
 - DB sqlite `~/.local/share/metnos/i18n.sqlite`: (key, lang, text, needs_translation, source_lang)
 - Fetch_key EN canonical
 - Fallback chain runtime: current_lang → en → it → "<missing:{key}>"
 - Lazy translation via daemon introspettivo (vedi `i18n_translator.py`, futuro)
 
 API:
-    current_lang() -> str         lingua corrente (cached al boot, env METNOS_LANG, default "it")
+    current_lang() -> str         lingua d'istanza fissata e verificata al boot
     get(key, **kwargs) -> str     fetch con fallback + .format(**kwargs)
     set(key, lang, text)          INSERT/REPLACE
     mark_for_translation(key, target_lang, source_lang) crea placeholder row
@@ -21,9 +21,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 import logging
-import os
 from pathlib import Path
-import re
 import sqlite3
 
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA
@@ -71,9 +69,8 @@ def _sha256_full(text: str) -> str:
     from hashutil import sha256_prefixed
     return sha256_prefixed(text)
 
-_lang_cache: str | None = None
 _conn: sqlite3.Connection | None = None
-_lang_override: ContextVar[str | None] = ContextVar(
+_instance_context: ContextVar[str | None] = ContextVar(
     "metnos_i18n_language", default=None,
 )
 
@@ -85,10 +82,7 @@ def _normalize_lang(value: str | None) -> str:
     non valido non entra nel contesto: il chiamante ricade sulla lingua
     dell'istanza e il catalogo conserva la propria catena di fallback.
     """
-    candidate = str(value or "").strip().replace("_", "-").lower()
-    if not re.fullmatch(r"[a-z]{2,8}(?:-[a-z0-9]{1,8})*", candidate):
-        return ""
-    return candidate
+    return _C.normalize_language_tag(value)
 
 
 def normalize_language(value: str | None) -> str:
@@ -97,44 +91,38 @@ def normalize_language(value: str | None) -> str:
 
 
 def current_lang() -> str:
-    """Lingua del contesto corrente, con fallback alla lingua dell'istanza.
-
-    L'override usa ``ContextVar``: richieste concorrenti di utenti diversi non
-    modificano l'ambiente del processo e non possono contaminarsi a vicenda.
-    """
-    contextual = _lang_override.get()
-    if contextual:
-        return contextual
-    global _lang_cache
-    if _lang_cache is None:
-        _lang_cache = (
-            _normalize_lang(os.environ.get("METNOS_LANG")) or DEFAULT_LANG
-        )
-    return _lang_cache
+    """Lingua unica dell'istanza, fissata e verificata al boot."""
+    contextual = _normalize_lang(_instance_context.get())
+    return contextual if contextual == _C.INSTANCE_LANG else _C.INSTANCE_LANG
 
 
 @contextmanager
 def language_context(lang: str | None):
-    """Applica una lingua soltanto al turno o alla richiesta corrente.
+    """Propaga la lingua d'istanza senza consentire override di richiesta.
 
-    Un valore vuoto o malformato significa "eredita la lingua dell'istanza".
-    Il token viene sempre ripristinato, anche se il rendering o il turno
-    sollevano un'eccezione.
+    Il parametro resta temporaneamente per i chiamanti che saranno rimossi in
+    RM-0005/F1. Anche un valore valido differente viene ignorato: una richiesta
+    non può sostituire la configurazione globale dell'istanza.
     """
     normalized = _normalize_lang(lang)
-    token = _lang_override.set(normalized or None)
+    if normalized and normalized != _C.INSTANCE_LANG:
+        _log.debug(
+            "request language %s ignored; instance language is %s",
+            normalized, _C.INSTANCE_LANG,
+        )
+    token = _instance_context.set(_C.INSTANCE_LANG)
     try:
         yield current_lang()
     finally:
-        _lang_override.reset(token)
+        _instance_context.reset(token)
 
 
 def available_languages() -> tuple[str, ...]:
-    """Lingue presenti nel catalogo, ordinate e utilizzabili come preferenza.
+    """Lingue presenti nel catalogo, ordinate per gli strumenti amministrativi.
 
-    Il registro i18n, non una lista della UI, è la fonte canonica. Anche una
-    lingua in traduzione può essere selezionata: le singole chiavi incomplete
-    ricadono su inglese e italiano secondo la normale catena di fallback.
+    Il registro i18n, non una lista della UI, è la fonte canonica. Le singole
+    chiavi incomplete ricadono su inglese e italiano secondo la normale catena
+    di fallback; la selezione operativa resta un'azione a livello d'istanza.
     """
     rows = _open().execute(
         "SELECT DISTINCT lower(lang) FROM i18n "

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 import time
 from pathlib import Path
 
@@ -103,6 +104,13 @@ def already_accepted() -> bool:
 _TESTED_LOCALES = ("en", "it")
 
 
+@dataclass(frozen=True, slots=True)
+class LanguageSelection:
+    instance_lang: str
+    requested_lang: str | None
+    localization_state: str
+
+
 def _localization_notice(code: str) -> None:
     """Honest, bilingual notice for a NON-tested target language.
 
@@ -128,29 +136,11 @@ def _localization_notice(code: str) -> None:
         "  consigliamo 'en' o 'it' (testate).[/dim]")
 
 
-def record_desired_locale(code: str) -> None:
-    """Persist a non-tested target locale for the background localization job.
+def ask_language() -> LanguageSelection:
+    """Return one validated instance/target language selection.
 
-    Operational locale stays tested (en/it) so boot never breaks; this only
-    records the user's aspiration so a future i18n job can pursue it.
-    """
-    base = os.environ.get("METNOS_USER_STATE") or str(Path.home() / ".local" / "state" / "metnos")
-    d = Path(base) / "i18n"
-    try:
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "desired_locale.json").write_text(
-            json.dumps({"target": code, "requested_at": int(time.time()),
-                        "status": "experimental-pending"}, indent=2))
-    except OSError:
-        pass
-
-
-def ask_language() -> str:
-    """Language prompt. Returns the OPERATIONAL locale (always tested: en/it).
-
-    en (default) / it are tested. 'other' lets the user name any ISO 639-1
-    code (e.g. fr): we record it as an experimental target and run in English
-    meanwhile — picking an untranslated locale must never brick boot.
+    en (default) / it are tested. ``other`` accepts a structural BCP-47 tag:
+    the target is queued while the operational instance remains in English.
     """
     ui.console().print()
     ui.console().print(
@@ -158,32 +148,32 @@ def ask_language() -> str:
         "or [cyan]other[/cyan] (e.g. fr — experimental)")
     pick = ui.choice("Choose / Scegli", ["en", "it", "other"], default="en")
     if pick in _TESTED_LOCALES:
-        return pick
+        return LanguageSelection(pick, None, "active")
 
-    # other → free-form ISO code, experimental
-    code = ui.ask("ISO 639-1 code (e.g. fr, de, es)").strip().lower()
-    if not (len(code) == 2 and code.isalpha()) or code in _TESTED_LOCALES:
-        # invalid or actually a tested one → coerce sensibly
+    from runtime import config as runtime_config
+    code = runtime_config.normalize_language_tag(
+        ui.ask("BCP-47 language code (e.g. fr, pt-BR, zh-Hans)")
+    )
+    if not code or code in _TESTED_LOCALES:
         if code in _TESTED_LOCALES:
-            return code
-        ui.warn("Not a valid 2-letter code — falling back to 'en'.")
-        return "en"
+            return LanguageSelection(code, None, "active")
+        ui.warn("Not a valid, unambiguous BCP-47 code — falling back to 'en'.")
+        return LanguageSelection("en", None, "active")
     _localization_notice(code)
     if not ui.confirm(f"Proceed with experimental '{code}'? (English meanwhile)",
                       default=False):
         ui.info("Keeping 'en' (recommended).")
-        return "en"
-    record_desired_locale(code)
-    ui.ok(f"Target '{code}' recorded (experimental). Running in English for now.")
-    return "en"
+        return LanguageSelection("en", None, "active")
+    return LanguageSelection("en", code, "bootstrap_english")
 
 
-def show_and_confirm(lang: str) -> bool:
-    """Print disclaimer in ``lang``, demand exact typed acceptance.
+def show_and_confirm(selection: LanguageSelection) -> bool:
+    """Print the disclaimer and atomically persist accepted language facts.
 
     Returns True if the user accepted, False otherwise. On True, the
     sentinel is written.
     """
+    lang = selection.instance_lang
     ui.console().print()
     ui.console().print(_TEXT[lang], markup=True)
     expected = _ACCEPT_TOKEN[lang]
@@ -196,18 +186,74 @@ def show_and_confirm(lang: str) -> bool:
     payload = {
         "accepted_at": int(time.time()),
         "lang": lang,
+        "requested_lang": selection.requested_lang,
+        "localization_state": selection.localization_state,
         "agreement_token": expected,
     }
-    _sentinel().write_text(json.dumps(payload, indent=2))
+    from runtime import config as runtime_config
+    runtime_config.write_private_text(
+        _sentinel(), json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+    )
     return True
 
 
-def read_locale() -> str | None:
-    """Return the locale the user accepted under, if any (for later phases)."""
+def read_language_selection() -> LanguageSelection | None:
+    """Return the accepted instance/target selection, if structurally valid."""
+
     p = _sentinel()
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text()).get("lang")
-    except (json.JSONDecodeError, OSError):
-        return None
+        value = json.loads(p.read_text(encoding="utf-8"))
+        from runtime import config as runtime_config
+        instance = runtime_config.normalize_language_tag(value.get("lang"))
+        requested_raw = value.get("requested_lang")
+        requested = (
+            runtime_config.normalize_language_tag(requested_raw)
+            if requested_raw is not None else None
+        )
+        state = value.get("localization_state", "active")
+        selection = LanguageSelection(instance, requested, state)
+        if (
+            state == "active"
+            and instance in _TESTED_LOCALES
+            and requested is None
+        ):
+            return selection
+        if (
+            state == "bootstrap_english"
+            and instance == "en"
+            and requested
+            and requested != instance
+        ):
+            return selection
+    except (AttributeError, json.JSONDecodeError, OSError, TypeError):
+        pass
+    return None
+
+
+def persist_localization_request(
+    selection: LanguageSelection | None = None,
+) -> bool:
+    """Sign the accepted selection once the installation key exists."""
+
+    selected = selection or read_language_selection()
+    if selected is None:
+        return False
+    from runtime import config as runtime_config
+    try:
+        _request, changed = runtime_config.write_localization_request(
+            instance_lang=selected.instance_lang,
+            requested_lang=selected.requested_lang,
+            state=selected.localization_state,
+        )
+        return changed
+    except FileNotFoundError:
+        # Fresh install: phase 3 creates the installation key, then retries.
+        return False
+
+
+def read_locale() -> str | None:
+    """Return the locale the user accepted under, if any (for later phases)."""
+    selection = read_language_selection()
+    return selection.instance_lang if selection else None

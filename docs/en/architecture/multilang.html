@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; multilingual operation</title>
- <meta name="description" content="How Metnos handles language per user and per request: prompts, manifests, visible text, input lexicon, fallbacks, and the procedure for adding a language.">
- <meta name="keywords" content="multilingual, i18n, user language, prompts, manifests, input lexicon, fallback, add-language, METNOS_LANG, Metnos">
+ <meta name="description" content="How Metnos handles one instance language across prompts, manifests, visible text, the input lexicon, fallbacks, and adding a language.">
+ <meta name="keywords" content="multilingual, i18n, instance language, prompts, manifests, input lexicon, fallback, add-language, METNOS_LANG, Metnos">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/en/architecture/multilang">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/en/architecture/multilang">
  <meta property="og:title" content="Metnos &mdash; multilingual operation">
- <meta property="og:description" content="How Metnos selects each user's language and keeps prompts, manifests, messages, and the input lexicon aligned.">
+ <meta property="og:description" content="How Metnos applies one verified instance language and keeps prompts, manifests, messages, and the input lexicon aligned.">
  <meta property="og:locale" content="en_US">
  <meta property="og:site_name" content="Metnos">
  <meta name="twitter:card" content="summary">
@@ -25,7 +25,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — multilingual operation",
- "description": "Language per user and per request, prompts, manifests, visible text, the input lexicon, and adding a language.",
+ "description": "One instance language across prompts, manifests, visible text, the input lexicon, and adding a language.",
  "url": "https://metnos.com/en/architecture/multilang",
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -93,33 +93,33 @@ li { margin-bottom: 5px; }
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle">Language per user, prompts, and visible text</div>
+ <div class="subtitle">Instance language, prompts, and visible text</div>
  <div class="meta">Architecture guide</div>
 </div>
 
 <p><strong>Ask Metnos with a request like this example:</strong>
-“Which language is set for my account, and where can I change it?”</p>
+“What is the instance language and what is the localisation state?”</p>
 
 <p>
-The instance administrator can change it in the web chat by opening
-<strong>Settings &gt; System &gt; Users &gt; user name &gt;
-Preferences</strong>, then selecting the <code>lang</code> field. A user's
-detail page is served at <code>/admin/users/&lt;user-id&gt;</code>. If the
-question is asked from Telegram, the path still belongs to the Metnos web
-chat; it is not a path inside Telegram.
+The language is selected for the whole instance during installation. A change
+is administrative, global, and takes effect through a controlled restart; it
+is not a preference on an individual user's record. The persistent source is
+the signed request at
+<code>$METNOS_USER_STATE/i18n/localization_request.json</code>; when valid, it
+takes precedence over the bootstrap-only <code>METNOS_LANG</code> value.
 </p>
 
 <p class="lead">
-Language is a preference of each user and is applied to one request at a
-time. Two users can use different languages concurrently without changing
-the instance-wide configuration or affecting one another.
+Language is a property of the instance. The web chat, Telegram, recurring work,
+and paired devices consume the same value; serving two languages concurrently
+requires two Metnos instances.
 </p>
 
 <div class="toc">
  <h2>Contents</h2>
  <ol>
   <li><a href="#cap1">The multilingual contract</a></li>
-  <li><a href="#cap2">How Metnos selects a request's language</a></li>
+  <li><a href="#cap2">How Metnos establishes the instance language</a></li>
   <li><a href="#cap3">The four areas that must stay aligned</a></li>
   <li><a href="#cap4">Prompt language and response language</a></li>
   <li><a href="#cap5">Translation alignment</a></li>
@@ -149,27 +149,31 @@ ready in those languages.
 <p>The operational contract is:</p>
 
 <ul>
- <li>language belongs to the authorized user, not to the device;</li>
- <li>the same preference applies in the web chat and in channels bound to that user;</li>
- <li>each request retains its own language context through the final response;</li>
+ <li>language belongs to the instance, not to a user, channel, or device;</li>
+ <li>the web chat, Telegram, and recurring work receive the same value;</li>
+ <li>a request context may propagate that value but cannot replace it;</li>
  <li>missing text follows a declared fallback and does not stop the service;</li>
  <li>a language is declared supported only after translation, review, and complete testing.</li>
 </ul>
 
-<h1 id="cap2">2. How Metnos selects a request's language</h1>
+<h1 id="cap2">2. How Metnos establishes the instance language</h1>
 
 <p>
-In the web chat, the server identifies the authenticated user and reads that
-user's <code>lang</code> preference. Telegram resolves the same value through
-the channel-to-user binding. Recurring work performed on behalf of a person
-also applies its owner's language.
+The installer normalises the BCP-47 code and records the operational language,
+any requested target, and the localisation state. Once the installation key
+exists, these facts are signed and replaced in one atomic write. The persistent
+authority is <code>$METNOS_USER_STATE/i18n/localization_request.json</code>
+(<code>~/.local/state/metnos/i18n/localization_request.json</code> by default).
+When valid, this document takes precedence over <code>METNOS_LANG</code>, which
+remains only the bootstrap value for installations not yet materialised.
 </p>
 
 <p>
-Metnos places the value in a context local to that request. The context
-remains isolated while several turns run in parallel: setting English for
-one user changes neither another user's language nor the process-wide
-default.
+On restart, the runtime verifies the signed document and defines
+<code>INSTANCE_LANG</code>, <code>REQUESTED_LANG</code>, and
+<code>LOCALIZATION_STATE</code> in one configuration module. A missing,
+tampered, or malformed document does not prevent boot: it is ignored and the
+fallback diagnostic remains visible.
 </p>
 
 <table>
@@ -177,19 +181,17 @@ default.
   <tr><th style="width:27%">Source</th><th>Value used</th><th>Scope</th></tr>
  </thead>
  <tbody>
-  <tr><td><code>lang</code> preference</td><td>Language of the authenticated user or the user bound to the channel.</td><td>One request or turn.</td></tr>
-  <tr><td><code>METNOS_LANG</code></td><td>Instance fallback when the user has no valid preference.</td><td>Process; cached on first use.</td></tr>
-  <tr><td>Built-in default</td><td><code>it</code>, when <code>METNOS_LANG</code> is also absent.</td><td>Instance.</td></tr>
+  <tr><td>Signed request</td><td>Operational language, optional target, state, date, and corpus version.</td><td>Whole instance; persistent authority.</td></tr>
+  <tr><td><code>METNOS_LANG</code></td><td>Bootstrap value for installations without a valid signed request.</td><td>Whole instance at restart.</td></tr>
+  <tr><td>Built-in default</td><td><code>it</code>, when the bootstrap value is also absent or invalid.</td><td>Whole instance.</td></tr>
  </tbody>
 </table>
 
 <p>
-The values offered by the <code>lang</code> field do not come from a list
-written into the page. They are derived from the languages present in
-<code>i18n.sqlite</code>. Consequently, bootstrapping a new language can make
-it selectable before every translation is complete. Fallbacks keep the
-service usable, but the administrator should not offer that language to
-users before completing the checks described below.
+The BCP-47 code is validated structurally, without a hard-coded language list.
+If the requested language is not yet certified, the instance temporarily uses
+English and retains the target under <code>bootstrap_english</code>. The
+presence of some translations does not enable the new language by itself.
 </p>
 
 <h1 id="cap3">3. The four areas that must stay aligned</h1>
@@ -209,13 +211,13 @@ users before completing the checks described below.
    <td><strong>Executor manifests</strong></td>
    <td>The executor description and argument descriptions read by the planner.</td>
    <td>Language tables in the corresponding <code>manifest.toml</code>.</td>
-   <td>Request language; English; first available language in deterministic order.</td>
+   <td>Instance language; English; first available language in deterministic order.</td>
   </tr>
   <tr>
    <td><strong>User-facing text</strong></td>
    <td>Deterministic messages, errors, confirmations, labels, and notifications.</td>
    <td><code>i18n.sqlite</code></td>
-   <td>Request language; English; Italian; finally <code>&lt;missing:KEY&gt;</code>.</td>
+   <td>Instance language; English; Italian; finally <code>&lt;missing:KEY&gt;</code>.</td>
   </tr>
   <tr>
    <td><strong>Input lexicon</strong></td>
@@ -238,7 +240,7 @@ for an existing language, the candidate must be reviewed and promoted.
 
 <p>
 The planner consists of a core, relevant sections, and a footer. If the
-requested language lacks the core, the whole planner falls back to English.
+instance language lacks the core, the whole planner falls back to English.
 If the core exists but one section is missing, that section can fall back to
 its English counterpart.
 </p>
@@ -414,15 +416,14 @@ default.
  </li>
  <li>
   Perform human language review and functional tests in the web chat,
-  dialogs, approvals, Settings, Telegram, and recurring work. Test two users
-  with different languages at the same time. A right-to-left language also
+  dialogs, approvals, Settings, Telegram, and recurring work. Test two
+  instances with different languages at the same time. A right-to-left language also
   requires visual checks of direction, control order, and layout.
  </li>
  <li>
-  Only then offer the language to users. The <code>lang</code> field derives
-  its values from the i18n catalog automatically; the page has no separate
-  allow-list to edit. Setting <code>METNOS_LANG</code> is optional and changes
-  only the instance fallback, not individual preferences.
+  Only then activate the language for the instance through an administrative
+  change and a controlled restart. <code>METNOS_LANG</code> remains only the
+  bootstrap value when no signed request exists yet.
  </li>
 </ol>
 

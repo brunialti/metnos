@@ -329,6 +329,11 @@ path = "~/.config/metnos/lre.env"
 purpose = "Interruttore persistente di LRE, creato in stato disattivato e interpretato in modo restrittivo."
 mode = "0600"
 
+[[config_files.entry]]
+path = "~/.local/state/metnos/i18n/localization_request.json"
+purpose = "Autorità firmata e atomica per lingua operativa, lingua richiesta e stato della localizzazione dell’istanza."
+mode = "0600"
+
 [[secrets.entry]]
 name = "admin_key"
 path = "~/.config/metnos/admin.key"
@@ -343,7 +348,7 @@ public_path = "~/.config/metnos/keys/author_pub.bin"
 generator = "runtime/sign.py sign-all"
 private_mode = "0600"
 public_mode = "0644"
-purpose = "Firma locale degli executor ammessi dall’installazione."
+purpose = "Firma locale degli executor ammessi e della richiesta di localizzazione dell’istanza."
 
 [[external_services.entry]]
 name = "compatible_llm_endpoint"
@@ -391,7 +396,7 @@ METNOS_USER_DATA = { default = "~/.local/share/metnos", purpose = "dati applicat
 METNOS_USER_STATE = { default = "~/.local/state/metnos", purpose = "stato operativo separato per utente" }
 METNOS_USER_CONFIG = { default = "~/.config/metnos", purpose = "configurazione e credenziali separate per utente" }
 METNOS_HTTP_PORT = { default = "8770", purpose = "porta del server HTTP" }
-METNOS_LANG = { default = "it", purpose = "lingua corrente del runtime" }
+METNOS_LANG = { default = "it", purpose = "bootstrap della lingua d’istanza quando manca una richiesta firmata valida" }
 METNOS_LLM_ENDPOINT = { default = "http://127.0.0.1:8080", purpose = "endpoint compatibile proposto durante l’installazione" }
 METNOS_SEARXNG_URL = { default = "http://127.0.0.1:8888", purpose = "endpoint della ricerca web" }
 METNOS_PHOTON_URL = { default = "http://127.0.0.1:2322", purpose = "endpoint della geocodifica" }

@@ -60,7 +60,7 @@ constraint: a feature is not genuinely multilingual when only its surface is.
 
 <ol class="infographic-key">
  <li><strong>The instance language.</strong> Language belongs to the Metnos instance and is shared by its users and channels.</li>
- <li><strong>An isolated context.</strong> Every request receives its own language context, including during concurrent execution.</li>
+ <li><strong>A propagated constraint.</strong> Every request receives the instance language and cannot replace it, including during concurrent execution.</li>
  <li><strong>Four coordinated sources.</strong> Prompts, executor manifests, deterministic messages, and the comprehension lexicon remain separate but consistent.</li>
  <li><strong>Declared fallbacks.</strong> When text is missing, Metnos follows a known chain and keeps the translation debt visible.</li>
  <li><strong>One language across channels.</strong> Rendering remains consistent in the web chat, notifications, and paired devices.</li>
@@ -211,8 +211,11 @@ contract, and therefore measurable and correctable.
 
 <p>
 When installation requests a language other than Italian or English, Metnos
-does not pretend that it is already available. It records the requested
-language, starts the instance temporarily in English, and queues localisation.
+does not pretend that it is already available. It normalises the BCP-47 code
+and, after the installation key is created, atomically records a signed request
+at <code>$METNOS_USER_STATE/i18n/localization_request.json</code>
+with its date, state, and corpus version. It then starts the instance
+temporarily in English and queues localisation.
 English is therefore a safe transitional bootstrap, never a hidden per-user or
 per-turn choice.
 </p>

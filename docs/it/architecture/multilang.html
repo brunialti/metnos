@@ -4,8 +4,8 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; multilinguismo</title>
- <meta name="description" content="Guida al multilinguismo di Metnos: lingua per utente e per richiesta, prompt, manifest, testi visibili, lessico di comprensione e procedura per aggiungere una lingua.">
- <meta name="keywords" content="multilinguismo, i18n, lingua utente, prompt, manifest, lessico, fallback, add-language, METNOS_LANG, Metnos">
+ <meta name="description" content="Guida al multilinguismo di Metnos: lingua unica dell'istanza, prompt, manifest, testi visibili, lessico di comprensione e procedura per aggiungere una lingua.">
+ <meta name="keywords" content="multilinguismo, i18n, lingua istanza, prompt, manifest, lessico, fallback, add-language, METNOS_LANG, Metnos">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/multilang">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/multilang">
  <meta property="og:title" content="Metnos &mdash; multilinguismo">
- <meta property="og:description" content="Come Metnos sceglie la lingua di ogni utente e mantiene coerenti prompt, manifest, messaggi e lessico di comprensione.">
+ <meta property="og:description" content="Come Metnos applica una sola lingua verificata all'istanza e mantiene coerenti prompt, manifest, messaggi e lessico di comprensione.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:site_name" content="Metnos">
  <meta name="twitter:card" content="summary">
@@ -25,7 +25,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — multilinguismo",
- "description": "Lingua per utente e per richiesta, prompt, manifest, testi visibili, lessico di comprensione e aggiunta di una lingua.",
+ "description": "Lingua unica dell'istanza, prompt, manifest, testi visibili, lessico di comprensione e aggiunta di una lingua.",
  "url": "https://metnos.com/it/architecture/multilang",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -93,35 +93,33 @@ li { margin-bottom: 5px; }
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle">Lingua per utente, prompt e testi visibili</div>
+ <div class="subtitle">Lingua dell'istanza, prompt e testi visibili</div>
  <div class="meta">Guida all'architettura</div>
 </div>
 
 <p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-«Qual è la lingua impostata per il mio account e dove posso cambiarla?»</p>
+«Qual è la lingua dell'istanza e qual è lo stato della localizzazione?»</p>
 
 <p>
-Chi amministra l'istanza può cambiarla nella chat web seguendo
-<strong>Settings &gt; Sistema &gt; Utenti &gt; nome dell'utente &gt;
-Preferenze</strong>, quindi scegliendo il valore del campo <code>lang</code>.
-La pagina dell'utente risponde all'indirizzo
-<code>/admin/users/&lt;id-utente&gt;</code>. Se la domanda viene fatta da
-Telegram, il percorso indicato si trova comunque nella chat web di Metnos,
-non dentro Telegram.
+La lingua viene scelta per l'intera istanza durante l'installazione. Una sua
+modifica è amministrativa, globale e diventa effettiva con un riavvio
+controllato; non è una preferenza nella scheda di un utente. La fonte
+persistente è la richiesta firmata in
+<code>$METNOS_USER_STATE/i18n/localization_request.json</code>; quando è valida
+prevale sul solo valore iniziale <code>METNOS_LANG</code>.
 </p>
 
 <p class="lead">
-La lingua è una preferenza di ciascun utente e viene applicata alla singola
-richiesta. Due utenti possono usare contemporaneamente lingue diverse senza
-modificare la configurazione globale dell'istanza e senza influenzarsi a
-vicenda.
+La lingua è una proprietà dell'istanza. Chat web, Telegram, attività ricorrenti
+e dispositivi associati consumano lo stesso valore; per servire due lingue
+contemporaneamente occorrono due istanze Metnos.
 </p>
 
 <div class="toc">
  <h2>Indice</h2>
  <ol>
   <li><a href="#cap1">Il contratto multilingua</a></li>
-  <li><a href="#cap2">Come viene scelta la lingua di una richiesta</a></li>
+  <li><a href="#cap2">Come viene stabilita la lingua dell'istanza</a></li>
   <li><a href="#cap3">Le quattro aree da mantenere coerenti</a></li>
   <li><a href="#cap4">Lingua del prompt e lingua della risposta</a></li>
   <li><a href="#cap5">Allineamento delle traduzioni</a></li>
@@ -151,28 +149,32 @@ pronto in quelle lingue.
 <p>Il contratto operativo è il seguente:</p>
 
 <ul>
- <li>la lingua appartiene all'utente autorizzato, non al dispositivo;</li>
- <li>la stessa preferenza vale nella chat web e nei canali associati a quell'utente;</li>
- <li>ogni richiesta conserva il proprio contesto linguistico fino alla risposta finale;</li>
+ <li>la lingua appartiene all'istanza, non all'utente, al canale o al dispositivo;</li>
+ <li>chat web, Telegram e attività ricorrenti ricevono lo stesso valore;</li>
+ <li>il contesto di una richiesta può propagare quel valore ma non sostituirlo;</li>
  <li>un testo mancante segue un ripiego dichiarato e non interrompe il servizio;</li>
  <li>una lingua viene dichiarata supportata soltanto dopo traduzione, revisione e prove complete.</li>
 </ul>
 
-<h1 id="cap2">2. Come viene scelta la lingua di una richiesta</h1>
+<h1 id="cap2">2. Come viene stabilita la lingua dell'istanza</h1>
 
 <p>
-Nella chat web il server identifica l'utente autenticato e legge la sua
-preferenza <code>lang</code>. Telegram fa lo stesso partendo
-dall'associazione fra il canale e l'utente. Anche le attività ricorrenti
-eseguite per conto di una persona applicano la lingua del relativo
-proprietario.
+L'installer normalizza il codice BCP-47 e registra insieme lingua operativa,
+eventuale lingua richiesta e stato della localizzazione. Dopo la creazione
+della chiave dell'installazione, questi dati vengono firmati e sostituiti con
+una sola scrittura atomica. L'autorit&agrave; persistente &egrave; il documento
+<code>$METNOS_USER_STATE/i18n/localization_request.json</code> (per impostazione
+predefinita <code>~/.local/state/metnos/i18n/localization_request.json</code>).
+Quando il documento &egrave; valido prevale su <code>METNOS_LANG</code>, che resta
+soltanto il valore iniziale per le installazioni non ancora materializzate.
 </p>
 
 <p>
-Il valore viene inserito in un contesto locale alla richiesta. Questo
-contesto è isolato anche quando più turni vengono eseguiti in parallelo:
-impostare l'inglese per un utente non cambia la lingua di un altro utente né
-quella del processo.
+Al riavvio il runtime verifica il documento firmato e definisce
+<code>INSTANCE_LANG</code>, <code>REQUESTED_LANG</code> e
+<code>LOCALIZATION_STATE</code> in un solo modulo di configurazione. Un
+documento mancante, alterato o malformato non impedisce l'avvio: viene ignorato
+e resta visibile una diagnostica di ripiego.
 </p>
 
 <table>
@@ -180,20 +182,17 @@ quella del processo.
   <tr><th style="width:27%">Origine</th><th>Valore usato</th><th>Ambito</th></tr>
  </thead>
  <tbody>
-  <tr><td>Preferenza <code>lang</code></td><td>Lingua dell'utente autenticato o associato al canale.</td><td>Una richiesta o un turno.</td></tr>
-  <tr><td><code>METNOS_LANG</code></td><td>Ripiego dell'istanza quando l'utente non ha una preferenza valida.</td><td>Processo; viene memorizzato al primo utilizzo.</td></tr>
-  <tr><td>Valore predefinito</td><td><code>it</code>, se non è definito neppure <code>METNOS_LANG</code>.</td><td>Istanza.</td></tr>
+  <tr><td>Richiesta firmata</td><td>Lingua operativa, eventuale obiettivo, stato, data e versione del corpus.</td><td>Intera istanza; autorità persistente.</td></tr>
+  <tr><td><code>METNOS_LANG</code></td><td>Valore iniziale per installazioni prive di una richiesta firmata valida.</td><td>Intera istanza al riavvio.</td></tr>
+  <tr><td>Valore predefinito</td><td><code>it</code>, se anche il valore iniziale è assente o invalido.</td><td>Intera istanza.</td></tr>
  </tbody>
 </table>
 
 <p>
-Le lingue proposte dal campo <code>lang</code> non provengono da una lista
-scritta nella pagina: vengono ricavate dalle lingue presenti nel catalogo
-<code>i18n.sqlite</code>. Per questo il comando di preparazione di una nuova
-lingua può renderla selezionabile prima che tutte le traduzioni siano state
-completate. I ripieghi mantengono il servizio utilizzabile, ma
-l'amministratore non dovrebbe offrirla agli utenti prima delle verifiche
-descritte più avanti.
+Il codice BCP-47 è validato per struttura, senza una lista di lingue cablata.
+Se la lingua richiesta non è ancora certificata, l'istanza usa temporaneamente
+l'inglese e conserva l'obiettivo nello stato <code>bootstrap_english</code>.
+La presenza di alcune traduzioni non abilita da sola la nuova lingua.
 </p>
 
 <h1 id="cap3">3. Le quattro aree da mantenere coerenti</h1>
@@ -213,13 +212,13 @@ descritte più avanti.
    <td><strong>Manifest degli executor</strong></td>
    <td>Descrizione dell'executor e descrizione dei suoi argomenti, lette dal pianificatore.</td>
    <td>Tabelle linguistiche nel relativo <code>manifest.toml</code>.</td>
-   <td>Lingua della richiesta; inglese; prima lingua disponibile in ordine deterministico.</td>
+   <td>Lingua dell'istanza; inglese; prima lingua disponibile in ordine deterministico.</td>
   </tr>
   <tr>
    <td><strong>Testi rivolti all'utente</strong></td>
    <td>Messaggi, errori, conferme, etichette e notifiche deterministiche.</td>
    <td><code>i18n.sqlite</code></td>
-   <td>Lingua della richiesta; inglese; italiano; infine <code>&lt;missing:CHIAVE&gt;</code>.</td>
+   <td>Lingua dell'istanza; inglese; italiano; infine <code>&lt;missing:CHIAVE&gt;</code>.</td>
   </tr>
   <tr>
    <td><strong>Lessico di comprensione</strong></td>
@@ -242,7 +241,7 @@ presente: per una lingua esistente occorre rivederlo e promuoverlo.
 
 <p>
 Il pianificatore è composto da un nucleo, sezioni pertinenti e una parte
-finale. Se nella lingua richiesta manca il nucleo, l'intero pianificatore
+finale. Se nella lingua dell'istanza manca il nucleo, l'intero pianificatore
 ricorre all'inglese. Se il nucleo esiste ma manca una singola sezione, quella
 sezione può ricorrere all'equivalente inglese.
 </p>
@@ -420,16 +419,14 @@ non cambia la lingua predefinita dell'istanza.
  <li>
   Eseguire una revisione linguistica umana e prove funzionali nella chat web,
   nei dialoghi, nelle approvazioni, in Settings, su Telegram e nelle attività
-  ricorrenti. Provare anche due utenti con lingue diverse nello stesso
+  ricorrenti. Provare anche due istanze con lingue diverse nello stesso
   momento. Per una lingua da destra a sinistra occorrono inoltre prove visive
   della direzione, dell'ordine dei controlli e dell'impaginazione.
  </li>
  <li>
-  Solo dopo questi controlli offrire la lingua agli utenti. Il campo
-  <code>lang</code> ricava automaticamente i valori dal catalogo i18n; non
-  richiede una lista separata nella pagina. Impostare
-  <code>METNOS_LANG</code> è facoltativo e cambia soltanto il ripiego
-  dell'istanza, non le preferenze individuali.
+  Solo dopo questi controlli attivare la lingua per l'istanza con una modifica
+  amministrativa e un riavvio controllato. <code>METNOS_LANG</code> resta
+  soltanto il valore iniziale quando non esiste ancora una richiesta firmata.
  </li>
 </ol>
 
