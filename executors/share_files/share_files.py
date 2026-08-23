@@ -24,7 +24,12 @@ Contratto:
         notify?: bool (default false),
         client?: 'google_workspace' (default)
     }
-    stdout: JSON {ok, n_shared, results: [{ok, id, role, type, email, permission_id}], failed}
+    stdout: JSON {ok, n_shared, results: [{ok, id, role, type, email,
+                  permission_id}], failed, _undo}
+
+Undo §2.3: il forward conserva per ogni grant la coppia opaca
+`file_id + permission_id`; `reverse()` revoca soltanto quei permessi tramite
+Drive permissions.delete. Non risolve nomi e non modifica/cancella i file.
 """
 from __future__ import annotations
 
@@ -56,6 +61,35 @@ def invoke(args):
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
     return backend.share(args)
+
+
+def reverse(plan, results):
+    """Revoca esattamente i grant creati dal forward.
+
+    La ricevuta `_undo.permissions` e' prodotta dal backend firmato al momento
+    della mutation. Il fallback sulle righe `results` mantiene annullabili le
+    operazioni registrate dalla prima versione che esponeva `permission_id`.
+    In entrambi i casi servono sia file ID sia permission ID: nessuna ricerca
+    per nome, email o ruolo e nessuna revoca euristica.
+    """
+    if not isinstance(results, dict):
+        return {
+            "ok": False, "ok_count": 0, "fail_count": 1,
+            "results": [], "failed": [{"error": "results must be an object"}],
+        }
+
+    undo = results.get("_undo")
+    permissions = undo.get("permissions") if isinstance(undo, dict) else None
+    if not isinstance(permissions, list) or not permissions:
+        permissions = [
+            {
+                "file_id": row.get("file_id") or row.get("id"),
+                "permission_id": row.get("permission_id"),
+            }
+            for row in (results.get("results") or [])
+            if isinstance(row, dict)
+        ]
+    return google_workspace.revoke_permissions({"permissions": permissions})
 
 
 def main():

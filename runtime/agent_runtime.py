@@ -3872,6 +3872,90 @@ def _authoritative_turn_presentation(steps: list, *, intent_verb: str,
     return "\n\n".join(texts) if productive and texts else ""
 
 
+# Human-readable identity fields shared by mutation receipts. These are
+# semantic output fields, not executor names or domain-specific fixtures.
+# Opaque provider IDs are intentionally excluded: they remain in audit/undo
+# receipts but do not make a chat answer understandable by themselves.
+_MUTATION_RECEIPT_CONTEXT_FIELDS = (
+    "summary", "title", "name", "subject", "path", "dst", "url",
+    "email", "recipient_id", "target",
+)
+_MUTATION_RECEIPT_CONTEXT_MAX = 4
+
+
+def _mutation_receipt_context(steps: list) -> list[str]:
+    """Return bounded human-readable identities from committed mutations.
+
+    Values come only from successful executor output, never from the planner
+    prose or the original query. This makes the final receipt independently
+    checkable while keeping provider IDs and payload bodies out of chat.
+    """
+    from pipeline_effects import MUTATING_TOOL_PREFIXES
+
+    values: list[str] = []
+    seen: set[str] = set()
+
+    def add(value) -> None:
+        candidates = value if isinstance(value, list) else [value]
+        for item in candidates:
+            if not isinstance(item, str):
+                continue
+            clean = " ".join(item.strip().split())
+            if not clean or len(clean) > 240:
+                continue
+            folded = clean.casefold()
+            if folded in seen:
+                continue
+            seen.add(folded)
+            values.append(clean)
+
+    for step in steps or []:
+        tool = str(getattr(step, "chosen_tool", "") or "")
+        if not any(tool.startswith(prefix)
+                   for prefix in MUTATING_TOOL_PREFIXES):
+            continue
+        result = getattr(step, "result", None)
+        if not isinstance(result, dict):
+            continue
+        rows = result.get("results")
+        sources = ([row for row in rows if isinstance(row, dict)
+                    and row.get("ok") is not False]
+                   if isinstance(rows, list) else [])
+        if result.get("ok") is True:
+            sources.append(result)
+        for source in sources:
+            for field in _MUTATION_RECEIPT_CONTEXT_FIELDS:
+                add(source.get(field))
+                if len(values) >= _MUTATION_RECEIPT_CONTEXT_MAX:
+                    return values
+    return values
+
+
+def _ensure_mutation_receipt_context(
+        final_message: str, steps: list, effect_counts: dict | None) -> str:
+    """Append missing committed-target identities to a mutation answer.
+
+    The model may truthfully say "operation completed" while omitting what it
+    changed. A deterministic receipt must preserve at least the stable human
+    identities emitted by executors. Existing prose wins when it already
+    contains them; only missing values are appended through an i18n template.
+    """
+    if not isinstance(effect_counts, dict) \
+            or effect_counts.get("mutations", 0) <= 0:
+        return final_message
+    anchors = _mutation_receipt_context(steps)
+    folded_message = (final_message or "").casefold()
+    missing = [value for value in anchors
+               if value.casefold() not in folded_message]
+    if not missing:
+        return final_message
+    receipt = msg(
+        "MSG_MUTATION_RECEIPT_CONTEXT", details="; ".join(missing))
+    if not isinstance(receipt, str) or receipt.startswith("<missing:"):
+        return final_message
+    return ((final_message or "").rstrip() + "\n\n" + receipt).strip()
+
+
 _I18N_PAYLOAD_KEY_RE = re.compile(r"(?:MSG|ERR|WARN)_[A-Z0-9_]+")
 
 
@@ -5074,6 +5158,12 @@ class TurnLog:
         if self.final_kind == "answer":
             # §2.8: un final mutating non puo' claimare un esito non avvenuto.
             self._enforce_mutating_honesty()
+            # Una ricevuta di mutazione deve rendere visibile almeno
+            # l'identita' umana del target realmente restituita dagli
+            # executor. Regola strutturale cross-dominio: nessun nome di
+            # executor, provider o fixture e nessun ID opaco hard-coded.
+            self.final_message = _ensure_mutation_receipt_context(
+                self.final_message, self.steps, self.effect_counts)
             # §2.8: rendi visibili i fallimenti per-item/account (no silent "Hai 0").
             for _fn in self._collect_failure_notices():
                 if _fn and _fn not in (self.final_message or ""):

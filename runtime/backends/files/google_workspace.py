@@ -2,7 +2,7 @@
 
 Wrappa `~/.local/share/metnos/skills/google-workspace/scripts/google_api.py`
 sub-commands `drive search | get | upload | download | create-folder |
-share | delete | restore`.
+share | unshare | delete | restore`.
 
 Mapping verb canonical Metnos → Drive sub-command:
 - find_files  → drive search (vettoriale, paths→query)
@@ -10,6 +10,7 @@ Mapping verb canonical Metnos → Drive sub-command:
 - write_files → drive upload (paths locali → Drive)
 - delete_files → drive delete (trash reversibile o permanent)
 - share_files → drive share (ACL grant — ADR 0128)
+- undo share_files → drive unshare (revoke del grant dalla ricevuta esatta)
 - create_dirs → drive create-folder (handled in dirs/google_workspace.py)
 
 Identificatori Drive: `file_id` (es. "1abc...XYZ"). Per coerenza con
@@ -662,11 +663,18 @@ def share(args: dict) -> dict:
     email = args.get("email") or ""
     role = args.get("role") or "reader"
     grant_type = args.get("type") or "user"
+    domain = args.get("domain") or ""
     notify = bool(args.get("notify"))
     if grant_type in ("user", "group") and not email:
         return {"ok": False,
                 "error_code": "ERR_ARG_MISSING",
                 "error": _msg("ERR_ARG_MISSING", arg="email (per type=user|group)"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0}
+    if grant_type == "domain" and not domain:
+        return {"ok": False,
+                "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="domain (per type=domain)"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
 
@@ -691,6 +699,8 @@ def share(args: dict) -> dict:
                 "--type", grant_type]
         if email:
             argv.extend(["--email", email])
+        if domain:
+            argv.extend(["--domain", domain])
         if notify:
             argv.append("--notify")
         data, err = _run_drive(argv, executor="share_files",
@@ -700,16 +710,87 @@ def share(args: dict) -> dict:
                 return err
             failed.append({"id": fid, **err})
             continue
-        results.append({"ok": True, "id": fid, "role": role,
+        results.append({"ok": True, "id": fid, "file_id": fid, "role": role,
                          "type": grant_type, "email": email,
                          "permission_id": (data or {}).get("permissionId", "")})
 
-    return {
+    out = {
         "ok": len(failed) == 0,
         "n_shared": len(results),
         "results": results,
         "failed": failed,
         "used": len(results),
+        "files_source": "google_workspace",
+    }
+    receipts = [
+        {"file_id": row["file_id"], "permission_id": row["permission_id"]}
+        for row in results if row.get("file_id") and row.get("permission_id")
+    ]
+    if receipts:
+        out["_undo"] = {
+            "reverse_pattern": "module.reverse",
+            "permissions": receipts,
+            "scope": {"client": "google_workspace"},
+        }
+    return out
+
+
+def revoke_permissions(args: dict) -> dict:
+    """Revoke exact Drive grants captured by :func:`share`.
+
+    This undo-only entry point accepts opaque provider receipts. It never
+    resolves a filename, recipient, role, or query, so it cannot broaden the
+    mutation beyond permissions created by the corresponding forward call.
+    """
+    rows = args.get("permissions") if isinstance(args, dict) else None
+    if (not isinstance(rows, list) or not rows
+            or any(not isinstance(row, dict)
+                   or not isinstance(row.get("file_id"), str)
+                   or not row["file_id"].strip()
+                   or not isinstance(row.get("permission_id"), str)
+                   or not row["permission_id"].strip()
+                   for row in rows)):
+        return {
+            "ok": False, "error_code": "ERR_ARG_INVALID",
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="permissions",
+                reason="must contain file_id and permission_id receipts"),
+            "error_class": "invalid_args", "results": [], "failed": [],
+            "ok_count": 0, "fail_count": 1,
+        }
+
+    # Preserve receipt order while refusing duplicate remote mutations.
+    receipts = list(dict.fromkeys(
+        (row["file_id"].strip(), row["permission_id"].strip())
+        for row in rows
+    ))
+    results, failed = [], []
+    for file_id, permission_id in receipts:
+        _, err = _run_drive(
+            ["drive", "unshare", file_id, permission_id],
+            executor="undo_last_turn",
+            args_base={
+                "file_id": file_id,
+                "permission_id": permission_id,
+                "client": "google_workspace",
+            },
+            result_kind="results",
+        )
+        if err is not None:
+            failed.append({
+                "file_id": file_id, "permission_id": permission_id, **err,
+            })
+            continue
+        results.append({
+            "ok": True, "file_id": file_id,
+            "permission_id": permission_id, "status": "revoked",
+        })
+    return {
+        "ok": len(failed) == 0,
+        "ok_count": len(results),
+        "fail_count": len(failed),
+        "results": results,
+        "failed": failed,
         "files_source": "google_workspace",
     }
 

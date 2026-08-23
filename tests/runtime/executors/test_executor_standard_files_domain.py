@@ -32,7 +32,7 @@ def test_files_domain_declares_narrow_authority() -> None:
     assert write_manifest["capabilities"][1]["when"] == {
         "arg": "client", "values": ["google_workspace"]}
     assert share_manifest["capabilities"] == [
-        {"name": "drive:permissions", "hint": ["drive:share"]},
+        {"name": "drive:permissions", "hint": ["drive:share", "drive:unshare"]},
         {
             "name": "provider:access",
             "hint": ["google-workspace"],
@@ -83,3 +83,145 @@ def test_share_files_calls_only_selected_provider(monkeypatch) -> None:
         "file_ids": ["file-1"], "email": "guest@example.com",
         "client": "google_workspace",
     }]
+
+
+def test_share_files_reverse_uses_exact_permission_receipt(monkeypatch) -> None:
+    calls = []
+
+    def fake_revoke(args):
+        calls.append(args)
+        return {"ok": True, "ok_count": 1, "fail_count": 0,
+                "results": [{"status": "revoked"}], "failed": []}
+
+    monkeypatch.setattr(
+        share_files.google_workspace, "revoke_permissions", fake_revoke)
+    result = share_files.reverse({}, {
+        "results": [{
+            "id": "drive-file-000001", "permission_id": "perm-001",
+        }],
+        "_undo": {
+            "reverse_pattern": "module.reverse",
+            "permissions": [{
+                "file_id": "drive-file-000001",
+                "permission_id": "perm-001",
+            }],
+        },
+    })
+
+    assert result["ok"] is True
+    assert calls == [{"permissions": [{
+        "file_id": "drive-file-000001", "permission_id": "perm-001",
+    }]}]
+
+
+def test_google_share_emits_exact_undo_receipt(monkeypatch) -> None:
+    calls = []
+
+    def fake_run(argv, *, executor, args_base, result_kind):
+        calls.append((argv, executor, args_base, result_kind))
+        return {"permissionId": "permission-001"}, None
+
+    monkeypatch.setattr(share_files.google_workspace, "_run_drive", fake_run)
+    result = share_files.google_workspace.share({
+        "file_id": "drive-file-000001",
+        "email": "guest@example.com",
+        "role": "reader",
+    })
+
+    assert result["ok"] is True
+    assert result["results"][0]["file_id"] == "drive-file-000001"
+    assert result["_undo"] == {
+        "reverse_pattern": "module.reverse",
+        "permissions": [{
+            "file_id": "drive-file-000001",
+            "permission_id": "permission-001",
+        }],
+        "scope": {"client": "google_workspace"},
+    }
+    assert calls[0][0] == [
+        "drive", "share", "drive-file-000001", "--role", "reader",
+        "--type", "user", "--email", "guest@example.com",
+    ]
+
+
+def test_google_share_reverse_revokes_only_recorded_permissions(
+        monkeypatch) -> None:
+    calls = []
+
+    def fake_run(argv, *, executor, args_base, result_kind):
+        calls.append((argv, executor, args_base, result_kind))
+        return {"status": "revoked"}, None
+
+    monkeypatch.setattr(share_files.google_workspace, "_run_drive", fake_run)
+    result = share_files.google_workspace.revoke_permissions({
+        "permissions": [
+            {"file_id": "drive-file-000001",
+             "permission_id": "permission-001"},
+            {"file_id": "drive-file-000002",
+             "permission_id": "permission-002"},
+        ],
+    })
+
+    assert result["ok"] is True
+    assert result["ok_count"] == 2
+    assert [call[0] for call in calls] == [
+        ["drive", "unshare", "drive-file-000001", "permission-001"],
+        ["drive", "unshare", "drive-file-000002", "permission-002"],
+    ]
+
+
+def test_share_files_round_trip_through_undo_last_turn(
+        tmp_path, monkeypatch) -> None:
+    calls = []
+
+    def fake_revoke(args):
+        calls.append(args)
+        return {
+            "ok": True, "ok_count": 1, "fail_count": 0,
+            "results": [{
+                "ok": True, "file_id": "drive-file-000001",
+                "permission_id": "permission-001", "status": "revoked",
+            }],
+            "failed": [],
+        }
+
+    monkeypatch.setattr(
+        share_files.google_workspace, "revoke_permissions", fake_revoke)
+
+    from undo import UndoLog
+    log_path = tmp_path / "undo.jsonl"
+    log = UndoLog(log_path)
+    log.append_pending(
+        "op-share", "turn-share", "share_files",
+        {"file_id": "drive-file-000001", "email": "guest@example.com"},
+        plan={}, actor="host",
+    )
+    log.append_done("op-share", {
+        "ok": True,
+        "results": [{
+            "id": "drive-file-000001", "file_id": "drive-file-000001",
+            "permission_id": "permission-001",
+        }],
+        "_undo": {
+            "reverse_pattern": "module.reverse",
+            "permissions": [{
+                "file_id": "drive-file-000001",
+                "permission_id": "permission-001",
+            }],
+        },
+    })
+
+    sys.path.insert(0, str(ROOT / "executors" / "undo_last_turn"))
+    try:
+        import undo_last_turn
+        result = undo_last_turn.invoke({
+            "log_path": str(log_path), "_actor": "host",
+        })
+    finally:
+        sys.path.pop(0)
+
+    assert result["ok"] is True, result
+    assert result["undone_count"] == 1
+    assert calls == [{"permissions": [{
+        "file_id": "drive-file-000001", "permission_id": "permission-001",
+    }]}]

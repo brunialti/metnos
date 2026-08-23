@@ -598,6 +598,7 @@ def _step_list_payload(step_result: dict):
 from from_step_projection import (  # noqa: E402
     CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
     consumer_match_arg as _consumer_match_arg,
+    from_step_alternatives as _from_step_alternatives,
     has_explicit_from_step_alternative as _has_explicit_from_step_alternative,
     project_from_entries as _project_from_entries,
 )
@@ -617,11 +618,23 @@ def _resolve_implicit_reverse_target(
     the standard ``_undo`` envelope.  Explicit targets always win.
     """
 
-    if (
-        not history
-        or "from_step" in args
-        or _has_explicit_from_step_alternative(args, consumer_schema)
-    ):
+    if not history or "from_step" in args:
+        return args
+
+    # A literal unresolved placeholder is not an explicit target. It is a
+    # failed planner projection, and may be replaced only by a matching sealed
+    # `_undo` receipt below. Keep every other argument unchanged. If no receipt
+    # matches, return the original args so the standard unresolved-placeholder
+    # guard can report/drop it according to the manifest contract.
+    unresolved_alternatives = {
+        name for name in _from_step_alternatives(consumer_schema)
+        if name in args and _detect_unresolved_placeholders(args[name])
+    }
+    concrete_args = {
+        key: value for key, value in args.items()
+        if key not in unresolved_alternatives
+    }
+    if _has_explicit_from_step_alternative(concrete_args, consumer_schema):
         return args
     from reverse_patterns_patch import build_undo_calls
 
@@ -647,7 +660,7 @@ def _resolve_implicit_reverse_target(
             return args
         injected = matching[0]["args"]
         injected = {key: value for key, value in injected.items() if key in properties}
-        return {**injected, **args} if injected else args
+        return {**injected, **concrete_args} if injected else args
     return args
 
 

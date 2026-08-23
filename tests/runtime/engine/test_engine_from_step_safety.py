@@ -16,9 +16,11 @@ from engine.executor import (  # noqa: E402
     _resolve_implicit_reverse_target,
 )
 from engine.types import StepRun  # noqa: E402
+from engine.validator import Validator  # noqa: E402
 from from_step_projection import (  # noqa: E402
     from_step_alternatives,
     has_explicit_from_step_alternative,
+    normalize_from_step_contract,
     required_source_context_fields,
 )
 
@@ -109,6 +111,46 @@ class FromStepSafetyTests(unittest.TestCase):
         self.assertTrue(has_explicit_from_step_alternative(
             {"values": [[1]], "from_step": 1}, schema))
 
+    def test_manifest_alternatives_compile_to_required_source_group(self):
+        normalized = normalize_from_step_contract(TARGET_SCHEMA)
+        self.assertIn(
+            ["event_id", "paths", "ids", "entries", "from_step"],
+            normalized["requires_one_of"],
+        )
+
+    def test_broader_manifest_source_group_remains_authoritative(self):
+        schema = {
+            "properties": {
+                "values": {"type": "array"},
+                "entries": {"type": "array"},
+                "title": {"type": "string"},
+            },
+            "requires_one_of": [
+                ["values", "entries", "from_step", "title"],
+            ],
+            "from_step_alternatives": ["values", "entries"],
+        }
+        self.assertEqual(
+            normalize_from_step_contract(schema)["requires_one_of"],
+            schema["requires_one_of"],
+        )
+
+    def test_loaded_delete_contract_rejects_missing_target_and_pipe(self):
+        from loader import load_catalog
+
+        executor = next(
+            item for item in load_catalog(verify=True, include_synth=False)
+            if item.name == "delete_events")
+        schema = executor.args_schema
+        alternatives = set(from_step_alternatives(schema))
+        self.assertEqual(
+            alternatives,
+            {"event_id", "event_ids", "entries", "time_window"},
+        )
+        self.assertIn("from_step", schema["properties"])
+        self.assertIsNotNone(Validator._check_args({}, schema))
+        self.assertIsNone(Validator._check_args({"from_step": 1}, schema))
+
     def test_boolean_alternative_must_be_selected(self):
         schema = {
             "properties": {
@@ -187,6 +229,67 @@ class FromStepSafetyTests(unittest.TestCase):
                 "delete_events", explicit, history, schema,
             ),
             explicit,
+        )
+
+    def test_unresolved_inverse_placeholder_is_replaced_by_undo_receipt(self):
+        history = [StepRun(
+            step_idx=1,
+            tool="create_events",
+            args={},
+            result={
+                "ok": True,
+                "_undo": {
+                    "reverse_pattern": "delete_events_by_id",
+                    "ids": ["evt-created"],
+                    "scope": {
+                        "calendar_id": "primary", "client": "local",
+                    },
+                },
+            },
+            ok=True,
+            latency_ms=0,
+        )]
+        schema = {
+            "properties": {
+                "event_ids": {"type": "array"},
+                "calendar_id": {"type": "string"},
+                "client": {"type": "string"},
+            },
+            "from_step_alternatives": ["event_ids"],
+        }
+
+        self.assertEqual(
+            _resolve_implicit_reverse_target(
+                "delete_events",
+                {
+                    "event_ids": ["${step1.results.*.id}"],
+                    "client": "local",
+                },
+                history,
+                schema,
+            ),
+            {
+                "event_ids": ["evt-created"],
+                "calendar_id": "primary",
+                "client": "local",
+            },
+        )
+
+    def test_unresolved_inverse_placeholder_survives_without_receipt(self):
+        history = [StepRun(
+            step_idx=1, tool="create_events", args={},
+            result={"ok": True}, ok=True, latency_ms=0,
+        )]
+        schema = {
+            "properties": {"event_ids": {"type": "array"}},
+            "from_step_alternatives": ["event_ids"],
+        }
+        args = {"event_ids": ["${step1.results.*.id}"]}
+
+        self.assertEqual(
+            _resolve_implicit_reverse_target(
+                "delete_events", args, history, schema),
+            args,
         )
 
     def test_undo_contract_cannot_target_a_different_executor(self):

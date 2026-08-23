@@ -930,6 +930,7 @@ def drive_share(args):
             params={
                 "fileId": args.file_id,
                 "sendNotificationEmail": args.notify,
+                "fields": "id",
             },
             body=permission,
         )
@@ -955,6 +956,35 @@ def drive_share(args):
         "fileId": args.file_id,
         "role": permission["role"],
         "type": permission["type"],
+    }, indent=2, ensure_ascii=False))
+
+
+def drive_unshare(args):
+    """Delete one exact Drive permission from one exact file."""
+    if _gws_binary():
+        _run_gws(
+            ["drive", "permissions", "delete"],
+            params={
+                "fileId": args.file_id,
+                "permissionId": args.permission_id,
+            },
+        )
+        print(json.dumps({
+            "status": "revoked",
+            "fileId": args.file_id,
+            "permissionId": args.permission_id,
+        }, indent=2, ensure_ascii=False))
+        return
+
+    service = build_service("drive", "v3")
+    service.permissions().delete(
+        fileId=args.file_id,
+        permissionId=args.permission_id,
+    ).execute()
+    print(json.dumps({
+        "status": "revoked",
+        "fileId": args.file_id,
+        "permissionId": args.permission_id,
     }, indent=2, ensure_ascii=False))
 
 
@@ -1885,6 +1915,11 @@ def main():
     p.add_argument("--domain", default="", help="Domain (required for type=domain)")
     p.add_argument("--notify", action="store_true", help="Send notification email")
     p.set_defaults(func=drive_share)
+
+    p = drv_sub.add_parser("unshare")
+    p.add_argument("file_id")
+    p.add_argument("permission_id")
+    p.set_defaults(func=drive_unshare)
 
     p = drv_sub.add_parser("delete")
     p.add_argument("file_id")

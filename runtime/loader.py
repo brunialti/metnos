@@ -300,7 +300,8 @@ def _localized_builtin_contract(name: str, module_path: Path,
         manifest.get("description", {}), where=f"{name}.description",
         current_lang=current_lang,
     )
-    args_schema = dict(manifest.get("args") or {})
+    from from_step_projection import normalize_from_step_contract
+    args_schema = normalize_from_step_contract(manifest.get("args") or {})
     localized_props = {}
     for arg_name, original in (args_schema.get("properties") or {}).items():
         spec = dict(original)
@@ -1438,6 +1439,11 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             args_schema = dict(args_schema)
             if props:
                 args_schema["properties"] = new_props
+            # ``from_step_alternatives`` is a signed source contract, not a
+            # prompt hint.  Compile it once so planner, Validator and invoke
+            # all reject an empty consumer consistently.
+            from from_step_projection import normalize_from_step_contract
+            args_schema = normalize_from_step_contract(args_schema)
             # §7.3 universale (25/5/2026): se requires_one_of menziona
             # `from_step` ma la property non e' in args.properties, il
             # tool_use protocol non espone from_step al LLM (anche se il

@@ -205,6 +205,59 @@ class TestFinalMessageInvariant(unittest.TestCase):
         self.assertEqual(log.final_message, "ciao",
                          "non sovrascrivere final_message non vuoto")
 
+    def test_mutation_receipt_appends_missing_human_target_identity(self):
+        from agent_runtime import TurnLog, StepLog
+        log = TurnLog(
+            ts_start=0.0, turn_id="t_mutation_receipt",
+            user_query="create and remove one event",
+            final_kind="answer",
+            final_message="Evento creato e successivamente rimosso.",
+        )
+        created = StepLog(
+            step_num=1, chosen_tool="create_events", raw_args={})
+        created.result = {
+            "ok": True, "n_created": 1,
+            "results": [{
+                "ok": True, "id": "opaque-event-id",
+                "summary": "Quarterly review",
+            }],
+        }
+        deleted = StepLog(
+            step_num=2, chosen_tool="delete_events", raw_args={})
+        deleted.result = {
+            "ok": True, "n_deleted": 1,
+            "results": [{
+                "ok": True, "id": "opaque-event-id", "status": "deleted",
+            }],
+        }
+        log.steps.extend((created, deleted))
+        log.ts_end = 0.1
+
+        log.write()
+
+        self.assertIn("Quarterly review", log.final_message)
+        self.assertNotIn("opaque-event-id", log.final_message)
+
+    def test_mutation_receipt_does_not_duplicate_visible_identity(self):
+        from agent_runtime import TurnLog, StepLog
+        log = TurnLog(
+            ts_start=0.0, turn_id="t_mutation_receipt_existing",
+            user_query="create a file", final_kind="answer",
+            final_message="Creato /tmp/report.txt.",
+        )
+        step = StepLog(
+            step_num=1, chosen_tool="write_files", raw_args={})
+        step.result = {
+            "ok": True, "n_written": 1,
+            "results": [{"ok": True, "path": "/tmp/report.txt"}],
+        }
+        log.steps.append(step)
+        log.ts_end = 0.1
+
+        log.write()
+
+        self.assertEqual(log.final_message, "Creato /tmp/report.txt.")
+
     def test_applicable_authoritative_fragments_replace_llm_prose(self):
         from agent_runtime import TurnLog, StepLog
         log = TurnLog(
