@@ -118,6 +118,42 @@ def from_step_alternatives(consumer_schema: dict | None) -> tuple[str, ...]:
     return ("entries",) if "entries" in properties else ()
 
 
+def normalize_from_step_contract(consumer_schema: dict | None) -> dict:
+    """Compile ``from_step_alternatives`` into one enforceable input group.
+
+    The manifest field is both a projection declaration and, when no broader
+    ``requires_one_of`` group already covers the pipe, the complete list of
+    valid input sources.  Compiling it at catalog load keeps planner schemas,
+    Engine validation and invocation validation on the same contract.  A
+    manifest that already declares a broader group (for example a sink that
+    may also accept a literal title or path) remains authoritative.
+    """
+
+    if not isinstance(consumer_schema, dict):
+        return {}
+    schema = dict(consumer_schema)
+    declared = schema.get("from_step_alternatives")
+    if not isinstance(declared, list):
+        return schema
+    alternatives = from_step_alternatives(schema)
+    if not alternatives:
+        return schema
+
+    groups = [
+        list(group) for group in (schema.get("requires_one_of") or [])
+        if isinstance(group, list) and group
+    ]
+    covered = any(
+        "from_step" in group
+        and any(name in group for name in alternatives)
+        for group in groups
+    )
+    if not covered:
+        groups.append([*alternatives, "from_step"])
+        schema["requires_one_of"] = groups
+    return schema
+
+
 def has_explicit_from_step_alternative(
         args: dict, consumer_schema: dict | None) -> bool:
     """True quando il manifest dichiara una sorgente esplicita non vuota."""

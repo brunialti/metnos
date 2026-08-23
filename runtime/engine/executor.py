@@ -176,6 +176,35 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
     return out
 
 
+def _read_content(result: dict, *, max_chars: int = _TABLE_MAX_CHARS) -> str:
+    """Render text-reader output without replacing content with metadata."""
+    scalar = result.get("content")
+    if isinstance(scalar, str):
+        return scalar if len(scalar) <= max_chars else scalar[:max_chars - 1] + "…"
+    entries = result.get("entries")
+    if not isinstance(entries, list):
+        return ""
+    blocks: list[str] = []
+    used = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        content = next((entry.get(key) for key in ("content", "body_text", "text")
+                        if isinstance(entry.get(key), str)), None)
+        if content is None:
+            continue
+        source = entry.get("path") or entry.get("url") or entry.get("name")
+        block = f"### {source}\n{content}" if source else content
+        remaining = max_chars - used
+        if remaining <= 0:
+            break
+        if len(block) > remaining:
+            block = block[:max(0, remaining - 1)] + "…"
+        blocks.append(block)
+        used += len(block) + 2
+    return "\n\n".join(blocks)
+
+
 def _contract_entries_table(entries: list, contract: dict) -> str:
     """Render a manifest-declared list projection with bounded dimensions."""
     columns = contract.get("columns") or []
@@ -569,9 +598,70 @@ def _step_list_payload(step_result: dict):
 from from_step_projection import (  # noqa: E402
     CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
     consumer_match_arg as _consumer_match_arg,
+    from_step_alternatives as _from_step_alternatives,
     has_explicit_from_step_alternative as _has_explicit_from_step_alternative,
     project_from_entries as _project_from_entries,
 )
+
+
+def _resolve_implicit_reverse_target(
+    tool: str,
+    args: dict,
+    history: list[StepRun],
+    consumer_schema=None,
+) -> dict:
+    """Bind a target only from a preceding executor's sealed undo contract.
+
+    A planner may explicitly schedule an inverse action but omit its dataflow
+    reference.  The runtime may repair that omission only when a committed
+    prior result advertises the exact inverse executor and identifiers through
+    the standard ``_undo`` envelope.  Explicit targets always win.
+    """
+
+    if not history or "from_step" in args:
+        return args
+
+    # A literal unresolved placeholder is not an explicit target. It is a
+    # failed planner projection, and may be replaced only by a matching sealed
+    # `_undo` receipt below. Keep every other argument unchanged. If no receipt
+    # matches, return the original args so the standard unresolved-placeholder
+    # guard can report/drop it according to the manifest contract.
+    unresolved_alternatives = {
+        name for name in _from_step_alternatives(consumer_schema)
+        if name in args and _detect_unresolved_placeholders(args[name])
+    }
+    concrete_args = {
+        key: value for key, value in args.items()
+        if key not in unresolved_alternatives
+    }
+    if _has_explicit_from_step_alternative(concrete_args, consumer_schema):
+        return args
+    from reverse_patterns_patch import build_undo_calls
+
+    properties = (
+        consumer_schema.get("properties", {})
+        if isinstance(consumer_schema, dict) else {}
+    )
+    if not properties:
+        return args
+    for previous in reversed(history):
+        if not previous.ok:
+            continue
+        result = previous.result if isinstance(previous.result, dict) else {}
+        undo = result.get("_undo")
+        pattern = undo.get("reverse_pattern") if isinstance(undo, dict) else None
+        if not isinstance(pattern, str) or not pattern:
+            continue
+        calls, error = build_undo_calls(pattern, result)
+        matching = [call for call in calls if call.get("executor") == tool]
+        if error or not matching:
+            continue
+        if len(matching) != 1 or not isinstance(matching[0].get("args"), dict):
+            return args
+        injected = matching[0]["args"]
+        injected = {key: value for key, value in injected.items() if key in properties}
+        return {**injected, **concrete_args} if injected else args
+    return args
 
 
 def _seed_entries(seed_steps) -> list:
@@ -1205,6 +1295,8 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                     presentation=result.get("_presentation_contract"),
                 ) + _note
             return _sub_one(result, "@count") + _note  # 0 entries → conteggio onesto
+        if path == "@content":
+            return _read_content(result)
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
         v = _resolve_stepref_with_fallback(result, path)
         # Se path richiesto è "summary" e None, auto-render entries list (§7.9)
@@ -2229,6 +2321,12 @@ class Executor:
                         _step_args = {k: v for k, v in _step_args.items()
                                       if k != _tgt}
                         _step_args["from_step"] = 1
+            _step_args = _resolve_implicit_reverse_target(
+                step.tool,
+                _step_args,
+                result.steps,
+                consumer_schema=self._schema_map.get(step.tool),
+            )
             # Resolve in ordine: from_step → stepref → fillers → runtime
             args = _resolve_from_step(
                 _step_args, result.steps,
@@ -2277,13 +2375,28 @@ class Executor:
             _has_explicit_multilist = bool(args.get("entries_lists"))
             if (step.tool in _ENTRIES_CONSUMERS and result.steps
                     and not _has_explicit_multilist
-                    and ("entries" not in args
+                    and (not args.get("entries")
                          or _detect_unresolved_placeholders(args.get("entries")))):
                 for _prev in reversed(result.steps):
                     _pr = _prev.result if isinstance(_prev.result, dict) else {}
                     _pe = _step_list_payload(_pr)
                     if _pe:
                         args["entries"] = _pe
+                        break
+                    # Scalar readers expose their value at top level instead
+                    # of under ``entries``.  A proposer-emitted empty list is
+                    # not an intentional source when such a value exists: make
+                    # it a one-record payload so semantic helpers cannot turn
+                    # a successful read into a false zero-result response.
+                    _content = _pr.get("content")
+                    if isinstance(_content, str) and _content:
+                        _entry = {"content": _content}
+                        _metadata = _pr.get("metadata")
+                        if isinstance(_metadata, dict):
+                            for _key in ("path", "url", "title", "name"):
+                                if _metadata.get(_key) is not None:
+                                    _entry[_key] = _metadata[_key]
+                        args["entries"] = [_entry]
                         break
             # write/move trasformativi con un *_template/_field ma SENZA alcuna
             # sorgente-lista (entries/files/paths) → eredita entries dall'ultimo

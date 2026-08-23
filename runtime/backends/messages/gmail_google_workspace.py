@@ -31,6 +31,9 @@ from backends._google_auth_common import (  # noqa: E402
 )
 from backends._google_api_runner import run_with_retry  # noqa: E402
 from messages import get as _msg  # noqa: E402
+from state_receipts import (  # noqa: E402
+    inverse_membership_delta, membership_delta,
+)
 
 SKILL_NAME = "google-workspace"
 
@@ -426,6 +429,15 @@ def labels(args: dict) -> dict:
 
     results, failed = [], []
     for target_id in ids:
+        before_data, before_err = _run_gmail(
+            ["gmail", "get", target_id], executor="set_messages",
+            args_base=dict(args))
+        if before_err is not None:
+            if before_err.get("decision") == "needs_inputs":
+                return before_err
+            failed.append({"id": target_id, **before_err})
+            continue
+        labels_before = (before_data or {}).get("labels") or []
         argv = ["gmail", "modify", target_id]
         if add:
             argv.extend(["--add-labels", ",".join(add)])
@@ -439,8 +451,11 @@ def labels(args: dict) -> dict:
             failed.append({"id": target_id, **err})
             continue
         d = data or {}
+        delta = membership_delta(labels_before, d.get("labels") or [])
         results.append({"ok": True, "id": target_id,
-                        "labels_now": d.get("labels", [])})
+                        "labels_before": delta["members_before"],
+                        "labels_now": delta["members_after"],
+                        "membership_receipt": delta})
 
     out = {
         "ok": len(failed) == 0,
@@ -586,4 +601,47 @@ def modify(args: dict) -> dict:
             out["ok"] = False
             out["error_class"] = failed[0].get("error_class") or "server_error"
             out["error"] = failed[0].get("error") or _msg("ERR_OP_FAILED", reason="modify failed")
+    if results:
+        out["_undo"] = {
+            "reverse_pattern": "module.reverse",
+            "scope": {"client": "google_workspace"},
+        }
     return out
+
+
+def reverse_labels(results: dict) -> dict:
+    """Reverse only the label deltas proved by the forward receipts."""
+    rows = results.get("results") if isinstance(results, dict) else None
+    if not isinstance(rows, list):
+        return {"ok": False, "ok_count": 0, "fail_count": 1,
+                "results": [], "failed": [{"error": "invalid undo receipt"}]}
+    restored, failed = [], []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+            failed.append({"index": index, "error": "invalid undo receipt"})
+            continue
+        try:
+            add, remove = inverse_membership_delta(
+                row.get("membership_receipt"))
+        except ValueError as exc:
+            failed.append({"index": index, "id": row.get("id"),
+                           "error": str(exc)})
+            continue
+        if not add and not remove:
+            # The forward call succeeded but changed no label state.
+            continue
+        argv = ["gmail", "modify", row["id"]]
+        if add:
+            argv.extend(["--add-labels", ",".join(add)])
+        if remove:
+            argv.extend(["--remove-labels", ",".join(remove)])
+        data, err = _run_gmail(
+            argv, executor="set_messages", args_base={"message_id": row["id"]})
+        if err is not None:
+            failed.append({"index": index, "id": row["id"], **err})
+            continue
+        restored.append({"id": row["id"],
+                         "labels_now": (data or {}).get("labels", [])})
+    return {"ok": not failed, "ok_count": len(restored),
+            "fail_count": len(failed), "results": restored,
+            "failed": failed}

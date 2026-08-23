@@ -20,6 +20,7 @@ Errori per-item in `failed[]`, mai silenzio (the design guide §2.8).
 from __future__ import annotations
 
 import datetime
+import imaplib
 import mimetypes
 import os
 import re
@@ -738,6 +739,19 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
                       open_imap, parse_envelope):
     try:
         conn = open_imap(account)
+    except imaplib.IMAP4.error as e:
+        # Authentication rejection is not a transient network outage.  Keep
+        # the two contracts distinct so the user gets an actionable account
+        # repair/reconnect instruction instead of an ineffective blind retry.
+        failed.append({
+            "account": account,
+            "error_code": "ERR_MAIL_AUTH_REJECTED",
+            "error": _msg(
+                "ERR_ACCOUNT", account=account,
+                reason=_msg("MSG_ORCH_CREDS_NEEDED")),
+            "detail": f"IMAP authentication rejected: {e}",
+        })
+        return 0
     except Exception as e:
         failed.append({"account": account, "error_code": "ERR_EXT_SVC_UNAVAILABLE",
                        "error": _msg("ERR_EXT_SVC_UNAVAILABLE"), "detail": f"IMAP connect failed: {e}"})

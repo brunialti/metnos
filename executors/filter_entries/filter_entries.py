@@ -201,8 +201,38 @@ def invoke(args):
     where_field = args.get("where_field")
     where_in = _ensure_list(args.get("where_in"))
     where_not_in = _ensure_list(args.get("where_not_in"))
-    if not where_in and args.get("where_value") is not None:
-        where_in = [args.get("where_value")]
+    where_present = args.get("where_present")
+    raw_where_value = args.get("where_value")
+    # Backward-compatible interpretation of a common planner spelling.  The
+    # manifest now exposes the typed ``where_present`` operator, but plans
+    # produced by older/cached proposers may still use these two sentinels.
+    if where_present is None and isinstance(raw_where_value, str):
+        _presence_alias = raw_where_value.strip().casefold().replace("-", "_")
+        if _presence_alias in {"not_empty", "non_empty", "present"}:
+            where_present = True
+        elif _presence_alias in {"empty", "missing", "absent"}:
+            where_present = False
+    if not where_in and raw_where_value is not None and where_present is None:
+        where_in = [raw_where_value]
+
+    # Producer schemas often expose collections with plural names while a
+    # natural-language plan names the singular field (email -> emails).  If
+    # the requested key does not exist and exactly one direct singular/plural
+    # counterpart does, resolve it deterministically.  No fuzzy matching.
+    if where_field and entries and not any(
+            isinstance(e, dict) and where_field in e for e in entries):
+        _field_candidates = {
+            candidate
+            for e in entries if isinstance(e, dict)
+            for candidate in e
+            if not str(candidate).startswith("_") and (
+                candidate == f"{where_field}s"
+                or (str(where_field).endswith("s")
+                    and candidate == str(where_field)[:-1])
+            )
+        }
+        if len(_field_candidates) == 1:
+            where_field = _field_candidates.pop()
     # Operatori di stringa su where_field arbitrario (15/5/2026):
     # bug live "trova appuntamenti HLT" → LLM passava where_in=["HLT*"]
     # pensando wildcard; where_in e' match esatto. Aggiunto starts_with,
@@ -225,7 +255,8 @@ def invoke(args):
             }
     _has_where_str_op = any(x is not None for x in (
         where_starts_with, where_contains, where_glob, where_regex_str))
-    if (where_in or where_not_in or _has_where_str_op) and not where_field:
+    if (where_in or where_not_in or _has_where_str_op
+            or where_present is not None) and not where_field:
         return {
             "ok": False,
             "error_class": "invalid_input",
@@ -274,6 +305,12 @@ def invoke(args):
             return False
         if where_field is not None:
             v = e.get(where_field)
+            if where_present is not None:
+                is_present = v is not None and v != ""
+                if isinstance(v, (list, tuple, set, dict)):
+                    is_present = bool(v)
+                if bool(where_present) != is_present:
+                    return False
             # where_in / where_not_in: match esatto, MA tollera wildcard glob
             # quando un valore contiene '*' o '?' (15/5/2026 §7.3). Bug live:
             # LLM passa where_in=["HLT*"] pensando wildcard; il match esatto
@@ -380,6 +417,7 @@ def invoke(args):
                 "mtime_after": args.get("mtime_after"),
                 "mtime_before": args.get("mtime_before"),
                 "where_field": where_field,
+                "where_present": where_present,
                 "where_in": where_in or None,
                 "where_not_in": where_not_in or None,
                 "where_starts_with": where_starts_with,

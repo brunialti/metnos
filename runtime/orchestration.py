@@ -917,6 +917,8 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
     res = _esegui_ramo(
         executor, args, actor=actor, channel=channel,
         owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        turn_id=str(on_complete.get("turn_id") or ""),
+        source_request_id=str(on_complete.get("source_request_id") or ""),
         contesto="expand_cap")
     if res.get("orchestration_error"):
         return str(res.get("error") or "")
@@ -1049,6 +1051,7 @@ def _consegna_esito_tardivo(futuro, *, channel: str | None,
 def _esegui_ramo(executor: str, args: dict, *, actor: str,
                  channel: str | None, owner_user_id: str = "",
                  target_device: str | None = None,
+                 turn_id: str = "", source_request_id: str = "",
                  contesto: str = "gate") -> dict:
     """Esegue UN executor per conto di un dialogo. Ritorna sempre un result.
 
@@ -1085,15 +1088,18 @@ def _esegui_ramo(executor: str, args: dict, *, actor: str,
         import concurrent.futures as _cf
 
         def _invoca():
-            return agent_runtime.invoke_executor(
-                ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+            # Use the canonical by-name dispatcher: catalog entries for
+            # builtins (delete_tasks, set_tasks, ...) are virtual contracts,
+            # not subprocess programs.  Calling invoke_executor directly on
+            # one of them yields an empty/non-JSON process instead of invoking
+            # its in-process handler.
+            return agent_runtime.invoke_tool_by_name(
+                executor, args, catalog=list(cat.executors.values()),
                 actor=actor, channel=channel,
-                # Un'azione approvata torna dove appartiene: senza
-                # destinazione ogni ripresa girava sul server, anche quando la
-                # domanda era stata posta su un altro computer (turno
-                # a97056e1, 17/8/2026).
                 target_device=target_device,
-                owner_user_id=owner_user_id)
+                owner_user_id=owner_user_id,
+                turn_id=turn_id,
+                source_request_id=source_request_id)
 
         # Il ciclo che sta girando adesso, se c'e': servira' al filo del
         # lavoro per consegnare l'esito senza toccare da fuori cose che non
@@ -1187,6 +1193,8 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
         actor=actor, channel=channel,
         target_device=str(on_complete.get("target_device") or "") or None,
         owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        turn_id=str(on_complete.get("turn_id") or ""),
+        source_request_id=str(on_complete.get("source_request_id") or ""),
         contesto="gate_dispatch")
     # Un guasto dell'orchestrazione si racconta com'e', senza la crocetta che
     # segnala «l'operazione richiesta e' fallita»: non e' nemmeno partita.
@@ -1215,6 +1223,8 @@ def _process_managed_dependency_resume(
         channel=channel,
         owner_user_id=owner,
         target_device=target,
+        turn_id=str(on_complete.get("turn_id") or ""),
+        source_request_id=str(on_complete.get("source_request_id") or ""),
         contesto="managed dependency start",
     )
     if not isinstance(started, dict) or not started.get("ok") or started.get("pending"):
@@ -1231,6 +1241,8 @@ def _process_managed_dependency_resume(
         channel=channel,
         owner_user_id=owner,
         target_device=target,
+        turn_id=str(on_complete.get("turn_id") or ""),
+        source_request_id=str(on_complete.get("source_request_id") or ""),
         contesto="managed dependency retry",
     )
     if isinstance(result, dict) and isinstance(result.get("health"), dict):
@@ -1241,7 +1253,9 @@ def _process_managed_dependency_resume(
 
 def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
                                channel: str | None,
-                               owner_user_id: str):
+                               owner_user_id: str,
+                               turn_id: str = "",
+                               source_request_id: str = ""):
     """Esegue un branch dichiarativo e conserva il result strutturato."""
     if not isinstance(branch, dict):
         return {"ok": False, "orchestration_error": True,
@@ -1250,6 +1264,7 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
         branch.get("tool") or branch.get("executor") or "",
         dict(branch.get("args") or {}),
         actor=actor, channel=channel, owner_user_id=owner_user_id,
+        turn_id=turn_id, source_request_id=source_request_id,
         contesto="executor gate branch")
 
 
@@ -1297,6 +1312,7 @@ def _carry_executor_tail_to_nested_gate(
         "tail_final_message": parent_callback.get("tail_final_message") or "",
         "original_query": parent_callback.get("original_query") or "",
         "conversation_id": parent_callback.get("conversation_id") or "",
+        "turn_id": parent_callback.get("turn_id") or "",
         "source_request_id": parent_callback.get("source_request_id") or "",
     }
     dialog_pending.save_pending(sender, dialog_id, state)
@@ -1321,12 +1337,16 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
     if decision != approve:
         rejected = _invoke_gate_branch_result(
             on_complete.get("gate_on_reject"), actor=actor, channel=channel,
-            owner_user_id=str(on_complete.get("owner_user_id") or ""))
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
+            turn_id=str(on_complete.get("turn_id") or ""),
+            source_request_id=str(on_complete.get("source_request_id") or ""))
         return _shape_result_for_chat(rejected)
 
     branch_result = _invoke_gate_branch_result(
         on_complete.get("gate_on_approve"), actor=actor, channel=channel,
-        owner_user_id=str(on_complete.get("owner_user_id") or ""))
+        owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        turn_id=str(on_complete.get("turn_id") or ""),
+        source_request_id=str(on_complete.get("source_request_id") or ""))
     if not isinstance(branch_result, dict) or not branch_result.get("ok"):
         return _shape_result_for_chat(branch_result)
 
@@ -1568,6 +1588,8 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         executor, args_base, actor=actor, channel=channel,
         target_device=str(on_complete.get("target_device") or "") or None,
         owner_user_id=str(on_complete.get("owner_user_id") or ""),
+        turn_id=str(on_complete.get("turn_id") or ""),
+        source_request_id=str(on_complete.get("source_request_id") or ""),
         contesto="resume_executor_with_values")
     if res.get("orchestration_error"):
         return str(res.get("error") or "")
@@ -1621,6 +1643,7 @@ def _process_resume_executor_values_tail(on_complete: dict, values: dict, *,
         "tail_final_message": on_complete.get("tail_final_message") or "",
         "original_query": on_complete.get("original_query") or "",
         "conversation_id": on_complete.get("conversation_id") or "",
+        "turn_id": on_complete.get("turn_id") or "",
         "source_request_id": on_complete.get("source_request_id") or "",
     }
     return _process_resume_executor_gate_tail(
@@ -1946,8 +1969,23 @@ def _process_resume_planner_with_dialog_values(
     # METNOS_ENGINE_RESUME, fallback legacy su engine-None).
     try:
         import agent_runtime
+        # `get_inputs` is intentionally removed from executable seed steps so
+        # it cannot shift `${stepN}` references.  Preserve its authoritative
+        # values in the continuation request instead: otherwise the proposer
+        # sees the original "ask me for the missing value" instruction and
+        # opens the same dialog forever.  JSON is bounded by the dialog schema
+        # and keeps names/values exact without inventing natural-language
+        # paraphrases.
+        import json as _json
+        values_note = _json.dumps(
+            dict(values or {}), ensure_ascii=False, sort_keys=True)
+        resumed_query = (
+            original_query
+            + "\n\nDIALOG VALUES ALREADY COLLECTED; do not ask again: "
+            + values_note
+        )
         new_log = agent_runtime.run_turn(
-            original_query,
+            resumed_query,
             actor=actor or "host",
             channel=channel or "",
             conversation_id=conversation_id,

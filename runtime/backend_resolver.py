@@ -43,7 +43,8 @@ OBJECT_BACKENDS: dict[str, dict] = {
             "local": ("calendario locale", "calendar locale", "local calendar",
                       "in locale", "sul locale", "in local", "localmente"),
             "google_workspace": ("google calendar", "calendario google",
-                                  "su google", "on google", "gmail calendar"),
+                                  "google primary", "su google", "on google",
+                                  "gmail calendar"),
         },
     },
     "files": {
@@ -102,6 +103,17 @@ def _explicit_provider(spec: dict, query: str) -> str | None:
         if any(t in q for t in toks):
             return prov
     return None
+
+
+def explicit_provider(object_name: str, query: str = "") -> str | None:
+    """Return only a provider explicitly named in *query*.
+
+    Unlike :func:`resolve`, this never applies a default.  Clause-scoped
+    guards use it to distinguish an explicit user choice from a provider
+    guessed by the planner.
+    """
+    spec = OBJECT_BACKENDS.get(object_name)
+    return _explicit_provider(spec, query) if spec else None
 
 
 def resolve(object_name: str, query: str = "") -> str | None:

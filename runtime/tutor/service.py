@@ -38,6 +38,22 @@ def _with_pending_note(answer: str, request: TutorRequest) -> str:
     return f"{answer.rstrip()}\n\n{_msg('MSG_TUTOR_PENDING_PRESERVED')}"
 
 
+def _with_howto_boundary(answer: str, lang: str) -> str:
+    """Make Tutor's explanation/action separation explicit for how-to help."""
+    text = str(answer or "").rstrip()
+    openings = {
+        "it": "Chiedi a Metnos con una richiesta come quella di questo esempio:",
+        "en": "Ask Metnos with a request like this example:",
+    }
+    opening = openings.get((lang or "").lower().split("-", 1)[0], "")
+    if not opening or not text.startswith(opening):
+        return text
+    boundary = _msg("MSG_TUTOR_HANDOFF_DESCRIPTION").strip()
+    if not boundary or boundary in text:
+        return text
+    return f"{text}\n\n{boundary}"
+
+
 def _executor_purpose(executor, lang: str) -> str:
     """Read one localized, bounded purpose from the admitted manifest."""
 
@@ -1082,6 +1098,7 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
     repair_pass = 0
     repair_missing: tuple[str, ...] = ()
     repair_remaining: tuple[str, ...] = ()
+    composed_answer = False
     try:
         if primary.card and primary.lang in primary.card.procedure:
             # High-criticality procedures remain literal even though their
@@ -1180,6 +1197,7 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             if composition.status != "answer" or not composition.text:
                 raise RuntimeError("Tutor local composition unavailable")
             rendered = composition.text
+            composed_answer = True
             try:
                 gaps = _find_gaps(coverage, rendered, lang)
                 repair_remaining = tuple(gaps)
@@ -1248,7 +1266,10 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             gap_reason="composer_unavailable",
             evidence=_evidence(retrieval_trace, catalog_version, primary),
         )
-    text = _with_pending_note(rendered, request)
+    text = _with_pending_note(
+        _with_howto_boundary(rendered, lang) if composed_answer else rendered,
+        request,
+    )
     remaining(deadline_at)
     source_ids = tuple(_source_id(hit) for hit in effective_hits)
     card_ids = tuple(

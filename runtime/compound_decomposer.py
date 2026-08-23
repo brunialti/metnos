@@ -113,7 +113,22 @@ def split_query_chunks(query: str) -> list[str]:
     connector = _connector_pattern(_dl.current_lang())
     for sentence in _SENTENCE_BOUNDARY.split(query.strip()):
         parts.extend(connector.split(sentence))
-    return [p.strip() for p in parts if p.strip()]
+    raw = [p.strip() for p in parts if p.strip()]
+    # A comma inside a scalar value is not a clause boundary (notably
+    # ``January 15, 2030``).  Reattach verb-less fragments to the preceding
+    # clause; true sequential clauses retain their own canonical action.
+    try:
+        from prefilter import tokenize, detect_canonical_verbs_all
+        merged: list[str] = []
+        for part in raw:
+            has_action = bool(detect_canonical_verbs_all(tokenize(part)))
+            if merged and not has_action:
+                merged[-1] = f"{merged[-1]}, {part}"
+            else:
+                merged.append(part)
+        return merged
+    except Exception:
+        return raw
 
 
 # Nomi-campo: articoli/preposizioni-composto da scartare (IT+EN), lessico curato.
@@ -373,7 +388,18 @@ def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
     verbs = detect_canonical_verbs_all(tokens)
     if not verbs:
         return None
-    verb = verbs[0]
+    # An explicit transform verb owns its clause even when a field name also
+    # happens to be a verb hint in another domain (``email`` commonly boosts
+    # send). Sequential actions are split into separate chunks above.
+    verb = next((item for item in verbs if item in TRANSFORM_VERBS), verbs[0])
+
+    # Transform tools consume the generic entry carrier.  Incidental domain
+    # words in the predicate (for example ``email`` in "filter contacts that
+    # have an email address") describe a field, not a second messages action.
+    # Returning the carrier here also matches derive_tool_name(), whose
+    # canonical fallback for every transform is ``<verb>_entries``.
+    if verb in TRANSFORM_VERBS:
+        return (verb, "entries")
 
     # 2. Detect object canonico
     # Try _OBJECT_HINTS first (più ricco)

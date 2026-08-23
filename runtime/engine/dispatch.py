@@ -39,6 +39,84 @@ from vocab import SINGULAR_EXECUTOR_NAMES as _SINGULAR_EXECUTORS
 log = logging.getLogger(__name__)
 
 
+def _explicit_start_lre_framework(
+    query: str,
+    catalog: list,
+    *,
+    runtime_ctx: Optional[dict] = None,
+) -> Optional[Framework]:
+    """Build the fail-closed compatibility route for an explicit LRE call.
+
+    ``start_lre`` is a technical entry point, not a natural-language routing
+    hint.  It is therefore deterministic only when the request repeats one
+    registered profile and supplies at least one absolute source path.  Any
+    missing or ambiguous field falls through to the ordinary planner.
+    """
+
+    text = query if isinstance(query, str) else ""
+    if re.search(r"(?<![A-Za-z0-9_])start_lre(?![A-Za-z0-9_])", text) is None:
+        return None
+
+    start_executor = next(
+        (item for item in (catalog or [])
+         if getattr(item, "name", "") == "start_lre"),
+        None,
+    )
+    schema = getattr(start_executor, "args_schema", None) or {}
+    profile_values = (
+        ((schema.get("properties") or {}).get("profile") or {}).get("enum")
+        or []
+    )
+    matched_profiles = [
+        profile for profile in profile_values
+        if isinstance(profile, str)
+        and re.search(
+            rf"(?<![A-Za-z0-9_.-]){re.escape(profile)}"
+            rf"(?![A-Za-z0-9_.-])",
+            text,
+        )
+    ]
+    if len(matched_profiles) != 1:
+        return None
+
+    raw_paths = re.findall(
+        r"(?:/[^\s,;]+|[A-Za-z]:[\\/][^\s,;]+)",
+        text,
+    )
+    paths: list[str] = []
+    for raw_path in raw_paths:
+        path = raw_path.rstrip(".!?:)]}\"'")
+        is_windows_absolute = bool(re.fullmatch(
+            r"[A-Za-z]:[\\/].+", path,
+        ))
+        if path and (os.path.isabs(path) or is_windows_absolute) \
+                and path not in paths:
+            paths.append(path)
+    if not paths:
+        return None
+
+    args = {"profile": matched_profiles[0], "paths": paths}
+    rc = runtime_ctx or {}
+    from messages import get as _msg
+    prompt = _msg(
+        "MSG_APPROVAL_QUESTION",
+        action=(
+            f"start_lre(profile={matched_profiles[0]}, paths={len(paths)})"
+        ),
+    )
+    approval = StepSpec(tool="get_approval", args={
+        "prompt": prompt,
+        "on_approve": {"tool": "start_lre", "args": args},
+        "timeout_s": 3600,
+        "channel": rc.get("channel") or "",
+        "actor": rc.get("actor") or "",
+    })
+    return Framework(
+        steps=[approval, StepSpec(tool="final_answer", args={})],
+        final_message="",
+    )
+
+
 @dataclass
 class DispatchResult:
     """Risultato di run_turn. Sempre coerente con RunResult ma annotato
@@ -2064,7 +2142,30 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
         from vocab import COVERAGE_REQUIRED_VERBS, ACTIONS, DESTRUCTIVE_VERBS
     except Exception:
         return set()
-    lexical_qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
+    # Detect actions clause-by-clause before falling back to the historical
+    # whole-query bag.  A noun used as a predicate field can also be a verb
+    # hint in another domain (for example ``email`` -> send): treating every
+    # token as an action made ``find contacts and filter those with an email``
+    # look like a three-action request with a missing send step.
+    lexical_qverbs = set()
+    try:
+        from compound_decomposer import split_query_chunks, detect_chunk_action
+        for _chunk in split_query_chunks(query or ""):
+            _action = detect_chunk_action(_chunk)
+            if _action:
+                lexical_qverbs.add(_action[0])
+            else:
+                # Unknown objects (for example a conference topic) prevent
+                # structured detection, but the clause's explicit verb still
+                # belongs to the request.  Keep the fallback scoped to this
+                # clause so nouns in a successfully parsed transform cannot
+                # leak in as unrelated actions.
+                lexical_qverbs.update(
+                    detect_canonical_verbs_all(tokenize(_chunk)))
+    except Exception:
+        lexical_qverbs = set()
+    if not lexical_qverbs:
+        lexical_qverbs = set(detect_canonical_verbs_all(tokenize(query or "")))
     qverbs = set(lexical_qverbs)
     # Unisci i verbi della decomposizione LLM (intent.actions): il detector
     # lessicale non copre tutti i verbi NL ("salva"→write, "prendi"→get); la
@@ -2146,9 +2247,19 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
         from collections import Counter as _Counter
         _acts = [a for a in intent_actions
                  if isinstance(a, dict) and (a.get("verb") or "") in _WRITERS]
+        # Single-action extraction can store the writer only in the primary
+        # intent fields.  Include that canonical view when actions omits it;
+        # otherwise ``create file`` planned as write_files is rejected as a
+        # missing create even though write_files is the filesystem create sink.
+        primary_object = str(getattr(intent, "object", "") or "")
+        if (primary_verb in _WRITERS and primary_object
+                and not any((a.get("verb"), a.get("object"))
+                            == (primary_verb, primary_object) for a in _acts)):
+            _acts.append({"verb": primary_verb, "object": primary_object})
         need: "_Counter" = _Counter((a.get("object") or "") for a in _acts)
         have: "_Counter" = _Counter()
         populated_creates: "_Counter" = _Counter()
+        populated_writes: "_Counter" = _Counter()
         for s in framework.steps:
             nc = _ng.parse_name(s.tool or "") if (s.tool or "") != "final_answer" else None
             if nc and nc.verb in _WRITERS:
@@ -2176,6 +2287,14 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
                     )
                 if payload:
                     populated_creates[nc.obj] += 1
+                if nc.verb == "write":
+                    sa = getattr(s, "args", None) or {}
+                    if any(
+                        key in sa and sa.get(key) not in (None, "", [], {})
+                        for key in ("content", "text", "values", "entries",
+                                    "files", "from_step")
+                    ):
+                        populated_writes[nc.obj] += 1
 
         # Canonical alias across the two intent views.  The lexical detector
         # can call a phrase ``write`` (for example, put data in a sheet) while
@@ -2200,6 +2319,18 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
                     populated_creates[obj] >= count
                     for obj, count in _create_need.items()):
                 dropped.discard("write")
+
+        # Mirror case for filesystem sinks: the lexical request says create,
+        # while the object-aware primary intent and actual sink correctly use
+        # write_files.  A populated write creates the missing target and is one
+        # lifecycle action, not a missing second create step.
+        if ("create" in dropped
+                and "create" in lexical_qverbs
+                and "write" not in lexical_qverbs
+                and primary_verb == "write"
+                and primary_object
+                and populated_writes[primary_object] > 0):
+            dropped.discard("create")
 
         # Pairing lifecycle sullo STESSO object: N create popolati possono
         # soddisfare fino a N clausole write omonime, senza sommare create+write
@@ -3759,7 +3890,9 @@ def _scope_sink_provider_to_clause(framework: Framework, query: str,
     foglio-doppione su Drive). Se il create nomina gw esplicito («salva SU DRIVE»)
     → gw. Imposta `client` esplicito sul sink risolvendo dal TESTO delle
     clausole-sink; `resolve_backend_arg` poi lo RISPETTA (non scavalca). Solo
-    oggetti multi-provider, no-op se client gia' esplicito. Multi-clausola only."""
+    oggetti multi-provider. Un provider nominato esplicitamente dall'utente
+    prevale anche su un valore inventato dal planner; in assenza di marker un
+    valore gia' risolto dal runtime resta invariato. Multi-clausola only."""
     try:
         import backend_resolver as _br
         from compound_decomposer import split_query_chunks
@@ -3773,6 +3906,11 @@ def _scope_sink_provider_to_clause(framework: Framework, query: str,
             if ((_vb(_tok(ch)) or [None]) or [None])[0] in _SINK_VERBS)
         if not sink_text.strip():
             return framework
+        sink_counts: dict[str, int] = {}
+        for candidate in framework.steps:
+            parsed = _ng.parse_name(candidate.tool or "")
+            if parsed and parsed.verb in _SINK_VERBS:
+                sink_counts[parsed.obj] = sink_counts.get(parsed.obj, 0) + 1
         for s in framework.steps:
             nc = _ng.parse_name(s.tool or "")
             if not nc or nc.verb not in _SINK_VERBS:
@@ -3781,9 +3919,19 @@ def _scope_sink_provider_to_clause(framework: Framework, query: str,
             if not spec or len(spec.get("providers", [])) < 2:
                 continue
             arg = spec["arg"]
-            if isinstance(s.args.get(arg), str) and s.args.get(arg):
-                continue                       # gia' esplicito → non toccare
-            prov = _br.resolve(nc.obj, sink_text)   # CLAUSE-scoped (sink only)
+            current = s.args.get(arg)
+            explicit = _br.explicit_provider(nc.obj, sink_text)
+            # A leading provider adjunct ("In Google primary calendar,") can
+            # be split away from the verb chunk.  It is still unambiguous when
+            # the graph contains exactly one sink for that object; in that
+            # case the whole-query marker belongs to that sink and may safely
+            # override a planner default.
+            if explicit is None and sink_counts.get(nc.obj) == 1:
+                explicit = _br.explicit_provider(nc.obj, query)
+            if isinstance(current, str) and current and explicit is None:
+                continue  # gia' risolto e nessun override esplicito utente
+            prov = explicit or _br.resolve(
+                nc.obj, sink_text)              # CLAUSE-scoped (sink only)
             if prov:
                 s.args[arg] = prov
                 log.info("[sink_provider] %s client=%s (clause-scoped)",
@@ -6634,10 +6782,10 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
         paused_input = next((
             step for step in reversed(getattr(run, "steps", []) or [])
             if isinstance(getattr(step, "result", None), dict)
-            and step.result.get("decision") == "needs_inputs"
+            and step.result.get("decision") in {"needs_inputs", "input_required"}
         ), None)
         if paused_input is not None:
-            payload = paused_input.result.get("needs_inputs") or {}
+            payload = paused_input.result.get("needs_inputs") or paused_input.result
             callback = payload.get("on_complete") or {}
             paused_tool = str(getattr(paused_input, "tool", "") or "")
             # Un'azione approvata torna DOVE appartiene. Il passo sospeso e'
@@ -6688,13 +6836,72 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                     log.info("[input_resume] coda preservata per %s (%d step)",
                              paused_tool, len(tail_steps))
 
+            # A planner-authored get_inputs step has no executor-specific
+            # callback.  Persist the existing generic planner continuation so
+            # a completed form resumes the original request instead of ending
+            # with the misleading generic "values recorded" acknowledgement.
+            if (paused_tool == "get_inputs"
+                    and payload.get("decision") == "input_required"
+                    and payload.get("dialog_id")):
+                rc = runtime_ctx or {}
+                meta = payload.get("metadata") or {}
+                cap0 = next(iter(payload.get("expandable_caps") or []), {})
+                actor = meta.get("actor") or rc.get("actor") or "host"
+                channel = meta.get("channel") or rc.get("channel") or ""
+                sender = (cap0.get("sender_for_state")
+                          or (f"{channel}:{actor}" if channel else actor))
+                try:
+                    import dialog_pending as _dp
+                    did_input = str(payload.get("dialog_id"))
+                    owner = str(rc.get("owner_user_id") or "")
+                    state = _dp.load_pending(
+                        sender, did_input, owner_user_id=owner)
+                    if state:
+                        prior_steps = []
+                        for pos, item in enumerate(run.steps or [], start=1):
+                            prior_steps.append({
+                                "step": int(getattr(item, "step_idx", 0) or pos),
+                                "tool": str(getattr(item, "tool", "") or ""),
+                                "args": dict(getattr(item, "args", None) or {}),
+                                "observation": dict(
+                                    getattr(item, "result", None) or {}),
+                            })
+                        state["on_complete"] = {
+                            "type": "resume_planner_with_dialog_values",
+                            "owner_user_id": owner,
+                            "original_query": (
+                                rc.get("user_query_raw") or query),
+                            "prior_steps": prior_steps,
+                            "dialog_step_num": int(
+                                getattr(paused_input, "step_idx", 0)
+                                or len(prior_steps)),
+                            "conversation_id": rc.get("conversation_id") or "",
+                        }
+                        _dp.save_pending(sender, did_input, state)
+                        log.info("[input_resume] dialog %s → planner continuation",
+                                 did_input)
+                        # get_inputs also exposes gate_dialog_id so the outer
+                        # generic gate block can stop the pipeline.  Its
+                        # callback is now complete: do not overwrite it with
+                        # resume_engine_gate, which would discard the values.
+                        return
+                except Exception as ex:  # noqa: BLE001 — best effort
+                    log.warning("[input_resume] planner callback failed: %r", ex)
+
     did = getattr(run, "gate_dialog_id", "") if run else ""
     if not did:
         return
     rc = runtime_ctx or {}
-    actor = rc.get("actor") or "host"
-    channel = rc.get("channel") or ""
-    sender = f"{channel}:{actor}" if channel else actor
+    paused = next((s for s in reversed(getattr(run, "steps", []) or [])
+                   if getattr(s, "tool", "") and
+                   getattr(s, "step_idx", 0)), None)
+    paused_result = getattr(paused, "result", None) or {}
+    paused_meta = paused_result.get("metadata") or {}
+    paused_cap = next(iter(paused_result.get("expandable_caps") or []), {})
+    actor = paused_meta.get("actor") or rc.get("actor") or "host"
+    channel = paused_meta.get("channel") or rc.get("channel") or ""
+    sender = (paused_cap.get("sender_for_state")
+              or (f"{channel}:{actor}" if channel else actor))
     try:
         import dialog_pending as _dp
         st = _dp.load_pending(
@@ -6702,9 +6909,6 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
         if not st:
             return
         oc = st.get("on_complete") or {}
-        paused = next((s for s in reversed(getattr(run, "steps", []) or [])
-                       if getattr(s, "tool", "") and
-                       getattr(s, "step_idx", 0)), None)
         paused_tool = getattr(paused, "tool", "") if paused else ""
 
         # Un executor auto-riprendibile mette nel branch approvato se stesso
@@ -6716,6 +6920,32 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             (approve_branch.get("tool") or approve_branch.get("executor"))
             if isinstance(approve_branch, dict) else ""
         )
+        # A planner-authored get_approval owns an explicit declarative branch
+        # (for example delete_tasks).  Execute that exact branch once after
+        # approval instead of replanning the original query, which can select
+        # a read sibling and silently omit the approved mutation.  Runtime-
+        # inserted mass gates use final_answer here and still follow the
+        # ordinary resume_engine_gate path below.
+        if (paused_tool == "get_approval" and approve_tool
+                and approve_tool != "final_answer"
+                and oc.get("type") == "gate_dispatch"):
+            st["on_complete"] = {
+                "type": "resume_executor_gate_tail",
+                "owner_user_id": st.get("owner_user_id"),
+                "gate_approve_value": oc.get("approve_value", "approve"),
+                "gate_on_approve": approve_branch,
+                "gate_on_reject": oc.get("on_reject"),
+                "tail_steps": [],
+                "tail_final_message": framework.final_message if framework else "",
+                "original_query": rc.get("user_query_raw") or query,
+                "conversation_id": rc.get("conversation_id") or "",
+                "turn_id": rc.get("turn_id") or "",
+                "source_request_id": rc.get("source_request_id") or "",
+            }
+            _dp.save_pending(sender, did, st)
+            log.info("[gate_resume] dialog %s → declared branch (%s)",
+                     did, approve_tool)
+            return
         if (paused_tool and approve_tool == paused_tool
                 and oc.get("type") == "gate_dispatch" and framework is not None):
             paused_idx = int(getattr(paused, "step_idx", 0) or 0)
@@ -6749,6 +6979,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                     framework.final_message or "", idx_map),
                 "original_query": rc.get("user_query_raw") or query,
                 "conversation_id": rc.get("conversation_id") or "",
+                "turn_id": rc.get("turn_id") or "",
                 "source_request_id": rc.get("source_request_id") or "",
             }
             _dp.save_pending(sender, did, st)
@@ -6950,6 +7181,30 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             runtime_ctx=runtime_ctx,
             remediate_args_cb=remediate_args_cb,
             progress=progress,
+        )
+
+    # Ingresso tecnico LRE: il nome letterale non e' un indizio da affidare al
+    # proposer.  Il contratto chiuso (profilo registrato + path assoluto) rende
+    # la richiesta non ambigua; il gate dichiarativo conserva esattamente il
+    # ramo start_lre da eseguire una volta sola dopo l'approvazione.
+    _technical_lre = _explicit_start_lre_framework(
+        query, catalog, runtime_ctx=runtime_ctx,
+    )
+    if _technical_lre is not None:
+        durable, run = _execute_with_lre_boundary(_technical_lre)
+        if durable is not None:
+            return durable
+        _inject_gate_resume_if_paused(
+            run, query, runtime_ctx, framework=_technical_lre,
+        )
+        return DispatchResult(
+            final_text=run.final_text,
+            final_kind=run.final_kind,
+            match_source="technical_lre",
+            framework_hash=run.framework_hash,
+            elapsed_ms=int((time.time() - t_start) * 1000),
+            run=run,
+            framework=_technical_lre,
         )
 
     # ── Undo SAFETY-CRITICAL (§4.5, §7.9) ────────────────────────────────
@@ -7454,10 +7709,31 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # dritti all'esito parziale onesto qui sotto (SoT del criterio:
         # _leg_committed_mutations / pipeline_effects, 2/7).
         _committed = _leg_committed_mutations(run)
+        # A required side-effect that fails after successful producer work is
+        # an honest localized partial result, not a reason to re-plan the whole
+        # request.  Recovery can otherwise repeat the read and replace the
+        # failed send/write with a harmless description, erasing both the
+        # attempted action and its failure from the canonical turn record.
+        _localized_partial = False
+        _saw_success = False
+        for _step in run.steps or []:
+            _result = _step.result if isinstance(_step.result, dict) else {}
+            if _result.get("ok") is True:
+                _saw_success = True
+                continue
+            _head = (_step.tool or "").split("_", 1)[0]
+            if (_saw_success and _result.get("ok") is False
+                    and _head in {"send", "write", "create", "delete",
+                                  "move", "share", "set", "order"}):
+                _localized_partial = True
+                break
         if _committed:
             log.info("[L3 recovery] SKIP: mutazioni gia' committate nel leg "
                      "fallito %s — esito parziale, no re-run", _committed)
-        if not _committed and err_class in (
+        if _localized_partial:
+            log.info("[L3 recovery] SKIP: side-effect fallito dopo uno step "
+                     "riuscito — preservo l'esito parziale localizzato")
+        if not _committed and not _localized_partial and err_class in (
                 "wrong_tool", "wrong_args", "missing_input"):
             if verbose:
                 log.info("[L3 recovery] class=%s", err_class)

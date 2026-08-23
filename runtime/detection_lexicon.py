@@ -503,6 +503,37 @@ def match_any(forms, text: str, mode: str = "word") -> bool:
     return any(f.lower() in low for f in forms)
 
 
+def _last_phrase_end(text: str, candidates: list[str]) -> int:
+    """End offset of the last whole-phrase occurrence, or ``-1``."""
+    last = -1
+    low = text.lower()
+    for candidate in candidates:
+        pattern = re.compile(r"\b" + re.escape(candidate.lower()) + r"\b")
+        for found in pattern.finditer(low):
+            last = max(last, found.end())
+    return last
+
+
+def asserted_at(text: str, start: int) -> bool:
+    """Whether a surface match at ``start`` is asserted in its local clause.
+
+    The rule is domain-neutral: the clause begins after the last punctuation
+    boundary or contrast conjunction.  A translatable syntax-level negation
+    inside that clause makes the following match non-asserted.  Callers keep
+    their domain markers; polarity and language data remain centralized here.
+    """
+    if not isinstance(text, str) or not isinstance(start, int):
+        return False
+    prefix = text[:max(0, min(start, len(text)))]
+    punctuation_end = max(
+        (prefix.rfind(character) + 1 for character in ",.;:!?"),
+        default=0,
+    )
+    contrast_end = _last_phrase_end(prefix, forms("syntax.contrast"))
+    clause = prefix[max(punctuation_end, contrast_end):]
+    return not match_any(forms("syntax.negation"), clause, mode="word")
+
+
 # --------------------------------------------------------------------------
 # Coverage guard (anti-silenzio) + supporto daemon
 # --------------------------------------------------------------------------

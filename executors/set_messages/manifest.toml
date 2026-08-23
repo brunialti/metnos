@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "set_messages"
-version     = "0.2.0"
+version     = "0.3.0"
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity = [
@@ -15,16 +15,17 @@ affinity = [
     "add-label", "remove-label", "mark", "segna",
 ]
 
-revertible = false
+revertible = true
+reverse_pattern = "module.reverse"
 lifecycle  = "active"
 
 [description]
-it = "SCOPO: aggiunge o rimuove etichette su messaggi Gmail identificati. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: elencare label senza target; spostare cartelle -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}."
-en = "SCOPO: add or remove labels on identified Gmail messages. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: list labels without a target; move folders -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}."
+it = "SCOPO: aggiunge o rimuove etichette su messaggi Gmail identificati e registra i delta effettivi per l'annullamento. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: elencare label senza target; spostare cartelle -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}; annullabile."
+en = "SCOPO: add or remove labels on identified Gmail messages and record the effective deltas for undo. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: list labels without a target; move folders -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}; undoable."
 
 [code]
 files  = ["set_messages.py"]
-digest = "sha256:fadb565dc066cad235e9eb9528f42ef04e1a4d70a8ccdf4eb7d5026e06644bab"
+digest = "sha256:6ad6030d29d86a7374dee06e9f7244f2e35719bfbd30160b3aa213378fe774c5"
 
 [args]
 type = "object"
@@ -88,7 +89,7 @@ schema_inline = """
   ok_count: int,
   fail_count: int,
   partial?: bool,
-  results: Array<{id: str, labels_now: Array<str>}>,
+  results: Array<{id: str, labels_before: Array<str>, labels_now: Array<str>, membership_receipt: object}>,
   failed?: Array<object>,
   error?: str, error_class?: str, error_code?: str
 }
@@ -97,6 +98,10 @@ schema_inline = """
 [[capabilities]]
 name = "mail:write"
 hint = ["gmail:labels.modify"]
+
+[[capabilities]]
+name = "mail:read"
+hint = ["gmail:labels.read"]
 
 [[capabilities]]
 name = "provider:access"

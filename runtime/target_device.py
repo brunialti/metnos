@@ -101,6 +101,26 @@ def _find_marker(qn: str, markers) -> str | None:
     return None
 
 
+def _find_asserted_marker(qn: str, markers) -> str | None:
+    """Return a target marker only when its local clause asserts that target.
+
+    A negated destination is a restriction, not a placement request:
+    ``sul mio computer, senza ripiegare sul server`` must not let the later
+    word ``server`` override the explicit computer.  Punctuation and contrast
+    conjunctions delimit the small deterministic clause inspected here.
+    """
+    import detection_lexicon as _detlex
+
+    for marker in markers:
+        pattern = re.compile(
+            r"(?<![a-z0-9])" + re.escape(marker) + r"(?![a-z0-9])"
+        )
+        for match in pattern.finditer(qn):
+            if _detlex.asserted_at(qn, match.start()):
+                return marker
+    return None
+
+
 def _find_named_device(qn: str, devices):
     """Trova un device nominato ANCORATO da una preposizione locativa. Ritorna:
       - `(device, span, None)`          match UNICO (nome più lungo vince, per
@@ -197,14 +217,14 @@ def resolve_target(query: str,
     # --- SERVER esplicito (vince, riporta al .33) ---
     # Adjunct («sul server») → strip; nominale («del server») → query INTATTA
     # (il «server» è l'oggetto della domanda, non un complemento di luogo).
-    sm = _find_marker(qn, _SERVER_MARKERS_ADJUNCT)
+    sm = _find_asserted_marker(qn, _SERVER_MARKERS_ADJUNCT)
     if sm:
         res.target = SERVER
         res.device_name = None
         res.explicit = True
         res.cleaned_query = _strip_span(query, sm)
         return res
-    sm = _find_marker(qn, _SERVER_MARKERS_NOMINAL)
+    sm = _find_asserted_marker(qn, _SERVER_MARKERS_NOMINAL)
     if sm:
         res.target = SERVER
         res.device_name = None

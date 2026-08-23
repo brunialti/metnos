@@ -111,6 +111,13 @@ _TIME_PATTERNS = (
     "tell me the time",
 )
 
+_CONFIGURED_TIMEZONE_PATTERNS = (
+    "che ora e nel fuso configurato",
+    "che ore sono nel fuso configurato",
+    "what time is it in the configured time zone",
+    "what time is it in the configured timezone",
+)
+
 _DATE_PATTERNS = (
     # IT — data/giorno
     "che giorno e oggi",
@@ -161,6 +168,13 @@ _LOCATION_PATTERNS = (
 
 
 _FAST_PATTERNS: list[FastPattern] = [
+    FastPattern(
+        patterns=_CONFIGURED_TIMEZONE_PATTERNS,
+        executor="get_now",
+        args={},
+        template_it="Sono le {hhmm} nel fuso {tz}.",
+        template_en="It's {hhmm} in the {tz} time zone.",
+    ),
     FastPattern(
         patterns=_TIME_PATTERNS,
         executor="get_now",

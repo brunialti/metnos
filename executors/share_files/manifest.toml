@@ -7,7 +7,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "share_files"
-version     = "0.2.0"
+version     = "0.3.0"
 author      = "Roberto Brunialti"
 affinity = [
     "share", "condividi", "condividere", "grant", "give-access",
@@ -16,16 +16,19 @@ affinity = [
     "invita", "invite",
 ]
 
-revertible = false
+# §2.3: il forward registra file_id + permission_id restituito da Drive;
+# module.reverse revoca esattamente quel grant, senza ricerca euristica.
+revertible = true
+reverse_pattern = "module.reverse"
 lifecycle  = "active"
 
 [description]
-it = "SCOPO: concede permessi di accesso a file Drive senza duplicarli. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: inviare copie (send_messages) o sovrascrivere (write_files). OUT: results=[...]."
-en = "SCOPO: grants access permissions to Drive files without duplicating them. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: sending copies (send_messages) or overwriting (write_files). OUT: results=[...]."
+it = "SCOPO: concede permessi di accesso a file Drive senza duplicarli. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: inviare copie (send_messages) o sovrascrivere (write_files). OUT: results con file_id + permission_id per l'annullamento esatto del grant."
+en = "SCOPO: grants access permissions to Drive files without duplicating them. PATTERN: share_files(file_id='abc', email='anna@example.com', role='reader'). NON: sending copies (send_messages) or overwriting (write_files). OUT: results with file_id + permission_id for exact grant undo."
 
 [code]
 files  = ["share_files.py"]
-digest = "sha256:c49ca412761bde43ada3a49de5e6b9fd1ef8403cc4763af26e4f9356ef5ea34c"
+digest = "sha256:1c17b6d6b2f7190e992bb04861b6dca661fc74c76426b6a3f24c7b7a3779b403"
 
 [args]
 type = "object"
@@ -99,7 +102,7 @@ en = "Backend: only 'google_workspace' (Drive). Local fs not supported."
 
 [[capabilities]]
 name = "drive:permissions"
-hint = ["drive:share"]
+hint = ["drive:share", "drive:unshare"]
 
 [[capabilities]]
 name = "provider:access"
