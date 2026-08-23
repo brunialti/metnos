@@ -1103,8 +1103,10 @@ body.wiki-enabled .wiki-view h4 {
 .roadmap-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.45rem 0.65rem;
   min-width: 0;
+  font-size: 0.78rem;
 }
 .roadmap-card h2 {
   margin: 0.45rem 0 0.55rem !important;
@@ -1121,17 +1123,9 @@ body.wiki-enabled .wiki-view h4 {
   font-weight: 700;
   letter-spacing: 0.04em;
 }
-.roadmap-facts {
-  display: inline-grid;
-  grid-template-columns: max-content max-content max-content minmax(0, auto);
-  gap: 0.2rem 0.45rem;
-  align-items: baseline;
-  min-width: 0;
-  margin: 0 0 0 auto;
-  font-size: 0.78rem;
-}
-.roadmap-facts dt { color: var(--wiki-panel-muted); font-weight: 650; }
-.roadmap-facts dd { margin: 0; color: var(--ink); }
+.roadmap-fact { color: var(--ink); white-space: nowrap; }
+.roadmap-fact strong { color: var(--wiki-panel-muted); font-weight: 650; }
+.roadmap-status + .roadmap-fact { margin-left: auto; }
 
 @media (max-width: 1040px) {
   body.wiki-enabled { display: block; }
@@ -1193,12 +1187,8 @@ body.wiki-enabled .wiki-view h4 {
     padding: 0.98rem 0 0.4rem;
     text-align: left;
   }
-  .roadmap-meta { align-items: flex-start; flex-wrap: wrap; }
-  .roadmap-meta .roadmap-facts {
-    flex-basis: 100%;
-    grid-template-columns: max-content minmax(0, 1fr);
-    margin-left: 0;
-  }
+  .roadmap-meta { align-items: flex-start; }
+  .roadmap-status + .roadmap-fact { margin-left: 0; }
 }
 
 /* Bespoke pages still carry legacy inline palettes.  The wiki shell owns the

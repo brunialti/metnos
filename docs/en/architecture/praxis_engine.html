@@ -6,7 +6,7 @@
  <title>Metnos &mdash; planning and reuse engine</title>
  <meta name="description" content="The Metnos engine cascade: L0 fast paths, L1 autopaths, the L2 validator, and L3 proposal, execution, recovery, and termination.">
  <meta name="keywords" content="Metnos, engine, fastpath, autopath, validator, proposer, recovery, framework">
- <meta name="author" content="the owner">
+ <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/praxis_engine">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine">
@@ -205,6 +205,13 @@ a wrong tool, wrong arguments, or missing input; it does not pretend to repair a
 network outage. If a step has already committed a mutation, the whole pipeline is
 not repeated, and the result reports the partial outcome honestly.</p>
 
+<p>Deterministic repairs remain independent from domain and language. The polarity
+of a reference&mdash;for example, “use the device” versus “without using the
+device”&mdash;is resolved by one shared, translatable syntax vocabulary. If a plan
+names an inverse action but omits its target, the engine may derive it only from a
+sealed undo contract produced by a preceding step, with an exact executor and a
+compatible schema; an explicit value is never replaced.</p>
+
 <h1 id="cap11">10. Feedback and aging</h1>
 
 <p>Feedback evaluates a turn outcome; it does not directly train the model. L0 may
@@ -230,6 +237,11 @@ on Telegram, Metnos must explain this path and state that the console is not par
 the Telegram client.</p>
 
 <h1 id="cap13">12. Limits of the guarantees</h1>
+
+<p>The complete path is checked by logical certification outside the process under
+test: 24 reference flows in Italian and English verify planning, authority,
+consent, placement, effects, recovery, response, and postconditions. This is not a
+load test and does not replace non-destructive probes at real boundaries.</p>
 
 <ul>
  <li>A valid cache hit reuses the same framework; it does not guarantee the same

@@ -6,7 +6,7 @@
  <title>Metnos &mdash; motore di pianificazione e riuso</title>
  <meta name="description" content="La cascata del motore Metnos: fast path L0, autopath L1, validator L2 e proposta, esecuzione, recupero e terminazione L3.">
  <meta name="keywords" content="Metnos, motore, fastpath, autopath, validator, proposer, recovery, framework">
- <meta name="author" content="the owner">
+ <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/praxis_engine">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine">
@@ -218,6 +218,14 @@ per strumento, argomenti o input mancanti; non finge di riparare una rete assent
 Se un passo ha gi&agrave; prodotto una modifica, non ripete l'intera sequenza e restituisce
 un esito parziale dichiarato come tale.</p>
 
+<p>Le riparazioni deterministiche restano indipendenti dal dominio e dalla lingua.
+La polarit&agrave; di un riferimento, per esempio &laquo;usa il dispositivo&raquo; rispetto a
+&laquo;senza usare il dispositivo&raquo;, viene risolta da un lessico sintattico comune e
+traducibile. Se il piano indica un'azione inversa ma omette la destinazione, il
+motore pu&ograve; ricavarla soltanto dal contratto di annullamento sigillato prodotto da
+un passo precedente, con executor esatto e schema compatibile; un valore esplicito
+non viene mai sostituito.</p>
+
 <h1 id="cap11">10. Riscontri e invecchiamento</h1>
 
 <p>Il riscontro valuta l'esito di un turno, non addestra direttamente il modello.
@@ -244,6 +252,12 @@ Telegram, Metnos deve spiegare questo percorso e specificare che la console non 
 trova nel client Telegram.</p>
 
 <h1 id="cap13">12. Confini delle garanzie</h1>
+
+<p>Il percorso completo &egrave; verificato da una certificazione logica esterna al
+processo sotto prova: 24 flussi di riferimento in italiano e inglese controllano
+piano, autorit&agrave;, consenso, collocazione, effetti, recupero, risposta e
+postcondizioni. La certificazione non &egrave; una prova di carico e non sostituisce le
+sonde non distruttive sui confini reali.</p>
 
 <ul>
  <li>Un riuso valido della cache riprende lo stesso framework, ma non garantisce lo stesso
