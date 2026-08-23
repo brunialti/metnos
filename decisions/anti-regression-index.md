@@ -278,11 +278,9 @@
 - **Finalizer unico (T5)**: `engine/executor._finalize_answer_text` — sola fonte del testo `answer` (render→bullets→zero-i18n→synth); `test_finalizer_unico.py` vieta blocchi gemelli (1 sede `_render_is_degenerate`, 2 call-site).
 
 **Remote mutanti + undo round-trip ADR 0183 (5/7/2026)**
-- **Ricevute inverse generali per contenitori e insiemi** (ADR 0216): una
-  directory locale viene rimossa soltanto tramite rename atomico nello store
-  per-turno e si ripristina con `restore_archived_directory`; store annidato o filesystem
-  diverso falliscono prima dell'effetto. Le mutazioni di membership registrano
-  prima/dopo e il delta effettivo; l'inverso applica soltanto quel delta. Gate:
+- **Ricevute inverse generali per insiemi** (ADR 0216): le mutazioni di
+  membership registrano prima/dopo e il delta effettivo; l'inverso applica
+  soltanto quel delta senza sovrascrivere variazioni estranee. Gate:
   `tests/runtime/backends/test_exact_undo_receipts.py`.
 - **Scrittore undo al choke-point**: `agent_runtime._undo_pending/_undo_done` in `invoke_executor` (pending pre-exec, done post-ok, campo `device`) — la regressione af6c7b8 (writer nel planner cancellato) non può ripetersi: `test_undo_chokepoint.py` fa il round-trip reale.
 - **Scrittore uso-executor al choke-point**: `executor_scheduler.ExecutorScheduler.invoke` → `executor_aging.record_invocation` — l'ALTRO scrittore che af6c7b8 aveva cancellato col planner, rimasto morto un mese (124 righe su 193 senza `last_used_at`, mentre aging e change_observer decidevano su quei numeri). Sta nello scheduler perché è l'unico punto attraversato da sottoprocesso, remoto, builtin e onda parallela: nell'anello del motore non passano né i turni serviti da L0 né i builtin. Discriminante `code_path` (gli slot interni del Tutor non hanno ciclo di vita), niente registrazione sotto pytest; `test_executor_usage_recording.py`.

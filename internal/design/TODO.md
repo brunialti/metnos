@@ -239,11 +239,10 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 - Stato: primo lotto implementato il 23/8/2026; progettazioni residue in attesa
   di input esplicito.
 - Evidenza: `internal/reports/executor-undo-audit-20260823.md`.
-- Implementato: `delete_dirs` usa una ricevuta generale di relocation atomica
-  locale o gli ID Drive nel cestino; `set_messages` usa il delta effettivo
-  prima/dopo delle label. Test: `test_exact_undo_receipts.py`.
-- Progettazione pronta, codice non autorizzato: `open_sites`, `set_signatures`,
-  `create_processes`, `login_urls`; specifica
+- Implementato: `set_messages` usa il delta effettivo prima/dopo delle label.
+  Test: `test_exact_undo_receipts.py`.
+- Progettazione pronta, codice non autorizzato: `open_sites`, `delete_dirs`,
+  `set_signatures`, `create_processes`, `login_urls`; specifica
   `internal/design/undo-redesign-spec-20260823.md`.
 - Decisione di prodotto: `set_credentials` e `set_persons` restano non
   annullabili; cancellazione soltanto su richiesta utente esplicita.

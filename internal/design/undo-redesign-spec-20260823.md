@@ -47,6 +47,45 @@ Test nuovi/riusati/misti, owner differente, sessione gia' scaduta, ricevuta
 vuota o alterata, doppio undo e prova reale con apertura e chiusura dello stesso
 ID. Nessun cambiamento prima dell'approvazione del contratto per rami misti.
 
+## `delete_dirs`
+
+### Stato attuale e prova reale
+
+Il backend Drive usa gia' cestino e ID esatti, quindi quel ramo ha un inverso.
+Il backend locale rimuove invece directory vuote o alberi ricorsivi. Un
+prototipo ha tentato di spostare atomicamente l'albero nello store centrale di
+undo: i test diretti erano verdi, ma due turni reali hanno restituito `EXDEV`.
+Nel sandbox il target e lo store di history sono mount distinti anche quando i
+path risiedono sullo stesso disco. Copiare l'albero e poi eseguire `rmtree` non
+ha un punto di commit atomico e puo' lasciare, dopo un crash, backup incompleto
+e sorgente parzialmente cancellata.
+
+### Contratto proposto
+
+Il primo requisito e' il contratto generale per rami misti: Drive puo' emettere
+la ricevuta `restore_trashed_files`, mentre il ramo locale resta non
+annullabile finche' non esiste uno store corretto. Per il locale vanno
+confrontate e approvate almeno due architetture:
+
+1. cestino per-filesystem, collocato nello stesso mount del target, con indice
+   autenticato nello store centrale, retention e garbage collection anche sui
+   device offline;
+2. archivio verificato a due fasi, con stato `prepared/committed`, ripresa dopo
+   crash ed executor tipizzato di estrazione disponibile anche sul device.
+
+La prima conserva il rename atomico ma introduce indici e cleanup distribuiti;
+la seconda funziona fra filesystem ma richiede una macchina a stati e non puo'
+essere trattata come un semplice blob file. Nessun path laterale nascosto puo'
+essere lasciato senza ownership, indice e retention.
+
+### Gate
+
+Directory vuota e ricorsiva, `/tmp`, home e volume esterno, mount separati del
+sandbox, symlink, metadati e contenuti binari, crash in ogni fase, device
+offline durante la retention, occupazione concorrente del path originale,
+doppio undo e prova reale Linux/Windows. Nessun nuovo codice prima della scelta
+dell'architettura di storage e dell'approvazione del contratto per rami misti.
+
 ## `set_signatures`
 
 ### Stato attuale

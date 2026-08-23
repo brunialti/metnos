@@ -138,6 +138,6 @@ for format and discipline; see `_template.md` for the template.
 > external 24-flow bilingual logical certification and requires causal,
 > domain-neutral repairs for syntax polarity, inverse targets and technical LRE
 > resume identity; RM-0006 passed 96/96 cases plus five safe real probes.
-> Latest: `0216` adopts exact, general receipts for atomic container relocation
-> and membership deltas; mixed or sensitive undo branches remain specified but
+> Latest: `0216` adopts exact, general receipts for effective membership
+> deltas; container, mixed and sensitive undo branches remain specified but
 > unimplemented pending explicit approval.

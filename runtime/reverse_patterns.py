@@ -469,7 +469,6 @@ def _restore_trashed_files(plan, results):
 
 PATTERNS = {
     "swap_src_dst":         _swap_src_dst,
-    "restore_archived_directory": _swap_src_dst,
     "delete_created_dirs":  _delete_created_dirs,
     "delete_created_paths": _delete_created_paths,
     "restore_blob_backup":  _restore_blob_backup,
@@ -504,7 +503,7 @@ def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
     calls, unsupported = [], []
     res = results or {}
     for n in names or []:
-        if n in {"swap_src_dst", "restore_archived_directory"}:
+        if n == "swap_src_dst":
             pairs = [p for p in (res.get("results") or [])
                      if isinstance(p, dict) and p.get("src") and p.get("dst")
                      and "account" not in p and not isinstance(p.get("src"), dict)]
@@ -535,14 +534,12 @@ def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
                 calls.append({"executor": "move_files",
                               "args": {"entries": [{"src": x} for x in paths],
                                        "dst_template": parent + "/{name}",
-                                       "parents": True, "allow_dirs": True,
-                                       "client": "local"}})
+                                       "parents": True, "client": "local"}})
             for now, back in singles:
                 calls.append({"executor": "move_files",
                               "args": {"entries": [{"src": now}],
                                        "dst_template": back,
-                                       "parents": True, "allow_dirs": True,
-                                       "client": "local"}})
+                                       "parents": True, "client": "local"}})
         elif n == "delete_created_paths":
             created = [e["path"] for e in (res.get("results") or [])
                        if isinstance(e, dict) and e.get("created") and e.get("path")]
