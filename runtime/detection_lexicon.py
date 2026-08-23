@@ -317,6 +317,122 @@ def _native(concept: str, lang: str):
         return None
 
 
+def resource_for_language(concept: str, lang: str, *, fallback: bool = True,
+                          ready_only: bool = False) -> dict | None:
+    """Risorsa di detection per una lingua esplicita, senza mutare il turno.
+
+    E' l'API dei generatori e dei gate RM-0005.  ``fallback=False`` misura la
+    copertura nativa; ``fallback=True`` rende una risorsa operativa seguendo
+    la stessa catena documentata del runtime.  ``ready_only`` esclude righe
+    ancora marcate per riallineamento, anche quando conservano il vecchio
+    payload come fallback temporaneo.
+    """
+    ensure_seeded()
+    normalized = _i18n.normalize_language(lang)
+    if not normalized:
+        return None
+    languages = [normalized]
+    if fallback:
+        for candidate in FALLBACK_CHAIN:
+            if candidate not in languages:
+                languages.append(candidate)
+    conn = _open()
+    for candidate in languages:
+        row = conn.execute(
+            "SELECT kind, match_mode, payload, needs_translation, "
+            "source_lang, version_hash, source_text_hash "
+            "FROM detection_lexicon WHERE concept=? AND lang=? "
+            "AND payload IS NOT NULL",
+            (concept, candidate),
+        ).fetchone()
+        if not row or (ready_only and int(row[3] or 0)):
+            continue
+        try:
+            payload = json.loads(row[2])
+        except Exception:
+            continue
+        return {
+            "concept": concept,
+            "requested_lang": normalized,
+            "lang": candidate,
+            "kind": row[0],
+            "match_mode": row[1],
+            "payload": payload,
+            "needs_translation": bool(row[3]),
+            "source_lang": row[4],
+            "version_hash": row[5],
+            "source_text_hash": row[6],
+            "fallback": candidate != normalized,
+        }
+    return None
+
+
+def mapping_for_language(concept: str, lang: str, *, fallback: bool = True,
+                         ready_only: bool = False) -> dict:
+    """Mapping localizzato esatto/fallback per una risorsa ``kind=mapping``."""
+    resource = resource_for_language(
+        concept, lang, fallback=fallback, ready_only=ready_only,
+    )
+    if not resource or resource["kind"] != "mapping":
+        return {}
+    payload = resource["payload"]
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def validate_mapping_payload(source: dict, candidate) -> dict:
+    """Valida strutturalmente una localizzazione di tipo mapping.
+
+    Le chiavi canoniche devono restare esattamente quelle della sorgente e
+    ogni categoria deve conservare almeno una forma naturale non vuota. Le
+    collisioni fra categorie sono riportate, non cancellate: possono essere
+    vera polisemia della lingua e il consumer deve risolverle senza assegnare
+    arbitrariamente un significato.
+    """
+    source_keys = {str(key) for key in source} if isinstance(source, dict) else set()
+    candidate_keys = (
+        {str(key) for key in candidate} if isinstance(candidate, dict) else set()
+    )
+    missing = sorted(source_keys - candidate_keys)
+    extra = sorted(candidate_keys - source_keys)
+    invalid: list[str] = []
+    normalized: dict[str, list[str]] = {}
+    owners: dict[str, set[str]] = {}
+    if isinstance(candidate, dict):
+        for canonical, raw_forms in candidate.items():
+            if not isinstance(raw_forms, list):
+                invalid.append(str(canonical))
+                continue
+            forms: list[str] = []
+            seen: set[str] = set()
+            for raw in raw_forms:
+                if not isinstance(raw, str):
+                    invalid.append(str(canonical))
+                    continue
+                form = str(raw or "").strip()
+                folded = form.casefold()
+                if not form or folded in seen:
+                    continue
+                seen.add(folded)
+                forms.append(form)
+                owners.setdefault(folded, set()).add(str(canonical))
+            if not forms:
+                invalid.append(str(canonical))
+            normalized[str(canonical)] = forms
+    ambiguities = {
+        surface: sorted(canonicals)
+        for surface, canonicals in sorted(owners.items())
+        if len(canonicals) > 1
+    }
+    return {
+        "ok": bool(source_keys) and not missing and not extra and not invalid,
+        "mapping": normalized,
+        "missing_keys": missing,
+        "extra_keys": extra,
+        "invalid_keys": sorted(set(invalid)),
+        "ambiguous_surfaces": ambiguities,
+    }
+
+
 def _union_langs() -> list[str]:
     """Lingue da unire al match: corrente + seed (it/en), senza duplicati.
 

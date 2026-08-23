@@ -25,7 +25,10 @@ import re
 from logging_setup import get_logger
 log = get_logger(__name__)
 
-_WORD_RE = re.compile(r"[a-z0-9]+", re.UNICODE)
+# Parole Unicode senza underscore: conserva la storica separazione degli
+# identifier tecnici (`read_files` -> read, files) e riconosce al contempo
+# grafemi di qualunque lingua latina/non latina supportata dal catalogo.
+_WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 
 def tokenize(text):
@@ -169,36 +172,36 @@ _VERB_TO_CANONICAL = {
 }
 
 
-def _extend_verb_table_from_vocab() -> None:
-    """Completa il lessico del prefilter dalla fonte canonica multilingue.
+def _localized_verb_table() -> dict[str, str]:
+    """Tabella operativa: compatibilita' storica + risorsa RM-0005 attiva.
 
-    Le forme monolessematiche presenti in una sola azione sono sicure da
-    derivare automaticamente. Le forme polisemiche restano invece affidate
-    alle scelte esplicite sopra: una nuova lingua si estende in ``vocab`` e
-    diventa subito disponibile qui senza duplicare ogni sinonimo.
+    Il detection lexicon unisce la lingua del turno alle lingue seed e si
+    invalida quando una traduzione viene materializzata. Le forme non ambigue
+    entrano automaticamente; una polisemia non viene mai risolta scegliendo
+    un'azione per ordine di dizionario. Le preferenze storiche esplicite sopra
+    restano soltanto per le collisioni gia' deliberate e misurate.
     """
+    table = dict(_VERB_TO_CANONICAL)
     try:
-        from vocab import ACTION_MAPPING, LANGS
+        from vocab import action_recognition_mapping
     except Exception:  # pragma: no cover - bootstrap minimale
-        return
+        return table
+    mapping = action_recognition_mapping()
     candidates: dict[str, set[str]] = {}
-    for canonical, spec in ACTION_MAPPING.items():
-        if not isinstance(spec, dict):
+    for canonical, surfaces in mapping.items():
+        if not isinstance(surfaces, list):
             continue
-        for lang in LANGS:
-            for surface in spec.get(lang, ()):
-                token = str(surface or "").strip().lower()
-                # Il tokenizer del prefilter lavora su token semplici; frasi e
-                # forme con trattino restano al parser d'intento.
-                if not _WORD_RE.fullmatch(token):
-                    continue
-                candidates.setdefault(token, set()).add(canonical)
+        for surface in surfaces:
+            token = str(surface or "").strip().casefold()
+            # Il tokenizer del prefilter lavora su token semplici; frasi e
+            # forme con trattino restano al parser d'intento.
+            if not _WORD_RE.fullmatch(token):
+                continue
+            candidates.setdefault(token, set()).add(canonical)
     for token, canonicals in candidates.items():
         if len(canonicals) == 1:
-            _VERB_TO_CANONICAL.setdefault(token, next(iter(canonicals)))
-
-
-_extend_verb_table_from_vocab()
+            table.setdefault(token, next(iter(canonicals)))
+    return table
 
 try:
     from vocab import SAFE_VERBS as _SAFE_VERBS_SET
@@ -279,8 +282,9 @@ def detect_canonical_verb(qtokens, query: str | None = None):
     """
     if is_direct_message_query(query):
         return "send"
+    verb_table = _localized_verb_table()
     for tok in sorted(qtokens):
-        v = _VERB_TO_CANONICAL.get(tok)
+        v = verb_table.get(tok)
         if v:
             return v
     return None
@@ -321,13 +325,14 @@ def detect_canonical_verbs_all(qtokens) -> list[str]:
     →"invia". Cattura clitici pronominali standard IT.
     """
     seen = []
+    verb_table = _localized_verb_table()
     for tok in sorted(qtokens):
-        v = _VERB_TO_CANONICAL.get(tok)
+        v = verb_table.get(tok)
         if not v:
             # Try clitic stripping (mettili → metti, inviamelo → invia)
             stem = _strip_italian_clitic(tok)
             if stem:
-                v = _VERB_TO_CANONICAL.get(stem)
+                v = verb_table.get(stem)
         if v and v not in seen:
             seen.append(v)
     return seen

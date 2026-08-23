@@ -7,7 +7,7 @@ da QUI. Aggiungere/togliere un verbo si fa qui, non sparso in 5 file.
 Convenzione: aggiungere un verbo richiede:
 1. Aggiungerlo alla tupla `ACTIONS` (in coda, mai inserire in mezzo).
 2. Aggiungere la categoria in `ACTION_CATEGORIES` (es. {"check": "verifica"}).
-3. Aggiungere la mappa bilingue + confine semantico in `ACTION_MAPPING`.
+3. Aggiungere le risorse seed + confine semantico in `ACTION_MAPPING`.
 4. Classificarlo come PRODUCER/CONSUMER/DESTRUCTIVE in `PRODUCER_VERBS`,
    `DESTRUCTIVE_VERBS` (sotto).
 5. Aggiungere mapping in `intent_extractor` se serve disambiguazione vs
@@ -16,22 +16,23 @@ Convenzione: aggiungere un verbo richiede:
 NON serve duplicare la lista nei documenti prescrittivi: i conteggi e gli
 elenchi esaustivi devono essere derivati o verificati contro questo modulo.
 
-Multilingua (it+en oggi, espandibile):
+Multilingua (seed it+en, catalogo aperto):
 - Vocabolario CANONICO in inglese (ACTIONS, OBJECTS, QUALIFIERS).
-- ACTION_MAPPING ha chiavi "it" e "en" simmetriche per i sinonimi —
-  aggiungere "es"/"fr"/... seguendo lo stesso pattern.
-- LANGS enumera le lingue supportate. I prompt che vogliono restare
-  agnostici devono iterare LANGS, non hardcodare "it"/"en".
+- ACTION_MAPPING contiene soltanto le risorse seed editoriali. Le superfici
+  operative vivono nel detection lexicon versionato; i confini nel catalogo
+  i18n. Le altre lingue sono materializzate dalla pipeline RM-0005.
+- Le lingue operative sono enumerate dal catalogo i18n, non da una costante
+  del vocabolario.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-# ── Lingue supportate ─────────────────────────────────────────────────
-# Ordine = priorita' di rendering nei prompt che mostrano alternative
-# multilingue (es. stage 1 di synt mostra IT prima di EN perche' la
-# maggior parte delle query utente sono in italiano).
-LANGS = ("it", "en")
+# ── Risorse linguistiche del vocabolario ──────────────────────────────
+# Questi sono i seed editoriali distribuiti, NON l'elenco chiuso delle
+# lingue supportate. Le lingue operative vengono dal registro i18n.
+ACTION_SURFACES_CONCEPT = "vocab.action_surfaces"
+ACTION_BOUNDARY_KEY_PREFIX = "VOCAB_ACTION_"
 
 
 # ── Vocabolario chiuso (ADR 0045 + naming convention §2.2) ────────────
@@ -496,9 +497,9 @@ ACTION_CATEGORIES = {
     "send": "network",
     "describe": "stat/output", "render": "stat/output",
     "extract": "decomp/pack", "compress": "decomp/pack",
-    "compute": "calcolo", "compare": "confronto",
-    "change": "trasformazione",
-    "order": "ordinamento-persistente",
+    "compute": "calculation", "compare": "comparison",
+    "change": "transformation",
+    "order": "persistent-ordering",
     "share": "outbound-consent",
     "open": "web-session", "login": "web-session", "act": "web-session",
     "install": "system", "run": "system",
@@ -671,17 +672,26 @@ ACTION_MAPPING = {
                 "costruisci-indice", "crea-indice", "indicizza"],
         "en": ["create-folder", "create-directory", "mkdir", "make-dir",
                 "build-index", "create-index", "index"],
-        "boundary": "Creazione di contenitori (dir) o di derivati persistenti del dominio (indici). I file con contenuto vanno a write. Per gli indici: `create_<dom>_indices` (es. create_images_indices) costruisce o aggiorna l'indice del dominio target; il qualifier `_indices` (modalita') segnala che il mezzo di ricerca e' un derivato persistente del dominio.",
+        "boundary": {
+            "it": "Creazione di contenitori (dir) o di derivati persistenti del dominio (indici). I file con contenuto vanno a write. Per gli indici: `create_<dom>_indices` (es. create_images_indices) costruisce o aggiorna l'indice del dominio target; il qualifier `_indices` (modalita') segnala che il mezzo di ricerca e' un derivato persistente del dominio.",
+            "en": "Creates containers (directories) or persistent domain derivatives (indices). Files with content belong to write. For indices, `create_<dom>_indices` (for example create_images_indices) builds or updates the target domain index; the `_indices` mode qualifier states that the search medium is a persistent domain derivative.",
+        },
     },
     "move": {
         "it": ["sposta", "rinomina", "muovi", "cambia-estensione", "sposta-in"],
         "en": ["move", "rename", "relocate", "change-extension"],
-        "boundary": "Cambia path o nome di file/dir esistente. Reversibile via swap_src_dst.",
+        "boundary": {
+            "it": "Cambia path o nome di file/dir esistente. Reversibile via swap_src_dst.",
+            "en": "Changes the path or name of an existing file/directory. Reversible through swap_src_dst.",
+        },
     },
     "delete": {
         "it": ["cancella", "elimina", "rimuovi", "butta-via"],
         "en": ["delete", "remove", "erase", "drop", "discard"],
-        "boundary": "Distruzione (irreversibile o reversibile con backup blob).",
+        "boundary": {
+            "it": "Distruzione (irreversibile o reversibile con backup blob).",
+            "en": "Destroys an object (irreversible, or reversible when a blob backup exists).",
+        },
     },
     "find": {
         "it": ["trova", "cerca", "cerca-per-nome", "cerca-pattern", "localizza",
@@ -716,19 +726,28 @@ ACTION_MAPPING = {
     "sort": {
         "it": ["ordina", "classifica", "top", "primi", "ultimi"],
         "en": ["sort", "rank", "order", "top", "first", "last"],
-        "boundary": "Riordina entries per chiave. Opzionale top-K. Pure compute.",
+        "boundary": {
+            "it": "Riordina entries per chiave. Opzionale top-K. Pure compute.",
+            "en": "Reorders entries by a key, optionally keeping the top K. Pure computation.",
+        },
     },
     "group": {
         "it": ["raggruppa", "unisci", "combina", "deduplica",
                "aggrega-per", "partiziona-per"],
         "en": ["group", "merge", "combine", "deduplicate",
                "aggregate-by", "partition-by"],
-        "boundary": "Combina uno o piu' flussi di entries, con deduplica opzionale, oppure raggruppa entries per valore di un campo. Pure compute.",
+        "boundary": {
+            "it": "Combina uno o piu' flussi di entries, con deduplica opzionale, oppure raggruppa entries per valore di un campo. Pure compute.",
+            "en": "Combines one or more entry streams, optionally deduplicating them, or groups entries by a field value. Pure computation.",
+        },
     },
     "classify": {
         "it": ["classifica", "categorizza", "etichetta", "assegna-categoria"],
         "en": ["classify", "categorize", "label", "assign-category"],
-        "boundary": "Aggiunge un'etichetta a ogni entry secondo un criterio (LLM-augmented).",
+        "boundary": {
+            "it": "Aggiunge un'etichetta a ogni entry secondo un criterio (LLM-augmented).",
+            "en": "Adds a label to every entry according to a criterion (LLM-augmented).",
+        },
     },
     "get": {
         "it": ["ottieni", "dimmi", "dammi", "che-ora-e", "dove-sono", "metadati-di",
@@ -768,34 +787,52 @@ ACTION_MAPPING = {
     "describe": {
         "it": ["riassumi", "sintetizza", "descrivi", "punti-importanti", "panoramica"],
         "en": ["describe", "summarize", "synthesize", "highlights", "overview"],
-        "boundary": "Insight aggregato/condensato di una lista (LLM-augmented). Opposto di get.",
+        "boundary": {
+            "it": "Insight aggregato/condensato di una lista (LLM-augmented). Opposto di get.",
+            "en": "Produces an aggregated or condensed insight from a list (LLM-augmented). Unlike get, it interprets data already available.",
+        },
     },
     "render": {
         "it": ["mostra", "fammi-vedere", "visualizza", "format-come"],
         "en": ["render", "show", "display", "format-as"],
-        "boundary": "Format di dati gia' disponibili (markdown/html/json). Non prende dati nuovi.",
+        "boundary": {
+            "it": "Format di dati gia' disponibili (markdown/html/json). Non prende dati nuovi.",
+            "en": "Formats data that is already available (Markdown/HTML/JSON). It does not fetch new data.",
+        },
     },
     "extract": {
         "it": ["scompatta", "decomprimi", "estrai-da-archivio", "unzip", "untar",
                "estrai-record", "estrai-strutturati", "ricava-dati", "parsa"],
         "en": ["extract", "unpack", "decompress", "unzip", "untar",
                "extract-records", "structured-extract", "parse-out"],
-        "boundary": "Tira fuori STRUTTURA incapsulata in un contenitore. Due usi (§2.2, allargato 3/6): (1) decompressione archivi zip/tar/gz → `extract_files`; (2) RECORD STRUTTURATI da testo NON strutturato (web, mail, pdf) → `extract_entries` (es. eventi {summary,start,end}, voci di spesa). NON: «estrai righe da un testo» = `filter` (filter_texts_lines); «estrai campi da entries GIÀ strutturate» = `get`; «estrai testo GREZZO da PDF/HTML» = `read` (read_files_pdf/html). Differenza con (2): qui il testo è libero e produci record TIPIZZATI nuovi, non selezioni/leggi.",
+        "boundary": {
+            "it": "Tira fuori STRUTTURA incapsulata in un contenitore. Due usi (§2.2, allargato 3/6): (1) decompressione archivi zip/tar/gz → `extract_files`; (2) RECORD STRUTTURATI da testo NON strutturato (web, mail, pdf) → `extract_entries` (es. eventi {summary,start,end}, voci di spesa). NON: «estrai righe da un testo» = `filter` (filter_texts_lines); «estrai campi da entries GIÀ strutturate» = `get`; «estrai testo GREZZO da PDF/HTML» = `read` (read_files_pdf/html). Differenza con (2): qui il testo è libero e produci record TIPIZZATI nuovi, non selezioni/leggi.",
+            "en": "Extracts STRUCTURE encapsulated in a container. It has two uses: (1) decompressing zip/tar/gz archives → `extract_files`; (2) producing STRUCTURED RECORDS from unstructured text (web, mail, PDF) → `extract_entries`, such as events {summary,start,end} or expense items. NOT selecting text lines = `filter` (filter_texts_lines); NOT reading fields from already structured entries = `get`; NOT reading RAW text from PDF/HTML = `read` (read_files_pdf/html). In the second use, free text becomes new TYPED records rather than being merely selected or read.",
+        },
     },
     "compress": {
         "it": ["comprimi", "archivia", "zippa", "gzippa", "crea-archivio"],
         "en": ["compress", "archive", "zip", "gzip", "pack", "bundle"],
-        "boundary": "Crea archivio compresso da file/dir.",
+        "boundary": {
+            "it": "Crea archivio compresso da file/dir.",
+            "en": "Creates a compressed archive from files/directories.",
+        },
     },
     "compute": {
         "it": ["calcola", "valuta", "risolvi", "fai-il-conto", "somma", "calcola-l'hash"],
         "en": ["compute", "evaluate", "calculate", "eval-expression", "hash", "checksum"],
-        "boundary": "Calcolo deterministico puro (math, eval, unit convert, hashing). Nessun side-effect.",
+        "boundary": {
+            "it": "Calcolo deterministico puro (math, eval, unit convert, hashing). Nessun side-effect.",
+            "en": "Performs pure deterministic computation (math, evaluation, unit conversion, hashing). No side effects.",
+        },
     },
     "compare": {
         "it": ["confronta", "fai-diff", "differenza", "uguale?", "matcha?"],
         "en": ["compare", "diff", "difference", "equals", "match", "identical"],
-        "boundary": "Confronto fra due (o piu') entita' → relazione/diff/booleano.",
+        "boundary": {
+            "it": "Confronto fra due (o piu') entita' → relazione/diff/booleano.",
+            "en": "Compares two or more entities and produces a relationship, difference, or Boolean result.",
+        },
     },
     "change": {
         "it": ["cambia", "modifica", "ridimensiona", "ridimensionare", "trasforma",
@@ -812,14 +849,20 @@ ACTION_MAPPING = {
                 "prepara-ricerca", "aggiorna-indice"],
         "en": ["order", "index", "build-index", "materialize-order", "prepare-search",
                 "refresh-index"],
-        "boundary": "Materializza un ordinamento PERSISTENTE del corpus (indice CLIP, perceptual hash, threading messages, ...) per rendere veloci query future. Distinto da sort: sort ordina una lista IN MEMORIA del turno corrente; order produce un derivato durevole su disco. Composizione naturale: order_X_y costruisce/refresha l'indice, find_X_y lo interroga. Refresh tipicamente lazy (al primo find_X_y che lo richiede) o esplicito (utente: 'ricostruisci indice').",
+        "boundary": {
+            "it": "Materializza un ordinamento PERSISTENTE del corpus (indice CLIP, perceptual hash, threading messages, ...) per rendere veloci query future. Distinto da sort: sort ordina una lista IN MEMORIA del turno corrente; order produce un derivato durevole su disco. Composizione naturale: order_X_y costruisce/refresha l'indice, find_X_y lo interroga. Refresh tipicamente lazy (al primo find_X_y che lo richiede) o esplicito (utente: 'ricostruisci indice').",
+            "en": "Materializes a PERSISTENT ordering of a corpus (CLIP index, perceptual hash, message threading, and similar derivatives) to accelerate future queries. Unlike sort, which orders an IN-MEMORY list for the current turn, order produces a durable derivative on disk. Natural composition: order_X_y builds or refreshes the index and find_X_y queries it. Refresh is typically lazy on the first requiring find_X_y, or explicit when the user asks to rebuild the index.",
+        },
     },
     "share": {
         "it": ["condividi", "concedi-accesso", "invita", "dai-permesso",
                 "rendi-pubblico", "rendi-accessibile"],
         "en": ["share", "grant-access", "give-permission", "invite-to",
                 "make-public", "make-accessible"],
-        "boundary": "OUTBOUND CONSENT (ADR 0128): grant access a una risorsa senza spostarla o duplicarla. Crea un permission/ACL grant remoto sull'entita' identificata da `id`/`ids`. Distinto da `send` (outbound copy o notifica: il destinatario riceve un OGGETTO, es. una mail) e da `set` (upsert idempotente di valori/labels/metadata interni al record). Esempio: condividere un Drive file con un utente = share_files (l'entita' resta nel proprio drive, il destinatario riceve solo un permesso di lettura/scrittura). Reversibile via revoke (`delete_<obj>_permissions_by_id` 5° reverse_pattern §2.3).",
+        "boundary": {
+            "it": "OUTBOUND CONSENT (ADR 0128): grant access a una risorsa senza spostarla o duplicarla. Crea un permission/ACL grant remoto sull'entita' identificata da `id`/`ids`. Distinto da `send` (outbound copy o notifica: il destinatario riceve un OGGETTO, es. una mail) e da `set` (upsert idempotente di valori/labels/metadata interni al record). Esempio: condividere un Drive file con un utente = share_files (l'entita' resta nel proprio drive, il destinatario riceve solo un permesso di lettura/scrittura). Reversibile via revoke (`delete_<obj>_permissions_by_id` 5° reverse_pattern §2.3).",
+            "en": "OUTBOUND CONSENT (ADR 0128): grants access to a resource without moving or duplicating it. Creates a remote permission/ACL grant on the entity identified by `id`/`ids`. Unlike `send` (outbound copy or notification, where the recipient receives an OBJECT such as an email) and unlike `set` (idempotent upsert of values, labels, or metadata inside the record). For example, sharing a Drive file with a user = share_files: the entity remains in its drive and the recipient receives only read/write permission. Reversible by revocation (`delete_<obj>_permissions_by_id`, fifth reverse_pattern in §2.3).",
+        },
     },
     "open": {
         "it": ["apri-il-sito", "apri-la-sessione", "vai-sul-sito", "apri-il-portale"],
@@ -1465,59 +1508,191 @@ def render_action_categories_block() -> str:
     Usato nel prompt stage 1 di synt."""
     by_cat: dict[str, list[str]] = {}
     for a in ACTIONS:
-        cat = ACTION_CATEGORIES.get(a, "altro")
+        cat = ACTION_CATEGORIES.get(a, "other")
         by_cat.setdefault(cat, []).append(a)
     lines = []
     for cat, verbs in by_cat.items():
-        lines.append(f"  Categoria {cat:14s}: {', '.join(verbs)}")
+        lines.append(f"  {cat:19s}: {', '.join(verbs)}")
     return "\n".join(lines)
 
 
-def _boundary_text(m: dict, lang: str = "it") -> str:
-    """Normalizza il campo `boundary` (str legacy o {it,en}) → stringa lang.
+def action_seed_languages() -> tuple[str, ...]:
+    """Lingue editoriali presenti per *tutte* le risorse action del seed.
 
-    Schema transitorio (pilota 5 verbi-produttori ratificato 24/6): i verbi
-    confondibili (read/get/find/list/filter) hanno boundary `{it,en}`
-    contrastiva (canonico EN); gli altri 18 restano `str` IT finché il pilota
-    non è validato dal simulatore (poi conversione + drop di questo ramo str).
-    Un SOLO punto gestisce le due forme: niente shape-handling sparso.
+    Non e' il registro delle lingue operative: serve solo a verificare e
+    distribuire la baseline. L'insieme e' derivato dai dati, mai enumerato.
     """
-    b = m.get("boundary", "")
-    if isinstance(b, dict):
-        return b.get(lang) or b.get("en") or b.get("it") or ""
-    return b
+    if not ACTIONS:
+        return ()
+    first = ACTION_MAPPING.get(ACTIONS[0], {})
+    ordered = [key for key in first if key != "boundary"]
+    return tuple(
+        lang for lang in ordered
+        if all(
+            isinstance(ACTION_MAPPING.get(action, {}).get(lang), list)
+            and isinstance(
+                ACTION_MAPPING.get(action, {}).get("boundary", {}).get(lang),
+                str,
+            )
+            for action in ACTIONS
+        )
+    )
 
 
-def render_action_mapping_block() -> str:
-    """Blocco multilinea con il MAPPING bilingue completo per stage 1."""
+def action_boundary_key(action: str) -> str:
+    """Chiave i18n stabile del confine semantico di un'azione canonica."""
+    if action not in ACTIONS:
+        raise KeyError(f"unknown canonical action: {action}")
+    return f"{ACTION_BOUNDARY_KEY_PREFIX}{action.upper()}_BOUNDARY"
+
+
+def _seed_action_surfaces(lang: str) -> dict[str, list[str]]:
+    """Fallback distribuito, usato solo se il catalogo non e' disponibile."""
+    import i18n as _i18n
+
+    for candidate in _i18n.language_chain(lang):
+        if candidate in action_seed_languages():
+            return {
+                action: list(ACTION_MAPPING[action][candidate])
+                for action in ACTIONS
+            }
+    return {}
+
+
+def action_surface_mapping(lang: str | None = None, *, fallback: bool = True,
+                           ready_only: bool = False) -> dict[str, list[str]]:
+    """Superfici action dalla risorsa detection versionata RM-0005."""
+    import detection_lexicon as _dl
+    import i18n as _i18n
+
+    requested = _i18n.normalize_language(lang) or _i18n.current_lang()
+    source = _seed_action_surfaces(requested)
+    candidate = _dl.mapping_for_language(
+        ACTION_SURFACES_CONCEPT,
+        requested,
+        fallback=fallback,
+        ready_only=ready_only,
+    )
+    validation = _dl.validate_mapping_payload(source, candidate)
+    if validation["ok"]:
+        return validation["mapping"]
+    return source if fallback else {}
+
+
+def action_recognition_mapping() -> dict[str, list[str]]:
+    """Superfici additive per il riconoscimento nella lingua del turno.
+
+    A differenza del renderer monolingue, il riconoscitore conserva anche le
+    forme seed come prestiti/compatibilita', seguendo la semantica additiva
+    centrale del detection lexicon. Se il DB non e' ancora aggiornabile al
+    primo boot, la stessa union viene ricostruita dai seed editoriali.
+    """
+    import detection_lexicon as _dl
+
+    seed_union = {action: [] for action in ACTIONS}
+    for lang in action_seed_languages():
+        for action in ACTIONS:
+            for surface in ACTION_MAPPING[action][lang]:
+                if surface not in seed_union[action]:
+                    seed_union[action].append(surface)
+    candidate = _dl.mapping(ACTION_SURFACES_CONCEPT)
+    validation = _dl.validate_mapping_payload(seed_union, candidate)
+    return validation["mapping"] if validation["ok"] else seed_union
+
+
+def _seed_boundary(action: str, lang: str) -> str:
+    import i18n as _i18n
+
+    seed = ACTION_MAPPING[action]["boundary"]
+    for candidate in _i18n.language_chain(lang):
+        text = seed.get(candidate)
+        if text:
+            return text
+    return ""
+
+
+def action_boundary(action: str, lang: str | None = None, *,
+                    fallback: bool = True, ready_only: bool = False) -> str:
+    """Confine semantico localizzato dal catalogo versionato."""
+    import i18n as _i18n
+
+    requested = _i18n.normalize_language(lang) or _i18n.current_lang()
+    resource = _i18n.resource_for_language(
+        action_boundary_key(action), requested,
+        fallback=fallback, ready_only=ready_only,
+    )
+    if resource:
+        return str(resource["text"])
+    return _seed_boundary(action, requested) if fallback else ""
+
+
+def action_vocabulary_coverage(lang: str) -> dict:
+    """Gate di copertura nativa per superfici e boundary di una lingua."""
+    import detection_lexicon as _dl
+    import i18n as _i18n
+
+    requested = _i18n.normalize_language(lang)
+    if not requested:
+        return {"lang": str(lang), "ok": False, "error": "invalid_language"}
+    source = _seed_action_surfaces(requested)
+    surface_resource = _dl.resource_for_language(
+        ACTION_SURFACES_CONCEPT, requested, fallback=False, ready_only=True,
+    )
+    candidate = surface_resource["payload"] if surface_resource else None
+    validation = _dl.validate_mapping_payload(source, candidate)
+    missing_boundaries: list[str] = []
+    for action in ACTIONS:
+        if not _i18n.resource_for_language(
+            action_boundary_key(action), requested,
+            fallback=False, ready_only=True,
+        ):
+            missing_boundaries.append(action)
+    return {
+        "lang": requested,
+        "ok": validation["ok"] and not missing_boundaries,
+        "surfaces_ok": validation["ok"],
+        "missing_surface_actions": validation["missing_keys"],
+        "extra_surface_actions": validation["extra_keys"],
+        "invalid_surface_actions": validation["invalid_keys"],
+        "ambiguous_surfaces": validation["ambiguous_surfaces"],
+        "missing_boundaries": missing_boundaries,
+        "covered_boundaries": len(ACTIONS) - len(missing_boundaries),
+        "total_boundaries": len(ACTIONS),
+    }
+
+
+def render_action_mapping_block(lang: str | None = None) -> str:
+    """Mapping completo nella lingua attiva, senza assunzioni IT/EN."""
+    import i18n as _i18n
+
+    requested = _i18n.normalize_language(lang) or _i18n.current_lang()
+    surfaces = action_surface_mapping(requested)
     lines = []
     for verb in ACTIONS:
-        m = ACTION_MAPPING.get(verb)
-        if not m:
+        forms = surfaces.get(verb)
+        if not forms:
             continue
-        lines.append(f"  {verb:10s} IT: {', '.join(m['it'])}")
-        lines.append(f"             EN: {', '.join(m['en'])}")
-        lines.append(f"             {_boundary_text(m, 'it')}")
+        lines.append(f"  {verb:10s}: {', '.join(forms)}")
+        boundary = action_boundary(verb, requested)
+        if boundary:
+            lines.append(f"              {boundary}")
         lines.append("")
     return "\n".join(lines).rstrip()
 
 
-def render_boundaries(lang: str = "it", verbs=None) -> str:
+def render_boundaries(lang: str | None = None, verbs=None) -> str:
     """Confini-verbo per il prompt di filtraggio (intent extractor v4).
 
     SoT-driven: il prompt È la descrizione dei vocaboli (no parafrasi, no
     drift). Default = TUTTI i verbi (lo spazio completo, come richiesto:
     «il filtraggio dovrebbe avere come prompt tutta la descrizione dei
-    vocaboli»). I 5 produttori portano la boundary `{it,en}` contrastiva;
-    gli altri la loro definizione esistente via `_boundary_text`.
+    vocaboli»). La lingua arriva dal catalogo; una risorsa incompleta usa la
+    catena di fallback centrale, mentre il coverage gate segnala il gap.
     """
     sel = verbs if verbs is not None else ACTIONS
     lines = []
     for v in sel:
-        m = ACTION_MAPPING.get(v)
-        if not m:
-            continue
-        txt = _boundary_text(m, lang)
+        txt = action_boundary(v, lang)
         if txt:
             lines.append(f"- {v}: {txt}")
     return "\n".join(lines)

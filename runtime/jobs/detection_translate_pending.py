@@ -76,7 +76,9 @@ _MAPPING_TMPL = (
     "Concept: {concept}\n"
     "Rules: keep every KEY exactly as-is; translate only the surface forms in "
     "each list to natural {target_name}; keep brand/proper names unchanged; "
-    "include morphological variants; do NOT translate literally.\n"
+    "include morphological variants; do NOT translate literally; do not "
+    "reuse the same translated surface under different keys unless the "
+    "target language is genuinely ambiguous.\n"
     "Source map (JSON): {payload}\n"
     'Output exactly: {{"mapping": {{"key": ["...", "..."]}}}}'
 )
@@ -128,10 +130,15 @@ def _llm_localize(concept: str, kind: str, source_payload, target_lang: str,
         if kind == "mapping":
             m = obj.get("mapping")
             if isinstance(m, dict):
-                out = {k: [str(x) for x in v] for k, v in m.items()
-                       if isinstance(v, list)}
-                if out:
-                    return out, {"model": meta.get("model"), "tier": tier}
+                validation = _dl.validate_mapping_payload(source_payload, m)
+                # Una localizzazione parziale non e' copertura: accettarla
+                # farebbe sparire in silenzio intere categorie canoniche. Le
+                # collisioni nuove richiedono review umana, non una scelta
+                # arbitraria del prefilter.
+                if validation["ok"] and not validation["ambiguous_surfaces"]:
+                    return validation["mapping"], {
+                        "model": meta.get("model"), "tier": tier,
+                    }
         else:
             forms = obj.get("forms")
             if isinstance(forms, list):

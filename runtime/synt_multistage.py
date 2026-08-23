@@ -258,7 +258,7 @@ def run_stage1(user_request: str, llm_call) -> StageResult:
         _i18n.current_lang(),
         n_actions=len(_VOCAB_ACTIONS),
         action_categories_block=render_action_categories_block(),
-        action_mapping_block=render_action_mapping_block(),
+        action_mapping_block=render_action_mapping_block(_i18n.current_lang()),
         n_objects=len(_VOCAB_OBJECTS),
         objects_inline=render_objects_inline(),
         qualifiers_inline=render_qualifiers_inline(),
