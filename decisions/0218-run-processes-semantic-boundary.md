@@ -86,10 +86,9 @@ persistent startup is irreversible.
   the role capability.
 - The executor catalog, vocabulary documentation, tests, and signatures move
   atomically to `run_processes`.
-- The current privileged resolver remains limited by ADR 0211 to registered
-  portable packages. Inventory-only MSIX/AppX identities fail closed; their
-  general user-session activation and undo identity are tracked as RUN-001,
-  not implemented as an application-specific exception.
+- The privileged helper remains limited by ADR 0211 to registered portable
+  packages. ADR 0221 adds a separate typed AppX family resolved and activated
+  by the current-user Windows client, without an application-specific table.
 
 ## Rejected alternatives
 

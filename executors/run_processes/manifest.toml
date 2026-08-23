@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name         = "run_processes"
-version      = "0.4.0"
+version      = "0.5.0"
 intelligence = "deterministic"
 timeout_s    = 30
 platforms    = ["windows"]
@@ -29,7 +29,7 @@ en = "SCOPO: runs installed software with receipts for created processes. PATTER
 
 [code]
 files  = ["run_processes.py"]
-digest = "sha256:1537a8926171da6912622c48f18ddac26ea420f06c54b1da8abf35902af775f5"
+digest = "sha256:7ffd76b55200872601a564c723a786c4bc1afc332f67a649cebc95243134ac9c"
 
 [args]
 type     = "object"
@@ -51,7 +51,7 @@ minItems    = 1
 maxItems    = 10
 from_entries_key = "resolved_id"
 from_entries_complete = true
-items       = { type = "string", maxLength = 128 }
+items       = { type = "string", maxLength = 132 }
 
 [args.properties.programs.description]
 it = "Identificativi esatti dei pacchetti installati, come lista. Non accetta percorsi, comandi, caratteri jolly o nomi da indovinare."

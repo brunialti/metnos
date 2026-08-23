@@ -330,6 +330,7 @@ mod tests {
             capabilities: vec![],
             min_sandbox: "job-object".into(),
             managed_providers: vec![],
+            module_reverse: false,
         };
         let extra = vec![("METNOS_USER_DATA".to_string(), root.display().to_string())];
 
@@ -374,6 +375,7 @@ mod tests {
             capabilities: vec![],
             min_sandbox: "job-object".into(),
             managed_providers: vec![],
+            module_reverse: false,
         };
         let out = run_sandboxed(
             &exec,

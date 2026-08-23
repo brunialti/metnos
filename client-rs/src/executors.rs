@@ -51,6 +51,9 @@ pub struct CachedExecutor {
     pub min_sandbox: String,
     /// Lazy read-only providers authorised by the signed manifest.
     pub managed_providers: Vec<ManagedProviderDependency>,
+    /// True only when the verified manifest declares both `revertible=true`
+    /// and `module.reverse` as a reverse pattern.
+    pub module_reverse: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -137,6 +140,7 @@ pub async fn ensure_executor(
                 let capabilities = parse_capabilities(&manifest);
                 let min_sandbox = parse_min_sandbox(&manifest)?;
                 let managed_providers = parse_managed_providers(&manifest)?;
+                let module_reverse = manifest_allows_module_reverse(&manifest);
                 return Ok(CachedExecutor {
                     name: name.to_string(),
                     dir,
@@ -144,6 +148,7 @@ pub async fn ensure_executor(
                     capabilities,
                     min_sandbox,
                     managed_providers,
+                    module_reverse,
                 });
             }
             Err(e) => {
@@ -165,6 +170,7 @@ pub async fn ensure_executor(
     let capabilities = parse_capabilities(&manifest);
     let min_sandbox = parse_min_sandbox(&manifest)?;
     let managed_providers = parse_managed_providers(&manifest)?;
+    let module_reverse = manifest_allows_module_reverse(&manifest);
     Ok(CachedExecutor {
         name: name.to_string(),
         dir,
@@ -172,7 +178,21 @@ pub async fn ensure_executor(
         capabilities,
         min_sandbox,
         managed_providers,
+        module_reverse,
     })
+}
+
+fn manifest_allows_module_reverse(manifest: &toml::Value) -> bool {
+    if manifest.get("revertible").and_then(toml::Value::as_bool) != Some(true) {
+        return false;
+    }
+    match manifest.get("reverse_pattern") {
+        Some(toml::Value::String(value)) => value == "module.reverse",
+        Some(toml::Value::Array(values)) => values
+            .iter()
+            .any(|value| value.as_str() == Some("module.reverse")),
+        _ => false,
+    }
 }
 
 fn validate_cache_key(name: &str, manifest_sha256: &str, code_sha256: &str) -> Result<()> {

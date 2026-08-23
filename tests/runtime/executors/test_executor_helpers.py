@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -290,6 +291,39 @@ class TestRunStdio(unittest.TestCase):
         out = json.loads(_run_stdio(invoke, '{"x": 42}'))
         self.assertEqual(seen, {"x": 42})
         self.assertEqual(out, {"ok": True, "echo": 42})
+
+    def test_signed_reverse_operation_calls_module_reverse(self):
+        main_module = sys.modules["__main__"]
+        missing = object()
+        previous_reverse = getattr(main_module, "reverse", missing)
+        previous_operation = os.environ.get("METNOS_EXECUTOR_OPERATION")
+        seen = {}
+
+        def reverse(plan, results):
+            seen["plan"] = plan
+            seen["results"] = results
+            return {"ok": True, "ok_count": 1, "fail_count": 0}
+
+        setattr(main_module, "reverse", reverse)
+        os.environ["METNOS_EXECUTOR_OPERATION"] = "reverse"
+        try:
+            out = json.loads(_run_stdio(
+                lambda args: self.fail("invoke must not run during reverse"),
+                '{"plan":{"args":{"x":1}},"results":{"ok":true}}'))
+        finally:
+            if previous_reverse is missing:
+                delattr(main_module, "reverse")
+            else:
+                setattr(main_module, "reverse", previous_reverse)
+            if previous_operation is None:
+                os.environ.pop("METNOS_EXECUTOR_OPERATION", None)
+            else:
+                os.environ["METNOS_EXECUTOR_OPERATION"] = previous_operation
+
+        self.assertEqual(seen, {
+            "plan": {"args": {"x": 1}}, "results": {"ok": True},
+        })
+        self.assertEqual(out, {"ok": True, "ok_count": 1, "fail_count": 0})
 
     def test_empty_stdin_is_err_empty_input(self):
         out = json.loads(_run_stdio(lambda a: {"ok": True}, ""))

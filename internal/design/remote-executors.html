@@ -482,7 +482,7 @@ lo apre. L'installer:</p>
 vietata dai sistemi operativi. La UI deve quindi dire chiaramente «apri il file
 scaricato», non promettere installazione senza conferma locale.</p>
 
-<h3 id="58-auto-update">5.8 Auto-update ⛔</h3>
+<h3 id="58-auto-update">5.8 Auto-update ✅</h3>
 <p>Il client, al poll, riceve <code>server_client_version</code>. Se maggiore della
 propria, <code>self_update</code>: scarica il nuovo binario firmato, verifica, scrive
 accanto, riavvia la unit (Linux) / il Service o Scheduled Task (Windows).
@@ -588,6 +588,7 @@ ri-polla), o UNA invocazione firmata dal server:</p>
     &quot;executor&quot;: &quot;find_packages&quot;,
     &quot;manifest_sha256&quot;: &quot;9f...&quot;, &quot;code_sha256&quot;: &quot;3c...&quot;,
     &quot;args&quot;: { &quot;names&quot;: [&quot;git&quot;] },
+    &quot;operation&quot;: &quot;invoke&quot;,  // oppure reverse, solo dopo capability negotiation
     &quot;scope&quot;: &quot;device&quot;, &quot;reversibility&quot;: &quot;read_only&quot;,
     &quot;env_injections&quot;: { &quot;GITHUB_TOKEN&quot;: &quot;...&quot; },   // solo a execute-time, mai su disco
     &quot;deadline_ms&quot;: 60000,
@@ -597,6 +598,14 @@ ri-polla), o UNA invocazione firmata dal server:</p>
 verifica, RIFIUTA e logga (attacco/replay). <code>invocation_id</code> monotòno =
 idempotenza: un'invocazione già eseguita non si ri-esegue (dedup locale in
 memoria + <code>cursor</code>).</p>
+<p><strong>Reverse remoto custom (ADR 0222):</strong> il profilo heartbeat del
+client dichiara <code>executor_reverse_v1</code>. Solo allora il server puo'
+firmare <code>operation=reverse</code> con args esatti
+<code>{plan,results}</code>; server e client verificano che il manifest firmato
+dichiari <code>revertible=true</code> e <code>module.reverse</code>. Il client
+esegue la funzione <code>reverse</code> dello stesso bundle sullo stesso device.
+Il default <code>invoke</code> resta omesso sul filo per preservare il payload
+storico.</p>
 <h3 id="63-agentresult-client-server">6.3 <code>/agent/result</code> (client → server)</h3>
 <pre><code class="language-json">// body: stessa shape §2.6 di .33; header: X-Metnos-Device-Sig
 { &quot;invocation_id&quot;: &quot;inv-01J...&quot;, &quot;device_id&quot;: &quot;d-7a3f&quot;,

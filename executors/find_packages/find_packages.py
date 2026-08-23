@@ -43,6 +43,25 @@ from executor_helpers import run_stdio  # noqa: E402
 # reach the package manager as an option, not as a name.
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:@-]{0,127}$")
 
+# WinGet renders packaged inventory identities as `MSIX\<PackageFullName>`.
+# The backslash belongs to WinGet's table format; it is neither a safe launch
+# identity nor a filesystem path. Convert that provider-owned representation
+# to an explicit resolver family. The Windows client remains authoritative:
+# it validates the full name with VerifyPackageFullName and resolves the apps
+# registered for the current user.
+_APPX_FULL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$")
+
+
+def _launch_identity(winget_id):
+    if not isinstance(winget_id, str):
+        return None
+    if not winget_id.startswith("MSIX\\"):
+        return winget_id if _ID_RE.fullmatch(winget_id) else None
+    package_full_name = winget_id[5:]
+    if not _APPX_FULL_NAME_RE.fullmatch(package_full_name):
+        return None
+    return f"appx:{package_full_name}"
+
 # Human software names are not identifiers and may contain spaces or Unicode
 # letters (for example a localized display name). Validation is character-
 # class based, not language- or product-based: path separators, controls,
@@ -258,7 +277,9 @@ def _probe_windows(package_id, tool_path, by_name=False):
     if by_name and len(rows) > 1:
         hit["also_matched"] = [r[0] for r in rows[1:6]]
     else:
-        hit["resolved_id"] = pkg_id
+        resolved_id = _launch_identity(pkg_id)
+        if resolved_id:
+            hit["resolved_id"] = resolved_id
     return hit
 
 

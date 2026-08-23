@@ -112,6 +112,66 @@ def test_session_undo_stops_only_exact_receipt_identity(windows):
     )
 
 
+def test_appx_uses_user_session_client_and_offers_only_session(monkeypatch):
+    calls = []
+    package_id = (
+        "appx:Microsoft.WindowsNotepad_11.2606.15.0_x64__8wekyb3d8bbwe")
+
+    def appx(*arguments):
+        calls.append(arguments)
+        if arguments[0] == "query":
+            return {"ok": True, "lifetimes": ["session"]}
+        if arguments[0] == "stop":
+            return {"ok": True, "payload": {"stopped": True}}
+        return {
+            "ok": True,
+            "payload": {
+                "created_process": True,
+                "process": {"pid": 5151, "creation_time": 133700000000000001},
+                "persistent_registration_changed": False,
+            },
+        }
+
+    monkeypatch.setattr(run_processes.sys, "platform", "win32")
+    monkeypatch.setattr(run_processes, "_appx_call", appx)
+    monkeypatch.setattr(
+        run_processes, "_helper_call",
+        lambda *_: (_ for _ in ()).throw(AssertionError("helper must not run")),
+    )
+    monkeypatch.setattr(run_processes, "_machine_name", lambda: "PC-TEST")
+
+    phase_one = run_processes.invoke({"programs": [package_id]})
+    choices = phase_one["needs_inputs"]["dialog"][0]["schema"]["choices"]
+    assert [choice["value"] for choice in choices] == ["session", "reject"]
+    assert set(phase_one["needs_inputs"]["on_complete"]["branches"]) == {"session"}
+    assert calls == [("query", "--package-id", package_id)]
+
+    forward = run_processes.invoke(_approved([package_id], "session"))
+    assert forward["ok"] is True
+    assert forward["_undo"]["outcome"] == "reversible"
+    assert calls[-1] == (
+        "start", "--package-id", package_id, "--lifetime", "session")
+
+    reversed_result = run_processes.reverse({}, forward)
+    assert reversed_result["ok"] is True
+    assert calls[-1] == (
+        "stop", "--package-id", package_id,
+        "--pid", "5151", "--creation-time", "133700000000000001")
+
+
+def test_appx_persistent_choice_is_rejected_before_activation(monkeypatch):
+    package_id = "appx:Vendor.App_1.0.0.0_x64__publisher"
+    calls = []
+    monkeypatch.setattr(run_processes.sys, "platform", "win32")
+    monkeypatch.setattr(run_processes, "_appx_call", lambda *args: calls.append(args))
+
+    result = run_processes.invoke(_approved([package_id], "persistent"))
+
+    assert result["error_code"] == "consent_invalid"
+    assert result["_undo"] == {"outcome": "no_effect"}
+    assert calls == []
+
+
 def test_already_running_session_is_no_effect(windows, monkeypatch):
     monkeypatch.setattr(run_processes, "_helper_call", lambda *_: {
         "ok": True, "aligned": True,
@@ -161,6 +221,20 @@ def test_paths_commands_and_patterns_are_rejected_before_helper(windows, value):
 
     assert result["error_code"] == "invalid_package_id"
     assert result["_undo"] == {"outcome": "no_effect"}
+    assert windows == []
+
+
+def test_typed_appx_identity_is_not_treated_as_a_path(windows, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        run_processes, "_appx_call",
+        lambda *args: calls.append(args) or {"ok": True})
+    package_id = "appx:Vendor.App_1.0.0.0_x64__publisher"
+
+    result = run_processes.invoke({"programs": [package_id]})
+
+    assert result["decision"] == "needs_inputs"
+    assert calls == [("query", "--package-id", package_id)]
     assert windows == []
 
 

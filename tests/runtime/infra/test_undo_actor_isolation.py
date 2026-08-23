@@ -64,6 +64,18 @@ def test_missing_actor_field_counts_as_host():
         assert log.latest_turn_done(actor="guest:g1") == []
 
 
+def test_legacy_empty_turn_ids_are_isolated_per_operation():
+    with tempfile.TemporaryDirectory() as td:
+        log = UndoLog(Path(td) / "undo.jsonl")
+        log.append_pending("old-empty", "", "write_files", {}, plan={})
+        log.append_done("old-empty", {"ok": True, "results": [{"id": 1}]})
+        log.append_pending("new-empty", "", "run_processes", {}, plan={})
+        log.append_done("new-empty", {"ok": True, "results": [{"id": 2}]})
+
+        records = log.latest_turn_done(actor="host")
+        assert [record["op_id"] for record in records] == ["new-empty"]
+
+
 def test_executor_honest_zero_for_foreign_actor():
     """undo_last_turn con _actor estraneo → 0 annullabili, esito onesto."""
     sys.path.insert(0, str(_RT.parent / "executors" / "undo_last_turn"))

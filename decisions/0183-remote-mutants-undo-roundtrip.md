@@ -19,6 +19,12 @@ La cancellazione del planner legacy (`af6c7b8`, notturno 4/7) ha rimosso l'**uni
 - `restore_blob_backup` → **NON remotabile** (il blob vive sul device, il log sul server): finisce in `unsupported`, riportato onesto.
 `undo_last_turn._reverse_on_device`: enqueue + attesa sincrona bounded (`METNOS_UNDO_DEVICE_TIMEOUT_S`, default 25s); stati terminali `done/failed/error/denied/expired`; «eseguito-ma-fallito» distinto da «mai arrivato» con l'evidenza (`state` + `device_result` troncato) nelle `stages` del dettaglio. Timeout/offline → **failed ritentabile** (mai `undone` senza ribaltamento reale — principio 29/4).
 
+**Estensione 23/8/2026 (ADR 0222):** il pattern custom `module.reverse` non e'
+piu' classificato come non remotabile. Usa l'entrypoint `reverse` dello stesso
+bundle firmato, ammesso soltanto dopo capability negotiation e verifica del
+manifest su server e client. Le traduzioni filesystem di questa ADR restano
+invariate.
+
 ### D3 — delete_files resta SERVER-only (CP4) → **CHIUSO 6/7: delete REMOTABILE**
 ~~restore_blob_backup non remotabile~~ → soluzione SENZA blob sul filo: il blob sta GIÀ sul device (`local.delete` lo scrive nella history del device prima dell'unlink, §2.9) ⇒ **il restore è un `move_files` device-locale blob→path** (executor già device_ok, COPY-check-DELETE). `build_remote_reverse_calls` traduce `restore_blob_backup` in move singole per file; righe senza blob_path → unsupported onesto. `delete_files` e `delete_dirs` (rmdir solo-vuote, non revertibile per contratto) ora `device_ok=true`. Validato e2e isolato E sul PC Windows reale (delete → undo → contenuto ripristinato bit-perfetto, verificato con read remoto).
 

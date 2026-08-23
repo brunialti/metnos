@@ -215,6 +215,13 @@ def run_stdio(invoke, *, default=None, error_extra=None,
     JSONDecodeError): un eventuale errore interno di `invoke` propaga come
     prima (niente mascheramento «JSON non valido» di bug applicativi).
 
+    Sul device il client puo' impostare `METNOS_EXECUTOR_OPERATION=reverse`
+    esclusivamente da un campo wire firmato. In quel caso questa stessa
+    frontiera chiama `reverse(plan, results)` del modulo eseguito, se il
+    manifest firmato lo autorizza (controllo client-side). Nessun executor
+    viene nominato qui: e' un secondo entrypoint universale dello stesso
+    bundle autenticato.
+
     Parametri keyword-only per riprodurre fedelmente le varianti del main()
     copiato negli executor esistenti (zero cambi di comportamento §2.8):
       - `default`: callable passato a `json.dumps(default=...)` per serializzare
@@ -261,16 +268,32 @@ def run_stdio(invoke, *, default=None, error_extra=None,
             result[TRANSPORT_USAGE_KEY] = sink.export()
         return result
 
+    def _dispatch(args):
+        operation = os.environ.get("METNOS_EXECUTOR_OPERATION") or "invoke"
+        if operation == "invoke":
+            return _invoke(args)
+        if operation != "reverse":
+            return _err("ERR_ARGS_NOT_OBJECT")
+        if (not isinstance(args, dict) or set(args) != {"plan", "results"}
+                or not isinstance(args.get("plan"), dict)
+                or not isinstance(args.get("results"), dict)):
+            return _err("ERR_ARGS_NOT_OBJECT")
+        module = sys.modules.get("__main__")
+        reverse = getattr(module, "reverse", None) if module is not None else None
+        if not callable(reverse):
+            return _err("ERR_UNDO_NO_REVERSE")
+        return reverse(args["plan"], args["results"])
+
     raw = sys.stdin.read()
     if not raw.strip():
-        result = _invoke({}) if allow_empty else _err("ERR_EMPTY_INPUT")
+        result = _dispatch({}) if allow_empty else _err("ERR_EMPTY_INPUT")
     else:
         try:
             args = json.loads(raw)
         except json.JSONDecodeError:
             result = _err("ERR_JSON_INVALID")
         else:
-            result = _invoke(args)
+            result = _dispatch(args)
     sys.stdout.write(json.dumps(result, ensure_ascii=False, default=default))
 
 

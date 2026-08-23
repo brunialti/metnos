@@ -242,6 +242,13 @@ def invoke_get_inputs_internal(*,
     callback = dict(on_complete) if isinstance(on_complete, dict) else on_complete
     if isinstance(callback, dict):
         callback["owner_user_id"] = owner_user_id
+        # Every callback that resumes an executor remains part of the turn
+        # which opened the dialog.  Store the correlation in the callback
+        # itself because completion dispatch consumes `on_complete`, while
+        # `origin_turn_id` in state is UI metadata.  An explicit callback
+        # value wins for deliberate cross-turn orchestration.
+        if origin_turn_id:
+            callback.setdefault("turn_id", origin_turn_id)
     state = {
         "dialog_id": dialog_id,
         "title": title,

@@ -103,5 +103,6 @@ applicable first-party executors.
 
 Conditional executors must test reversible, no-effect, irreversible and
 malformed-receipt outcomes. State-bearing reverses must test concurrent change
-and second-undo behavior. Managed stop additionally requires the Windows
-cross-build and real Windows validation before release claims are complete.
+and second-undo behavior. Managed portable stop and packaged-app stop require
+the Windows cross-build and real Windows validation. ADRs 0221-0222 complete
+that gate for packaged AppX activation and same-device `module.reverse`.

@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_packages"
-version     = "0.4.0"
+version     = "0.5.0"
 platforms   = ["linux", "windows"]
 author      = "synt-multistage <synt@metnos.com>"
 affinity    = ["installato", "installed", "e' installato", "is installed",
@@ -22,7 +22,7 @@ en = "SCOPO: checks installed software and resolves a human name to its register
 
 [code]
 files  = ["find_packages.py"]
-digest = "sha256:29d6509e3e41a38484ae87a014f7e31bfbfd05d5adaa5ce2d3eed5800b35ccc6"
+digest = "sha256:f9383407b07ffbc956005e40899d82af765524f38873da1b3976247c9a1c47f7"
 
 [args]
 type     = "object"
@@ -34,8 +34,8 @@ uniqueItems = true
 items = { type = "string", maxLength = 128 }
 
 [args.properties.packages.description]
-it = "Programmi da controllare, come lista. Accetta nomi comuni localizzati e Unicode ('Blocco note') oppure identificativi esatti ('Microsoft.VisualStudioCode'): se la forma può essere un id si prova prima quello, poi il nome. Non servono caratteri jolly."
-en = "Programs to check, as a list. Localized Unicode display names ('Notepad') and exact identifiers ('Microsoft.VisualStudioCode') are accepted: identifier-shaped values are tried as exact ids first, then as names. Wildcards are unnecessary."
+it = "Lista di programmi da controllare. Accetta nomi localizzati ('Blocco note') o id esatti ('Microsoft.VisualStudioCode'); prova prima l'id, poi il nome. Niente caratteri jolly."
+en = "Programs to check. Accepts localized names ('Notepad') or exact IDs ('Microsoft.VisualStudioCode'); tries the ID first, then the name. No wildcards."
 
 [output]
 schema_inline = """

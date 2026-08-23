@@ -100,6 +100,39 @@ class InvocationQueueTests(unittest.TestCase):
         server_pub = invocations.server_public_key_b64()
         self.assertTrue(invocations.verify_payload(server_pub, sig, wire))
 
+    def test_reverse_operation_requires_capability_and_is_signed(self):
+        reverse_args = {"plan": {}, "results": {
+            "_undo": {"outcome": "reversible", "processes": []},
+        }}
+        with self.assertRaises(invocations.InvocationError):
+            invocations.enqueue_invocation(
+                self.device_id, "run_processes", reverse_args,
+                operation="reverse", db_path=self.db)
+
+        devices.heartbeat(self.device_id, profile={
+            "protocol_capabilities": [
+                invocations.REMOTE_REVERSE_CAPABILITY],
+        }, db_path=self.db)
+        invocations.enqueue_invocation(
+            self.device_id, "run_processes", reverse_args,
+            operation="reverse", db_path=self.db)
+        wire = invocations.next_invocation(self.device_id, db_path=self.db)
+        self.assertEqual(wire["operation"], "reverse")
+        signature = wire.pop("server_sig")
+        self.assertTrue(invocations.verify_payload(
+            invocations.server_public_key_b64(), signature, wire))
+
+    def test_reverse_operation_requires_manifest_authorization(self):
+        devices.heartbeat(self.device_id, profile={
+            "protocol_capabilities": [
+                invocations.REMOTE_REVERSE_CAPABILITY],
+        }, db_path=self.db)
+        with self.assertRaises(invocations.InvocationError):
+            invocations.enqueue_invocation(
+                self.device_id, "find_packages",
+                {"plan": {}, "results": {}},
+                operation="reverse", db_path=self.db)
+
     def test_durable_dispatch_is_idempotent_across_reopen_and_signs_context(self):
         context = {
             "owner_user_id": "owner-f7",

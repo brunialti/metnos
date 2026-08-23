@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "undo_last_turn"
-version     = "0.2.0"
+version     = "0.3.0"
 platforms   = ["linux"]
 revertible  = false
 lifecycle   = "active"
@@ -18,7 +18,7 @@ en = "SCOPO: cancel all reversible operations of the last user turn. PATTERN: un
 
 [code]
 files  = ["undo_last_turn.py"]
-digest = "sha256:af516cba6d820943341b00032671798084bb1be4c85e350f304e02c20577e056"
+digest = "sha256:cbb559081873b4e960baaa9d56940a10f5f82aaf348450a6bba542c5ed765d6c"
 
 [args]
 type     = "object"

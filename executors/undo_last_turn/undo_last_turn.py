@@ -46,7 +46,8 @@ def _reverse_on_device(patterns, rec) -> dict:
     import invocations as _inv
     device_id = rec.get("device") or ""
     built = build_remote_reverse_calls(
-        patterns, rec.get("plan") or {}, rec.get("results") or {})
+        patterns, rec.get("plan") or {}, rec.get("results") or {},
+        module_executor=rec.get("executor") or None)
     stages, total_ok, total_fail = [], 0, 0
     overall_ok = True
     for pat in built["unsupported"]:
@@ -56,6 +57,9 @@ def _reverse_on_device(patterns, rec) -> dict:
         total_fail += 1
         overall_ok = False
     for call in built["calls"]:
+        operation = call.get("operation") or "invoke"
+        stage_name = (f"{call['executor']}.reverse"
+                      if operation == "reverse" else call["executor"])
         # Deadline SCALATA con gli item (stessa politica A.0 di remote_exec,
         # 6/7): un batch-restore da 100 copie non sta nei 30s di default — il
         # job-object ucciderebbe il restore a metà (failure-mode 1ba8e2c4,
@@ -68,9 +72,14 @@ def _reverse_on_device(patterns, rec) -> dict:
         try:
             inv_id = _inv.enqueue_invocation(
                 device_id, call["executor"], call["args"], scope="device",
-                deadline_ms=_scaled_s * 1000)
+                reversibility="revertible",
+                deadline_ms=_scaled_s * 1000,
+                turn_id=rec.get("turn_id") or None,
+                origin_actor=rec.get("actor") or "",
+                origin_channel=rec.get("channel") or "",
+                operation=operation)
         except Exception as e:
-            stages.append({"pattern": call["executor"], "result": {
+            stages.append({"pattern": stage_name, "result": {
                 "ok": False, "ok_count": 0, "fail_count": 1,
                 "error": f"enqueue failed: {e}"}})
             total_fail += 1
@@ -100,7 +109,7 @@ def _reverse_on_device(patterns, rec) -> dict:
                 rok = res.get("n_processed") if isinstance(res.get("n_processed"), int) else None
             if not isinstance(rok, int):
                 rok = max(1, len(_pl.get("results") or res.get("results") or []))
-            stages.append({"pattern": call["executor"],
+            stages.append({"pattern": stage_name,
                            "result": {"ok": True, "ok_count": rok,
                                       "fail_count": res.get("fail_count") or 0,
                                       "device": device_id,
@@ -111,7 +120,7 @@ def _reverse_on_device(patterns, rec) -> dict:
             # §2.8: distingui «eseguito ma fallito» (state=done, ok:false) da
             # «mai arrivato» (timeout/error/denied) — e porta l'evidenza.
             _err = (res or {}).get("error") if isinstance(res, dict) else None
-            stages.append({"pattern": call["executor"], "result": {
+            stages.append({"pattern": stage_name, "result": {
                 "ok": False, "ok_count": 0, "fail_count": 1,
                 "error": (_err or _msg("ERR_UNDO_DEVICE_UNREACHABLE",
                                        device=device_id,

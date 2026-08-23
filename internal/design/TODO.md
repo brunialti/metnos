@@ -64,43 +64,6 @@ Metnos. L'ordine e' intenzionale: prima si stabilizza il contratto, poi si
 ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 "codice scritto" non e' una misura di completamento.
 
-### WIN-001 - Installazione software sui dispositivi Windows
-
-- Priorita': alta (P1).
-- Stato (17/8/2026): **progettazione chiusa, implementazione aperta**.
-  Decisioni ratificate in ADR 0209 (dominio `packages`, verbo `install`,
-  disinstallazione al posto dell'undo, regola dei permessi) e ADR 0210
-  (l'aiutante elevato su Windows: canale, vocabolario chiuso, consenso,
-  rimozione). Analisi di fattibilita' in
-  `analysis_install_software_windows_16_8_2026.md`; istruzioni implementative
-  in `spec_install_packages.md`, in quattro parti (vocabolario,
-  `find_packages` esteso a Windows, `install_packages`, aiutante elevato).
-  L'executor copre Linux **e** Windows, non e' un pezzo Windows con Linux
-  aggiunto dopo.
-- Permessi (ADR 0209 D4, emendato 17/8): nessuno installa su un dispositivo
-  che non possiede, **l'amministratore compreso**; sul server, solo un
-  amministratore. La prima regola e' gia' strutturale (filtro proprietario
-  prima del placement, nessun ramo per l'amministratore); la seconda va
-  costruita al choke-point di invocazione.
-- Obiettivo: aggiungere un executor remoto tipizzato che installi o aggiorni un
-  pacchetto su un dispositivo Windows posseduto, usando un gestore di pacchetti
-  disponibile sul dispositivo e verificando identita', editore, fonte e
-  versione prima di modificare il sistema.
-- Confine di sicurezza: non introdurre una shell remota generica, comandi liberi
-  o argomenti eseguibili. Dispositivo, pacchetto e versione devono essere
-  espliciti; ambiguita', fonte non attendibile, richiesta di privilegi non
-  autorizzata o gestore incompatibile devono fallire senza modifiche.
-- Contratto: operazione idempotente, consenso esplicito prima dell'elevazione,
-  stato e avanzamento osservabili, risultato verificato dall'inventario software
-  del dispositivo e messaggi localizzati. Il rollback va dichiarato disponibile
-  soltanto quando il gestore scelto lo supporta e la prova lo conferma.
-- Generalita': rilevamento delle capacita' dal client e dai manifest firmati;
-  nessun nome di pacchetto, lingua, percorso o host codificato nel runtime.
-- Done-gate: test isolati per installazione, aggiornamento, gia' installato,
-  pacchetto ambiguo o assente, firma/editore errati, privilegi negati,
-  interruzione e postcondizione; quindi una prova reale controllata su Windows,
-  senza perdita di configurazione e con audit completo.
-
 ### EXE-001 - Adozione dello standard executor
 
 - Stato: fondazione approvata; migrazione incrementale aperta.
@@ -225,30 +188,18 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   catalogo, threat model, matrice semantica e decisione esplicita prima del
   primo cambiamento al runtime.
 
-### QUA-001 - Flussi di riferimento e affidabilita' percepita
-
-- Stato: completato il 23/8/2026 nella roadmap persistente
-  `internal/roadmap/RM-0006-certificazione-logica-e2e.md`; C0-C6 certificate,
-  cinque sonde reali verdi e due cicli finali 96/96.
-- Decisione: la Fase 8 non e' piu' uno «stress logico» generico. Certifica 24
-  flussi di riferimento in italiano e inglese, con oracoli congelati per piano ammesso,
-  autorita', effetti, postcondizioni, risposta e recupero.
-- Esecuzione: Metnos esegue la matrice in lotti tramite i normali confini; un
-  coordinatore esterno e deterministico conserva l'indipendenza dell'oracolo.
-  Il revisore apre tutte le anomalie e soltanto un campione dei successi.
-- Confine: QUA-001 resta il puntatore breve. Matrice, fasi, costi, artefatti e
-  criteri misurabili sono definiti esclusivamente in RM-0006.
-
 ### UND-001 - Completare gli annullamenti con ricevute esatte
 
-- Stato: contratto generale e quattro riprogettazioni implementati il
-  23/8/2026; resta aperta l'architettura locale di `delete_dirs` e la prova
-  reale Windows dello stop tipizzato.
+- Stato: contratto generale, quattro riprogettazioni e stop Windows tipizzato
+  completati il 23/8/2026; resta aperta soltanto l'architettura locale di
+  `delete_dirs`.
 - Evidenza: `internal/reports/executor-undo-audit-20260823.md`.
 - Implementato: `set_messages` usa il delta effettivo prima/dopo delle label;
   `open_sites`, `set_signatures`, `run_processes` e `login_urls` usano
   l'esito firmato per singola esecuzione di ADR 0217. Segreti undo cifrati
-  fuori dal journal; stop Windows soltanto con PID+creation-time.
+  fuori dal journal; stop Windows soltanto con identita' applicativa,
+  PID+creation-time. Il round trip reale AppX e il protocollo generale
+  `module.reverse` sullo stesso device sono chiusi da ADR 0221-0222.
 - Progettazione aperta: `delete_dirs`; specifica
   `internal/design/undo-redesign-spec-20260823.md`. La modalita' persistente di
   `run_processes` resta irreversibile finche' la registrazione di startup
@@ -257,22 +208,6 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   annullabili; cancellazione soltanto su richiesta utente esplicita.
 - Vincolo: nessun inverso per nome, query o testo naturale; soltanto ricevute
   sigillate, stato precedente sufficiente e ripristino verificabile.
-
-### RUN-001 - Avvio generale delle applicazioni Windows impacchettate
-
-- Stato: da progettare; emerso dal turno reale `c77c005a1ce84cec` del
-  23/8/2026. Il routing `run`, il device e il piping sono corretti, ma WinGet
-  identifica Blocco note come `MSIX\\<PackageFullName>` e l'helper accetta oggi
-  soltanto pacchetti portable registrati (ADR 0211).
-- Vincolo: nessuna tabella di applicazioni, nessun path/comando dal chiamante e
-  nessun avvio nella sessione SYSTEM invisibile all'utente. La soluzione deve
-  risolvere in modo autorevole package/app identity, attivare nel desktop
-  dell'utente proprietario e produrre una ricevuta di processo verificabile
-  per l'undo di sessione. MSIX/AppX e future famiglie devono essere resolver
-  tipizzati sotto lo stesso contratto, con ambiguita' fail-closed.
-- Non confondere col bug chiuso da ADR 0218: `avvia/start/launch` instradano gia'
-  a `run`, mai a `open_sites`; questo TODO riguarda solo una nuova famiglia di
-  pacchetti Windows.
 
 ### RLS-001 - Installazione, aggiornamento e rollback ripetibili
 
@@ -418,31 +353,6 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   d'azione assorbita da `conversation`; risposte RAG con fonte verificabile;
   comportamento onesto quando indice, LLM o stato live non sono disponibili.
 
-### PKG-001 - La scheda di conferma non elenca le dipendenze
-
-- Priorita': media. Trovata dal vivo il 17/8/2026 (turni e563a5ab, 234daad8).
-- Sintomo: «installa LibreHardwareMonitor» mostra una scheda che dice
-  «1 programma», ma winget ne installerebbe DUE — il pacchetto dichiara la
-  dipendenza `namazso.PawnIO`. Chi approva sta autorizzando anche un secondo
-  componente che non ha letto, e la scheda esiste proprio per evitarlo.
-- Prova: `winget show --id LibreHardwareMonitor.LibreHardwareMonitor --exact`
-  espone una sezione `Dipendenze: > Dipendenze dei pacchetti: > namazso.PawnIO`.
-  Il dato c'e', non lo leggiamo.
-- Perche' non e' stato chiuso subito: l'uscita di `winget show` e' LOCALIZZATA
-  (le etichette sono tradotte) e non esiste un'uscita in JSON in
-  winget 1.29.280. `--locale en-US` NON cambia la lingua della riga di comando
-  e in piu' rende indisponibile la sezione del programma di installazione
-  (verificato). Serve quindi una lettura per STRUTTURA, come quella gia' usata
-  per le tabelle di `winget list`, e va validata su piu' lingue prima di
-  fidarsene: nella stessa giornata due assunzioni sulla forma dell'uscita si
-  sono rivelate sbagliate.
-- Done-gate: la scheda elenca ogni pacchetto che verra' realmente installato,
-  distinguendo quello chiesto dalle sue dipendenze; un test con l'uscita reale
-  di winget in almeno due lingue.
-- Nota collegata: la dipendenza di questo pacchetto e' un driver, che si
-  installa per tutti gli utenti. E' il caso in cui «solo per me» non basta e
-  serve l'aiutante amministrativo (ADR 0210, parte D).
-
 ### DEV-001 - «metnos» come nome di macchina: a volte il server, a volte il PC
 
 - Priorita': da assegnare. Segnalata da Roberto il 17/8/2026.
@@ -465,40 +375,6 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 - Done-gate: una richiesta che non nomina nessuna macchina risponde sempre
   per la stessa, e quale sia e' scritto nella risposta; una richiesta che ne
   nomina una risponde per quella.
-
-### JOB-001 - Motore generico per lavori lunghi, persistenti e paralleli
-
-- Priorita': da assegnare.
-- Stato: F0-F2 completate il 2026-08-20. Il nucleo interno inattivo comprende
-  contratti versionati, schema e migrazione SQLite, repository transazionale e
-  macchine a stati; F3 (claim, lease e fencing) non è iniziata. La ricognizione,
-  le fasi F0-F13 e le istruzioni per agenti esecutivi sono nella roadmap propria:
-  **`internal/roadmap/RM-0004-motore-workload-durevoli.md`**. Il mandato
-  originale resta in calce, integro, e va letto insieme all'analisi prima di
-  qualunque modifica.
-- Obiettivo: eseguire carichi lunghi o molto grandi **senza perdere il lavoro
-  gia' svolto e senza duplicare gli effetti** dopo errori, interruzioni o
-  riavvii. L'utente formula soltanto il risultato voluto; il sistema ne
-  ricava un lavoro durevole, e resta osservabile (piano, limiti, modello,
-  avanzamento, errori, artefatti).
-- Confine: deve appartenere all'architettura esistente — richieste in
-  linguaggio naturale, piani tipizzati, executor ammessi, autorita' minima,
-  audit, postcondizioni osservabili, modelli per tier. **Non** un secondo
-  agente separato, non un flusso cablato per un caso solo, non un accesso
-  shell generale, non una via che aggiri scheduler, policy ed executor.
-- Perche' e' una voce distinta e non un duplicato: ADR 0196 (politica
-  centrale di esecuzione) e ADR 0204-0205 (ricorsione parallela
-  deterministica) governano il parallelismo **dentro** una invocazione, che
-  vive quanto il turno. Qui serve durevolezza **attraverso** i riavvii, che
-  nessuno dei due copre. Verificato prima di aprire la voce.
-- Prossimo passo: F3 della roadmap. Provare con processi concorrenti claim,
-  lease, heartbeat, fencing del commit e ripresa, senza ancora collegare
-  executor reali o superfici pubbliche. ADR 0213 mantiene rinviato il nome
-  pubblico e vieta di attivare il worker prima dei gate successivi.
-- Done-gate: un lavoro interrotto a meta' e ripreso non ripete un effetto
-  gia' prodotto, e non dichiara completamento finche' ogni unita' d'ingresso
-  non e' contabilizzata. Le prove complete e i gate intermedi sono in
-  RM-0004 §18.
 
 ### I18N-DEDUP-001 - Controllo duplicati di chiavi e stringhe i18n
 
@@ -554,3 +430,21 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   ammessa, permessi OAuth, classificazione e riassunto locali, conservazione e
   condizioni per un eventuale uso futuro non personale. Solo allora definire
   backend, executor, contratti, prove e decisione architetturale.
+
+## Completati — archivio sintetico
+
+- **WIN-001** — completato e provato dal vivo il 19/8/2026: installazione e
+  aggiornamento Windows, aiutante elevato, autorita' per proprietario,
+  postcondizione e consegna asincrona. ADR 0209-0210;
+  `handover_aiutante_windows_19_8_2026.md`.
+- **PKG-001** — completato il 19/8/2026: dipendenze WinGet estratte per
+  struttura, indipendenti dalle etichette localizzate, e mostrate prima del
+  consenso; fixture reali IT/EN in `test_install_packages.py`.
+- **JOB-001** — completato il 22/8/2026: RM-0004 `implemented`, F0-F14 e gate
+  finali chiusi in `internal/roadmap/RM-0004-motore-workload-durevoli.md`.
+- **QUA-001** — completato il 23/8/2026: RM-0006 C0-C6, cinque sonde reali e
+  due cicli finali 96/96.
+- **RUN-001** — completato il 23/8/2026: identita' AppX tipizzata, attivazione
+  nella sessione del proprietario e undo remoto esatto. Turno live
+  `f0d1477159f7446a`, invocazione reverse `inv-18ce81fccb1cc9115c5033cf`;
+  ADR 0221-0222, client Windows 0.2.58.

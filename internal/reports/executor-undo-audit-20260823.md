@@ -73,10 +73,12 @@ provider o le decisioni di prodotto attuali:
 ## Stato di chiusura
 
 Il contratto comune, `open_sites`, `set_signatures`, la sessione di
-`run_processes` (rinominato da ADR 0218) e `login_urls` sono implementati e provati automaticamente.
-Restano la prova reale Windows dello stop tipizzato e la decisione di storage
-per `delete_dirs`. Non si progetta undo automatico per `set_credentials` o
-`set_persons`.
+`run_processes` (rinominato da ADR 0218) e `login_urls` sono implementati e
+provati automaticamente. Il 23/8/2026 ADR 0221-0222 e il client 0.2.58 hanno
+chiuso anche la prova reale Windows: attivazione AppX nella sessione utente e
+stop sullo stesso device con identita' applicativa, PID e creation-time esatti.
+Resta la decisione di storage per `delete_dirs`. Non si progetta undo
+automatico per `set_credentials` o `set_persons`.
 
 Ogni promozione richiede test di round-trip reale tramite `undo_last_turn`,
 idempotenza del secondo undo, fallimento onesto se la ricevuta e' incompleta e

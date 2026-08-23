@@ -312,6 +312,35 @@ def test_un_nome_localizzato_unicode_va_direttamente_alla_ricerca_nome(
     assert voce["resolved_id"] == "Microsoft.WindowsNotepad"
 
 
+def test_un_id_msix_diventa_un_identita_appx_tipizzata(monkeypatch):
+    """The WinGet table prefix is adapted by family, never by app name."""
+    raw_id = r"MSIX\Microsoft.WindowsNotepad_11.2606.15.0_x64__8wekyb3d8bbwe"
+    output = (
+        "Nome          Id                                                                    Versione\n"
+        "-------------------------------------------------------------------------------------------\n"
+        f"{'Blocco note':<14}{raw_id:<70}11.2606.15.0\n"
+    )
+    monkeypatch.setattr(find_packages, "_run", lambda argv, **kw: (0, output))
+    monkeypatch.setattr(find_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "manager": "",
+        "manager_path": "", "primary_source": "winget"})
+
+    entry = find_packages.invoke({"packages": ["Blocco note"]})["entries"][0]
+
+    assert entry["resolved_id"] == (
+        "appx:Microsoft.WindowsNotepad_11.2606.15.0_x64__8wekyb3d8bbwe")
+    assert "\\" not in entry["resolved_id"]
+
+
+@pytest.mark.parametrize("raw", [
+    r"MSIX\C:\Windows\notepad.exe",
+    r"MSIX\Vendor.App --flag",
+    r"MSIX\Vendor.*",
+])
+def test_un_id_msix_malformato_non_diventa_eseguibile(raw):
+    assert find_packages._launch_identity(raw) is None
+
+
 def test_un_nome_ambiguo_non_espone_un_identificativo_eseguibile(monkeypatch):
     """La lettura descrive i match, ma il piping mutante fallisce chiuso."""
     def finta_probe(value, tool, by_name=False):

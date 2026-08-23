@@ -332,6 +332,21 @@ def test_build_remote_reverse_calls():
     assert a4["entries"] == [{"src": "/b/nuovo.txt"}]
     assert a4["dst_template"] == "/a/vecchio.txt"
 
+    # Custom reverse: stesso executor/bundle, entrypoint firmato separato.
+    out5 = build_remote_reverse_calls(
+        "module.reverse", {"args": {"x": 1}},
+        {"_undo": {"ids": ["exact-id"]}},
+        module_executor="set_messages")
+    assert out5["unsupported"] == []
+    assert out5["calls"] == [{
+        "executor": "set_messages",
+        "operation": "reverse",
+        "args": {
+            "plan": {"args": {"x": 1}},
+            "results": {"_undo": {"ids": ["exact-id"]}},
+        },
+    }]
+
 
 def test_runtime_reverse_selection_is_bounded_by_manifest():
     from types import SimpleNamespace

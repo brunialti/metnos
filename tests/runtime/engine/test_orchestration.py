@@ -61,6 +61,7 @@ def test_invoke_get_inputs_internal_creates_pending_state(isolated_dirs):
         actor="host",
         owner_user_id=_OWNER,
         channel=None,
+        origin_turn_id="turn-origin-001",
     )
     assert res["ok"] is True
     assert res["decision"] == "input_required"
@@ -73,6 +74,8 @@ def test_invoke_get_inputs_internal_creates_pending_state(isolated_dirs):
     assert state["title"] == "Credenziali test"
     assert state["sender_id"] == "host"
     assert state["on_complete"]["type"] == "save_credentials_and_resume"
+    assert state["origin_turn_id"] == "turn-origin-001"
+    assert state["on_complete"]["turn_id"] == "turn-origin-001"
 
 
 def test_invoke_get_inputs_internal_http_3steps_uses_form(isolated_dirs):

@@ -26,7 +26,8 @@ from executor_helpers import run_stdio  # noqa: E402
 from messages import get as _msg  # noqa: E402
 
 
-_PACKAGE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:@-]{0,127}$")
+_PORTABLE_PACKAGE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+:@-]{0,127}$")
+_APPX_PACKAGE_ID = re.compile(r"^appx:[A-Za-z0-9][A-Za-z0-9._-]{0,126}$")
 _MAX_PACKAGES = 10
 _HELPER_TIMEOUT_S = 15
 _LIFETIMES = frozenset({"session", "persistent"})
@@ -87,6 +88,68 @@ def _helper_call(*arguments: str) -> dict | None:
     return None
 
 
+def _appx_call(*arguments: str) -> dict | None:
+    """Call the user-session AppX resolver in the Rust client.
+
+    This deliberately does not use the LocalSystem helper: Microsoft app
+    activation targets the caller's current session, and session 0 is not the
+    owner's visible desktop.
+    """
+    executable = os.environ.get("METNOS_CLIENT_EXE") or ""
+    if not executable or not sys.platform.startswith("win"):
+        return None
+    try:
+        process = subprocess.run(
+            [executable, "package-app", *arguments],
+            capture_output=True,
+            text=True,
+            timeout=_HELPER_TIMEOUT_S,
+            shell=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in reversed((process.stdout or "").splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            value = json.loads(line)
+        except ValueError:
+            return None
+        return value if isinstance(value, dict) else None
+    return None
+
+
+def _identity_family(package_id: str) -> str | None:
+    if _APPX_PACKAGE_ID.fullmatch(package_id):
+        return "appx"
+    if _PORTABLE_PACKAGE_ID.fullmatch(package_id):
+        return "portable"
+    return None
+
+
+def _launch_call(package_id: str, operation: str, *arguments: str) -> dict | None:
+    family = _identity_family(package_id)
+    if family == "appx":
+        return _appx_call(operation, "--package-id", package_id, *arguments)
+    if family == "portable":
+        return _helper_call(operation, "--package-id", package_id, *arguments)
+    return None
+
+
+def _supported_lifetimes(package_ids: list[str]) -> tuple[str, ...]:
+    """Intersection of resolver-family capabilities, in presentation order."""
+    supported = set(_LIFETIMES)
+    for package_id in package_ids:
+        family = _identity_family(package_id)
+        if family == "appx":
+            supported.intersection_update({"session"})
+        elif family != "portable":
+            supported.clear()
+    return tuple(value for value in ("session", "persistent") if value in supported)
+
+
 def _machine_name() -> str:
     try:
         return socket.gethostname() or ""
@@ -104,7 +167,10 @@ def _consent_token(package_ids: list[str], lifetime: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _approval_dialog(package_ids: list[str]) -> dict:
+def _approval_dialog(
+        package_ids: list[str],
+        lifetimes: tuple[str, ...] | None = None) -> dict:
+    lifetimes = lifetimes or _supported_lifetimes(package_ids)
     machine = _machine_name() or _msg("MSG_CREATE_PROCESSES_MACHINE_UNKNOWN")
 
     def branch(lifetime: str) -> dict:
@@ -117,43 +183,50 @@ def _approval_dialog(package_ids: list[str]) -> dict:
             },
         }
 
-    return {
-        "title": _msg("MSG_CREATE_PROCESSES_APPROVAL_TITLE"),
-        "description": _msg(
+    choices = []
+    if "session" in lifetimes:
+        choices.append({
+            "label": _msg("MSG_CREATE_PROCESSES_BTN_SESSION"),
+            "value": "session",
+        })
+    if "persistent" in lifetimes:
+        choices.append({
+            "label": _msg("MSG_CREATE_PROCESSES_BTN_PERSISTENT"),
+            "value": "persistent",
+        })
+    choices.append({"label": _msg("MSG_BTN_REJECT"), "value": "reject"})
+
+    description = (
+        _msg(
             "MSG_CREATE_PROCESSES_APPROVAL_DESCRIPTION",
             packages=", ".join(package_ids),
             machine=machine,
-        ),
+        )
+        if "persistent" in lifetimes
+        else _msg("MSG_CREATE_PROCESSES_BTN_SESSION")
+    )
+
+    return {
+        "title": _msg("MSG_CREATE_PROCESSES_APPROVAL_TITLE"),
+        "description": description,
         "dialog": [{
             "var": "decision",
             "prompt": _msg("MSG_CREATE_PROCESSES_APPROVAL_PROMPT"),
             "schema": {
                 "kind": "choice",
-                "choices": [
-                    {
-                        "label": _msg("MSG_CREATE_PROCESSES_BTN_SESSION"),
-                        "value": "session",
-                    },
-                    {
-                        "label": _msg("MSG_CREATE_PROCESSES_BTN_PERSISTENT"),
-                        "value": "persistent",
-                    },
-                    {"label": _msg("MSG_BTN_REJECT"), "value": "reject"},
-                ],
+                "choices": choices,
             },
         }],
         "fmt": "auto",
         "on_complete": {
             "type": "gate_dispatch",
-            "branches": {
-                "session": branch("session"),
-                "persistent": branch("persistent"),
-            },
+            "branches": {lifetime: branch(lifetime)
+                         for lifetime in lifetimes},
         },
     }
 
 
-def _helper_error(package_id: str, answer: dict | None, *, stopping: bool = False) -> dict:
+def _launch_error(package_id: str, answer: dict | None, *, stopping: bool = False) -> dict:
     if answer is None:
         return {
             "package_id": package_id,
@@ -188,6 +261,7 @@ def _helper_error(package_id: str, answer: dict | None, *, stopping: bool = Fals
         "package_not_registered": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
         "package_operation_failed": "ERR_CREATE_PROCESSES_NOT_INSTALLED",
         "package_start_unsupported": "ERR_CREATE_PROCESSES_UNSUPPORTED",
+        "package_persistence_unsupported": "ERR_CREATE_PROCESSES_UNSUPPORTED",
         "package_target_missing": "ERR_CREATE_PROCESSES_TARGET_MISSING",
         "package_target_ambiguous": "ERR_CREATE_PROCESSES_TARGET_AMBIGUOUS",
         "package_install_location_unavailable": "ERR_CREATE_PROCESSES_TARGET_MISSING",
@@ -247,7 +321,8 @@ def invoke(args: dict) -> dict:
         )
     if len({package_id.casefold() for package_id in package_ids}) != len(package_ids):
         return _failure("ERR_CREATE_PROCESSES_DUPLICATE", "duplicate_package")
-    invalid = next((value for value in package_ids if not _PACKAGE_ID.fullmatch(value)), "")
+    invalid = next((value for value in package_ids
+                    if _identity_family(value) is None), "")
     if invalid:
         return _failure(
             "ERR_CREATE_PROCESSES_INVALID_PACKAGE",
@@ -263,12 +338,13 @@ def invoke(args: dict) -> dict:
 
     lifetime = str(args.get("lifetime") or "").strip().lower()
     consent = str(args.get("actor_consent_token") or "").strip()
+    supported_lifetimes = _supported_lifetimes(package_ids)
 
     if not consent:
         for package_id in package_ids:
-            answer = _helper_call("query", "--package-id", package_id)
+            answer = _launch_call(package_id, "query")
             if not answer or not answer.get("ok") or answer.get("aligned") is False:
-                failed = _helper_error(package_id, answer)
+                failed = _launch_error(package_id, answer)
                 return {
                     "ok": False,
                     "results": [],
@@ -288,10 +364,11 @@ def invoke(args: dict) -> dict:
             "ok_count": 0,
             "fail_count": 0,
             "_undo": {"outcome": "no_effect"},
-            "needs_inputs": _approval_dialog(package_ids),
+            "needs_inputs": _approval_dialog(package_ids, supported_lifetimes),
         }
 
-    if lifetime not in _LIFETIMES or consent != _consent_token(package_ids, lifetime):
+    if (lifetime not in supported_lifetimes
+            or consent != _consent_token(package_ids, lifetime)):
         return _failure(
             "ERR_CREATE_PROCESSES_CONSENT_INVALID",
             "consent_invalid",
@@ -301,10 +378,9 @@ def invoke(args: dict) -> dict:
     results, failed, process_receipts = [], [], []
     untracked_mutation = False
     for package_id in package_ids:
-        answer = _helper_call(
-            "start",
-            "--package-id",
+        answer = _launch_call(
             package_id,
+            "start",
             "--lifetime",
             lifetime,
         )
@@ -322,7 +398,7 @@ def invoke(args: dict) -> dict:
                         or not isinstance(creation_time, int)
                         or isinstance(creation_time, bool) or creation_time <= 0):
                     untracked_mutation = True
-                    failed.append(_helper_error(package_id, {
+                    failed.append(_launch_error(package_id, {
                         "error_code": "managed_start_receipt_invalid"}))
                     continue
                 process_receipts.append({
@@ -337,7 +413,7 @@ def invoke(args: dict) -> dict:
                 "already_running": not created_process,
             })
         else:
-            failed.append(_helper_error(package_id, answer))
+            failed.append(_launch_error(package_id, answer))
 
     outcome = (
         "irreversible" if untracked_mutation
@@ -387,7 +463,7 @@ def reverse(_plan: dict, results: dict) -> dict:
         creation_time = receipt.get("creation_time")
         identity = (package_id, pid, creation_time)
         if (not isinstance(package_id, str)
-                or not _PACKAGE_ID.fullmatch(package_id)
+                or _identity_family(package_id) is None
                 or not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0
                 or not isinstance(creation_time, int)
                 or isinstance(creation_time, bool) or creation_time <= 0
@@ -396,8 +472,8 @@ def reverse(_plan: dict, results: dict) -> dict:
                            "error_class": "invalid_receipt"})
             continue
         seen.add(identity)
-        answer = _helper_call(
-            "stop", "--package-id", package_id,
+        answer = _launch_call(
+            package_id, "stop",
             "--pid", str(pid), "--creation-time", str(creation_time),
         )
         if answer and answer.get("ok") and answer.get("aligned") is not False:
@@ -411,7 +487,7 @@ def reverse(_plan: dict, results: dict) -> dict:
                 "stopped": stopped,
             })
         else:
-            failed.append(_helper_error(package_id, answer, stopping=True))
+            failed.append(_launch_error(package_id, answer, stopping=True))
     return {
         "ok": not failed,
         "results": reversed_results,
