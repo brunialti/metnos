@@ -19,11 +19,17 @@
   `METNOS_LLM_SLOT_ID`, default 1. L'affinità è applicata nei due client
   centrali, non nei singoli observer. Separa la cache KV, non il calcolo GPU.
 - **Prod = engine v3**: drop-in systemd `proposer-hardening.conf` (`METNOS_ENGINE=v3`, grammar+verb_filter ON). I guard compound sono v3-gated → **bench compound SEMPRE con `METNOS_ENGINE=v3`**.
-- **ADR registry**: `0001-0217` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **ADR registry**: `0001-0218` (skipped: `0055`/`0115`/`0116`/`0121`).
+- **Avvio software ≠ apertura web** (23/8, ADR 0218): `run` e' il verbo
+  canonico bilingue per avviare software gia' installato; `run_processes`
+  risolve prima nomi umani Unicode con `find_packages` e accetta soltanto una
+  identita' esatta/univoca. `open` resta solo sessione browser `sites`.
+  Composizione e launcher gestito derivano da manifest/capability firmati,
+  senza nomi di executor o applicazioni nel runtime.
 - **Undo condizionale** (23/8, ADR 0217): il manifest firmato puo' dichiarare
   `[undo] outcome="per_execution"`; il runtime accetta soltanto
   `reversible|no_effect|irreversible`, chiude sempre il turno e non contiene
-  rami per executor. `open_sites`, `set_signatures`, `create_processes`
+  rami per executor. `open_sites`, `set_signatures`, `run_processes`
   (sola sessione con PID+creation-time) e `login_urls` usano ricevute esatte;
   i segreti precedenti stanno cifrati in `protected_undo`, non nel JSONL.
   Persistenza Windows e `delete_dirs` locale restano non annullabili.

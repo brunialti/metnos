@@ -166,7 +166,6 @@ def test_l_oggetto_non_dict_resta_invalido() -> None:
     "../etc/passwd",
     "-rf",                    # sarebbe letto come opzione dal gestore
     "--force",
-    "pacchetto con spazi",
     "a;rm -rf /",
     "a$(id)",
     "a|b",
@@ -281,8 +280,60 @@ def test_l_identificativo_esatto_ha_la_precedenza(monkeypatch):
 
     voce = find_packages.invoke({"packages": ["outlook"]})["entries"][0]
     assert voce["match"] == "exact"
-    assert "resolved_id" not in voce, "un id esatto non ha bisogno di essere risolto"
+    assert voce["resolved_id"] == "9NRX63209R7B"
     assert len(chiamate) == 1
+
+
+def test_un_nome_localizzato_unicode_va_direttamente_alla_ricerca_nome(
+        monkeypatch):
+    """Spazi e lettere Unicode sono dati, non parole italiane cablate."""
+    chiamate = []
+
+    def finta_probe(value, tool, by_name=False):
+        chiamate.append((value, tool, by_name))
+        if by_name:
+            return {
+                "name": "Blocco note",
+                "version": "11.0",
+                "source": "winget",
+                "resolved_id": "Microsoft.WindowsNotepad",
+            }
+        raise AssertionError("un display name con spazi non e' un id")
+
+    monkeypatch.setattr(find_packages, "_probe_windows", finta_probe)
+    monkeypatch.setattr(find_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "manager": "",
+        "manager_path": "", "primary_source": "winget"})
+
+    voce = find_packages.invoke({"packages": ["Blocco note"]})["entries"][0]
+
+    assert chiamate == [("Blocco note", "winget.exe", True)]
+    assert voce["match"] == "name"
+    assert voce["resolved_id"] == "Microsoft.WindowsNotepad"
+
+
+def test_un_nome_ambiguo_non_espone_un_identificativo_eseguibile(monkeypatch):
+    """La lettura descrive i match, ma il piping mutante fallisce chiuso."""
+    def finta_probe(value, tool, by_name=False):
+        if not by_name:
+            return None
+        return {
+            "name": "Editor One",
+            "version": "1.0",
+            "source": "winget",
+            "also_matched": ["Editor Two"],
+        }
+
+    monkeypatch.setattr(find_packages, "_probe_windows", finta_probe)
+    monkeypatch.setattr(find_packages, "_context", lambda: {
+        "os": "windows", "winget": "winget.exe", "manager": "",
+        "manager_path": "", "primary_source": "winget"})
+
+    voce = find_packages.invoke({"packages": ["editor"]})["entries"][0]
+
+    assert voce["installed"] is True
+    assert voce["also_matched"] == ["Editor Two"]
+    assert "resolved_id" not in voce
 
 
 def test_su_linux_il_nome_parziale_trova_il_pacchetto() -> None:
@@ -290,7 +341,10 @@ def test_su_linux_il_nome_parziale_trova_il_pacchetto() -> None:
     voce = find_packages.invoke({"packages": ["python"]})["entries"][0]
     assert voce["installed"] is True
     assert voce["match"] == "name"
-    assert voce["resolved_id"].startswith("python")
+    if "also_matched" in voce:
+        assert "resolved_id" not in voce
+    else:
+        assert voce["resolved_id"].startswith("python")
 
 
 def test_ogni_riga_dice_come_e_stata_trovata() -> None:

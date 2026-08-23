@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Start packages registered on a Windows device, never arbitrary commands.
+"""Run packages registered on a Windows device, never arbitrary commands.
 
-The public executor already exists in the canonical Metnos vocabulary. This
-implementation makes it real without accepting an executable path, command,
+The canonical `run` verb is distinct from opening a web session. This
+implementation handles it without accepting an executable path, command,
 arguments, task name, or shell fragment. The elevated helper resolves an exact
 package identifier from machine-owned installation metadata (ADR 0211).
 
@@ -48,6 +48,10 @@ def _failure(message_key: str, code: str, *, error_class: str = "invalid_input",
         "error": message,
         "error_code": code,
         "error_class": error_class,
+        # This helper is used only before any provider mutation.  The signed
+        # per-execution undo contract therefore has an explicit, truthful
+        # outcome instead of asking the runtime to infer one from an error.
+        "_undo": {"outcome": "no_effect"},
     }
 
 
@@ -105,7 +109,7 @@ def _approval_dialog(package_ids: list[str]) -> dict:
 
     def branch(lifetime: str) -> dict:
         return {
-            "tool": "create_processes",
+            "tool": "run_processes",
             "args": {
                 "programs": package_ids,
                 "lifetime": lifetime,
@@ -283,6 +287,7 @@ def invoke(args: dict) -> dict:
             "failed": [],
             "ok_count": 0,
             "fail_count": 0,
+            "_undo": {"outcome": "no_effect"},
             "needs_inputs": _approval_dialog(package_ids),
         }
 

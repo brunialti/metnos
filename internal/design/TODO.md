@@ -233,6 +233,11 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
 - Decisione: la Fase 8 non e' piu' uno «stress logico» generico. Certifica 24
   flussi di riferimento in italiano e inglese, con oracoli congelati per piano ammesso,
   autorita', effetti, postcondizioni, risposta e recupero.
+- Esecuzione: Metnos esegue la matrice in lotti tramite i normali confini; un
+  coordinatore esterno e deterministico conserva l'indipendenza dell'oracolo.
+  Il revisore apre tutte le anomalie e soltanto un campione dei successi.
+- Confine: QUA-001 resta il puntatore breve. Matrice, fasi, costi, artefatti e
+  criteri misurabili sono definiti esclusivamente in RM-0006.
 
 ### UND-001 - Completare gli annullamenti con ricevute esatte
 
@@ -241,22 +246,33 @@ ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
   reale Windows dello stop tipizzato.
 - Evidenza: `internal/reports/executor-undo-audit-20260823.md`.
 - Implementato: `set_messages` usa il delta effettivo prima/dopo delle label;
-  `open_sites`, `set_signatures`, `create_processes` e `login_urls` usano
+  `open_sites`, `set_signatures`, `run_processes` e `login_urls` usano
   l'esito firmato per singola esecuzione di ADR 0217. Segreti undo cifrati
   fuori dal journal; stop Windows soltanto con PID+creation-time.
 - Progettazione aperta: `delete_dirs`; specifica
   `internal/design/undo-redesign-spec-20260823.md`. La modalita' persistente di
-  `create_processes` resta irreversibile finche' la registrazione di startup
+  `run_processes` resta irreversibile finche' la registrazione di startup
   non ha un'identita' verificabile equivalente.
 - Decisione di prodotto: `set_credentials` e `set_persons` restano non
   annullabili; cancellazione soltanto su richiesta utente esplicita.
 - Vincolo: nessun inverso per nome, query o testo naturale; soltanto ricevute
   sigillate, stato precedente sufficiente e ripristino verificabile.
-- Esecuzione: Metnos esegue la matrice in lotti tramite i normali confini; un
-  coordinatore esterno e deterministico conserva l'indipendenza dell'oracolo.
-  Il revisore apre tutte le anomalie e soltanto un campione dei successi.
-- Confine: QUA-001 resta il puntatore breve. Matrice, fasi, costi, artefatti e
-  criteri misurabili sono definiti esclusivamente in RM-0006.
+
+### RUN-001 - Avvio generale delle applicazioni Windows impacchettate
+
+- Stato: da progettare; emerso dal turno reale `c77c005a1ce84cec` del
+  23/8/2026. Il routing `run`, il device e il piping sono corretti, ma WinGet
+  identifica Blocco note come `MSIX\\<PackageFullName>` e l'helper accetta oggi
+  soltanto pacchetti portable registrati (ADR 0211).
+- Vincolo: nessuna tabella di applicazioni, nessun path/comando dal chiamante e
+  nessun avvio nella sessione SYSTEM invisibile all'utente. La soluzione deve
+  risolvere in modo autorevole package/app identity, attivare nel desktop
+  dell'utente proprietario e produrre una ricevuta di processo verificabile
+  per l'undo di sessione. MSIX/AppX e future famiglie devono essere resolver
+  tipizzati sotto lo stesso contratto, con ambiguita' fail-closed.
+- Non confondere col bug chiuso da ADR 0218: `avvia/start/launch` instradano gia'
+  a `run`, mai a `open_sites`; questo TODO riguarda solo una nuova famiglia di
+  pacchetti Windows.
 
 ### RLS-001 - Installazione, aggiornamento e rollback ripetibili
 

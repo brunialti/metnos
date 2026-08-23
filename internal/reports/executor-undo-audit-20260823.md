@@ -38,7 +38,7 @@ Analisi e specifiche sono in
 |---|---|---|
 | `open_sites` | il batch puo' contenere sessioni nuove e sessioni riusate, che non devono essere chiuse | ricevuta dei soli ID creati; soli riusi = `no_effect` |
 | `set_signatures` | il ramo `forbidden` non puo' essere cancellato per Legge 1 | snapshot completo prima/dopo, compare-and-swap; `forbidden` = `irreversible` |
-| `create_processes` | fermare per nome potrebbe colpire un processo preesistente e la persistenza all'avvio e' un secondo stato | sessione nuova legata a PID+creation-time; persistenza ancora `irreversible` |
+| `run_processes` (allora `create_processes`) | fermare per nome potrebbe colpire un processo preesistente e la persistenza all'avvio e' un secondo stato | sessione nuova legata a PID+creation-time; persistenza ancora `irreversible` |
 | `login_urls` | sovrascrive un cookie jar 0600; copiarlo nel journal duplicherebbe un segreto | backup cifrato actor-bound fuori dal journal e compare-and-swap per digest |
 
 `delete_dirs` resta l'unico caso aperto: Drive ha un cestino esatto, ma nel
@@ -73,7 +73,7 @@ provider o le decisioni di prodotto attuali:
 ## Stato di chiusura
 
 Il contratto comune, `open_sites`, `set_signatures`, la sessione di
-`create_processes` e `login_urls` sono implementati e provati automaticamente.
+`run_processes` (rinominato da ADR 0218) e `login_urls` sono implementati e provati automaticamente.
 Restano la prova reale Windows dello stop tipizzato e la decisione di storage
 per `delete_dirs`. Non si progetta undo automatico per `set_credentials` o
 `set_persons`.

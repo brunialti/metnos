@@ -140,6 +140,28 @@ def test_web_companions_injected(catalog):
     assert "read_urls_pdf" in pool
 
 
+def test_run_processes_injects_signed_program_resolver(catalog):
+    """La relazione run→resolver arriva dal manifest, non dal motore."""
+    launcher = next(item for item in catalog if item.name == "run_processes")
+    assert launcher.planning_object_aliases == ["packages"]
+    assert ["programs", "from_step"] in launcher.args_schema["requires_one_of"]
+    programs = launcher.args_schema["properties"]["programs"]
+    assert programs["from_entries_key"] == "resolved_id"
+    assert programs["from_entries_complete"] is True
+    pool = _build("avvia un programma installato sul mio dispositivo",
+                  _intent("run", "processes"), catalog)
+    assert "run_processes" in pool
+    assert "find_packages" in pool
+    assert pool.index("run_processes") < pool.index("open_sites")
+
+    # Il nome naturale puo' far classificare l'oggetto come package invece
+    # che come processo: il verbo canonico conserva comunque il launcher.
+    package_pool = _build("start Notepad on my Windows device",
+                          _intent("run", "packages"), catalog)
+    assert package_pool[0] == "run_processes"
+    assert "find_packages" in package_pool
+
+
 # ── k: parametro esplicito ≡ env METNOS_ENGINE_POOL_SIZE ───────────────
 
 def test_k_param_equivale_env(catalog, monkeypatch):

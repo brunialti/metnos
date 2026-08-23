@@ -447,8 +447,9 @@ def build_routing_pool(query: str, intent, catalog: list, *,
                     if nm in _UNIVERSAL_HELPERS and nm not in present:
                         pool_for_propose = pool_for_propose + [ex_obj]
                         present.add(nm)
-                # §7.3 companion injection, manifest-driven. Un producer può
-                # dichiarare consumer naturali in ``[planning].companions``.
+                # §7.3 companion injection, manifest-driven. Un executor può
+                # dichiarare strumenti compositivi (consumer, resolver o
+                # prerequisiti) in ``[planning].companions``.
                 # Il motore non conosce domini o nomi speciali: amplia il pool
                 # con relazioni firmate, mentre il proposer decide se usarle.
                 # Il punto fisso supporta catene dichiarative senza cicli.
@@ -460,13 +461,13 @@ def build_routing_pool(query: str, intent, catalog: list, *,
                 pending = list(present)
                 expanded = set()
                 while pending:
-                    producer_name = pending.pop(0)
-                    if producer_name in expanded:
+                    source_name = pending.pop(0)
+                    if source_name in expanded:
                         continue
-                    expanded.add(producer_name)
-                    producer = by_name.get(producer_name)
+                    expanded.add(source_name)
+                    source = by_name.get(source_name)
                     for companion_name in (
-                            getattr(producer, "planning_companions", None)
+                            getattr(source, "planning_companions", None)
                             or []):
                         if companion_name in present:
                             continue
@@ -475,7 +476,7 @@ def build_routing_pool(query: str, intent, catalog: list, *,
                             log.warning(
                                 "routing_pool: companion %r dichiarato da %r "
                                 "ma assente dal catalogo",
-                                companion_name, producer_name)
+                                companion_name, source_name)
                             continue
                         pool_for_propose = pool_for_propose + [companion]
                         present.add(companion_name)

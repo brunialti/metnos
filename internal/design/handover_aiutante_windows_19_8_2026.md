@@ -426,7 +426,8 @@ Verificato il 19/8 sera prima di scrivere codice, e il risultato ha fermato
 l'implementazione:
 
 - **Il vocabolario lo permette gia'**: `processes` e' un oggetto e `create` un
-  verbo, quindi «avvia un programma» si direbbe `create_processes`. Nessuna
+  verbo, quindi «avvia un programma» si diceva `create_processes`. ADR 0218
+  ha poi corretto il confine canonico in `run_processes`. Nessuna
   estensione da chiedere a Roberto (§2.2).
 - **Ma la capacita' non c'e', e non e' una dimenticanza.** Metnos non sa
   avviare programmi su un dispositivo. E' esattamente cio' che ADR 0210 vieta
@@ -441,7 +442,8 @@ l'implementazione:
 
 ### La forma proposta, quando Roberto decidera'
 
-- un executor `create_processes` che accetta **solo un identificativo di
+- un executor allora chiamato `create_processes` (ora `run_processes`, ADR
+  0218) che accetta **solo un identificativo di
   pacchetto**, mai un percorso libero: puo' avviare cio' che il gestore ha
   installato, e nient'altro. E' il vincolo che impedisce a «avvia» di
   diventare «esegui qualsiasi cosa»;

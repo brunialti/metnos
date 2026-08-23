@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from executors.create_processes import create_processes
+from executors.run_processes import run_processes
 from runtime.device_shim import messages as shim_messages
 
 
@@ -34,9 +34,9 @@ def windows(monkeypatch):
             }),
         }
 
-    monkeypatch.setattr(create_processes.sys, "platform", "win32")
-    monkeypatch.setattr(create_processes, "_helper_call", helper)
-    monkeypatch.setattr(create_processes, "_machine_name", lambda: "PC-TEST")
+    monkeypatch.setattr(run_processes.sys, "platform", "win32")
+    monkeypatch.setattr(run_processes, "_helper_call", helper)
+    monkeypatch.setattr(run_processes, "_machine_name", lambda: "PC-TEST")
     return calls
 
 
@@ -44,15 +44,16 @@ def _approved(package_ids, lifetime):
     return {
         "programs": package_ids,
         "lifetime": lifetime,
-        "actor_consent_token": create_processes._consent_token(package_ids, lifetime),
+        "actor_consent_token": run_processes._consent_token(package_ids, lifetime),
     }
 
 
 def test_phase_one_only_queries_and_returns_two_explicit_choices(windows):
-    result = create_processes.invoke({"programs": ["Vendor.Sensor"]})
+    result = run_processes.invoke({"programs": ["Vendor.Sensor"]})
 
     assert result["decision"] == "needs_inputs"
     assert result["started"] is False
+    assert result["_undo"] == {"outcome": "no_effect"}
     assert windows == [("query", "--package-id", "Vendor.Sensor")]
     choices = result["needs_inputs"]["dialog"][0]["schema"]["choices"]
     assert [choice["value"] for choice in choices] == [
@@ -69,9 +70,9 @@ def test_phase_one_only_queries_and_returns_two_explicit_choices(windows):
 )
 def test_consent_card_is_localized(windows, monkeypatch, language,
                                    session_text, persistent_text):
-    monkeypatch.setattr(create_processes, "_msg", shim_messages.get)
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
     monkeypatch.setenv("METNOS_LANG", language)
-    result = create_processes.invoke({"programs": ["Vendor.Sensor"]})
+    result = run_processes.invoke({"programs": ["Vendor.Sensor"]})
     choices = result["needs_inputs"]["dialog"][0]["schema"]["choices"]
     assert session_text in choices[0]["label"].lower()
     assert persistent_text in choices[1]["label"].lower()
@@ -80,7 +81,7 @@ def test_consent_card_is_localized(windows, monkeypatch, language,
 
 @pytest.mark.parametrize("lifetime", ["session", "persistent"])
 def test_approved_choice_starts_only_the_exact_package(windows, lifetime):
-    result = create_processes.invoke(_approved(["Vendor.Sensor"], lifetime))
+    result = run_processes.invoke(_approved(["Vendor.Sensor"], lifetime))
 
     assert result["ok"] is True
     assert result["ok_count"] == 1
@@ -93,10 +94,10 @@ def test_approved_choice_starts_only_the_exact_package(windows, lifetime):
 
 
 def test_session_undo_stops_only_exact_receipt_identity(windows):
-    forward = create_processes.invoke(
+    forward = run_processes.invoke(
         _approved(["Vendor.Sensor"], "session"))
 
-    result = create_processes.reverse({}, forward)
+    result = run_processes.reverse({}, forward)
 
     assert result["ok"] is True
     assert result["results"] == [{
@@ -112,13 +113,13 @@ def test_session_undo_stops_only_exact_receipt_identity(windows):
 
 
 def test_already_running_session_is_no_effect(windows, monkeypatch):
-    monkeypatch.setattr(create_processes, "_helper_call", lambda *_: {
+    monkeypatch.setattr(run_processes, "_helper_call", lambda *_: {
         "ok": True, "aligned": True,
         "payload": {"created_process": False,
                     "persistent_registration_changed": False},
     })
 
-    result = create_processes.invoke(
+    result = run_processes.invoke(
         _approved(["Vendor.Sensor"], "session"))
 
     assert result["_undo"] == {"outcome": "no_effect"}
@@ -126,12 +127,12 @@ def test_already_running_session_is_no_effect(windows, monkeypatch):
 
 
 def test_session_without_strong_process_identity_fails_closed(windows, monkeypatch):
-    monkeypatch.setattr(create_processes, "_helper_call", lambda *_: {
+    monkeypatch.setattr(run_processes, "_helper_call", lambda *_: {
         "ok": True, "aligned": True,
         "payload": {"created_process": True},
     })
 
-    result = create_processes.invoke(
+    result = run_processes.invoke(
         _approved(["Vendor.Sensor"], "session"))
 
     assert result["ok"] is False
@@ -142,7 +143,7 @@ def test_consent_is_bound_to_package_and_lifetime(windows):
     args = _approved(["Vendor.Sensor"], "session")
     args["lifetime"] = "persistent"
 
-    result = create_processes.invoke(args)
+    result = run_processes.invoke(args)
 
     assert result["error_code"] == "consent_invalid"
     assert windows == []
@@ -150,40 +151,42 @@ def test_consent_is_bound_to_package_and_lifetime(windows):
 
 @pytest.mark.parametrize("value", [
     r"C:\Windows\System32\cmd.exe",
+    r"MSIX\Microsoft.WindowsNotepad_11.0_x64__8wekyb3d8bbwe",
     "../tool.exe",
     "Vendor.App --flag",
     "Vendor.*",
 ])
 def test_paths_commands_and_patterns_are_rejected_before_helper(windows, value):
-    result = create_processes.invoke({"programs": [value]})
+    result = run_processes.invoke({"programs": [value]})
 
     assert result["error_code"] == "invalid_package_id"
+    assert result["_undo"] == {"outcome": "no_effect"}
     assert windows == []
 
 
 def test_duplicate_identity_is_rejected_before_helper(windows):
-    result = create_processes.invoke({"programs": ["Vendor.App", "Vendor.App"]})
+    result = run_processes.invoke({"programs": ["Vendor.App", "Vendor.App"]})
     assert result["error_code"] == "duplicate_package"
     assert windows == []
 
 
 def test_duplicate_identity_is_case_insensitive(windows):
-    result = create_processes.invoke({"programs": ["Vendor.App", "vendor.app"]})
+    result = run_processes.invoke({"programs": ["Vendor.App", "vendor.app"]})
     assert result["error_code"] == "duplicate_package"
     assert windows == []
 
 
 def test_scalar_programs_value_is_rejected_before_helper(windows):
-    result = create_processes.invoke({"programs": "Vendor.App"})
+    result = run_processes.invoke({"programs": "Vendor.App"})
     assert result["error_code"] == "programs_not_list"
     assert windows == []
 
 
 def test_helper_failure_is_localized_not_raw_provider_text(windows, monkeypatch):
-    monkeypatch.setattr(create_processes, "_msg", shim_messages.get)
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
     monkeypatch.setenv("METNOS_LANG", "en")
     monkeypatch.setattr(
-        create_processes,
+        run_processes,
         "_helper_call",
         lambda *_: {
             "ok": False,
@@ -193,7 +196,7 @@ def test_helper_failure_is_localized_not_raw_provider_text(windows, monkeypatch)
         },
     )
 
-    result = create_processes.invoke({"programs": ["Vendor.App"]})
+    result = run_processes.invoke({"programs": ["Vendor.App"]})
 
     assert result["error_code"] == "package_target_ambiguous"
     assert "more than one" in result["error"]
@@ -202,10 +205,10 @@ def test_helper_failure_is_localized_not_raw_provider_text(windows, monkeypatch)
 
 def test_protocol_mismatch_is_reported_as_update_not_start_failure(
         windows, monkeypatch):
-    monkeypatch.setattr(create_processes, "_msg", shim_messages.get)
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
     monkeypatch.setenv("METNOS_LANG", "en")
     monkeypatch.setattr(
-        create_processes,
+        run_processes,
         "_helper_call",
         lambda *_: {
             "ok": True,
@@ -216,7 +219,7 @@ def test_protocol_mismatch_is_reported_as_update_not_start_failure(
         },
     )
 
-    result = create_processes.invoke({"programs": ["Vendor.App"]})
+    result = run_processes.invoke({"programs": ["Vendor.App"]})
 
     assert result["error_code"] == "helper_protocol_mismatch"
     assert "current protocol" in result["error"]
@@ -224,10 +227,10 @@ def test_protocol_mismatch_is_reported_as_update_not_start_failure(
 
 
 def test_lazy_helper_update_is_reported_clearly(windows, monkeypatch):
-    monkeypatch.setattr(create_processes, "_msg", shim_messages.get)
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
     monkeypatch.setenv("METNOS_LANG", "en")
     monkeypatch.setattr(
-        create_processes,
+        run_processes,
         "_helper_call",
         lambda *_: {
             "ok": False,
@@ -236,7 +239,7 @@ def test_lazy_helper_update_is_reported_clearly(windows, monkeypatch):
         },
     )
 
-    result = create_processes.invoke({"programs": ["Vendor.App"]})
+    result = run_processes.invoke({"programs": ["Vendor.App"]})
 
     assert result["error_code"] == "helper_update_pending"
     assert "updating" in result["error"]
@@ -252,9 +255,9 @@ def test_vector_result_preserves_success_and_failure(windows, monkeypatch):
                 "payload": {"created_process": False,
                             "persistent_registration_changed": False}}
 
-    monkeypatch.setattr(create_processes, "_helper_call", helper)
+    monkeypatch.setattr(run_processes, "_helper_call", helper)
     packages = ["Vendor.Good", "Vendor.Bad"]
-    result = create_processes.invoke(_approved(packages, "session"))
+    result = run_processes.invoke(_approved(packages, "session"))
 
     assert result["ok"] is False
     assert result["partial"] is True
@@ -263,13 +266,13 @@ def test_vector_result_preserves_success_and_failure(windows, monkeypatch):
 
 
 def test_non_windows_fails_honestly(monkeypatch):
-    monkeypatch.setattr(create_processes.sys, "platform", "linux")
-    result = create_processes.invoke({"programs": ["Vendor.App"]})
+    monkeypatch.setattr(run_processes.sys, "platform", "linux")
+    result = run_processes.invoke({"programs": ["Vendor.App"]})
     assert result["error_code"] == "platform_unsupported"
 
 
 def test_new_message_keys_exist_in_both_languages(monkeypatch):
-    monkeypatch.setattr(create_processes, "_msg", shim_messages.get)
+    monkeypatch.setattr(run_processes, "_msg", shim_messages.get)
     keys = [
         "MSG_CREATE_PROCESSES_APPROVAL_TITLE",
         "MSG_CREATE_PROCESSES_APPROVAL_DESCRIPTION",
@@ -288,7 +291,7 @@ def test_new_message_keys_exist_in_both_languages(monkeypatch):
     for language in ("it", "en"):
         monkeypatch.setenv("METNOS_LANG", language)
         for key in keys:
-            rendered = create_processes._msg(
+            rendered = run_processes._msg(
                 key, packages="Vendor.App", package="Vendor.App",
                 machine="PC-TEST", code="test",
             )

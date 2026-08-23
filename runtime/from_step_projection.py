@@ -326,7 +326,9 @@ def consumer_match_arg(consumer_schema: dict | None,
         source_key = spec.get("from_entries_key") \
             if isinstance(spec, dict) else None
         required_rank = 0 if arg_name in required else 1
-        if isinstance(source_key, str) and source_key in sample_keys:
+        if (isinstance(source_key, str)
+                and (source_key in sample_keys
+                     or spec.get("from_entries_complete") is True)):
             candidates.append((required_rank - 1, arg_name))
             continue
         singular = (arg_name[:-1]
@@ -406,6 +408,7 @@ def project_from_entries(args: dict, entries: list,
             if _matches_declared_type(value, spec):
                 out[arg_name] = value
 
+    context_errors: list[dict[str, str]] = []
     vector_arg = consumer_match_arg(consumer_schema, entries)
     used_vector_arg = None
     if vector_arg and vector_arg not in out:
@@ -416,10 +419,23 @@ def project_from_entries(args: dict, entries: list,
             source_key = (vector_arg[:-1]
                           if vector_arg.endswith("s") and len(vector_arg) > 1
                           else vector_arg)
-        out[vector_arg] = [
+        projected_values = [
             entry[source_key] for entry in entries
             if isinstance(entry, dict) and entry.get(source_key) is not None
         ]
+        if (spec.get("from_entries_complete") is True
+                and len(projected_values) != len(entries)):
+            # A mutating consumer can require an all-or-nothing identity
+            # projection. This is schema-driven: the runtime knows neither
+            # producer nor consumer names and never starts a partial subset
+            # after an ambiguous/missing resolution.
+            context_errors.append({
+                "arg": vector_arg,
+                "source_key": source_key,
+                "reason": "incomplete_vector_projection",
+            })
+        else:
+            out[vector_arg] = projected_values
         used_vector_arg = vector_arg
     else:
         out["entries"] = entries
@@ -427,7 +443,6 @@ def project_from_entries(args: dict, entries: list,
     # Scalar context is strictly manifest-driven. A consumer opts in by
     # declaring from_entries_key on a primitive property. Explicit arguments
     # always win; mixed/missing producer values remain unresolved.
-    context_errors: list[dict[str, str]] = []
     for arg_name, spec in properties.items():
         if arg_name in out or not _is_scalar_property(spec):
             continue

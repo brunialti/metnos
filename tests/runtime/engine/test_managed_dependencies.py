@@ -9,12 +9,12 @@ from loader import ManagedDependency, _managed_dependencies
 
 
 def _start_dialog(package_id: str) -> dict:
-    from executors.create_processes import create_processes
+    from executors.run_processes import run_processes
 
     return {
         "ok": True,
         "decision": "needs_inputs",
-        "needs_inputs": create_processes._approval_dialog([package_id]),
+        "needs_inputs": run_processes._approval_dialog([package_id]),
     }
 
 
@@ -118,7 +118,7 @@ def test_provider_dependency_never_enters_process_start_flow():
 
 def test_start_dialog_is_bound_to_one_exact_retry(monkeypatch):
     monkeypatch.setattr(
-        "executors.create_processes.create_processes._machine_name",
+        "executors.run_processes.run_processes._machine_name",
         lambda: "PC-TEST",
     )
     bound = agent_runtime._bind_managed_dependency_resume(
@@ -131,6 +131,7 @@ def test_start_dialog_is_bound_to_one_exact_retry(monkeypatch):
             "top": 1,
         },
         target_device="PC-TEST",
+        starter_tool="run_processes",
     )
 
     callback = bound["needs_inputs"]["on_complete"]
@@ -161,7 +162,28 @@ def test_tampered_start_branch_is_rejected():
             "sensor_types": ["temperature"],
         },
         target_device="PC-TEST",
+        starter_tool="run_processes",
     ) is None
+
+
+def test_managed_starter_is_selected_by_unique_capability_hint():
+    starter = SimpleNamespace(
+        name="implementation_can_be_renamed",
+        capabilities=[{"name": "system:admin",
+                       "hint": ["managed-package-start"]}],
+    )
+    unrelated = SimpleNamespace(
+        name="another_executor",
+        capabilities=[{"name": "system:read", "hint": ["inventory"]}],
+    )
+
+    assert agent_runtime._unique_executor_with_capability_hint(
+        [unrelated, starter], "managed-package-start") is starter
+    assert agent_runtime._unique_executor_with_capability_hint(
+        [starter, SimpleNamespace(
+            name="ambiguous",
+            capabilities=[{"hint": ["managed-package-start"]}],
+        )], "managed-package-start") is None
 
 
 def test_completion_starts_then_retries_once_on_same_device(monkeypatch):
@@ -170,7 +192,7 @@ def test_completion_starts_then_retries_once_on_same_device(monkeypatch):
 
     def invoke(tool, args, **kwargs):
         calls.append((tool, args, kwargs.get("target_device")))
-        if tool == "create_processes":
+        if tool == "run_processes":
             return {"ok": True, "results": [{"package_id": "Vendor.Sensor"}]}
         return {
             "ok": True,
@@ -187,7 +209,7 @@ def test_completion_starts_then_retries_once_on_same_device(monkeypatch):
     callback = {
         "branches": {
             "session": {
-                "tool": "create_processes",
+                "tool": "run_processes",
                 "args": {"programs": ["Vendor.Sensor"], "lifetime": "session"},
             },
         },
@@ -208,7 +230,7 @@ def test_completion_starts_then_retries_once_on_same_device(monkeypatch):
 
     assert rendered == "PC-TEST:51.2"
     assert [call[:2] for call in calls] == [
-        ("create_processes", callback["branches"]["session"]["args"]),
+        ("run_processes", callback["branches"]["session"]["args"]),
         ("get_processes", callback["resume"]["args"]),
     ]
     assert all(call[2] == "PC-TEST" for call in calls)

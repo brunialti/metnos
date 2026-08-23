@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_packages"
-version     = "0.3.0"
+version     = "0.4.0"
 platforms   = ["linux", "windows"]
 author      = "synt-multistage <synt@metnos.com>"
 affinity    = ["installato", "installed", "e' installato", "is installed",
@@ -17,12 +17,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: dice se dei programmi sono installati qui, e in che versione. PATTERN: find_packages(packages=['7zip.7zip','git']). NON: installare o togliere (-> install_packages); cercare file (-> find_files); eseguire comandi (-> admin). OUT: entries=[{package_id,installed,name,version,source}], una riga per ogni pacchetto chiesto, anche quelli assenti."
-en = "SCOPO: tells whether programs are installed here, and at which version. PATTERN: find_packages(packages=['7zip.7zip','git']). NON: installing or removing (-> install_packages); finding files (-> find_files); running commands (-> admin). OUT: entries=[{package_id,installed,name,version,source}], one row per requested package, absent ones included."
+it = "SCOPO: verifica software installato e risolve un nome umano nell'id registrato. PATTERN: find_packages(packages=['Blocco note']). NON: installare (-> install_packages), avviare (-> run_processes), cercare file o eseguire comandi. OUT: una entry per richiesta; resolved_id solo se esatta o univoca."
+en = "SCOPO: checks installed software and resolves a human name to its registered id. PATTERN: find_packages(packages=['Notepad']). NON: installing (-> install_packages), starting (-> run_processes), finding files, or running commands. OUT: one entry per request; resolved_id only for an exact or unique match."
 
 [code]
 files  = ["find_packages.py"]
-digest = "sha256:19b5cc37457e5c9d821b3e7cef4485844b5b99cc4e841c23d00dd2e106b9bb1d"
+digest = "sha256:29d6509e3e41a38484ae87a014f7e31bfbfd05d5adaa5ce2d3eed5800b35ccc6"
 
 [args]
 type     = "object"
@@ -34,8 +34,8 @@ uniqueItems = true
 items = { type = "string", maxLength = 128 }
 
 [args.properties.packages.description]
-it = "Programmi da controllare, come lista. Va bene il nome comune ('outlook', 'git') oppure l'identificativo esatto ('Microsoft.VisualStudioCode', 'python3-pip'): si prova prima l'identificativo, poi il nome. NON servono '*' o '?': la ricerca per nome li fa gia'. Un solo elemento va bene."
-en = "Programs to check, as a list. A common name ('outlook', 'git') works, and so does an exact identifier ('Microsoft.VisualStudioCode', 'python3-pip'): the identifier is tried first, the name second. No '*' or '?' needed: the name search already covers them. A single element is fine."
+it = "Programmi da controllare, come lista. Accetta nomi comuni localizzati e Unicode ('Blocco note') oppure identificativi esatti ('Microsoft.VisualStudioCode'): se la forma può essere un id si prova prima quello, poi il nome. Non servono caratteri jolly."
+en = "Programs to check, as a list. Localized Unicode display names ('Notepad') and exact identifiers ('Microsoft.VisualStudioCode') are accepted: identifier-shaped values are tried as exact ids first, then as names. Wildcards are unnecessary."
 
 [output]
 schema_inline = """

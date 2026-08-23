@@ -19,7 +19,8 @@ The executor audit found four operations whose undo applicability cannot be
 described honestly by one unconditional boolean. `open_sites` may create a
 browser session or reuse one that predates the turn. `set_signatures` may
 perform an ordinary exact state transition or create a `forbidden` row that
-Law 1 does not permit a generic undo to delete. `create_processes` may reuse a
+Law 1 does not permit a generic undo to delete. `run_processes` (renamed by
+ADR 0218 after this receipt design) may reuse a
 running process, create a session process, or also modify startup persistence.
 `login_urls` may reuse a cookie jar or replace secret session state.
 

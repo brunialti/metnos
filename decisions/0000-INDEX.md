@@ -145,3 +145,7 @@ for format and discipline; see `_template.md` for the template.
 > swap receipts, encrypted actor-bound secret backups and kernel-bound Windows
 > process stop; persistent startup and local directory deletion remain outside
 > undo until they have equally strong storage identities.
+> Latest: `0218` separates canonical `run` from web-session `open`, renames the
+> launcher to `run_processes`, resolves localized program names only through
+> authoritative unique package identities, and keeps routing/composition
+> manifest- and capability-driven.

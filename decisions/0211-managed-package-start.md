@@ -3,6 +3,8 @@ id: 0211
 title: Starting a registered package without accepting a command
 date: 2026-08-20
 status: accepted
+superseded_by:
+  - 0218  # only D1 public vocabulary/name; privileged helper contract remains
 area: security | remote | executor
 related:
   - 0209
@@ -12,6 +14,11 @@ modifies:
 ---
 
 ## Context
+
+> **Partial supersession (23 August 2026).** ADR 0218 replaces the public
+> `create_processes` naming decision with canonical `run_processes`. The
+> registered-package-only helper protocol and every authority constraint in
+> this ADR remain in force.
 
 Some executor capabilities genuinely depend on a user-facing process that is
 installed but not always running. Starting such a process is distinct from

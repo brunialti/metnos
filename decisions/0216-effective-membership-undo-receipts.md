@@ -36,7 +36,7 @@ The signed executor contract declares both read and write authority because the
 pre-state read is part of the mutation. No executor, provider, label, path,
 package or natural-language value is added to the undo broker.
 
-`open_sites`, `delete_dirs`, `set_signatures`, `create_processes` and
+`open_sites`, `delete_dirs`, `set_signatures`, `run_processes` and
 `login_urls` remain unchanged until their branch, storage or sensitive-state
 specifications are explicitly approved. `set_credentials` and `set_persons`
 remain non-undoable by product decision: deletion of credentials or biometric

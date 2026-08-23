@@ -63,7 +63,7 @@ def test_executor_catalog_exposes_three_state_undo_contract():
     assert by_name["share_files"].reverse_patterns == ("module.reverse",)
     assert by_name["open_sites"].undo_outcome_contract == "per_execution"
     assert by_name["set_signatures"].undo_outcome_contract == "per_execution"
-    assert by_name["create_processes"].undo_outcome_contract == "per_execution"
+    assert by_name["run_processes"].undo_outcome_contract == "per_execution"
     assert by_name["login_urls"].undo_outcome_contract == "per_execution"
     assert by_name["read_files"].undo_state == module.NOT_APPLICABLE
     assert by_name["consult_frontier"].undo_state == module.NOT_APPLICABLE

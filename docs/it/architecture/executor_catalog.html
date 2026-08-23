@@ -19,7 +19,7 @@
 <p><strong>Domanda verificabile dal Tutor: «Quali executor modificano file e, per ciascuno, l'annullamento è supportato, non supportato o non applicabile?»</strong></p>
 <div class="status" data-undo-census="true">annullabile: 23; non annullabile: 13; non applicabile: 49.</div>
 <h3>Executor annullabili dichiarati (23)</h3>
-<p data-undoable-executors="true"><code>change_files_format</code> <code>compress_files</code> <code>create_calendars</code> <code>create_dirs</code> <code>create_events</code> <code>create_files_doc</code> <code>create_files_spreadsheet</code> <code>create_images_indices</code> <code>create_processes</code> <code>delete_events</code> <code>delete_files</code> <code>delete_persons</code> <code>get_images_google_photos</code> <code>login_urls</code> <code>move_files</code> <code>move_messages</code> <code>open_sites</code> <code>set_messages</code> <code>set_signatures</code> <code>share_files</code> <code>write_files</code> <code>write_files_doc</code> <code>write_files_spreadsheet</code></p>
+<p data-undoable-executors="true"><code>change_files_format</code> <code>compress_files</code> <code>create_calendars</code> <code>create_dirs</code> <code>create_events</code> <code>create_files_doc</code> <code>create_files_spreadsheet</code> <code>create_images_indices</code> <code>delete_events</code> <code>delete_files</code> <code>delete_persons</code> <code>get_images_google_photos</code> <code>login_urls</code> <code>move_files</code> <code>move_messages</code> <code>open_sites</code> <code>run_processes</code> <code>set_messages</code> <code>set_signatures</code> <code>share_files</code> <code>write_files</code> <code>write_files_doc</code> <code>write_files_spreadsheet</code></p>
 <h2 id="domain-files">Dominio: <code>files</code> (20)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Annullamento</th><th>Percorso</th></tr></thead><tbody>
 <tr><td><code>change_files_format</code></td><td>converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).</td><td>standard; any; -</td><td><span data-undo-state="undoable"><strong>annullabile</strong><br/>percorso inverso: <code>restore_blob_backup</code>, <code>delete_created_paths</code></span></td><td><code>executors/change_files_format/</code></td></tr>
@@ -52,7 +52,7 @@
 </tbody></table>
 <h2 id="domain-packages">Dominio: <code>packages</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Annullamento</th><th>Percorso</th></tr></thead><tbody>
-<tr><td><code>find_packages</code></td><td>dice se dei programmi sono installati qui, e in che versione.</td><td>standard; any; linux, windows</td><td><span data-undo-state="not_applicable"><strong>non applicabile</strong><br/>nessuno stato utente da ripristinare</span></td><td><code>executors/find_packages/</code></td></tr>
+<tr><td><code>find_packages</code></td><td>verifica software installato e risolve un nome umano nell&#x27;id registrato.</td><td>standard; any; linux, windows</td><td><span data-undo-state="not_applicable"><strong>non applicabile</strong><br/>nessuno stato utente da ripristinare</span></td><td><code>executors/find_packages/</code></td></tr>
 <tr><td><code>install_packages</code></td><td>installa un programma sulla macchina.</td><td>critico; any; windows, linux</td><td><span data-undo-state="not_undoable"><strong>non annullabile</strong><br/>nessun percorso inverso dichiarato</span></td><td><code>executors/install_packages/</code></td></tr>
 </tbody></table>
 <h2 id="domain-messages">Dominio: <code>messages</code> (4)</h2>
@@ -81,8 +81,8 @@
 </tbody></table>
 <h2 id="domain-processes">Dominio: <code>processes</code> (2)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Annullamento</th><th>Percorso</th></tr></thead><tbody>
-<tr><td><code>create_processes</code></td><td>avvia pacchetti già installati sul dispositivo e registra l&#x27;identità esatta per annullare i soli processi di sessione creati.</td><td>critico; any; windows</td><td><span data-undo-state="undoable"><strong>annullabile</strong><br/>percorso inverso: <code>module.reverse</code><br/>esito determinato dalla ricevuta della singola esecuzione</span></td><td><code>executors/create_processes/</code></td></tr>
 <tr><td><code>get_processes</code></td><td>processi e salute del sistema.</td><td>standard; any; linux, windows</td><td><span data-undo-state="not_applicable"><strong>non applicabile</strong><br/>nessuno stato utente da ripristinare</span></td><td><code>executors/get_processes/</code></td></tr>
+<tr><td><code>run_processes</code></td><td>avvia software installato con ricevuta dei processi creati.</td><td>critico; any; windows</td><td><span data-undo-state="undoable"><strong>annullabile</strong><br/>percorso inverso: <code>module.reverse</code><br/>esito determinato dalla ricevuta della singola esecuzione</span></td><td><code>executors/run_processes/</code></td></tr>
 </tbody></table>
 <h2 id="domain-urls">Dominio: <code>urls</code> (5)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Annullamento</th><th>Percorso</th></tr></thead><tbody>

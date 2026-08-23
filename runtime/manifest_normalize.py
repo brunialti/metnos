@@ -41,7 +41,8 @@ except Exception:
                                 "group", "classify", "compute", "compare",
                                 "describe", "extract"})
     DESTRUCTIVE_VERBS = frozenset({"move", "delete", "send", "write", "create",
-                                   "change", "order", "share", "reply", "set"})
+                                   "change", "order", "share", "reply", "set",
+                                   "install", "run"})
 
 _EXEC = _RT.parent / "executors"
 _CHAPTERS = ("SCOPO:", "PATTERN:", "NON:", "OUT:")

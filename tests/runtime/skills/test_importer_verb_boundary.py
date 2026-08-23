@@ -38,7 +38,18 @@ def test_share_verb_in_actions():
     assert "share" in ACTIONS
     # 23 → 26: +open/login/act (dominio sites, RATIFICATO D-A 10/7/2026).
     # 26 → 27: +install (dominio packages, ADR 0209, 16/8/2026).
-    assert len(ACTIONS) == 27
+    # 27 → 28: +run (avvio di software gia' installato, ADR 0218).
+    assert len(ACTIONS) == 28
+
+
+def test_run_is_bilingual_mutating_and_distinct_from_open():
+    """Avviare software non deve collassare sull'apertura di un sito."""
+    assert "run" in DESTRUCTIVE_VERBS
+    run = ACTION_MAPPING["run"]
+    assert "avvia" in run["it"]
+    assert "run" in run["en"]
+    assert "NON open" in run["boundary"]["it"]
+    assert "NOT open" in run["boundary"]["en"]
 
 
 def test_share_in_destructive_verbs():

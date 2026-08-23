@@ -94,3 +94,24 @@ def test_apri_open_agree_read_in_both_sot():
     read_syn = (vocab.ACTION_MAPPING["read"].get("it", [])
                 + vocab.ACTION_MAPPING["read"].get("en", []))
     assert "apri" in read_syn and "open" in read_syn
+
+
+def test_avvia_start_launch_resolve_to_run_not_web_open():
+    """Le forme semplici sono derivate dal vocabolario bilingue, non cablate."""
+    for token in ("avvia", "avviare", "run", "start", "launch"):
+        assert prefilter._VERB_TO_CANONICAL.get(token) == "run"
+    open_surfaces = (
+        vocab.ACTION_MAPPING["open"].get("it", [])
+        + vocab.ACTION_MAPPING["open"].get("en", [])
+    )
+    assert not set(("avvia", "run", "start", "launch")) & set(open_surfaces)
+
+    for query in (
+        "Avvia Blocco note sul mio dispositivo Windows",
+        "Start Notepad on my Windows device",
+        "Launch Calculator",
+    ):
+        detected = prefilter.detect_canonical_verbs_all(
+            prefilter.tokenize(query))
+        assert "run" in detected
+        assert "open" not in detected

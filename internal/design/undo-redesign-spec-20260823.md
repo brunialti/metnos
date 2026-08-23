@@ -127,7 +127,7 @@ transazione immediata, registra la riga completa prima/dopo e ripristina con
 compare-and-swap. Creare `forbidden` produce `irreversible`; una riga
 `forbidden` esistente non viene modificata ne' cancellata.
 
-## `create_processes`
+## `run_processes` (nome canonico da ADR 0218)
 
 ### Perche' oggi non basta
 
