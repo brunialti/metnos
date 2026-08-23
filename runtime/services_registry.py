@@ -195,6 +195,31 @@ def catalog() -> tuple[ServiceSpec, ...]:
     return SERVICES
 
 
+def _catalog_key(service_key: str, field: str) -> str:
+    return f"UI_SERVICE_{service_key.upper()}_{field.upper()}"
+
+
+def localization_inventory(source_lang: str) -> tuple[tuple[str, str], ...]:
+    """Enumerate service prose for the shared localization registry."""
+
+    source = _C.normalize_language_tag(source_lang)
+    rows: list[tuple[str, str]] = []
+    for service in SERVICES:
+        values = {
+            "label": {"it": service.label, "en": service.label_en or service.label},
+            "description": {
+                "it": service.description,
+                "en": service.description_en or service.description,
+            },
+            "group": {"it": service.group, "en": service.group_en or service.group},
+        }
+        for field, baselines in values.items():
+            text = baselines.get(source) or baselines.get(_C.BOOTSTRAP_LANGUAGE)
+            if text:
+                rows.append((_catalog_key(service.key, field), text))
+    return tuple(rows)
+
+
 def system_units() -> tuple[str, ...]:
     """Unita' system-level controllabili, derivate dal catalogo chiuso."""
     return tuple(sorted({
@@ -723,16 +748,20 @@ def snapshots(*, probe_endpoints: bool = True,
 
 def localized(rows: list[dict], lang: str) -> list[dict]:
     """Localize catalog prose without changing technical state fields."""
-    use_english = not str(lang or "it").lower().startswith("it")
+    import i18n
+
     out: list[dict] = []
     for source in rows:
         row = dict(source)
-        if use_english:
-            row["label"] = row.get("label_en") or row.get("label") or row["key"]
-            row["description"] = (
-                row.get("description_en") or row.get("description") or ""
+        key = str(row.get("key") or "")
+        for field in ("label", "description", "group"):
+            baselines = {
+                "it": str(row.get(field) or ""),
+                "en": str(row.get(f"{field}_en") or row.get(field) or ""),
+            }
+            row[field] = i18n.editorial_text(
+                _catalog_key(key, field), lang, baselines,
             )
-            row["group"] = row.get("group_en") or row.get("group") or ""
         out.append(row)
     return out
 

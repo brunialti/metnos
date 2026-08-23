@@ -2888,6 +2888,19 @@ Tutto il resto &mdash; codice, prompt, convenzioni &mdash; discende da qui.
 
 <div class="principle"><span class="num">7</span><strong>i18n per costruzione.</strong> Ogni stringa e prompt rivolto all'utente &egrave; dato per-lingua: una lingua nuova &egrave; un pacchetto di traduzione, non un fork del codice.</div>
 
+<div class="note">
+<strong>Una lingua, ammessa come insieme completo di risorse dell&rsquo;istanza.</strong>
+Metnos parte in sicurezza nella lingua bootstrap mentre materializza la lingua
+BCP-47 richiesta. Un registro versionato comprende prompt, prosa degli
+executor, messaggi deterministici e UI, lessico di input, documentazione
+pubblica, messaggi dei dispositivi remoti e conoscenza Tutor. I candidati
+restano fuori dai percorsi runtime finch&eacute; non superano i controlli strutturali
+e semantici. L&rsquo;attivazione &egrave; una transazione amministrativa esplicita:
+verifica hash correnti, firme, artefatti realmente caricabili e output
+device/Tutor solo pubblici, poi cambia la lingua firmata dell&rsquo;istanza e pu&ograve;
+riavviare il servizio. Dati di utente, canale e turno non possono sostituirla.
+</div>
+
 <div class="principle"><span class="num">8</span><strong>Comprensibilit&agrave; come dovere.</strong> Se l'utente non capisce il sistema, il sistema non serve. La semplicit&agrave; non &egrave; estetica: &egrave; il criterio che ha selezionato tutto il resto.</div>
 
 

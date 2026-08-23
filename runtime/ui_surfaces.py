@@ -18,9 +18,12 @@ by the same validator.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+import config as _C
 
 
 _SECTIONS = {
@@ -29,6 +32,20 @@ _SECTIONS = {
     "memory": ("Memoria", "Memory"),
     "system": ("Sistema", "System"),
 }
+
+
+def _surface_i18n_key(surface_key: str, field: str, index: int | None = None) -> str:
+    key = f"UI_SURFACE_{surface_key.replace('-', '_').upper()}_{field.upper()}"
+    return f"{key}_{index}" if index is not None else key
+
+
+def _section_i18n_key(section: str) -> str:
+    return f"UI_SECTION_{section.upper()}_LABEL"
+
+
+def _localized(key: str, lang: str, it: str, en: str) -> str:
+    import i18n
+    return i18n.editorial_text(key, lang, {"it": it, "en": en})
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,22 +80,51 @@ class UiSurfaceSpec:
     probe_refs: tuple[str, ...] = ()
 
     def label(self, lang: str) -> str:
-        return self.label_it if lang == "it" else self.label_en
+        return _localized(
+            _surface_i18n_key(self.key, "label"), lang,
+            self.label_it, self.label_en,
+        )
 
     def summary(self, lang: str) -> str:
-        return self.summary_it if lang == "it" else self.summary_en
+        return _localized(
+            _surface_i18n_key(self.key, "summary"), lang,
+            self.summary_it, self.summary_en,
+        )
+
+    def _sequence(
+        self, field: str, lang: str, values_it: tuple[str, ...],
+        values_en: tuple[str, ...],
+    ) -> tuple[str, ...]:
+        return tuple(
+            _localized(
+                _surface_i18n_key(self.key, field, index), lang,
+                value_it, value_en,
+            )
+            for index, (value_it, value_en) in enumerate(
+                itertools.zip_longest(values_it, values_en, fillvalue="")
+            )
+            if value_it or value_en
+        )
 
     def visible(self, lang: str) -> tuple[str, ...]:
-        return self.visible_it if lang == "it" else self.visible_en
+        return self._sequence(
+            "visible", lang, self.visible_it, self.visible_en,
+        )
 
     def controls(self, lang: str) -> tuple[str, ...]:
-        return self.controls_it if lang == "it" else self.controls_en
+        return self._sequence(
+            "controls", lang, self.controls_it, self.controls_en,
+        )
 
     def procedure(self, lang: str) -> tuple[str, ...]:
-        return self.procedure_it if lang == "it" else self.procedure_en
+        return self._sequence(
+            "procedure", lang, self.procedure_it, self.procedure_en,
+        )
 
     def stop_conditions(self, lang: str) -> tuple[str, ...]:
-        return self.stop_it if lang == "it" else self.stop_en
+        return self._sequence(
+            "stop", lang, self.stop_it, self.stop_en,
+        )
 
     def breadcrumb(self, lang: str) -> str:
         # Navigation paths are UI literals in the language of the current
@@ -86,7 +132,10 @@ class UiSurfaceSpec:
         # so Tutor and public navigation docs quote what the person sees.
         parts = ["Settings"]
         if self.section:
-            parts.append(_SECTIONS[self.section][0 if lang == "it" else 1])
+            labels = _SECTIONS[self.section]
+            parts.append(_localized(
+                _section_i18n_key(self.section), lang, labels[0], labels[1],
+            ))
         if self.route != "/admin":
             parts.append(self.label(lang))
         return " > ".join(parts)
@@ -510,11 +559,47 @@ def catalog() -> tuple[UiSurfaceSpec, ...]:
     return SURFACES
 
 
+def localization_inventory(source_lang: str) -> tuple[tuple[str, str], ...]:
+    """Enumerate all Settings/Tutor prose using stable semantic keys."""
+
+    source = _C.normalize_language_tag(source_lang)
+    rows: list[tuple[str, str]] = []
+    for section, (it, en) in sorted(_SECTIONS.items()):
+        rows.append((
+            _section_i18n_key(section),
+            {"it": it, "en": en}.get(source) or en,
+        ))
+    for surface in SURFACES:
+        for field in ("label", "summary"):
+            baselines = {
+                "it": getattr(surface, f"{field}_it"),
+                "en": getattr(surface, f"{field}_en"),
+            }
+            rows.append((
+                _surface_i18n_key(surface.key, field),
+                baselines.get(source) or baselines[_C.BOOTSTRAP_LANGUAGE],
+            ))
+        for field in ("visible", "controls", "procedure", "stop"):
+            values_it = getattr(surface, f"{field}_it")
+            values_en = getattr(surface, f"{field}_en")
+            for index, (it, en) in enumerate(
+                itertools.zip_longest(values_it, values_en, fillvalue="")
+            ):
+                source_text = {"it": it, "en": en}.get(source) or en or it
+                if not source_text:
+                    continue
+                rows.append((
+                    _surface_i18n_key(surface.key, field, index),
+                    source_text,
+                ))
+    return tuple(rows)
+
+
 def by_key(key: str) -> UiSurfaceSpec:
     return next(surface for surface in SURFACES if surface.key == key)
 
 
-def settings_navigation(lang: str = "it") -> tuple[dict, ...]:
+def settings_navigation(lang: str = _C.BOOTSTRAP_LANGUAGE) -> tuple[dict, ...]:
     """Navigation view consumed directly by the Settings base template."""
 
     groups = [{
@@ -524,7 +609,9 @@ def settings_navigation(lang: str = "it") -> tuple[dict, ...]:
     for key, labels in _SECTIONS.items():
         groups.append({
             "key": key,
-            "label": labels[0 if lang == "it" else 1],
+            "label": _localized(
+                _section_i18n_key(key), lang, labels[0], labels[1],
+            ),
             "items": tuple(surface for surface in SURFACES
                            if surface.section == key),
         })

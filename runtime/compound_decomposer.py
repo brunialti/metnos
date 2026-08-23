@@ -100,12 +100,12 @@ TRANSFORM_VERBS = {"filter", "sort", "group", "classify", "describe",
                     "render", "compute", "compare"}
 
 
-def split_query_chunks(query: str) -> list[str]:
-    """Split su confini forti e connettori sequenziali universali.
+def _raw_query_chunks(query: str) -> list[str]:
+    """Return literal chunks at registered connector boundaries.
 
-    La punteggiatura separa frasi autonome prima del lessico traducibile. In
-    questo modo una richiesta composta non dipende dalla presenza di una
-    congiunzione specifica e ogni chunk conserva esattamente il testo utente.
+    This lower-level view intentionally retains verb-less fragments: they can
+    be either scalar continuations or members of a list.  Consumers choose the
+    appropriate interpretation instead of losing that distinction here.
     """
     if not query or not query.strip():
         return []
@@ -113,7 +113,17 @@ def split_query_chunks(query: str) -> list[str]:
     connector = _connector_pattern(_dl.current_lang())
     for sentence in _SENTENCE_BOUNDARY.split(query.strip()):
         parts.extend(connector.split(sentence))
-    raw = [p.strip() for p in parts if p.strip()]
+    return [p.strip() for p in parts if p.strip()]
+
+
+def split_query_chunks(query: str) -> list[str]:
+    """Split su confini forti e connettori sequenziali universali.
+
+    La punteggiatura separa frasi autonome prima del lessico traducibile. In
+    questo modo una richiesta composta non dipende dalla presenza di una
+    congiunzione specifica e ogni chunk conserva esattamente il testo utente.
+    """
+    raw = _raw_query_chunks(query)
     # A comma inside a scalar value is not a clause boundary (notably
     # ``January 15, 2030``).  Reattach verb-less fragments to the preceding
     # clause; true sequential clauses retain their own canonical action.
@@ -287,7 +297,9 @@ def _fields_from_sink_assignment(query: str) -> list[str]:
                                detect_canonical_verbs_all as _verbs)
     except Exception:
         return []
-    chunks = split_query_chunks(q)
+    # A schema is a list by definition, so verb-less connector fragments are
+    # list members rather than scalar continuations.
+    chunks = _raw_query_chunks(q)
     annotated = [(chunk, _verbs(_tok(chunk)) or []) for chunk in chunks]
     fields: list[str] = []
     for i, (chunk, verbs) in enumerate(annotated):
@@ -333,7 +345,10 @@ def derive_extract_fields(query: str) -> list[str]:
                                detect_canonical_verbs_all as _verbs)
     except Exception:
         return []
-    chunks = split_query_chunks(query)
+    # The extract payload is a list by definition.  Use literal connector
+    # boundaries; the public clause splitter deliberately rejoins verb-less
+    # fragments because in an ordinary clause they may be scalar values.
+    chunks = _raw_query_chunks(query)
     if not chunks:
         return []
     ann = [(ch, (_verbs(_tok(ch)) or [None])[0]) for ch in chunks]

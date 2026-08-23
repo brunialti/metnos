@@ -56,14 +56,13 @@ def translation_tier_for_quality(quality: str):
     raise ValueError(
         f"unknown translation quality {quality!r}; use fidelity or frontier")
 
-# Mapping codice → nome lingua per il prompt LLM
-_LANG_NAMES = {
-    "it": "Italian",
-    "en": "English",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-}
+def _language_instruction(tag: str) -> str:
+    """Describe a locale without maintaining a language allowlist."""
+    import config as _config
+    normalized = _config.normalize_language_tag(tag)
+    if not normalized:
+        raise ValueError(f"invalid BCP-47 language tag: {tag!r}")
+    return f"language identified by BCP-47 tag {normalized}"
 
 _VOCAB_PROMPT_ARGS = {
     "canonical_actions": "/".join(ACTIONS),
@@ -105,11 +104,11 @@ CRITICAL PRESERVATION RULES (DO NOT VIOLATE):
 
 2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool names (find_places, get_location, request_new_executor, request_location_from_user, scratchpad_read, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, get_now, get_places, find_files, find_dirs, find_packages, get_processes, read_messages, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, get_files, get_urls, filter_texts_lines, undo_last_turn, compress_files, compute_signatures, list_dirs, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, ...), action verbs ({canonical_actions}), object nouns ({canonical_objects}), modifiers ({canonical_qualifiers}). Metnos DOMAIN NOUNS — keep in ENGLISH in ALL target languages, do NOT translate them (e.g. NOT "esecutore"/"manifesto"): executor, executors, manifest, manifests, runtime, planner, synt, fastpath, autopath, scratchpad.
 
-3. STRUCTURAL FORMATTING — preserve LITERALLY: section headers (═══ separators, ## headings), numbered rules (1., 2., 2-bis, 2-ter, 2-quater), DEVI/NON DEVI/OK/ERRORE pattern (translate to YOU MUST/YOU MUST NOT/CORRECT/WRONG keeping uppercase emphasis), bullet lists, indentation, code blocks, JSON examples (translate text fields BUT keep keys/identifiers/values that are technical literally).
+3. STRUCTURAL FORMATTING — preserve LITERALLY: section headers, separators, numbered rules, deontic markers, bullet lists, indentation, code blocks, and JSON examples. Translate natural-language text fields but keep technical keys, identifiers, and values literally.
 
 4. FEW-SHOT EXAMPLES — translate the user's natural-language query but PRESERVE the structured output exactly. E.g., translate "User: 'comprimi /tmp/log.txt con gzip'" to "User: 'compress /tmp/log.txt with gzip'", but keep `{{"name": "compress_files", ...}}` IDENTICAL.
 
-5. PRESCRIPTIVE TONE — Metnos prompts use strong imperative ("DEVI"=YOU MUST, "NON DEVI"=YOU MUST NOT). Keep the imperative force and ALL CAPS for emphasis. Do NOT soften ("you should").
+5. PRESCRIPTIVE TONE — preserve the exact deontic force and ALL CAPS emphasis of requirements and prohibitions in the target language. Never soften a mandatory rule into advice.
 
 6. DOMAIN VOCABULARY — preserve technical Italian metnos-specific concepts when no exact EN equivalent: "vaglio", "scratchpad", "mnest", "mnestoma" can stay Italian if defining a Metnos-specific entity.
 
@@ -210,8 +209,8 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
             pair = (e["source_lang"], e["target_lang"])
             by_pair.setdefault(pair, []).append(e)
         for (src, tgt), batch in by_pair.items():
-            src_name = _LANG_NAMES.get(src, src)
-            tgt_name = _LANG_NAMES.get(tgt, tgt)
+            src_name = _language_instruction(src)
+            tgt_name = _language_instruction(tgt)
             # Per LLM-targeted (prompt giganti) processa UNA chiave per call
             # — riduce errori parser su output mega.
             sub_batches = [[e] for e in batch] if cls_name == "llm-targeted" else [batch]
@@ -286,57 +285,11 @@ def run_loop(boot_interval: float = INTERVAL_BOOT_S,
 #   5. validation: sintassi MiniJinja, set placeholder identico, len ratio
 #      0.7-1.4× (drift detector)
 #   6. salva candidato in `prompts/<lang>/_pending/<role>.j2.candidate`.
-#      §K (15/6/2026): il candidato è USATO IN-VIVO dal loader (catena
-#      live→candidato→EN in `prompt_loader._resolve_prompt_source`) senza
-#      attendere una promozione manuale — l'approvazione NON è più un gate
-#      bloccante (nessuno revisiona centinaia di stringhe; ADR 0173). La
-#      promozione a `prompts/<lang>/<role>.j2` resta possibile (opt-in,
-#      canonicalizza + abilita il linter prescrittivo §6.1).
+#      Il candidato non è usato dal loader finché il gate RM-0005/F8 non lo
+#      promuove nel percorso live.
 # ===========================================================================
 import re as _re
 import uuid as _uuid
-
-# Mapping fisso prescrittivo IT→EN per le sezioni stilistiche §6 di the design guide.
-# Applicato in post-pass (case-sensitive) per garantire la stessa forma
-# prescrittiva nella versione EN. NON delegare al LLM perche' tende a
-# parafrasi (es. "you should" che indebolisce l'imperativo).
-#
-# ORDINE IMPORTANTE: i pattern piu' specifici devono venire PRIMA dei piu'
-# generici (NON DEVI: prima di DEVI:, altrimenti DEVI: matcha dentro NON DEVI:).
-# Dict Python 3.7+ preserva l'ordine di insertion → safe.
-PRESCRIPTIVE_MAP_IT_EN: dict[str, str] = {
-    # Marker di anti-pattern (the design guide §6): plurali e maiuscolo preservato.
-    "E' UN ERRORE": "THIS IS AN ERROR",
-    "È UN ERRORE": "THIS IS AN ERROR",
-    # NON DEVI: deve precedere DEVI: per evitare overlap.
-    "NON DEVI:": "MUST NOT:",
-    "DEVI:": "MUST:",
-    # ERRORE: deve precedere "ERRORE" da solo (qui non c'e', ma per sicurezza).
-    "ERRORE:": "ERROR:",
-    "OK:": "OK:",
-}
-
-# Mappa INVERSA EN→IT: canonicalizza i marker §6 quando il TARGET è l'italiano.
-# Senza questa, `_apply_prescriptive_map` applicava la mappa IT→EN ANCHE alle
-# traduzioni EN→IT, RI-INGLESIZZANDO i marker (l'LLM produce «DEVI:» e la mappa
-# lo ributtava a «MUST:» dentro il prompt italiano — bug live candidato
-# synt_code.j2.candidate con «MUST:»/«THIS IS AN ERROR» in IT, 30/6). Ordine:
-# chiavi più lunghe prima (MUST NOT: prima di MUST:).
-PRESCRIPTIVE_MAP_EN_IT: dict[str, str] = {
-    "THIS IS AN ERROR": "E' UN ERRORE",
-    "MUST NOT:": "NON DEVI:",
-    "MUST:": "DEVI:",
-    "ERROR:": "ERRORE:",
-    "OK:": "OK:",
-}
-
-# Selettore per-target: il marker canonico §6 è definito solo per IT↔EN. Per
-# altre lingue (fr/de/es) nessuna mappa fissa → la traduzione LLM dei marker
-# resta com'è (niente ri-canonicalizzazione forzata).
-_PRESCRIPTIVE_MAP_BY_TARGET: dict[str, dict[str, str]] = {
-    "en": PRESCRIPTIVE_MAP_IT_EN,
-    "it": PRESCRIPTIVE_MAP_EN_IT,
-}
 
 # Pattern regex per "preservare letteralmente": il translator NON deve
 # tradurre questi span. Marcati con sentinel UUID prima della call e
@@ -399,18 +352,9 @@ def _restore_invariant_spans(translated: str, mapping: dict[str, str]) -> str:
 
 
 def _apply_prescriptive_map(text: str, target_lang: str = "en") -> str:
-    """Canonicalizza i marker §6 (DEVI/NON DEVI/OK/ERRORE) nella forma della
-    lingua TARGET, dopo la traduzione LLM. DIREZIONE-AWARE: target=en usa la
-    mappa IT→EN, target=it la mappa EN→IT, altre lingue nessuna mappa (il
-    marker resta come tradotto dall'LLM). Forza l'imperativo prescrittivo che
-    l'LLM tende a parafrasare/lasciare nella lingua sorgente."""
-    mapping = _PRESCRIPTIVE_MAP_BY_TARGET.get(target_lang)
-    if not mapping:
-        return text
-    out = text
-    for src, dst in mapping.items():
-        out = out.replace(src, dst)
-    return out
+    """Compatibility hook; equivalence is language-neutral and gate-checked."""
+    del target_lang
+    return text
 
 
 def _extract_jinja_placeholders(text: str) -> set[str]:
@@ -592,8 +536,8 @@ def translate_prompt_file(role: str, target_lang: str = "en",
     for attempt in range(max_retries + 1):
         masked, mapping = _mask_invariant_spans(src_text)
 
-        src_name = _LANG_NAMES.get(source_lang, source_lang)
-        tgt_name = _LANG_NAMES.get(target_lang, target_lang)
+        src_name = _language_instruction(source_lang)
+        tgt_name = _language_instruction(target_lang)
         full_prompt = _PROMPT_FILE_TEMPLATE.format(
             source_name=src_name, target_name=tgt_name, source_text=masked,
             **_VOCAB_PROMPT_ARGS,
@@ -721,8 +665,8 @@ def _translate_short_text(source_text: str, *, source_lang: str,
     Ritorna (translated_text, errors). `translated_text=None` su fallimento
     irrecuperabile.
     """
-    src_name = _LANG_NAMES.get(source_lang, source_lang)
-    tgt_name = _LANG_NAMES.get(target_lang, target_lang)
+    src_name = _language_instruction(source_lang)
+    tgt_name = _language_instruction(target_lang)
 
     last_errors: list[str] = []
     last_final = ""
@@ -763,6 +707,50 @@ def _translate_short_text(source_text: str, *, source_lang: str,
     return last_final, last_errors
 
 
+def translate_document_text(
+    source_text: str,
+    *,
+    source_lang: str,
+    target_lang: str,
+    tier: str = _TRANSLATION_TIER,
+    max_retries: int = 1,
+) -> tuple[str | None, list[str]]:
+    """Translate a multiline document while preserving its invariants.
+
+    Unlike the manifest helper this function never collapses line breaks. It
+    is path-independent, so the registry pipeline can use it for repository
+    prompts, fixture corpora, and reviewed public documentation.
+    """
+    last_errors: list[str] = []
+    last_final = ""
+    for attempt in range(max_retries + 1):
+        masked, mapping = _mask_invariant_spans(source_text)
+        prompt = _PROMPT_FILE_TEMPLATE.format(
+            source_name=_language_instruction(source_lang),
+            target_name=_language_instruction(target_lang),
+            source_text=masked,
+            **_VOCAB_PROMPT_ARGS,
+        )
+        raw = _llm_call_for_prompt(prompt, max_tokens=32000, tier=tier)
+        if not raw:
+            return None, ["llm_empty: provider unreachable"]
+        cleaned = raw.strip()
+        cleaned = _re.sub(r"^```(?:\w+)?\s*\n?", "", cleaned)
+        cleaned = _re.sub(r"\n?```\s*$", "", cleaned)
+        scrubbed, unknown = _scrub_unknown_sentinels(cleaned, set(mapping))
+        final = _restore_invariant_spans(scrubbed, mapping)
+        ok, errors = _validate_translation(source_text, final)
+        if unknown:
+            errors.append(f"sentinel_hallucinated: {unknown}")
+            ok = False
+        last_errors, last_final = errors, final
+        if ok:
+            return final, []
+        if attempt >= max_retries:
+            break
+    return last_final, last_errors
+
+
 def _load_lang_state(state_path: Path) -> dict:
     """Carica `manifest.lang_state.json` (vuoto se assente)."""
     if not state_path.is_file():
@@ -793,17 +781,24 @@ def _enumerate_textual_resources(manifest: dict) -> list[tuple[str, dict]]:
     Salta risorse che non sono table (es. legacy scalari, anche se loader
     li rifiuta gia' a load time).
     """
+    localizable = frozenset({
+        "description", "summary", "title", "label", "help", "message",
+    })
     out: list[tuple[str, dict]] = []
-    desc = manifest.get("description")
-    if isinstance(desc, dict):
-        out.append(("description", desc))
-    args = manifest.get("args") or {}
-    props = args.get("properties") or {}
-    for arg_name, arg_def in props.items():
-        if isinstance(arg_def, dict):
-            d = arg_def.get("description")
-            if isinstance(d, dict):
-                out.append((f"args.{arg_name}.description", d))
+
+    def visit(node: dict, prefix: tuple[str, ...] = ()) -> None:
+        for key, value in node.items():
+            if not isinstance(value, dict):
+                continue
+            path = prefix + (str(key),)
+            if path[-1] in localizable and any(
+                isinstance(text, str) for text in value.values()
+            ):
+                out.append((".".join(path), value))
+            else:
+                visit(value, path)
+
+    visit(manifest)
     return out
 
 
@@ -1068,15 +1063,7 @@ def _apply_lang_table_replacements(text: str,
     """
     out = text
     for resource_key, tgt_lang, _src, translated in replacements:
-        if resource_key == "description":
-            section_header = "[description]"
-        elif resource_key.startswith("args.") and resource_key.endswith(".description"):
-            arg_name = resource_key[len("args."):-len(".description")]
-            section_header = f"[args.properties.{arg_name}.description]"
-        else:
-            log.warning("unknown resource_key %r — skipping", resource_key)
-            continue
-
+        section_header = f"[{resource_key}]"
         out = _replace_lang_in_section(out, section_header, tgt_lang, translated)
     return out
 

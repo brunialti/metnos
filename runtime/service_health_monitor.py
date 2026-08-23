@@ -59,9 +59,8 @@ def _write(path: Path, payload: dict) -> None:
 
 
 def _localized_service(row: dict, lang: str) -> str:
-    if str(lang).lower().startswith("it"):
-        return str(row.get("label") or row.get("key") or "?")
-    return str(row.get("label_en") or row.get("label") or row.get("key") or "?")
+    from services_registry import localized
+    return str(localized([row], lang)[0].get("label") or row.get("key") or "?")
 
 
 def _notification(
@@ -73,12 +72,11 @@ def _notification(
 ) -> dict:
     import i18n
     import messages
-    import notify_admin
 
-    lang = notify_admin.admin_language()
+    lang = i18n.current_lang()
     service = _localized_service(row, lang)
     status = str(row.get("status") or "unknown")
-    with i18n.language_context(lang):
+    with i18n.instance_language_context():
         status_key = _STATUS_I18N_KEYS.get(status)
         localized_status = messages.get(status_key) if status_key else status
         if localized_status.startswith("<missing:"):

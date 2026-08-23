@@ -923,8 +923,7 @@ def _scheduled_turn_outcome(log):
 
 
 def _run_user_query_callback(record: dict):
-    """Esegue un task nella lingua del relativo utente."""
-    preferred = None
+    """Esegue un task nella lingua autorevole dell'istanza."""
     owner = None
     record_owner = str(record.get("owner_user_id") or "").strip()
     if not record_owner:
@@ -946,10 +945,8 @@ def _run_user_query_callback(record: dict):
         if (owner is not None
                 and str(owner.get("id") or "") != record_owner):
             owner = None
-        if owner is not None:
-            preferred = _users.get_pref(owner["id"], "lang", None)
     except Exception as ex:
-        log.debug("scheduled user language lookup unavailable: %s", ex)
+        log.debug("scheduled user lookup unavailable: %s", ex)
     if owner is None:
         from scheduler_v2.models import CallbackOutcome
         return CallbackOutcome(
@@ -1001,7 +998,7 @@ def _run_user_query_callback(record: dict):
     try:
         from user_lifecycle import OwnerUnavailable, owner_session
         with owner_session(scoped_record["owner_user_id"]):
-            with _i18n.language_context(preferred):
+            with _i18n.instance_language_context():
                 return _run_user_query_callback_scoped(scoped_record)
     except OwnerUnavailable:
         from scheduler_v2.models import CallbackOutcome

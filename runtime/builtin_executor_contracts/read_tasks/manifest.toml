@@ -15,7 +15,7 @@ en = "SCOPO: Reads details for one known scheduled task. PATTERN: natural reques
 
 [code]
 files = ["../../recurring_tasks.py"]
-digest = "sha256:13ccc284e675bcaaae46cd862eff90fc01de882983c55de2542f1dd2ba87b145"
+digest = "sha256:d8443b5d02ac8aa40cf4423ca2d1944841e4d83b0a4e4386b7ae3b2fad78aa78"
 
 [args]
 type = "object"

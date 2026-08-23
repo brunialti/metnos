@@ -1733,15 +1733,11 @@ def _process_strato3_choice_dispatch(
             log.exception("strato3 retry failed")
             return _msg("MSG_ORCH_RETRY_FAILED", detail=f"{type(ex).__name__}: {ex}")
     if action_key == "synth":
-        import i18n as _i18n
-        with _i18n.language_context(lang):
-            new_query = _msg(
-                "PROMPT_STRATO3_SYNTH_QUERY", query=original_query)
+        new_query = _msg(
+            "PROMPT_STRATO3_SYNTH_QUERY", query=original_query)
     elif action_key == "frontier":
-        import i18n as _i18n
-        with _i18n.language_context(lang):
-            new_query = _msg(
-                "PROMPT_STRATO3_FRONTIER_QUERY", query=original_query)
+        new_query = _msg(
+            "PROMPT_STRATO3_FRONTIER_QUERY", query=original_query)
     else:
         return _msg("MSG_ORCH_CHOICE_UNKNOWN")
     try:

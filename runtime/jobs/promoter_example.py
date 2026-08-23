@@ -70,9 +70,9 @@ _DEFAULT_ETA_DB = _C.PATH_USER_DATA / "proposals_eta.sqlite"
 
 
 def _t(lang: str, key: str, **values) -> str:
-    """Lookup i18n esplicito: un job non eredita la lingua di un altro turno."""
-    with _i18n.language_context(lang):
-        return _msg(key, **values)
+    """Lookup nella lingua firmata dell'istanza."""
+    del lang
+    return _msg(key, **values)
 
 
 def _turns_dir() -> Path:
