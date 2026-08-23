@@ -292,6 +292,10 @@ not a whole-system guarantee.
 Reversibility is a contract separate from the autonomy matrix. A standard-compliant executor declaring <code>revertible = true</code> must name a <code>reverse_pattern</code>. The runtime keeps the execution data needed for reversal, and <code>undo_last_turn</code> attempts the inverse path while reporting failures.
 </p>
 
+<p>
+For an executor with different branches, the signed manifest may also declare <code>[undo] outcome = &quot;per_execution&quot;</code>. Each execution then returns one of <code>reversible</code>, <code>no_effect</code>, or <code>irreversible</code>. Only the first carries a receipt to the inverse path; the others still close the turn and prevent an undo command from accidentally reaching an older turn. The runtime never infers an inverse from the executor name. Sensitive prior state, such as a session cookie, stays encrypted outside the journal; the journal contains only opaque handles and digests.
+</p>
+
 <p>The closed catalog in <code>runtime/reverse_patterns.py</code> includes, among others:</p>
 
 <ul>

@@ -75,7 +75,7 @@ impl StartLifetime {
 /// Distinta dalla versione del programma: due build diverse possono parlare
 /// la stessa lingua, ed e' la lingua che decide se si capiscono. Cambia solo
 /// quando cambia la forma dei messaggi.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// Una richiesta completa. Ogni campo e' tipizzato: non esiste un campo
 /// «argomenti liberi», e non puo' esistere senza cambiare questo file.
@@ -108,6 +108,23 @@ pub struct ManagedStartRequest {
     pub source: Source,
     pub package_id: String,
     pub lifetime: StartLifetime,
+    pub idempotency_key: String,
+    pub signature: String,
+}
+
+/// Stop exactly one process created by a previous managed-start request.
+///
+/// A PID alone is not an identity: Windows may reuse it.  The kernel creation
+/// time binds the request to the same process object, while `package_id`
+/// makes the helper resolve and compare the trusted executable again.  No
+/// name, path, command, or argument crosses the channel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedStopRequest {
+    pub source: Source,
+    pub package_id: String,
+    pub pid: u32,
+    pub creation_time: u64,
     pub idempotency_key: String,
     pub signature: String,
 }
@@ -248,6 +265,7 @@ pub struct ManagedProviderRequest {
 pub enum WireRequest {
     Package(Request),
     ManagedStart(ManagedStartRequest),
+    ManagedStop(ManagedStopRequest),
     ManagedProvider(ManagedProviderRequest),
 }
 
@@ -261,6 +279,11 @@ pub enum Action {
     ManagedStart {
         package_id: String,
         lifetime: StartLifetime,
+    },
+    ManagedStop {
+        package_id: String,
+        pid: u32,
+        creation_time: u64,
     },
     ManagedProvider {
         package_id: String,
@@ -282,6 +305,8 @@ pub enum Refusal {
     MalformedVersion,
     /// Chiave d'idempotenza assente o non plausibile.
     MalformedIdempotencyKey,
+    /// PID e tempo kernel devono identificare un processo reale, non un nome.
+    MalformedProcessIdentity,
     /// Chiave gia' consumata: e' un riascolto, non una richiesta nuova.
     ReplayedRequest,
     /// La firma non corrisponde all'installazione appaiata.
@@ -298,6 +323,7 @@ impl Refusal {
             Refusal::MalformedPackageId => "malformed_package_id",
             Refusal::MalformedVersion => "malformed_version",
             Refusal::MalformedIdempotencyKey => "malformed_idempotency_key",
+            Refusal::MalformedProcessIdentity => "malformed_process_identity",
             Refusal::ReplayedRequest => "replayed_request",
             Refusal::UntrustedSignature => "untrusted_signature",
             Refusal::UntrustedGrant => "untrusted_provider_grant",
@@ -482,6 +508,34 @@ impl ManagedStartRequest {
     }
 }
 
+impl ManagedStopRequest {
+    pub fn canonical_body(&self) -> String {
+        format!(
+            "managed-stop\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+            match self.source {
+                Source::Winget => "winget",
+            },
+            self.package_id,
+            self.pid,
+            self.creation_time,
+            self.idempotency_key,
+        )
+    }
+
+    pub fn check_shape(&self) -> Result<(), Refusal> {
+        if !is_valid_package_id(&self.package_id) {
+            return Err(Refusal::MalformedPackageId);
+        }
+        if self.pid == 0 || self.creation_time == 0 {
+            return Err(Refusal::MalformedProcessIdentity);
+        }
+        if !is_valid_idempotency_key(&self.idempotency_key) {
+            return Err(Refusal::MalformedIdempotencyKey);
+        }
+        Ok(())
+    }
+}
+
 fn is_valid_identifier(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 64
@@ -606,6 +660,7 @@ impl WireRequest {
         match self {
             WireRequest::Package(request) => &request.package_id,
             WireRequest::ManagedStart(request) => &request.package_id,
+            WireRequest::ManagedStop(request) => &request.package_id,
             WireRequest::ManagedProvider(request) => &request.package_id,
         }
     }
@@ -614,6 +669,7 @@ impl WireRequest {
         match self {
             WireRequest::Package(request) => &request.idempotency_key,
             WireRequest::ManagedStart(request) => &request.idempotency_key,
+            WireRequest::ManagedStop(request) => &request.idempotency_key,
             WireRequest::ManagedProvider(request) => &request.idempotency_key,
         }
     }
@@ -622,6 +678,7 @@ impl WireRequest {
         match self {
             WireRequest::Package(request) => &request.signature,
             WireRequest::ManagedStart(request) => &request.signature,
+            WireRequest::ManagedStop(request) => &request.signature,
             WireRequest::ManagedProvider(request) => &request.signature,
         }
     }
@@ -630,6 +687,7 @@ impl WireRequest {
         match self {
             WireRequest::Package(request) => request.canonical_body(),
             WireRequest::ManagedStart(request) => request.canonical_body(),
+            WireRequest::ManagedStop(request) => request.canonical_body(),
             WireRequest::ManagedProvider(request) => request.canonical_body(),
         }
     }
@@ -638,6 +696,7 @@ impl WireRequest {
         match self {
             WireRequest::Package(request) => request.check_shape(),
             WireRequest::ManagedStart(request) => request.check_shape(),
+            WireRequest::ManagedStop(request) => request.check_shape(),
             WireRequest::ManagedProvider(request) => request.check_shape(),
         }
     }
@@ -659,6 +718,11 @@ impl WireRequest {
             WireRequest::ManagedStart(request) => Some(Action::ManagedStart {
                 package_id: request.package_id.clone(),
                 lifetime: request.lifetime,
+            }),
+            WireRequest::ManagedStop(request) => Some(Action::ManagedStop {
+                package_id: request.package_id.clone(),
+                pid: request.pid,
+                creation_time: request.creation_time,
             }),
             WireRequest::ManagedProvider(request) => Some(Action::ManagedProvider {
                 package_id: request.package_id.clone(),
@@ -995,6 +1059,32 @@ mod tests {
         assert_ne!(
             request.canonical_body(),
             richiesta("LibreHardwareMonitor.LibreHardwareMonitor").canonical_body()
+        );
+    }
+
+    #[test]
+    fn managed_stop_binds_package_pid_and_kernel_creation_time() {
+        let request = ManagedStopRequest {
+            source: Source::Winget,
+            package_id: "LibreHardwareMonitor.LibreHardwareMonitor".into(),
+            pid: 4242,
+            creation_time: 133_700_000_000_000_000,
+            idempotency_key: "0123456789abcdef0123456789abcdef".into(),
+            signature: String::new(),
+        };
+        assert_eq!(
+            request.canonical_body(),
+            "managed-stop\u{1f}winget\u{1f}LibreHardwareMonitor.LibreHardwareMonitor\u{1f}4242\u{1f}133700000000000000\u{1f}0123456789abcdef0123456789abcdef"
+        );
+        assert!(request.check_shape().is_ok());
+        let mut reused_pid = request.clone();
+        reused_pid.creation_time += 1;
+        assert_ne!(request.canonical_body(), reused_pid.canonical_body());
+        let mut invalid = request;
+        invalid.pid = 0;
+        assert_eq!(
+            invalid.check_shape(),
+            Err(Refusal::MalformedProcessIdentity)
         );
     }
 

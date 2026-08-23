@@ -214,6 +214,14 @@ Synt-generated list producers MUST emit this contract.
 - If `revertible = true`, the manifest MUST name a supported reverse pattern and
   the implementation MUST return the evidence required to execute and verify
   that reverse operation. Otherwise it MUST declare non-reversibility honestly.
+- A mixed executor MAY declare `[undo] outcome = "per_execution"` only when it
+  is revertible and names a reverse pattern. Every execution under this signed
+  contract MUST return `_undo.outcome` as exactly `reversible`, `no_effect`, or
+  `irreversible`. A reversible outcome MUST carry an exact executor-owned
+  receipt; the runtime MUST close the other two without inferring an inverse.
+  Missing or malformed outcome metadata MUST fail closed as irreversible.
+  Sensitive prior state MUST be stored outside the journal under an opaque,
+  actor-bound protected handle.
 - Remote execution MUST preserve target identity. Failure of the selected
   device or service MUST NOT silently move the action to another host.
 

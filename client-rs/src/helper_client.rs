@@ -57,7 +57,7 @@ const PROPRIETARI_PRIVILEGIATI: [&str; 2] = [LOCAL_SYSTEM_SID, ADMINISTRATORS_SI
 /// la LINGUA, non la build: due versioni diverse dei due programmi si
 /// capiscono benissimo se questa combacia, e non si capiscono affatto se non
 /// combacia — che e' esattamente la differenza da saper dire.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {
@@ -163,6 +163,21 @@ pub fn canonical_start_body(
         package_id,
         lifetime.as_str(),
         idempotency_key,
+    )
+}
+
+/// Signed body for an exact managed stop.  PID reuse is rejected by binding
+/// the PID to the kernel process creation time.
+pub fn canonical_stop_body(
+    source: &str,
+    package_id: &str,
+    pid: u32,
+    creation_time: u64,
+    idempotency_key: &str,
+) -> String {
+    format!(
+        "managed-stop\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        source, package_id, pid, creation_time, idempotency_key,
     )
 }
 
@@ -392,6 +407,31 @@ pub fn build_start_request(
     });
     serde_json::to_string(&request)
         .map_err(|error| anyhow!("managed-start request is not serializable: {error}"))
+}
+
+/// Build a request that can stop only the exact process named by a receipt.
+pub fn build_stop_request(
+    identity: &crate::identity::Identity,
+    package_id: &str,
+    pid: u32,
+    creation_time: u64,
+) -> Result<String> {
+    use ed25519_dalek::Signer;
+    let key = new_idempotency_key();
+    let body = canonical_stop_body("winget", package_id, pid, creation_time, &key);
+    let signature = identity.signing.sign(body.as_bytes());
+    let request = serde_json::json!({
+        "source": "winget",
+        "package_id": package_id,
+        "pid": pid,
+        "creation_time": creation_time,
+        "idempotency_key": key,
+        "signature": signature.to_bytes().iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>(),
+    });
+    serde_json::to_string(&request)
+        .map_err(|error| anyhow!("managed-stop request is not serializable: {error}"))
 }
 
 /// Build one provider request from the server-signed grant carried by the
@@ -675,6 +715,21 @@ mod tests {
                 None,
                 "0123456789abcdef0123456789abcdef",
             )
+        );
+    }
+
+    #[test]
+    fn managed_stop_body_matches_the_helper_contract() {
+        let body = canonical_stop_body(
+            "winget",
+            "LibreHardwareMonitor.LibreHardwareMonitor",
+            4242,
+            133_700_000_000_000_000,
+            "0123456789abcdef0123456789abcdef",
+        );
+        assert_eq!(
+            body,
+            "managed-stop\u{1f}winget\u{1f}LibreHardwareMonitor.LibreHardwareMonitor\u{1f}4242\u{1f}133700000000000000\u{1f}0123456789abcdef0123456789abcdef"
         );
     }
 

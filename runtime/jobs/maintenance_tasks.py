@@ -216,6 +216,11 @@ def task_state_reaper() -> dict:
         return {"purged": UndoLog().purge_older_than(days=undo_days)}
     _run("undo", _undo)
 
+    def _protected_undo_blobs():
+        from protected_undo import purge_expired
+        return {"removed": purge_expired(), "retention_days": undo_days}
+    _run("protected_undo_blobs", _protected_undo_blobs)
+
     def _history_blobs():
         # Backup blob di reversibilita' (undo): una dir per turno. Rimuovi le
         # dir oltre la retention undo (i blob servono solo finche' l'undo del

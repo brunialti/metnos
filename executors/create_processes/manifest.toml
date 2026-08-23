@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name         = "create_processes"
-version      = "0.2.0"
+version      = "0.3.0"
 intelligence = "deterministic"
 timeout_s    = 30
 platforms    = ["windows"]
@@ -11,7 +11,8 @@ affinity     = [
   "avvia", "avviare", "lancia", "lanciare", "fai partire",
   "start", "launch", "run program", "start program"
 ]
-revertible = false
+revertible = true
+reverse_pattern = "module.reverse"
 critical   = true
 lifecycle  = "active"
 
@@ -23,12 +24,12 @@ concurrency_key   = "device"
 equivalence_gate  = "unverified"
 
 [description]
-it = "SCOPO: avvia pacchetti già installati sul dispositivo. PATTERN: create_processes(programs=['Publisher.Package']). NON: percorsi, comandi, script o programmi non registrati. OUT: chiede se mantenerli fino al riavvio o a ogni accensione, poi restituisce results e failed."
-en = "SCOPO: starts packages already installed on the device. PATTERN: create_processes(programs=['Publisher.Package']). NON: paths, commands, scripts, or unregistered programs. OUT: asks whether to keep them until restart or at every startup, then returns results and failed."
+it = "SCOPO: avvia pacchetti già installati sul dispositivo e registra l'identità esatta per annullare i soli processi di sessione creati. PATTERN: create_processes(programs=['Publisher.Package']). NON: percorsi, comandi, script o programmi non registrati. OUT: chiede se mantenerli fino al riavvio o a ogni accensione, poi restituisce results e failed; la persistenza resta irreversibile."
+en = "SCOPO: starts packages already installed on the device and records exact identity to undo only newly created session processes. PATTERN: create_processes(programs=['Publisher.Package']). NON: paths, commands, scripts, or unregistered programs. OUT: asks whether to keep them until restart or at every startup, then returns results and failed; persistence remains irreversible."
 
 [code]
 files  = ["create_processes.py"]
-digest = "sha256:0b618e64bcb8ba458c39fa53ccf914008905c1828f21deb768079e493ea73fa5"
+digest = "sha256:13caf150160b4fe2535d24511ba5758b0d2b70e69a548a6447f4c23c840173d0"
 
 [args]
 type     = "object"
@@ -75,11 +76,15 @@ schema_inline = """
   ok_count: int,
   fail_count: int,
   partial?: bool,
+  _undo: {outcome: str, processes?: Array<{package_id: str, pid: int, creation_time: int}>},
   error?: str,
   error_code?: str,
   error_class?: str
 }
 """
+
+[undo]
+outcome = "per_execution"
 
 [[capabilities]]
 name = "system:admin"

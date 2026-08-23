@@ -27,7 +27,7 @@ from playwright_sidecar import session_client  # noqa: E402
 from playwright_sidecar import stealth as stealth_registry  # noqa: E402
 
 
-def invoke(args: dict) -> dict:
+def _invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
     urls = args.get("urls")
     if not urls:
@@ -286,6 +286,62 @@ def invoke(args: dict) -> dict:
         else:
             out["error"] = _msg("ERR_OP_FAILED", reason="open_sites")
     return out
+
+
+def invoke(args: dict) -> dict:
+    """Run the open operation and publish its per-execution undo outcome."""
+    out = _invoke(args)
+    entries = out.get("entries") if isinstance(out, dict) else None
+    created_ids = []
+    if isinstance(entries, list):
+        for entry in entries:
+            if not isinstance(entry, dict) or not entry.get("ok"):
+                continue
+            entry["created"] = not bool(entry.get("reused"))
+            session_id = entry.get("session_id")
+            if entry["created"] and isinstance(session_id, str) and session_id:
+                created_ids.append(session_id)
+    if isinstance(out, dict):
+        out["_undo"] = (
+            {"outcome": "reversible",
+             "session_ids": list(dict.fromkeys(created_ids))}
+            if created_ids else {"outcome": "no_effect"}
+        )
+    return out
+
+
+def reverse(_plan: dict, results: dict) -> dict:
+    """Close only sessions created by the exact forward execution."""
+    owner = os.environ.get("METNOS_ACTOR") or "host"
+    metadata = results.get("_undo") if isinstance(results, dict) else None
+    session_ids = metadata.get("session_ids") if isinstance(metadata, dict) else None
+    if (not isinstance(session_ids, list) or not session_ids
+            or any(not isinstance(value, str) or not value
+                   for value in session_ids)):
+        return {"ok": False, "ok_count": 0, "fail_count": 1,
+                "results": [], "failed": [{"error_class": "invalid_receipt"}]}
+    reversed_results = []
+    failed = []
+    for session_id in list(dict.fromkeys(session_ids)):
+        closed = session_client.session_close(
+            session_id=session_id, owner=owner)
+        if closed.get("ok"):
+            reversed_results.append({
+                "session_id": session_id,
+                "closed": bool(closed.get("count", 0) > 0),
+            })
+        else:
+            failed.append({
+                "session_id": session_id,
+                "error_class": closed.get("error_class") or "close_failed",
+            })
+    return {
+        "ok": not failed,
+        "ok_count": len(reversed_results),
+        "fail_count": len(failed),
+        "results": reversed_results,
+        "failed": failed,
+    }
 
 
 def main():

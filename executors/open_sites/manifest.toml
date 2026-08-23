@@ -3,25 +3,27 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "open_sites"
-version     = "0.3.0"
+version     = "0.4.0"
 # Apertura context + navigazione: il broker ha timeout interno 20s/op; qui il
 # tetto client è ampio per il fan-out su più url.
 timeout_s   = 120
 # §10.8: sites gira SOLO server (il broker/credenziali vivono lì). No windows.
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
+revertible  = true
+reverse_pattern = "module.reverse"
 affinity    = [
     "sito", "siti", "portale", "apri il sito", "accedi al sito", "vai sul sito",
     "website", "open site", "web portal", "log in to", "sign in", "area riservata",
 ]
 
 [description]
-it = "SCOPO: apre una sessione browser persistente, pronta per login e lettura. PATTERN: open_sites(urls=[\"https://portale.esempio.it\"]). NON: pagina pubblica senza stato -> read_urls_html. OUT: entries=[{session_id,url,title,ok}]."
-en = "SCOPO: opens a persistent browser session ready for login and reading. PATTERN: open_sites(urls=[\"https://portal.example.com\"]). NON: public stateless page -> read_urls_html. OUT: entries=[{session_id,url,title,ok}]."
+it = "SCOPO: apre una sessione browser persistente e registra soltanto quelle create per l'annullamento. PATTERN: open_sites(urls=[\"https://portale.esempio.it\"]). NON: pagina pubblica senza stato -> read_urls_html. OUT: entries=[{session_id,url,title,ok,created}]."
+en = "SCOPO: opens a persistent browser session and records only newly created sessions for undo. PATTERN: open_sites(urls=[\"https://portal.example.com\"]). NON: public stateless page -> read_urls_html. OUT: entries=[{session_id,url,title,ok,created}]."
 
 [code]
 files  = ["open_sites.py"]
-digest = "sha256:47ab153190ccc7f39426b5c6eb169496958aabe143fde564ac36b50020839afa"
+digest = "sha256:c63e58a07045ad7f2563a6f03e1fdccce98ff0ac384f47fece1c7ae8350f6877"
 
 [args]
 type     = "object"
@@ -106,12 +108,16 @@ en = "Runtime only: turn language for the browser context locale/timezone."
 schema_inline = """
 {
   ok: bool,
-  entries: Array<{session_id: str|null, url: str, title: str, ok: bool, reason_code?: str}>,
+  entries: Array<{session_id: str|null, url: str, title: str, ok: bool, created?: bool, reused?: bool, reason_code?: str}>,
   metadata: {requested: int, opened: int},
+  _undo: {outcome: str, session_ids?: Array<str>},
   truncated?: bool, truncated_what?: str, used?: int, available_total?: int,
   error?: str, error_class?: str
 }
 """
+
+[undo]
+outcome = "per_execution"
 
 [presentation]
 default_view = "list"

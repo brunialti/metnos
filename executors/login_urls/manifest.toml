@@ -5,21 +5,22 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "login_urls"
-version     = "0.2.0"
+version     = "0.3.0"
 platforms   = ["linux"]
 timeout_s   = 300
 author      = "Roberto Brunialti"
 affinity    = ["login http", "http auth", "autenticazione http", "cookie session", "cookie jar", "credenziali web", "password form", "web form login", "site login"]
-revertible  = false
+revertible  = true
+reverse_pattern = "module.reverse"
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: autentica HTTP nel dominio URLs e salva cookie 0600. PATTERN: login_urls(domain='portale.example.it') -> read_urls_html(auth_cookies_file=...). NON: sessioni browser -> login_sites; bypass del vault. OUT: {ok,cached,session_cookies,cookie_file}."
-en = "SCOPO: authenticate HTTP in the URLs domain and save 0600 cookies. PATTERN: login_urls(domain='portal.example.com') -> read_urls_html(auth_cookies_file=...). NON: browser sessions -> login_sites; vault bypass. OUT: {ok,cached,session_cookies,cookie_file}."
+it = "SCOPO: autentica HTTP nel dominio URLs, salva cookie 0600 e registra stato protetto esatto per l'annullamento. PATTERN: login_urls(domain='portale.example.it') -> read_urls_html(auth_cookies_file=...). NON: sessioni browser -> login_sites; bypass del vault. OUT: {ok,cached,session_cookies,cookie_file}."
+en = "SCOPO: authenticate HTTP in the URLs domain, save 0600 cookies, and record exact protected state for undo. PATTERN: login_urls(domain='portal.example.com') -> read_urls_html(auth_cookies_file=...). NON: browser sessions -> login_sites; vault bypass. OUT: {ok,cached,session_cookies,cookie_file}."
 
 [code]
 files  = ["login_urls.py"]
-digest = "sha256:8470a69414ab3eab37560aeaa627d22dea544c128ff32eb5af52570361d2fab8"
+digest = "sha256:bcac469765b5e27ac0fe0a975e9b51b9d4dd6ef70ac577b66ccb4689d45d1c1f"
 
 [args]
 type     = "object"
@@ -72,9 +73,13 @@ schema_inline = """
   login_url?: str,
   domain?: str,
   cookie_file?: str,
+  _undo: {outcome: str, cookie_state?: object},
   error?: str, error_class?: str, error_code?: str
 }
 """
+
+[undo]
+outcome = "per_execution"
 
 [[capabilities]]
 name = "network:http"
@@ -86,11 +91,11 @@ hint = ["~/.config/metnos/credentials/*"]
 
 [[capabilities]]
 name = "fs:read"
-hint = ["~/.config/metnos/cookies/*"]
+hint = ["~/.config/metnos/cookies/*", "~/.local/share/metnos/undo_blobs/*"]
 
 [[capabilities]]
 name = "fs:write"
-hint = ["~/.config/metnos/cookies/*"]
+hint = ["~/.config/metnos/cookies/*", "~/.local/share/metnos/undo_blobs/*"]
 
 [placement]
 scope = "server"

@@ -1,5 +1,7 @@
-"""Provider-neutral receipts for reversible set membership mutations."""
+"""Provider-neutral receipts for reversible state transitions."""
 from __future__ import annotations
+
+import copy
 
 
 def membership_delta(before, after) -> dict[str, list[str]]:
@@ -28,3 +30,22 @@ def inverse_membership_delta(receipt: dict) -> tuple[list[str], list[str]]:
             or any(not isinstance(value, str) for value in added + removed)):
         raise ValueError("membership receipt has invalid deltas")
     return sorted(set(removed)), sorted(set(added))
+
+
+def state_transition(before, after) -> dict:
+    """Capture exact JSON-compatible states without domain knowledge."""
+    return {
+        "state_before": copy.deepcopy(before),
+        "state_after": copy.deepcopy(after),
+    }
+
+
+def state_to_restore(receipt: dict, current):
+    """Return the prior state only when current still equals recorded after."""
+    if not isinstance(receipt, dict):
+        raise ValueError("state receipt must be an object")
+    if "state_before" not in receipt or "state_after" not in receipt:
+        raise ValueError("state receipt is incomplete")
+    if current != receipt["state_after"]:
+        raise ValueError("current state differs from receipt")
+    return copy.deepcopy(receipt["state_before"])

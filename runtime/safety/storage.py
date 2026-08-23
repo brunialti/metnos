@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterator
 
@@ -230,6 +230,70 @@ class SafetyStore:
             (signature,),
         )
         return cur.rowcount > 0
+
+    def snapshot(self, signature: str) -> dict | None:
+        """Return the complete persistent row used by exact state receipts."""
+        row = self.find_by_signature(signature)
+        return asdict(row) if row is not None else None
+
+    def restore_snapshot_if_current(
+        self, signature: str, *, expected: dict | None,
+        restore: dict | None,
+    ) -> tuple[bool, str]:
+        """Compare-and-swap one complete row in a single transaction."""
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            current = self.snapshot(signature)
+            if current != expected:
+                self.conn.execute("ROLLBACK")
+                return False, "conflict"
+            if current is not None and current.get("severity") == "forbidden" \
+                    and restore != current:
+                self.conn.execute("ROLLBACK")
+                return False, "forbidden"
+            if restore is None:
+                self.conn.execute(
+                    "DELETE FROM safety_signatures WHERE signature = ?",
+                    (signature,),
+                )
+            else:
+                columns = (
+                    "id", "signature", "kind", "severity", "source", "uses",
+                    "last_used_at", "weight", "created_at", "created_by",
+                    "reason", "seed_version",
+                )
+                if restore.get("signature") != signature \
+                        or set(restore) != set(columns):
+                    self.conn.execute("ROLLBACK")
+                    return False, "invalid_receipt"
+                values = tuple(restore[column] for column in columns)
+                self.conn.execute(
+                    """
+                    INSERT INTO safety_signatures
+                        (id, signature, kind, severity, source, uses,
+                         last_used_at, weight, created_at, created_by,
+                         reason, seed_version)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(signature) DO UPDATE SET
+                        id = excluded.id,
+                        kind = excluded.kind,
+                        severity = excluded.severity,
+                        source = excluded.source,
+                        uses = excluded.uses,
+                        last_used_at = excluded.last_used_at,
+                        weight = excluded.weight,
+                        created_at = excluded.created_at,
+                        created_by = excluded.created_by,
+                        reason = excluded.reason,
+                        seed_version = excluded.seed_version
+                    """,
+                    values,
+                )
+            self.conn.execute("COMMIT")
+            return True, "restored"
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
 
     def record_use(self, signature: str) -> int:
         """Increment uses + bump last_used_at on a hit. Returns new uses count."""

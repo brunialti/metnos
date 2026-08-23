@@ -234,7 +234,8 @@ fn coda_utile(output: &str) -> String {
 mod tests {
     use super::*;
     use crate::protocol::{
-        Action, ManagedStartRequest, Operation, Request, Source, StartLifetime, WireRequest,
+        Action, ManagedStartRequest, ManagedStopRequest, Operation, Request, Source, StartLifetime,
+        WireRequest,
     };
     use ed25519_dalek::{Signer, SigningKey};
     use std::path::PathBuf;
@@ -305,6 +306,23 @@ mod tests {
                 source: Source::Winget,
                 package_id: id.into(),
                 lifetime: StartLifetime::Session,
+                idempotency_key: key.into(),
+                signature: String::new(),
+            };
+            request.signature = hex::encode(
+                self.chiave
+                    .sign(request.canonical_body().as_bytes())
+                    .to_bytes(),
+            );
+            request
+        }
+
+        fn managed_stop(&self, id: &str, key: &str) -> ManagedStopRequest {
+            let mut request = ManagedStopRequest {
+                source: Source::Winget,
+                package_id: id.into(),
+                pid: 4242,
+                creation_time: 133_700_000_000_000_000,
                 idempotency_key: key.into(),
                 signature: String::new(),
             };
@@ -416,6 +434,35 @@ mod tests {
             |_| panic!("an invalid managed-start signature reached execution"),
         );
         assert_eq!(response.error_code.as_deref(), Some("untrusted_signature"));
+    }
+
+    #[test]
+    fn managed_stop_uses_the_same_authorization_and_exact_action() {
+        let bank = Banco::nuovo("managed-stop");
+        let request = WireRequest::ManagedStop(bank.managed_stop(
+            "LibreHardwareMonitor.LibreHardwareMonitor",
+            "abcdef0123456789abcdef0123456787",
+        ));
+        let response = handle(
+            &request,
+            &bank.sid,
+            &bank.radice.join("pairing.json"),
+            &bank.radice.join("consumed.log"),
+            &bank.radice.join("audit.log"),
+            |action| {
+                assert_eq!(
+                    action,
+                    &Action::ManagedStop {
+                        package_id: "LibreHardwareMonitor.LibreHardwareMonitor".into(),
+                        pid: 4242,
+                        creation_time: 133_700_000_000_000_000,
+                    }
+                );
+                Outcome::success_with_payload(serde_json::json!({"stopped": true}))
+            },
+        );
+        assert!(response.ok);
+        assert_eq!(response.payload, Some(serde_json::json!({"stopped": true})));
     }
 
     #[test]

@@ -13,8 +13,10 @@ use std::process::{Command, Stdio};
 
 use sha2::{Digest, Sha256};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS, INVALID_HANDLE_VALUE,
+    CloseHandle, GetLastError, ERROR_INVALID_PARAMETER, ERROR_MORE_DATA, ERROR_NO_MORE_ITEMS,
+    ERROR_SUCCESS, FILETIME, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
 };
+use windows_sys::Win32::Storage::FileSystem::SYNCHRONIZE;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
@@ -23,8 +25,9 @@ use windows_sys::Win32::System::Registry::{
     KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY, REG_SZ,
 };
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, CREATE_NO_WINDOW, DETACHED_PROCESS,
-    PROCESS_QUERY_LIMITED_INFORMATION,
+    GetProcessTimes, OpenProcess, QueryFullProcessImageNameW, TerminateProcess,
+    WaitForSingleObject, CREATE_NO_WINDOW, DETACHED_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION,
+    PROCESS_TERMINATE,
 };
 
 use crate::activation::{self, Registration};
@@ -261,6 +264,61 @@ fn process_is_running(target: &Path) -> Result<bool, &'static str> {
     Ok(found)
 }
 
+fn filetime_value(value: FILETIME) -> u64 {
+    ((value.dwHighDateTime as u64) << 32) | value.dwLowDateTime as u64
+}
+
+fn opened_process_identity(
+    process: windows_sys::Win32::Foundation::HANDLE,
+    target: &Path,
+) -> Result<u64, &'static str> {
+    let mut buffer = vec![0u16; 32768];
+    let mut length = buffer.len() as u32;
+    if unsafe { QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut length) } == 0 {
+        return Err("package_process_probe_failed");
+    }
+    let actual = PathBuf::from(String::from_utf16_lossy(&buffer[..length as usize]));
+    if activation::windows_path_key(&actual) != activation::windows_path_key(target) {
+        return Err("package_process_identity_mismatch");
+    }
+    let mut created: FILETIME = unsafe { std::mem::zeroed() };
+    let mut exited: FILETIME = unsafe { std::mem::zeroed() };
+    let mut kernel: FILETIME = unsafe { std::mem::zeroed() };
+    let mut user: FILETIME = unsafe { std::mem::zeroed() };
+    if unsafe { GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user) } == 0 {
+        return Err("package_process_probe_failed");
+    }
+    let value = filetime_value(created);
+    if value == 0 {
+        return Err("package_process_probe_failed");
+    }
+    Ok(value)
+}
+
+fn process_identity(pid: u32, target: &Path) -> Result<Option<u64>, &'static str> {
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if process.is_null() {
+        return if unsafe { GetLastError() } == ERROR_INVALID_PARAMETER {
+            Ok(None)
+        } else {
+            Err("package_process_probe_failed")
+        };
+    }
+    let result = opened_process_identity(process, target).map(Some);
+    unsafe { CloseHandle(process) };
+    result
+}
+
+fn wait_for_process_identity(pid: u32, target: &Path) -> Result<Option<u64>, &'static str> {
+    for _ in 0..50 {
+        if let Some(created) = process_identity(pid, target)? {
+            return Ok(Some(created));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Ok(None)
+}
+
 fn wait_until_running(target: &Path) -> Result<bool, &'static str> {
     for _ in 0..50 {
         if process_is_running(target)? {
@@ -348,33 +406,91 @@ pub fn start(package_id: &str, lifetime: StartLifetime) -> Outcome {
 
     match process_is_running(&target) {
         Ok(true) => {
-            return Outcome::success(if lifetime == StartLifetime::Persistent {
-                "already_running_persistent"
-            } else {
-                "already_running"
-            });
+            return Outcome::success_with_payload(serde_json::json!({
+                "created_process": false,
+                "persistent_registration_changed": lifetime == StartLifetime::Persistent,
+            }));
         }
         Ok(false) => {}
         Err(code) => return Outcome::failure(code, code),
     }
 
-    let started = match lifetime {
-        StartLifetime::Session => detached_command(&target)
-            .spawn()
-            .map(|_| ())
-            .map_err(|_| "package_start_failed"),
-        StartLifetime::Persistent => run_startup_task(package_id),
-    };
-    match started {
-        Ok(()) => match wait_until_running(&target) {
-            Ok(true) => Outcome::success(if lifetime == StartLifetime::Persistent {
-                "started_persistent"
-            } else {
-                "started_session"
-            }),
-            Ok(false) => Outcome::failure("package_start_unverified", "package_start_unverified"),
+    match lifetime {
+        StartLifetime::Session => {
+            let child = match detached_command(&target).spawn() {
+                Ok(child) => child,
+                Err(_) => return Outcome::failure("package_start_failed", "package_start_failed"),
+            };
+            let pid = child.id();
+            drop(child);
+            match wait_for_process_identity(pid, &target) {
+                Ok(Some(creation_time)) => Outcome::success_with_payload(serde_json::json!({
+                    "created_process": true,
+                    "process": {"pid": pid, "creation_time": creation_time},
+                    "persistent_registration_changed": false,
+                })),
+                Ok(None) => {
+                    Outcome::failure("package_start_unverified", "package_start_unverified")
+                }
+                Err(code) => Outcome::failure(code, code),
+            }
+        }
+        StartLifetime::Persistent => match run_startup_task(package_id) {
+            Ok(()) => match wait_until_running(&target) {
+                Ok(true) => Outcome::success_with_payload(serde_json::json!({
+                    "created_process": true,
+                    "persistent_registration_changed": true,
+                })),
+                Ok(false) => {
+                    Outcome::failure("package_start_unverified", "package_start_unverified")
+                }
+                Err(code) => Outcome::failure(code, code),
+            },
             Err(code) => Outcome::failure(code, code),
         },
-        Err(code) => Outcome::failure(code, code),
     }
+}
+
+/// Stop only the process object bound to an authenticated undo receipt.
+pub fn stop(package_id: &str, pid: u32, creation_time: u64) -> Outcome {
+    let target = match canonical_target(package_id) {
+        Ok(target) => target,
+        Err(code) => return Outcome::failure(code, code),
+    };
+    let process = unsafe {
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
+            0,
+            pid,
+        )
+    };
+    if process.is_null() {
+        return if unsafe { GetLastError() } == ERROR_INVALID_PARAMETER {
+            Outcome::success_with_payload(serde_json::json!({"stopped": false}))
+        } else {
+            Outcome::failure(
+                "package_process_probe_failed",
+                "package_process_probe_failed",
+            )
+        };
+    }
+    let actual_creation = opened_process_identity(process, &target);
+    let result = match actual_creation {
+        Ok(actual) if actual != creation_time => Outcome::failure(
+            "package_process_identity_mismatch",
+            "package_process_identity_mismatch",
+        ),
+        Ok(_) => {
+            if unsafe { TerminateProcess(process, 1) } == 0 {
+                Outcome::failure("package_stop_failed", "package_stop_failed")
+            } else if unsafe { WaitForSingleObject(process, 5000) } != WAIT_OBJECT_0 {
+                Outcome::failure("package_stop_unverified", "package_stop_unverified")
+            } else {
+                Outcome::success_with_payload(serde_json::json!({"stopped": true}))
+            }
+        }
+        Err(code) => Outcome::failure(code, code),
+    };
+    unsafe { CloseHandle(process) };
+    result
 }

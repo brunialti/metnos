@@ -52,6 +52,7 @@ _JSON_SCHEMA_TYPES = frozenset({
 _TOP_LEVEL_AUTHORITY_KEYS = frozenset({
     "revertible", "reversible", "reverse_pattern", "placement", "platforms",
 })
+_UNDO_OUTCOMES = frozenset({"per_execution"})
 _OUTBOUND_CAPABILITY_NAMES = frozenset({
     "llm:online", "mail:send", "channel:out", "network:http",
     "network:sites", "provider:access",
@@ -411,6 +412,16 @@ def _validate_authority(findings: list[StandardFinding], manifest: dict) -> None
         _add(findings, "reverse_pattern", "revertible executors require reverse_pattern")
     if not revertible and reverse_pattern:
         _add(findings, "reverse_claim", "reverse_pattern requires revertible = true")
+    undo = manifest.get("undo")
+    if undo is not None:
+        if not isinstance(undo, dict):
+            _add(findings, "undo_table", "[undo] must be an object")
+        else:
+            outcome = undo.get("outcome")
+            if outcome is not None and outcome not in _UNDO_OUTCOMES:
+                _add(findings, "undo_outcome", "undo.outcome must be per_execution")
+            if outcome == "per_execution" and not revertible:
+                _add(findings, "undo_outcome", "per_execution undo requires revertible = true")
 
 
 def _validate_execution(findings: list[StandardFinding], manifest: dict,

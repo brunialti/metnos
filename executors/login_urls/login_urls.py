@@ -24,9 +24,12 @@ Capability: ["network.read", "network.write", "auth.password_storage"].
 from __future__ import annotations
 
 import http.cookiejar
+import fcntl
+import hashlib
 import os
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -47,6 +50,7 @@ USER_AGENT = "metnos-crawler/1.1 (+contact@metnos.com)"
 
 _CSRF_NAMES = re.compile(r"^(csrf|csrf_token|_token|authenticity_token)$",
                           re.IGNORECASE)
+_UNDO_NAMESPACE = "login_urls.cookie_jar"
 
 
 class _LoginFormParser(HTMLParser):
@@ -126,6 +130,169 @@ def _earliest_expiry(jar: http.cookiejar.MozillaCookieJar,
     return out
 
 
+def _actor() -> str:
+    return os.environ.get("METNOS_ACTOR") or "host"
+
+
+def _digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _lock_file(path: Path):
+    lock_path = path.with_name(path.name + ".lock")
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    os.chmod(lock_path, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd
+
+
+def _unlock_file(fd: int) -> None:
+    fcntl.flock(fd, fcntl.LOCK_UN)
+    os.close(fd)
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        # The atomic state transition already happened. Losing its undo
+        # receipt would be worse than reporting it with best-effort metadata
+        # durability on a filesystem that does not support directory fsync.
+        pass
+
+
+def _save_jar_with_receipt(
+    jar: http.cookiejar.MozillaCookieJar,
+    cookie_path: Path,
+    domain: str,
+) -> dict:
+    """Atomically replace one jar and keep prior secret state out of JSONL."""
+    import protected_undo
+
+    temporary = tempfile.NamedTemporaryFile(
+        dir=cookie_path.parent, prefix=cookie_path.name + ".",
+        suffix=".tmp", delete=False)
+    temp_path = Path(temporary.name)
+    temporary.close()
+    os.chmod(temp_path, 0o600)
+    blob_handle = None
+    try:
+        jar.save(str(temp_path), ignore_discard=True, ignore_expires=True)
+        os.chmod(temp_path, 0o600)
+        new_data = temp_path.read_bytes()
+        lock_fd = _lock_file(cookie_path)
+        try:
+            before = cookie_path.read_bytes() if cookie_path.exists() else None
+            if before == new_data:
+                temp_path.unlink(missing_ok=True)
+                return {"outcome": "no_effect"}
+            if before is not None:
+                blob_handle = protected_undo.store(
+                    before, owner=_actor(), namespace=_UNDO_NAMESPACE)
+            os.replace(temp_path, cookie_path)
+            _fsync_directory(cookie_path.parent)
+        finally:
+            _unlock_file(lock_fd)
+        return {
+            "outcome": "reversible",
+            "cookie_state": {
+                "domain": domain,
+                "after_sha256": _digest(new_data),
+                "before_present": before is not None,
+                **({
+                    "before_blob": blob_handle,
+                    "before_sha256": _digest(before),
+                } if before is not None else {}),
+            },
+        }
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        if blob_handle:
+            try:
+                protected_undo.discard(
+                    blob_handle, owner=_actor(), namespace=_UNDO_NAMESPACE)
+            except Exception:
+                pass
+        raise
+
+
+def _restore_cookie_state(receipt: dict) -> dict:
+    import protected_undo
+
+    if not isinstance(receipt, dict):
+        return {"ok": False, "error_class": "invalid_receipt"}
+    domain = receipt.get("domain")
+    after_digest = receipt.get("after_sha256")
+    before_present = receipt.get("before_present")
+    if (not isinstance(domain, str) or not domain
+            or not isinstance(after_digest, str) or len(after_digest) != 64
+            or any(char not in "0123456789abcdef" for char in after_digest)
+            or not isinstance(before_present, bool)):
+        return {"ok": False, "error_class": "invalid_receipt"}
+    try:
+        cookie_path = _cookie_file_for(domain)
+    except ValueError:
+        return {"ok": False, "error_class": "invalid_receipt"}
+    if not cookie_path.parent.is_dir():
+        return {"ok": False, "error_class": "state_conflict"}
+    before = None
+    handle = None
+    if before_present:
+        handle = receipt.get("before_blob")
+        before_digest = receipt.get("before_sha256")
+        if (not isinstance(handle, str) or not isinstance(before_digest, str)
+                or len(before_digest) != 64):
+            return {"ok": False, "error_class": "invalid_receipt"}
+        try:
+            before = protected_undo.load(
+                handle, owner=_actor(), namespace=_UNDO_NAMESPACE)
+        except Exception:
+            return {"ok": False, "error_class": "secret_receipt_unavailable"}
+        if _digest(before) != before_digest:
+            return {"ok": False, "error_class": "invalid_receipt"}
+
+    lock_fd = _lock_file(cookie_path)
+    try:
+        if not cookie_path.exists():
+            return {"ok": False, "error_class": "state_conflict"}
+        current = cookie_path.read_bytes()
+        if _digest(current) != after_digest:
+            return {"ok": False, "error_class": "state_conflict"}
+        if before is None:
+            cookie_path.unlink()
+        else:
+            temporary = tempfile.NamedTemporaryFile(
+                dir=cookie_path.parent, prefix=cookie_path.name + ".",
+                suffix=".undo.tmp", delete=False)
+            temp_path = Path(temporary.name)
+            try:
+                temporary.write(before)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+                temporary.close()
+                os.chmod(temp_path, 0o600)
+                os.replace(temp_path, cookie_path)
+            finally:
+                if not temporary.closed:
+                    temporary.close()
+                temp_path.unlink(missing_ok=True)
+        _fsync_directory(cookie_path.parent)
+    finally:
+        _unlock_file(lock_fd)
+    if handle:
+        try:
+            protected_undo.discard(
+                handle, owner=_actor(), namespace=_UNDO_NAMESPACE)
+        except Exception:
+            # Restoration is complete; retention will remove the orphan.
+            pass
+    return {"ok": True, "restored": before_present, "removed": not before_present}
+
+
 def _invoke_default(args: dict) -> dict:
     """Implementazione default httpx (urllib + credentials). Il dispatcher
     `invoke()` instrada qui via `backends.urls.httpx_default`."""
@@ -180,6 +347,7 @@ def _invoke_default(args: dict) -> dict:
                     "expires_at": _earliest_expiry(jar_existing, session_cookie_names),
                     "login_url": login_url,
                     "domain": domain,
+                    "_undo": {"outcome": "no_effect"},
                 }
 
     # 2. Esegui login: jar fresco (no cookie precedenti potenzialmente scaduti)
@@ -267,10 +435,9 @@ def _invoke_default(args: dict) -> dict:
             "domain": domain,
         }
 
-    # 4. Salva jar su disco
+    # 4. Salva jar su disco con sostituzione atomica e ricevuta protetta.
     try:
-        jar.save(str(cookie_path), ignore_discard=True, ignore_expires=True)
-        os.chmod(cookie_path, 0o600)
+        undo = _save_jar_with_receipt(jar, cookie_path, domain)
     except Exception as e:
         return {"ok": False,
                 "error": _msg("ERR_OP_FAILED", reason=str(e))}
@@ -283,6 +450,7 @@ def _invoke_default(args: dict) -> dict:
         "login_url": login_url,
         "domain": domain,
         "cookie_file": str(cookie_path),
+        "_undo": undo,
     }
 
 
@@ -306,7 +474,21 @@ def invoke(args: dict) -> dict:
     if backend is None:
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client {client!r}")}
-    return backend.login(args)
+    result = backend.login(args)
+    if isinstance(result, dict) and "_undo" not in result:
+        result["_undo"] = {"outcome": "no_effect"}
+    return result
+
+
+def reverse(_plan: dict, results: dict) -> dict:
+    metadata = results.get("_undo") if isinstance(results, dict) else None
+    receipt = metadata.get("cookie_state") if isinstance(metadata, dict) else None
+    restored = _restore_cookie_state(receipt)
+    return {
+        **restored,
+        "ok_count": 1 if restored.get("ok") else 0,
+        "fail_count": 0 if restored.get("ok") else 1,
+    }
 
 
 def main():
