@@ -4,7 +4,37 @@ Questo elenco raccoglie valutazioni architetturali non ancora approvate. Non e'
 una fonte normativa e non autorizza modifiche a vocabolario, planner, executor o
 routing.
 
-## DLG-001 - Valutare il dominio logico `dialogues`
+## Ordine operativo per priorita'
+
+L'ordine seguente e' canonico. Considera insieme impatto sull'utente, rischio,
+dipendenze e possibilita' concreta di procedere. Le schede successive conservano
+i dettagli, ma non determinano la priorita'.
+
+| Ordine | Priorita' | Voce | Perche' viene qui |
+|---:|:---:|---|---|
+| 1 | P0 | **DEV-001** | Puo' osservare la macchina sbagliata: difetto reale e riproducibile. |
+| 2 | P0 | **UND-001** | Resta da definire l'annullamento sicuro di `delete_dirs`. |
+| 3 | P0 | **SEC-001** | Serve una revisione indipendente dei confini con maggiore autorita'. |
+| 4 | P1 | **EXE-001** | Chiude l'ammissione standard di Synt/promoter e sblocca la pulizia. |
+| 5 | P1 | **RLS-001** | Estende installazione, aggiornamento e ripristino alla matrice supportata. |
+| 6 | P2 | **I18N-DEDUP-001** | Chiude le anomalie editoriali residue prima del controllo CI bloccante. |
+| 7 | P2 | **CONV-001** | Evita che richieste colloquiali scelgano executor non pertinenti. |
+| 8 | P2 | **REL-001** | Misura affidabilita' e falsi successi nell'uso reale nel tempo. |
+| 9 | P2 | **PERF-002** | Riduce concorrenza inutile senza cambiare la semantica. |
+| 10 | P3 | **EXE-DESC-001** | Analisi editoriale utile, senza difetto strutturale corrente. |
+| 11 | P3 | **MCP-001** | Decisione strategica; nessuna integrazione MCP e' oggi necessaria. |
+| 12 | P3 | **DLG-001** | Possibile riordino concettuale, senza problema operativo dimostrato. |
+| 13 | bloccata | **CLN-001** | Parte soltanto dopo la chiusura di EXE-001. |
+| 14 | sospesa | **OPS-001** | Il passaggio operativo non e' autorizzato; il servizio attuale e' stabile. |
+| 15 | attesa | **RED-001** | Reddit deve prima rispondere alla richiesta di accesso. |
+
+P0 significa «prossima attivita'»; P1 «subito dopo»; P2 «miglioramento
+programmato»; P3 «analisi non urgente». Una voce bloccata o sospesa non sale
+di priorita' finche' non cambia la sua condizione.
+
+## Schede di dettaglio
+
+### DLG-001 - Valutare il dominio logico `dialogues`
 
 - Stato: aperto, solo analisi.
 - Richiesta: 2026-07-11.
@@ -56,13 +86,6 @@ non deve mai poter sostituire, implicare o auto-concedere un'approvazione.
 - Il modello conserva isolamento per mittente, scadenza, idempotenza, audit e
   ripresa sicura del turno.
 - L'impatto su compatibilita', cache e piani esistenti e' esplicito e testato.
-
-## Programma prioritario
-
-Questa sezione ricompone i punti di lavoro emersi dalla valutazione generale di
-Metnos. L'ordine e' intenzionale: prima si stabilizza il contratto, poi si
-ampliano integrazioni e catalogo. Ogni voce richiede metriche e un done-gate;
-"codice scritto" non e' una misura di completamento.
 
 ### EXE-001 - Adozione dello standard executor
 
