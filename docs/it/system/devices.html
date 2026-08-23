@@ -26,16 +26,31 @@ cache verificata per le esecuzioni successive.</p>
 
 <h2 id="associazione">Associazione e identità</h2>
 
-<p>L'amministratore assegna un nome e un proprietario e genera un collegamento
-temporaneo per il computer di destinazione. Durante l'installazione viene
-registrata un'identità Ed25519 del dispositivo; i token iniziali scadono e non
-sostituiscono l'identità persistente. Il fingerprint consente di riconoscere la
-chiave senza esporla per intero.</p>
+<p>Per associare un nuovo computer, l'amministratore gli assegna un nome
+riconoscibile e indica l'utente proprietario. Metnos genera quindi un
+collegamento valido per un periodo limitato, da aprire sul computer da
+associare. Il client installato su quel computer crea una coppia di chiavi
+crittografiche Ed25519: la chiave privata rimane sul dispositivo, mentre il
+server registra quella pubblica. Da quest'ultima viene ricavata un'impronta
+digitale, o <em>fingerprint</em>, che permette di controllare che Metnos stia
+comunicando con il dispositivo atteso. Conclusa l'associazione, il collegamento
+temporaneo scade; le comunicazioni successive vengono autenticate mediante le
+chiavi.</p>
 
-<p>L'heartbeat indica quando il client ha comunicato l'ultima volta e contribuisce
-a determinare lo stato <em>raggiungibile</em>. Non dimostra da solo che ogni executor o
-risorsa sia disponibile: collocazione, capacità dichiarate e salute vanno
-valutate insieme.</p>
+<p><em>Heartbeat</em> significa letteralmente “battito”. In informatica è un
+messaggio automatico che un programma invia a intervalli regolari per segnalare
+a un altro programma che è ancora attivo. Il client Metnos invia questo
+messaggio al server ogni trenta secondi: lo firma e vi include l'identificativo
+del dispositivo e poche informazioni tecniche, come sistema operativo,
+architettura, versione del client e livello di isolamento disponibile.</p>
+
+<p>Ogni volta che riceve un heartbeat valido, il server registra l'ora. Se
+l'ultimo messaggio è recente, la pagina indica il dispositivo come
+<em>raggiungibile</em>: significa che il client è in esecuzione, la rete funziona
+e il server ne ha verificato l'identità. Non significa invece che qualunque
+azione possa essere eseguita. Metnos controlla separatamente che il dispositivo
+stia chiedendo nuovi lavori, che l'executor sia compatibile e che siano
+disponibili le risorse necessarie.</p>
 
 <h2 id="executor">Che cosa significa “executor remoto”</h2>
 
