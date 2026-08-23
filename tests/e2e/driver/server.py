@@ -298,6 +298,7 @@ class E2EServer:
     user_state: Path
     user_config: Path
     host: str = "127.0.0.1"
+    runtime_env: dict[str, str] = field(default_factory=dict, repr=False)
 
     @property
     def url(self) -> str:
@@ -439,7 +440,7 @@ class E2EServer:
             process=proc, port=port, admin_key=admin_key,
             tmp_root=tmp_root, user_data=user_data,
             user_state=user_state, user_config=user_config,
-            host=host,
+            host=host, runtime_env=dict(env),
         )
 
     def shutdown(self, *, timeout_s: float = 5.0, cleanup: bool = True) -> None:

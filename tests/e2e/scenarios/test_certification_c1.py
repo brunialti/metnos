@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import PurePosixPath
 
 from certification.coordinator import read_jsonl, validate_record
 from certification.golden_matrix import (
@@ -45,3 +46,36 @@ def test_requests_are_synthetic_and_have_no_obvious_private_identifiers():
         lowered = case["request"].lower()
         assert not any(marker in lowered for marker in forbidden)
         assert 12 <= len(case["request"]) <= 220
+
+
+def test_device_and_durable_requests_close_their_technical_contracts():
+    by_flow = defaultdict(list)
+    for case in read_jsonl(CASE_PATH):
+        by_flow[case["logical_flow_id"]].append(case)
+
+    for flow_id in (
+        "placement.device-read",
+        "placement.device-mutation-no-fallback",
+    ):
+        for case in by_flow[flow_id]:
+            assert any(marker in case["request"].casefold() for marker in (
+                "sul mio computer", "on my computer",
+            ))
+            paths = [
+                token.rstrip(".,;") for token in case["request"].split()
+                if token.startswith("/")
+            ]
+            assert paths and all(PurePosixPath(path).is_absolute() for path in paths)
+
+    for flow_id in (
+        "durable.complete-artifact",
+        "durable.stop-restart-resume",
+    ):
+        for case in by_flow[flow_id]:
+            request = case["request"]
+            assert "start_lre" in request
+            assert "images.questions.v1" in request
+            assert any(
+                token.rstrip(".,;").startswith("/")
+                for token in request.split()
+            )

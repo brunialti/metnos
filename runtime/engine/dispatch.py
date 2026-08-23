@@ -39,6 +39,84 @@ from vocab import SINGULAR_EXECUTOR_NAMES as _SINGULAR_EXECUTORS
 log = logging.getLogger(__name__)
 
 
+def _explicit_start_lre_framework(
+    query: str,
+    catalog: list,
+    *,
+    runtime_ctx: Optional[dict] = None,
+) -> Optional[Framework]:
+    """Build the fail-closed compatibility route for an explicit LRE call.
+
+    ``start_lre`` is a technical entry point, not a natural-language routing
+    hint.  It is therefore deterministic only when the request repeats one
+    registered profile and supplies at least one absolute source path.  Any
+    missing or ambiguous field falls through to the ordinary planner.
+    """
+
+    text = query if isinstance(query, str) else ""
+    if re.search(r"(?<![A-Za-z0-9_])start_lre(?![A-Za-z0-9_])", text) is None:
+        return None
+
+    start_executor = next(
+        (item for item in (catalog or [])
+         if getattr(item, "name", "") == "start_lre"),
+        None,
+    )
+    schema = getattr(start_executor, "args_schema", None) or {}
+    profile_values = (
+        ((schema.get("properties") or {}).get("profile") or {}).get("enum")
+        or []
+    )
+    matched_profiles = [
+        profile for profile in profile_values
+        if isinstance(profile, str)
+        and re.search(
+            rf"(?<![A-Za-z0-9_.-]){re.escape(profile)}"
+            rf"(?![A-Za-z0-9_.-])",
+            text,
+        )
+    ]
+    if len(matched_profiles) != 1:
+        return None
+
+    raw_paths = re.findall(
+        r"(?:/[^\s,;]+|[A-Za-z]:[\\/][^\s,;]+)",
+        text,
+    )
+    paths: list[str] = []
+    for raw_path in raw_paths:
+        path = raw_path.rstrip(".!?:)]}\"'")
+        is_windows_absolute = bool(re.fullmatch(
+            r"[A-Za-z]:[\\/].+", path,
+        ))
+        if path and (os.path.isabs(path) or is_windows_absolute) \
+                and path not in paths:
+            paths.append(path)
+    if not paths:
+        return None
+
+    args = {"profile": matched_profiles[0], "paths": paths}
+    rc = runtime_ctx or {}
+    from messages import get as _msg
+    prompt = _msg(
+        "MSG_APPROVAL_QUESTION",
+        action=(
+            f"start_lre(profile={matched_profiles[0]}, paths={len(paths)})"
+        ),
+    )
+    approval = StepSpec(tool="get_approval", args={
+        "prompt": prompt,
+        "on_approve": {"tool": "start_lre", "args": args},
+        "timeout_s": 3600,
+        "channel": rc.get("channel") or "",
+        "actor": rc.get("actor") or "",
+    })
+    return Framework(
+        steps=[approval, StepSpec(tool="final_answer", args={})],
+        final_message="",
+    )
+
+
 @dataclass
 class DispatchResult:
     """Risultato di run_turn. Sempre coerente con RunResult ma annotato
@@ -6861,6 +6939,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                 "tail_final_message": framework.final_message if framework else "",
                 "original_query": rc.get("user_query_raw") or query,
                 "conversation_id": rc.get("conversation_id") or "",
+                "turn_id": rc.get("turn_id") or "",
                 "source_request_id": rc.get("source_request_id") or "",
             }
             _dp.save_pending(sender, did, st)
@@ -6900,6 +6979,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                     framework.final_message or "", idx_map),
                 "original_query": rc.get("user_query_raw") or query,
                 "conversation_id": rc.get("conversation_id") or "",
+                "turn_id": rc.get("turn_id") or "",
                 "source_request_id": rc.get("source_request_id") or "",
             }
             _dp.save_pending(sender, did, st)
@@ -7101,6 +7181,30 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             runtime_ctx=runtime_ctx,
             remediate_args_cb=remediate_args_cb,
             progress=progress,
+        )
+
+    # Ingresso tecnico LRE: il nome letterale non e' un indizio da affidare al
+    # proposer.  Il contratto chiuso (profilo registrato + path assoluto) rende
+    # la richiesta non ambigua; il gate dichiarativo conserva esattamente il
+    # ramo start_lre da eseguire una volta sola dopo l'approvazione.
+    _technical_lre = _explicit_start_lre_framework(
+        query, catalog, runtime_ctx=runtime_ctx,
+    )
+    if _technical_lre is not None:
+        durable, run = _execute_with_lre_boundary(_technical_lre)
+        if durable is not None:
+            return durable
+        _inject_gate_resume_if_paused(
+            run, query, runtime_ctx, framework=_technical_lre,
+        )
+        return DispatchResult(
+            final_text=run.final_text,
+            final_kind=run.final_kind,
+            match_source="technical_lre",
+            framework_hash=run.framework_hash,
+            elapsed_ms=int((time.time() - t_start) * 1000),
+            run=run,
+            framework=_technical_lre,
         )
 
     # ── Undo SAFETY-CRITICAL (§4.5, §7.9) ────────────────────────────────

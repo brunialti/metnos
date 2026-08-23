@@ -80,7 +80,65 @@ class TestDurableAdmissionBoundary(unittest.TestCase):
 
         self.assertEqual(source.count("executor.run("), 1)
         self.assertEqual(source.count("_admit_finalized_long_work("), 1)
-        self.assertEqual(source.count("_execute_with_lre_boundary("), 8)
+        self.assertEqual(source.count("_execute_with_lre_boundary("), 9)
+
+    def test_explicit_start_lre_requires_closed_technical_contract(self):
+        catalog = [type("ExecutorFixture", (), {
+            "name": "start_lre",
+            "args_schema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"enum": [
+                        "images.questions.v1", "other.profile.v1",
+                    ]},
+                },
+            },
+        })()]
+
+        framework = eng_dispatch._explicit_start_lre_framework(
+            "Esegui start_lre con images.questions.v1 su "
+            "/tmp/cert/images.",
+            catalog,
+            runtime_ctx={"channel": "web", "actor": "host"},
+        )
+
+        self.assertIsNotNone(framework)
+        self.assertEqual(
+            [step.tool for step in framework.steps],
+            ["get_approval", "final_answer"],
+        )
+        self.assertEqual(
+            framework.steps[0].args["on_approve"],
+            {
+                "tool": "start_lre",
+                "args": {
+                    "profile": "images.questions.v1",
+                    "paths": ["/tmp/cert/images"],
+                },
+            },
+        )
+
+    def test_explicit_start_lre_rejects_missing_or_ambiguous_fields(self):
+        catalog = [type("ExecutorFixture", (), {
+            "name": "start_lre",
+            "args_schema": {
+                "properties": {"profile": {"enum": [
+                    "images.questions.v1", "other.profile.v1",
+                ]}},
+            },
+        })()]
+
+        rejected = (
+            "avvia images.questions.v1 su /tmp/images",
+            "start_lre su /tmp/images",
+            "start_lre images.questions.v1 su images",
+            "start_lre images.questions.v1 e other.profile.v1 su /tmp/images",
+        )
+        for query in rejected:
+            with self.subTest(query=query):
+                self.assertIsNone(
+                    eng_dispatch._explicit_start_lre_framework(query, catalog),
+                )
 
     def test_l3_acceptance_returns_receipt_without_inline_invocation(self):
         proposed = Framework(steps=[

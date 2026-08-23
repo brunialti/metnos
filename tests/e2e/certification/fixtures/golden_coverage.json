@@ -16,8 +16,8 @@
     "it": 24
   },
   "logical_flows": 24,
-  "matrix_sha256": "5fee975705d3d88b1c161738e08d8708b9929842c7d400519998c32ea1c7ec9b",
-  "oracle_version": "rm0006-golden-oracle/3",
+  "matrix_sha256": "3623f900e37e8a8fe966eb2030fc7303ac670a7202d208a007b59ea1fbf00062",
+  "oracle_version": "rm0006-golden-oracle/4",
   "placements": {
     "owned_device": 2,
     "server": 22

@@ -60,6 +60,17 @@ HUMAN_REVIEW_CONCEPTS = frozenset({
 def register_all() -> None:
     R = _dl.register
 
+    # ── SINTASSI: polarità e cambio di clausola ───────────────────────
+    # Dati linguistici generali, consumabili da ogni riconoscitore che debba
+    # distinguere «usa X» da «non usare X». L'algoritmo resta unico in
+    # detection_lexicon.asserted_at; i domini non mantengono liste proprie.
+    R("syntax.negation", "phrases", match_mode="word",
+      it=["non", "mai", "senza", "nessun", "nessuna", "nessuno"],
+      en=["not", "never", "without", "no"])
+    R("syntax.contrast", "phrases", match_mode="word",
+      it=["ma", "bensì", "invece"],
+      en=["but", "instead", "rather"])
+
     # ── FILESYSTEM: classi semantiche dei file ─────────────────────────
     # Le chiavi canoniche sono tecniche e risolte da file_kinds; qui vivono
     # soltanto le forme naturali traducibili. Il classifier degli argomenti

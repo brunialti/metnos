@@ -603,6 +603,54 @@ from from_step_projection import (  # noqa: E402
 )
 
 
+def _resolve_implicit_reverse_target(
+    tool: str,
+    args: dict,
+    history: list[StepRun],
+    consumer_schema=None,
+) -> dict:
+    """Bind a target only from a preceding executor's sealed undo contract.
+
+    A planner may explicitly schedule an inverse action but omit its dataflow
+    reference.  The runtime may repair that omission only when a committed
+    prior result advertises the exact inverse executor and identifiers through
+    the standard ``_undo`` envelope.  Explicit targets always win.
+    """
+
+    if (
+        not history
+        or "from_step" in args
+        or _has_explicit_from_step_alternative(args, consumer_schema)
+    ):
+        return args
+    from reverse_patterns_patch import build_undo_calls
+
+    properties = (
+        consumer_schema.get("properties", {})
+        if isinstance(consumer_schema, dict) else {}
+    )
+    if not properties:
+        return args
+    for previous in reversed(history):
+        if not previous.ok:
+            continue
+        result = previous.result if isinstance(previous.result, dict) else {}
+        undo = result.get("_undo")
+        pattern = undo.get("reverse_pattern") if isinstance(undo, dict) else None
+        if not isinstance(pattern, str) or not pattern:
+            continue
+        calls, error = build_undo_calls(pattern, result)
+        matching = [call for call in calls if call.get("executor") == tool]
+        if error or not matching:
+            continue
+        if len(matching) != 1 or not isinstance(matching[0].get("args"), dict):
+            return args
+        injected = matching[0]["args"]
+        injected = {key: value for key, value in injected.items() if key in properties}
+        return {**injected, **args} if injected else args
+    return args
+
+
 def _seed_entries(seed_steps) -> list:
     """Payload-lista del seed-state (ADR 0177 M1): le entries del primo
     seed-step CONSUMABILE (kind!="done") che ne ha (es. `@uploaded` → le foto
@@ -2260,6 +2308,12 @@ class Executor:
                         _step_args = {k: v for k, v in _step_args.items()
                                       if k != _tgt}
                         _step_args["from_step"] = 1
+            _step_args = _resolve_implicit_reverse_target(
+                step.tool,
+                _step_args,
+                result.steps,
+                consumer_schema=self._schema_map.get(step.tool),
+            )
             # Resolve in ordine: from_step → stepref → fillers → runtime
             args = _resolve_from_step(
                 _step_args, result.steps,

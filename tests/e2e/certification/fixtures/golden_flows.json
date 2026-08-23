@@ -1,6 +1,6 @@
 {
   "schema_version": "metnos.golden-flows/1",
-  "oracle_version": "rm0006-golden-oracle/3",
+  "oracle_version": "rm0006-golden-oracle/4",
   "frozen_on": "2026-08-22",
   "flows": [
     {
@@ -279,7 +279,7 @@
       "postcondition_probes": ["device_id_matches", "device_digest_unchanged"],
       "response_requirements": ["device_visible", "honest_count"],
       "budgets": {"max_approvals": 0, "deadline_s": 120, "max_model_calls": 2},
-      "requests": {"it": "Sul mio dispositivo di prova, trova i file con ricevuta nel nome.", "en": "On my test device, find files with receipt in the name."}
+      "requests": {"it": "Sul mio computer, trova in /tmp/metnos-certification-device/files i file con ricevuta nel nome.", "en": "On my computer, find files with receipt in the name under /tmp/metnos-certification-device/files."}
     },
     {
       "logical_flow_id": "placement.device-mutation-no-fallback",
@@ -296,14 +296,14 @@
       "postcondition_probes": ["device_target_digest", "server_digest_unchanged"],
       "response_requirements": ["device_visible", "path_visible"],
       "budgets": {"max_approvals": 1, "deadline_s": 180, "max_model_calls": 2},
-      "requests": {"it": "Crea dispositivo-prova.txt sul mio dispositivo di prova, senza ripiegare sul server.", "en": "Create dispositivo-prova.txt on my test device without falling back to the server."}
+      "requests": {"it": "Sul mio computer crea /tmp/metnos-certification-device/output/dispositivo-prova.txt con testo METNOS-CERT-DEVICE, senza ripiegare sul server.", "en": "On my computer create /tmp/metnos-certification-device/output/dispositivo-prova.txt containing METNOS-CERT-DEVICE without falling back to the server."}
     },
     {
       "logical_flow_id": "placement.owner-isolation",
       "family": "device_owner",
       "fixture": "two-owners-v1",
       "expected_route": "engine",
-      "allowed_plans": [["list_tasks", "final_answer"]],
+      "allowed_plans": [["list_tasks", "final_answer"], ["list_tasks", "filter_entries", "final_answer"]],
       "forbidden_tools": ["set_tasks", "admin"],
       "expected_placement": "server",
       "required_approval": false,
@@ -364,7 +364,7 @@
       "postcondition_probes": ["receipt_matches_workload", "artifact_digest", "single_committed_result"],
       "response_requirements": ["receipt_visible", "artifact_visible"],
       "budgets": {"max_approvals": 1, "deadline_s": 900, "max_model_calls": 8},
-      "requests": {"it": "Avvia il lavoro durevole di prova sulle immagini e mostrami l'artefatto finale.", "en": "Start the test durable image workload and show me the final artifact."}
+      "requests": {"it": "Esegui start_lre con il profilo registrato images.questions.v1 sulle immagini in /tmp/metnos-certification-fixture/durable/complete per produrre l'artefatto finale.", "en": "Run start_lre with the registered images.questions.v1 profile on the images in /tmp/metnos-certification-fixture/durable/complete to produce the final artifact."}
     },
     {
       "logical_flow_id": "durable.stop-restart-resume",
@@ -381,7 +381,7 @@
       "postcondition_probes": ["same_workload_after_restart", "fence_monotonic", "single_committed_result"],
       "response_requirements": ["resume_visible", "artifact_visible"],
       "budgets": {"max_approvals": 1, "deadline_s": 1200, "max_model_calls": 8},
-      "requests": {"it": "Riprendi dopo il riavvio il lavoro durevole di prova già accettato, senza duplicarlo.", "en": "After restart, resume the already accepted test durable workload without duplicating it."}
+      "requests": {"it": "Esegui start_lre con images.questions.v1 sulle immagini in /tmp/metnos-certification-fixture/durable/restart; il worker verrà riavviato e dovrà riprendere lo stesso lavoro senza duplicarlo.", "en": "Run start_lre with images.questions.v1 on the images in /tmp/metnos-certification-fixture/durable/restart; the worker will restart and must resume the same workload without duplicating it."}
     },
     {
       "logical_flow_id": "failure.credential-revoked",

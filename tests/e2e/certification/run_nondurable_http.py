@@ -566,7 +566,10 @@ async def _collect_locale(
                 response_checks=checks, approval_count=approval_count,
                 effects=effects,
             )
-            trace_path = observations_path.parent / "traces" / case["case_id"] / "cycle-1.json"
+            trace_path = (
+                observations_path.parent / "traces" / case["case_id"]
+                / f"cycle-{cycle}.json"
+            )
             trace_path.parent.mkdir(parents=True, exist_ok=True)
             trace_path.write_text(json.dumps({
                 "case_id": case["case_id"],
@@ -605,7 +608,7 @@ def _manifest(cases: list[dict]) -> dict:
     manifest = build_manifest(cases, cycles=[1])
     manifest.update({
         "certification_id": "rm0006-c3-nondurable-v1",
-        "oracle_version": "rm0006-golden-oracle/3",
+        "oracle_version": "rm0006-golden-oracle/4",
         "platform": "isolated-metnos-http-bilingual",
         "fixture": "rm0006-nondurable-v1",
         "locales": sorted({case["locale"] for case in cases}),

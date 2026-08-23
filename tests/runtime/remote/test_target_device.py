@@ -77,6 +77,22 @@ class ResolveTargetTests(unittest.TestCase):
         self.assertEqual(r.target, td.SERVER)
         self.assertTrue(r.explicit)
 
+    def test_negated_server_does_not_override_italian_local_target(self):
+        r = R(
+            "Sul mio computer crea /tmp/prova.txt, senza ripiegare sul server.",
+            [self.pc],
+        )
+        self.assertEqual(r.target, "id-ufficio")
+        self.assertTrue(r.explicit)
+
+    def test_negated_server_does_not_override_english_local_target(self):
+        r = R(
+            "On my computer create /tmp/test.txt without falling back to the server.",
+            [self.pc],
+        )
+        self.assertEqual(r.target, "id-ufficio")
+        self.assertTrue(r.explicit)
+
     def test_sticky_reused_when_no_reference(self):
         r = R("comprimila in zip", [self.pc], last="id-ufficio")
         self.assertEqual(r.target, "id-ufficio")

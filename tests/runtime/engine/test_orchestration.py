@@ -526,10 +526,12 @@ def test_process_completion_callback_expand_cap_and_resume_yes(isolated_dirs):
         "actor": "host", "channel": "", "timeout_s": 600,
         "owner_user_id": _OWNER,
         "completed": True, "cancelled": False,
-        "on_complete": {
-            "type": "expand_cap_and_resume",
-            "owner_user_id": _OWNER,
-            "executor": "get_processes",
+            "on_complete": {
+                "type": "expand_cap_and_resume",
+                "owner_user_id": _OWNER,
+                "turn_id": "turn-expand-1",
+                "source_request_id": "request-expand-1",
+                "executor": "get_processes",
             "cap_field": "top",
             "cap_suggested": 1000,
             "args_suggested": {"top": 1000, "filters": []},
@@ -550,14 +552,16 @@ def test_process_completion_callback_expand_cap_and_resume_yes(isolated_dirs):
     fake_catalog.executors = {"get_processes": fake_ex}
 
     with mock.patch("loader.load_catalog", return_value=fake_catalog), \
-         mock.patch("agent_runtime.invoke_executor", return_value=fake_res) as mocked:
+         mock.patch("agent_runtime.invoke_tool_by_name", return_value=fake_res) as mocked:
         msg = process_completion_callback(
             "host", "exp01", actor="host", owner_user_id=_OWNER).text
 
     mocked.assert_called_once()
     call_args = mocked.call_args
-    assert call_args[0][0] is fake_ex
+    assert call_args[0][0] == "get_processes"
     assert call_args[0][1] == {"top": 1000, "filters": []}
+    assert call_args.kwargs["turn_id"] == "turn-expand-1"
+    assert call_args.kwargs["source_request_id"] == "request-expand-1"
     assert "Rilancio con top=1000" in msg
     assert "487 processi" in msg
     assert "python" in msg
@@ -633,7 +637,7 @@ def test_process_completion_callback_expand_cap_invoke_failure(isolated_dirs):
     fake_catalog = mock.Mock(); fake_catalog.executors = {"get_processes": fake_ex}
 
     with mock.patch("loader.load_catalog", return_value=fake_catalog), \
-         mock.patch("agent_runtime.invoke_executor",
+         mock.patch("agent_runtime.invoke_tool_by_name",
                      return_value={"ok": False, "error": "boom"}):
         msg = process_completion_callback(
             "host", "exp03", actor="host", owner_user_id=_OWNER).text

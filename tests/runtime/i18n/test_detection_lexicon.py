@@ -87,6 +87,19 @@ def test_channel_mapping():
     assert any("telegram" in f for f in cm["telegram"])
 
 
+def test_asserted_at_is_domain_neutral_and_resets_at_clause_boundaries():
+    samples = (
+        ("usa il computer, senza ripiegare sul server", "server", False),
+        ("use the computer without falling back to the server", "server", False),
+        ("non sul computer, ma sul server", "server", True),
+        ("not on the computer but on the server", "server", True),
+        ("esegui sul server", "server", True),
+        ("run on the server", "server", True),
+    )
+    for text, marker, expected in samples:
+        assert dl.asserted_at(text, text.index(marker)) is expected
+
+
 # Snapshot CONGELATO degli insiemi ORIGINALI (pre-migrazione) it∪en. Guard
 # anti-drift: l'union della lingua corrente (it -> it∪en) DEVE eguagliarli,
 # altrimenti il seed e' derivato → regressione silenziosa di detection.

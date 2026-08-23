@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import unittest
 
-from engine.executor import _resolve_from_step  # noqa: E402
+from engine.executor import (  # noqa: E402
+    _resolve_from_step,
+    _resolve_implicit_reverse_target,
+)
 from engine.types import StepRun  # noqa: E402
 from from_step_projection import (  # noqa: E402
     from_step_alternatives,
@@ -123,6 +126,118 @@ class FromStepSafetyTests(unittest.TestCase):
         out = _resolve_from_step({"from_step": "1"}, self.hist)
         self.assertIn("entries", out)
         self.assertEqual(len(out["entries"]), 9)
+
+    def test_inverse_target_comes_from_standard_undo_envelope(self):
+        history = [StepRun(
+            step_idx=1,
+            tool="create_events",
+            args={},
+            result={
+                "ok": True,
+                "_undo": {
+                    "reverse_pattern": "delete_events_by_id",
+                    "ids": ["evt-1"],
+                    "scope": {"calendar_id": "primary", "client": "local"},
+                },
+            },
+            ok=True,
+            latency_ms=0,
+        )]
+        schema = {
+            "properties": {
+                "event_ids": {"type": "array"},
+                "calendar_id": {"type": "string"},
+                "client": {"type": "string"},
+                "from_step": {"type": "integer"},
+            },
+            "from_step_alternatives": ["event_ids"],
+        }
+        self.assertEqual(
+            _resolve_implicit_reverse_target(
+                "delete_events", {"client": "local"}, history, schema,
+            ),
+            {
+                "client": "local",
+                "event_ids": ["evt-1"],
+                "calendar_id": "primary",
+            },
+        )
+
+    def test_explicit_inverse_target_is_never_replaced(self):
+        history = [StepRun(
+            step_idx=1,
+            tool="create_events",
+            args={},
+            result={
+                "_undo": {
+                    "reverse_pattern": "delete_events_by_id",
+                    "ids": ["evt-created"],
+                },
+            },
+            ok=True,
+            latency_ms=0,
+        )]
+        schema = {
+            "properties": {"event_ids": {"type": "array"}},
+            "from_step_alternatives": ["event_ids"],
+        }
+        explicit = {"event_ids": ["evt-explicit"]}
+        self.assertEqual(
+            _resolve_implicit_reverse_target(
+                "delete_events", explicit, history, schema,
+            ),
+            explicit,
+        )
+
+    def test_undo_contract_cannot_target_a_different_executor(self):
+        history = [StepRun(
+            step_idx=1,
+            tool="create_events",
+            args={},
+            result={
+                "_undo": {
+                    "reverse_pattern": "delete_events_by_id",
+                    "ids": ["evt-1"],
+                },
+            },
+            ok=True,
+            latency_ms=0,
+        )]
+        self.assertEqual(
+            _resolve_implicit_reverse_target(
+                "delete_contacts", {}, history, {"properties": {}},
+            ),
+            {},
+        )
+
+    def test_failed_or_unschematized_result_cannot_supply_reverse_target(self):
+        history = [StepRun(
+            step_idx=1,
+            tool="create_events",
+            args={},
+            result={
+                "_undo": {
+                    "reverse_pattern": "delete_events_by_id",
+                    "ids": ["evt-1"],
+                },
+            },
+            ok=False,
+            latency_ms=0,
+        )]
+        self.assertEqual(
+            _resolve_implicit_reverse_target(
+                "delete_events", {}, history,
+                {"properties": {"event_ids": {"type": "array"}}},
+            ),
+            {},
+        )
+        history[0].ok = True
+        self.assertEqual(
+            _resolve_implicit_reverse_target(
+                "delete_events", {}, history, {"properties": {}},
+            ),
+            {},
+        )
 
     def test_manifest_projects_vector_and_uniform_scalar_context(self):
         history = _hist([
