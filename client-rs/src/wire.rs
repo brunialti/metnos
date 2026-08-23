@@ -21,6 +21,11 @@ pub struct Invocation {
     pub code_sha256: String,
     #[serde(default)]
     pub args: Value,
+    /// Signed entrypoint selection.  `invoke` is the historical default;
+    /// `reverse` calls the same signed module's manifest-authorized
+    /// compensation entrypoint on the same device.
+    #[serde(default = "default_operation")]
+    pub operation: String,
     #[serde(default)]
     pub scope: String,
     #[serde(default)]
@@ -60,11 +65,18 @@ fn default_deadline() -> u64 {
     60_000
 }
 
+fn default_operation() -> String {
+    "invoke".into()
+}
+
 impl Invocation {
     /// Ricostruisce i bytes canonici del payload SENZA `server_sig`, per la
     /// verifica della firma del server (§6.2). L'ordine dei campi e' irrilevante:
     /// la canonicalizzazione ordina le chiavi.
     pub fn signed_bytes(&self) -> Result<Vec<u8>> {
+        if self.operation != "invoke" && self.operation != "reverse" {
+            return Err(anyhow!("unsupported executor operation"));
+        }
         let mut payload = serde_json::json!({
             "invocation_id": self.invocation_id,
             "turn_id": self.turn_id,
@@ -77,6 +89,12 @@ impl Invocation {
             "env_injections": self.env_injections,
             "deadline_ms": self.deadline_ms,
         });
+        if self.operation != "invoke" {
+            payload
+                .as_object_mut()
+                .expect("invocation payload is an object")
+                .insert("operation".into(), Value::String(self.operation.clone()));
+        }
         if !self.managed_provider_grants.is_empty() {
             payload
                 .as_object_mut()
@@ -267,5 +285,27 @@ mod tests {
             signed["execution_context"]["attempt_id"],
             Value::String("att-test".into())
         );
+    }
+
+    #[test]
+    fn signed_bytes_bind_reverse_operation() {
+        let invocation: Invocation = serde_json::from_value(serde_json::json!({
+            "invocation_id": "inv-reverse-test",
+            "turn_id": "turn-test",
+            "executor": "run_processes",
+            "manifest_sha256": "sha256:test",
+            "code_sha256": "sha256:test",
+            "args": {"plan": {}, "results": {"ok": true}},
+            "operation": "reverse",
+            "scope": "device",
+            "reversibility": "revertible",
+            "env_injections": {},
+            "deadline_ms": 60000,
+            "server_sig": "unused"
+        }))
+        .unwrap();
+
+        let signed: Value = serde_json::from_slice(&invocation.signed_bytes().unwrap()).unwrap();
+        assert_eq!(signed["operation"], Value::String("reverse".into()));
     }
 }

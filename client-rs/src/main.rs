@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 
 #[cfg(windows)]
 mod appcontainer;
+mod appx_activation;
 mod config;
 mod executors;
 // Fuori Windows non c'e' nessun aiutante elevato con cui parlare, ma i due
@@ -73,6 +74,12 @@ enum Cmd {
         #[command(subcommand)]
         what: HelperCmd,
     },
+    /// Resolve and activate a typed AppX package in this user's desktop
+    /// session. This accepts no path, command, or argument string.
+    PackageApp {
+        #[command(subcommand)]
+        what: PackageAppCmd,
+    },
     /// Unpair this device: forget the server pairing and (on Windows) clean up
     /// the AppContainer sandbox — revoke every ACL grant recorded on user
     /// directories and delete the container profile (W4.4).
@@ -120,10 +127,44 @@ enum HelperCmd {
     Setup,
 }
 
+#[derive(Subcommand)]
+enum PackageAppCmd {
+    /// Verify that the exact package has one launchable application.
+    Query {
+        #[arg(long)]
+        package_id: String,
+    },
+    /// Activate that application in the current user's desktop session.
+    Start {
+        #[arg(long)]
+        package_id: String,
+        #[arg(long, value_enum)]
+        lifetime: HelperStartLifetime,
+    },
+    /// Stop only the process bound to a managed-start receipt.
+    Stop {
+        #[arg(long)]
+        package_id: String,
+        #[arg(long)]
+        pid: u32,
+        #[arg(long)]
+        creation_time: u64,
+    },
+}
+
 #[derive(Clone, Copy, clap::ValueEnum)]
 enum HelperStartLifetime {
     Session,
     Persistent,
+}
+
+impl HelperStartLifetime {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Session => "session",
+            Self::Persistent => "persistent",
+        }
+    }
 }
 
 /// Bring the helper onto this machine, and install it.
@@ -675,6 +716,24 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
                 altro => run_helper(altro, &id),
             };
             println!("{esito}");
+        }
+        Cmd::PackageApp { what } => {
+            // The final line is always structured, matching the helper CLI
+            // adapter used by executors. This path stays unprivileged and in
+            // the interactive user's session by construction.
+            let result = match what {
+                PackageAppCmd::Query { package_id } => appx_activation::query(&package_id),
+                PackageAppCmd::Start {
+                    package_id,
+                    lifetime,
+                } => appx_activation::start(&package_id, lifetime.as_str()),
+                PackageAppCmd::Stop {
+                    package_id,
+                    pid,
+                    creation_time,
+                } => appx_activation::stop(&package_id, pid, creation_time),
+            };
+            println!("{result}");
         }
         Cmd::Unpair => {
             // 1. Pulizia sandbox (solo Windows, W4.4): revoca gli ACE concessi

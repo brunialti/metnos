@@ -1,6 +1,6 @@
 [package]
 name = "metnos-client"
-version = "0.2.56"
+version = "0.2.58"
 edition = "2021"
 description = "Metnos remote executor client (Rust)"
 license = "AGPL-3.0-only"
@@ -56,6 +56,10 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_JobObjects",
     "Win32_System_Pipes",
     "Win32_Storage_FileSystem",
+    # Package identity and user-session activation for typed AppX/MSIX
+    # launch identities (RUN-001). The elevated helper must not activate
+    # desktop apps from session 0.
+    "Win32_Storage_Packaging_Appx",
     # ReadFile/WriteFile sono dietro Win32_System_IO: la loro firma nomina
     # OVERLAPPED, che vive li'.
     "Win32_System_IO",
@@ -74,6 +78,7 @@ windows-sys = { version = "0.59", features = [
     # ShellExecuteEx vuole COM inizializzato nel thread che la chiama: senza,
     # fallisce subito e senza spiegazioni utili.
     "Win32_System_Com",
+    "Win32_System_SystemInformation",
 ] }
 
 [profile.release]

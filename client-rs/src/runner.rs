@@ -509,6 +509,9 @@ finche' restano non eseguo niente su questo computer: {}",
         )
         .await?;
         pyenv::assert_stdlib_only(&exec.dir)?;
+        if inv.operation == "reverse" && !exec.module_reverse {
+            bail!("il manifest firmato non autorizza module.reverse");
+        }
 
         #[cfg(windows)]
         let managed_provider_json = self.collect_managed_providers(inv, &exec).await?;
@@ -539,6 +542,10 @@ finche' restano non eseguo niente su questo computer: {}",
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
+        // Runtime-owned and derived only from the signed wire field.  It is
+        // appended after env_injections so an injected value cannot change
+        // which entrypoint run_stdio dispatches.
+        extra_env.push(("METNOS_EXECUTOR_OPERATION".into(), inv.operation.clone()));
         // Dir dati dello shim isolata e client-owned (§W4): config.py::ensure_dirs
         // ci crea a import l'albero user (DATA/STATE/CONFIG) e i blob undo ci
         // restano fra i turni. Senza il redirect lo shim toccherebbe
@@ -886,6 +893,9 @@ fn collect_profile() -> Value {
         // Versione corrente del client: la UI la mostra per-device e permette
         // di vedere l'esito del self-update (ADR 0184) senza aprire il PC.
         "client_version": env!("CARGO_PKG_VERSION"),
+        // Positive protocol negotiation: the server never infers support for
+        // a new signed field from the OS or from a version string.
+        "protocol_capabilities": ["executor_reverse_v1"],
         // B.5 (fase 7): livello sandbox che run_sandboxed userebbe ORA su
         // questo device -> devices.profile_json (telemetria per il gate
         // min_sandbox, W4).

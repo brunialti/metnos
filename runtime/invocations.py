@@ -42,6 +42,7 @@ log = get_logger(__name__)
 from timefmt import now_iso_z as _now_iso  # noqa: E402
 
 DEFAULT_DEADLINE_MS = 60_000
+REMOTE_REVERSE_CAPABILITY = "executor_reverse_v1"
 # Margine oltre la deadline prima di ri-consegnare una 'delivered' orfana.
 REDELIVERY_GRACE_S = 30
 
@@ -357,6 +358,54 @@ def executor_shas(name: str) -> tuple[str, str]:
     return manifest_sha, code_sha
 
 
+def _device_protocol_capabilities(dev: devices.Device) -> set[str]:
+    """Capabilities explicitly advertised by an authenticated client.
+
+    Wire additions that an older client would silently ignore must be gated
+    by a positive capability, never inferred from an OS or a version number.
+    """
+    try:
+        profile = json.loads(dev.profile_json or "{}")
+    except (TypeError, ValueError):
+        return set()
+    values = profile.get("protocol_capabilities") if isinstance(profile, dict) else None
+    if not isinstance(values, list):
+        return set()
+    return {
+        value for value in values
+        if isinstance(value, str) and value.isascii() and 1 <= len(value) <= 64
+    }
+
+
+def _validate_operation(executor: str, args: dict, operation: str,
+                        manifest_sha: str, dev: devices.Device) -> None:
+    """Validate one signed executor operation before it reaches the queue."""
+    if operation == "invoke":
+        return
+    if operation != "reverse":
+        raise InvocationError(f"unsupported executor operation: {operation}")
+    if REMOTE_REVERSE_CAPABILITY not in _device_protocol_capabilities(dev):
+        raise InvocationError(
+            "device does not advertise the remote reverse protocol")
+    if (not isinstance(args, dict) or set(args) != {"plan", "results"}
+            or not isinstance(args.get("plan"), dict)
+            or not isinstance(args.get("results"), dict)):
+        raise InvocationError("reverse operation requires exact plan and results objects")
+
+    import tomllib
+    manifest_path = _C.PATH_EXECUTORS / executor / "manifest.toml"
+    manifest_bytes = manifest_path.read_bytes()
+    if hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha:
+        raise InvocationError("executor manifest changed while validating reverse")
+    manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
+    declared = manifest.get("reverse_pattern")
+    patterns = [declared] if isinstance(declared, str) else declared
+    if (manifest.get("revertible") is not True or not isinstance(patterns, list)
+            or "module.reverse" not in patterns):
+        raise InvocationError(
+            "executor manifest does not authorize a module.reverse operation")
+
+
 # --- DB ----------------------------------------------------------------------
 
 def _open_db(db_path: Path | None = None) -> sqlite3.Connection:
@@ -492,6 +541,7 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
                        invocation_id: str | None = None,
                        dispatch_key: str | None = None,
                        execution_context: object | None = None,
+                       operation: str = "invoke",
                        db_path: Path | None = None) -> str:
     """Accoda un'invocazione firmata per `device_id`. Ritorna invocation_id.
 
@@ -503,6 +553,7 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
         raise InvocationError(f"device sconosciuto o revocato: {device_id}")
 
     manifest_sha, code_sha = executor_shas(executor)
+    _validate_operation(executor, args or {}, operation, manifest_sha, dev)
     chosen_id = (
         _new_invocation_id()
         if invocation_id is None
@@ -525,6 +576,7 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
         "deadline_ms": int(deadline_ms),
         "dispatch_key": normalized_dispatch,
         "execution_context": normalized_context,
+        "operation": operation,
     }
     payload_digest = _request_digest(semantic_request)
     provider_grants = _managed_provider_grants(
@@ -543,6 +595,11 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
     }
     if normalized_context is not None:
         payload["execution_context"] = normalized_context
+    # Omitted for the original operation so pre-capability clients preserve
+    # the existing signed payload byte-for-byte.  `reverse` is emitted only
+    # after the positive capability gate above.
+    if operation != "invoke":
+        payload["operation"] = operation
     if provider_grants:
         payload["managed_provider_grants"] = provider_grants
     sig = sign_payload(payload)

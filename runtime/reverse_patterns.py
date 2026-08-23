@@ -492,10 +492,14 @@ del _sys, _register_by_id
 # server): le op che lo richiedono restano server-only per costruzione
 # (delete_files non è device_ok in CP4).
 
-def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
+def build_remote_reverse_calls(names, plan: dict, results: dict, *,
+                               module_executor: str | None = None) -> dict:
     """Traduce i reverse_pattern in chiamate executor eseguibili sul device.
 
-    Ritorna {"calls": [{"executor", "args"}...], "unsupported": [pattern...]}.
+    Ritorna {"calls": [{"executor", "args", "operation"?}...],
+    "unsupported": [pattern...]}. `module.reverse` diventa l'entrypoint
+    `reverse` dello STESSO bundle firmato quando il chiamante passa il nome
+    dell'executor; gli altri pattern restano normali invocazioni executor.
     Deterministico, nessun side-effect. Un pattern senza traduzione finisce
     in `unsupported` (il chiamante riporta onesto §2.8, mai silenzio)."""
     if isinstance(names, str):
@@ -592,6 +596,12 @@ def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
                                        "client": "local"}})
             if missing_blob:
                 unsupported.append(n + ":righe-senza-blob")
+        elif n == "module.reverse" and module_executor:
+            calls.append({
+                "executor": module_executor,
+                "operation": "reverse",
+                "args": {"plan": plan or {}, "results": results or {}},
+            })
         else:
             unsupported.append(n)
     return {"calls": calls, "unsupported": unsupported}

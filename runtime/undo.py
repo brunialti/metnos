@@ -207,11 +207,22 @@ class UndoLog:
         if not completed_ops:
             return []
         completed_ops.sort(key=lambda item: item[1]["ts"])
-        latest_turn_id = completed_ops[-1][0]["turn_id"]
+        latest_pending = completed_ops[-1][0]
+        latest_turn_id = latest_pending.get("turn_id") or ""
+        # Legacy/corrupt records without a turn id are not one giant turn.
+        # Treat only the latest operation as the boundary: grouping every
+        # empty id would mix unrelated historical effects and could undo far
+        # more than the person requested.  New dialog continuations preserve
+        # their originating id in orchestration.
+        def _same_boundary(pending: dict) -> bool:
+            if latest_turn_id:
+                return pending.get("turn_id") == latest_turn_id
+            return pending.get("op_id") == latest_pending.get("op_id")
+
         same_turn = [
             (pending, done)
             for (pending, _completion, done) in completed_ops
-            if pending["turn_id"] == latest_turn_id and done is not None
+            if _same_boundary(pending) and done is not None
         ]
         same_turn.sort(key=lambda item: item[1]["ts"])
         return [
