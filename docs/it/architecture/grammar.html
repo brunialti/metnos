@@ -11,7 +11,7 @@
  <link rel="canonical" href="https://metnos.com/it/architecture/grammar">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/grammar">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/grammar">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/grammar">
  <meta property="og:title" content="Metnos &mdash; grammatica del pianificatore">
@@ -90,6 +90,10 @@ servizio del modello supporta GBNF, vincola la decodifica alla struttura del
 Framework e ai nomi ammessi. Parsing, validazione e Vaglio controllano poi il
 risultato prima di ogni esecuzione.</p>
 
+<p>Qui <em>grammatica</em> non indica le regole dell'italiano o dell'inglese.
+&Egrave; uno schema formale che stabilisce quali sequenze di caratteri il modello
+pu&ograve; produrre mentre costruisce il piano.</p>
+
 <div class="toc">
 <h2>Indice</h2>
 <ol>
@@ -109,8 +113,8 @@ risultato prima di ogni esecuzione.</p>
 
 <p>Chiedi a Metnos con una richiesta come questa:</p>
 
-<pre>Trova i PDF modificati questa settimana nella cartella Progetti,
-calcola l'impronta SHA-256 di ciascuno e mostrami il risultato.</pre>
+<pre>Trova i PDF nella cartella Progetti, leggili e mostrami per ciascuno
+il percorso e l'impronta SHA-256.</pre>
 
 <p>Il pianificatore non deve rispondere con una spiegazione vaga. Deve produrre
 una struttura simile a questa, limitata ai nomi presenti nel sottoinsieme
@@ -118,14 +122,18 @@ calcolato per il turno:</p>
 
 <pre>{
   "steps": [
-    {"tool": "find_files", "args": {"path": "Progetti", "extension": "pdf"}},
-    {"tool": "compute_signatures", "args": {"algorithm": "sha256"}}
+    {"tool": "find_files", "args": {"base_path": "~/Progetti", "patterns": ["*.pdf"]}},
+    {"tool": "read_files", "args": {"from_step": 1, "parse": "auto"}},
+    {"tool": "final_answer", "args": {}}
   ]
 }</pre>
 
 <p>L'esempio illustra la forma, non autorizza i percorsi e non sostituisce il
-riempimento degli argomenti. Le date relative, i riferimenti fra passi e gli
-ambiti del file system vengono risolti e verificati dagli strati successivi.</p>
+riempimento degli argomenti. I riferimenti fra passi, i percorsi e gli ambiti
+del file system vengono risolti e verificati dagli strati successivi.
+<code>read_files</code> calcola realmente l'impronta SHA-256 del contenuto;
+<code>compute_signatures</code>, invece, riguarda le firme di sicurezza dei
+comandi e non sarebbe l'executor corretto in questo esempio.</p>
 
 <h1 id="cap2">2. I due livelli di grammatica</h1>
 
@@ -166,6 +174,11 @@ alternative GBNF; stringhe, numeri, booleani, array e oggetti annidati sono
 tradotti nelle primitive corrispondenti. Se uno schema non &egrave; tipizzabile,
 quel ramo usa argomenti JSON liberi e lascia la verifica all'executor.</p>
 
+<p>I vincoli propri di Metnos che non fanno parte di JSON Schema, come
+<code>requires_one_of</code>, e il collegamento automatico tra i risultati dei
+passi restano affidati ai validatori e al runtime. La grammatica tipizzata non
+pretende di sostituirli.</p>
+
 <h1 id="cap4">4. Garanzie e limiti</h1>
 
 <table>
@@ -191,14 +204,18 @@ locale attuale:</p>
 <li>i nomi delle regole GBNF generate non contengono trattini bassi;</li>
 <li>vengono emesse soltanto le primitive raggiungibili dalla regola principale;</li>
 <li>una stessa regola non viene definita due volte quando la grammatica del Framework e quella degli argomenti vengono unite;</li>
-<li>in modalit&agrave; GBNF la richiesta al servizio non invia contemporaneamente il campo nativo <code>tools</code>;</li>
-<li>il ragionamento esteso del modello viene disattivato per questo passaggio, cos&igrave; l'uscita resta entro il bilancio e la forma vincolata.</li>
+<li>in modalit&agrave; GBNF la richiesta al servizio non invia contemporaneamente il campo nativo <code>tools</code>.</li>
 </ul>
 
 <p>Se il servizio non accetta il parametro <code>grammar</code>, il passaggio
 alla modalit&agrave; senza grammatica viene registrato. Il piano deve comunque
 superare l'analisi sintattica e la validazione, ma non beneficia pi&ugrave; del
 vincolo applicato durante la decodifica.</p>
+
+<p>Il proponente usa il carico logico <code>planner.grammar</code>, oggi associato
+al tier <code>wise</code>. Modello, provider, pensiero esteso e bilanci di
+generazione appartengono alla configurazione centrale del tier, non alla
+grammatica.</p>
 
 <h1 id="cap6">6. Determinismo e costo</h1>
 

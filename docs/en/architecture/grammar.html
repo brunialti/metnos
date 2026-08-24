@@ -11,7 +11,7 @@
  <link rel="canonical" href="https://metnos.com/en/architecture/grammar">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/grammar">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/grammar">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/en/architecture/grammar">
  <meta property="og:title" content="Metnos &mdash; planner grammar">
@@ -90,6 +90,10 @@ service supports GBNF, constrains decoding to the Framework structure and
 admitted names. Parsing, validation, and Vaglio then inspect the result before
 anything runs.</p>
 
+<p>Here, <em>grammar</em> does not mean the rules of English or Italian. It is a
+formal schema that defines which character sequences the model may produce
+while building a plan.</p>
+
 <div class="toc">
 <h2>Contents</h2>
 <ol>
@@ -109,22 +113,25 @@ anything runs.</p>
 
 <p>Ask Metnos with a request such as:</p>
 
-<pre>Find the PDFs modified this week in the Projects folder,
-compute each file's SHA-256 digest, and show me the result.</pre>
+<pre>Find the PDF files in the Projects folder, read them, and show me
+the path and SHA-256 digest of each file.</pre>
 
 <p>The planner must not answer with a vague explanation. It must produce a
 structure like this, restricted to names in the pool computed for the turn:</p>
 
 <pre>{
   "steps": [
-    {"tool": "find_files", "args": {"path": "Projects", "extension": "pdf"}},
-    {"tool": "compute_signatures", "args": {"algorithm": "sha256"}}
+    {"tool": "find_files", "args": {"base_path": "~/Projects", "patterns": ["*.pdf"]}},
+    {"tool": "read_files", "args": {"from_step": 1, "parse": "auto"}},
+    {"tool": "final_answer", "args": {}}
   ]
 }</pre>
 
 <p>This example illustrates shape; it neither authorises paths nor replaces
-argument resolution. Relative dates, references between steps, and filesystem
-scope are resolved and checked by later layers.</p>
+argument resolution. References between steps, paths, and filesystem scope are
+resolved and checked by later layers. <code>read_files</code> actually computes
+the content's SHA-256 digest; <code>compute_signatures</code>, by contrast,
+handles command safety signatures and would be the wrong executor here.</p>
 
 <h1 id="cap2">2. The two grammar levels</h1>
 
@@ -165,6 +172,11 @@ booleans, arrays, and nested objects become their corresponding primitives. If
 a schema cannot be typed, that branch uses free JSON arguments and leaves
 validation to the executor.</p>
 
+<p>Metnos-specific constraints that are not part of JSON Schema, such as
+<code>requires_one_of</code>, and automatic wiring between step results remain
+the responsibility of validators and the runtime. Typed grammar does not claim
+to replace them.</p>
+
 <h1 id="cap4">4. Guarantees and boundaries</h1>
 
 <table>
@@ -190,13 +202,17 @@ model service:</p>
 <li>generated GBNF rule names contain no underscores;</li>
 <li>only primitives reachable from the root rule are emitted;</li>
 <li>a rule is not defined twice when Framework and typed-argument grammars are combined;</li>
-<li>in GBNF mode, the request does not also send the service's native <code>tools</code> field;</li>
-<li>extended model reasoning is disabled for this pass so output stays within its budget and constrained form.</li>
+<li>in GBNF mode, the request does not also send the service's native <code>tools</code> field.</li>
 </ul>
 
 <p>If a service does not accept the <code>grammar</code> parameter, the switch
 to grammar-free mode is logged. The plan must still pass parsing and
 validation, but no longer benefits from the decoding-time constraint.</p>
+
+<p>The proposer uses the <code>planner.grammar</code> logical workload, currently
+mapped to the <code>wise</code> tier. The model, provider, extended reasoning,
+and generation budgets belong to the central tier configuration, not to the
+grammar.</p>
 
 <h1 id="cap6">6. Determinism and cost</h1>
 
