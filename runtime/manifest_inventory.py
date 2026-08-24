@@ -125,7 +125,7 @@ def default_manifest_sources() -> tuple[ManifestSource, ...]:
     return (
         ManifestSource(
             ManifestOrigin.CORE, _C.PATH_EXECUTORS,
-            allowed_code_roots=(_C.PATH_ROOT,),
+            allowed_code_roots=(_C.PATH_EXECUTORS,),
         ),
         ManifestSource(
             ManifestOrigin.BUILTIN,
@@ -135,27 +135,27 @@ def default_manifest_sources() -> tuple[ManifestSource, ...]:
         ManifestSource(
             ManifestOrigin.BUILTIN_SKILL, _C.PATH_SKILLS_BUILTIN,
             min_depth=2, max_depth=2, skill_scoped=True,
-            allowed_code_roots=(_C.PATH_ROOT,),
+            allowed_code_roots=(_C.PATH_SKILLS_BUILTIN,),
         ),
         ManifestSource(
             ManifestOrigin.USER, _C.PATH_SYNTH_EXECUTORS,
-            allowed_code_roots=(_C.PATH_USER_DATA,),
+            allowed_code_roots=(_C.PATH_SYNTH_EXECUTORS,),
         ),
         ManifestSource(
             ManifestOrigin.USER_SKILL, _C.PATH_SKILLS_USER,
             min_depth=2, max_depth=2, skill_scoped=True,
-            allowed_code_roots=(_C.PATH_USER_DATA,),
+            allowed_code_roots=(_C.PATH_SKILLS_USER,),
         ),
         ManifestSource(
             ManifestOrigin.LEGACY_IMPORT, _C.PATH_SKILLS_USER_LEGACY,
             min_depth=2, max_depth=2, skill_scoped=True,
-            allowed_code_roots=(_C.PATH_USER_DATA,),
+            allowed_code_roots=(_C.PATH_SKILLS_USER_LEGACY,),
         ),
         ManifestSource(
             ManifestOrigin.RETIRED, _C.PATH_EXECUTORS / "_retired",
             min_depth=1, max_depth=None,
             default_status=ManifestStatus.RETIRED,
-            allowed_code_roots=(_C.PATH_ROOT,),
+            allowed_code_roots=(_C.PATH_EXECUTORS / "_retired",),
         ),
     )
 
@@ -204,7 +204,9 @@ def inventory_manifests(
     skill_enabled: Callable[[str], bool] | None = None,
 ) -> ManifestInventory:
     """Enumerate manifests and report defects without changing any source."""
-    selected_sources = tuple(sources or default_manifest_sources())
+    selected_sources = (
+        default_manifest_sources() if sources is None else tuple(sources)
+    )
     enabled = skill_enabled or _default_skill_enabled
     manifests: list[ManifestRef] = []
     problems: list[InventoryProblem] = []
@@ -286,6 +288,18 @@ def inventory_manifests(
                     ManifestStatus.RETIRED
                     if lifecycle == "retired" else ManifestStatus.DISABLED
                 )
+            allowed_code_roots = tuple(
+                Path(item).resolve(strict=False)
+                for item in source.allowed_code_roots
+            )
+            if source.skill_scoped:
+                # A skill is its own code boundary.  A broad catalog root is
+                # useful for discovery but must never authorize one bundle to
+                # resolve code from a sibling bundle.
+                bundle_root = (root / Path(relative).parts[0]).resolve(strict=False)
+                allowed_code_roots = (bundle_root,)
+            if not allowed_code_roots:
+                allowed_code_roots = (path.parent.resolve(strict=False),)
             ref = ManifestRef(
                 contract_id=contract_id,
                 origin=source.origin,
@@ -297,7 +311,7 @@ def inventory_manifests(
                 name=raw_name.strip(),
                 lifecycle=lifecycle,
                 skill_name=skill_name,
-                allowed_code_roots=tuple(Path(item) for item in source.allowed_code_roots),
+                allowed_code_roots=allowed_code_roots,
             )
             manifests.append(ref)
             physical_paths[physical_key] = ref

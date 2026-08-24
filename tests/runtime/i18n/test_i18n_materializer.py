@@ -72,6 +72,24 @@ def test_inventory_enumerates_all_supported_layers_without_schema_prose(tmp_path
     assert "device:public-message-catalog" in ids
     assert "tutor:public-catalog" in ids
     assert not any("schema_inline" in resource_id for resource_id in ids)
+    contract = next(item for item in items if item.resource_id == "contract:sample:description")
+    assert contract.metadata["origin"] == "explicit"
+    assert contract.metadata["contract_id"] == "explicit:sample/manifest.toml"
+
+
+def test_contract_inventory_does_not_promote_unselected_imports(tmp_path):
+    paths = _fixture(tmp_path)
+    imported = tmp_path / "imports" / "mail" / "read_mail"
+    imported.mkdir(parents=True)
+    (imported / "manifest.toml").write_text(
+        'name="read_mail"\n[description]\nen="Read mail"\n',
+        encoding="utf-8",
+    )
+
+    ids = {item.resource_id for item in inventory(paths, source_lang="en")}
+
+    assert "contract:sample:description" in ids
+    assert "contract:read_mail:description" not in ids
 
 
 def test_materialization_precedes_translation_and_is_idempotent(tmp_path):

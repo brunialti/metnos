@@ -15,10 +15,16 @@ import sqlite3
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Iterator, Mapping
 
 import config as _C
 from i18n_registry import LocalizationRegistry, normalize_language
+from manifest_inventory import (
+    ManifestOrigin,
+    ManifestSource,
+    default_manifest_sources,
+    inventory_manifests,
+)
 
 
 _LOCALIZABLE_FIELDS = frozenset({
@@ -119,35 +125,59 @@ def iter_localized_text_tables(
         yield from iter_localized_text_tables(value, source_lang, path)
 
 
-def _iter_manifest_paths(roots: Iterable[Path]) -> Iterator[tuple[Path, Path]]:
-    seen: set[Path] = set()
+def _manifest_sources(roots: tuple[Path, ...]) -> tuple[ManifestSource, ...]:
+    """Map configured localization roots to the neutral shared inventory.
+
+    Known roots keep their stable origin and topology.  An injected fixture
+    remains explicit and receives no authority beyond its own directory.
+    """
+    known = {
+        Path(source.root).resolve(strict=False): source
+        for source in default_manifest_sources()
+    }
+    selected: list[ManifestSource] = []
     for root in roots:
-        root = Path(root)
-        if not root.is_dir():
-            continue
-        for path in sorted(root.rglob("manifest.toml")):
-            resolved = path.resolve()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            yield root, path
+        path = Path(root)
+        source = known.get(path.resolve(strict=False))
+        if source is None:
+            source = ManifestSource(
+                ManifestOrigin.EXPLICIT,
+                path,
+                min_depth=0,
+                max_depth=None,
+                allowed_code_roots=(path,),
+            )
+        selected.append(source)
+    return tuple(selected)
 
 
 def _iter_contract_items(paths: LocalizationPaths, source_lang: str) -> Iterator[InventoryItem]:
-    for root, path in _iter_manifest_paths(paths.manifest_roots):
+    manifest_inventory = inventory_manifests(
+        _manifest_sources(paths.manifest_roots),
+    )
+    if manifest_inventory.problems:
+        summary = "; ".join(
+            f"{problem.code}:{problem.path}"
+            for problem in manifest_inventory.problems[:8]
+        )
+        raise ValueError(f"manifest inventory is not clean: {summary}")
+    for ref in manifest_inventory.manifests:
+        path = ref.manifest_path
         raw = path.read_bytes()
         manifest = tomllib.loads(raw.decode("utf-8"))
-        manifest_name = str(manifest.get("name") or path.parent.name)
-        relative = _relative_id(path, root)
         for selector, source in iter_localized_text_tables(manifest, source_lang):
             yield InventoryItem(
-                resource_id=f"contract:{manifest_name}:{selector}",
+                resource_id=f"contract:{ref.name}:{selector}",
                 layer="contract", source_lang=source_lang,
                 source_hash=sha256_text(source), source_text=source,
                 metadata={
-                    "manifest_path": str(path), "manifest_relative": relative,
+                    "manifest_path": str(path),
+                    "manifest_relative": ref.manifest_relative,
                     "manifest_hash": sha256_bytes(raw), "selector": selector,
-                    "executor": manifest_name,
+                    "executor": ref.name,
+                    "contract_id": str(ref.contract_id),
+                    "origin": ref.origin.value,
+                    "status": ref.status.value,
                 },
             )
 

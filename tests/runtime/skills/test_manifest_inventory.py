@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import manifest_inventory as inventory_module
 from manifest_inventory import (
     ContractId,
     ManifestOrigin,
@@ -27,20 +28,38 @@ def test_inventory_classifies_every_topology_without_granting_authority(
 ) -> None:
     core = tmp_path / "core"
     builtin = tmp_path / "builtin"
+    builtin_skills = tmp_path / "builtin-skills"
+    user = tmp_path / "user"
     user_skills = tmp_path / "user-skills"
+    legacy = tmp_path / "legacy"
     retired = tmp_path / "retired"
     imported = _manifest(user_skills / "calendar" / "read_events", "read_events")
     before = imported.read_bytes()
     _manifest(core / "find_files", "find_files")
     _manifest(builtin / "list_tasks", "list_tasks")
+    _manifest(builtin_skills / "media" / "read_media", "read_media")
+    _manifest(user / "custom_task", "custom_task")
+    _manifest(legacy / "mail" / "read_mail", "read_mail")
     _manifest(retired / "reply_messages", "reply_messages")
 
     inventory = inventory_manifests((
         ManifestSource(ManifestOrigin.CORE, core),
         ManifestSource(ManifestOrigin.BUILTIN, builtin),
         ManifestSource(
+            ManifestOrigin.BUILTIN_SKILL, builtin_skills,
+            min_depth=2, max_depth=2, skill_scoped=True,
+            allowed_code_roots=(builtin_skills,),
+        ),
+        ManifestSource(ManifestOrigin.USER, user),
+        ManifestSource(
             ManifestOrigin.USER_SKILL, user_skills,
             min_depth=2, max_depth=2, skill_scoped=True,
+            allowed_code_roots=(user_skills,),
+        ),
+        ManifestSource(
+            ManifestOrigin.LEGACY_IMPORT, legacy,
+            min_depth=2, max_depth=2, skill_scoped=True,
+            allowed_code_roots=(legacy,),
         ),
         ManifestSource(
             ManifestOrigin.RETIRED, retired,
@@ -52,10 +71,22 @@ def test_inventory_classifies_every_topology_without_granting_authority(
     assert view == {
         (ManifestOrigin.CORE, "find_files"): ManifestStatus.ADMITTED,
         (ManifestOrigin.BUILTIN, "list_tasks"): ManifestStatus.ADMITTED,
+        (ManifestOrigin.BUILTIN_SKILL, "read_media"): ManifestStatus.ADMITTED,
+        (ManifestOrigin.USER, "custom_task"): ManifestStatus.ADMITTED,
         (ManifestOrigin.USER_SKILL, "read_events"): ManifestStatus.DISABLED,
+        (ManifestOrigin.LEGACY_IMPORT, "read_mail"): ManifestStatus.ADMITTED,
         (ManifestOrigin.RETIRED, "reply_messages"): ManifestStatus.RETIRED,
     }
     assert imported.read_bytes() == before
+    skill_roots = {
+        item.name: item.allowed_code_roots
+        for item in inventory.manifests if item.skill_name is not None
+    }
+    assert skill_roots == {
+        "read_media": (builtin_skills.resolve() / "media",),
+        "read_events": (user_skills.resolve() / "calendar",),
+        "read_mail": (legacy.resolve() / "mail",),
+    }
 
 
 def test_inventory_reports_symlinks_aliases_collisions_and_parse_errors(
@@ -109,3 +140,14 @@ def test_contract_id_rejects_noncanonical_paths() -> None:
         assert "canonical" in str(exc)
     else:  # pragma: no cover - assertion made explicit for readable failures
         raise AssertionError("noncanonical contract id accepted")
+
+
+def test_explicit_empty_sources_never_fall_back_to_real_installation(
+    monkeypatch,
+) -> None:
+    def forbidden_defaults():
+        raise AssertionError("default roots must not be opened")
+
+    monkeypatch.setattr(inventory_module, "default_manifest_sources", forbidden_defaults)
+
+    assert inventory_manifests(()).manifests == ()
