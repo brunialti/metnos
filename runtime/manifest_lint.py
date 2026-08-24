@@ -459,19 +459,39 @@ def main(argv=None):
     # Senza, i warn restano advisory (legacy non bloccati, §2.5 no bonifica di massa).
     strict = "--strict" in argv
     argv = [a for a in argv if a != "--strict"]
-    base = _RUNTIME.parent / "executors"
-    affinities = _load_all_affinities()
-    names = _load_catalog_names(affinities)
+    from manifest_inventory import (
+        ManifestOrigin,
+        ManifestSource,
+        inventory_manifests,
+    )
+
     if argv and argv[0] not in ("--all", "-a"):
-        targets = [Path(argv[0])]
+        explicit = Path(argv[0])
+        inventory = inventory_manifests((ManifestSource(
+            ManifestOrigin.EXPLICIT, explicit.parent,
+            min_depth=0, max_depth=0,
+            allowed_code_roots=(explicit.parent,),
+        ),))
     else:
-        targets = sorted(base.glob("*/manifest.toml"))
+        inventory = inventory_manifests()
+    parsed_manifests = {}
+    affinities: dict[str, set[str]] = {}
+    names: set[str] = set()
+    import tomllib
+    for ref in inventory.manifests:
+        with ref.manifest_path.open("rb") as handle:
+            manifest = tomllib.load(handle)
+        parsed_manifests[ref.contract_id] = manifest
+        names.add(ref.name)
+        affinities[ref.name] = {
+            str(item).lower() for item in (manifest.get("affinity") or [])
+        }
+    for problem in inventory.problems:
+        print(f"inventory [{problem.code}] {problem.path}: {problem.detail}")
     total_err = total_warn = 0
     checked = 0
-    for t in targets:
-        import tomllib
-        with t.open("rb") as handle:
-            manifest = tomllib.load(handle)
+    for ref in inventory.manifests:
+        manifest = parsed_manifests[ref.contract_id]
         description = manifest.get("description")
         languages = sorted(
             key for key, value in description.items()
@@ -481,12 +501,13 @@ def main(argv=None):
         if not languages:
             from config import INSTANCE_LANG
             languages = [INSTANCE_LANG]
-        for language in languages:
+        for index, language in enumerate(languages):
             checked += 1
             findings = lint_manifest(
                 manifest, language=language,
                 allow_flat_description=not isinstance(description, Mapping),
-                catalog_names=names, sibling_affinities=affinities,
+                catalog_names=names,
+                sibling_affinities=affinities if index == 0 else None,
             )
             if strict:
                 errs, warns = findings, []
@@ -496,11 +517,15 @@ def main(argv=None):
             total_err += len(errs)
             total_warn += len(warns)
             if findings:
-                print(f"{t.parent.name} [{language}]:")
+                print(
+                    f"{ref.name} [{language}; {ref.origin.value}; "
+                    f"{ref.status.value}]:"
+                )
                 for f in findings:
                     print(f)
     print(f"\n=== manifest_lint: {total_err} error, {total_warn} warn "
-          f"su {checked} varianti di {len(targets)} manifest ===")
+          f"su {checked} varianti di {len(inventory.manifests)} manifest; "
+          f"{len(inventory.problems)} problemi inventario ===")
     return 1 if total_err else 0
 
 
