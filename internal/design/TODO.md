@@ -9,13 +9,68 @@ non restano artificialmente aperte.
 
 | Priorita' | Voce | Stato | Condizione di chiusura |
 |---:|---|---|---|
+| P0 MAX | **AFF-I18N-001** | analisi obbligatoria prima dello sviluppo | Confronto critico documentato, specifica approvata, implementazione generale, migrazione, benchmark di routing e copertura i18n verificati senza regressioni. |
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
 
-Non restano attivita' di sviluppo immediatamente eseguibili. `SEC-001` non puo'
-essere autocertificato da chi ha realizzato le modifiche. `REL-001` dispone gia'
-di schema, raccolta, classificatore privacy-safe, report atomico e test; il
-tempo di osservazione non puo' essere sostituito da dati sintetici.
+`AFF-I18N-001` è la massima priorità, ma non autorizza una modifica immediata:
+prima richiede analisi, confronto delle alternative e progettazione approvata.
+`SEC-001` non puo' essere autocertificato da chi ha realizzato le modifiche.
+`REL-001` dispone gia' di schema, raccolta, classificatore privacy-safe, report
+atomico e test; il tempo di osservazione non puo' essere sostituito da dati
+sintetici.
+
+### AFF-I18N-001 - Internazionalizzazione completa di `affinity` (priorità massima)
+
+**Problema verificato.** Nei manifest correnti <code>affinity</code> è una lista
+piatta che mescola termini italiani e inglesi. Il loader la usa identica per
+ogni lingua, mentre localizza davvero <code>description</code> e le descrizioni
+degli argomenti. Il confronto semantico BGE-M3 attenua alcune lacune ma non è
+un inventario di traduzioni, non misura la copertura e non garantisce
+l'allineamento di una nuova lingua. ADR 0124 proponeva un dizionario di lemmi,
+ma è ancora <code>proposed</code> e i relativi artefatti runtime non esistono.
+Lo script storico che copia <code>affinity</code> nel database i18n non è letto
+dal percorso di routing e quindi non risolve il problema.
+
+**Sequenza obbligatoria.** Nessuna modifica al formato dei manifest o al
+routing deve precedere questi risultati:
+
+1. **Analisi tecnica approfondita.** Censire schema, loader, pre-filtro,
+   confronto per frasi, fallback semantico, cache, linter, ammissione, Synt,
+   importazione delle skill, catalogo incorporato e manifest firmati. Misurare
+   la copertura reale per lingua e distinguere executor distribuiti,
+   incorporati, generati e importati.
+2. **Confronto critico e controverso.** Mettere in competizione almeno: lista
+   mista corrente; tabelle per lingua nel manifest; lessico semantico centrale;
+   dizionario di lemmi; risorse tradotte e compilate; instradamento solo
+   vettoriale; soluzione ibrida. Per ogni opzione valutare determinismo,
+   falsi positivi e negativi, morfologia, ambiguità, costo editoriale,
+   aggiunta di lingue, firme, cache, migrazione, ripiego e possibilità di
+   rollback. Una revisione avversaria deve provare a confutare la soluzione
+   preferita.
+3. **Documento di analisi.** Pubblicare baseline riproducibile, alternative,
+   esperimenti, risultati, rischi, opzione raccomandata e motivazione delle
+   opzioni respinte. I benchmark devono includere corpus reale anonimizzato e
+   un insieme di prova tenuto fuori dalla progettazione.
+4. **Specifica di progetto.** Solo dopo la decisione: definire schema
+   versionato, autorità delle fonti, lingue enumerate, catena di ripiego,
+   traduzione e allineamento, controllo di copertura, compatibilità con firme e
+   cache, migrazione atomica, rollback e criteri di accettazione. La specifica
+   deve essere approvata prima dello sviluppo.
+5. **Sviluppo generale.** Implementare la soluzione scelta senza elenchi
+   cablati per executor o correzioni ad hoc. Aggiornare tutti i consumatori e i
+   produttori del campo, la validazione, gli strumenti di traduzione, le firme,
+   i manifest esistenti e la documentazione italiana e inglese.
+6. **Certificazione.** Eseguire test unitari, integrazione, migrazione e
+   rollback; controllo automatico della parità linguistica; benchmark di
+   routing per lingua, morfologia e richieste miste; verifica che precisione,
+   richiamo, latenza e determinismo non peggiorino oltre le soglie approvate.
+
+**Condizione di chiusura.** Analisi e specifica approvate; nessun percorso
+runtime legge la vecchia lista senza passare dal contratto scelto; copertura e
+allineamento sono verificabili automaticamente; tutti i manifest e gli
+executor generati/importati sono migrati; firme e cache sono valide; benchmark,
+suite completa, documentazione bilingue e distribuzione pubblica sono verdi.
 
 ### SEC-001 - Audit di sicurezza indipendente
 
