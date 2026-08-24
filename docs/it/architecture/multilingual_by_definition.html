@@ -34,16 +34,17 @@
 <h1>Multilingue per definizione</h1>
 
 <p class="lead">
-In Metnos la lingua non è una decorazione applicata all'interfaccia quando il
-prodotto è già finito. È una proprietà dell'istanza Metnos: la lingua configurata
-è condivisa da utenti, canali, richieste e risposte. Cambiare la lingua
-dell'istanza è quindi una modifica deliberata della configurazione globale, non
-una scelta per singolo utente o per singolo turno.
+In Metnos la lingua &egrave; una propriet&agrave; dell'intera istanza, non una preferenza
+del singolo utente. Il nucleo del runtime conserva una sola lingua per utenti,
+canali e richieste concorrenti. Cambiarla &egrave; quindi una modifica deliberata
+della configurazione globale. Questo &egrave; il contratto architetturale; alcune
+superfici storiche non lo rispettano ancora completamente e sono indicate in
+questa pagina.
 </p>
 
 <p>
 Molti sistemi nascono in una lingua e vengono localizzati in seguito. Questo
-approccio traduce pulsanti e messaggi, ma può lasciare in un'altra lingua le
+approccio traduce pulsanti e messaggi, ma pu&ograve; lasciare in un'altra lingua le
 istruzioni date ai modelli, le descrizioni degli strumenti o le espressioni usate
 per comprendere una richiesta. Metnos parte da un vincolo diverso: una funzione
 non è davvero multilingue se lo è soltanto la sua superficie.
@@ -52,19 +53,20 @@ non è davvero multilingue se lo è soltanto la sua superficie.
 <figure class="documentation-infographic" aria-labelledby="multilingual-flow-caption">
  <img src="/assets/multilingual-flow.svg"
       width="1200" height="720" loading="eager" decoding="async"
-      alt="Percorso Metnos: lingua dell'istanza, contesto di esecuzione condiviso, prompt e manifest coordinati, esecuzione con contratto invariato, risposta con catena lingua dell'istanza-inglese-italiano; sotto, compilazione e firma del catalogo Tutor.">
+      alt="Diagramma con testo inglese: lingua dell'istanza, contesto del turno, sorgenti linguistiche coordinate, esecuzione con autorità invariata e risposta con ripiego sull'inglese; sotto, compilazione e firma del catalogo Tutor.">
  <figcaption id="multilingual-flow-caption">
-  Una lingua segue l'intero percorso della richiesta. I numeri rimandano ai sei
-  passaggi descritti qui sotto; le frecce indicano una sequenza, non un ciclo automatico.
+  I cinque passaggi numerati descrivono il percorso di una richiesta; il percorso
+  inferiore mostra invece come viene verificato il catalogo Tutor. Le frecce
+  indicano una sequenza, non un ciclo automatico.
  </figcaption>
 </figure>
 
 <ol class="infographic-key">
  <li><strong>Lingua dell'istanza.</strong> La lingua appartiene all'istanza Metnos ed è condivisa da utenti e canali.</li>
  <li><strong>Vincolo propagato.</strong> Ogni richiesta riceve la lingua dell'istanza e non può sostituirla, anche durante esecuzioni concorrenti.</li>
- <li><strong>Quattro sorgenti coordinate.</strong> Prompt, manifest degli executor, messaggi deterministici e lessico di comprensione restano distinti ma coerenti.</li>
+ <li><strong>Quattro sorgenti coordinate.</strong> Prompt, manifest degli executor, messaggi deterministici e lessico di riconoscimento restano distinti ma coerenti.</li>
  <li><strong>Ripieghi dichiarati.</strong> Se manca un testo, Metnos segue una catena nota e rende visibile il debito di traduzione.</li>
- <li><strong>Stessa lingua, canali diversi.</strong> La resa resta coerente nella chat web, nelle notifiche e sui dispositivi associati.</li>
+ <li><strong>Stessa lingua, canali diversi.</strong> I percorsi principali propagano la lingua dell'istanza alla chat web, alle notifiche e ai dispositivi associati.</li>
  <li><strong>Verifica prima del supporto.</strong> Una lingua è dichiarata supportata soltanto dopo controlli di copertura, struttura e qualità.</li>
 </ol>
 
@@ -72,18 +74,18 @@ non è davvero multilingue se lo è soltanto la sua superficie.
 
 <p>
 Significa che la lingua entra nei confini del sistema, non soltanto nei suoi
-testi. La lingua dell'istanza viene stabilita nella configurazione e conservata
-nel contesto di esecuzione; ogni componente che produce parole destinate a una
-persona deve usare quel medesimo valore. Non esiste una variazione per singolo
-utente o per singolo turno.
+testi. Il nucleo la legge dalla configurazione firmata e la conserva in un
+contesto isolato per ogni esecuzione concorrente. Un valore ricevuto da una
+richiesta non pu&ograve; sostituirla. I componenti destinati alle persone devono usare
+quel medesimo valore: questo &egrave; un requisito verificabile, non la dichiarazione
+che ogni pagina storica sia gi&agrave; stata migrata.
 </p>
 
 <p>
-Questa regola rende esplicito il comportamento operativo: tutti gli utenti e
-tutti i canali collegati alla stessa istanza ricevono la medesima lingua
-configurata. Se occorrono due lingue nello stesso momento, servono istanze
-Metnos distinte; cambiare la lingua di un'istanza è una modifica globale per
-quell'istanza.
+Nei percorsi gestiti dal nucleo, tutti gli utenti e tutti i canali collegati alla
+stessa istanza ricevono quindi la medesima lingua. Se occorrono due lingue nello
+stesso momento, servono istanze Metnos distinte; cambiare la lingua di un'istanza
+&egrave; una modifica globale per quell'istanza.
 </p>
 
 <div class="callout note">
@@ -95,7 +97,7 @@ quell'istanza.
 <h2 id="quattro-livelli">Un solo intento, quattro livelli linguistici</h2>
 
 <p>
-La parte innovativa non consiste nel tradurre automaticamente più testo. Consiste
+Il punto non consiste nel tradurre automaticamente pi&ugrave; testo. Consiste
 nel riconoscere che un agente usa la lingua in punti diversi, ciascuno con una
 funzione e un rischio propri. Metnos li mantiene separati, così una lacuna può
 essere individuata e corretta senza fingere che l'intero sistema sia già pronto.
@@ -122,7 +124,7 @@ essere individuata e corretta senza fingere che l'intero sistema sia già pronto
    <td>Questi testi devono restare affidabili anche quando un modello non è disponibile.</td>
   </tr>
   <tr>
-   <td><strong>Lessico di comprensione</strong></td>
+   <td><strong>Lessico di riconoscimento</strong></td>
    <td>Riconosce modi naturali di esprimere intenti, oggetti e parametri.</td>
    <td>Mostrare parole italiane non insegna automaticamente al sistema a comprendere tutte le formulazioni italiane.</td>
   </tr>
@@ -130,7 +132,7 @@ essere individuata e corretta senza fingere che l'intero sistema sia già pronto
 </table>
 
 <p>
-Il vocabolario delle azioni applica già questo contratto da capo a fondo. I
+Il vocabolario delle azioni applica gi&agrave; questo contratto da capo a fondo. I
 nomi canonici come <code>run</code> e <code>open</code> non vengono tradotti;
 le forme naturali usate per riconoscerli vivono nel lessico di detection
 versionato, mentre i rispettivi confini semantici sono chiavi del catalogo
@@ -139,16 +141,34 @@ parziale non supera il controllo di copertura e le forme ambigue vengono
 segnalate per la validazione linguistica.
 </p>
 
+<div class="callout note">
+ <p><strong>Eccezione attuale: <code>affinity</code>.</strong> Le espressioni
+ del manifest usate per avvicinare una richiesta a un executor sono ancora una
+ lista unica che pu&ograve; mescolare pi&ugrave; lingue. Il TODO
+ <code>AFF-I18N-001</code>, con priorit&agrave; massima, richiede analisi,
+ confronto fra alternative, specifica e sviluppo prima di dichiarare questo
+ livello pienamente conforme all'i18n.</p>
+</div>
+
 <h2 id="ripiego">Un ripiego esplicito, non una falsa completezza</h2>
 
 <p>
-La mancanza di una traduzione non deve trasformarsi né in un arresto né in una
-frase inventata. Ciascun livello segue una catena di ripiego deterministica. Per
- i messaggi visibili, ad esempio, Metnos prova la lingua dell'istanza, poi l'inglese,
-poi l'italiano; se nessuna versione esiste, espone una chiave mancante
-riconoscibile. I prompt e i manifest hanno regole equivalenti, adatte alle loro
-fonti.
-</p>
+La mancanza di una traduzione non deve trasformarsi n&eacute; in una frase inventata
+n&eacute; in un comportamento nascosto. Ciascun livello segue una regola
+deterministica:</p>
+
+<ul>
+ <li>i messaggi provano la lingua dell'istanza e poi l'inglese; se manca anche
+ quello, mostrano una chiave riconoscibile come <code>&lt;missing:KEY&gt;</code>;</li>
+ <li>i prompt provano la lingua richiesta e poi l'inglese; se non esiste nessuna
+ delle due sorgenti, il caricamento fallisce;</li>
+ <li>i campi multilingue dei manifest provano la lingua dell'istanza, poi
+ l'inglese e infine, soltanto come ultima risorsa deterministica, la prima lingua
+ disponibile;</li>
+ <li>il lessico di riconoscimento pu&ograve; unire le forme della lingua corrente alle
+ basi editoriali registrate, ma segnala l'assenza di forme native e il controllo
+ di copertura non la considera completa.</li>
+</ul>
 
 <p>
 Il ripiego garantisce continuità, non certifica la qualità linguistica. Una lingua
@@ -187,21 +207,31 @@ errore in un artefatto pubblicato.
 </p>
 
 <p>
-La stessa regola vale per i canali. La lingua appartiene all'istanza Metnos;
-Telegram, la chat web e un'attività differita usano tutti la lingua dell'istanza
-e non mantengono preferenze indipendenti che possano divergere silenziosamente.
+La stessa regola governa i percorsi principali dei canali. Telegram, la chat web
+e le attivit&agrave; differite ricevono la lingua dell'istanza e non mantengono una
+preferenza indipendente per ciascun utente.
 </p>
+
+<div class="callout note">
+ <p><strong>Copertura corrente, non ideale.</strong> Alcune pagine HTML autonome
+ ereditate dal runtime usano ancora testi italiani scritti direttamente nel
+ codice: fra queste figurano la pagina finale di OAuth, la vecchia vista dei
+ timer e alcune viste autonome. Non passano tutte dal catalogo i18n. Il nucleo
+ della chat e le pagine amministrative basate sui template seguono il contratto,
+ ma l'intera interfaccia non pu&ograve; ancora essere definita completamente
+ localizzata.</p>
+</div>
 
 <h2 id="innovazione">Dove sta l'innovazione</h2>
 
 <p>
-L'elemento distintivo è trattare il multilinguismo come una proprietà
+Il valore architetturale consiste nel trattare il multilinguismo come una propriet&agrave;
 trasversale verificabile, alla pari dell'identità e della provenienza, invece che
 come una fase editoriale conclusiva. Questo porta tre vantaggi concreti:
 </p>
 
 <ul>
- <li><strong>coerenza:</strong> comprensione, scelta degli strumenti e risposta usano la stessa lingua dell'istanza;</li>
+ <li><strong>coerenza verificabile:</strong> il contratto richiede che comprensione, scelta degli strumenti e risposta usino la stessa lingua dell'istanza;</li>
  <li><strong>isolamento:</strong> utenti e attività concorrenti non possono sostituire la lingua dell'istanza con un valore per utente o per turno;</li>
  <li><strong>onestà:</strong> ripieghi, traduzioni superate e copertura incompleta restano osservabili invece di essere nascosti.</li>
 </ul>
@@ -213,35 +243,46 @@ revisione umana resta indispensabile. L'innovazione consiste nel rendere questi
 limiti parte del contratto, quindi misurabili e correggibili.
 </p>
 
-<h2 id="auto-localizzazione">Auto-localizzazione completa</h2>
+<h2 id="auto-localizzazione">Come viene preparata una nuova lingua</h2>
 
 <p>
 Quando, durante l'installazione, viene indicata una lingua diversa da italiano o
-inglese, Metnos non finge che sia già disponibile. Normalizza il codice BCP-47
-e, dopo la creazione della chiave d'installazione, registra atomicamente una
+inglese, Metnos non finge che sia gi&agrave; pronta. Normalizza il codice BCP-47 e,
+dopo la creazione della chiave d'installazione, registra atomicamente una
 richiesta firmata con data, stato e versione del corpus in
-<code>$METNOS_USER_STATE/i18n/localization_request.json</code>. Avvia quindi l'istanza
-temporaneamente in inglese e mette in coda la localizzazione.
-L'inglese è quindi un avvio sicuro e transitorio, non una scelta nascosta per
-singolo utente o turno.
+<code>$METNOS_USER_STATE/i18n/localization_request.json</code>. L'istanza si avvia
+temporaneamente in inglese e la richiesta resta in attesa di elaborazione.
+La sola installazione non traduce automaticamente l'intero sistema.
 </p>
 
 <p>
-La pipeline prevista lavora in modo incrementale e idempotente. Di notte
-confronta le impronte delle sorgenti e traduce, con il workload linguistico
-dedicato, l'intero patrimonio operativo: lessici usati dal proposer e dalla
-comprensione, prompt del planner e del synt, descrizioni e argomenti dei
-manifest, messaggi deterministici, notifiche, repertorio dei dispositivi e
-risorse destinate al Tutor. Non traduce soltanto le label: traduce ciò che guida
-il ragionamento e ciò che rende verificabile l'esecuzione.
+La pipeline completa esiste, ma oggi viene avviata con gli strumenti
+amministrativi. <code>materialize</code> censisce prompt, campi testuali dei
+manifest, messaggi, lessico di riconoscimento, documentazione pubblica,
+repertorio dei dispositivi e catalogo Tutor. <code>advance</code> traduce un
+numero limitato di risorse, registra le impronte e sottopone a verifica
+semantica ci&ograve; che pu&ograve; essere valutato automaticamente. Le risorse delicate,
+come espressioni regolari e controlli di consenso, richiedono revisione umana.
+Il campo <code>affinity</code> non fa ancora parte di questo inventario.
+</p>
+
+<p>
+Esistono anche due lavori periodici pi&ugrave; circoscritti. Il timer di servizio,
+normalmente ogni cinque minuti, elabora i messaggi gi&agrave; in attesa nel catalogo
+i18n; lo scheduler esegue un ripiego ogni sei ore e tratta anche il lessico di
+riconoscimento. Questi lavori smaltiscono code gi&agrave; materializzate, ma non
+sostituiscono l'avanzamento esplicito della pipeline completa. Dopo che tutte le
+risorse obbligatorie hanno superato i rispettivi controlli, il comando di attivazione
+ricompila i cataloghi pubblici, verifica manifest e copertura, aggiorna la
+configurazione firmata e pu&ograve; riavviare il servizio nella nuova lingua.
 </p>
 
 <ol class="infographic-key">
- <li><strong>Bootstrap.</strong> La lingua richiesta viene registrata; l'istanza resta operativa in inglese.</li>
- <li><strong>Inventario.</strong> Ogni risorsa riceve una sorgente, un codice lingua, un'impronta e uno stato.</li>
- <li><strong>Traduzione.</strong> I testi destinati alle persone e quelli destinati ai modelli seguono regole diverse ma lo stesso contratto semantico.</li>
- <li><strong>Verifica.</strong> Placeholder, schema, firma dei manifest, lessico e comportamento del proposer vengono controllati prima dell'abilitazione.</li>
- <li><strong>Attivazione.</strong> Solo dopo il superamento del gate l'amministratore riavvia l'istanza nella nuova lingua.</li>
+ <li><strong>Avvio provvisorio.</strong> La lingua richiesta viene registrata e l'istanza resta operativa in inglese.</li>
+ <li><strong>Inventario amministrativo.</strong> Ogni risorsa censita riceve una sorgente, un codice lingua, un'impronta e uno stato.</li>
+ <li><strong>Traduzione limitata.</strong> I worker acquisiscono lotti finiti e conservano gli errori senza perdere il lavoro precedente.</li>
+ <li><strong>Revisione e controlli.</strong> Placeholder, schemi, manifest, lessico, documenti e cataloghi derivati devono superare i rispettivi gate.</li>
+ <li><strong>Attivazione esplicita.</strong> Solo dopo il superamento dei controlli l'amministratore rende autorevole la nuova lingua e riavvia l'istanza.</li>
 </ol>
 
 <p class="callout note"><strong>Che cosa resta invariato.</strong> La traduzione
