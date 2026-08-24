@@ -4,8 +4,17 @@ import json
 import sqlite3
 from pathlib import Path
 
-from i18n_materializer import materialize
-from i18n_pipeline import promote_candidates, review_semantics, translate_pending
+import pytest
+
+from i18n_materializer import InventoryItem, materialize, sha256_text
+from i18n_pipeline import (
+    CandidateValidationError,
+    _translate_item,
+    _validate_common,
+    promote_candidates,
+    review_semantics,
+    translate_pending,
+)
 from i18n_registry import LocalizationRegistry
 
 from test_i18n_materializer import _fixture
@@ -50,7 +59,7 @@ def test_translate_validate_review_and_promote_all_nonmanual_layers(tmp_path: Pa
     assert (paths.docs / "nl" / "guide.html").read_text() == "<h1>Gids</h1>"
 
     manifest = (tmp_path / "executors/sample/manifest.toml").read_text()
-    assert 'nl = "Lees een bestand"' in manifest
+    assert 'nl = "SCOPO: Lees een bestand.' in manifest
     assert 'schema_inline="{ok: bool}"' in manifest
     conn = sqlite3.connect(paths.detection_db)
     mapping = json.loads(conn.execute(
@@ -76,6 +85,77 @@ def test_placeholder_loss_fails_and_never_creates_live_prompt(tmp_path: Path):
     )
     assert "prompt:planner/core.j2" in report.errors
     assert not (paths.prompts / "sv" / "planner/core.j2").exists()
+
+
+def test_common_validation_normalizes_only_jinja_placeholder_padding():
+    _validate_common(
+        "Use {{ value }} twice: {{ value }}",
+        "Gebruik {{value}} tweemaal: {{value}}",
+    )
+
+    with pytest.raises(CandidateValidationError, match="jinja invariants changed"):
+        _validate_common(
+            "Use {{ value | trim }}",
+            "Gebruik {{value|trim}}",
+        )
+    with pytest.raises(CandidateValidationError, match="jinja invariants changed"):
+        _validate_common(
+            "Use {{ value }} twice: {{ value }}",
+            "Gebruik {{value}}",
+        )
+
+
+def test_contract_translation_exposes_structured_lint_findings():
+    source = (
+        'SCOPO: Read a file. PATTERN: sample(path="/tmp/example"). '
+        "NON: other operations. OUT: {ok}."
+    )
+    translated = (
+        'SCOPO: Lees een bestand. PATTERN: sample(source="/tmp/example"). '
+        "NON: andere bewerkingen. OUT: {ok}."
+    )
+    item = InventoryItem(
+        resource_id="contract:sample:description",
+        layer="contract",
+        source_lang="en",
+        source_hash=sha256_text(source),
+        source_text=source,
+        metadata={"selector": "description"},
+    )
+
+    with pytest.raises(CandidateValidationError) as caught:
+        _translate_item(
+            item,
+            "nl",
+            lambda _text, _source, _target, _context: translated,
+        )
+
+    assert str(caught.value) == "contract translation invariants changed: pattern_atoms"
+    assert tuple(
+        (finding.check, finding.scope, finding.languages)
+        for finding in caught.value.findings
+    ) == (("pattern_atoms", "parity", ("en", "nl")),)
+
+
+def test_contract_lint_failure_never_creates_candidate_artifact(tmp_path: Path):
+    paths = _fixture(tmp_path)
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    materialize("nl", registry=registry, paths=paths)
+
+    def broken(text: str, _source: str, _target: str, context: str) -> str:
+        if context == "contract:sample:description":
+            return text.replace("sample(path=", "sample(source=")
+        return text
+
+    report = translate_pending(
+        "nl", registry=registry, paths=paths, translator=broken,
+    )
+
+    resource = "contract:sample:description"
+    record = next(row for row in registry.resources("nl") if row.resource_id == resource)
+    assert "pattern_atoms" in report.errors[resource]
+    assert record.status == "failed"
+    assert record.artifact_path is None
 
 
 def test_prompt_loader_does_not_consume_pending_candidate(tmp_path: Path, monkeypatch):

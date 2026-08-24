@@ -17,9 +17,11 @@ def _fixture(tmp_path: Path) -> LocalizationPaths:
     executors = tmp_path / "executors" / "sample"
     executors.mkdir(parents=True)
     (executors / "manifest.toml").write_text(
-        'name="sample"\n[description]\nen="Read a file"\n'
+        'name="sample"\n[description]\n'
+        'en="SCOPO: Read a file. PATTERN: sample(path=\\"/tmp/example\\"). '
+        'NON: other operations. OUT: {ok}."\n'
         '[args]\ntype="object"\n[args.properties.path]\ntype="string"\n'
-        '[args.properties.path.description]\nen="File path"\n'
+        '[args.properties.path.description]\nen="File path {{ value }}"\n'
         '[output]\nschema_inline="{ok: bool}"\n',
         encoding="utf-8",
     )

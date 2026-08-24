@@ -228,7 +228,7 @@ def test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale(
     # all resolve from the same admitted target corpus.
     prompt = paths.prompts / "nl" / "planner" / "core.j2"
     assert "Regel" in prompt.read_text(encoding="utf-8")
-    assert 'nl = "Lees een bestand"' in (
+    assert 'nl = "SCOPO: Lees een bestand.' in (
         tmp_path / "executors" / "sample" / "manifest.toml"
     ).read_text(encoding="utf-8")
     connection = sqlite3.connect(paths.messages_db)
