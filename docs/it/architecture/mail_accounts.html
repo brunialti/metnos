@@ -16,46 +16,67 @@
 <body>
 <nav><a href="index.html">&larr; Guida all'architettura</a> &middot; <a href="/en/architecture/mail_accounts.html" hreflang="en">EN</a></nav>
 <h1>Account di posta IMAP e SMTP</h1>
-<p class="lead">Metnos può usare caselle di fornitori diversi da Google. La posta
-standard passa da IMAP per la lettura e SMTP per l'invio; Google Workspace
-resta un'integrazione distinta per le funzioni specifiche di Gmail.</p>
+<p class="lead">Metnos può leggere e inviare posta anche con fornitori diversi
+da Google. Per le caselle standard usa IMAP in lettura e SMTP in invio; per le
+funzioni proprie di Gmail, invece, usa l'integrazione Google Workspace.</p>
 
-<h2>Identità dell'account</h2>
-<p>Ogni account ha un nome stabile, per esempio <code>work</code>. Nell'archivio
-cifrato delle credenziali l'associazione è <code>smtp_work</code>; negli executor di posta il valore di
-<code>account</code> è <code>work</code>. <code>account="all"</code> legge tutti
-gli account configurati e aggrega i risultati; può essere usata anche una lista
-esplicita di nomi.</p>
+<h2>Un nome semplice per ogni casella</h2>
+<p>Ogni account riceve un nome breve e stabile, per esempio <code>work</code>.
+Quel nome non è l'indirizzo email: è il modo con cui l'utente e gli executor
+indicano la casella. Si può quindi chiedere &laquo;leggi la posta di work&raquo; o
+&laquo;invia da work&raquo; senza ripetere server e credenziali.</p>
+<p>Nell'archivio cifrato la stessa configurazione si chiama
+<code>smtp_work</code>. Il prefisso è rimasto per compatibilità, ma la voce può
+contenere sia i parametri SMTP sia quelli IMAP. Agli executor si passa soltanto
+<code>account="work"</code>. In lettura, <code>account="all"</code> comprende
+tutti gli account configurati; è possibile anche indicarne una lista precisa.</p>
 
-<h2>Configurazione preferita</h2>
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo
-esempio:</strong> &laquo;Spiegami come configurare un account di posta non Google
-chiamato work, con IMAP e SMTP, senza inserire la password nel
-messaggio.&raquo;</p>
-<p>La voce cifrata <code>smtp_&lt;nome&gt;</code> contiene questi campi:</p>
+<h2>Come si configura</h2>
+<p>Durante l'installazione guidata, la fase <em>Dati sensibili</em> permette di
+aggiungere una o più caselle. In seguito si può usare il flusso protetto per le
+credenziali: Metnos raccoglie i valori necessari senza conservarli nel testo
+della conversazione e li salva nell'archivio locale cifrato.</p>
+<p>Per iniziare basta chiedere: &laquo;Configura un account di posta non Google
+chiamato work&raquo;. Metnos richiederà soltanto i dati mancanti. Una configurazione
+completa usa questi campi:</p>
 <table><thead><tr><th>Campo</th><th>Significato</th></tr></thead><tbody>
-<tr><td><code>user</code>, <code>password</code></td><td>Credenziali della casella.</td></tr>
-<tr><td><code>imap_host</code>, <code>imap_port</code></td><td>Server di lettura; porta tipica 993.</td></tr>
-<tr><td><code>smtp_host</code>, <code>smtp_port</code></td><td>Server di invio; porta tipica SMTPS 465. Può essere omesso per un account di sola lettura.</td></tr>
-<tr><td><code>verify_tls</code></td><td>Verifica TLS, attiva per impostazione predefinita; disattivarla richiede una decisione amministrativa esplicita.</td></tr>
+<tr><td><code>user</code>, <code>password</code></td><td>Nome utente e password, oppure la password specifica per le app richiesta dal fornitore.</td></tr>
+<tr><td><code>imap_host</code>, <code>imap_port</code></td><td>Server di lettura. La porta cifrata più comune è la 993.</td></tr>
+<tr><td><code>smtp_host</code>, <code>smtp_port</code></td><td>Server di invio. La porta SMTPS più comune è la 465; omettendo questi campi l'account resta di sola lettura.</td></tr>
+<tr><td><code>verify_tls</code></td><td>Controllo del certificato del server. L'installazione lo attiva sempre; disabilitarlo riduce la sicurezza e non è una configurazione ordinaria.</td></tr>
 </tbody></table>
-<p>Esempio di contratto, con valori segreti sostituiti da segnaposto:</p>
-<pre><code>set_credentials(
-  binding="smtp_work",
-  fields={
-    "user": "persona@example.test",
-    "password": "&lt;password&gt;",
-    "imap_host": "imap.example.test",
-    "imap_port": 993,
-    "smtp_host": "smtp.example.test",
-    "smtp_port": 465,
-    "verify_tls": true
-  }
-)</code></pre>
-<p>Durante l'installazione interattiva, la fase <em>Dati sensibili</em> può
-creare uno o più account. Dopo l'installazione, la stessa struttura può essere
-salvata con <code>set_credentials</code>; i valori entrano nell'archivio locale
-cifrato, mentre risposta e telemetria espongono soltanto metadati.</p>
+<p class="note">Le password non devono comparire nei manifest, nei file di log
+o nella documentazione. Il flusso credenziali le intercetta prima che la
+richiesta raggiunga il pianificatore, le cifra e lascia al loro posto un
+segnaposto privo del segreto.</p>
+
+<h2>Che cosa può fare Metnos</h2>
+<p><code>read_messages</code> legge una casella, più caselle nominate oppure
+tutte quelle disponibili. Se un account non risponde, il risultato distingue
+ciò che è stato letto dagli errori, senza confondere messaggi provenienti da
+caselle diverse. <code>send_messages</code> usa SMTP per l'invio. Un messaggio
+consegnato al server non può essere richiamato da Metnos: per questo l'invio è
+considerato non annullabile.</p>
+<p><code>move_messages</code> sposta i messaggi tra cartelle ed è annullabile
+quando il server permette di registrare e ripercorrere lo spostamento. Metnos
+usa l'operazione atomica <code>MOVE</code>, se disponibile; in alternativa
+procede soltanto quando può copiare e rimuovere esattamente i messaggi scelti.
+Se non può garantirlo, non modifica la casella.</p>
+<p>Gli identificativi IMAP valgono soltanto nella casella e nella cartella che
+li hanno prodotti. Perciò un identificativo fornito direttamente deve indicare
+anche account e cartella di origine. Quando deriva da una lettura precedente,
+Metnos conserva automaticamente questo contesto e non prova mai a indovinare
+una casella predefinita.</p>
+
+<h2>Il caso Gmail</h2>
+<p class="ok">Google Workspace è un'integrazione separata, autorizzata tramite
+OAuth e basata sulle API di Gmail. Serve per operazioni proprie di Gmail, come
+le conversazioni e le etichette. <code>set_messages</code>, per esempio,
+aggiunge o rimuove etichette e può annullare la modifica; non gestisce i flag
+di una casella IMAP generica.</p>
+<p><code>move_messages</code> funziona anche con Gmail, ma in quel caso opera
+sulle etichette previste dal provider. Gli ID dei messaggi Gmail non seguono le
+regole degli UID IMAP, perché è Google a definirne l'ambito.</p>
 
 <h2>Compatibilità con configurazioni precedenti</h2>
 <p>È ancora accettato un file <code>~/.config/metnos/mail/&lt;nome&gt;.env</code>
@@ -64,27 +85,5 @@ con permessi <code>0600</code> e campi
 <code>PORT_SMTP</code>, <code>USER</code>, <code>PASS</code> e
 <code>VERIFY_TLS</code>. L'archivio cifrato ha precedenza; il file resta un
 percorso di compatibilità e migrazione.</p>
-
-<h2>Confini</h2>
-<p class="ok"><code>read_messages</code> legge IMAP;
-<code>send_messages</code> invia SMTP; <code>move_messages</code> gestisce
-cartelle IMAP. Etichette Gmail, conversazioni Gmail e altre funzioni specifiche
-rimangono nell'integrazione Google Workspace.</p>
-<p>Lo spostamento di un messaggio nel Cestino non elimina mai in blocco il
-contenuto di una cartella. Metnos usa l'operazione atomica <code>MOVE</code>
-quando il server la offre; altrimenti procede soltanto se può copiare, marcare
-ed eliminare esattamente gli UID selezionati. Se il server non garantisce
-queste operazioni, lo spostamento fallisce senza modificare la casella. Gli UID
-restano legati all'account e alla cartella di origine: i risultati provenienti
-da account diversi non vengono mai inoltrati a un unico spostamento ambiguo.
-Quando gli UID IMAP sono forniti direttamente, invece di provenire da un passo
-di lettura precedente, account e cartella di origine devono essere entrambi
-espliciti. Metnos rifiuta un UID privo di questo legame prima di contattare il
-backend: non presume mai la casella predefinita. Il vincolo non riguarda gli ID
-dei messaggi Gmail, il cui ambito di identità è fornito dal provider.</p>
-<p class="note">Le password non devono essere inserite in documentazione,
-manifest o file di log. Se vengono fornite tramite un flusso credenziali della
-chat, sono estratte prima del pianificatore, cifrate e sostituite da un
-segnaposto privo del segreto.</p>
 </body>
 </html>

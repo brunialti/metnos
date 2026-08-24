@@ -16,44 +16,64 @@
 <body>
 <nav><a href="index.html">&larr; Architecture guide</a> &middot; <a href="/it/architecture/mail_accounts.html" hreflang="it">IT</a></nav>
 <h1>IMAP and SMTP mail accounts</h1>
-<p class="lead">Metnos can use mailboxes from non-Google providers. Standard
-mail uses IMAP for reading and SMTP for sending; Google Workspace remains a
-separate backend for Gmail-specific functions.</p>
+<p class="lead">Metnos can read and send mail through providers other than
+Google. Standard mailboxes use IMAP for reading and SMTP for sending; features
+specific to Gmail use the separate Google Workspace integration.</p>
 
-<h2>Account identity</h2>
-<p>Each account has a stable name, such as <code>work</code>. Its encrypted
-vault binding is <code>smtp_work</code>; mail executors receive
-<code>account="work"</code>. <code>account="all"</code> reads all configured
-accounts and aggregates the results; an explicit list of names is also valid.</p>
+<h2>A simple name for each mailbox</h2>
+<p>Each account receives a short, stable name such as <code>work</code>. This
+is not the email address: it is how users and executors refer to the mailbox.
+You can therefore ask Metnos to “read my work mail” or “send from work” without
+repeating server details and credentials.</p>
+<p>In the encrypted store, the same configuration is named
+<code>smtp_work</code>. The prefix is retained for compatibility, but the
+record can contain both SMTP and IMAP settings. Executors receive only
+<code>account="work"</code>. For reading, <code>account="all"</code> covers
+every configured account; a specific list of account names is also valid.</p>
 
-<h2>Preferred configuration</h2>
-<p><strong>Ask Metnos with a request like this example:</strong> “Explain how
-to configure a non-Google mail account named work with IMAP and SMTP, without
-putting the password in the message.”</p>
-<p>The encrypted <code>smtp_&lt;name&gt;</code> record contains:</p>
+<h2>How to configure an account</h2>
+<p>During guided installation, the <em>Sensitive data</em> phase can add one
+or more mailboxes. Accounts can also be added later through the protected
+credential flow: Metnos collects the required values without retaining them in
+the conversation and saves them in its local encrypted store.</p>
+<p>To begin, simply ask: “Configure a non-Google mail account named work.”
+Metnos will request only the missing details. A complete configuration uses
+these fields:</p>
 <table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
-<tr><td><code>user</code>, <code>password</code></td><td>Mailbox credentials.</td></tr>
-<tr><td><code>imap_host</code>, <code>imap_port</code></td><td>Read server; typical port 993.</td></tr>
-<tr><td><code>smtp_host</code>, <code>smtp_port</code></td><td>Send server; typical SMTPS port 465. It may be omitted for a read-only account.</td></tr>
-<tr><td><code>verify_tls</code></td><td>TLS verification, enabled by default; disabling it requires an explicit administrative decision.</td></tr>
+<tr><td><code>user</code>, <code>password</code></td><td>The username and password, or the provider's application-specific password.</td></tr>
+<tr><td><code>imap_host</code>, <code>imap_port</code></td><td>The incoming-mail server. Port 993 is the usual encrypted port.</td></tr>
+<tr><td><code>smtp_host</code>, <code>smtp_port</code></td><td>The outgoing-mail server. Port 465 is commonly used for SMTPS; omitting these fields makes the account read-only.</td></tr>
+<tr><td><code>verify_tls</code></td><td>Server certificate verification. Installation always enables it; turning it off weakens security and is not a normal configuration.</td></tr>
 </tbody></table>
-<p>Contract example, with secret values replaced by placeholders:</p>
-<pre><code>set_credentials(
-  binding="smtp_work",
-  fields={
-    "user": "person@example.test",
-    "password": "&lt;password&gt;",
-    "imap_host": "imap.example.test",
-    "imap_port": 993,
-    "smtp_host": "smtp.example.test",
-    "smtp_port": 465,
-    "verify_tls": true
-  }
-)</code></pre>
-<p>During an interactive installation, the <em>Sensitive data</em> phase can
-create one or more accounts. After installation, the same structure can be
-stored with <code>set_credentials</code>; values enter the local encrypted
-vault, while responses and telemetry expose metadata only.</p>
+<p class="note">Passwords must never appear in manifests, logs, or
+documentation. The credential flow intercepts them before the request reaches
+the planner, encrypts them, and leaves a secret-free placeholder in their
+place.</p>
+
+<h2>What Metnos can do</h2>
+<p><code>read_messages</code> can read one mailbox, a named selection, or all
+available accounts. If one account fails, the result separates successfully
+read messages from errors and never loses their source-mailbox identity.
+<code>send_messages</code> uses SMTP for delivery. Once a message has been
+accepted by the server, Metnos cannot recall it, so sending is not undoable.</p>
+<p><code>move_messages</code> moves mail between folders and is undoable when
+the server allows Metnos to record and retrace the move. Metnos uses the atomic
+<code>MOVE</code> command when available; otherwise it proceeds only when it can
+copy and remove exactly the selected messages. If it cannot guarantee that,
+the mailbox is left unchanged.</p>
+<p>An IMAP identifier is meaningful only inside the mailbox and folder that
+produced it. An identifier supplied directly must therefore include its account
+and source folder. When it comes from a preceding read, Metnos preserves this
+context automatically and never guesses a default mailbox.</p>
+
+<h2>The Gmail case</h2>
+<p class="ok">Google Workspace is a separate, OAuth-authorized integration
+built on the Gmail APIs. It handles Gmail concepts such as threads and labels.
+For example, <code>set_messages</code> adds or removes labels and can undo the
+change; it does not manage flags in a generic IMAP mailbox.</p>
+<p><code>move_messages</code> also works with Gmail, where it operates on the
+labels defined by the provider. Gmail message IDs do not follow IMAP UID rules,
+because Google defines their identity scope.</p>
 
 <h2>Compatibility with earlier configurations</h2>
 <p>A mode-<code>0600</code> file at
@@ -62,25 +82,5 @@ vault, while responses and telemetry expose metadata only.</p>
 <code>PORT_SMTP</code>, <code>USER</code>, <code>PASS</code>, and
 <code>VERIFY_TLS</code>. The encrypted vault takes precedence; the file is a
 compatibility and migration path.</p>
-
-<h2>Boundaries</h2>
-<p class="ok"><code>read_messages</code> reads IMAP;
-<code>send_messages</code> sends SMTP; <code>move_messages</code> manages IMAP
-folders. Gmail labels, Gmail threads, and other provider-specific features
-remain in the Google Workspace backend.</p>
-<p>Moving a message to Trash never expunges an entire folder. Metnos uses the
-server's atomic <code>MOVE</code> operation when available; otherwise it proceeds
-only when it can copy, mark, and expunge exactly the selected UIDs. If the
-server cannot provide those guarantees, the operation fails without changing
-the mailbox. UIDs remain bound to their source account and folder: results from
-different accounts are never forwarded to one ambiguous move. When IMAP UIDs
-are supplied directly instead of coming from a preceding read step, both the
-account and source folder must be explicit. Metnos rejects an unbound UID
-before contacting the backend; it never guesses the default mailbox. This
-requirement does not apply to Gmail message IDs, whose provider supplies their
-own identity scope.</p>
-<p class="note">Passwords must not be placed in documentation, manifests, or
-logs. When supplied through a chat credential flow, they are extracted before
-the planner, encrypted, and replaced by a redaction marker.</p>
 </body>
 </html>
