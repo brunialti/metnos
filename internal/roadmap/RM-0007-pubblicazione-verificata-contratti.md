@@ -1,10 +1,9 @@
 # RM-0007 — Pubblicazione verificata delle varianti linguistiche dei contratti
 
-> `RM-0007` · stato `active` · definita `2026-08-24` · revisione KISS
-> `2026-08-25` · **controrevisione esterna eseguita il 2026-08-25: approvabile
-> con quattro rilievi bloccanti di specifica (§17)** · implementazione vietata
-> fino alla risoluzione di B1-B3 e alla decisione di Roberto su B4 · proposta
-> ADR 0223 · documento interno
+> `RM-0007` · stato `ready` · definita `2026-08-24` · specifica KISS
+> consolidata `2026-08-25` · controrevisioni conservate nel rapporto collegato
+> e risolte dalla matrice §17 · ADR 0223 ancora `proposed` fino a M4 · documento
+> interno
 
 ## 1. Esigenza
 
@@ -44,7 +43,7 @@ conserva prove, fotografie e revisioni avversariali.
 Questa è la garanzia minima che serve per rendere bloccanti i controlli di
 RM-0002 senza trasformare RM-0007 in un nuovo sistema di packaging.
 
-## 2. Decisione KISS candidata
+## 2. Decisione KISS
 
 La prima stesura proponeva un deposito generale di contratti e codice,
 envelope e ricevute firmati, binding della release, un nuovo runner, recupero
@@ -55,7 +54,7 @@ rispondeva a tre problemi distinti:
 - deploy tecnico atomico di manifest e codice;
 - identità dei byte eseguiti fino al momento dell'invocazione.
 
-RM-0007 conserva soltanto il primo. La versione candidata usa:
+RM-0007 conserva soltanto il primo. La versione normativa usa:
 
 1. una fotografia immutabile dei byte verificati;
 2. firma e verifica come operazioni pure in memoria;
@@ -92,7 +91,8 @@ errore i tre file.
   quelli verificati;
 - nuovo runner, package manager o formato di release;
 - pubblicazione atomica del codice tecnico;
-- transazione di una lingua intera o dell'intero catalogo;
+- transazione ordinaria di pubblicazione per una lingua intera o per più
+  contratti; il solo marker globale di migrazione di §4.3 resta compreso;
 - protezione da un processo arbitrario eseguito come lo stesso utente Metnos;
 - filesystem di rete, FAT e supporti non certificati;
 - raccolta automatica delle generazioni non referenziate;
@@ -111,6 +111,25 @@ censimento delle dipendenze, codice content-addressed o binding della release e
 modifica dei runner. Questo lavoro è separato in `EXEC-BIND-001`; attribuirlo a
 RM-0007 renderebbe falsa la qualificazione KISS.
 
+Su Windows/NTFS la sostituzione atomica di un file chiuso protegge dal crash
+del processo, ma la libreria standard non offre una barriera di durabilità per
+la directory equivalente a quella disponibile sui filesystem Linux ammessi.
+La v1 certifica quindi atomicità e recupero dopo arresto del processo su NTFS;
+non promette che l'ultimo puntatore sopravviva a una perdita improvvisa di
+alimentazione. Il lettore apre, legge e chiude subito `current`; il publisher
+riprova per un tempo finito le sole violazioni di condivisione transitorie.
+
+Il confine una-tantum di cutover è più restrittivo. Su Linux M4 scrive il
+marker temporaneo, esegue `fsync` sul file, lo rinomina e sincronizza la
+directory padre; dopo lo swap sincronizza di nuovo la directory padre. Su
+Windows apre il marker definitivo con `CreateFileW(FILE_FLAG_WRITE_THROUGH)`,
+scrive `v1\n`, chiama `FlushFileBuffers()` sullo stesso handle e lo chiude;
+sposta poi la directory shadow, già completa e sullo stesso volume, verso il
+nome produttivo assente con `MoveFileExW(MOVEFILE_WRITE_THROUGH)`. Ogni errore
+delle primitive native interrompe il cutover senza dichiararlo concluso.
+Questo requisito non trasforma ogni publish ordinario in una transazione
+contro perdita di alimentazione.
+
 ### 3.4 Invarianti non negoziabili
 
 1. La pubblicazione linguistica non calcola un nuovo digest del codice.
@@ -125,33 +144,84 @@ RM-0007 renderebbe falsa la qualificazione KISS.
 9. Il registro i18n non concede percorsi né autorità di firma.
 10. Un errore lascia corrente l'ultima generazione valida.
 11. Nessuna regola dipende dal nome dell'executor o da una lingua specifica.
+12. Il digest del codice si risolve sempre dalla directory del manifest
+    sorgente censita dall'inventario, mai dalla directory della generazione;
+    ogni percorso risolto deve inoltre ricadere in una delle radici di codice
+    ammesse per quella sorgente.
+13. Prima di dichiarare un retry già eseguito si rilegge e si verifica
+    integralmente `current`; l'idempotenza richiede l'intera postcondizione
+    desiderata, identificata dalla stessa generazione, non la sola presenza
+    delle patch.
+14. Nel percorso vivo attivato da M4, una pubblicazione linguistica aggiorna
+    anche i tre file di authoring in modo idempotente. Una successiva
+    pubblicazione tecnica non può eliminare o regredire testi e provenienza
+    linguistica già correnti.
+15. Ogni lettore vivo e ogni scrittore cooperante del contratto passa dal
+    confine censito in §8; nessun percorso alternativo può diventare vivo per
+    semplice scrittura o firma.
+16. Dopo che esiste il marker o la radice produttiva, nessuna loro assenza o
+    corruzione può riattivare automaticamente il layout legacy.
+17. Dopo il cutover l'inventario fornisce soltanto binding strutturali; non
+    legge manifest di authoring per decidere contenuto, nome o lifecycle vivi.
+18. Ogni pubblicazione tecnica acquisisce il writer lock una sola volta nel
+    publisher; firma offline, lock annidati e sequenze sign-then-publish non
+    costituiscono il flusso operativo.
 
 ## 4. Modello persistente minimo
 
 ### 4.1 Layout
 
 ```text
-PATH_USER_STATE/contract-publications/v1/
-  <contract-key>/
-    writer.lock
-    current
-    generations/
-      <generation-id>/
-        manifest.toml
-        manifest.toml.sig
-        manifest.lang_state.json
+PATH_USER_STATE/
+  contract-publications.ACTIVE
+  contract-publications-shadow/<nonce>/v1/
+    <contract-key>/...
+  contract-publications/v1/
+    <contract-key>/
+      binding.json
+      writer.lock
+      current
+      generations/
+        <generation-id>/
+          manifest.toml
+          manifest.toml.sig
+          manifest.lang_state.json
 ```
 
-Durante la preparazione si usa una directory temporanea senza nome autorevole
-nella stessa directory di `generations/`. Non serve uno staging persistente né
-una procedura automatica di raccolta.
+La radice shadow è distinta dalla radice produttiva e non viene mai consultata
+dal loader. Dentro una singola pubblicazione si usa inoltre una directory
+temporanea non autorevole nella stessa directory `generations/`. Non serve un
+journal persistente né una procedura automatica di raccolta.
 
 `contract-key` deriva dall'identità canonica restituita dall'inventario comune
 di RM-0002. Il registro i18n fornisce un'identità di risorsa, mai un path di
 destinazione. Il deposito rifiuta componenti `..`, symlink o reparse point del
 deposito, file non regolari e percorsi risolti fuori dalla radice configurata.
 
-`current` contiene una sola riga:
+`binding.json` è immutabile e contiene soltanto, in JSON canonico,
+`{"contract_id":"<origin>:<relative_manifest>","schema_version":1}` più una
+newline finale. Non contiene nomi, lifecycle, hash del manifest, path assoluti
+o radici. Il nome `<contract-key>` deve essere il SHA-256 esadecimale del
+`ContractId` canonico contenuto nel binding. Un binding assente, modificato,
+duplicato o non corrispondente alla directory è `binding_invalid`.
+Alla prima pubblicazione viene scritto con temporaneo sibling, flush, chiusura
+e rename senza sovrascrittura. Un retry può riusare soltanto un binding
+byte-identico; il binding non entra nell'hash della generazione e non viene mai
+aggiornato.
+
+Dopo il cutover il loader enumera soltanto le directory contratto e i loro
+binding. Dalla mappa generale e versionata degli origin ricostruisce in modo
+deterministico `source_root`, `manifest_path` e `allowed_code_roots`, senza
+aprire il manifest di authoring; nome, lifecycle, schema e ogni altro contenuto
+vivo provengono esclusivamente dalla generazione verificata. L'eventuale stato
+abilitato/disabilitato continua a provenire dal registro operativo generale
+delle skill, usando l'identità strutturale, non dal manifest sorgente. Non
+esiste un indice globale dei binding.
+
+Nel disegno precedente `<generation-id>` indicava anche la forma logica. Sul
+filesystem il nome della directory è invece **soltanto il digest esadecimale
+minuscolo di 64 caratteri**, senza `sha256:`: i due punti non sono portabili su
+NTFS. `current` contiene l'identificatore logico completo su una sola riga:
 
 ```text
 sha256:<64 cifre esadecimali>
@@ -182,20 +252,107 @@ def generation_id(files: Mapping[str, bytes]) -> str:
 ```
 
 Il lettore ricalcola sempre il digest. Una directory già esistente con lo
-stesso identificatore ma byte diversi è corruzione e blocca il contratto.
+stesso identificatore ma byte diversi è corruzione e blocca il contratto. La
+conversione fra identificatore logico `sha256:<hex>` e nome fisico `<hex>` è
+totale e unica; qualunque altra forma viene rifiutata.
 
-### 4.3 Autorità dello stato linguistico
+Se la directory finale esiste già, il publisher non la sostituisce e non la
+cancella. Verifica che contenga esattamente i tre file regolari previsti, senza
+file aggiuntivi, link simbolici o reparse point. Se nomi e byte coincidono,
+riusa la generazione e ripete comunque la barriera di durabilità della
+directory prima di procedere al puntatore; se differiscono o la struttura non
+è valida, restituisce `generation_corrupt`. Non viene mai eseguito
+`os.replace()` fra directory di generazione.
+
+### 4.3 Confine globale di cutover
+
+`contract-publications.ACTIVE` contiene esattamente `v1\n`. È un confine di
+migrazione irreversibile per il bootstrap, non seleziona una generazione e non
+autorizza contenuti. Il loader applica queste regole in ordine:
+
+1. radice produttiva e marker entrambi assenti: layout legacy;
+2. radice produttiva presente: layout solo-deposito, anche se il marker manca;
+3. marker presente e radice produttiva assente o incompleta: fail-closed,
+   cutover da riprendere;
+4. in nessun altro caso è ammesso il fallback legacy.
+
+La perdita o l'assenza del solo marker non può quindi riattivare il layout
+legacy dopo lo swap. La radice shadow, collocata fuori dalla radice produttiva,
+non influisce sul bootstrap. Il marker viene reso durevole **prima** dello
+swap con le primitive precise di §3.3 e resta poi permanente. La directory
+shadow completa viene rinominata globalmente in `contract-publications` sullo
+stesso volume: Linux usa `rename()` seguito da `fsync` della directory padre;
+Windows richiede destinazione assente e usa
+`MoveFileExW(MOVEFILE_WRITE_THROUGH)`. Un arresto prima del marker lascia il
+legacy; dopo il marker lascia il sistema fail-closed o store-only, mai di
+nuovo legacy. La v1 non introduce una modalità ibrida per contratto né una
+seconda autorità sul contenuto.
+
+Il cutover è una breve operazione di manutenzione quiescente. Il gate blocca
+nuovi turni, scheduler e publisher, attende la fine dei turni già ammessi e
+disabilita reload e watcher del catalogo. Il processo di migrazione diventa
+l'unico writer, rigenera l'inventario, confronta l'insieme esatto dei
+`ContractId` e riverifica binding, firme e digest sul codice corrente. Dopo il
+marker e lo swap esegue, con gli ingressi ancora chiusi, un caricamento
+store-only completo e un restart/swap globale controllato. Solo se entrambi
+sono verdi riabilita reload, scheduler, publisher e nuovi turni. Non si
+introduce un lock globale nel percorso ordinario.
+
+### 4.4 Autorità dello stato linguistico
 
 `manifest.lang_state.json` conserva provenienza e hash utili al workflow
 RM-0005. Non decide quale executor venga caricato e non richiede una seconda
 firma. È incluso nella generazione per evitare che il workflow osservi uno
 stato appartenente a un manifesto diverso.
 
-Lo stato deve almeno conservare, per selettore canonico e lingua:
+Il formato canonico v1 è un oggetto JSON con le sole chiavi di primo livello
+`schema_version` (intero `1`) e `selectors` (oggetto). Le chiavi di
+`selectors` sono:
+
+- `description` per la descrizione del contratto;
+- `args.properties.<name>.description` per la descrizione di un argomento.
+
+La forma legacy `args.<name>.description` non è un alias: viene rifiutata dal
+deposito. M4 migra una sola volta i companion esistenti e corregge tutti i
+produttori, compresi `runtime/sign.py`, `runtime/synth_request.py` e
+`runtime/migrate_manifest_descriptions.py`. La migrazione parsifica il
+manifest e ricostruisce l'insieme autorevole delle risorse localizzate: per
+ciascuna risorsa emette il selettore canonico, aggiunge le voci mancanti e
+scarta con evidenza di audit le voci che non corrispondono più a una risorsa.
+Se il vecchio `version_hash` coincide con il testo corrente, conserva
+`source_lang` e `source_hash` soltanto se il tag sorgente è canonico, quella
+lingua esiste nella stessa risorsa e l'hash coincide con il suo testo corrente;
+in caso contrario azzera la provenienza. Se `version_hash` non coincide,
+calcola quello corrente e azzera entrambi i campi di provenienza, perché non è
+più dimostrabile a quale testo appartenessero. Collisioni fra due voci legacy
+che pretendono la stessa risorsa interrompono la migrazione. Il risultato
+viene sottoposto alla validazione stretta v1 prima di essere scritto: non si
+rinominano chiavi alla cieca e non si conserva provenienza non verificabile.
+
+La fotografia iniziale del 2026-08-25 ha misurato 107 companion, 630 selettori
+corti, nessun selettore canonico, 27 `version_hash` non corrispondenti al testo
+corrente e 12 selettori orfani. Sono dati di caratterizzazione per le prove M0,
+non conteggi ammessi nel codice o criteri di successo della migrazione.
+
+Per ogni selettore e lingua lo stato conserva:
 
 - `version_hash` del testo pubblicato;
 - `source_lang`;
 - `source_hash`.
+
+Queste sono le sole tre chiavi ammesse. `version_hash` è sempre
+`sha256:<64hex>` minuscolo; `source_lang` è un tag normalizzato oppure `null` e
+`source_hash` è `sha256:<64hex>` oppure `null`, coerentemente con l'assenza di
+una lingua sorgente. Campi sconosciuti e combinazioni parziali sono rifiutati.
+
+I tag di lingua sono normalizzati con `i18n_registry.normalize_language()`.
+La serializzazione canonica usa UTF-8, `sort_keys=True`,
+`ensure_ascii=False`, separatori JSON compatti `(",", ":")` e una sola
+newline finale. Chiavi, tag o hash non canonici sono rifiutati prima del
+calcolo della generazione. Tutti i produttori usano la stessa funzione di
+codifica posseduta da `runtime/i18n_materializer.py`: l'identità non dipende
+dall'ordine di inserimento. Non si duplicano encoder in `sign.py`, nel
+publisher o negli script di migrazione.
 
 Non contiene `generation_id`. Se il processo si arresta dopo il cambio del
 puntatore ma prima dell'aggiornamento del registro, il retry confronta questi
@@ -214,7 +371,8 @@ recovery, envelope o receipt.
 class VerifiedManifest:
     contract_id: ContractId
     generation_id: str | None
-    source_root: Path
+    source_manifest_dir: Path
+    allowed_code_roots: tuple[Path, ...]
     manifest_bytes: bytes
     manifest_hash: str
     parsed: Mapping[str, object]
@@ -235,18 +393,31 @@ La funzione di verifica:
 4. ricava `code.files` dal mapping già parsificato;
 5. richiede che identità del manifest, `ContractId` e riferimento
    dell'inventario coincidano;
-6. calcola il digest attraverso le radici ammesse associate a `ContractId`;
+6. risolve ogni voce di `code.files` rispetto a
+   `ManifestRef.manifest_dir`, anche quando contiene `../`, e dopo la
+   risoluzione richiede che il file ricada in una delle `allowed_code_roots`
+   associate alla sorgente; non usa mai la directory della generazione come
+   base;
 7. verifica lo stato e, per una generazione, il suo identificatore;
 8. restituisce il valore immutabile.
 
 Il loader usa `VerifiedManifest.parsed` e non riapre `manifest.toml`.
+Il nome del campo resta **`parsed`** in loader, cache, prove e documentazione;
+non introdurre alias come `manifest`, `data` o `payload`.
+
+Prima del cutover l'inventario completo può parsificare l'authoring per audit e
+migrazione. Dopo il cutover usa una modalità strutturale distinta: enumera
+`binding.json`, valida `storage_key`, ricostruisce il `ManifestRef` dalla mappa
+degli origin e non legge i byte del manifest sorgente. Il `ManifestRef` passato
+al deposito concede soltanto identità, directory sorgente e radici ammesse;
+`VerifiedManifest.parsed` concede il contenuto vivo.
 
 ### 5.2 Firma pura
 
 In `runtime/sign.py`:
 
 ```python
-def sign_manifest_bytes(manifest_bytes: bytes, *, key_name: str) -> bytes: ...
+def sign_manifest_bytes(manifest_bytes: bytes, *, private_key: Ed25519PrivateKey) -> bytes: ...
 
 def verify_manifest_bytes(
     manifest_bytes: bytes,
@@ -257,43 +428,110 @@ def verify_manifest_bytes(
 ```
 
 Entrambe sono pure rispetto al filesystem. `sign_executor()` resta un
-involucro per le sorgenti di authoring e usa le primitive pure; la pubblicazione
-linguistica non lo chiama.
+involucro per le sorgenti di authoring: carica la chiave e passa l'oggetto alla
+primitiva pura. Anche `trusted_publics` contiene chiavi pubbliche e identità già
+risolte in memoria; nessuna delle due primitive riceve nomi di chiave, path o
+configurazione e nessuna accede al filesystem. La pubblicazione linguistica
+non chiama `sign_executor()`.
 
 ### 5.3 API pubblica
 
 ```python
-def current_manifest(contract_id: ContractId) -> VerifiedManifest: ...
+def current_manifest(
+    ref: ManifestRef,
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+) -> VerifiedManifest: ...
 
 def publish_localization(
-    contract_id: ContractId,
+    ref: ManifestRef,
     *,
     expected_generation_id: str,
     source_language: str,
     target_language: str,
     patches: tuple[LocalizationPatch, ...],
+    private_key: Ed25519PrivateKey,
+    trusted_publics: Iterable[TrustedPublic],
+) -> PublicationResult: ...
+
+def publish_technical_update(
+    ref: ManifestRef,
+    *,
+    expected_generation_id: str | None,
+    draft: TechnicalDraft,
+    private_key: Ed25519PrivateKey,
+    trusted_publics: Iterable[TrustedPublic],
+    removal: SurfaceRemoval | None = None,
 ) -> PublicationResult: ...
 
 def publish_signed_source(
     ref: ManifestRef,
     *,
     expected_generation_id: str | None,
+    trusted_publics: Iterable[TrustedPublic],
+    removal: SurfaceRemoval | None = None,
 ) -> PublicationResult: ...
 
+def activate_store(
+    expected_catalog: Mapping[ContractId, str],
+    *,
+    shadow_root: Path,
+    trusted_publics: Iterable[TrustedPublic],
+) -> None: ...
+
 def rollback(
-    contract_id: ContractId,
+    ref: ManifestRef,
     *,
     expected_generation_id: str,
     target_generation_id: str,
+    actor: str,
     reason: str,
+    trusted_publics: Iterable[TrustedPublic],
 ) -> PublicationResult: ...
 ```
+
+`TechnicalDraft` contiene i byte proposti di manifest e stato e gli hash della
+fotografia di authoring da cui derivano; non contiene chiavi, path concessi o
+codice copiato. `SurfaceRemoval` contiene soltanto l'insieme canonico e non
+vuoto dei selettori rimossi, `actor` e `reason` non vuoti. Non è una scorciatoia
+per cambiare testi: autorizza soltanto rimozioni che corrispondono esattamente
+alla differenza strutturale verificata dello schema.
+
+`activate_store()` confronta l'insieme esatto dei contratti ammessi
+dall'inventario con `expected_catalog`, riverifica binding, `current` e
+generazioni nella radice shadow e applica il protocollo quiescente di §4.3:
+marker durevole prima, swap globale della radice poi. Non accetta sottoinsiemi
+e non modifica manifest, firma o stato. È idempotente soltanto per stati
+completi verificati: marker + radice valida restituiscono `repeated`; marker
+senza radice riprende dallo shadow verificato; radice valida senza marker resta
+store-only e consente di ripristinare il marker in manutenzione. Non cancella
+mai marker o radice e rifiuta una radice preesistente incoerente.
 
 `publish_signed_source()` non genera codice, non lo copia e non ricalcola il
 digest nel manifest. Importa nel deposito una sorgente già firmata, conforme e
 con digest verificato. Consente a installer, generatori e importatori di
 continuare a produrre file di authoring committabili su Git senza farli leggere
 come contratto vivo dopo il cutover.
+
+Il flusso operativo canonico dopo il cutover è un solo comando fail-loud:
+
+```text
+python3 runtime/sign.py publish executors/<nome>
+```
+
+Il sottocomando `publish` carica chiavi e configurazione, fotografa la modifica
+proposta in un `TechnicalDraft` immutabile e chiama una sola volta
+`publish_technical_update()`. È quest'ultima l'unica proprietaria di mutex e
+`writer.lock`: sotto quel lock riverifica base, draft e codice, aggiorna il
+digest in memoria, esegue i controlli, firma, pubblica e riconcilia authoring.
+Gli helper interni che ricevono il suffisso `_locked` non acquisiscono mai il
+lock. Il comando non chiama prima `sign_executor()`, non concatena firma e
+publish e non annida `publish_signed_source()`.
+
+Il vecchio sottocomando `sign` resta disponibile per preparazione offline, ma
+stampa esplicitamente che la sorgente firmata **non è viva**. M4 censisce e
+migra tutti i callsite operativi; non sono ammessi script che simulino il nuovo
+flusso concatenando due comandi indipendenti.
 
 `PublicationResult` contiene soltanto `contract_id`, generazione precedente,
 generazione corrente, operazione e `repeated`. Non è firmato e non diventa una
@@ -304,40 +542,67 @@ seconda autorità.
 Traduzione e revisione semantica avvengono prima. Il publisher non invoca LLM.
 
 1. normalizzare le lingue con `i18n_registry.normalize_language()`;
-2. risolvere `ContractId` e radici ammesse tramite l'inventario comune;
-3. acquisire `writer.lock` con timeout finito;
-4. leggere `current` una sola volta;
-5. se non coincide con `expected_generation_id`, verificare se la generazione
-   corrente contiene già esattamente le patch richieste: in tal caso restituire
-   `repeated=True`; altrimenti `commit_conflict`;
-6. caricare e verificare integralmente la generazione corrente;
-7. confrontare hash della sorgente, del precedente bersaglio e del candidato;
-8. applicare le patch soltanto in memoria;
-9. confrontare strutturalmente base e candidato dopo avere rimosso unicamente i
-   valori bersaglio dei selettori autorizzati;
-10. richiedere che `[code].files` e `[code].digest` siano identici;
-11. ricalcolare il digest dal codice corrente e richiedere che coincida ancora
-    con quello firmato;
-12. eseguire standard executor, linter della lingua bersaglio e controlli del
-    candidato sui byte preparati;
-13. firmare i nuovi byte in memoria e riverificare la firma;
-14. aggiornare in memoria il solo stato linguistico pertinente;
-15. scrivere i tre file in una directory temporanea sullo stesso volume;
-16. ricaricare e verificare la directory temporanea;
-17. sincronizzare i file e chiudere tutti gli handle;
-18. rinominare la directory in `generations/<generation-id>`;
-19. rendere persistente la directory `generations` dove la piattaforma lo
-    consente;
-20. scrivere e sincronizzare un puntatore temporaneo;
-21. sostituire `current` con `os.replace()`;
-22. rendere persistente la directory del contratto dove la piattaforma lo
-    consente;
-23. rilasciare il lock;
-24. riconciliare il registro RM-0005 dagli hash dello stato corrente.
+2. risolvere `ContractId`, `ManifestRef.manifest_dir` e radici ammesse tramite
+   l'inventario comune;
+3. acquisire, nello stesso ordine in ogni API, il mutex di processo del
+   contratto e poi `writer.lock`, entrambi con timeout finito;
+4. leggere `current` una volta e caricare e verificare integralmente la
+   generazione indicata **prima** di valutare conflitto o idempotenza;
+5. caricare e verificare la generazione immutabile
+   `expected_generation_id`, confrontare gli hash di sorgente, bersaglio
+   precedente e candidato, quindi applicare le patch soltanto in memoria;
+6. confrontare strutturalmente base e candidato dopo avere rimosso unicamente
+   i valori bersaglio dei selettori autorizzati;
+7. richiedere che `[code].files` e `[code].digest` siano identici e ricalcolare
+   il digest dal codice corrente usando la directory sorgente e il
+   contenimento di §3.4.12;
+8. eseguire standard executor, linter della lingua bersaglio e controlli del
+   candidato sui byte preparati;
+9. aggiornare in memoria il solo stato linguistico pertinente, serializzarlo
+   nel formato canonico di §4.4, firmare deterministicamente i nuovi byte del
+   manifest e riverificare la firma;
+10. calcolare l'identificatore della **postcondizione completa**, cioè dei tre
+    byte payload desiderati;
+11. se la generazione corrente non coincide con quella attesa, impostare
+    `repeated=True` e passare ai punti 19-21 soltanto quando la corrente
+    verificata ha esattamente l'identificatore e i tre payload desiderati; in
+    ogni altro caso restituire `commit_conflict`;
+12. se la corrente coincide con quella attesa e anche con la postcondizione
+    completa, impostare `repeated=True` e passare ai punti 19-21 senza
+    riscrivere il puntatore;
+13. scrivere i tre file in una directory temporanea non autorevole dentro
+    `generations/`, quindi sullo stesso volume della destinazione;
+14. sincronizzare e chiudere ogni file, ricaricare la directory temporanea e
+    verificarla integralmente;
+15. se `generations/<64hex>` non esiste, rinominare la temporanea con un rename
+    che non sovrascriva; se esiste, applicare il controllo e il riuso esatto di
+    §4.2, altrimenti `generation_corrupt`;
+16. ripetere la barriera di durabilità di `generations/` anche quando la
+    directory è stata riusata; su Windows registrare il limite dichiarato in
+    §3.3;
+17. creare nella directory del contratto un puntatore temporaneo, scriverlo,
+    sincronizzarlo e chiuderlo, quindi sostituire `current` con `os.replace()`;
+    su Windows riprovare per una durata finita le violazioni di condivisione e
+    non cancellare mai prima il vecchio puntatore;
+18. sincronizzare la directory del contratto dove la piattaforma lo consente;
+19. soltanto dopo l'abilitazione M4, con il lock ancora acquisito,
+    riconciliare idempotentemente i tre file di authoring con i tre payload
+    della generazione corrente, usando file temporanei e sostituzioni atomiche
+    per ciascun file, e riverificarli; M3 usa solo fixture isolate e non tocca
+    authoring produttivo;
+20. rilasciare prima `writer.lock` e poi il mutex di processo;
+21. anche nel ramo `repeated=True`, rileggere e riverificare `current` dopo il
+    rilascio e, soltanto quando M4 ha abilitato il percorso vivo, riconciliare
+    il registro RM-0005 dalla fotografia appena letta, mai dal candidato
+    conservato in memoria.
 
-Ogni errore prima del punto 21 lascia invariato `current`. Un errore dopo il
-punto 21 non annulla una pubblicazione già visibile: il retry la riconosce e
-completa la riconciliazione.
+Ogni errore prima del punto 17 lascia invariato `current`. Un errore dopo il
+punto 17 non annulla una pubblicazione già visibile: il retry ricostruisce la
+stessa postcondizione, verifica la generazione eventualmente già presente,
+ripara l'authoring sotto lock e riconcilia il registro da una nuova lettura
+quando il percorso M4 è vivo.
+Se un altro writer pubblica fra il rilascio e il punto 21, la rilettura evita
+che una fotografia obsoleta ripristini nel registro lo stato precedente.
 
 ### 6.1 Blocco portabile
 
@@ -345,66 +610,130 @@ Il lock è implementato nello stesso `contract_store.py`:
 
 - file permanente, mai cancellato come protocollo di rilascio;
 - Linux: `fcntl.flock`;
-- Windows: `msvcrt.locking` sul primo byte di un file regolare;
-- tentativi non bloccanti fino a una scadenza monotona;
+- Windows: file regolare permanente lungo almeno un byte; apertura una sola
+  volta, `seek(0)` e `msvcrt.locking()` sul primo byte; acquisizione e rilascio
+  usano lo stesso handle, che resta aperto per tutta la sezione critica;
+- un mutex in-process per `ContractId` precede sempre il lock del sistema
+  operativo, perché i lock a intervallo non serializzano in modo uniforme due
+  thread dello stesso processo su tutte le piattaforme;
+- tentativi non bloccanti con attesa limitata fino a una scadenza monotona;
 - errore stabile `lock_timeout`;
 - nessun lock basato sulla sola esistenza del file.
 
 Tutti gli scrittori Metnos che possono cambiare la sorgente tecnica dello stesso
-contratto acquisiscono il medesimo lock. Il lock serializza gli scrittori
-cooperanti; `expected_generation_id` impedisce di usare un candidato preparato
-prima dell'acquisizione e ormai obsoleto.
+contratto passano da un'API di pubblicazione che acquisisce il medesimo lock.
+Un chiamante non acquisisce il lock prima di invocarla. Il lock serializza gli
+scrittori cooperanti; `expected_generation_id` impedisce di usare un candidato
+preparato prima dell'acquisizione e ormai obsoleto.
 
-### 6.2 Importazione di una sorgente firmata
+### 6.2 Pubblicazione tecnica
 
-`publish_signed_source()` esegue sotto lo stesso lock:
+`publish_technical_update()` è il percorso del comando `sign.py publish` e
+possiede l'intera transazione:
 
-1. confronta la generazione corrente con quella attesa;
-2. legge una sola fotografia di manifest, firma e stato dalla sorgente;
-3. verifica identità, firma, digest, standard executor e ammissione tecnica;
-4. non modifica né rifirma i byte ricevuti;
-5. crea e verifica la generazione con l'algoritmo di §4.2;
-6. pubblica il puntatore con i punti 15-22 di §6.
+1. acquisisce una sola volta mutex e `writer.lock`; nessun chiamante e nessun
+   helper interno li acquisisce di nuovo;
+2. rilegge e verifica integralmente `current` prima di confronto o
+   idempotenza. Per un contratto nuovo ammette `expected_generation_id=None`
+   soltanto se `current` e cronologia non esistono; crea quindi il binding
+   immutabile prima della prima generazione o riusa un binding byte-identico
+   lasciato da un tentativo interrotto. Una cronologia senza
+   `current` è corruzione, non inizializzazione;
+3. richiede che gli hash di authoring contenuti nel draft coincidano ancora
+   con i file sorgente, così il mirror non sovrascrive un edit concorrente;
+4. confronta draft e generazione corrente, applica la politica linguistica di
+   §6.3 e verifica la differenza tecnica completa;
+5. calcola il digest dal codice corrente usando base sorgente e containment,
+   aggiorna soltanto `[code].digest` nei byte in memoria e riverifica standard,
+   ammissione e controlli RM-0002 richiesti;
+6. firma i byte in memoria con l'oggetto chiave ricevuto, riverifica subito la
+   firma e costruisce lo stato canonico;
+7. applica postcondizione, idempotenza, generazione e puntatore con lo stesso
+   algoritmo di §6;
+8. soltanto nel percorso produttivo abilitato da M4, riconcilia authoring sotto
+   lo stesso lock; dopo il rilascio rilegge `current` e riconcilia il registro.
 
-Una sorgente modificata durante la lettura non viene ammessa: firma, digest o
-seconda verifica della directory preparata falliscono. Gli strumenti che
-modificano in posto una sorgente già ammessa devono acquisire `writer.lock`;
-gli strumenti che producono una directory nuova possono lavorare fuori dal
-lock e acquisirlo soltanto attraverso `publish_signed_source()`.
+`publish_signed_source()` resta il confine per una sorgente importata già
+firmata. Possiede a sua volta un solo lock, non chiama
+`publish_technical_update()` e non rifirma: verifica gli stessi vincoli di
+base, codice, lingua, rimozione e postcondizione prima di delegare agli helper
+`_locked`. Installer e generatori locali usano invece
+`publish_technical_update()`.
+
+### 6.3 Politica generale degli aggiornamenti tecnici
+
+Un publish tecnico può cambiare codice, schema e superfici senza eccezioni per
+executor, ma non può usare la firma dell'autore per aggirare il controllo
+linguistico:
+
+- ogni coppia selettore/lingua già presente conserva **identici** testo e stato;
+  la modifica di un testo esistente passa da `publish_localization()`;
+- ogni lingua già corrente resta rappresentata in tutte le superfici ancora
+  applicabili;
+- nuovi selettori e nuove lingue sono ammessi, ma devono avere copertura
+  completa, stato canonico e superare linter locale e parità RM-0002 contro le
+  altre lingue; il publisher non genera né completa traduzioni;
+- il comando ordinario rifiuta qualunque rimozione di selettore;
+- una rimozione di schema è ammessa soltanto con `SurfaceRemoval`: la lista
+  deve coincidere esattamente con i selettori scomparsi, ciascuno deve non
+  essere più applicabile al nuovo schema, e attore, motivo e diff vengono
+  registrati nell'audit. La lista non autorizza modifiche o rimozioni diverse.
+
+La prova di non regressione obbligatoria è: pubblicazione linguistica,
+modifica soltanto tecnica del codice, `sign.py publish`, nuova generazione con
+il nuovo digest e con testi e provenienza precedenti identici. Le prove
+aggiungono inoltre un nuovo argomento multilingue valido, rifiutano una nuova
+superficie incompleta e distinguono la rimozione ordinaria da quella esplicita
+e auditata.
 
 ## 7. Lettura, sorgenti e ripristino
 
 ### 7.1 Loader
 
-Per un contratto migrato il loader:
+Il bootstrap applica la matrice di §4.3: usa il catalogo legacy soltanto quando
+marker e radice produttiva sono entrambi assenti. In modalità deposito:
 
-1. legge `current` una sola volta;
-2. valida la forma dell'identificatore;
-3. carica la directory immutabile indicata;
-4. ricalcola l'identificatore e costruisce `VerifiedManifest`;
-5. costruisce l'executor da `VerifiedManifest.parsed`.
+1. enumera le directory `<contract-key>` e legge soltanto `binding.json`;
+2. verifica versione, `ContractId`, corrispondenza dello storage key e unicità;
+3. ricostruisce un `ManifestRef` strutturale dalla mappa generale degli origin,
+   senza aprire il manifest sorgente;
+4. passa quel `ManifestRef` a `current_manifest(ref, ...)`;
+5. legge `current` una sola volta, valida l'identificatore, ricalcola la
+   generazione e costruisce `VerifiedManifest`;
+6. costruisce l'executor esclusivamente da `VerifiedManifest.parsed`.
 
 Un avvio a freddo con puntatore malformato, generazione assente o firma non
 valida rifiuta quel contratto. Non sceglie “la directory più recente” e non
-ripiega silenziosamente sulla sorgente di authoring.
+ripiega silenziosamente sulla sorgente di authoring. Marker presente con
+radice mancante blocca l'intero bootstrap; radice presente con marker mancante
+resta store-only e segnala il marker da ripristinare in manutenzione.
 
 ### 7.2 Sorgenti tecniche
 
 Manifest e codice nel repository, negli import o nelle directory di generazione
 restano sorgenti di authoring. Possono essere creati, provati e firmati con gli
 strumenti esistenti. Diventano vivi soltanto attraverso
+`publish_technical_update()` oppure, per import già firmati,
 `publish_signed_source()`.
+
+Il comando quotidiano è `python3 runtime/sign.py publish <directory>` (§5.3).
+Il solo `sign` prepara una sorgente offline e non promette che sia viva.
 
 Questo evita un divieto indiscriminato di `write_text()`: la guardia statica
 deve vietare scritture dentro il deposito e letture vive dalle sorgenti per i
-contratti migrati, non impedire a generatori e installer di preparare artefatti.
+contratti dopo il cutover globale, non impedire a generatori e installer di
+preparare artefatti.
 
 ### 7.3 Ripristino
 
 `rollback()` acquisisce il lock, verifica che `current` coincida con la
 generazione attesa, verifica integralmente la generazione scelta e sostituisce
 atomicamente il puntatore. Registra attore e motivo nel normale audit operativo.
-Non copia file e non modifica la generazione precedente.
+Non modifica né duplica alcuna generazione. Prima di rilasciare il lock
+riconcilia i tre file di authoring con quella scelta soltanto nel percorso vivo
+abilitato da M4; dopo il rilascio rilegge `current` e, nello stesso caso,
+riconcilia il registro come in §6. Se un writer è intervenuto nel frattempo,
+prevale sempre la fotografia appena riletta.
 
 Staging incompleti e generazioni complete non referenziate vengono segnalati da
 una diagnostica in sola lettura. La prima versione non li elimina.
@@ -413,27 +742,52 @@ una diagnostica in sola lettura. La prima versione non li elimina.
 
 | File | Modifica obbligatoria | Vietato |
 |---|---|---|
-| `runtime/contract_store.py` | unico nuovo modulo: snapshot, lock, generazioni e pubblicazione | framework di plugin, DB o seconda firma |
-| `runtime/sign.py` | primitive pure; adattatore di authoring | firma linguistica che ricalcola il digest |
-| `runtime/loader.py` | mapping dello snapshot per i contratti migrati | riaprire il manifest o ripiegare in silenzio |
-| `runtime/i18n_pipeline.py` | costruire patch e chiamare `publish_localization()` | scrivere manifest o firma vivi |
+| `runtime/contract_store.py` | unico nuovo modulo: binding, snapshot, lock, generazioni, publisher linguistico/tecnico e cutover | framework di plugin, DB, seconda firma o lock annidati |
+| `runtime/sign.py` | primitive pure; comando `publish` che prepara il draft e delega l'unico lock al deposito; avviso fail-loud per `sign` | sign-then-publish o lock proprio del comando |
+| `runtime/loader.py` | matrice bootstrap marker/radice, binding strutturali e snapshot verificato | leggere authoring post-cutover, modalità ibrida o ripiego silenzioso |
+| `runtime/i18n_pipeline.py` | M3 integrazione isolata/flag off; M4 chiamata viva a `publish_localization()` | scrivere manifest o firma vivi prima del cutover |
+| `runtime/i18n_materializer.py` | unica enumerazione dei selettori e unico decoder/encoder canonico dello stato manifest | copie locali dello schema JSON |
 | `runtime/i18n_activation.py` | validatore reale sulla lingua e sullo snapshot | validatore sempre positivo nel test completo |
 | `runtime/i18n_translator.py` | allineatore ritirato o delegato | secondo publisher linguistico |
-| installer, generatori e importatori | `publish_signed_source()` dopo firma e ammissione | rendere viva una sorgente per semplice scrittura |
-| `runtime/manifest_inventory.py` | dipendenza comune posseduta da RM-0002 | seconda scansione dentro RM-0007 |
+| `runtime/synth_request.py`, `runtime/migrate_manifest_descriptions.py`, `runtime/admin/i18n_migrate_manifests.py` | produrre soltanto selettori e byte-state canonici | forma legacy `args.<name>.description` |
+| installer e generatori locali | `publish_technical_update()` dopo ammissione | firma offline seguita da secondo publish |
+| importatori di artefatti già firmati | `publish_signed_source()` con gli stessi controlli tecnici e linguistici | bypass per provenienza esterna |
+| `runtime/manifest_inventory.py` | prima del cutover inventario completo; dopo, `ManifestRef` strutturali da binding + mappa origin | parsificare authoring come contenuto vivo o indice globale duplicato |
+| `CLAUDE.md` §7.10 | nello stesso commit di cutover, sostituire il flusso firma→riavvio con `sign.py publish` | aggiornamento anticipato o successivo al cutover |
+
+### 8.1 Censimento obbligatorio dei confini
+
+M0 produce un rapporto versionato, ricavato da ricerca statica e prove di
+caratterizzazione, di ogni callsite in `runtime/`, `install/` e `scripts/` che
+legge o scrive `manifest.toml`, `manifest.toml.sig`,
+`manifest.lang_state.json`, chiama firma/verifica oppure costruisce un catalogo
+executor. Per ciascuno registra: file e funzione, lettore o scrittore,
+authoring o vivo, API di destinazione, fase di migrazione e prova.
+
+Il rapporto non usa un elenco numerico cablato: una guardia rigenerabile
+fallisce quando compare un callsite non classificato. M1 non inizia finché
+ogni voce è classificata; M4 non crea `ACTIVE` finché ogni lettore vivo usa
+`current_manifest(ref, ...)` e ogni scrittore vivo usa `publish_localization()`,
+`publish_technical_update()`, `publish_signed_source()` o `rollback()`. Gli
+strumenti che modificano in posto una sorgente ammessa passano dal publisher;
+i generatori di directory nuove entrano nel lock soltanto al publish.
 
 ## 9. Ordine di implementazione
 
 Ogni fase corrisponde a un commit autonomo. Nessuna implementazione deve
-iniziare prima della controrevisione esterna e della promozione di RM-0007 a
-`ready`.
+saltare il gate della precedente. La controrevisione è risolta e RM-0007 è
+`ready`; M0 parte soltanto dopo la consegna di RM-0002 L2, così `ContractId`
+resta proprietà dell'inventario comune e la dipendenza non si inverte.
 
 ### M0 — Caratterizzazione e inventario
 
 - aggiungere prove dei difetti elencati in §1;
-- censire dinamicamente lettori e scrittori vivi;
-- completare l'inventario condiviso previsto da RM-0002 L2;
-- creare fixture Linux/Windows per generazione, conflitto e arresto.
+- produrre il censimento completo e rigenerabile di §8.1;
+- consumare senza duplicarlo l'inventario condiviso consegnato da RM-0002 L2;
+- caratterizzare i percorsi relativi, compreso almeno un contratto reale con
+  `../../`, provando base sorgente e contenimento nelle radici ammesse;
+- creare harness multiprocesso per generazione, conflitto e arresto, eseguibile
+  sia su Linux sia su Windows.
 
 **Gate:** ogni difetto ha una prova causale; nessun conteggio del catalogo è
 cablato.
@@ -441,7 +795,8 @@ cablato.
 ### M1 — Fotografia e firma pura
 
 - estrarre le primitive pure in `sign.py`;
-- implementare `VerifiedManifest` sul layout legacy;
+- implementare `VerifiedManifest` sul layout legacy usando directory sorgente
+  e radici ammesse esplicite;
 - fare usare al loader gli stessi byte verificati dietro flag spento;
 - aggiungere una prova di attivazione col validatore reale.
 
@@ -450,10 +805,13 @@ legacy invariato; primitive pure senza accessi al filesystem.
 
 ### M2 — Deposito minimo
 
-- implementare generazione, puntatore, lock e diagnostica in
+- implementare binding immutabile, generazione, puntatore, lock e diagnostica in
   `contract_store.py`;
-- implementare `publish_signed_source()` e generazione iniziale;
-- provare conflitto, idempotenza e i confini di arresto;
+- implementare `publish_signed_source()` e generazione iniziale soltanto su
+  radice shadow/fixture;
+- provare mutex + lock multiprocesso, conflitto, idempotenza per generazione
+  completa, riuso dopo arresto fra rename e puntatore, corruzione della
+  destinazione, retry finiti di `os.replace()` e ogni confine di arresto;
 - non modificare ancora il loader di produzione.
 
 **Gate:** da una stessa base committa un solo writer; il puntatore indica
@@ -462,25 +820,54 @@ sempre una generazione completa; prova reale Linux e Windows.
 ### M3 — Pubblicazione linguistica
 
 - implementare patch, confronto strutturale e digest preservato;
-- collegare la pipeline RM-0005;
-- delegare o ritirare l'allineatore;
-- distinguere traduzione pubblicata da lingua attivata.
+- implementare `TechnicalDraft`, `publish_technical_update()` e la politica di
+  §6.3, con un solo owner del lock;
+- provare il collegamento alla pipeline RM-0005 soltanto su deposito isolato o
+  dietro flag spento per default;
+- distinguere traduzione pubblicata da lingua attivata;
+- applicare la stessa politica linguistica agli import già firmati.
+
+M3 **non** modifica authoring produttivo, non cambia il registro produttivo e
+non rende vivo il publisher: finché il legacy è autorevole, un mirror sarebbe
+esso stesso una pubblicazione anticipata. Il gate è interno alla migrazione,
+non una preferenza utente: le chiamate sullo store produttivo restituiscono
+`publication_not_active`; soltanto fixture con radice iniettata possono
+abilitarlo. M4 rimuove il blocco nello stesso cutover globale.
 
 **Gate:** nessuna differenza tecnica viene firmata; candidato obsoleto e
 validatore fallito lasciano invariato il puntatore; il retry post-commit è
-idempotente.
+idempotente nelle fixture; flag produttivo ancora spento e nessun file vivo
+mutato.
 
 ### M4 — Migrazione e cutover
 
-- creare generazioni iniziali soltanto da sorgenti valide;
+- migrare una tantum lo stato al formato canonico di §4.4, validando ogni
+  selettore, e correggere tutti i produttori;
+- creare generazioni iniziali soltanto da sorgenti canoniche e valide;
 - confrontare catalogo legacy e versionato in modalità ombra;
-- migrare i produttori a `publish_signed_source()`;
-- attivare il loader a generazioni;
+- migrare i callsite censiti a `publish_technical_update()` oppure, solo per
+  import già firmati, `publish_signed_source()`, e al comando canonico
+  `sign.py publish`;
+- collegare realmente la pipeline RM-0005, attivare la riconciliazione
+  authoring sotto lock e quella del registro da una nuova lettura, quindi
+  delegare o ritirare l'allineatore legacy;
+- entrare in manutenzione quiescente, rigenerare l'inventario e riverificare
+  l'intero deposito contro il codice corrente;
+- creare e rendere durevole `ACTIVE`, eseguire lo swap globale shadow→radice
+  produttiva e caricare il catalogo store-only mentre gli ingressi restano
+  bloccati;
 - aggiungere la guardia statica descritta in §7.2;
-- provare ripristino, aggiornamento e riavvio.
+- nello stesso commit che crea il cutover, aggiornare `CLAUDE.md` §7.10 al
+  flusso `python3 runtime/sign.py publish executors/<nome>`; l'autorizzazione è
+  stata data da Roberto e la modifica non deve precedere né seguire il cutover;
+- provare ripristino, modifica solo tecnica dopo localizzazione, aggiornamento
+  e riavvio.
 
-**Gate:** nessun contratto mescola layout; nessun secondo publisher linguistico;
-nessun executor scompare; due cicli completi verdi.
+**Gate:** legacy soltanto con marker e radice entrambi assenti; la presenza di
+uno dei due vieta ogni fallback; binding completi; nessun secondo publisher
+linguistico; nessun executor scompare; `CLAUDE.md` descrive il comportamento
+vivo; ingressi riaperti solo dopo load/restart globale verde; due cicli completi
+verdi. ADR 0223 resta `proposed` fino al superamento di questo gate.
 
 ## 10. Prove obbligatorie
 
@@ -492,17 +879,42 @@ nessun executor scompare; due cicli completi verdi.
 - selettore non registrato o appartenente a un altro contratto;
 - sorgente o bersaglio cambiati dopo la candidatura;
 - path del registro fuori dall'inventario;
-- lingua BCP-47 non canonica o collidente.
+- lingua BCP-47 non canonica o collidente;
+- `code.files` con `../../` risolto correttamente dalla directory sorgente e lo
+  stesso percorso rifiutato quando, dopo `resolve()`, esce da tutte le radici
+  ammesse;
+- directory della generazione dimostrata estranea alla risoluzione del digest;
+- `binding.json` canonico accettato; contract-key, versione o ContractId
+  incoerenti, binding modificato, duplicato o con path assoluti rifiutati;
+- selettore legacy `args.<name>.description`, selettore inesistente e stato
+  non canonico rifiutati senza alias impliciti;
+- migrazione data-led: risorsa mancante aggiunta, selettore orfano scartato e
+  segnalato, provenienza conservata soltanto con `version_hash` coerente,
+  provenienza azzerata quando il testo è cambiato e collisione rifiutata;
+- serializzazioni ottenute da ordini di inserimento diversi producono gli
+  stessi byte canonici e la stessa generazione.
 
 ### 10.2 Coerenza e concorrenza
 
 - manifest parsificato dagli stessi byte firmati;
+- arresto dopo il binding e prima della prima generazione: retry con binding
+  identico completa; binding differente blocca;
 - file mancante, aggiunto o modificato nella generazione;
 - due promotori dalla stessa generazione: uno solo riesce;
 - stesso candidato ripetuto dopo il commit: successo idempotente;
+- arresto dopo il rename e prima del puntatore: riuso verificato della stessa
+  directory, barriera ripetuta e commit riuscito;
+- directory finale omonima con file extra, symlink/reparse point o byte diversi:
+  `generation_corrupt`, mai sostituzione;
 - candidato diverso con base vecchia: conflitto;
 - loader continuo: soltanto generazione vecchia o nuova;
-- scrittore tecnico cooperante contro publisher linguistico.
+- scrittore tecnico cooperante contro publisher linguistico;
+- due thread nello stesso processo e due processi distinti serializzati;
+- `current` corrotto o non verificabile non può produrre `repeated=True`;
+- writer A seguito da writer B: la riconciliazione fuori lock rilegge B e non
+  ripristina nel registro lo stato di A;
+- `sign.py publish` produce una sola acquisizione del writer lock; un helper che
+  tenta di riacquisirlo fa fallire la prova, non viene tollerato dal timeout.
 
 ### 10.3 Arresti e piattaforme
 
@@ -518,6 +930,13 @@ Le prove vengono eseguite su Linux locale e Windows NTFS reale, non soltanto
 con mock. Il rapporto distingue crash del processo da garanzia contro perdita
 di alimentazione.
 
+Su Windows le prove reali comprendono inoltre: lock e unlock del primo byte
+sullo stesso handle; contesa fra processi con timeout monotono; riuso della
+directory `<64hex>`; assenza di `:` nei nomi; lettore che chiude subito
+`current`; violazione di condivisione transitoria durante `os.replace()` con
+retry finito; nessuna cancellazione preventiva del puntatore. Un mock Windows
+su Linux non soddisfa il gate M2/M4.
+
 ### 10.4 Integrazione
 
 - validatore reale nella lingua bersaglio;
@@ -527,7 +946,39 @@ di alimentazione.
 - generazione iniziale rifiutata se la sorgente non è valida;
 - rollback solo verso generazione verificata;
 - registro riconciliato dopo arresto post-commit;
-- cache invalidata da `generation_id`, non dalla combinazione di `mtime`.
+- cache invalidata da `generation_id`, non dalla combinazione di `mtime`;
+- marker assente con deposito shadow completo: loader solo legacy;
+- marker e radice produttiva entrambi assenti: loader legacy; ciascuna loro
+  presenza separata vieta il fallback;
+- arresto dopo il marker durevole e prima dello swap: bootstrap fail-closed e
+  ripresa del cutover; perdita del marker con radice presente: store-only;
+- retry di cutover con marker + radice valida: `repeated`; radice incoerente:
+  rifiuto senza cancellazione; radice valida senza marker: ripristino soltanto
+  in manutenzione;
+- creazione di `ACTIVE` impossibile se binding o generazione iniziale non sono
+  validi;
+- cutover rifiutato senza quiescenza dimostrata e inventario rigenerato subito
+  prima del marker; nuovi turni, scheduler, publisher, reload e watcher restano
+  bloccati fino a load store-only e restart/swap globale completi e verdi;
+- marker presente con `current` mancante: rifiuto fail-closed e nessun fallback;
+- nuova sorgente authoring dopo `ACTIVE`: resta invisibile finché
+  `sign.py publish` crea binding e prima generazione; `current` mancante con
+  cronologia preesistente resta corruzione e non viene reinizializzato;
+- traduzione pubblicata → modifica solo tecnica → `sign.py publish`: traduzione
+  e provenienza conservate; sorgente stale equivalente rifiutata;
+- nuovo selettore e nuova lingua completi ammessi soltanto dopo linter locale e
+  parità RM-0002; testo esistente modificato e nuova superficie incompleta
+  rifiutati; rimozione ordinaria rifiutata, rimozione con lista esatta e motivo
+  auditata;
+- M3 con flag spento restituisce `publication_not_active` e non modifica
+  manifest, firma, stato o registro produttivi;
+- post-cutover, una sentinella che rende illeggibili i manifest di authoring non
+  impedisce al loader di enumerare binding e caricare il catalogo;
+- ramo idempotente: authoring riparato sotto lock e registro riconciliato da
+  una nuova lettura;
+- censimento rigenerato senza callsite lettori o scrittori non classificati;
+- `sign` solo restituisce un messaggio inequivoco “firmato, non pubblicato” e
+  `publish` fallisce se il puntatore finale non è quello atteso.
 
 ## 11. Rischi
 
@@ -538,11 +989,16 @@ di alimentazione.
 | manifest, firma e stato incoerenti | bloccante | generazione immutabile e puntatore unico |
 | aggiornamento perso | alta | lock e generazione attesa |
 | path del registro diventa autorità | alta | `ContractId` dall'inventario |
+| digest risolto dalla generazione o fuori radice | bloccante | base sorgente censita + containment dopo `resolve()` |
+| retry confonde patch presenti con commit completo | alta | riverifica `current` + uguaglianza del `generation_id` desiderato |
+| pubblicazione tecnica cancella o bypassa traduzioni | bloccante | politica §6.3 + controlli RM-0002 + rimozione esplicita auditata |
 | writer legacy resta vivo | alta | cutover e guardia statica mirata |
+| catalogo ibrido o ritorno implicito al legacy | bloccante | shadow separata; marker durevole prima dello swap; root o marker vietano fallback |
+| authoring torna contenuto vivo post-cutover | bloccante | binding minimo + `current_manifest(ref)` + `VerifiedManifest.parsed` |
 | puntatore corrotto al cold boot | alta | rifiuto del contratto, nessuna scelta euristica |
 | codice cambia dopo la verifica | alta, residua | digest rifiutato al load; EXEC-BIND-001 per garanzia forte |
 | semantica Windows diversa | alta | prova NTFS reale |
-| crescita dello spazio | media | rapporto; nessuna GC prematura |
+| crescita dello spazio | bassa | circa 7,5 KB per generazione misurati; rapporto, nessuna GC prematura |
 
 ## 12. Criteri di completamento
 
@@ -555,16 +1011,33 @@ RM-0007 passa a `implemented` soltanto quando:
 - un candidato obsoleto non cambia il puntatore;
 - due scrittori non perdono aggiornamenti;
 - il registro i18n non concede path;
+- il digest usa la directory sorgente e non può uscire dalle radici ammesse;
+- selettori e byte dello stato linguistico rispettano l'unico formato canonico;
 - il validatore reale è coperto dall'attivazione;
 - l'allineatore non è un secondo publisher;
-- le sorgenti non diventano vive senza `publish_signed_source()`;
+- le sorgenti non diventano vive senza `publish_technical_update()` o
+  `publish_signed_source()`;
+- una pubblicazione tecnica conserva testi/stato esistenti, controlla ogni
+  aggiunta e rende esplicita ogni rimozione;
+- il retry riusa soltanto una generazione integralmente identica e verificata;
+- authoring e registro vengono riconciliati anche nel ramo idempotente;
 - crash e concorrenza sono provati su Linux e Windows;
 - una pubblicazione fallita non rende indisponibile la generazione precedente;
-- non esistono eccezioni per executor o lingua.
+- non esistono eccezioni per executor o lingua;
+- marker/radice effettuano un unico cutover globale che non torna implicitamente
+  al legacy;
+- il loader post-cutover enumera binding e usa solo
+  `VerifiedManifest.parsed`, senza parsificare authoring;
+- M3 resta non produttivo e mirror/registro entrano soltanto con M4;
+- `sign.py publish` ha un solo proprietario del lock e firma dentro la stessa
+  transazione;
+- il comando operativo e `CLAUDE.md` §7.10 descrivono lo stesso flusso vivo;
+- il censimento non contiene callsite vivi non migrati.
 
 Passa a `closed` dopo cutover sull'installazione di riferimento,
-documentazione operativa e rapporto finale. Fino alla controrevisione esterna
-resta `active`.
+documentazione operativa e rapporto finale. La controrevisione è risolta e lo
+sviluppo può iniziare nell'ordine M0-M4. ADR 0223 resta `proposed` e passa ad
+`accepted` soltanto insieme al gate M4 verde.
 
 ## 13. Rinviato esplicitamente
 
@@ -598,12 +1071,40 @@ esso, una delle invarianti di §3.4 non può essere soddisfatta.
 8. Non mantenere due publisher linguistici.
 9. Non invocare LLM mentre il lock è acquisito.
 10. Non riaprire il manifest dopo avere costruito `VerifiedManifest`.
-11. Non usare il ripiego legacy per un contratto già migrato.
+11. Se esiste `ACTIVE` **oppure** la radice produttiva, non usare il ripiego
+    legacy per alcun contratto.
 12. Fermarsi se una fase richiede di allentare firma, digest, contenimento o
     confronto della generazione attesa.
 13. Registrare per ogni fase commit, prove e risultato.
+14. Risolvere `code.files` dalla directory sorgente dell'inventario e verificare
+    sempre il contenimento dopo la normalizzazione; non passare mai la
+    directory della generazione alle funzioni di digest.
+15. Non dichiarare idempotenza prima di avere verificato `current` e confrontato
+    l'identificatore dell'intera postcondizione.
+16. Su Windows usare un file di lock permanente di almeno un byte, lo stesso
+    handle e retry monotoni finiti; non cancellare mai `current` per facilitare
+    `os.replace()`.
+17. Il lock appartiene all'API di pubblicazione: nessun comando o helper lo
+    acquisisce prima di chiamarla e nessun publisher pubblico ne chiama un
+    altro.
+18. Tenere lo shadow fuori dalla radice produttiva; dopo la verifica creare e
+    rendere durevole `ACTIVE`, poi fare un solo swap globale. Non cancellare il
+    marker e non interpretarne l'assenza come legacy quando la radice esiste.
+19. Modificare `CLAUDE.md` §7.10 soltanto nel commit del cutover M4 e insieme al
+    comando `sign.py publish` funzionante e provato.
+20. Dopo una pubblicazione linguistica, provare sempre il successivo publish
+    tecnico: coppie selettore/lingua esistenti devono restare identiche; nuove
+    superfici passano RM-0002 e rimozioni richiedono lista esatta e motivo.
+21. Dopo il cutover costruire `ManifestRef` dai binding e dalla mappa origin;
+    non parsificare authoring per ricavare contenuto vivo.
+22. In M3 mantenere spento il collegamento produttivo e non eseguire mirror;
+    abilitarli soltanto dentro il cutover M4 quiescente.
 
 ## 15. Mandato per la controrevisione esterna
+
+> Sezione storica, già eseguita. Conserva le domande originarie per interpretare
+> il rapporto collegato in §17; non prevale sulla specifica aggiornata e non è
+> un gate ancora aperto.
 
 Il revisore deve tentare di confutare la proposta e classificare ogni rilievo
 come bloccante, rischio accettabile, hardening futuro o preferenza stilistica.
@@ -644,261 +1145,28 @@ riferita a un perimetro diverso.
 | 2026-08-24 | `ready` | prima specifica a generazioni, giudicata troppo ampia |
 | 2026-08-25 | `active` | perimetro ridotto alla pubblicazione linguistica; specifica KISS candidata alla controrevisione esterna |
 | 2026-08-25 | `active` | controrevisione esterna eseguita (§17): approvabile con 4 rilievi bloccanti di specifica, 3 rischi quantificati, 3 irrobustimenti; stima 12-19 giorni in tre blocchi |
+| 2026-08-25 | `ready` | B1-B4 e irrobustimenti integrati nei §§3-14; aggiunto cutover globale fail-closed; autorizzato l'aggiornamento coordinato di `CLAUDE.md` in M4 |
+| 2026-08-25 | `ready` | seconda revisione avversariale integrata: boundary irreversibile, binding strutturali, M3 non produttiva, singolo lock tecnico, quiescenza completa e politica evolutiva; ADR resta `proposed` fino a M4 |
 
-## 17. Controrevisione esterna — verdetto e risposte al mandato
+## 17. Controrevisioni — tracciabilità
 
-> Prodotta il 2026-08-25 in sola lettura, in risposta a §15, dallo stesso
-> revisore che ha condotto il secondo giro avversariale su RM-0002. Consultati
-> senza modificarli: ADR 0223, `internal/design/TODO.md`
-> (`EXEC-BIND-001`, `AFF-I18N-001`, `PUB-001`) e il rapporto di audit
-> `internal/reports/rm0002-linter-manifest-multilingue-audit-20260824.md`.
-> Nessun file di prodotto, manifest, firma o stato è stato modificato.
+Il testo integrale della controrevisione esterna del 2026-08-25 è conservato
+nel [rapporto storico](../reports/rm0007-external-review-20260825.md). È
+storico e non normativo; prevalgono sempre i §§1-14 di questa roadmap.
 
-### 17.1 Verdetto
-
-**La riduzione di perimetro è giusta e la garanzia ristretta di §1 chiude i
-difetti che bloccano RM-0002 L5.** Il confronto è verificabile: gli otto difetti
-che l'audit del 24 agosto aveva confermato contro il codice — base non
-verificata prima della rifirma, digest ricalcolato, tre file scritti
-separatamente, byte diversi fra verifica e uso, candidato applicato a una base
-cambiata, percorso del registro usato come destinazione, secondo scrittore
-legacy, validatore finto nelle prove — hanno tutti un punto corrispondente in
-§3.4, §5, §6 o §8. Nessuno resta scoperto.
-
-Il verdetto è **approvabile con quattro rilievi bloccanti**, tutti di
-specifica e tutti economici: nessuno richiede di cambiare il disegno, tre
-richiedono di scrivere un'invariante che oggi è implicita e uno richiede una
-decisione di Roberto su un file invariante.
-
-Classificazione completa: **4 bloccanti, 3 rischi accettabili (quantificati),
-3 elementi di irrobustimento futuro, 0 preferenze stilistiche**.
-
-### 17.2 Rilievi bloccanti
-
-#### B1 — Il digest del codice non può essere calcolato dalla directory della generazione
-
-**Dato misurato:** **21 contratti builtin su 21** dichiarano `code.files` con
-percorsi che escono dalla directory del manifest — `../../system/admin.py`,
-`../../classify_entries.py`, `../../recurring_tasks.py` e così via. Non è
-un'eccezione: è la forma normale di quella classe. E
-`sign.compute_code_digest()` (`runtime/sign.py:96-104`) fa `manifest_dir / fname`
-**senza normalizzare e senza controllo di contenimento**, il che oggi è
-intenzionale e funziona.
-
-Dopo il cutover `manifest_dir` non è più la directory sorgente: è la
-generazione dentro `PATH_USER_STATE`. Risolvere lì `../../classify_entries.py`
-esce dal deposito e cade in una directory arbitraria dello stato utente.
-L'implementazione che «sposta il contratto e riusa la funzione di digest»
-produce, a seconda di cosa trova, un errore di file assente oppure il digest di
-un file sbagliato.
-
-§5.1 punto 6 dice già la cosa giusta — «calcola il digest attraverso le radici
-ammesse associate a `ContractId`» — ma è una riga sola dentro un elenco di
-otto, e questo è precisamente il dettaglio che si perde in implementazione.
-
-**Richiesta:** promuoverlo a invariante di §3.4 («il digest del codice si
-calcola sempre dalla radice sorgente dichiarata del contratto, mai dalla
-directory della generazione»), aggiungere la prova corrispondente in §10.1 e
-citare esplicitamente il caso `../../` fra le fixture di M0.
-
-#### B2 — Il selettore canonico non è definito, e finisce dentro l'hash della generazione
-
-§4.3 richiede che lo stato conservi provenienza e hash «per selettore
-canonico», ma non dice **quale** delle due forme oggi in uso sia quella
-canonica:
-
-- `args.<nome>.description` — la forma scritta nei companion su disco,
-  verificata su `executors/find_files/manifest.lang_state.json`;
-- `args.properties.<nome>.description` — la forma prodotta da
-  `i18n_materializer.iter_localized_text_tables()` e usata da
-  `i18n_pipeline._update_state()`.
-
-È il rilievo ADV-009 dell'audit, confermato e oggi latente soltanto perché
-nessuna terza lingua è mai stata promossa. RM-0007 non lo risolve: lo
-**incapsula**. Dal momento in cui `manifest.lang_state.json` entra nella
-generazione, il selettore fa parte dell'identità immutabile, e due forme dello
-stesso testo producono due generazioni diverse per lo stesso contenuto.
-
-**Richiesta:** scegliere la forma canonica in §4.3, dichiarare la migrazione
-una-tantum dei companion esistenti come consegna di M4, e aggiungere a §10.1 la
-prova che un selettore nella forma non canonica viene **rifiutato**, non
-silenziosamente accettato.
-
-#### B3 — Il retry dopo un arresto fra il passo 18 e il 21 non è idempotente su Windows
-
-§6 dichiara che «un errore dopo il punto 21 non annulla una pubblicazione già
-visibile: il retry la riconosce». La finestra scoperta è **prima** del 21.
-
-Il passo 18 rinomina la directory temporanea in `generations/<generation-id>`.
-Se il processo termina fra il 18 e il 21, `current` indica ancora la vecchia
-generazione — corretto — ma la directory della nuova esiste già. Al retry, con
-la stessa base e le stesse patch, il publisher ricostruisce **lo stesso**
-identificatore e riprova il passo 18 su una destinazione che esiste. Su Linux
-`os.replace` di una directory su una directory non vuota fallisce; su Windows
-la sostituzione di una directory esistente non è ammessa affatto.
-
-Il caso non è raro: è esattamente la finestra che §10.3 punto 2 chiede di
-provare («dopo il rename della generazione»). La prova è prevista, il
-comportamento no.
-
-**Richiesta:** aggiungere a §6 un ramo esplicito fra il 17 e il 18 — se
-`generations/<generation-id>` esiste già, verificarla integralmente; se
-coincide, saltare al passo 20 e proseguire; se differisce, è la corruzione
-descritta in §4.2 e il contratto si blocca. È l'unico punto in cui l'algoritmo,
-così come è scritto, non fa quello che il documento promette.
-
-#### B4 — Dopo il cutover, §7.10 di `CLAUDE.md` diventa falso
-
-`CLAUDE.md` §7.10 è una regola **invariante** e dice: modifichi
-`<executor>.py` o il solo `manifest.toml`, firmi con
-`python3 runtime/sign.py sign executors/<name>`, riavvii, committi manifest e
-firma insieme — «senza firma il loader scarta l'executor in silenzio».
-
-Dopo il cutover quella sequenza non rende più viva la modifica: il loader legge
-`current`, e la sorgente firmata resta una sorgente di authoring finché non
-passa da `publish_signed_source()`. Il modo di sbagliare è **lo stesso** che
-quella regola esiste per prevenire, con un nome nuovo: non più «senza firma
-sparisce in silenzio», ma «senza pubblicazione la modifica non ha effetto in
-silenzio». Chi sviluppa cambierà il codice, firmerà, riavvierà, e vedrà il
-comportamento vecchio senza un solo messaggio d'errore.
-
-§8 elenca otto file da modificare e non cita `CLAUDE.md`; M4 elenca sei
-consegne e non cita il flusso di lavoro quotidiano.
-
-**Richiesta:** aggiungere a M4 la consegna «aggiornare il flusso di authoring
-documentato» e **portare a Roberto la modifica di §7.10**, che è invariante e
-non si tocca di iniziativa. Fino ad allora il cutover non è completo, qualunque
-prova verde dia il catalogo.
-
-### 17.3 Rischi accettabili, con i numeri
-
-Tre righe della tabella §11 si possono chiudere con una misura invece che con
-un giudizio. Misurato sul catalogo reale di 122 contratti, il 25 agosto 2026:
-
-| Voce | Misura | Conseguenza |
+| Rilievo | Risoluzione normativa | Gate |
 |---|---|---|
-| peso di una generazione | **7,5 KB** in media (manifest + firma + stato) | tradurre l'intero catalogo in una lingua nuova costa **0,9 MB** di generazioni |
-| costo dell'identificatore | **3,1 ms** per calcolare il digest delle generazioni di tutti e 122 i contratti | irrilevante all'avvio, dove la verifica delle firme e dei digest del codice già domina |
-| finestra verifica→invocazione | invariata rispetto a oggi | RM-0007 non la peggiora e non la chiude; `EXEC-BIND-001` la possiede |
+| B1 · base del digest | directory sorgente da `ManifestRef` e containment nelle radici ammesse (§§3.4, 5.1, 10.1) | M0-M2 |
+| B2 · selettore/stato canonico | `args.properties.<name>.description`, encoder unico e migrazione data-led (§4.4) | M4 |
+| B3 · retry dopo rename | verifica/riuso esatto della generazione e barriera ripetuta (§§4.2, 6) | M2 |
+| B4 · workflow operativo | `sign.py publish` e `CLAUDE.md` §7.10 nello stesso cutover (§§5.3, 9) | M4 |
+| C1 · ritorno implicito al legacy | shadow separata; marker durevole prima dello swap; marker **o** radice vietano fallback (§4.3) | M4 |
+| C2 · authoring letto post-cutover | `binding.json` minimo, `ManifestRef` strutturale e contenuto solo da `VerifiedManifest.parsed` (§§4.1, 5.1, 7.1) | M2-M4 |
+| C3 · mirror anticipato | M3 isolata/flag off; mirror e registro produttivi soltanto in M4 (§9) | M3-M4 |
+| C4 · lock annidato nel publish tecnico | un solo owner del lock; draft, verifica, firma, publish e mirror nella stessa transazione (§§5.3, 6.2) | M3 |
+| C5 · quiescenza incompleta | blocco di turni, scheduler, publisher, reload e watcher fino a load/restart store-only verde (§4.3) | M4 |
+| C6 · evoluzione tecnica delle superfici | coppie esistenti immutate; aggiunte sotto RM-0002; rimozioni esplicite e auditate (§6.3) | M3-M4 |
+| C7 · stato ADR prematuro | ADR 0223 resta `proposed` fino al gate M4 verde (§12) | M4 |
 
-Conseguenza sulla tabella §11: la riga «crescita dello spazio: media» va
-abbassata a **bassa**, e la scelta di non fare raccolta automatica in v1 è
-corretta — a 7,5 KB per generazione, la raccolta costerebbe più rischio di
-quanto risparmi spazio. La riga «codice cambia dopo la verifica: alta,
-residua» resta com'è: è dichiarata onestamente in §3.3 ed è la sola cosa che
-rende credibile la qualificazione KISS.
-
-### 17.4 Irrobustimento futuro, non bloccante
-
-**H1 — nominare i due modi di guasto Windows che «prova reale NTFS» non cattura
-da sola.** §10.3 chiede la prova su NTFS reale, il che è giusto ma generico. I
-due meccanismi che vale la pena provare per nome sono: (a) la sostituzione di
-`current` con `os.replace()` fallisce con violazione di condivisione se un
-lettore tiene quel file aperto senza condivisione in cancellazione — la
-mitigazione è che il lettore apra, legga e chiuda subito, come §7.1 punto 1 già
-prescrive, e che il publisher riprovi con attesa finita; (b) la sincronizzazione
-di una directory non esiste su Windows, quindi la garanzia dei passi 19 e 22 è
-strutturalmente più debole lì. §10.3 chiede già di distinguere crash del
-processo da perdita di alimentazione: quella distinzione va scritta anche in
-§3.3, dove il limite è dichiarato, non solo fra le prove.
-
-**H2 — dare un tetto d'allarme alla diagnostica degli orfani.** §7.3 fa bene a
-segnalare e non cancellare, ma un rapporto che nessuno legge non è un
-controllo. Basta una soglia oltre la quale la diagnostica diventa un avviso
-operativo.
-
-**H3 — chiudere il ciclo con RM-0002 per iscritto.** Il TODO lo coordina già
-(«L2 produce l'inventario neutro che RM-0007 consuma, L5 richiede il confine di
-pubblicazione già in servizio») e §8 assegna correttamente la proprietà di
-`manifest_inventory.py` a RM-0002. Manca la conseguenza operativa: **M0 di
-RM-0007 non può iniziare prima che L2 di RM-0002 sia consegnata**, altrimenti
-`ContractId` nasce dentro RM-0007 e la dipendenza si inverte. Una riga in §9.
-
-### 17.5 Risposte alle quattordici domande di §15
-
-1. **Sì**, risolti B1-B4. Gli otto difetti confermati dall'audit hanno tutti un
-   punto corrispondente nella specifica.
-2. **Nessuno**, per i difetti in perimetro. Copiare il codice servirebbe solo a
-   chiudere la finestra verifica→invocazione, e i 21 builtin con `../../`
-   dimostrano proprio che i file dichiarati **non sono** la chiusura delle
-   dipendenze: copiarli darebbe una falsa garanzia. È `EXEC-BIND-001`.
-3. **Deve stare nella generazione.** Ricostruirlo richiederebbe `source_lang` e
-   `source_hash`, che non sono derivabili dal manifest pubblicato: si perderebbe
-   la provenienza e la riconciliazione post-commit smetterebbe di essere
-   idempotente, costringendo a introdurre la ricevuta persistente che §13
-   rinvia.
-4. **No, non in v1.** La firma del manifest autentica già ciò che decide il
-   caricamento; l'hash della generazione impedisce di mescolare i tre file per
-   errore. Una seconda firma proteggerebbe l'associazione fra i tre file da un
-   avversario **attivo** che ha già i permessi dell'utente Metnos — cioè lo
-   scenario che §3.2 esclude dichiaratamente. Aggiungerla senza cambiare quel
-   confine sarebbe costo senza garanzia nuova.
-5. **Sì, sono due guasti distinti e servono entrambi.** Il lock impedisce a due
-   scritture di interlacciarsi. `expected_generation_id` impedisce di applicare
-   un candidato preparato **prima** dell'acquisizione e ormai vecchio: il lock
-   non può vederlo, perché quando lo si ottiene la base è già cambiata. Toglierne
-   uno lascia scoperto l'altro caso.
-6. **Sì per gli scrittori cooperanti**, che è il perimetro dichiarato, con due
-   avvertenze: il blocco è per handle e per intervallo di byte, quindi va preso
-   su `writer.lock` e mai sul puntatore; ed è mandatorio, quindi nessun lettore
-   deve mai aprire il file di lock, neanche in diagnostica.
-7. **Sì per l'arresto del processo, no per la perdita di alimentazione su
-   Windows**, dove la sincronizzazione di directory non esiste. La distinzione
-   è già richiesta in §10.3 e va dichiarata anche in §3.3 (vedi H1).
-8. **Sì, ed è idempotente proprio grazie a §4.3.** Gli hash dello stato
-   linguistico rendono la riconciliazione una funzione dello stato osservato,
-   non della memoria di un processo morto. Senza quegli hash servirebbe la
-   ricevuta persistente.
-9. **Sì, a condizione che B4 diventi una consegna di M4** e che la guardia
-   statica di §7.2 vieti la lettura viva dalla sorgente per i contratti
-   migrati. Il divieto mirato è la scelta giusta: vietare genericamente le
-   scritture bloccherebbe installer e generatori.
-10. **Sì per installer, Synt e importatori**, che producono directory nuove e
-    possono lavorare fuori dal lock. Il caso scoperto è **chi modifica in posto
-    una sorgente già ammessa**: §6.2 impone a costoro di acquisire il lock, ma
-    §14 — l'elenco che l'implementatore legge davvero — non lo dice. Va
-    aggiunto lì.
-11. **Sì, e i dati lo dimostrano.** 21 builtin su 21 usano `../../`: essendo la
-    forma universale di quella classe, la regola generale «i file di codice
-    risolvono dentro la radice sorgente dichiarata della classe del contratto»
-    non ha bisogno di nominare nessun executor. È esattamente B1.
-12. **Nulla.** Il perimetro è già al minimo: togliere il lock o la generazione
-    attesa scopre un guasto distinto (domanda 5), togliere lo stato dalla
-    generazione rompe l'idempotenza (domanda 3), togliere il puntatore riporta
-    al problema dei tre file separati.
-13. **Nessun elemento rinviato è indispensabile alla v1.** Il più vicino al
-    confine è la raccolta delle generazioni, ed è fuori a ragione: 7,5 KB per
-    generazione non giustificano il rischio di cancellare la cosa sbagliata.
-14. **Non ne vedo una.** SQLite come puntatore sarebbe più rapido da scrivere,
-    ma introduce un'autorità nuova su un formato pubblico orientato ai file e
-    sposta la durabilità dentro un motore che va comunque sincronizzato. Un file
-    di una riga sostituito con `os.replace()` è la primitiva più piccola che dia
-    al lettore uno stato completo senza obbligarlo a prendere un lock.
-
-### 17.6 Stima separata, come richiesto da §15
-
-La stima ritirata di 7-12 giorni si riferiva a un perimetro diverso. Questa
-vale per il perimetro KISS, a valle di L2 di RM-0002 e con B1-B4 risolti nella
-specifica prima di iniziare.
-
-| Blocco | Stima | Dove sta il rischio |
-|---|---|---|
-| nucleo: M1 + M2 + M3 | **6-9 giorni** | quasi tutto in M3: patch, confronto strutturale e digest conservato |
-| migrazione e cutover: M4 | **4-6 giorni** | è il blocco più rischioso, perché tocca il loader **e** il modo di lavorare quotidiano (B4) |
-| certificazione Windows: §10.3 su NTFS reale | **2-4 giorni** | dipende dall'accesso alla macchina: `ssh` e `ping` verso il PC sono chiusi e si diagnostica solo attraverso Metnos, il che va messo a preventivo e non scoperto in corsa |
-| **totale** | **12-19 giorni** | M0 non è contato: appartiene a RM-0002 L2 |
-
-La riga della certificazione Windows è quella che più facilmente viene
-sottostimata: non è tempo di scrittura, è tempo di andata e ritorno su una
-macchina che non si interroga direttamente.
-
-### 17.7 Raccomandazione
-
-Promuovere RM-0007 a `ready` **dopo** aver scritto B1, B2 e B3 nella specifica —
-sono tre paragrafi, non tre progetti — e **dopo** che Roberto abbia deciso su
-B4, che è l'unico punto che tocca un file invariante e il modo di lavorare di
-tutti i giorni.
-
-Non vedo motivi per riaprire il disegno. La versione KISS è più piccola della
-prima, chiude gli stessi difetti, e la parte che ha rinviato l'ha rinviata
-dicendo perché.
+RM-0007 resta `ready`: i rilievi sono risolti nella specifica, non ancora
+dichiarati implementati.
