@@ -87,11 +87,11 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <h1 id="cap1">1. Cos'&egrave; una skill, in trenta secondi</h1>
 
 <p class="lead">
-Una skill &egrave; un pacchetto che descrive come usare un servizio o una famiglia
-di funzioni. Il suo punto d'ingresso &egrave; <code>SKILL.md</code>; il pacchetto può
-includere anche script e riferimenti necessari all'esecuzione. Metnos non lo
-esegue direttamente: lo traduce in executor con nomi, argomenti, capacità e
-provenienza espliciti.
+Una skill &egrave; un pacchetto di integrazione: descrive come usare un servizio o
+una famiglia di funzioni. Il punto d'ingresso &egrave; <code>SKILL.md</code>; accanto
+possono esserci script e documenti di riferimento. L'importazione &egrave;
+un'operazione amministrativa. Metnos trasforma quanto dichiarato nella skill
+in executor con nomi, argomenti, capacit&agrave; e provenienza espliciti.
 </p>
 <p>
 Il file contiene un'intestazione con i metadati e un corpo leggibile, nel
@@ -101,19 +101,22 @@ ad ampliare il vocabolario o le capacità del sistema.
 </p>
 
 <p>
-Metnos può <strong>importare</strong> il sorgente di una skill: legge il file,
+Metnos pu&ograve; <strong>importare</strong> il sorgente di una skill: legge il file,
 ne ricava una serie di executor nel proprio formato e sottopone ciascuno ai
 controlli di ammissione. Quelli ammessi entrano nello stesso catalogo degli
-altri executor e possono essere richiamati in linguaggio naturale; il manifest
-continua però a registrarne l'origine esterna.
+altri executor. Diventano utilizzabili quando sono anche firmati, abilitati e
+non risultano inattivi per una dipendenza mancante. Il manifest continua a
+registrarne l'origine esterna.
 </p>
 
-<h2>Perché non eseguire direttamente la skill</h2>
+<h2>Perch&eacute; non eseguire direttamente la skill</h2>
 <p>Un file <code>SKILL.md</code> non porta con sé la firma e il contratto di un
 executor Metnos. L'importazione genera un wrapper, dichiara capacità e
-argomenti nel manifest, applica i controlli di ammissione e firma il risultato.
-Questo riduce e rende osservabile l'autorità concessa, ma non certifica come
-innocuo il codice di terzi: provenienza e sorgente restano da valutare.</p>
+argomenti nel manifest, applica i controlli di ammissione e prova a firmare
+ciascun executor accettato. Il wrapper pu&ograve; poi richiamare gli script del
+pacchetto, ma lo fa entro il normale percorso di esecuzione di Metnos. Questo
+rende l'autorit&agrave; concessa pi&ugrave; circoscritta e osservabile; non dimostra per&ograve;
+che il codice di terzi sia innocuo.</p>
 
 <h1 id="cap2">2. Dal file SKILL al catalogo</h1>
 
@@ -123,7 +126,7 @@ all'ammissione nel catalogo.</p>
 
 <ol>
  <li><strong>Acquisizione.</strong> Metnos risolve il percorso o l'URL, recupera
- la sorgente e calcola l'impronta del file <code>SKILL.md</code>.</li>
+ la sorgente e calcola l'impronta del solo file <code>SKILL.md</code>.</li>
  <li><strong>Lettura.</strong> Il parser estrae metadati, dipendenze, script,
  file di credenziali richiesti e sotto-comandi con i relativi argomenti.</li>
  <li><strong>Traduzione.</strong> Ogni sotto-comando viene ricondotto a un nome
@@ -131,16 +134,18 @@ all'ammissione nel catalogo.</p>
  fornitore qualifica gli executor importati e le collisioni interne alla skill
  vengono rifiutate.</li>
  <li><strong>Generazione.</strong> Template controllati producono il wrapper
- Python, il manifest TOML e lo stato linguistico. Un modello linguistico può
- proporre descrizioni e termini di affinità in italiano e in inglese; se non è
- disponibile, il generatore usa un testo deterministico di riserva.</li>
+ Python, il manifest TOML e lo stato linguistico. Un modello linguistico pu&ograve;
+ proporre le descrizioni in italiano e inglese e una lista di espressioni di
+ affinit&agrave;; se non &egrave; disponibile, il generatore usa un testo deterministico.
+ La lista di affinit&agrave; non &egrave; ancora separata per lingua: &egrave; il limite seguito
+ dal TODO prioritario <code>AFF-I18N-001</code>.</li>
  <li><strong>Ammissione.</strong> Il runtime verifica unicità del binding, nome
  canonico, sovrapposizioni di affinità, instradamento e coerenza semantica fra
  manifest e codice.</li>
  <li><strong>Firma.</strong> Le cartelle rifiutate vengono eliminate. Gli
  executor accettati vengono firmati con Ed25519; senza una firma valida il
  loader non li rende disponibili.</li>
- <li><strong>Registrazione.</strong> L'esito entra nel registro di audit e, per
+ <li><strong>Registrazione.</strong> L'esito entra nel registro dell'importazione e, per
  i casi mappabili, nella batteria persistente di prove di instradamento. Il
  catalogo li vede al successivo caricamento valido.</li>
 </ol>
@@ -180,8 +185,10 @@ La skill pu&ograve; arrivare da tre posti:
 
 <p>Se una skill invoca script propri, occorre quindi importare una cartella
 locale completa o il repository, non il solo file <em>raw</em>. Le sorgenti
-remote sono conservate nella cache locale per un massimo predefinito di sette
-giorni; l'operatore può forzare un nuovo recupero.</p>
+remote presenti nella cache vengono riutilizzate per sette giorni per
+impostazione predefinita. Dopo la scadenza Metnos le recupera di nuovo, ma non
+le elimina automaticamente dalla memoria di massa; l'operatore pu&ograve; comunque
+forzare un nuovo recupero o pulire la cache.</p>
 
 <h1 id="cap4">4. File generati e provenienza</h1>
 
@@ -229,6 +236,13 @@ importato da uno curato direttamente nel prodotto. Firma, contratto e policy
 di esecuzione sono invece requisiti comuni: la provenienza non sostituisce
 nessuno di questi controlli.</p>
 
+<p class="callout note"><strong>Che cosa coprono davvero le impronte.</strong>
+<code>source_sha256</code> identifica il file <code>SKILL.md</code>. La firma
+dell'executor protegge il manifest e il codice del wrapper dichiarato nel
+manifest. Gli script e i riferimenti copiati accanto alla skill non ricevono
+oggi una distinta impronta di provenienza: devono quindi essere verificati come
+parte del pacchetto prima dell'importazione.</p>
+
 <h1 id="cap5">5. Traduzione e controlli di ammissione</h1>
 
 <p>La pipeline separa i rifiuti di traduzione da quelli di ammissione. Il
@@ -238,7 +252,7 @@ registro finale riporta entrambe le categorie.</p>
 <tr><th>Passaggio</th><th>Cosa verifica</th><th>Esito negativo</th></tr>
 <tr><td><strong>Confine del verbo</strong></td><td>L'azione della sorgente ha una corrispondenza semanticamente valida nel vocabolario chiuso.</td><td>Il sotto-comando non produce alcun piano.</td></tr>
 <tr><td><strong>Nome e collisioni</strong></td><td>Il nome composto è canonico, qualificato dal fornitore e distinto dagli altri nomi della stessa skill.</td><td>Il traduttore registra il motivo del rifiuto.</td></tr>
-<tr><td><strong>Unicità del binding</strong></td><td>Il binding della skill non appartiene già a un'altra importazione.</td><td>L'intera skill viene rifiutata.</td></tr>
+<tr><td><strong>Unicit&agrave; del collegamento</strong></td><td>L'identificatore della skill, detto <em>binding</em>, non appartiene gi&agrave; a un'altra importazione.</td><td>L'intera skill viene rifiutata.</td></tr>
 <tr><td><strong>L1 — vocabolario</strong></td><td>Azione, oggetto e qualificatori del piano appartengono al vocabolario corrente.</td><td>Il singolo piano viene rifiutato.</td></tr>
 <tr><td><strong>L2 — affinità</strong></td><td>L'affinità canonica non si sovrappone oltre la soglia agli executor già installati; il binding esplicito consente una soglia distinta.</td><td>Il singolo piano viene rifiutato come possibile doppione.</td></tr>
 <tr><td><strong>L5 — instradamento</strong></td><td>Quando esistono una domanda prototipica e un runner disponibile, l'asserzione deve scegliere l'executor atteso.</td><td>Un'asserzione eseguita e fallita rifiuta il piano; un caso non mappato o non eseguibile viene saltato.</td></tr>
@@ -289,12 +303,13 @@ valori in chiaro.</p>
 
 <h1 id="cap7">7. Google Workspace: esempio completo</h1>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Che appuntamenti ho domani nel calendario di lavoro?&raquo; Se la capacità
-Google Workspace è ammessa, abilitata e collegata all'account dell'utente, il
-catalogo rende disponibile l'executor specifico per gli eventi. Altri esempi
-sono &laquo;Trova le email non lette di Anna&raquo;, &laquo;Leggi il contenuto di questo file
-su Drive&raquo; e &laquo;Aggiungi queste righe al foglio Spese&raquo;.</p>
+<p>Per l'utente, una skill importata si presenta come qualsiasi altra capacit&agrave;
+di Metnos. Pu&ograve; chiedere, per esempio: &laquo;Che appuntamenti ho domani nel
+calendario di lavoro?&raquo;. Se Google Workspace &egrave; stato importato, ammesso,
+abilitato e collegato al suo account, il catalogo propone l'executor per gli
+eventi. Allo stesso modo pu&ograve; chiedere &laquo;Trova le email non lette di Anna&raquo;,
+&laquo;Leggi il contenuto di questo file su Drive&raquo; o &laquo;Aggiungi queste righe al
+foglio Spese&raquo;.</p>
 
 <p>L'importazione è un'operazione amministrativa distinta. Il pacchetto
 Google Workspace incluso con Metnos contiene anche gli script necessari, per
@@ -328,21 +343,27 @@ parte del conteggio di importazione.</p>
 <h1 id="cap8">8. Confine di fiducia e controlli durante l'uso</h1>
 
 <p>Importare una skill non significa attestare che il suo codice sia innocuo.
-L'importatore controlla il wrapper e il contratto che genera, ma non esegue
-un'analisi statica completa di ogni script ricevuto. Prima dell'importazione
-l'operatore deve verificare origine e impronta, leggere gli script e concedere
-soltanto capacità e credenziali necessarie.</p>
+L'importatore controlla il wrapper e il contratto che genera, ma non analizza
+in modo completo ogni script ricevuto. Prima dell'importazione l'operatore deve
+quindi verificare l'origine dell'intero pacchetto, leggere gli script e
+concedere soltanto le capacit&agrave; e le credenziali necessarie.</p>
 
 <table>
 <tr><th>Controllo</th><th>Momento</th><th>Garanzia effettiva</th></tr>
-<tr><td><strong>Provenienza e impronta</strong></td><td>acquisizione</td><td>collegano l'artefatto alla sorgente esaminata; non ne provano la sicurezza</td></tr>
+<tr><td><strong>Provenienza e impronta</strong></td><td>acquisizione</td><td>identificano origine e contenuto di <code>SKILL.md</code>; non coprono separatamente gli script e non provano che il pacchetto sia sicuro</td></tr>
 <tr><td><strong>Contratto generato</strong></td><td>generazione</td><td>rende espliciti argomenti, output, capacità, credenziali e provenienza</td></tr>
 <tr><td><strong>L1, L2, L5, L6</strong></td><td>ammissione</td><td>limitano nomi estranei, sovrapposizioni, errori di instradamento e divergenze semantiche</td></tr>
-<tr><td><strong>Digest e firma Ed25519</strong></td><td>caricamento del catalogo</td><td>impediscono di caricare artefatti mancanti, alterati o non firmati validamente</td></tr>
+<tr><td><strong>Digest e firma Ed25519</strong></td><td>caricamento del catalogo</td><td>proteggono il manifest e i file di codice dichiarati dall'executor; non firmano gli script esterni del pacchetto sorgente</td></tr>
 <tr><td><strong>Sandbox, capacità, policy e vaglio</strong></td><td>invocazione</td><td>limitano l'autorità concreta e applicano le decisioni richieste dal rischio dell'azione</td></tr>
 <tr><td><strong>Archivio delle credenziali per utente</strong></td><td>autenticazione e uso</td><td>separa i collegamenti e non espone i segreti al pianificatore</td></tr>
-<tr><td><strong>Audit e statistiche di efficacia</strong></td><td>dopo l'invocazione</td><td>registrano uso ed esito e alimentano i controlli del ciclo di vita</td></tr>
+<tr><td><strong>Audit e statistiche d'uso</strong></td><td>dopo l'invocazione</td><td>registrano esito, durata e volumi approssimativi senza conservare argomenti e risultati completi; oggi sono osservazione, non un ulteriore blocco di sicurezza</td></tr>
 </table>
+
+<p>Quando <code>bwrap</code> &egrave; disponibile, il runtime costruisce una sandbox
+dal manifest e dalle capacit&agrave; ammesse. Se non &egrave; disponibile o la sandbox &egrave;
+stata disattivata esplicitamente, l'executor resta un processo separato e
+continuano ad applicarsi i controlli del runtime, ma manca l'isolamento del
+filesystem e della rete fornito da <code>bwrap</code>.</p>
 
 <p>Gli executor curati direttamente da Metnos seguono revisione, prove,
 firma e policy del rilascio; quelli importati aggiungono provenienza,
