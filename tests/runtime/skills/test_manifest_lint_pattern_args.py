@@ -56,6 +56,56 @@ def test_purpose_specific_output_schema_is_standard_compliant() -> None:
         "output": {"schema_inline": "{ ok: bool, now: str }"},
     }
 
-    checks = {finding.check for finding in lint_manifest(manifest)}
+    checks = {
+        finding.check for finding in lint_manifest(
+            manifest, language="it", allow_flat_description=True,
+        )
+    }
 
     assert "output_shape" not in checks
+
+
+def test_requested_language_never_falls_back_to_another_description() -> None:
+    manifest = {
+        "name": "get_clock",
+        "description": {
+            "en": (
+                "SCOPO: reads time. PATTERN: get_clock(). "
+                "NON: events. OUT: {ok,now}."
+            ),
+        },
+    }
+
+    findings = lint_manifest(manifest, language="nl")
+
+    assert [item.check for item in findings].count("language_missing") == 1
+    assert findings[0].languages == ("nl",)
+
+
+def test_runtime_resolved_rule_uses_code_shape_not_natural_words() -> None:
+    base = {
+        "name": "read_persons",
+        "args": {
+            "properties": {
+                "actor": {"type": "string", "runtime_resolved": True},
+            },
+        },
+    }
+    natural = dict(base, description={
+        "en": (
+            "SCOPO: reads the current actor. PATTERN: read_persons(). "
+            "NON: contacts. OUT: entries."
+        ),
+    })
+    passed = dict(base, description={
+        "en": (
+            "SCOPO: reads a profile. PATTERN: read_persons(actor=\"current\"). "
+            "NON: contacts. OUT: entries."
+        ),
+    })
+
+    natural_checks = {item.check for item in lint_manifest(natural, language="en")}
+    passed_checks = {item.check for item in lint_manifest(passed, language="en")}
+
+    assert "runtime_arg_passed" not in natural_checks
+    assert "runtime_arg_passed" in passed_checks

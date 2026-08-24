@@ -461,7 +461,10 @@ def validate_manifests(
         from sign import verify_executor
 
         def validator(path: Path) -> tuple[bool, str]:
-            findings = [finding for finding in lint_file(path) if finding.severity == "error"]
+            findings = [
+                finding for finding in lint_file(path, language=target)
+                if finding.severity == "error"
+            ]
             if findings:
                 return False, "; ".join(str(finding) for finding in findings[:3])
             ok, info = verify_executor(path.parent)

@@ -76,14 +76,13 @@ def _signed_target_only_lint_defect(tmp_path: Path, monkeypatch):
     return registry
 
 
-def test_real_activation_validator_currently_falls_back_from_target_language(
+def test_real_activation_validator_checks_the_exact_target_language(
     tmp_path: Path, monkeypatch,
 ):
     registry = _signed_target_only_lint_defect(tmp_path, monkeypatch)
 
-    # Characterization for RM-0002 L0: the real validator verifies the
-    # signature but currently lints English, so the Dutch-only defect passes.
-    validate_manifests("nl", registry=registry)
+    with pytest.raises(ActivationBlocked, match="pattern_unknown_arg"):
+        validate_manifests("nl", registry=registry)
 
 
 def test_gate_blocks_before_semantic_review(tmp_path: Path):

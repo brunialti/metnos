@@ -238,8 +238,12 @@ class TestStage6WiredInRunFull:
                                                   "expect": {"ok": True}}]})
 
         def fake_s4(*a, **k):
+            contract_description = (
+                f"SCOPO: {description}. PATTERN: find_test_synth(). "
+                "NON: modificare file. OUT: entries."
+            )
             return StageResult(stage=4, success=True,
-                               output={"description": description,
+                               output={"description": contract_description,
                                        "affinity": ["a", "b", "c"]})
 
         def fake_s5(*a, **k):

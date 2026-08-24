@@ -236,11 +236,13 @@ def test_manifest_lint_catches_structural_traps():
             "spreadsheet_id": {"type": "string", "runtime_resolved": True},
             "values": {"type": "array"}}},
     }
-    checks = {f.check for f in lint_manifest(trap, catalog_names={"write_files"})}
-    assert "pattern_args" in checks, checks          # foo inventato
-    assert "resolved_hidden" in checks, checks        # spreadsheet_id citato
+    checks = {f.check for f in lint_manifest(
+        trap, language="it", catalog_names={"write_files"},
+    )}
+    assert "pattern_unknown_arg" in checks, checks   # foo inventato
+    assert "runtime_arg_passed" in checks, checks    # spreadsheet_id passato
     assert "output_shape" in checks, checks           # write -> deve dire results
-    assert "non_refs" in checks, checks               # write_files_inesistente morto
+    assert "non_reference" in checks, checks          # write_files_inesistente morto
 
 
 def test_synt_lint_gate_rejects_defective_synth():
@@ -259,8 +261,10 @@ def test_synt_lint_gate_rejects_defective_synth():
            "affinity": s4.get("affinity") or [],
            "args": {"properties": s2["args_properties"],
                     "required": s2["args_required"]}}
-    errs = [f for f in lint_manifest(man) if f.severity == "error"]
-    assert any(f.check == "pattern_args" for f in errs), errs
+    errs = [f for f in lint_manifest(
+        man, language="it", allow_flat_description=True,
+    ) if f.severity == "error"]
+    assert any(f.check == "pattern_unknown_arg" for f in errs), errs
 
 
 def test_touched_spreadsheet_manifests_pass_lint():
@@ -270,7 +274,10 @@ def test_touched_spreadsheet_manifests_pass_lint():
     for name in ("create_files_spreadsheet", "write_files_spreadsheet",
                  "read_files_spreadsheet"):
         path = _ROOT / "executors" / name / "manifest.toml"
-        errs = [f for f in lint_file(path) if f.severity == "error"]
+        errs = [
+            f for f in lint_file(path, language="it")
+            if f.severity == "error"
+        ]
         assert not errs, f"{name}: {[str(e) for e in errs]}"
 
 
