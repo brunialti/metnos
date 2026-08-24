@@ -9,6 +9,7 @@ from manifest_inventory import (
     ManifestOrigin,
     ManifestSource,
     ManifestStatus,
+    default_manifest_sources,
     inventory_manifests,
 )
 
@@ -151,3 +152,18 @@ def test_explicit_empty_sources_never_fall_back_to_real_installation(
     monkeypatch.setattr(inventory_module, "default_manifest_sources", forbidden_defaults)
 
     assert inventory_manifests(()).manifests == ()
+
+
+def test_default_code_roots_are_narrow_and_cover_shared_runtime_code() -> None:
+    sources = {source.origin: source for source in default_manifest_sources()}
+
+    assert sources[ManifestOrigin.CORE].allowed_code_roots == (
+        inventory_module._C.PATH_EXECUTORS,
+        inventory_module._C.PATH_RUNTIME,
+    )
+    assert inventory_module._C.PATH_ROOT not in (
+        sources[ManifestOrigin.CORE].allowed_code_roots
+    )
+    assert sources[ManifestOrigin.BUILTIN].allowed_code_roots == (
+        inventory_module._C.PATH_RUNTIME,
+    )

@@ -125,7 +125,10 @@ def default_manifest_sources() -> tuple[ManifestSource, ...]:
     return (
         ManifestSource(
             ManifestOrigin.CORE, _C.PATH_EXECUTORS,
-            allowed_code_roots=(_C.PATH_EXECUTORS,),
+            # Core contracts may bind their own executor files and shared
+            # runtime modules (for example through a repository symlink), but
+            # never arbitrary files elsewhere in the installation root.
+            allowed_code_roots=(_C.PATH_EXECUTORS, _C.PATH_RUNTIME),
         ),
         ManifestSource(
             ManifestOrigin.BUILTIN,
