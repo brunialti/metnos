@@ -1,14 +1,15 @@
 # RM-0002 — Controllo multilingue dei manifest executor
 
-> `RM-0002` · stato `ready` · creazione `2026-07-23` · analisi e specifica
-> chiuse `2026-08-24` · implementazione residua non iniziata · documento
-> interno
+> `RM-0002` · stato `in_progress` · creazione `2026-07-23` · analisi e
+> specifica chiuse `2026-08-24` · L0-L4 implementate `2026-08-25` · L5-L6
+> subordinate al completamento di RM-0007 · documento interno
 
 ## 1. Stato e decisione
 
-La progettazione è conclusa e può essere implementata senza prendere nuove
-decisioni di prodotto. Lo stato della roadmap è `ready`: `closed` dichiarerebbe
-falsamente che codice, prove e distribuzione siano già completati.
+La progettazione è conclusa. L0-L4 sono implementate e provate; L5-L6 restano
+aperte perché il loro blocco operativo richiede prima il confine di
+pubblicazione di RM-0007. Lo stato della roadmap è quindi `in_progress`:
+`implemented` dichiarerebbe falsamente completati quei gate.
 
 RM-0002 realizza tre interventi circoscritti:
 
@@ -617,3 +618,4 @@ assenza di attività residua.
 | 2026-07-23 | `active` | prima analisi e roadmap |
 | 2026-08-24 | `active` | riverifica, revisione avversariale e controrevisione |
 | 2026-08-24 | `ready` | storia separata; perimetro ridotto; specifica e ordine di sviluppo chiusi |
+| 2026-08-25 | `in_progress` | L0-L4 implementate: lingua esplicita, inventario condiviso, attivazione, materializzatore, parità e osservazione; L5-L6 attendono il confine RM-0007 |

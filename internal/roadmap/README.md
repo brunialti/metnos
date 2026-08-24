@@ -74,9 +74,9 @@ Ogni roadmap deve inoltre separare chiaramente:
 | ID | Titolo | Stato | Implementazione | Ultima revisione |
 |---|---|---|---|---|
 | [RM-0001](RM-0001-conoscenza-utente-locale.md) | Conoscenza utente locale: memoria forte, semplice e automatica | `ready` | design F0-F6 finalizzato; implementazione non iniziata | 2026-07-26 |
-| [RM-0002](RM-0002-linter-manifest-multilingue.md) | Controllo multilingue dei manifest executor | `ready` | analisi e specifica chiuse; lingua esplicita, confronto deterministico e inventario condiviso pronti per L0-L6; i blocchi dipendono da RM-0007 | 2026-08-24 |
+| [RM-0002](RM-0002-linter-manifest-multilingue.md) | Controllo multilingue dei manifest executor | `in_progress` | L0-L4 implementate e provate; L5-L6 attendono il confine operativo di RM-0007 | 2026-08-25 |
 | [RM-0003](RM-0003-tutor-integrato.md) | Tutor integrato: guida operativa intelligente | `closed` | F2/F3/F4 implementate, certificate e distribuite | 2026-07-30 |
 | [RM-0004](RM-0004-motore-workload-durevoli.md) | Motore generico per lavori lunghi, persistenti e paralleli | `implemented` | F0-F14 completate; ammissione automatica centralizzata, senza profilo obbligatorio | 2026-08-22 |
 | [RM-0005](RM-0005-multilinguismo-full-auto-localizzante.md) | Multilinguismo full e auto-localizzazione dell’istanza | `closed` | F0-F8 certificate; export GitHub pubblico e documentazione Cloudflare verificati | 2026-08-23 |
 | [RM-0006](RM-0006-certificazione-logica-e2e.md) | Certificazione logica da capo a fondo | `implemented` | C0-C6 completate; cinque sonde reali e certificazione finale 96/96 | 2026-08-23 |
-| [RM-0007](RM-0007-pubblicazione-verificata-contratti.md) | Pubblicazione verificata delle varianti linguistiche dei contratti | `active` | specifica KISS candidata alla controrevisione esterna; implementazione non autorizzata | 2026-08-25 |
+| [RM-0007](RM-0007-pubblicazione-verificata-contratti.md) | Pubblicazione verificata delle varianti linguistiche dei contratti | `in_progress` | specifica KISS controrevisionata; M0-M1 implementate, M2 in corso | 2026-08-25 |

@@ -1,6 +1,6 @@
 # RM-0007 — Pubblicazione verificata delle varianti linguistiche dei contratti
 
-> `RM-0007` · stato `ready` · definita `2026-08-24` · specifica KISS
+> `RM-0007` · stato `in_progress` · definita `2026-08-24` · specifica KISS
 > consolidata `2026-08-25` · controrevisioni conservate nel rapporto collegato
 > e risolte dalla matrice §17 · ADR 0223 ancora `proposed` fino a M4 · documento
 > interno
@@ -1147,6 +1147,7 @@ riferita a un perimetro diverso.
 | 2026-08-25 | `active` | controrevisione esterna eseguita (§17): approvabile con 4 rilievi bloccanti di specifica, 3 rischi quantificati, 3 irrobustimenti; stima 12-19 giorni in tre blocchi |
 | 2026-08-25 | `ready` | B1-B4 e irrobustimenti integrati nei §§3-14; aggiunto cutover globale fail-closed; autorizzato l'aggiornamento coordinato di `CLAUDE.md` in M4 |
 | 2026-08-25 | `ready` | seconda revisione avversariale integrata: boundary irreversibile, binding strutturali, M3 non produttiva, singolo lock tecnico, quiescenza completa e politica evolutiva; ADR resta `proposed` fino a M4 |
+| 2026-08-25 | `in_progress` | M0 e M1 implementate e provate; M2 avviata sulla specifica consolidata |
 
 ## 17. Controrevisioni — tracciabilità
 
@@ -1168,5 +1169,5 @@ storico e non normativo; prevalgono sempre i §§1-14 di questa roadmap.
 | C6 · evoluzione tecnica delle superfici | coppie esistenti immutate; aggiunte sotto RM-0002; rimozioni esplicite e auditate (§6.3) | M3-M4 |
 | C7 · stato ADR prematuro | ADR 0223 resta `proposed` fino al gate M4 verde (§12) | M4 |
 
-RM-0007 resta `ready`: i rilievi sono risolti nella specifica, non ancora
-dichiarati implementati.
+RM-0007 è `in_progress`: i rilievi sono risolti nella specifica; M0 e M1 sono
+implementate, mentre M2-M4 e il cutover restano da completare.

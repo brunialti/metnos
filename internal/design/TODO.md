@@ -10,9 +10,9 @@ non restano artificialmente aperte.
 | Priorita' | Voce | Stato | Condizione di chiusura |
 |---:|---|---|---|
 | P0 MAX | **AFF-I18N-001** | analisi obbligatoria prima dello sviluppo | Confronto critico documentato, specifica approvata, implementazione generale, migrazione, benchmark di routing e copertura i18n verificati senza regressioni. |
-| P0 | **PUB-001 / RM-0007** | `active`; specifica KISS candidata, controrevisione esterna richiesta | Variante linguistica pubblicata da base verificata come generazione coerente; firma pura, loader sugli stessi byte, concorrenza e arresti provati su Linux e Windows. |
+| P0 | **PUB-001 / RM-0007** | `in_progress`; M0-M1 completate, M2 in corso | Variante linguistica pubblicata da base verificata come generazione coerente; firma pura, loader sugli stessi byte, concorrenza e arresti provati su Linux e Windows. |
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
-| P1 | **MAN-I18N-001 / RM-0002** | `ready`; progettazione chiusa | Lingua sempre esplicita, validatore reale coperto, confronto deterministico prima della pubblicazione, inventario comune in audit, nessun falso blocco e due cicli di regressione verdi. |
+| P1 | **MAN-I18N-001 / RM-0002** | `in_progress`; L0-L4 completate, L5-L6 dopo RM-0007 | Lingua sempre esplicita, validatore reale coperto, confronto deterministico prima della pubblicazione, inventario comune in audit, nessun falso blocco e due cicli di regressione verdi. |
 | P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
 
