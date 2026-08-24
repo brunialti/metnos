@@ -1,6 +1,6 @@
 # Design TODO
 
-Stato verificato il 24 agosto 2026 dopo analisi di attualita', implementazione
+Stato verificato il 25 agosto 2026 dopo analisi di attualita', implementazione
 dei lavori autorizzati, suite completa e cutover OPS-001. Questo file contiene
 soltanto attivita' ancora reali: le analisi concluse senza una modifica utile
 non restano artificialmente aperte.
@@ -10,11 +10,25 @@ non restano artificialmente aperte.
 | Priorita' | Voce | Stato | Condizione di chiusura |
 |---:|---|---|---|
 | P0 MAX | **AFF-I18N-001** | analisi obbligatoria prima dello sviluppo | Confronto critico documentato, specifica approvata, implementazione generale, migrazione, benchmark di routing e copertura i18n verificati senza regressioni. |
+| P0 | **PUB-001 / RM-0007** | `active`; specifica KISS candidata, controrevisione esterna richiesta | Variante linguistica pubblicata da base verificata come generazione coerente; firma pura, loader sugli stessi byte, concorrenza e arresti provati su Linux e Windows. |
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
+| P1 | **MAN-I18N-001 / RM-0002** | `ready`; progettazione chiusa | Lingua sempre esplicita, validatore reale coperto, confronto deterministico prima della pubblicazione, inventario comune in audit, nessun falso blocco e due cicli di regressione verdi. |
+| P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
 
 `AFF-I18N-001` è la massima priorità, ma non autorizza una modifica immediata:
 prima richiede analisi, confronto delle alternative e progettazione approvata.
+`PUB-001` è il prerequisito di sicurezza per rendere bloccanti le nuove regole
+di RM-0002. Di RM-0002 possono iniziare prima L0-L3; L2 produce l'inventario
+neutro condiviso che RM-0007 consuma, mentre L5 richiede il confine di
+pubblicazione già in servizio. I due progetti non devono essere fusi: uno
+governa la pubblicazione linguistica, l'altro controlla la lingua e gli
+invarianti macchina.
+`EXEC-BIND-001` conserva il rischio deliberatamente escluso dalla revisione
+KISS di RM-0007. Prima di proporre copie di codice o binding di release deve
+censire file dichiarati, import, risorse locali, builtin già caricati,
+invocazioni remote e identità del bundle accodato; la soluzione dovrà essere
+generale e non basata su nomi executor.
 `SEC-001` non puo' essere autocertificato da chi ha realizzato le modifiche.
 `REL-001` dispone gia' di schema, raccolta, classificatore privacy-safe, report
 atomico e test; il tempo di osservazione non puo' essere sostituito da dati
@@ -71,6 +85,45 @@ runtime legge la vecchia lista senza passare dal contratto scelto; copertura e
 allineamento sono verificabili automaticamente; tutti i manifest e gli
 executor generati/importati sono migrati; firme e cache sono valide; benchmark,
 suite completa, documentazione bilingue e distribuzione pubblica sono verdi.
+
+### EXEC-BIND-001 - Identità del codice verificato fino all'esecuzione
+
+**Problema verificato.** Il loader controlla il digest dei file dichiarati, ma
+il runner locale riapre successivamente il percorso dell'entry point. I builtin
+usano moduli già caricati dalla release, mentre il trasporto remoto costruisce
+un bundle in un momento ancora diverso. La revisione KISS di RM-0007 impedisce
+a una traduzione di firmare codice cambiato, ma non pretende che queste tre
+forme eseguano necessariamente gli stessi byte osservati dal verificatore.
+
+**Analisi obbligatoria.** Prima di progettare una soluzione:
+
+1. censire per ogni trasporto file dichiarati, import Python, risorse lette a
+   runtime, shim condivisi e dipendenze fornite dalla release;
+2. seguire l'identità del contratto da catalogo, cache e scheduler fino a
+   sandbox, runner, coda remota, download del bundle e percorso `reverse`;
+3. verificare se le invocazioni remote sono legate a hash di manifesto e codice
+   oppure soltanto al nome corrente dell'executor;
+4. distinguere il callable builtin già importato dai byte presenti in seguito
+   sul filesystem;
+5. confrontare almeno bundle content-addressed, descrittori mantenuti aperti,
+   ambienti di esecuzione immutabili, binding della release e combinazioni
+   ibride;
+6. misurare costo su spazio, latenza, cache, installazione, aggiornamento,
+   rollback, Windows e dispositivi remoti;
+7. fare revisionare avversarialmente la chiusura delle dipendenze: copiare i
+   soli `[code].files` non è sufficiente se l'executor usa file non dichiarati.
+
+**Vincolo.** Nessuna modifica al runner o copia generalizzata del codice è
+autorizzata prima dell'analisi. La soluzione non può contenere tabelle di nomi
+executor né trattamenti speciali per singoli domini. Se il rischio residuo
+risulta accettabile nel modello di minaccia, anche la decisione di non
+implementare deve essere documentata con prove.
+
+**Condizione di chiusura.** Ogni invocazione locale, builtin e remota è legata a
+un'identità immutabile verificabile fino al codice o callable eseguito, oppure
+un'analisi approvata dimostra perché quella garanzia non è richiesta. Sono
+obbligatori test di sostituzione concorrente, invocazione accodata seguita da
+nuova pubblicazione, aggiornamento release, rollback e matrice Linux/Windows.
 
 ### SEC-001 - Audit di sicurezza indipendente
 
