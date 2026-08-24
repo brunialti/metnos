@@ -1,2349 +1,619 @@
-# RM-0002 — Linter multilingue dei manifest executor
+# RM-0002 — Controllo multilingue dei manifest executor
 
-**Stato:** `active`  
-**Creazione:** 2026-07-23  
-**Ultima revisione:** 2026-08-24, terza stesura della giornata: riverifica
-completa (§1.1, §4.11-§4.12), revisione avversariale (§19) e **secondo giro
-avversariale con verdetti verificati (§20)**. Nessun manifest modificato in
-nessuna delle tre  
-**Implementazione:** non iniziata come motore multilingue. Dal 23 agosto 2026
-RM-0005 ha però realizzato **due pezzi del disegno qui proposto** — un primo
-percorso di promozione dei contratti tradotti con ripristino sulle eccezioni
-gestite (§7.11) e un controllo di ammissione che invoca il linter prima di
-attivare una lingua — e con essi ha
-reso **raggiungibile** il difetto centrale che questa roadmap descrive: quel
-gate controlla la lingua scelta da `_description_text()`, non la lingua appena
-prodotta. Vedi §1.1, §4.11 e §4.12  
-**Esito della revisione avversariale:** `non pronta per lo sviluppo`. I rilievi
-P0 e le decisioni sospese sono raccolti in §19 per un ulteriore passaggio con
-un agente esterno. In particolare, “scrittura atomica del singolo file” e
-“transazione manifest-firma-stato” non sono sinonimi.
-**Conservazione:** roadmap persistente fino a implementazione dimostrata o
-cancellazione esplicita di Roberto  
-**Decisione di prodotto:** tutte le superfici linguistiche che possono essere
-lette dal planner devono rispettare gli stessi invarianti strutturali, senza
-usare l'italiano come approssimazione delle altre lingue e senza riscrivere
-automaticamente la semantica dei manifest  
-**Documenti di origine:** `CLAUDE.md` §2.5 e §7.9, ADR 0092, ADR 0219-0220,
-RM-0005, `internal/design/TODO.md::EXE-DESC-001`, codice e catalogo verificati
-il 2026-07-23 e rimisurati il 2026-08-24  
-**Prove iniziali:** audit read-only di 115 manifest, simulazione del linter per
-IT/EN, confronto degli atomi macchina e misura del percorso adattivo  
-**Prove di riverifica (2026-08-24):** audit read-only di 122 manifest, linter
-rieseguito per lingua, riconteggio delle lunghezze e degli atomi macchina,
-audit di `manifest.lang_state.json`, lettura di `i18n_materializer.py`,
-`i18n_pipeline.py` e `i18n_activation.py`; nessun file di prodotto modificato
+> `RM-0002` · stato `ready` · creazione `2026-07-23` · analisi e specifica
+> chiuse `2026-08-24` · implementazione residua non iniziata · documento
+> interno
 
-## 1. Sintesi decisionale
+## 1. Stato e decisione
 
-Metnos deve avere **un solo linter multilingue**, deterministico e centrale.
-Non servono un linter italiano e uno inglese, né regole duplicate per ogni
-lingua. Il motore deve enumerare tutte le varianti testuali presenti nel
-manifest, applicare una sola volta i controlli indipendenti dalla lingua,
-applicare a ogni variante i controlli locali e confrontare fra lingue soltanto
-gli invarianti macchina che devono restare identici.
+La progettazione è conclusa e può essere implementata senza prendere nuove
+decisioni di prodotto. Lo stato della roadmap è `ready`: `closed` dichiarerebbe
+falsamente che codice, prove e distribuzione siano già completati.
 
-La realizzazione raccomandata ha cinque proprietà:
+RM-0002 realizza tre interventi circoscritti:
 
-1. controlla ogni lingua realmente presente, non la sola `it` e non una lingua
-   scelta per ripiego;
-2. separa contratto globale, forma locale e parità fra traduzioni;
-3. opera appena prima di scrittura, traduzione, firma o promozione;
-4. non modifica, accorcia o traduce alcun testo;
-5. non entra nel percorso ordinario dei turni e non può quindi cambiarne
-   latenza, piani o autorità.
+1. rende sempre esplicita la lingua controllata dal linter;
+2. confronta fra sorgente e traduzione quattro invarianti macchina;
+3. usa l'inventario comune dei manifest anche per vedere i pacchetti importati
+   nella modalità di controllo, senza concedere loro autorità di modifica.
 
-Il linter non deve fingere di comprendere la traduzione. Può però provare in
-modo affidabile che non siano cambiati nomi di executor, argomenti della
-chiamata, segnaposto runtime, riferimenti fra tool e forma dichiarata
-dell'output. Il significato residuo resta materia di revisione editoriale,
-corpus di instradamento ed eventuale valutatore semantico separato.
+Le misure storiche e le due revisioni avversariali sono conservate nel rapporto
+`internal/reports/rm0002-linter-manifest-multilingue-audit-20260824.md`. Quel
+rapporto spiega le decisioni ma non è una specifica.
 
-La lunghezza inglese è minore soltanto **in aggregato**. Non è un'invariante
-utilizzabile: nel catalogo reale l'inglese è più lungo in 24 descrizioni
-principali su 115 e in 138 descrizioni argomento su 654 (rimisurato il 24 agosto
-2026: 27 su 122 e 147 su 693). Un campo supera il limite soltanto in inglese e
-un altro soltanto in italiano. Un linter solo italiano ha quindi falsi negativi
-dimostrati, e un linter solo inglese li avrebbe a sua volta.
+### Dipendenze
 
-### 1.1 Aggiornamento del 24 agosto 2026 (riverifica)
-
-L'analisi del 23 luglio è stata rieseguita per intero contro il codice e il
-catalogo correnti. **Le conclusioni reggono tutte**; tre cose sono cambiate e
-vanno lette prima del resto del documento.
-
-**1. Il linter è ancora monolingue, ma adesso è un gate di attivazione.**
-`manifest_lint._description_text()` è invariato: sceglie `it`, poi `en`, poi la
-prima chiave disponibile. Nel frattempo RM-0005 ha aggiunto un chiamante nuovo,
-`i18n_activation.validate_manifests()` (`runtime/i18n_activation.py:452-487`),
-che per ogni contratto esegue `lint_file()` e `verify_executor()` e **blocca
-l'attivazione di una lingua** se trova un errore. `lint_file()` non accetta un
-parametro lingua. Conseguenza dimostrabile: quando l'istanza attiva una terza
-lingua, il gate rilegge l'italiano e dichiara ammessa una superficie che non ha
-mai guardato. Il difetto descritto a luglio come igiene di authoring è oggi un
-difetto di correttezza sul percorso RM-0005. Dettaglio in §4.11.
-
-**2. La parità degli atomi macchina non è più a zero divergenze.** A luglio le
-quattro classi confrontate davano zero divergenze su 115 manifest. Oggi
-`set_signatures` ha un `PATTERN` inglese che insegna al planner un argomento in
-più rispetto all'italiano (`reason=`, §4.12). È esattamente la classe che §7.7
-dichiara errore bloccante, ed è comparsa in un mese senza che nulla la
-fermasse: nessuno dei controlli attivi confronta le chiamate fra lingue.
-
-**3. Parte del disegno è già stata costruita, da RM-0005 e non da qui.**
-`i18n_pipeline._promote_contracts()` implementa una prima sequenza di
-pubblicazione — candidato in memoria, confronto con l'originale, sostituzione
-atomica del manifest, rifirma, e ripristino di testo **e firma** in caso di
-eccezione intercettata. Non realizza però ancora una transazione resistente a
-concorrenza, arresto del processo o riavvio; questa precedente conclusione è
-ritirata dalla revisione avversariale di §19. La validazione
-del candidato di un contratto è soltanto `_validate_common()`: parità dei token
-Jinja, dei segnaposto `{...}` e del codice fra apici inversi, assenza di
-sentinella, rapporto di lunghezza fra 0,35 e 3,5. Misurato sul catalogo:
-**0 dei 170 capitoli `PATTERN:` dei manifest core — 85 manifest per due lingue —
-contiene apici inversi**, quindi quella tutela non copre nessuna chiamata.
-
-**Correzione del 24 agosto, secondo giro (§20.5).** La prima stesura di questo
-paragrafo affermava che i capitoli `SCOPO:/PATTERN:/NON:/OUT:` non fossero
-controllati affatto. È falso: la loro **presenza** è richiesta in ogni lingua da
-`executor_standard`, che `sign_executor` applica a tutti e 122 i manifest, quindi
-una traduzione che localizzi i marker viene rifiutata alla firma e la
-pubblicazione ripristina testo e firma. Resta invece scoperto l'**ordine** dei
-capitoli, e restano scoperte la chiamata e i suoi argomenti. Dettaglio e
-conseguenze in §4.11 e §20.5.
-
-Il lavoro che resta a RM-0002 è quindi più piccolo e più mirato di quanto il
-piano di luglio prevedesse: non serve più costruire la transazione di
-pubblicazione, serve **dare una lingua** al motore che quella transazione e
-quel gate già invocano.
+- RM-0005 resta `closed`: registro, materializzatore, candidati e attivazione
+  vengono riusati, non riscritti.
+- RM-0007 rende sicure pubblicazione linguistica, firma e lettura del
+  manifesto. Deve essere implementata prima di trasformare in blocchi
+  operativi le nuove regole di confronto fra traduzioni. Il legame forte fra
+  codice verificato e codice eseguito resta fuori da entrambe le roadmap.
+- `AFF-I18N-001` possiede la futura localizzazione di `affinity`. RM-0002 non
+  anticipa né duplica quella decisione.
 
 ## 2. Obiettivo e valore
 
-Il manifest è contemporaneamente:
+Una persona deve poter usare Metnos in una lingua senza che il sistema:
 
-- contratto firmato dell'executor;
-- superficie di scelta del planner locale;
-- fonte di termini per il prefiltro;
-- sorgente di alcuni comportamenti deterministici di estrazione argomenti;
-- sorgente per traduzione, importazione e generazione;
-- documento operativo per persone e modelli locali.
+- controlli in realtà l'italiano;
+- suggerisca argomenti diversi nella traduzione;
+- perda o modifichi segnaposto risolti dal runtime;
+- accetti capitoli del contratto in un ordine che cambia ciò che legge il
+  planner;
+- blocchi una lingua per una parola naturale omonima di un argomento tecnico.
 
-Un errore in una sola lingua può quindi produrre un executor formalmente
-firmato e caricabile, ma difficile da scegliere o impossibile da invocare in
-quella lingua. L'obiettivo di RM-0002 è impedire questa classe di divergenza
-senza aumentare la fragilità del runtime e senza imporre una bonifica massiva
-dei testi legacy.
+Il controllo è deterministico. Non giudica la qualità letteraria e non usa un
+LLM. La revisione semantica di RM-0005 resta separata.
 
-Il beneficio atteso è osservabile:
+## 3. Stato corrente che l'implementazione deve cambiare
 
-- nessun argomento inesistente suggerito da una variante linguistica;
-- nessun argomento risolto dal runtime esposto accidentalmente al modello;
-- stessa forma di chiamata nelle traduzioni;
-- stessi riferimenti di disambiguazione essenziali;
-- avvisi di lunghezza completi e non duplicati;
-- errori di traduzione fermati prima della scrittura e della firma;
-- stessa politica per executor core, builtin, sintetizzati e importati;
-- nessun costo nei turni normali.
+Al 24 agosto 2026:
 
-## 3. Perimetro e fonti verificate
+- `runtime/manifest_lint.py::_description_text()` sceglie `it`, poi `en`, poi
+  la prima lingua disponibile;
+- `lint_manifest()` e `lint_file()` non ricevono una lingua;
+- `runtime/i18n_activation.py::validate_manifests()` invoca il linter senza
+  indicare la lingua che sta attivando;
+- il controllo `runtime_resolved` cerca parole naturali e produce il falso
+  errore `get_location.actor` in inglese;
+- `_OMIT_MARKERS` contiene frasi italiane e inglesi cablate nel codice;
+- `_validate_common()` non confronta ordine dei capitoli, chiamate e argomenti;
+- i test di attivazione passano un validatore fittizio sempre positivo;
+- CLI, materializzatore e loader non condividono lo stesso inventario.
 
-L'analisi ha seguito il percorso effettivo del codice al 23 luglio 2026:
+La presenza dei quattro capitoli in ogni lingua è già controllata dallo
+standard executor. Le descrizioni generate sono già sottoposte a parte dei
+limiti di budget. Questi controlli vanno riusati, non duplicati.
 
-- `runtime/manifest_lint.py`;
-- `runtime/manifest_rules.py`;
-- `runtime/loader.py`;
-- `runtime/executor_standard.py`;
-- `runtime/engine/proposer.py`;
-- `runtime/prefilter.py`;
-- `runtime/args_extractor.py`;
-- `runtime/i18n_translator.py`;
-- `runtime/sign.py`;
-- `runtime/synt_multistage.py` e `runtime/synth_request.py`;
-- `runtime/skill_codegen.py` e `runtime/generated_executor_contract.py`;
-- manifest core, contratti builtin e import GitHub installati;
-- prove correnti su descrizioni, traduzioni e rendering.
+## 4. Perimetro
 
-Le misure descrivono il working tree osservato, che contiene anche modifiche
-non consolidate. Non provano che il processo HTTP già avviato abbia caricato
-gli stessi byte. Gli esperimenti presenti su rendering adattivo e schema
-model-facing non costituiscono implementazione di questa roadmap e devono
-restare in un intervento separato.
+### 4.1 Compreso
 
-Metnos usa il proprio server locale compatibile con il percorso `llama-server`.
-Il disegno qui proposto è deterministico e indipendente dal fornitore LLM; non
-introduce dipendenze da Ollama o da servizi esterni.
+- lingua obbligatoria nelle API del linter;
+- nessun ripiego implicito durante authoring, traduzione o attivazione;
+- controllo locale della lingua richiesta;
+- confronto deterministico sorgente-destinazione;
+- scanner prudente del solo capitolo `PATTERN:`;
+- correzione generale del falso positivo `runtime_resolved`;
+- inventario comune consumato in modalità di audit e dal CLI;
+- collegamento del confronto al candidato in memoria;
+- adozione prima informativa e poi bloccante;
+- prove con validatore reale e lingua sintetica.
 
-**Fonti aggiunte nella riverifica del 24 agosto 2026**, tutte lette in sola
-lettura: `runtime/i18n_registry.py`, `runtime/i18n_materializer.py`,
-`runtime/i18n_pipeline.py`, `runtime/i18n_activation.py`, `runtime/config.py`
-(autorità di `INSTANCE_LANG`), `tests/runtime/infra/test_manifest_head_budget.py`,
-`tests/runtime/skills/test_manifest_lang_state.py`,
-`tests/runtime/skills/test_executor_manifests_gate.py`, RM-0005 e la parte
-mutabile di `CLAUDE.md` per ADR 0219-0220. Il catalogo è stato rimisurato dal
-filesystem, non da una fotografia precedente.
+### 4.2 Escluso
 
-## 4. Stato reale verificato
+- sicurezza e atomicità della pubblicazione, assegnate a RM-0007;
+- nuova autorità per `manifest.lang_state.json`;
+- rifirma, rollback e fotografia consumata dal loader;
+- localizzazione o nuovo schema di `affinity`;
+- giudizio semantico della prosa;
+- riscrittura o accorciamento automatico dei manifest;
+- nuovo renderer del pool;
+- dizionari di omissione per lingua;
+- supporto speciale limitato a italiano e inglese;
+- inserimento automatico dei pacchetti importati nel percorso di traduzione o
+  firma.
 
-### 4.1 Inventario effettivo
+## 5. Vocabolario normativo
 
-Rimisurato il 24 agosto 2026; fra parentesi il valore del 23 luglio quando è
-cambiato.
+### Lingua richiesta
 
-| Classe | Percorso | Manifest trovati | Copertura CLI | Copertura pipeline RM-0005 |
-|---|---|---:|---|---|
-| core | `executors/*/manifest.toml` | 85 (82) | sì | sì |
-| builtin firmati | `runtime/builtin_executor_contracts/*/manifest.toml` | 21 (17) | no | sì |
-| import installati | `~/.local/share/metnos/executors/skills/*/*/manifest.toml` | 16 | no | **no** |
-| totale osservato | tre classi | **122** (115) | **85/122** | **107**, uno ritirato |
+Tag BCP-47 normalizzato con `i18n_registry.normalize_language()`. È sempre
+fornito dal chiamante. Se manca nella risorsa, il linter produce
+`language_missing`; non usa un'altra lingua.
 
-Correzione del secondo giro avversariale (§20.5, C2): la copertura della
-pipeline RM-0005 non è 106 su 122. La sua scansione è ricorsiva e raccoglie
-anche `executors/_retired/reply_messages/manifest.toml`, che il primo livello
-non vede: 107 manifest, di cui **uno ritirato**. Il numero sbagliato nasceva da
-un conteggio a un livello applicato a una scansione ricorsiva, ed è la
-dimostrazione pratica di ADV-018: le cifre di questo documento devono venire da
-un rapporto generato, non contate a mano nella prosa.
+### Risorsa
 
-Tutti i 122 manifest hanno descrizione principale italiana e inglese: 244
-superfici principali. Le descrizioni di argomento multilingue sono 693 (654),
-tutte complete per `it` ed `en`: 1.386 superfici. Nessun manifest del catalogo
-osservato dichiara una terza lingua, quindi il comportamento multilingue del
-sistema non è ancora esercitato dal catalogo reale.
+Percorso TOML canonico della prosa, per esempio `description` oppure
+`args.properties.path.description`. La forma corta
+`args.path.description` non deve essere introdotta.
 
-Il CLI di `manifest_lint.py --all` usa ancora soltanto `executors/*/manifest.toml`
-(`runtime/manifest_lint.py:384-388`): non visita i contratti builtin e non segue
-la struttura annidata degli import.
+### Controllo locale
 
-Novità rispetto a luglio: la pipeline RM-0005 possiede un proprio inventario,
-`i18n_materializer.LocalizationPaths.manifest_roots`
-(`runtime/i18n_materializer.py:56-59`), che visita con `rglob` sia i core sia i
-builtin. È metà dell'helper condiviso chiesto in §7.1 — ma **non copre gli
-import installati**, che restano invisibili sia al CLI sia alla traduzione. È
-un dettaglio con conseguenze concrete: i 16 import contengono tutti e tre gli
-errori strutturali noti del catalogo e tutti i 12 companion con placeholder.
+Regola applicata a una sola lingua: capitoli, argomenti ammessi, uso di
+argomenti risolti dal runtime e limiti editoriali.
 
-La topologia `executors/skills/<skill>/<executor>` è dichiarata in
-`config.PATH_SKILLS_BUILTIN` ma è oggi vuota; l'inventario comune deve
-prevederla senza dipendere dalla sua popolazione attuale.
+### Controllo trasversale
 
-### 4.2 Comportamento del linter corrente
+Confronto di invarianti macchina fra testo sorgente e testo tradotto. Non
+confronta parole naturali, ordine delle frasi o sinonimi.
 
-`_description_text()` seleziona:
+### Atomo macchina
 
-1. `it`, se presente;
-2. altrimenti `en`;
-3. altrimenti il primo valore disponibile.
+Elemento riconoscibile senza interpretazione semantica: chiamata, nome di
+argomento keyword, assegnazione tecnica, segnaposto runtime o segnaposto
+template.
 
-La stessa preferenza è ripetuta per ogni descrizione argomento. Di conseguenza
-un manifest bilingue normale viene controllato soltanto in italiano. Le lingue
-aggiuntive non vengono ispezionate.
+### Astensione
 
-La scelta non replica il runtime: `loader._resolve_lang_text()` seleziona la
-lingua corrente e, se manca, ripiega prima sull'inglese e poi sulla prima lingua
-in ordine alfabetico. Con un'istanza inglese il planner usa quindi proprio la
-variante che il linter corrente non controlla. Il prefiltro tokenizza la
-descrizione localizzata completa, mentre il proposer testuale usa la testa fino
-a `OUT:`; entrambe sono superfici attive.
+Impossibilità di classificare con certezza una forma naturale o ambigua. Non è
+un errore e non può bloccare. L'evidenza resta disponibile nella diagnostica.
 
-**Aggiornamento 24 agosto 2026.** La lingua corrente non arriva più da
-`METNOS_LANG` ma da `config.INSTANCE_LANG`, autorità unica derivata da una
-richiesta firmata (ADR 0219); `METNOS_LANG` resta soltanto l'avvio per
-installazioni prive del documento firmato, e la lingua di bootstrap dichiarata è
-`en` (`config.BOOTSTRAP_LANGUAGE`). Questo **rafforza** l'argomento di §11.2: la
-lingua attiva di un'istanza non è più una variabile d'ambiente di sviluppo ma un
-dato installato, e un'istanza può legittimamente avviarsi in una lingua la cui
-superficie manifest non è mai stata controllata.
+### Inventario
 
-Nota minore osservata nello stesso punto: l'ultimo ripiego di
-`loader._localized_builtin_contract()` è `current_lang = "it"`
-(`runtime/loader.py:298`), raggiungibile solo se falliscono sia l'import di
-`i18n` sia quello di `config`. Contraddice `BOOTSTRAP_LANGUAGE = "en"`. Non è un
-difetto attivo ed è fuori dal perimetro di RM-0002; va corretto da chi tocca
-quel ramo.
+Enumerazione neutra di manifest e problemi. La scoperta non implica che il
+contratto sia attivo, traducibile, modificabile o firmabile.
 
-I controlli correnti sono:
+## 6. Contratti Python obbligatori
 
-- presenza e ordine di `SCOPO/PATTERN/NON/OUT`;
-- posizione di `PATTERN` e `NON` rispetto al budget;
-- lunghezza di testa, descrizione e argomenti;
-- argomenti usati nel `PATTERN`;
-- menzioni di argomenti `runtime_resolved`;
-- forma dell'output;
-- riferimenti morti nel capitolo `NON`;
-- sovrapposizione delle affinity.
+### 6.1 Risultato strutturato
 
-Il controllo affinity è indipendente dalla lingua, ma una conversione ingenua
-del linter a un ciclo `for lang` lo eseguirebbe e lo conterebbe più volte.
+Modificare `runtime/manifest_lint.py` usando queste forme:
 
-### 4.3 Misure linguistiche
+```python
+Severity = Literal["error", "warn"]
+FindingScope = Literal["local", "parity", "global"]
 
-Rimisurato il 24 agosto 2026 sul catalogo di 122 manifest; fra parentesi la
-misura del 23 luglio su 115 manifest.
-
-| Superficie | Italiano | Inglese | Differenza EN rispetto a IT |
-|---|---:|---:|---:|
-| descrizioni complete | 30.464 caratteri (28.415) | 29.768 (27.723) | -696 (-692) |
-| teste prima di `OUT:` | 23.482 (21.675) | 22.880 (21.086) | -602 (-589) |
-| descrizioni argomento | 88.750 (80.164) | 80.359 (71.990) | -8.391 (-8.174) |
-
-L'inglese è quindi più corto nel totale, ma non in ogni risorsa:
-
-- 27 descrizioni principali su 122 sono più lunghe in inglese (erano 24 su 115);
-- 147 descrizioni argomento su 693 sono più lunghe in inglese (erano 138 su 654);
-- `send_messages.args.to_user.description` misura ancora 180 caratteri in
-  italiano e 181 in inglese: soltanto l'inglese supera `ARG_DESC_MAX=180`, ed è
-  l'unico argomento del catalogo in questa condizione.
-
-Il superamento di `DESC_MAX=320` è oggi **numericamente simmetrico e
-insiemisticamente asimmetrico**, che è una prova più forte di quella di luglio:
-
-| Lingua | Descrizioni oltre 320 | Solo in quella lingua |
-|---|---:|---|
-| italiano | 9 | `find_dirs` (322 IT / 319 EN) |
-| inglese | 9 | `write_files` (313 IT / 323 EN) |
-
-Gli otto casi comuni sono `compute_signatures`, `create_events`,
-`create_images_indices`, `delete_persons`, `find_credentials`, `find_urls`,
-`get_location`, `get_signatures`. Contare per lingua darebbe «9 e 9» e
-sembrerebbe indifferente quale lingua si controlli; l'insieme dimostra il
-contrario, perché ciascuna lingua nasconde un caso che l'altra non vede.
-
-Sulle descrizioni argomento la stessa asimmetria è molto più marcata: 115
-superano `ARG_DESC_MAX` in italiano e 91 in inglese, di cui **25 soltanto in
-italiano e 1 soltanto in inglese**.
-
-Le teste prima di `OUT:` restano tutte entro `HEAD_MAX=240`: 244 su 244, in
-entrambe le lingue. Il dato del 23 luglio (230 su 230) è confermato sul catalogo
-cresciuto.
-
-Il risultato confuta l'ipotesi operativa «se passa l'italiano, passa anche
-l'inglese». La tendenza aggregata non è una proprietà per campo, e un mese di
-crescita del catalogo non l'ha resa tale.
-
-### 4.4 Risultati del linter simulato per lingua
-
-Metodo, identico nelle due misure: si costruisce in memoria una copia
-monolingue di ciascun manifest (descrizione principale e descrizioni argomento
-sostituite dalla sola lingua in esame) e si invoca `lint_manifest()` con il
-catalogo completo dei nomi e senza il confronto affinity, che è globale e
-raddoppierebbe.
-
-Sul catalogo completo, 122 manifest al 24 agosto 2026 (115 al 23 luglio):
-
-| Lingua | Avvisi di lunghezza | Errori strutturali |
-|---|---:|---:|
-| italiano | 124 (108) | 3 (3) |
-| inglese | 100 (85) | 4 (4) |
-
-Gli avvisi si scompongono esattamente nelle misure di §4.3: 9 descrizioni oltre
-`DESC_MAX` più 115 argomenti oltre `ARG_DESC_MAX` in italiano, 9 più 91 in
-inglese. Nessun avviso riguarda la testa.
-
-**I quattro errori sono gli stessi di un mese fa, nessuno è stato corretto.**
-
-Tre sono presenti in entrambe le lingue e appartengono a import GitHub già
-installati:
-
-- `list_dirs_github` usa `path=` nel `PATTERN`, ma lo schema dichiara `paths`;
-- `send_messages_github` usa `target_template=` e `body_template=`, ma lo
-  schema dichiara `target` e `body`.
-
-Questi difetti non vengono segnalati dal CLI corrente perché gli import annidati
-non sono nel suo inventario, e non lo sono nemmeno dalla pipeline RM-0005 per la
-stessa ragione (§4.1). Non sono stati corretti in questa analisi.
-
-Il quarto compare **soltanto in inglese** ed è `get_location.actor`: il
-controllo corrente interpreta «current actor» come esposizione dell'argomento
-`actor`, anche se in quel punto `actor` è una parola naturale e la proprietà
-viene nascosta al proposer. È il caso più istruttivo del documento: dimostra che
-estendere meccanicamente le espressioni regolari italiane e inglesi aumenta i
-falsi positivi, e che un errore può esistere in una lingua sola in entrambe le
-direzioni — verso il falso negativo (i due campi di lunghezza) e verso il falso
-positivo (questo).
-
-Persistenza del quadro: fra il 23 luglio e il 24 agosto il catalogo è cresciuto
-di 7 manifest e gli avvisi di lunghezza di 31, ma il conto degli errori non si è
-mosso. Non è stabilità del catalogo: è assenza di un punto che li faccia
-fallire. Il CLI non li vede, la firma non li invoca, il gate di attivazione li
-vedrebbe ma soltanto nella lingua che sceglie da solo (§4.11).
-
-### 4.5 Parità strutturale corrente fra IT ed EN
-
-Il 23 luglio, su 115 manifest, le divergenze erano **zero in tutte e quattro le
-classi** confrontate (argomenti del `PATTERN`, segnaposto, riferimenti `NON:`,
-forma dell'output). La riverifica del 24 agosto, su 122 manifest, **non conferma
-più quel risultato**.
-
-| Classe confrontata | Divergenze 23/7 | Divergenze 24/8 |
-|---|---:|---:|
-| nome della funzione chiamata nel `PATTERN` | 0 | 0 |
-| insieme degli argomenti top-level della chiamata | 0 | **1** |
-| segnaposto `${RUNTIME:...}` | 0 | 0 |
-| segnaposto `{{...}}` | 0 | 0 |
-| riferimenti a executor esistenti nel `NON:` | 0 | 0 |
-| capitoli presenti e ordinati | non misurato | 0 |
-
-La divergenza è `set_signatures`, descritta per esteso in §4.12: il `PATTERN`
-inglese passa un argomento che quello italiano non passa. Entrambi gli argomenti
-esistono nello schema, quindi nessun controllo attivo se ne accorge — il linter
-verifica che gli argomenti del `PATTERN` appartengano allo schema, non che le
-lingue insegnino la stessa chiamata.
-
-Due precisazioni di metodo, perché il confronto non venga rifatto male:
-
-- il confronto dei capitoli è stato aggiunto in questa riverifica ed è pulito:
-  tutte le 244 descrizioni hanno `SCOPO:`, `PATTERN:`, `NON:` e `OUT:` presenti
-  e nell'ordine giusto. I marker restano scritti in italiano anche nel testo
-  inglese, quindi sono **invarianti macchina**, non prosa: una futura traduzione
-  che li localizzasse romperebbe il proposer, e oggi niente lo impedisce (§4.11);
-- il confronto della forma dell'output per presenza delle parole `entries` e
-  `results` nel capitolo `OUT:` ha prodotto **due falsi positivi**, `list_dirs`
-  e `set_messages`, dove la parola inglese «entries» compare come prosa
-  («sorted entries») o dove una lingua elenca i campi e l'altra riassume («OUT:
-  risultati e ricevuta» contro `OUT: {ok,ok_count,fail_count,results,failed}`).
-  È la stessa ambiguità naturale/codice del caso `actor` di §4.4, su un'altra
-  superficie, e conferma §7.7: la forma dell'output va confrontata soltanto
-  quando è espressa come identificatore riconoscibile, mai per presenza di
-  parola.
-
-Resta vero che la traduzione corrente conserva **quasi** tutti gli atomi
-macchina fondamentali. Ma «quasi» è una proprietà che decade da sola: è decaduta
-in un mese, sul manifest di un executor firmato del nucleo, e nessun controllo
-l'ha vista.
-
-### 4.6 Budget adattivo e lunghezza reale
-
-Tutte le 230 descrizioni principali IT/EN osservate hanno una testa entro
-`HEAD_MAX=240`. Dopo normalizzazione e rimozione di `OUT:`, la testa più lunga
-renderizzata è di 239 caratteri. **Confermato il 24 agosto 2026 sul catalogo
-cresciuto: 244 teste su 244, in entrambe le lingue, entro il limite.**
-
-Il renderer adattivo, ora consolidato in `manifest_rules.render_head()`, non
-modifica nessuna delle teste del catalogo corrente: la redistribuzione del
-budget non è richiesta da nessun manifest esistente.
-
-Il percorso alternativo `agent_runtime.render_tools_for_provider()`
-(`runtime/agent_runtime.py:1198`) **continua a non avere chiamanti di
-produzione**: verificato il 24 agosto, gli unici riferimenti sono
-`tests/runtime/engine/test_tool_schema_slim.py` e un commento in
-`runtime/tool_schema_slim.py`. Le sue descrizioni storiche di provider e gli
-esperimenti di compressione degli argomenti non rappresentano il percorso attivo
-del planner e non devono guidare la progettazione del linter.
-
-Osservazione aggiunta nella riverifica: la prova di budget esistente,
-`tests/runtime/infra/test_manifest_head_budget.py`, carica gli executor
-attraverso il loader. Misura quindi la sola lingua attiva dell'istanza, oggi
-l'italiano. È una vista di diagnosi utile, non una copertura multilingue, ed è
-il tipo di prova che §11.2 respinge come criterio di completezza.
-
-Questo dato porta a due conclusioni:
-
-1. il linter multilingue non dipende dal renderer adattivo;
-2. il budget elastico non è una giustificazione per accettare nuove teste oltre
-   il limite editoriale, perché la loro visibilità dipenderebbe dalla
-   composizione del pool.
-
-Le descrizioni argomento sono un caso diverso. Il proposer testuale attivo
-espone nomi, obbligatorietà ed enum, non la prosa completa degli argomenti. La
-prosa localizzata è però letta da `args_extractor.py` per alcuni flag booleani.
-Accorciarla automaticamente può quindi cambiare la normalizzazione degli
-argomenti anche quando non cambia il prompt del proposer.
-
-### 4.7 Copertura dei confini di generazione e traduzione
-
-Il percorso attuale non applica una politica testuale unica:
-
-Aggiornato al 24 agosto 2026: la riga in grassetto è cambiata rispetto a luglio.
-
-| Confine | Controllo corrente | Lacuna |
-|---|---|---|
-| Synt multistage | linter sulla descrizione sorgente flat (`synt_multistage.py:541`) | non controlla la futura traduzione |
-| `synth_request` | involucro standard + firma | la variante mancante arriva dopo |
-| import skill | involucro standard + validatore standard | nessun linter strutturale completo |
-| proposte/promozione | validatori propri e firma | nessun punto unico di qualità testuale |
-| traduttore manifest | `_validate_common`: token Jinja, `{...}`, apici inversi, sentinella, rapporto di lunghezza | non controlla capitoli, chiamate, argomenti, riferimenti o budget |
-| **attivazione lingua** | **`lint_file` + `verify_executor` per ogni contratto (`i18n_activation.py:452-487`)** | **linta la lingua scelta da `_description_text()`, non quella attivata** |
-| firma | standard executor | non invoca `manifest_lint` |
-| loader | standard + firma | non deve diventare il primo punto di scoperta del difetto |
-| CLI | linter core a un livello (85/122) | manca builtin, import e lingue non italiane |
-
-La docstring del linter dichiara uso in «synt-admission + importer + CLI», ma
-nel codice osservato l'importer non lo invoca. La documentazione descrive quindi
-un'intenzione più ampia dell'enforcement reale; oggi i chiamanti effettivi sono
-esattamente due, `synt_multistage.py` e `i18n_activation.py`, più il CLI.
-
-Il confine di attivazione è nuovo e cambia la natura del problema: il linter non
-è più soltanto dev-tooling, **è già un gate che può impedire l'attivazione di
-una lingua**, e questo alza la posta su entrambi i lati della precisione.
-
-Un falso positivo non produce più un avviso fastidioso in console: impedisce a
-un'istanza di passare alla lingua che il proprietario ha chiesto. Oggi
-`get_location.actor` non fa danno perché il gate legge l'italiano e quell'errore
-esiste solo in inglese — cioè è innocuo per una ragione accidentale, non per
-costruzione, e diventa un blocco reale per il primo manifest che non abbia una
-descrizione italiana. Un falso negativo, simmetricamente, lascia attivare una
-lingua che nessuno ha controllato. Vedi §4.11.
-
-### 4.8 Stato delle traduzioni e companion
-
-Rimisurato il 24 agosto 2026. Tutti i 122 manifest hanno il companion
-`manifest.lang_state.json` e tutti hanno la firma `manifest.toml.sig`. Le voci
-lingua tracciate sono 1.630, su 1.630 superfici testuali esistenti.
-
-| Misura | 23 luglio | 24 agosto |
-|---|---:|---:|
-| voci lingua con `version_hash` diverso dal testo corrente | 173 | **193** |
-| manifest interessati | 21 | **28** (6 core, 6 builtin, 16 import) |
-| manifest con placeholder `PLACEHOLDER_NOT_SIGNED_IN_WORKTREE` | 21 | **12**, tutti import |
-
-Le due righe si muovono in direzioni opposte, ed è corretto che lo facciano:
-
-- i placeholder sono **diminuiti e circoscritti**. Core e builtin sono oggi
-  puliti; restano 12 dei 16 import GitHub. È un miglioramento reale prodotto dal
-  lavoro RM-0005, non da RM-0002, e conferma la diagnosi: gli import sono
-  l'unica classe che nessuna pipeline visita;
-- lo scostamento fra testo e `version_hash` è **peggiorato**, da 173 a 193 voci
-  e da 21 a 28 manifest. Fra i core scostati compare `set_signatures`, cioè
-  proprio il manifest la cui coppia IT/EN ha smesso di essere allineata (§4.12).
-  Le due cose non sono indipendenti: qualcuno ha modificato una lingua, lo stato
-  non è stato riallineato, e nessun confronto fra lingue lo ha fermato.
-
-Questa misura non equivale automaticamente a corruzione: una differenza può
-indicare una modifica in attesa di allineamento. Tuttavia rivela tre problemi
-di protocollo, **tutti e tre ancora presenti nel codice del 24 agosto**:
-
-1. il generatore degli import può lasciare
-   `sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE` perché il signer crea il companion
-   soltanto se manca e non sostituisce un placeholder esistente;
-2. il traduttore non visita il percorso annidato degli import e quindi non
-   risolve quei placeholder;
-3. se più lingue risultano modificate nello stesso file,
-   `i18n_translator._decide_edit_source` (righe 805-836) sceglie
-   alfabeticamente `en`, perché il `mtime` del file non può distinguere quale
-   campo sia stato editato. Una doppia modifica intenzionale può quindi essere
-   reinterpretata come «inglese sorgente» e riscrivere l'italiano. Il codice
-   dichiara la scelta nella propria docstring, quindi non è un difetto nascosto:
-   è una convenzione deliberata di cui va cambiato il verdetto, non l'onestà.
-
-Il linter multilingue non deve limitarsi a segnalare testi: deve inserirsi in una
-transazione di pubblicazione che renda espliciti inventario, lingua sorgente,
-stato e firma.
-
-### 4.9 Comportamento `--strict`
-
-Il CLI corrente, in modalità `--strict`, conta ogni avviso come errore e termina
-con codice non zero, ma stampa ancora la riga con etichetta `[warn]`. Il riepilogo
-può quindi dire «1 error» mentre la singola riga dice «warn».
-
-Non è un problema semantico del manifest, ma rende meno verificabile il nuovo
-percorso di adozione e va corretto insieme alla struttura dei finding.
-
-**Invariato al 24 agosto 2026** (`runtime/manifest_lint.py:378-403`): `--strict`
-sposta tutti i finding nel contatore degli errori, mentre la riga stampata usa
-`Finding.__str__`, che continua a leggere `severity` e quindi a scrivere
-`[warn ]`.
-
-### 4.10 Costo misurato
-
-Una simulazione completa su 99 manifest residenti nel repository, due lingue e
-controlli correnti ha richiesto circa 19,5 ms per ciclo sul sistema di sviluppo.
-Il costo è trascurabile nei confini di authoring e traduzione. Non vi è motivo
-di pagarlo a ogni turno o a ogni invocazione executor.
-
-**Rimisurato il 24 agosto 2026:** 2,6 ms per una passata monolingua sui 122
-manifest, con i manifest già letti e il catalogo dei nomi precalcolato, media su
-tre cicli. Le due cifre **non sono confrontabili** — quella di luglio includeva
-lettura e parsing dei file, questa no — e vanno tenute distinte invece che
-presentate come un miglioramento. Quello che entrambe dimostrano è la stessa
-cosa, ed è l'unica che serve alla decisione: il controllo costa millisecondi, e
-aggiungere una lingua ne aggiunge una frazione — i controlli locali si ripetono
-per lingua, quelli globali no (§7.3). Nessuna scelta di disegno di questa
-roadmap deve essere motivata dal costo.
-
-### 4.11 Sovrapposizione con RM-0005 (nuova, 24 agosto 2026)
-
-RM-0005 è stata chiusa il 23 agosto 2026 e ha costruito la localizzazione
-versionata dell'istanza. Tocca gli stessi manifest di questa roadmap, quindi il
-confine va scritto con precisione: **cosa esiste già, cosa manca, e cosa è
-diventato più urgente per il fatto che il resto esiste.**
-
-#### Cosa RM-0005 ha già costruito e RM-0002 non deve rifare
-
-**Una prima sequenza di pubblicazione, non ancora una transazione.**
-`i18n_pipeline._promote_contracts()` (righe 615-666) legge il manifest e la
-firma correnti, costruisce il testo candidato in memoria sostituendo la sola
-lingua di destinazione, lo riparsifica, confronta, sostituisce il manifest,
-rifirma e aggiorna `lang_state`. In caso di eccezione intercettata ripristina
-**sia il testo sia la firma**. §19 dimostra tuttavia che non ripristina lo stato
-linguistico eventualmente già aggiornato, non protegge dagli arresti fra le
-scritture e può rifirmare una base tecnica non più integra. Questo codice è una
-base da conservare e correggere, non la prova che §7.11 sia già soddisfatto.
-
-**Un invariante forte che §7 non aveva previsto.** Prima di scrivere, il
-promotore verifica `_strip_target_prose(original) == _strip_target_prose(parsed)`:
-tolta la prosa della lingua di destinazione, il manifest deve essere identico.
-Rende impossibile che una traduzione tocchi schema, capability, firma, `execution`
-o le **altre lingue**. È più forte del confronto per atomi proposto in §7.7 su
-tutto ciò che non è prosa, e va conservato.
-
-**Metà dell'inventario comune di §7.1.**
-`i18n_materializer.LocalizationPaths.manifest_roots` visita core e builtin con
-`rglob`. Manca la classe degli import installati.
-
-**Un gate di ammissione che invoca il linter.**
-`i18n_activation.validate_manifests()` esegue `lint_file` e `verify_executor` su
-ogni contratto registrato prima di attivare la lingua, e registra l'esito come
-controllo `manifest_admission`.
-
-#### Cosa manca, misurato
-
-Per un contratto la validazione del candidato è soltanto
-`_validate_common(source, translated)` (righe 195-208). Controlla: parità dei
-token Jinja `{{...}}`/`{%...%}`, parità dei segnaposto `{nome}`, parità dei
-blocchi fra apici inversi, assenza di sentinella non risolta, rapporto di
-lunghezza fra 0,35 e 3,5. Confrontando questo elenco con le superfici reali:
-
-| Atomo del manifest | Protetto da `_validate_common`? | Misura |
-|---|---|---|
-| capitoli `SCOPO:/PATTERN:/NON:/OUT:` — presenza | **sì, altrove** | `executor_standard._validate_description` li richiede in **ogni** lingua e `sign_executor` lo applica a tutti e 122 i manifest; prova in §20.5 |
-| capitoli — **ordine** | **no** | l'ordine è controllato solo da `manifest_lint`, che al confine di firma non viene invocato, ed è `warn`, quindi non blocca neanche nel gate di attivazione |
-| nome della funzione nel `PATTERN` | **no** | 0 dei 170 capitoli `PATTERN:` del catalogo core contiene apici inversi |
-| argomenti top-level della chiamata | **no** | stessa ragione |
-| `${RUNTIME:chiave}` | **parzialmente** | `_FORMAT_RE` cattura `{RUNTIME:...}` ma confronta solo il gruppo `RUNTIME`: scambiare `actor` con `now` passa |
-| riferimenti a executor nel `NON:` | **no** | non confrontati |
-| budget `HEAD_MAX`/`DESC_MAX`/`ARG_DESC_MAX` | **no** | solo un rapporto 0,35-3,5, che a 320 caratteri lascia passare fino a 1.120 |
-| altre lingue, schema, firma, capability | **sì** | `_strip_target_prose`, invariante forte |
-
-La misura «0 su 170» è il punto centrale e va ripetuta perché è controintuitiva:
-la tutela del codice fra apici inversi esiste ed è corretta, ma nel formato dei
-manifest Metnos le chiamate del `PATTERN` sono scritte in chiaro
-(`find_files(base_path="/", patterns=["*.jpg"])`), non fra apici. Quindi quella
-tutela, sui manifest, protegge zero chiamate.
-
-#### Perché adesso è più urgente, non meno
-
-Finché la seconda lingua era l'inglese scritto a mano dallo stesso autore
-dell'italiano, l'assenza di controllo era compensata dalla revisione umana. Con
-RM-0005 la seconda lingua può essere **prodotta da un modello e promossa da un
-lavoro notturno**, e l'unico controllo strutturale che quel testo attraversa è
-quello sopra. Poi il gate di attivazione rilegge — e per il difetto di
-`_description_text()` rilegge l'italiano.
-
-La catena completa, oggi:
-
-```text
-modello traduce la descrizione in lingua X
-  -> _validate_common: Jinja, {segnaposto}, apici inversi, rapporto lunghezza
-  -> _strip_target_prose: schema/firma/altre lingue invariati
-  -> scrittura atomica + rifirma
-  -> ... gate di attivazione: lint_file(manifest)
-                              ^^^^^^^^^ legge `it`, non X
-  -> lingua X attivata
+@dataclass(frozen=True, slots=True)
+class Finding:
+    check: str
+    severity: Severity
+    scope: FindingScope
+    message: str
+    resource: str = "manifest"
+    languages: tuple[str, ...] = ()
+    evidence: Mapping[str, object] = field(default_factory=dict)
 ```
 
-Nessuno di questi passaggi ha mai letto la lingua X con una regola che conosca
-il formato dei manifest Metnos. **Questa è la lacuna che RM-0002 esiste per
-chiudere**, ed è la ragione per cui il piano di §12 va riletto alla luce di §12.0.
+`languages` contiene una lingua per un controllo locale e due lingue per un
+confronto sorgente-destinazione. Una regola globale usa la tupla vuota. I dati
+in `evidence` devono essere limitati e privi di intere descrizioni; includono
+misure, nomi di atomi o hash, non prosa arbitrariamente lunga.
 
-### 4.12 Difetti nuovi trovati nella riverifica (24 agosto 2026)
+I codici `check` sono API stabili. Non ricavare comportamento analizzando
+`message`.
 
-Non sono stati corretti: RM-0002 è read-only per costruzione (§16). Sono
-elencati qui perché sono la prova che la classe di difetto descritta dalla
-roadmap non è teorica.
+### 6.2 API locale
 
-**D1 — `set_signatures` insegna due chiamate diverse.** Il `PATTERN` italiano è
-`set_signatures(kind="blacklist", signature="bin:cmd:kind")`; quello inglese è
-`set_signatures(kind="blacklist", signature="bin:cmd:kind", reason="reason")`.
-Entrambi sono validi rispetto allo schema, che dichiara `kind`, `signature`,
-`reason` e `severity` con `required = ["kind", "signature"]`. Nessun controllo
-attivo confronta le due chiamate, quindi il planner di un'istanza inglese vede
-un esempio con un argomento in più rispetto a quello di un'istanza italiana.
-Anche i capitoli `OUT:` divergono: `OUT: esito e ricevuta` contro
-`OUT: {signature,kind,removed?,message,_undo}`. È la classe che §7.7 dichiara
-errore bloccante per i manifest nuovi o toccati. `set_signatures` compare anche
-fra i sei core con `version_hash` scostato (§4.8): la modifica è avvenuta e lo
-stato non è stato riallineato.
+```python
+def lint_manifest(
+    manifest: Mapping[str, object],
+    *,
+    language: str,
+    allow_flat_description: bool = False,
+    catalog_names: AbstractSet[str] | None = None,
+    sibling_affinities: Mapping[str, AbstractSet[str]] | None = None,
+) -> list[Finding]:
+    ...
 
-**D2 — le descrizioni argomento hanno una deriva editoriale asimmetrica.** 115
-argomenti superano `ARG_DESC_MAX` in italiano contro 91 in inglese, di cui 25
-soltanto in italiano. Non è un errore strutturale e **non autorizza alcun
-accorciamento automatico** (§16), ma è il tipo di divergenza che rende falsa
-l'idea che una lingua approssimi l'altra: qui la lingua più prolissa è
-l'italiano, mentre sul totale dei caratteri l'italiano è più lungo solo del 10%.
-
-**D3 — la simmetria dei conteggi nasconde l'asimmetria degli insiemi.** Nove
-descrizioni oltre `DESC_MAX` per lingua, ma `find_dirs` sfora solo in italiano e
-`write_files` solo in inglese (§4.3). Un conteggio per lingua sembrerebbe dire
-che controllare una lingua vale l'altra. È esattamente il ragionamento che
-questa roadmap smonta, e adesso c'è un caso per direzione.
-
-**D4 — i tre errori degli import sono immobili da un mese.** Nessuno li ha visti
-perché nessun percorso li visita: né il CLI (§4.1), né la pipeline RM-0005
-(§4.11), né la firma (§4.7). Sono l'argomento più semplice a favore
-dell'inventario condiviso di §7.1.
-
-## 5. Problema architetturale
-
-Il problema non è «tradurre anche il linter». I messaggi del linter sono
-diagnostica interna e possono restare italiani. Il problema è definire su quali
-superfici opera ciascuna regola.
-
-Un manifest contiene tre famiglie diverse di dati:
-
-1. **dati globali**, uguali per tutte le lingue: nome, schema, capability,
-   output dichiarato, affinity mista, collocazione e firma;
-2. **testi locali**, diversi per lingua: descrizione principale e descrizioni
-   degli argomenti;
-3. **atomi macchina replicati nei testi**, che devono restare uguali:
-   chiamate, argomenti, segnaposto, riferimenti canonici e campi di output.
-
-Il linter corrente confonde queste famiglie: sceglie un testo canonico, poi
-applica insieme controlli globali e locali. Un semplice ciclo sulle lingue
-duplicherrebbe i controlli globali e non proverebbe la parità fra traduzioni.
-
-## 6. Invarianti della soluzione
-
-La realizzazione non deve violare i seguenti vincoli:
-
-- nessuna modifica automatica ai manifest;
-- nessuna traduzione automatica avviata dal linter;
-- nessun allentamento di schema, autorità o firma;
-- nessun controllo LLM nel percorso deterministico;
-- nessun blocco retroattivo del caricamento per un nuovo avviso editoriale;
-- nessuna assunzione che `it` sia la lingua sorgente o la più lunga;
-- nessuna assunzione che `en` sia sempre disponibile negli artefatti candidati;
-- nessuna duplicazione delle regole nei tre generatori;
-- nessuna scansione diversa fra linter, traduttore, firma e inventario;
-- nessuna bonifica massiva dei 108 avvisi di lunghezza italiani;
-- nessuna dipendenza dal renderer adattivo sperimentale;
-- nessun uso di una memoria semantica o di un LLM per decidere errori bloccanti.
-
-## 7. Architettura proposta
-
-### 7.1 Un solo inventario dei manifest
-
-Introdurre un helper puro, piccolo e senza dipendenze dal loader, per enumerare
-le fonti riconosciute:
-
-- executor core a un livello;
-- contratti builtin a un livello;
-- executor utente diretti;
-- executor utente sotto `skills/<skill>/<executor>`;
-- eventuale `_imports/<skill>/<executor>` ancora ammesso dal loader durante la
-  migrazione.
-
-L'helper deve restituire almeno percorso, classe di origine e nome atteso. Il
-loader può mantenere i propri controlli di abilitazione e collisione; il linter
-e il traduttore devono però condividere la stessa topologia del filesystem.
-
-Non è corretto importare `_iter_executor_dirs` dal loader: porterebbe nel
-dev-tooling firma, configurazione e altri effetti collaterali. La direzione KISS
-è estrarre soltanto l'enumerazione neutra in un modulo comune.
-
-### 7.2 Modello delle superfici testuali
-
-Il linter deve trasformare il manifest in record immutabili concettualmente
-equivalenti a:
-
-```text
-TextSurface(
-    resource="description" | "args.<name>.description",
-    language="it" | "en" | <altra lingua>,
-    text=<stringa esatta>,
-    transient=<bool>
-)
+def lint_file(
+    path: Path,
+    *,
+    language: str,
+    catalog_names: AbstractSet[str] | None = None,
+    sibling_affinities: Mapping[str, AbstractSet[str]] | None = None,
+) -> list[Finding]:
+    ...
 ```
 
-Regole:
+`lint_file()` è un adattatore per CLI, fixture e layout legacy. Dopo il cutover
+di RM-0007 non viene usato da un confine produttivo: attivazione e pubblicazione
+passano `VerifiedContractSnapshot.parsed_manifest` a `lint_manifest()`, così il
+linter giudica gli stessi byte già verificati.
 
-- per un manifest su disco, si controllano tutte le chiavi lingua con valore
-  stringa non vuoto;
-- la presenza obbligatoria di `it` ed `en` resta responsabilità dello standard
-  executor e non viene diagnosticata due volte;
-- eventuali lingue aggiuntive sono controllate automaticamente;
-- una descrizione flat è ammessa soltanto nell'oggetto transitorio dello stage
-  Synt, con lingua sorgente passata esplicitamente dal chiamante;
-- il linter non usa la catena di ripiego del loader durante l'authoring: deve
-  controllare la risorsa esatta, non nascondere una lingua mancante dietro `en`.
+Regole dell'API:
 
-### 7.3 Tre passaggi distinti
+1. `language` non ha valore predefinito;
+2. viene normalizzata una volta all'ingresso;
+3. nessun helper sceglie `it`, `en` o la prima chiave;
+4. una mappa senza la lingua richiesta produce `language_missing`;
+5. una descrizione piatta è ammessa soltanto quando
+   `allow_flat_description=True`, usato da Synt sul candidato transitorio;
+6. un manifest persistente con descrizione piatta resta responsabilità dello
+   standard executor e non ottiene un ripiego dal linter;
+7. la funzione non modifica il mapping ricevuto.
 
-| Passaggio | Frequenza | Esempi |
-|---|---|---|
-| globale | una volta per manifest | affinity, catalogo, schema/output, coerenza generale |
-| locale | una volta per superficie lingua | capitoli, budget, pattern, runtime arg, output, riferimenti |
-| trasversale | una volta per gruppo di traduzioni | parità di chiamate, argomenti, segnaposto e riferimenti |
+Eliminare `_description_text()` dopo aver migrato tutti i chiamanti. Non
+lasciare una API compatibile ambigua.
 
-Questa separazione impedisce il raddoppio degli avvisi affinity e rende esplicito
-quando un problema appartiene soltanto a `en` o a `args.foo.description[fr]`.
+### 6.3 API trasversale
 
-### 7.4 Struttura dei finding
-
-`Finding` deve portare campi strutturati, non affidarsi al parsing del messaggio:
-
-```text
-check       identificatore stabile della regola
-severity    error | warn
-resource    description | args.<name>.description | manifest
-language    codice lingua oppure null per controlli globali
-message     spiegazione leggibile
-evidence    valori misurati o atomi divergenti, in forma limitata
+```python
+def lint_contract_translation(
+    source: str,
+    translated: str,
+    *,
+    resource: str,
+    source_language: str,
+    target_language: str,
+) -> list[Finding]:
+    ...
 ```
 
-Per la lunghezza si emette un solo finding per risorsa, con tutte le lingue che
-superano il limite e le misure delle altre. Esempio concettuale:
+Questa funzione:
 
-```text
-length args.to_user.description: max=181>180; it=180, en=181
+- normalizza entrambe le lingue;
+- applica le regole di parità pertinenti alla risorsa;
+- non legge file, registro o configurazione globale;
+- non traduce e non corregge;
+- restituisce tutti i rilievi deterministici in un solo passaggio.
+
+### 6.4 Atomi del `PATTERN`
+
+```python
+@dataclass(frozen=True, order=True, slots=True)
+class PatternCall:
+    callee: str
+    keyword_names: tuple[str, ...]
+
+@dataclass(frozen=True, slots=True)
+class PatternAtoms:
+    calls: tuple[PatternCall, ...]
+    standalone_assignments: tuple[str, ...]
+    operator_identifiers: tuple[str, ...]
 ```
 
-In questo modo il totale dei problemi non raddoppia artificialmente, ma resta
-possibile filtrare per lingua.
+Le tuple sono ordinate in forma canonica ma conservano i duplicati. I valori
+degli argomenti non vengono confrontati, salvo i segnaposto disciplinati da
+regole separate.
 
-### 7.5 Controlli globali
+### 6.5 Inventario condiviso
 
-Devono essere eseguiti una sola volta:
+RM-0002 introduce `runtime/manifest_inventory.py` con `ManifestOrigin`,
+`ManifestSource`, `ManifestRef`, `InventoryProblem`, `ManifestInventory` e
+`inventory_manifests()`. Il modulo è una dipendenza neutra condivisa anche con
+RM-0007; scoperta, pubblicazione e firma restano autorità distinte.
 
-- sovrapposizione affinity;
-- esistenza del nome nel contesto previsto;
-- validità della forma globale di output usata come riferimento;
-- consistenza fra proprietà e `required` già delegata allo standard;
-- inventario e collisioni, quando forniti dal chiamante.
+Il CLI usa tutte le origini. Il materializzatore conserva inizialmente le sole
+origini già autorizzate. I pacchetti importati diventano visibili nel rapporto,
+ma non acquisiscono automaticamente traduzione, scrittura o firma.
 
-Il linter non deve duplicare i controlli di autorità, firma, lifecycle o
-capability di `executor_standard.py`.
+## 7. Regole normative
 
-### 7.6 Controlli locali per lingua
+### 7.1 Matrice
 
-Per ogni descrizione principale:
-
-- capitoli invarianti `SCOPO:`, `PATTERN:`, `NON:`, `OUT:` presenti e ordinati;
-- chiamata dell'executor presente nel `PATTERN`;
-- argomenti top-level della chiamata appartenenti allo schema o agli universali;
-- nessun argomento runtime-owned passato nella chiamata;
-- posizione di `PATTERN` e `NON` rispetto ai budget;
-- lunghezza della testa e della descrizione completa;
-- riferimenti nel `NON:` risolti nel catalogo completo;
-- forma `entries`/`results` o output purpose-specific coerente;
-- assenza di segnaposto corrotti o parziali.
-
-Per ogni descrizione argomento:
-
-- lunghezza editoriale;
-- conservazione di tipo, esempio, default e vincoli macchina quando espressi in
-  forma strutturata riconoscibile;
-- nessun tentativo di tradurre nomi di argomento o token riservati;
-- nessuna riscrittura o troncamento automatico.
-
-### 7.7 Controlli trasversali fra lingue
-
-Il confronto deve essere stretto sugli atomi macchina e prudente sulla prosa.
-
-**Errori deterministici bloccanti per nuovi/toccati:**
-
-- nome della funzione chiamata diverso o assente;
-- insieme degli argomenti top-level del `PATTERN` diverso;
-- segnaposto `${RUNTIME:...}` o `{{...}}` mancanti, aggiunti o modificati;
-- token di piping come `from_step` alterati;
-- riferimento a un executor canonico sostituito da un nome inesistente;
-- campo macchina dell'output rimosso dalla traduzione quando è espresso come
-  identificatore riconoscibile.
-
-**Avvisi, da promuovere solo dopo corpus ed evidenza:**
-
-- insieme dei riferimenti validi nel `NON:` diverso fra due lingue;
-- esempi numerici, unità o wildcard differenti;
-- differenza fra `entries` e `results` non già catturata dallo schema;
-- rapporto di lunghezza estremo;
-- una variante molto più verbosa delle altre.
-
-Non devono essere confrontati con uguaglianza lessicale:
-
-- sinonimi;
-- ordine naturale delle frasi;
-- articoli e morfologia;
-- numero di parole;
-- similarità embedding;
-- valutazioni libere del significato.
-
-### 7.8 `runtime_resolved`: eliminare il falso positivo linguistico
-
-La regola corrente cerca il nome dell'argomento come parola nella prosa. Questo
-è affidabile per identificatori come `spreadsheet_id`, ma non per parole inglesi
-comuni come `actor`, `client`, `account` o `provider`.
-
-La nuova regola deve distinguere tre casi:
-
-1. `actor=` nel `PATTERN`: **errore certo**;
-2. identificatore in forma codice, backtick, assegnazione o elenco argomenti:
-   **errore**, salvo contesto esplicito di omissione;
-3. parola naturale omonima, per esempio «current actor»: **avviso ambiguo** o
-   astensione, non errore bloccante.
-
-I marker di omissione devono essere organizzati per lingua (`it`, `en`, future
-lingue supportate). Per una lingua senza lessico, il linter applica i controlli
-strutturali certi e si astiene dal giudizio semantico sul contesto. Non deve
-usare il lessico inglese come ripiego universale.
-
-Questa regola evita di cambiare la buona prosa di `get_location` soltanto per
-soddisfare un'espressione regolare troppo larga.
-
-### 7.9 Politica delle lunghezze
-
-I limiti devono essere verificati per ogni lingua, ma restano separati dal
-budget dinamico del pool.
-
-- `HEAD_MAX`: limite editoriale della testa completa per singola lingua;
-- `DESC_MAX`: limite della descrizione completa per singola lingua;
-- `ARG_DESC_MAX`: obiettivo editoriale per ogni descrizione argomento;
-- budget del renderer: vincolo operativo della superficie mostrata al modello;
-- misure token: metrica di prova, non regola deterministica del linter.
-
-Usare il massimo delle lunghezze linguistiche per decidere se la risorsa passa
-è equivalente a richiedere che passino tutte le lingue. Il messaggio deve però
-mostrare le singole misure, non soltanto il massimo.
-
-Il conteggio in caratteri è coerente con il renderer corrente, che taglia per
-caratteri e confine di parola. Per lingue con segmentazione molto diversa
-dall'italiano e dall'inglese non basta a stimare il costo token. Una futura
-lingua di questo tipo richiede un benchmark tokenizer separato, senza rendere il
-linter dipendente dal modello installato.
-
-I 108 avvisi italiani e 85 inglesi del catalogo completo non autorizzano
-accorciamenti di massa. Le descrizioni argomento possono influenzare
-`args_extractor`; ogni intervento resta per famiglia, con equivalenza verificata.
-
-### 7.10 Modellare la superficie realmente visibile
-
-`manifest_lint._visible_to_llm()` oggi usa un taglio grezzo a 260 caratteri.
-Il renderer taglia a confine di parola e, nel working tree, può distribuire un
-residuo fino a un limite superiore. Le due implementazioni possono quindi
-divergere per un executor futuro oltre budget.
-
-Il linter deve usare gli stessi helper puri di `manifest_rules.py` per calcolare
-la superficie visibile. Tuttavia i controlli di sicurezza su un argomento
-runtime-owned devono ispezionare tutta la testa potenzialmente visibile fino al
-limite superiore, non soltanto il budget medio.
-
-Il renderer di pool dipende dall'insieme dei tool. Il linter per-manifest non
-deve simulare una composizione favorevole per assolvere una testa lunga. La
-regola editoriale resta per singolo manifest; i test di pool dimostrano in
-aggiunta boundedness ed equivalenza sul catalogo reale.
-
-### 7.11 Transazione di traduzione appena prima della scrittura
-
-Il punto corretto per fermare una traduzione difettosa è dopo aver ottenuto il
-testo candidato e **prima** di modificare file, stato o firma:
-
-```text
-leggi manifest + lang_state
-  -> determina in modo non ambiguo la sorgente
-  -> traduci in memoria
-  -> costruisci il manifest candidato in memoria
-  -> linter locale + confronto trasversale
-  -> se errore: conserva integralmente manifest/stato/firma correnti
-  -> se valido: scrivi manifest e stato come una sola pubblicazione
-  -> firma
-  -> verifica firma e hash finali
-```
-
-Il traduttore non deve applicare sostituzioni al file e scoprire il difetto
-dopo. Un fallimento del linter è un risultato tipizzato e ritentabile; non deve
-essere mascherato come `noop` o traduzione riuscita.
-
-### 7.12 Protocollo `lang_state`
-
-Il companion deve distinguere:
-
-- fotografia del testo pubblicato;
-- lingua sorgente dell'ultima traduzione;
-- hash della sorgente;
-- modifica locale ancora da propagare;
-- conflitto con più lingue modificate.
-
-Politica raccomandata:
-
-- zero lingue cambiate: nessuna azione;
-- una lingua cambiata: quella è la sorgente;
-- più lingue cambiate e invarianti macchina uguali: non scegliere
-  alfabeticamente; accettare entrambe come modifiche intenzionali soltanto se
-  l'operazione di authoring lo dichiara, altrimenti stato `multi_source_conflict`;
-- risorsa nuova già completa in IT/EN: adottare entrambe, non ritradurne una;
-- placeholder: errore di pubblicazione per un artefatto attivo;
-- lingua mancante: tradurre dalla sorgente dichiarata, non dalla prima chiave
-  alfabetica.
-
-Il signer non può semplicemente aggiornare tutti i `version_hash`: cancellerebbe
-l'informazione necessaria a capire quale lingua è stata modificata. Serve un
-unico helper di pubblicazione che riceva la sorgente o classifichi esplicitamente
-il conflitto prima della firma.
-
-### 7.13 Profili di severità
-
-Una stessa regola deve poter operare con profili chiari:
-
-| Profilo | Uso | Errori | Avvisi |
-|---|---|---|---|
-| `audit` | catalogo esistente | riportati | riportati, non bloccanti |
-| `candidate` | Synt prima della completezza bilingue | bloccano solo difetti certi della lingua sorgente | riportati |
-| `translation` | candidato tradotto in memoria | difetti locali e parità macchina bloccano la scrittura | riportati |
-| `active_on_touch` | firma/promozione di manifest standard | errori certi bloccano | politica strict esplicita |
-
-Non deve esistere un `--strict` che cambia soltanto il conteggio. La severità
-effettiva va resa visibile nella singola riga e nel risultato strutturato.
-
-### 7.14 Punti di integrazione
-
-Aggiornato il 24 agosto 2026 con lo stato reale di ciascun punto.
-
-| Componente | Integrazione proposta | Stato al 24/8 |
-|---|---|---|
-| `manifest_lint.py` | motore puro multilingue e risultato strutturato | da fare, invariato |
-| inventario comune | scoperta core, builtin, utente diretto e import annidati | **metà**: `i18n_materializer` copre core+builtin, non gli import |
-| `synt_multistage.py` | profilo `candidate` sulla lingua sorgente | chiamante già presente, profilo da introdurre |
-| `generated_executor_contract.py` | richiamo comune dopo rendering del candidato completo | da fare |
-| `skill_codegen.py` | profilo bilingue prima della prima firma/installazione | da fare |
-| `i18n_translator.py` / `i18n_pipeline.py` | profilo `translation` sul candidato in memoria | **transazione fatta** da RM-0005, **validazione del contratto assente** (§4.11) |
-| `i18n_activation.py` | profilo bilingue prima di attivare la lingua | **chiamante presente, linta la lingua sbagliata** |
-| `sign.py` | profilo `active_on_touch`, errori certi soltanto | da fare, non invoca il linter |
-| `loader.py` | nessun nuovo blocco editoriale; solo audit opzionale e standard esistente | invariato, corretto così |
-| CLI/test | inventario completo e filtri per origine/lingua | da fare; il CLI copre 85/122 |
-
-Il loader non deve diventare il primo punto in cui una nuova regola editoriale
-rende indisponibile un executor già firmato. La qualità si applica prima della
-pubblicazione; il caricamento continua a verificare contratto, firma e standard.
-
-## 8. Impatto macro
-
-### 8.1 Affidabilità del prodotto
-
-L'impatto positivo maggiore è sul confine lingua→vocabolario chiuso. Il planner
-riceverà la stessa grammatica di chiamata in ogni lingua, riducendo richieste di
-input spurie, argomenti inventati e instradamenti divergenti.
-
-La modifica non migliora da sola la qualità semantica delle descrizioni. Evita
-però che una traduzione formalmente fluida corrompa gli atomi che rendono
-eseguibile il contratto.
-
-### 8.2 Sicurezza e autorità
-
-Il linter non concede capacità e non cambia il sandbox. Rafforza indirettamente
-la sicurezza impedendo che una traduzione suggerisca al modello argomenti
-runtime-owned, provider o bersagli non previsti.
-
-Non deve però irrigidire il sistema sulla base di parole naturali ambigue. Un
-falso positivo su `actor` non è una violazione di autorità: il vero controllo
-resta lo schema model-facing che nasconde l'argomento e il runtime che lo
-inietta. La severità deve riflettere la certezza dell'evidenza.
-
-### 8.3 Manutenibilità
-
-Un inventario e un motore centrali riducono divergenza fra tre generatori,
-traduttore, signer e CLI. Una modifica a una regola testuale viene recepita nei
-punti di pubblicazione senza copiare template o espressioni regolari.
-
-La centralizzazione non deve trasformarsi in un modulo monolitico che ingloba
-firma, standard e traduzione. Le responsabilità restano separate e vengono
-composte in un piccolo orchestratore di validazione.
-
-### 8.4 Esperienza di sviluppo
-
-L'autore vede il percorso esatto, la lingua e la misura. Non deve eseguire due
-comandi né interpretare totali raddoppiati. I legacy restano utilizzabili; i
-nuovi errori certi vengono fermati sul componente toccato.
-
-Il caso corrente degli import dimostra il valore pratico: tre errori di pattern
-diventano visibili senza scandire manualmente directory diverse.
-
-### 8.5 Prestazioni
-
-Il linter resta fuori dai turni. Il costo attuale stimato di circa 20 ms per un
-controllo bilingue esteso è irrilevante rispetto a generazione e traduzione LLM.
-L'inventario deve essere calcolato una volta per comando e riusato per tutti i
-manifest, soprattutto per riferimenti `NON:` e affinity.
-
-### 8.6 Evoluzione a nuove lingue
-
-La struttura proposta accetta automaticamente nuove chiavi lingua. I controlli
-puramente sintattici funzionano senza codice dedicato. Soltanto i giudizi che
-usano parole naturali, come i marker di omissione, richiedono un lessico
-esplicito e devono astenersi quando manca.
-
-Questo permette elasticità senza dichiarare falsamente che ogni euristica IT/EN
-sia universale.
-
-## 9. Impatto micro sul codice
-
-### 9.1 `runtime/manifest_lint.py`
-
-Modifiche previste:
-
-- sostituire `_description_text()` con enumerazione delle superfici;
-- dividere `lint_manifest()` in passaggio globale, locale e trasversale;
-- arricchire `Finding` con `resource` e `language`;
-- usare helper del renderer invece di slicing duplicato;
-- rendere il catalogo un input già materializzato;
-- correggere la presentazione `--strict`;
-- mantenere API transitoria per la descrizione flat Synt con lingua esplicita.
-
-Rischio principale: alterare il numero o la severità dei finding usati da Synt.
-Mitigazione: testare il profilo sorgente attuale e introdurre il bilingue prima
-in sola osservazione.
-
-### 9.2 Inventario comune
-
-Un modulo piccolo deve contenere solo percorsi e visita delle strutture
-riconosciute. Non deve importare `loader.py`, verificare firme o consultare
-credenziali. I chiamanti decidono quali origini includere.
-
-Rischio principale: scansionare artefatti ritirati o disabilitati come attivi.
-Mitigazione: ogni record porta origine e stato; il CLI può mostrare tutto,
-mentre traduttore e ammissione applicano filtri espliciti.
-
-### 9.3 `runtime/i18n_translator.py`
-
-Modifiche previste:
-
-- usare l'inventario comune;
-- costruire il TOML candidato in memoria;
-- applicare linter locale e trasversale prima della scrittura;
-- non scegliere alfabeticamente una sorgente multipla;
-- non lasciare manifest, state e firma parzialmente allineati;
-- riportare `lint_rejected`, `multi_source_conflict` e `state_placeholder`.
-
-Rischio principale: fermare traduzioni che oggi verrebbero applicate. È un
-arresto sicuro e visibile, preferibile a firmare una superficie corrotta.
-
-**Aggiornamento 24 agosto 2026.** Il percorso di traduzione dei manifest non è
-più solo `i18n_translator.py`: la pipeline RM-0005 (`i18n_pipeline.py`) ha già
-il candidato in memoria, non scrive su errore e ripristina testo e firma. Delle
-sei modifiche elencate qui sopra, la seconda, la terza limitatamente alla
-transazione, e la quinta sono **già realizzate lì**. Restano da fare: la regola
-di validazione del contratto (§4.11), la scelta non alfabetica della sorgente
-multipla — `_decide_edit_source` è invariato — e la copertura degli import.
-L'intervento va portato dove il candidato esiste già, non duplicato.
-
-### 9.4 Generatori e promozione
-
-I tre percorsi restano distinti per input e lifecycle, ma invocano la stessa
-funzione di validazione del candidato. I template restano elastici sulla prosa e
-vincolanti sugli atomi core.
-
-Rischio principale: un generatore monolingue non può superare subito il profilo
-active. Mitigazione: profilo `candidate` alla sorgente, traduzione in memoria,
-poi profilo bilingue prima della promozione.
-
-### 9.5 `runtime/sign.py`
-
-La firma deve rifiutare soltanto errori certi per un manifest standard toccato.
-Gli avvisi legacy restano visibili ma non impediscono manutenzione non
-correlata. Il signer non deve decidere da solo la lingua sorgente.
-
-Rischio principale: rendere impossibile rifirmare un manifest a causa di una
-nuova euristica incerta. Mitigazione: soltanto regole strutturali ad alta
-precisione nel profilo bloccante; le nuove euristiche iniziano come avvisi.
-
-### 9.6 Test
-
-Le prove esistenti sono prevalentemente sul parser di argomenti del `PATTERN` e
-sui budget. Manca una matrice sistematica lingua×origine×lifecycle. La roadmap
-prevede di aggiungerla senza moltiplicare copie dello stesso caso.
-
-## 10. Rischi e contromisure
-
-| Rischio | Probabilità | Impatto | Contromisura |
-|---|---|---|---|
-| falsi positivi su parole naturali come `actor` | alta senza redesign | alto: manifest inutilmente riscritto o bloccato | distinguere codice, pattern e omonimia naturale |
-| raddoppio di affinity e avvisi globali | alta con ciclo ingenuo | medio | passaggio globale unico |
-| linter e renderer descrivono superfici diverse | media | alto | helper di rendering condivisi e test di equivalenza |
-| traduzione valida linguisticamente ma pattern corrotto | concreta | alto | controllo candidato prima della scrittura |
-| aggiornamento parziale manifest/state/firma | concreta | alto | pubblicazione transazionale e verifica finale |
-| sorgente scelta alfabeticamente fra due edit | concreta | alto | stato di conflitto, sorgente esplicita |
-| import annidati invisibili | già presente | alto | inventario comune |
-| placeholder `lang_state` persistenti | già presente | medio/alto | vietarli negli artefatti attivi |
-| nuovi controlli bloccano legacy non toccati | media | alto | audit non bloccante e profilo on-touch |
-| warning di lunghezza induce bonifica massiva | media | alto sulla semantica | nessun autofix; interventi per famiglia con corpus |
-| confronto trasversale pretende traduzioni letterali | media | medio | confrontare solo atomi macchina |
-| lingua futura senza marker lessicali | alta nel tempo | medio | astensione sulle euristiche non supportate |
-| linter nel loader aumenta fragilità di avvio | media se collocato male | alto | applicarlo ai confini di pubblicazione, non ai turni |
-| aggiornamento del linter cambia l'ammissione globale | media | alto | regole versionate nei report e introduzione warn-first |
-| test solo sintetici non vedono regressioni di routing | alta | alto | corpus IT/EN e turni reali controllati |
-
-## 11. Alternative considerate
-
-### 11.1 Conservare il linter solo italiano
-
-Respinta. Ha già due falsi negativi di lunghezza e non copre un errore inglese.
-Il loader può usare l'inglese come ripiego, quindi la variante non è meramente
-documentale.
-
-### 11.2 Lintare soltanto la lingua attiva dell'istanza
-
-Respinta come controllo di authoring. Un cambio della lingua d'istanza o
-un'installazione diversa renderebbe attiva una superficie mai validata. Può
-essere utile come vista di diagnosi, non come criterio di completezza.
-
-Il 24 agosto 2026 questa alternativa è **più** debole di quanto fosse a luglio,
-non meno: con ADR 0219 la lingua non è più una variabile d'ambiente ma un dato
-installato e firmato, e con RM-0005 un'istanza può attivare una lingua prodotta
-da un modello. Lintare «la lingua attiva» significherebbe, per costruzione,
-controllare sempre l'unica lingua che nessuno ha ancora messo in esercizio —
-oppure, come accade oggi nel gate di attivazione, controllarne una terza per
-distrazione (§4.11).
-
-### 11.3 Applicare ogni controllo a ogni lingua
-
-Respinta. Duplicherrebbe affinity e altri finding globali, gonfierebbe i totali
-e non confronterebbe le traduzioni.
-
-### 11.4 Usare un LLM per giudicare l'equivalenza
-
-Non ammessa come blocco principale. È costosa, non riproducibile e può dare
-falsa sicurezza. Un valutatore LLM separato può produrre avvisi editoriali su
-un campione, ma non sostituisce gli invarianti deterministici.
-
-### 11.5 Correggere automaticamente i manifest
-
-Respinta. Accorciamento e riscrittura possono alterare routing,
-normalizzazione degli argomenti e confini `NON:`. Il linter diagnostica; una
-correzione resta esplicita, firmata e testata.
-
-### 11.6 Eseguire il linter soltanto nel loader
-
-Respinta. Scoprire un difetto al riavvio è troppo tardi e rende un aggiornamento
-del linter capace di oscurare executor già firmati. Il controllo corretto è
-appena prima della pubblicazione.
-
-### 11.7 Aumentare i limiti perché l'inglese è in media più corto
-
-Respinta. La media non descrive i singoli campi e i limiti influenzano l'intero
-pool. Qualunque revisione dei budget richiede benchmark separato, non deriva
-dal supporto multilingue.
-
-## 12. Piano di realizzazione
-
-### 12.0 Revisione del piano al 24 agosto 2026
-
-Il piano di luglio resta valido nella sostanza, ma due delle sue fasi sono state
-in parte realizzate da RM-0005 e una priorità è cambiata. Questa sezione dice
-cosa fare **oggi**; le fasi originali restano sotto, invariate, come specifica di
-dettaglio.
-
-**Priorità 1 — dare una lingua a `lint_file`.** È il lavoro più piccolo del
-documento e il più urgente, perché è l'unico che oggi produce un difetto di
-correttezza e non solo di igiene: `i18n_activation.validate_manifests()` esiste,
-blocca l'attivazione, e legge la lingua sbagliata. Serve un parametro lingua
-esplicito su `lint_manifest`/`lint_file` e il suo passaggio dal gate di
-attivazione. Non richiede il motore multilingue completo e non cambia il
-comportamento di nessun chiamante esistente se il valore predefinito conserva
-l'attuale selezione.
-
-**Priorità 2 — validare il candidato di traduzione con le regole dei manifest.**
-`_validate_common` protegge Jinja, segnaposto e apici inversi; non protegge
-nessuna delle superfici che rendono eseguibile un manifest (§4.11). Il punto di
-innesto esiste già ed è `_translate_item`, ramo `contract`: il candidato è in
-memoria, la transazione attorno è corretta, manca solo la regola. I controlli
-minimi, tutti già specificati in §7.6 e §7.7: capitoli presenti e ordinati; nome
-della funzione chiamata invariato; insieme degli argomenti top-level invariato;
-`${RUNTIME:chiave}` invariato **chiave compresa**; budget per lingua.
-
-**Priorità 3 — completare l'inventario con gli import installati.** Una sola
-classe manca (§4.1) e contiene tutti e tre gli errori noti e tutti e dodici i
-companion con placeholder. Il modo giusto è l'helper neutro di §7.1, condiviso
-fra CLI, materializzatore e linter; il modo sbagliato è aggiungere una radice
-alla tupla del materializzatore e lasciare il CLI dov'è.
-
-**Priorità 4 — il motore multilingue completo** (`TextSurface`, finding con
-`resource` e `language`, tre passaggi, profili di severità) resta il disegno di
-destinazione ed è invariato. Diventa conveniente quando esiste una terza lingua
-reale, che oggi non esiste: il catalogo è ancora IT+EN puro.
-
-**Cosa riusare, senza darlo per concluso:** il candidato in memoria, il
-ripristino di testo e firma sulle eccezioni intercettate e l'invariante «tolta
-la prosa della lingua bersaglio, il manifest è identico». §19 sospende invece
-la conclusione che esista già una transazione completa: integrità della base,
-concorrenza, stato linguistico e recupero dopo un arresto restano da progettare.
-
-### F0 — Congelamento e corpus
-
-- nessun edit ai manifest;
-- isolare le modifiche sperimentali del renderer dalla modifica al linter;
-- fotografare i 115 manifest, le 230 descrizioni principali e i 654 argomenti;
-- registrare finding per origine e lingua;
-- costruire casi sintetici per errori soltanto EN e soltanto IT;
-- fissare i tre errori importati come casi attesi dell'audit, non correggerli
-  dentro questa fase.
-
-**Uscita:** baseline riproducibile e nessuna modifica di prodotto.
-
-### F1 — Motore multilingue in sola osservazione
-
-- introdurre `TextSurface` e finding strutturati;
-- separare controlli globali/locali/trasversali;
-- controllare tutte le lingue presenti;
-- aggiungere inventario core+builtin+import;
-- mantenere invariati i codici di uscita dei percorsi produttivi;
-- correggere soltanto la presentazione incoerente di `--strict`.
-
-**Uscita:** rapporto completo, nessun nuovo blocco e nessun manifest modificato.
-
-### F2 — Blocco delle traduzioni difettose
-
-- costruire il candidato in memoria;
-- applicare controlli locali e trasversali;
-- lasciare intatti file e firma su errore;
-- introdurre stati tipizzati del companion;
-- eliminare la scelta alfabetica nei conflitti multipli;
-- coprire gli import annidati.
-
-**Uscita:** una traduzione che cambia un argomento o segnaposto viene rifiutata
-prima di qualunque scrittura.
-
-### F3 — Adozione comune nei generatori
-
-- collegare i tre percorsi al validatore comune;
-- profilo sorgente per candidati monolingui;
-- profilo bilingue prima della promozione;
-- nessun template duplicato per lingua;
-- nessuna possibilità di firmare placeholder attivi.
-
-**Uscita:** ogni nuovo executor applica automaticamente la politica centrale.
-
-### F4 — Firma on-touch e pulizia mirata
-
-- bloccare in firma soltanto gli errori strutturali certi;
-- mantenere gli avvisi legacy non bloccanti;
-- correggere separatamente i tre pattern importati con test propri;
-- risolvere i companion inconsistenti senza scegliere arbitrariamente una
-  lingua sorgente;
-- rieseguire due cicli completi consecutivi.
-
-**Uscita:** nessun errore certo nel catalogo attivo e nessuna regressione nei
-flussi di riferimento.
-
-### F5 — Estensione oltre IT/EN
-
-- aggiungere una lingua soltanto con corpus e traduttore verificati;
-- definire marker lessicali o astensione esplicita;
-- misurare token e segmentazione;
-- mantenere invarianti gli atomi macchina.
-
-**Uscita:** la nuova lingua non richiede una copia del linter e passa le stesse
-prove strutturali.
-
-## 13. Piano di test
-
-### 13.1 Prove unitarie
-
-- errore di `PATTERN` presente soltanto in inglese;
-- errore presente soltanto in italiano;
-- argomento annidato in dict non scambiato per argomento top-level;
-- `runtime_resolved` passato come keyword: errore;
-- `runtime_resolved` in backtick senza omissione: errore;
-- `runtime_resolved` come parola naturale omonima: non errore bloccante;
-- marker di omissione IT ed EN;
-- lingua sconosciuta: controllo strutturale e astensione lessicale;
-- una sola emissione affinity per manifest;
-- una sola emissione di lunghezza per risorsa con misure per lingua;
-- parità di `${RUNTIME:...}`, `{{...}}`, executor e argomenti;
-- `--strict` con etichetta e totale coerenti.
-
-### 13.2 Prove di inventario
-
-- core;
-- builtin;
-- executor utente diretto;
-- `skills/<skill>/<executor>`;
-- `_imports/<skill>/<executor>` se ancora supportato;
-- directory ritirata esclusa dal profilo attivo ma visibile nell'audit;
-- skill disabilitata classificata senza confonderla con core.
-
-### 13.3 Prove del traduttore
-
-- candidato valido scritto e firmato;
-- argomento del `PATTERN` tradotto: nessuna scrittura;
-- segnaposto perso: nessuna scrittura;
-- errore dopo chiamata LLM: manifest/state/firma byte-identici;
-- una lingua editata: sorgente corretta;
-- due lingue editate: conflitto, nessuna scelta alfabetica;
-- risorsa nuova IT+EN: entrambe adottate;
-- placeholder state: pubblicazione rifiutata o inizializzazione esplicita;
-- import annidato visitato una sola volta;
-- retry idempotente.
-
-### 13.4 Prove dei generatori
-
-- Synt monolingue passa `candidate` ma non `active`;
-- traduzione completa passa il profilo bilingue;
-- import con pattern/schema divergenti viene fermato;
-- proposta promossa usa lo stesso validatore;
-- variazione ricca della prosa resta ammessa quando gli atomi core sono validi;
-- template non può sovrascrivere la politica di esecuzione o lo standard.
-
-### 13.5 Prove sul catalogo reale
-
-- 122/122 manifest scoperti (115/115 alla data dell'analisi originale);
-- 244/244 descrizioni principali controllate (erano 230/230);
-- 693/693 descrizioni argomento censite (erano 654/654);
-- le divergenze note negli atomi macchina IT/EN sono esattamente quelle
-  registrate in §4.5 e §4.12: una sola, `set_signatures`. Il criterio non è più
-  «zero divergenze» ma «nessuna divergenza non registrata», perché la baseline
-  di zero è decaduta il 24 agosto;
-- conteggi di baseline spiegabili per origine e lingua;
-- nessuna modifica ai file durante `audit`;
-- nessuna testa corrente alterata dal rendering adattivo;
-- tempo del controllo completo registrato.
-
-### 13.6 Prove di non regressione del runtime
-
-Con linter disattivo e attivo soltanto ai confini di authoring devono essere
-identici:
-
-- catalogo caricato;
-- firme dei piani;
-- pool del proposer;
-- ordine degli executor;
-- argomenti estratti;
-- richieste di consenso;
-- effetti e output finali;
-- tempi dei turni entro il rumore di misura.
-
-### 13.7 Prove live
-
-Dopo l'eventuale implementazione, non durante questa analisi:
-
-- una query italiana che usa un executor con argomento runtime-owned;
-- equivalente inglese;
-- una query multidominio IT con almeno file, messaggi e calendario;
-- equivalente EN o un sottoinsieme semanticamente controllato;
-- un executor importato GitHub dopo correzione del suo pattern;
-- riavvio e verifica catalogo soltanto a turno concluso.
-
-## 14. Criteri di arresto e rollback
-
-La promozione si arresta se accade uno dei seguenti eventi:
-
-- un manifest non toccato diventa non caricabile;
-- il numero di executor attivi cambia per il solo aggiornamento del linter;
-- una traduzione rifiutata modifica comunque manifest, state o firma;
-- una parola naturale genera un errore bloccante non strutturale;
-- affinity o altri finding globali sono duplicati per lingua;
-- il linter e il renderer producono superfici diverse nei casi entro budget;
-- il traduttore sceglie una sorgente senza evidenza;
-- un import attivo conserva placeholder di stato dopo pubblicazione;
-- un avviso di lunghezza porta a un accorciamento automatico;
-- un corpus IT/EN cambia piano senza che sia stato modificato il manifest
-  relativo.
-
-Il rollback consiste nel disattivare i nuovi punti di blocco mantenendo il
-motore in modalità `audit`. Non richiede ripristino dei manifest perché la
-prima fase non li modifica e la fase di traduzione conserva il precedente
-artefatto fino alla pubblicazione completa.
-
-## 15. Criteri di completamento
-
-RM-0002 può passare a `implemented` soltanto quando:
-
-- esiste un solo inventario condiviso per tutte le topologie ammesse;
-- il linter controlla ogni lingua presente e non privilegia `it`;
-- i controlli globali sono eseguiti una volta;
-- i finding indicano risorsa e lingua;
-- la parità degli atomi macchina è verificata deterministicamente;
-- `get_location.actor` non è un falso errore bloccante;
-- il gate di attivazione di una lingua controlla **quella** lingua, e la prova lo
-  dimostra con una fixture di terza lingua difettosa che viene fermata;
-- una traduzione che altera capitoli, chiamata, argomenti o chiave di un
-  `${RUNTIME:...}` viene rifiutata prima della scrittura;
-- gli errori dei tre pattern importati sono rilevati prima della pubblicazione;
-- il traduttore valida in memoria e non scrive su errore;
-- `lang_state` non contiene placeholder negli artefatti attivi;
-- un conflitto con più lingue modificate non sceglie alfabeticamente;
-- i tre generatori usano lo stesso punto comune;
-- firma e loader conservano disponibilità e semantica attuali;
-- nessun manifest viene accorciato automaticamente;
-- il catalogo attivo passa due cicli completi consecutivi;
-- corpus IT/EN e prove live non mostrano regressioni di routing o argomenti;
-- tempi e conteggi finali sono registrati in un rapporto di implementazione;
-- l'indice anti-regressione e l'ADR pertinente vengono aggiornati soltanto dopo
-  che il comportamento è realmente attivo.
-
-## 16. Non-obiettivi
-
-RM-0002 non autorizza:
-
-- modifica dei manifest osservati (115 il 23 luglio, 122 il 24 agosto),
-  `set_signatures` compreso: D1 di §4.12 è una constatazione, non un mandato di
-  correzione dentro questa roadmap;
-- correzione immediata dei tre import GitHub;
-- riscrittura delle descrizioni legacy;
-- modifica dei limiti 240/320/180;
-- promozione del renderer adattivo sperimentale;
-- esposizione delle descrizioni argomento nel proposer attivo;
-- traduzione delle affinity, che restano lista mista IT+EN;
-- introduzione di una dipendenza LLM nel linter;
-- supporto dichiarato a nuove lingue senza corpus;
-- modifica del loader per rifiutare nuovi avvisi editoriali al boot;
-- deploy di documentazione pubblica.
-
-## 17. Decisioni raccomandate
-
-Le seguenti scelte sono sufficientemente supportate dall'analisi:
-
-1. realizzare il linter come motore unico multilingue;
-2. controllare tutte le lingue presenti, non soltanto `it`/`en` hardcoded;
-3. mantenere `it` ed `en` obbligatorie nello standard active corrente;
-4. eseguire una sola volta i controlli globali;
-5. confrontare deterministicamente soltanto atomi macchina;
-6. trattare la menzione naturale di un argomento runtime comune come ambigua,
-   non come errore certo;
-7. raggruppare gli avvisi di lunghezza per risorsa;
-8. applicare i blocchi appena prima di pubblicazione, traduzione e firma;
-9. non aggiungere il linter editoriale al percorso ordinario dei turni;
-10. estrarre un inventario neutro condiviso;
-11. sostituire la scelta alfabetica della sorgente multipla con un conflitto
-    esplicito;
-12. non mescolare questa implementazione con gli esperimenti del renderer.
-
-## 18. Registro di avanzamento
-
-| Data | Stato | Evento | Prove |
-|---|---|---|---|
-| 2026-07-23 | `active` | analisi macro/micro e creazione della roadmap | codice e 115 manifest ispezionati; nessun manifest modificato |
-| 2026-08-24 | `active` | riverifica completa contro codice e catalogo correnti | 122 manifest, linter rieseguito per lingua (IT 3 errori/124 avvisi, EN 4/100), lunghezze e atomi macchina ricontati, `lang_state` riaudito, pipeline RM-0005 letta; nessun file di prodotto modificato |
-| 2026-08-24 | `active` | revisione avversariale in sola lettura | 23 rilievi `ADV-*` su autorità, transazione, inventario, stato, specifica e prove (§19) |
-| 2026-08-24 | `active` | secondo giro avversariale: verdetti verificati contro il codice | 20 confermati, 3 parzialmente confermati, 0 respinti; 4 rilievi nuovi (§20.6); 2 affermazioni della riverifica corrette (§20.5); nessun file di prodotto modificato |
-| 2026-08-24 | `active` | revisione avversariale indipendente; stato mantenuto non pronto | tre analisi in sola lettura su codice, sicurezza e specifica; rilievi e mandato per il revisore esterno in §19; nessuna implementazione modificata |
-
-Esito della riverifica del 24 agosto 2026, in breve:
-
-- **le conclusioni del 23 luglio reggono tutte**; nessuna decisione di §17 è
-  stata smentita dai dati nuovi;
-- **due pezzi del disegno sono stati avviati da RM-0005**, non da qui: una
-  sequenza di promozione con ripristino parziale (§7.11) e parte
-  dell'inventario comune (§7.1); §19 spiega perché non sono ancora garanzie
-  complete;
-- **il difetto centrale è passato da igiene a correttezza**: il gate di
-  attivazione di una lingua invoca il linter, e il linter legge un'altra lingua
-  (§4.11);
-- **la parità degli atomi macchina non è più a zero**: `set_signatures` insegna
-  due chiamate diverse nelle due lingue (§4.12, D1);
-- **i tre errori degli import non si sono mossi in un mese**, perché nessun
-  percorso li visita (§4.12, D4);
-- il piano operativo è stato riscritto in §12.0 in quattro priorità, la prima
-  delle quali è piccola e chiude la lacuna di correttezza.
-
-## 19. Revisione avversariale — materiale per il revisore esterno
-
-### 19.1 Natura e verdetto della revisione
-
-Questa sezione non è una nuova specifica approvata e non autorizza modifiche al
-codice. Raccoglie obiezioni che un secondo revisore deve confermare, confutare o
-trasformare in decisioni esplicite prima dello sviluppo. In caso di contrasto
-con le conclusioni positive delle sezioni precedenti, il rilievo qui riportato
-mantiene sospesa quella conclusione finché il contrasto non è risolto.
-
-Il documento è stato esaminato in sola lettura da tre prospettive indipendenti:
-
-- corrispondenza fra affermazioni e codice corrente;
-- sicurezza, autorità, concorrenza, arresti e recupero;
-- completezza della specifica e verificabilità dei criteri di accettazione.
-
-Il materiale è interamente testuale; non è stato necessario impiegare un
-revisore multimodale. Il verdetto comune è: **RM-0002 è ancora `active`, ma non
-è pronta per lo sviluppo**. Prima del motore multilingue occorre risolvere i P0
-seguenti. Le soluzioni devono essere generali: sono escluse liste di eccezioni
-per executor, conteggi fissati nel codice e rami speciali per italiano e
-inglese.
-
-### 19.2 Rilievi P0 — bloccanti
-
-#### ADV-001 — Una promozione linguistica può autorizzare modifiche tecniche
-
-**Osservazione.** La pipeline assume che la base corrente sia autorizzata, ma
-non lo prova prima di rifirmarla:
-
-- `runtime/i18n_materializer.py:122-151` scopre e legge il manifest senza
-  verificarne firma o digest del codice;
-- `runtime/i18n_pipeline.py:615-664` usa come base i byte correnti e invoca il
-  firmatario generale;
-- `runtime/sign.py:192-237` ricalcola il digest del codice corrente, aggiorna il
-  manifest e firma i nuovi byte;
-- `runtime/i18n_activation.py:523-536` esegue la verifica di ammissione soltanto
-  dopo la promozione.
-
-`_strip_target_prose()` dimostra che la traduzione non ha introdotto altre
-modifiche tecniche rispetto alla base letta in quel momento. Non dimostra che
-quella base fosse già firmata e integra. Una modifica precedente al codice, allo
-schema, alle capability o ad altre parti del contratto può quindi essere
-incorporata e firmata durante un'operazione autorizzata soltanto a cambiare la
-lingua. Il confine di autorità è più ampio di quello dichiarato.
-
-**Requisito da decidere.** La localizzazione deve partire da una fotografia con
-firma e digest già validi; il firmatario linguistico non deve ricalcolare né
-adottare un digest diverso. Base non firmata, firma non valida, codice mutato o
-firmatario inatteso devono produrre un rifiuto senza scritture. Un executor
-nuovo o tecnicamente modificato deve attraversare l'ammissione prevista per il
-suo ciclo di vita, non usare la localizzazione come scorciatoia.
-
-**Prova minima.** Alterare separatamente codice, schema, capability, firma e
-identità del firmatario prima della promozione: ogni caso deve terminare con
-`stale_or_untrusted_base` e lasciare tutti gli artefatti invariati byte per byte.
-
-#### ADV-002 — Manifest, firma e stato non formano una transazione
-
-**Osservazione.** La sequenza corrente sostituisce il manifest, lo modifica di
-nuovo nel firmatario per aggiornare il digest, scrive la firma e aggiorna poi
-`manifest.lang_state.json` voce per voce. Il ripristino sulle eccezioni salva
-manifest e firma, ma non lo stato già aggiornato. Un arresto può lasciare:
-
-- manifest nuovo e firma vecchia;
-- manifest e firma nuovi con stato vecchio;
-- soltanto una parte delle voci di stato aggiornata;
-- una traduzione già pubblicata e firmata anche se il successivo controllo di
-  attivazione la rifiuta.
-
-La sostituzione atomica di un file non rende atomica una pubblicazione composta
-da più file. Mancano inoltre un vincolo di mutua esclusione, un'identità di
-generazione, un protocollo di recupero e la persistenza della directory dopo la
-sostituzione.
-
-**Requisito da decidere.** Confrontare almeno due disegni generali:
-
-1. bundle immutabile per generazione, verificato per intero, più un unico
-   puntatore corrente sostituito atomicamente;
-2. registro d'intento con blocco per manifest, ordine delle scritture,
-   identificatore di generazione e recupero obbligatorio al riavvio.
-
-La scelta deve funzionare sui sistemi operativi supportati e garantire che il
-lettore osservi la generazione precedente oppure quella nuova, mai una
-combinazione. Deve comprendere manifest, firma, stato linguistico e ricevuta di
-ammissione.
-
-**Prova minima.** Interrompere il processo dopo ogni confine di scrittura e
-riavviare. Il sistema deve recuperare senza intervento manuale e senza rendere
-caricabile una generazione incompleta.
-
-#### ADV-003 — La verifica non è legata ai byte poi usati dal loader
-
-**Osservazione.** `verify_executor()` verifica una lettura dei byte del manifest
-e successivamente rilegge il percorso per ricavare i file di codice
-(`runtime/sign.py:241-281`). Il loader aveva già parsificato un'altra lettura e
-continua a usare quell'oggetto dopo la verifica
-(`runtime/loader.py:1309-1357`). Il percorso builtin verifica prima e parsifica
-dopo (`runtime/loader.py:250-265`). Con sostituzioni concorrenti si possono
-quindi verificare il manifest A, calcolare il digest secondo B e costruire
-l'executor da C.
-
-**Requisito da decidere.** Lettura, verifica della firma, interpretazione del
-contratto e calcolo del digest devono appartenere a un'unica fotografia. Il
-verificatore dovrebbe restituire al loader un oggetto immutabile, per esempio
-`VerifiedManifest`, contenente esattamente i byte verificati e la relativa
-identità di generazione. Il loader non deve rileggere autonomamente il file.
-
-Anche l'evidenza di `validate_manifests()` deve essere legata alla stessa
-fotografia: oggi linter, verifica e hash dell'evidenza derivano da letture
-distinte. L'attivazione finale deve ricontrollare quella radice; una modifica
-successiva alla verifica deve invalidare automaticamente l'ammissione.
-
-**Conseguenza.** L'affermazione di §7.14 secondo cui il loader può restare del
-tutto invariato non è sostenibile senza un'altra garanzia equivalente, da
-dimostrare.
-
-#### ADV-004 — Il documento e RM-0005 danno verdetti incompatibili
-
-RM-0005 e ADR 0220 risultano chiuse parlando di inventario deterministico,
-promozione atomica e assenza di alterazioni semantiche. RM-0002 dimostra invece
-che il controllo di attivazione legge una lingua diversa da quella promossa,
-che una coppia di descrizioni già diverge negli atomi macchina e che la
-pubblicazione non possiede le garanzie di ADV-001–003.
-
-Il revisore esterno deve proporre una sola delle due decisioni, con motivazione:
-
-- riaprire il perimetro pertinente di RM-0005; oppure
-- mantenerla chiusa come infrastruttura di base, registrare formalmente le
-  limitazioni residue e assegnarne senza ambiguità la chiusura a RM-0002.
-
-Fino a questa decisione, RM-0002 non può assumere come completate transazione,
-inventario e ammissione.
-
-#### ADV-005 — Il modello dei risultati non rappresenta i casi richiesti
-
-§7.4 definisce un solo campo `language`, ma un controllo trasversale coinvolge
-almeno due lingue e l'avviso aggregato di lunghezza ne contiene potenzialmente
-molte. `language = null` renderebbe inoltre indistinguibile un confronto
-trasversale da un controllo globale. Mancano anche identità del manifest,
-origine, versione verificata, profilo e distinzione fra gravità intrinseca ed
-effetto operativo.
-
-Prima del codice serve uno schema serializzabile e versionato di `LintReport`,
-`Finding` e `TextSurface`. Deve rappresentare almeno:
-
-- identità stabile del contratto e fotografia verificata;
-- risorsa testuale e origine;
-- lingua singola oppure insieme/coppia ordinata di lingue;
-- regola, evidenza strutturata e stato `applicata | astenuta | non applicabile`;
-- gravità del difetto separata da `blocca | segnala | ignora` nel profilo
-  corrente.
-
-La presentazione può aggregare risultati elementari, ma non deve perdere la
-possibilità di filtrare, contare e riprodurre il risultato.
-
-#### ADV-006 — Baseline e certificazione finale si contraddicono
-
-§13.5 richiede che il catalogo conservi esattamente la divergenza nota di
-`set_signatures`; F4 e §15 richiedono invece l'assenza finale di errori certi.
-F4 ordina inoltre di correggere tre import mentre §16 non autorizza a modificarli.
-Non può esistere una sola prova che certifichi contemporaneamente questi esiti.
-
-Occorre separare:
-
-- rapporto storico iniziale, non usato come oracolo permanente;
-- fixture sanificata che riproduce ogni difetto noto;
-- certificazione finale del catalogo ammesso, senza divergenze bloccanti;
-- eventuale bonifica dei dati, autorizzata come fase o progetto distinto.
-
-È vietato risolvere il contrasto con eccezioni nominali per gli executor oggi
-difettosi.
-
-### 19.3 Rilievi P1 — specifica da completare
-
-#### ADV-007 — L'inventario deve separare scoperta, stato e autorità
-
-Le radici correnti di RM-0005 comprendono core e builtin con scansione
-ricorsiva, includono almeno un executor ritirato e omettono executor utente
-diretti e import annidati. Il loader usa invece regole di abilitazione e
-ammissione proprie. “Presente sul disco”, “inventariato”, “ammesso”, “attivo”,
-“visibile al planner”, “traducibile” e “rifirmabile” non sono sinonimi.
-
-L'inventario comune deve ricevere radici esplicite dal chiamante e restituire
-una descrizione neutra con origine, proprietario, stato, identità attesa,
-firmatario verificato e ricevuta di ammissione. Le viste operative devono essere
-esplicite per audit, traduzione, promozione, firma e caricamento. La scoperta non
-concede mai autorità di scrittura o firma.
-
-Vanno inoltre specificati deduplicazione, collisioni, executor disabilitati o
-ritirati, installazioni prive di profilo utente, collegamenti simbolici e
-contenimento canonico nelle radici ammesse.
-
-#### ADV-008 — Un candidato può essere applicato a una base diventata obsoleta
-
-Il materializzatore registra `manifest_hash`, ma il promotore non lo confronta
-con il manifest corrente. Il candidato viene convalidato contro il registro e
-poi applicato alla versione trovata più tardi sul disco. Un intervento
-editoriale o tecnico concorrente può quindi essere sovrascritto o inglobato.
-
-La pubblicazione deve usare un confronto condizionato della fotografia attesa:
-hash dell'intero manifest, firma, digest del codice, valore sorgente e vecchio
-valore bersaglio. Ogni differenza produce `stale_candidate`, senza scritture né
-firma. Servono blocco per risorsa e prove con due promotori concorrenti, anche su
-lingue diverse.
-
-Le precondizioni non possono dipendere dall'ordine del chiamante:
-`promote_candidates()` deve imporre direttamente qualità richiesta, stato
-ammesso, identità esatta del selettore e hash finale della prosa. Il firmatario
-deve inoltre verificare la firma appena emessa prima di rendere pubblicabile la
-generazione.
-
-#### ADV-009 — `lang_state` non ha ancora un'autorità e un'identità uniche
-
-Il companion influenza la scelta della sorgente ma non è coperto dalla firma.
-File assente o corrotto viene trattato permissivamente come oggetto vuoto;
-l'allineatore legacy può allora scegliere la prima lingua in ordine alfabetico.
-Inoltre il firmatario usa selettori del tipo `args.<nome>.description`, mentre
-materializzatore e pipeline producono
-`args.properties.<nome>.description`. Lo stesso testo può avere due identità.
-
-Occorre decidere se l'autorità sia il registro centrale di RM-0005, il companion
-o una loro relazione precisamente definita. Lo schema deve avere versione,
-identità del manifest, generazione e migrazione atomica dei selettori. Stato
-mancante, malformato, di versione ignota o non legato alla generazione corrente
-deve bloccare le scritture; il recupero permissivo può esistere soltanto in
-audit e non può scegliere una lingua sorgente.
-
-#### ADV-010 — Esistono due autorità concorrenti di traduzione
-
-Il lavoro RM-0005 usa registro, candidati e promozione versionata. Il vecchio
-`align_manifest_descriptions()` resta disponibile, sceglie la sorgente
-alfabeticamente e scrive manifest e stato prima di tentare la firma. Se la firma
-fallisce restituisce comunque `ok = true` e lascia file incoerenti.
-
-La specifica deve scegliere se ritirare questo percorso o ridurlo a un semplice
-involucro della nuova autorità. Nessun secondo percorso deve poter scrivere
-manifest, firma o stato. Il ritiro o l'unificazione deve essere un criterio di
-completamento esplicito.
-
-#### ADV-011 — Il documento sottostima i controlli già esistenti
-
-`executor_standard` controlla già i quattro capitoli in ogni lingua. Il
-validatore comune dei contratti generati enumera le lingue e verifica il budget;
-è già richiamato dalle famiglie di generatori. Il firmatario applica lo standard
-per gli executor che lo dichiarano. Non è quindi esatto dire che nessun
-passaggio legge la lingua bersaglio secondo il formato dei manifest o che il
-punto comune dei generatori sia interamente da costruire.
-
-La matrice di §7.14 deve distinguere con prove:
-
-- già presente: lingue obbligatorie, presenza dei capitoli e parte dei budget;
-- residuo: ordine, grammatica della chiamata, parità degli atomi, riferimenti,
-  associazione esatta fra lingua richiesta e testo controllato;
-- percorso che oggi non viene provato nelle verifiche di RM-0005: i test di
-  attivazione iniettano infatti un validatore sempre positivo.
-
-#### ADV-012 — Manca una grammatica degli atomi macchina
-
-“Nome della funzione”, “insieme degli argomenti” e “identificatore
-riconoscibile” non sono ancora criteri implementabili. La specifica non decide:
-
-- più chiamate o più esempi nello stesso capitolo;
-- associazione fra chiamata e argomenti, molteplicità e ordine significativo;
-- argomenti posizionali, facoltativi e universali;
-- valori enum, booleani, numeri, unità, wildcard e segnaposto ripetuti;
-- alternative espresse con `|`, `;` o frecce;
-- chiamate incomplete e omonimi nella prosa naturale;
-- insiemi, multiinsiemi o sequenze nel confronto fra lingue;
-- confronto con due, tre o più lingue e ruolo della sorgente dichiarata.
-
-Prima dei blocchi serve una rappresentazione canonica `MachineAtoms`, un parser
-prudente e un corpus avverso. In alternativa, gli atomi devono vivere in campi
-tipizzati dai quali generare la prosa. Finché l'estrazione non ha una precisione
-dimostrata, i casi ambigui restano avvisi o astensioni.
-
-#### ADV-013 — I profili richiedono una matrice normativa
-
-`audit`, `candidate`, `translation` e `active_on_touch` non definiscono ancora
-regola per regola: applicabilità, completezza linguistica richiesta, gravità,
-effetto bloccante, astensione e soggetto autorizzato a scegliere il profilo.
-“Toccato” non è definito e non può essere inferito in modo affidabile da data o
-percorso. Un input non fidato non deve poter scegliere un profilo più permissivo.
-
-Serve una matrice versionata `regola × profilo × effetto`, con codici di uscita
-e formato macchina stabili. Va definita anche la strategia di adozione sui
-difetti preesistenti prima di collegare il controllo alla firma.
-
-#### ADV-014 — Il perimetro delle superfici non coincide con RM-0005
-
-`TextSurface` comprende soltanto `description` e
-`args.<nome>.description`; il materializzatore considera anche `summary`,
-`title`, `label`, `help` e `message` annidati. Serve un'unica autorità versionata
-sulle superfici localizzabili, dalla quale il linter ricavi poi il sottoinsieme
-effettivamente letto dal planner. Due enumeratori indipendenti ricreerebbero la
-divergenza che RM-0002 vuole eliminare.
-
-#### ADV-015 — I marker naturali non possono diventare nuovo codice per lingua
-
-I marker di omissione di §7.8 devono essere risorse linguistiche enumerate,
-versionate, traducibili e sottoposte a copertura secondo ADR 0220. Per una
-lingua priva di risorsa il risultato è un'astensione esplicita, non l'uso del
-lessico inglese e non un dizionario aggiunto al codice. I controlli puramente
-strutturali restano invece indipendenti dalla lingua.
-
-#### ADV-016 — `affinity` dipende da AFF-I18N-001
-
-Il TODO `AFF-I18N-001`, a priorità massima, mette in discussione il contratto
-piatto e misto IT/EN che questa roadmap tratta come dato globale permanente.
-RM-0002 non deve tradurre `affinity`, ma deve dichiarare una dipendenza formale:
-il controllo globale consumerà l'astrazione decisa da AFF-I18N-001 senza
-cristallizzare il formato attuale. Lo sviluppo del controllo affinity resta
-sospeso fino a quella decisione.
-
-#### ADV-017 — Il piano aggiornato e le fasi storiche non hanno lo stesso ordine
-
-§12.0 propone subito di modificare un controllo bloccante di attivazione; F1
-richiede prima sola osservazione e nessun cambiamento dei percorsi produttivi.
-Inoltre F2 ripete lavoro di RM-0005 che §12.0 dice di non rifare, mentre F5
-confonde il supporto del linter a tag linguistici arbitrari con il rilascio reale
-di un nuovo corpus.
-
-Il piano va sostituito, non affiancato a una sequenza storica incompatibile. Il
-supporto generale a tag normalizzati si prova con fixture sintetiche; il
-rilascio di una lingua reale appartiene alla localizzazione dell'istanza.
-
-### 19.4 Rilievi P2-P3 — prove, riproducibilità e forma
-
-#### ADV-018 — I conteggi manuali sono già scaduti
-
-Durante questa revisione la scansione vedeva un manifest in più sotto
-`executors/` rispetto alla fotografia riportata nel documento, perché la
-scansione ricorsiva comprende anche una risorsa ritirata. Questo non autorizza a
-sostituire `122` con un nuovo numero manuale. Il campione unisce inoltre codice
-distribuito e dati mutabili di una singola installazione.
-
-I numeri devono provenire da un rapporto generato e versionato che registri
-commit, radici esplicite, identità di generazione, vista di eleggibilità e hash.
-La roadmap deve conservare soltanto conclusioni e collegamento al rapporto. Le
-prove durevoli devono usare fixture ermetiche e coerenza dinamica
-dell'inventario, non uguaglianze fissate a `115`, `122` o qualunque valore
-successivo.
-
-#### ADV-019 — Mancano le prove delle modalità di guasto decisive
-
-Oltre alle prove di §13 servono almeno:
-
-- arresto dopo ciascun passaggio di pubblicazione e recupero al riavvio;
-- due promotori concorrenti e concorrenza fra promotore, firmatario e loader;
-- base con manifest, firma, codice o stato alterati;
-- candidato obsoleto dopo modifica di sorgente, destinazione o schema;
-- alternanza rapida fra un manifest firmato e uno alterato durante il carico;
-- stato assente, corrotto, di versione sconosciuta o parzialmente aggiornato;
-- import disabilitato, rifiutato, collidente, duplicato o collegato
-  simbolicamente;
-- più chiamate, placeholder ripetuti e marker di capitolo tradotti;
-- tentativo non autorizzato di scegliere un profilo permissivo;
-- garanzia che il loader osservi soltanto generazioni complete.
-
-Le prove di attivazione devono usare almeno una volta il validatore reale: le
-prove correnti sostituiscono `manifest_validator` con una funzione che restituisce
-sempre successo, compresa quella di accettazione completa.
-
-#### ADV-020 — Diversi criteri non hanno ancora un oracolo
-
-“Entro il rumore”, “rapporto estremo”, “variazione ricca”, “semanticamente
-controllato” e “due cicli completi” non indicano soglie, corpus, ambiente o
-procedura. Prima dell'implementazione ogni criterio deve avere misura, oracolo,
-tolleranza e artefatto di prova. La non regressione dell'instradamento deve
-fissare identità del piano, argomenti attesi e variazioni ammesse.
-
-#### ADV-021 — I codici lingua richiedono una sola normalizzazione
-
-Il modello proposto accetta una stringa generica. Deve riusare l'autorità BCP-47
-di ADR 0219, compreso il rifiuto di collisioni come grafie diverse dello stesso
-tag. La grafia originale può essere conservata per la diagnostica, ma chiavi,
-confronti e identità devono usare la forma canonica.
-
-#### ADV-022 — L'inventario dei dati utente richiede vincoli sui percorsi
-
-Ogni radice deve essere esplicita e associata a proprietario e ambito. Vanno
-rifiutati collegamenti simbolici e file non regolari, verificate identità del
-manifest e corrispondenza con la directory, impediti alias dello stesso percorso
-e controllato il contenimento canonico nella radice ammessa. Un percorso
-registrato nel database non deve diventare automaticamente autorità di lettura
-o scrittura.
-
-#### ADV-023 — Analisi storica e specifica eseguibile sono mescolate
-
-Il documento contiene fotografie di due date, stato corrente, specifica,
-vecchie fasi e nuovo piano. Questo aumenta il rischio che un agente implementi
-un dato storico come requisito. Dopo la decisione esterna conviene spostare
-misure e audit in un rapporto versionato separato e mantenere qui soltanto
-confini, invarianti, decisioni, piano vigente e criteri di accettazione.
-
-Nella stessa revisione editoriale vanno sostituiti nella prosa, quando non sono
-nomi API, anglicismi come “gate”, “authoring”, “lifecycle”, “flat”,
-“runtime-owned”, “on-touch” e “boundedness”.
-
-### 19.5 Matrice di riallineamento obbligatoria
-
-Prima di riscrivere il piano, il revisore esterno deve compilare questa matrice
-con riferimenti verificabili:
-
-| Requisito RM-0002 | Autorità corrente | Già dimostrato | Lacuna residua | Azione |
+| ID | Regola | Ambito | Gravità finale | Blocco finale |
 |---|---|---|---|---|
-| inventario dei contratti | RM-0005 / loader | da verificare per vista | origini e stati divergono | riusare, estendere o separare |
-| superfici localizzabili | materializzatore RM-0005 | enumerazione ampia | sottoinsieme planner non formalizzato | unificare l'autorità |
-| validazione multilingue | standard / generatori / linter | copertura parziale | lingua bersaglio e parità | estendere senza duplicare |
-| valutazione semantica | pipeline RM-0005 | revisore separato | rapporto con errori deterministici | ordinare i controlli |
-| pubblicazione | pipeline / firmatario | ripristino parziale | autorità, concorrenza, arresto | riprogettare il confine |
-| stato linguistico | registro + companion | presenza parziale | identità e fonte autorevole | scegliere e migrare |
-| caricamento verificato | firmatario + loader | firma e digest nominali | fotografia unica | introdurre garanzia equivalente |
-| `affinity` | AFF-I18N-001 | analisi non conclusa | contratto futuro ignoto | dipendenza, nessun anticipo |
-
-Ogni riga deve terminare con una sola azione tra `riusa`, `estendi`, `ritira` o
-`sostituisci`; “convivono entrambi” richiede una motivazione e una prova di non
-concorrenza.
-
-### 19.6 Decisioni che l'agente esterno deve rendere esplicite
-
-1. RM-0005 resta chiusa con limitazioni registrate oppure va riaperta nel
-   perimetro della promozione dei contratti?
-2. Quale protocollo garantisce una pubblicazione coerente dopo arresto e
-   riavvio?
-3. Come si impedisce alla localizzazione di firmare una modifica tecnica?
-4. Qual è la fotografia unica verificata che il loader può consumare?
-5. Qual è l'autorità unica per inventario e superfici localizzabili?
-6. Qual è l'autorità unica fra registro e `manifest.lang_state.json`?
-7. Il vecchio allineatore viene ritirato o subordinato alla nuova pipeline?
-8. Qual è lo schema definitivo di `LintReport`, `Finding`, `TextSurface` e
-   `MachineAtoms`?
-9. Quale lingua o rappresentazione canonica guida il confronto quando le lingue
-   sono più di due?
-10. Qual è la matrice completa regola × profilo × effetto e chi può scegliere
-    il profilo?
-11. I difetti esistenti vengono corretti in RM-0002 o in un intervento
-    separato e ordinato prima dell'attivazione dei blocchi?
-12. Qual è la dipendenza formale da AFF-I18N-001?
-13. Quali soglie, corpus e oracoli rendono misurabili prestazioni e assenza di
-    regressioni?
-
-### 19.7 Perimetro residuo minimo proposto, non ancora approvato
-
-Se i rilievi sono confermati, il nucleo proprio di RM-0002 dovrebbe ridursi a:
-
-1. modello strutturato e versionato delle superfici e dei risultati;
-2. controlli deterministici locali e trasversali su tutte le lingue presenti;
-3. grammatica prudente e canonica degli atomi macchina;
-4. integrazione dei controlli nella pipeline RM-0005 già esistente, prima di
-   qualunque pubblicazione;
-5. inventario condiviso con viste di autorità esplicite;
-6. unificazione o ritiro del percorso legacy;
-7. prove ermetiche, rapporto generato e certificazione finale.
-
-La sicurezza della pubblicazione, della firma e della fotografia caricata è una
-precondizione di questo lavoro. Può diventare la prima fase di RM-0002 oppure
-una dipendenza separata, ma non può restare implicitamente “già fatta”.
-
-### 19.8 Mandato per il prossimo passaggio
-
-L'agente esterno deve lavorare prima in sola analisi e non modificare codice o
-manifest. Per ogni rilievo `ADV-*` deve produrre uno dei verdetti
-`confermato`, `parzialmente confermato` o `respinto`, con riferimento al codice
-e una prova riproducibile. Deve poi:
-
-1. compilare la matrice di §19.5;
-2. confrontare almeno le due alternative transazionali di ADV-002, includendo
-   comportamento su Linux e Windows, migrazione e recupero;
-3. proporre gli schemi completi e la matrice dei profili senza scrivere il
-   motore;
-4. separare requisiti già soddisfatti, lacune di RM-0002 e difetti appartenenti
-   a RM-0005 o AFF-I18N-001;
-5. produrre una proposta di riscrittura delle sezioni 6, 7, 12, 13, 15 e 16;
-6. indicare esplicitamente le decisioni che richiedono l'approvazione di
-   Roberto prima dello sviluppo.
-
-Soltanto dopo l'approvazione di quel rapporto RM-0002 potrà ricevere un piano di
-implementazione. Fino ad allora resta vietata ogni soluzione ad hoc basata sui
-nomi degli executor, sulle sole lingue IT/EN o sui conteggi della macchina di
-sviluppo.
-
-## 20. Secondo giro avversariale — verdetti verificati (24 agosto 2026)
-
-### 20.1 Metodo e sintesi
-
-Questa sezione risponde al mandato di §19.8. Ogni rilievo `ADV-*` riceve un
-verdetto `confermato`, `parzialmente confermato` o `respinto`, con riferimento
-al codice e una prova rieseguibile. Il lavoro è stato in sola lettura: nessun
-file di prodotto, manifest, firma o stato è stato modificato. Le uniche
-modifiche sono a questo documento, e sono correzioni imposte da due rilievi
-fondati (§20.5).
-
-Sintesi sui 23 rilievi: **20 confermati, 3 parzialmente confermati, 0
-respinti** — i parziali sono ADV-004, ADV-006 e ADV-014 — più quattro
-difetti che §19 non aveva visto (§20.6). Il verdetto di §19.1 regge — RM-0002
-non è pronta per lo sviluppo — ma la ragione si sposta. Non è che manchi la
-specifica del linter: è che **il confine di pubblicazione dei contratti non è
-sicuro**, e un motore multilingue costruito su un confine insicuro
-certificherebbe una superficie che qualcun altro può cambiare mentre la si
-certifica.
-
-Le tre catene, in ordine di gravità:
-
-1. **la localizzazione può firmare modifiche tecniche** — ADV-001, NEW-001;
-2. **la pubblicazione non è atomica, e l'anello debole è il firmatario, non la
-   pipeline** — ADV-002, NEW-002, NEW-003;
-3. **verifica e uso non guardano gli stessi byte** — ADV-003.
-
-Una nota di metodo, perché conta più dei singoli verdetti: due affermazioni
-scritte nella riverifica del 24 agosto erano sbagliate, e sono state trovate
-dalla revisione, non da chi le aveva scritte. Entrambe erano affermazioni
-**negative** — «questo non è controllato», «la copertura è 106» — cioè della
-classe che si verifica peggio, perché una lacuna si dimostra solo cercandola in
-tutti i punti dove potrebbe non esserci. È la stessa lezione già a verbale nelle
-memorie di progetto: prima della misura serve un avversario.
-
-### 20.2 Verdetti sui rilievi P0
-
-#### ADV-001 — `confermato`, con un aggravante
-
-`i18n_pipeline._promote_contracts()` non chiama mai `verify_executor()` sulla
-base; il gate che precede la promozione (`i18n_activation.gate()`) misura
-copertura e freschezza del registro, non firme; e `sign_executor()` ricalcola
-`compute_code_digest()` dai file presenti, riscrive il digest nel manifest e
-firma i byte risultanti (`runtime/sign.py:190-235`). Una modifica al codice
-avvenuta prima della promozione viene quindi adottata e firmata da
-un'operazione autorizzata soltanto a cambiare la lingua.
-
-Aggravante non rilevato da §19, in NEW-001: la promozione precede
-`validate_manifests()` e **il rifiuto non la annulla**.
-
-#### ADV-002 — `confermato`, e il difetto è più grave di come è descritto
-
-Il ripristino di `_promote_contracts()` copre testo e firma, non le voci di
-`manifest.lang_state.json` già scritte da `_update_state()`. Non esistono mutua
-esclusione, identità di generazione né recupero al riavvio.
-
-Due precisazioni che appesantiscono il rilievo:
-
-- `_atomic_text()` e `_atomic_bytes()` (`i18n_pipeline.py:71-101`) fanno `fsync`
-  del file ma **non della directory** dopo `os.replace`: la sostituzione non è
-  durevole a fronte di un'interruzione dell'alimentazione;
-- soprattutto, il firmatario che la pipeline invoca scrive con
-  `manifest_path.write_text()` e `sig_path.write_bytes()`
-  (`runtime/sign.py:216, 231`), cioè **senza alcuna atomicità**. La cura della
-  pipeline è annullata dal componente che essa chiama. Un protocollo
-  transazionale che non tocchi il firmatario protegge il percorso sbagliato.
-
-#### ADV-003 — `confermato`
-
-`loader._load_dir_into_catalog()` parsifica `manifest.toml`
-(`runtime/loader.py:1309`), gli applica l'Executor Standard e **poi** chiama
-`verify_executor()`, che riapre lo stesso percorso due volte ancora
-(`sign.py:253` per i byte firmati, `sign.py:272` per il testo da cui ricava
-`code.files` e il digest atteso). Quattro letture in tutto. Con sostituzioni
-concorrenti si può ammettere A, verificare B e costruire da C. La conseguenza
-dichiarata dal rilievo è corretta: §7.14 non può promettere un loader del tutto
-invariato.
-
-#### ADV-004 — `parzialmente confermato`
-
-La contraddizione esiste ma non è tecnica, è di governo. Nessuna affermazione di
-RM-0005 risulta falsa nei termini in cui è scritta: la promozione **è** atomica
-per singolo file, l'inventario **è** deterministico, l'equivalenza semantica
-**è** verificata da un revisore separato. Mancano garanzie che RM-0005 non ha
-mai dichiarato di dare: autorità della base, transazione fra più file,
-fotografia unica.
-
-Raccomandazione motivata, da sottoporre a Roberto: **tenere RM-0005 chiusa**,
-registrare le limitazioni residue come debito assegnato a RM-0002, con una sola
-eccezione — ADV-019 è debito di prova di RM-0005 e va sanato lì.
-
-#### ADV-005 — `confermato`
-
-§7.4 definisce `language` come «codice lingua oppure null per controlli
-globali». Un confronto trasversale coinvolge almeno due lingue e non ha modo di
-rappresentarsi; `null` collassa «globale» e «trasversale» sullo stesso valore.
-Fondato per costruzione.
-
-#### ADV-006 — `parzialmente confermato`; la tesi forte è respinta
-
-«Non può esistere una sola prova che certifichi contemporaneamente questi
-esiti» non regge alla lettura del documento:
-
-- §16 vieta la correzione **immediata** dei tre import; F4 è una fase successiva
-  e ne costituisce l'autorizzazione. Le due frasi si compongono;
-- §7.7 limita gli errori bloccanti ai manifest **nuovi o toccati**. Un legacy
-  divergente e non toccato produce un avviso, quindi «nessun errore certo nel
-  catalogo attivo» e «divergenza nota conservata» sono veri insieme.
-
-Resta fondato il nucleo, che però coincide con ADV-023: §13.5 mescola una
-fotografia storica con un criterio di accettazione. Va separata, non
-riconciliata.
-
-### 20.3 Verdetti sui rilievi P1
-
-#### ADV-007 — `confermato`, con prova
-
-`executors/_retired/reply_messages/manifest.toml` esiste ed è dentro le radici
-del materializzatore, che usa `rglob`. Il loader applica inoltre un cancello di
-abilitazione delle skill (`skill_registry.is_skill_enabled`,
-`runtime/loader.py:1278-1288`) che il materializzatore non ha. «Presente sul
-disco» e «ammesso» sono già oggi due insiemi diversi, e la pipeline lavora sul
-primo.
-
-#### ADV-008 — `confermato`
-
-`manifest_hash` è scritto in `i18n_materializer.py:149` e **non compare in
-nessun altro punto del runtime**. Il promotore rilegge il file corrente e
-applica il candidato a quello che trova. Nessun confronto condizionato.
-
-#### ADV-009 — `confermato`, oggi latente
-
-`iter_localized_text_tables()` produce `args.properties.<nome>.description`
-(percorso TOML completo), mentre i companion su disco usano
-`args.<nome>.description` — controllato su
-`executors/find_files/manifest.lang_state.json`. `_update_state()` scrive con il
-selettore della pipeline: una promozione crea un secondo insieme di chiavi che
-`_decide_edit_source()` non riconosce.
-
-Latente perché nessuna terza lingua è mai stata promossa qui: la ricerca di
-chiavi `args.properties.` nei companion non trova nulla. Latente non è innocuo —
-alla prima promozione reale ogni descrizione argomento risulterebbe «mai
-tradotta» per l'allineatore legacy.
-
-#### ADV-010 — `confermato`, con una riserva che ne riduce l'urgenza
-
-`_align_one()` scrive il manifest, salva lo stato, poi tenta la firma e, se
-fallisce, registra `sign_status = "sign_failed: ..."` e restituisce comunque
-`"ok": True` (`runtime/i18n_translator.py:1024-1044`). È una violazione di §2.8
-e la modalità di guasto più insidiosa del documento: il manifest resta scritto
-con la firma precedente e il loader lo scarta in silenzio al riavvio successivo.
-
-La riserva: **questo percorso non è schedulato**. Il timer obbligatorio
-`metnos-i18n-translator.service` esegue `admin.i18n_cli translate-pending`, che
-chiama `jobs.i18n_translate_pending`, il quale non tocca alcun manifest.
-`align_manifest_descriptions()` è raggiungibile solo dal proprio CLI e dai test.
-Va ritirato o subordinato, ma non sta producendo danni ogni notte.
-
-#### ADV-011 — `confermato`, ed è il rilievo che corregge questo documento
-
-`executor_standard._validate_description()`
-(`runtime/executor_standard.py:85-109`) itera **tutte** le lingue della mappa e
-richiede i quattro capitoli in ciascuna; `sign_executor()` invoca
-`validate_for_lifecycle()` per ogni manifest che dichiara l'Executor Standard, e
-**tutti e 122 lo dichiarano**. La prosa di §4.11 era sbagliata ed è corretta in
-§20.5, con la prova eseguita.
-
-Il rilievo non ribalta però la conclusione, e la stessa prova lo mostra: una
-descrizione con i capitoli **fuori ordine** e una con la **chiamata rinominata**
-superano entrambe l'Executor Standard senza un rilievo.
-
-#### ADV-012, ADV-013, ADV-015 — `confermato`
-
-Lacune di specifica verificabili leggendo §7.7, §7.8 e §7.13: «nome della
-funzione», «insieme degli argomenti», «identificatore riconoscibile»,
-«toccato» e i marker di omissione non sono definiti al punto da poter essere
-implementati senza che chi scrive il codice decida al posto della roadmap.
-
-#### ADV-014 — `parzialmente confermato`
-
-La divergenza esiste nel codice: `_LOCALIZABLE_FIELDS` ammette `description`,
-`summary`, `title`, `label`, `help`, `message`, mentre §7.2 modella due sole
-risorse. Nel catalogo reale però compaiono soltanto `description` (106) e
-`args.properties.*.description` (630) su core e builtin: zero occorrenze delle
-altre quattro. Rischio di specifica, non divergenza in atto: un'autorità unica
-sulle superfici serve, ma non è urgente.
-
-#### ADV-016 — `confermato`
-
-`internal/design/TODO.md:12` registra `AFF-I18N-001` come `P0 MAX` con «analisi
-obbligatoria prima dello sviluppo». La dipendenza formale va dichiarata e il
-controllo affinity resta sospeso.
-
-#### ADV-017 — `confermato`
-
-Riguarda testo scritto nella riverifica del 24 agosto: §12.0 dichiara che «le
-fasi originali restano sotto, invariate, come specifica di dettaglio», cioè
-esattamente l'affiancamento che il rilievo contesta. La priorità 1 di §12.0
-modifica un controllo bloccante di produzione, mentre F1 impone sola
-osservazione. Il piano va sostituito, non affiancato.
-
-### 20.4 Verdetti sui rilievi P2-P3
-
-#### ADV-018 — `confermato`, con la misura esatta
-
-Sotto `executors/` una scansione ricorsiva trova 86 manifest contro gli 85 del
-primo livello, e il file in più è
-`executors/_retired/reply_messages/manifest.toml`. Ne segue che la cifra
-«106/122» di §4.1 era **sbagliata**: sono 107, uno dei quali ritirato.
-Corretta in §4.1 e registrata in §20.5. La conclusione del rilievo vale oltre la
-singola cifra: i numeri devono venire da un rapporto generato.
-
-#### ADV-019 — `confermato`
-
-Le tre prove di `tests/runtime/i18n/test_i18n_activation.py` iniettano
-`manifest_validator=lambda _path: (True, "")` — righe 63, 96 e 143 — e la 143 è
-dentro `test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale`,
-la prova di accettazione completa. Una ricerca di `validate_manifests` in tutto
-l'albero delle prove non trova alcuna chiamata. **Il percorso reale di
-ammissione dei manifest ha copertura zero.**
-
-#### ADV-020, ADV-021, ADV-023 — `confermato`
-
-Verificabili leggendo il documento. Per ADV-021 il confronto è con
-`normalize_language()` della pipeline, che è già l'autorità BCP-47 richiesta e
-che §7.2 ignora parlando di una stringa generica.
-
-Su ADV-023 una nota di merito: il rilievo ha ragione e questa sezione ne è la
-prova. Il documento contiene ormai due fotografie datate, una specifica, due
-piani e due giri di revisione.
-
-#### ADV-022 — `confermato`, con la severità ricalibrata
-
-Il rilievo è fondato e la verifica lo rafforza: `_promote_contracts()` prende
-`manifest_path` dai metadati del registro **senza alcun controllo di
-contenimento**, ci scrive (`i18n_pipeline.py:642`) e ne firma la directory
-(`i18n_pipeline.py:643`). Una riga di database diventa autorità di scrittura e
-di firma su un percorso arbitrario.
-
-La ricalibrazione, per non gonfiare il rilievo: il registro vive in
-`PATH_USER_STATE` e la chiave d'autore in `~/.config/metnos/keys/`, entrambi
-dello stesso utente. Chi può alterare la riga può già usare la chiave
-direttamente, quindi **non c'è attraversamento di un confine di privilegio**. È
-un difetto di contenimento e di robustezza, non un'elevazione: va corretto
-perché un percorso registrato non deve essere un'autorità, non perché apra una
-falla.
-
-### 20.5 Correzioni apportate a RM-0002 da questa revisione
-
-**C1 — i capitoli sono controllati (ADV-011).** §4.11 affermava che i capitoli
-`SCOPO:/PATTERN:/NON:/OUT:` non fossero controllati affatto. Prova eseguita in
-memoria su `executors/find_files/manifest.toml`, con
-`executor_standard.validate_for_lifecycle`:
-
-| Manifest modificato | Esito |
-|---|---|
-| invariato | nessun rilievo |
-| lingua `de` aggiunta con marker tradotti (`ZWECK/MUSTER/NICHT/AUSGABE`) | **rifiutato**, `description_chapters` |
-| capitoli tutti presenti ma in ordine invertito | nessun rilievo |
-| chiamata del `PATTERN` rinominata | nessun rilievo |
-
-La riga della tabella di §4.11 è stata divisa in due — presenza, protetta
-altrove; ordine, scoperto — e il paragrafo seguente è stato corretto.
-Conseguenza per il piano: la protezione dei capitoli non va costruita, va
-**riusata**; resta da costruire quella dell'ordine, della chiamata e degli
-argomenti.
-
-**C2 — la copertura della pipeline è 107, non 106 (ADV-018).** §4.1 contava core
-e builtin al primo livello mentre la pipeline scandisce ricorsivamente e include
-`executors/_retired/reply_messages`. Tabella corretta e nota aggiunta.
-
-Nessun'altra affermazione della riverifica è stata smentita: inventario,
-lunghezze, conteggi del linter per lingua, divergenza di `set_signatures`, stato
-dei companion, tutela nulla sulla chiamata del `PATTERN` e lingua sbagliata nel
-gate di attivazione sono stati tutti riconfermati contro il codice corrente.
-
-### 20.6 Rilievi nuovi, non presenti in §19
-
-**NEW-001 — un'attivazione rifiutata non annulla la promozione.**
-In `activate_language()` l'ordine è `promote_candidates()` →
-`validate_manifests()` → gate finale. Se il controllo dei manifest o il gate
-finale falliscono viene sollevata `ActivationBlocked`, ma i manifest sono già
-riscritti e **rifirmati**, e non esiste un annullamento. Il sistema resta
-operativo nella lingua precedente, quindi il danno non è immediato; ma il
-catalogo firmato è stato modificato da un'operazione che si è dichiarata
-fallita, che è §2.8 applicata agli artefatti. Va deciso insieme ad ADV-002: la
-promozione dev'essere annullabile, oppure dev'essere l'ultimo passo dopo ogni
-verifica.
-
-**NEW-002 — il firmatario annulla l'atomicità della pipeline.**
-`sign_executor()` scrive il manifest con `write_text()` e la firma con
-`write_bytes()`. Un'interruzione fra le due lascia manifest nuovo e firma
-vecchia — lo stato esatto che il ripristino di `_promote_contracts()` esiste per
-evitare, prodotto dal componente che quel ripristino invoca.
-
-**NEW-003 — nessun blocco fra promozioni concorrenti sullo stesso manifest.**
-`_promote_contracts()` legge `original_text` una volta e lo modifica per tutti i
-record di quel manifest. Due promozioni verso lingue diverse, avviate insieme,
-leggono la stessa base e l'ultima che scrive cancella l'altra, restando entrambe
-«riuscite». ADV-008 chiede il confronto condizionato; questo è il meccanismo per
-cui serve anche un blocco per risorsa.
-
-**NEW-004 — l'ordine dei capitoli non è protetto da nessuno.**
-`manifest_lint` lo controlla (`runtime/manifest_lint.py:203-213`) ma emette
-`warn`, e `validate_manifests()` filtra i soli `error`. L'Executor Standard, che
-è il controllo effettivamente applicato alla firma, verifica la presenza e non
-l'ordine. Una traduzione che riordini i capitoli passa quindi ogni confine
-esistente, e il proposer — che taglia la testa fino a `OUT:` — ne riceve una
-diversa da quella prevista.
-
-### 20.7 Cosa resta da decidere, e da chi
-
-Il mandato di §19.8 chiede all'agente esterno anche di scegliere il protocollo
-transazionale, gli schemi e la matrice dei profili. Quelle non sono verifiche:
-sono decisioni di prodotto con conseguenze su firma, autorità e installato, e
-appartengono a Roberto. Restano aperte di proposito; qui c'è il materiale per
-deciderle.
-
-Tre domande vengono prima, perché le altre dieci di §19.6 ne dipendono:
-
-1. **La promozione linguistica può rifirmare?** Se no, serve un firmatario che
-   accetti un digest esistente e rifiuti una base non verificata; se sì, il
-   confine di autorità va riscritto per dirlo esplicitamente.
-2. **Chi possiede lo stato linguistico**, il registro SQLite di RM-0005 o il
-   companion accanto al manifest? Finché sono due, i selettori divergono e
-   ADV-009 si ripresenta a ogni estensione.
-3. **RM-0005 si riapre o si registra il debito?** La risposta decide se
-   ADV-001, ADV-002 e ADV-003 sono lavoro di RM-0002 o rientrano dove il codice
-   è nato.
-
-Fino a queste tre risposte RM-0002 resta `active` e in sola analisi. Il primo
-lavoro di codice, quando arriverà, non è il motore multilingue: è rendere sicuro
-il confine di pubblicazione su cui il motore dovrà appoggiarsi.
+| `language_missing` | lingua richiesta assente o vuota | locale | error | sì |
+| `chapter_order` | marker principali esattamente una volta e ordinati | locale/parità | error | sì |
+| `pattern_unparseable` | stringa o delimitatore non chiuso | locale | error | sì sui nuovi/toccati |
+| `pattern_unknown_arg` | keyword non nello schema né universale | locale | error | sì |
+| `runtime_arg_passed` | argomento `runtime_resolved` passato nella chiamata | locale | error | sì |
+| `pattern_atoms` | chiamate e keyword diverse fra le lingue | parità | error | sì |
+| `runtime_placeholders` | multiinsieme `${RUNTIME:...}` diverso | parità | error | sì |
+| `template_placeholders` | multiinsieme `{{...}}` diverso | parità | error | sì |
+| `runtime_arg_code_mention` | argomento tecnico mostrato come codice fuori pattern | locale | warn | no |
+| `head_length` | testa oltre il limite corrente | locale | warn | no |
+| `description_length` | descrizione oltre il limite corrente | locale | warn | no |
+| `argument_description_length` | descrizione argomento oltre il limite | locale | warn | no |
+| `non_reference` | riferimento `NON:` non risolto | locale | warn | no |
+
+Il controllo affinity esistente può continuare a essere emesso una volta dal
+CLI, ma non viene esteso né reso bloccante da questa roadmap.
+
+### 7.2 Capitoli
+
+Per `resource="description"` contare le occorrenze esatte dei marker
+`SCOPO:`, `PATTERN:`, `NON:`, `OUT:`.
+
+- ognuno deve comparire esattamente una volta;
+- gli indici devono essere strettamente crescenti;
+- marker tradotti o duplicati sono errori;
+- descrizioni di argomento non applicano questa regola.
+
+Lo standard executor continua a controllare la presenza. RM-0002 aggiunge
+ordine e unicità senza copiare il validatore dello standard.
+
+### 7.3 Scanner del `PATTERN`
+
+Non usare una singola espressione regolare sull'intera descrizione. Applicare
+uno scanner lineare soltanto al testo fra `PATTERN:` e `NON:`:
+
+1. scorrere carattere per carattere;
+2. riconoscere apici singoli e doppi e rispettare `\`;
+3. mantenere profondità separate per `()`, `[]` e `{}`;
+4. riconoscere `identificatore(` fuori dalle stringhe;
+5. trovare la parentesi di chiusura bilanciata della chiamata;
+6. nel corpo della chiamata, dividere solo sulle virgole a profondità zero;
+7. riconoscere come keyword solo `identificatore =` a profondità zero;
+8. ordinare i nomi keyword e rifiutare duplicati nella stessa chiamata;
+9. registrare ogni chiamata, comprese alternative ripetute;
+10. registrare assegnazioni tecniche autonome come `all=true`;
+11. registrare identificatori uniti esplicitamente da operatori come
+    `from_step+columns`;
+12. non interpretare il valore di una keyword;
+13. stringa o delimitatore non chiusi producono `pattern_unparseable`;
+14. zero chiamate è ammesso per contratti che dichiarano un pattern naturale;
+15. se una lingua contiene atomi e l'altra no, `pattern_atoms` rileva la
+    divergenza.
+
+Il confronto usa il multiinsieme canonico di `PatternCall`, assegnazioni e
+operatori. L'ordine degli esempi può cambiare; quantità, nomi delle chiamate e
+insiemi di keyword no.
+
+Non usare `ast.parse`: i pattern correnti includono ellissi, frecce, booleani
+TOML e alternative in prosa che non formano espressioni Python complete.
+
+### 7.4 Segnaposto
+
+Per `${RUNTIME:chiave}` confrontare il token completo, chiave compresa, e
+conservare la molteplicità. Un token iniziato ma non chiuso produce errore
+locale.
+
+Per `{{...}}` confrontare il contenuto dopo avere eliminato soltanto gli spazi
+immediatamente interni alle doppie parentesi. Non normalizzare l'espressione
+interna e conservare i duplicati.
+
+La parità si applica a descrizione principale e descrizioni argomento.
+
+### 7.5 `runtime_resolved`
+
+Eliminare `_OMIT_MARKERS` e la ricerca della parola naturale come errore.
+
+- keyword `nome=` dentro una chiamata del `PATTERN`, quando `nome` ha
+  `runtime_resolved=true`: `runtime_arg_passed`, errore;
+- forma codice inequivoca fuori dal `PATTERN`, per esempio backtick o
+  assegnazione: `runtime_arg_code_mention`, avviso;
+- semplice omonimo nella prosa, per esempio “current actor”: nessun rilievo;
+- nessun elenco lessicale per lingua e nessun ripiego all'inglese.
+
+Questa è una regola generale basata sulla forma, non un'eccezione per `actor`.
+
+### 7.6 Lunghezze e riferimenti
+
+I limiti esistenti restano avvisi locali per lingua. Non aggregare lingue in un
+singolo finding e non modificare automaticamente la prosa. `NON:` continua a
+produrre soltanto avvisi per riferimenti non risolti finché non esiste una
+grammatica più forte.
+
+## 8. Integrazione file per file
+
+| File | Modifica | Verifica |
+|---|---|---|
+| `runtime/manifest_lint.py` | API esplicita, finding, scanner, confronto, nuova regola runtime | unità complete |
+| `runtime/i18n_activation.py` | prima validatore `(Path, language)`; dopo RM-0007 snapshot + lingua bersaglio | prova con validatore reale sugli stessi byte |
+| `runtime/i18n_pipeline.py` | chiamare il confronto per `layer="contract"` dopo `_validate_common()` | candidato errato non ammesso |
+| `runtime/synt_multistage.py` | passare lingua corrente e `allow_flat_description=True` | candidato flat ancora validato |
+| `runtime/manifest_inventory.py` | introdurre l'inventario neutro consumato anche da RM-0007 | nessun percorso concede autorità |
+| CLI in `manifest_lint.py` | enumerare ogni lingua e origine; affinity una volta | rapporto stabile e sola lettura |
+| test E2E che chiamano il linter | aggiungere lingua esplicita | nessun vecchio ripiego |
+| `tests/runtime/i18n/test_i18n_activation.py` | almeno un percorso col validatore vero | difetto nella lingua bersaglio fermato |
+
+Nel ramo `contract` di `_translate_item()` l'ordine finale deve essere:
+
+```text
+traduzione
+  -> _validate_common
+  -> lint_contract_translation
+  -> se errori: CandidateValidationError, nessun candidato ammesso
+  -> altrimenti artefatto candidato
+```
+
+Il blocco operativo di questa sequenza entra solo dopo RM-0007. Prima può
+essere eseguito in prova e in rapporto informativo.
+
+## 9. Ordine di implementazione vincolante
+
+Ogni fase corrisponde a un commit autonomo. Un agente non deve iniziare la fase
+successiva se il gate indicato non è verde.
+
+### L0 — Caratterizzazione e validatore reale
+
+**Modificare:** soltanto test e fixture.
+
+1. Aggiungere una fixture con lingua sintetica valida.
+2. Aggiungere una fixture con difetto presente soltanto nella lingua bersaglio.
+3. Eseguire `validate_manifests()` senza sostituire il validatore.
+4. Conservare una prova esplicita che i vecchi test usano ancora il doppio
+   quando stanno testando soltanto altri componenti.
+
+**Gate:** almeno una prova completa attraversa linter e verifica reale; prima
+deve fallire per il motivo atteso, non per firma o setup.
+
+### L1 — Lingua obbligatoria e falso positivo
+
+**Modificare:** `runtime/manifest_lint.py`, tutti i chiamanti trovati con una
+ricerca globale e i relativi test.
+
+1. Cambiare le firme come in §6.2.
+2. Migrare ogni chiamante; nessun valore predefinito temporaneo.
+3. Sostituire la regola `runtime_resolved` come in §7.5.
+4. Eliminare `_description_text()` e `_OMIT_MARKERS` solo quando non hanno più
+   riferimenti.
+5. Passare la lingua bersaglio dall'attivazione.
+
+**Gate:** ricerca globale senza chiamate prive di `language`; `current actor`
+non è errore; `actor=` nel pattern lo è; lingua mancante non usa ripiego.
+
+Questa fase può essere sviluppata prima di RM-0007 perché corregge il controllo
+locale già esistente. Non deve introdurre le nuove regole trasversali come
+blocco di pubblicazione.
+
+### L2 — Inventario comune in osservazione
+
+1. Sostituire le scansioni del CLI con `inventory_manifests()`.
+2. Passare fonti esplicite dalla configurazione.
+3. Mostrare origine e stato nel rapporto.
+4. Rendere visibili gli import soltanto in audit.
+5. Eseguire affinity una volta per manifest, non una volta per lingua.
+
+**Gate:** fixture di tutte le topologie; import visibile ma mai aggiunto alla
+promozione; ritirati e disabilitati distinti; nessun conteggio cablato.
+
+### L3 — Scanner e confronto in memoria
+
+**Modificare:** `runtime/manifest_lint.py` e test unitari.
+
+1. Implementare prima scanner e tipi `Pattern*`.
+2. Provare ogni caso limite di §7.3.
+3. Implementare capitoli e segnaposto.
+4. Implementare `lint_contract_translation()`.
+5. Eseguirlo su fixture e catalogo in sola osservazione.
+
+**Gate:** nessun falso errore sul corpus ammesso non ambiguo; ogni mutazione
+sintetica prevista produce esattamente il codice di regola atteso.
+
+### L4 — Bonifica guidata dai dati
+
+1. Generare un rapporto dinamico per origine e lingua.
+2. Correggere alla fonte soltanto divergenze certe dimostrate dalle regole.
+3. Ogni correzione a un manifest ha una prova specifica e una rifirma eseguita
+   attraverso RM-0007.
+4. Non aggiungere allowlist di nomi per preservare difetti esistenti.
+
+**Gate:** zero errori deterministici nell'inventario ammesso; gli import non
+autorizzati restano segnalati senza essere modificati.
+
+### L5 — Blocco dei candidati
+
+**Prerequisito:** RM-0007 `implemented` almeno fino alla pubblicazione
+linguistica e al cutover della fotografia verificata.
+
+1. Collegare `lint_contract_translation()` a `_translate_item()`.
+2. Convertire i finding `error` in `CandidateValidationError` prima della
+   pubblicazione.
+3. Fare usare ad attivazione e pubblicazione il mapping dello snapshot, non
+   `lint_file()` su un percorso riaperto.
+4. Conservare i warning nel rapporto senza bloccare.
+5. Provare candidato obsoleto, errore del linter e firma fallita.
+
+**Gate:** nessun errore modifica puntatore o generazione corrente; una
+traduzione valida produce una generazione verificata.
+
+### L6 — Adozione comune e chiusura tecnica
+
+1. Verificare generatori, importatori e CLI con ricerca dei chiamanti reali.
+2. Riutilizzare il linter senza copiare regole nei template.
+3. Eseguire suite mirate, suite completa e due cicli del corpus di routing.
+4. Generare il rapporto finale dalla revisione Git candidata.
+5. Aggiornare indice anti-regressione e stato della roadmap.
+
+**Gate:** tutti i criteri di §12 soddisfatti.
+
+## 10. Piano di test obbligatorio
+
+### 10.1 Unità lingua e runtime
+
+- lingua richiesta diversa da `it` realmente controllata;
+- lingua assente produce `language_missing`;
+- nessun ripiego da `fr` a `en` o `it`;
+- candidato flat rifiutato senza autorizzazione e ammesso da Synt con lingua;
+- `current actor` non produce errore;
+- `actor=` nel `PATTERN` produce `runtime_arg_passed`;
+- backtick o assegnazione tecnica fuori pattern produce soltanto avviso.
+
+### 10.2 Scanner
+
+- virgole, `=`, parentesi e operatori dentro stringhe ignorati;
+- liste e dizionari annidati non spezzano gli argomenti top-level;
+- apici con escape;
+- due alternative della stessa chiamata;
+- pipeline `find_packages(...) -> run_processes(from_step=1)`;
+- ellissi e booleani non Python;
+- chiamata duplicata conservata nel multiinsieme;
+- keyword duplicata rifiutata;
+- delimitatore o stringa non chiusa;
+- pattern naturale senza chiamate.
+
+### 10.3 Parità
+
+- nome della chiamata modificato;
+- keyword `reason` aggiunta o rimossa;
+- riordinamento degli esempi ammesso;
+- chiamata persa o duplicata rifiutata;
+- `${RUNTIME:actor}` sostituito con `${RUNTIME:now}`;
+- segnaposto runtime perso o duplicato;
+- `{{ value }}` e `{{value}}` equivalenti;
+- espressione Jinja interna modificata;
+- capitoli riordinati, duplicati o tradotti;
+- descrizione argomento con segnaposto divergente.
+
+### 10.4 Inventario
+
+- core, builtin, skill builtin, utente diretto, skill utente e legacy;
+- ritirato e disabilitato classificati;
+- symlink, alias, duplicato e collisione segnalati;
+- import nel rapporto ma non nella promozione;
+- ordine indipendente dall'ordine restituito dal filesystem;
+- radici temporanee iniettate, nessun accesso alla home reale nei test.
+
+### 10.5 Integrazione
+
+- attivazione valida con validatore reale;
+- lingua sintetica difettosa rifiutata per il codice atteso;
+- traduzione difettosa non crea una generazione;
+- warning editoriale non blocca;
+- CLI controlla tutte le lingue presenti;
+- affinity non viene duplicata;
+- `--strict` mostra e conta la gravità effettiva in modo coerente;
+- audit non modifica manifest, firma, stato o registro;
+- nessun cambiamento a catalogo, ordine dei tool o piani quando il linter non è
+  nel confine di authoring.
+
+### 10.6 Prestazioni
+
+Il controllo completo dell'inventario ammesso, con file già disponibili sul
+filesystem locale, deve terminare sotto 500 ms al percentile 95 nell'ambiente
+CI di riferimento. La misura viene registrata, non usata per introdurre cache
+non prevista. Il percorso ordinario dei turni non importa né invoca il linter.
+
+## 11. Rischi e contromisure
+
+| Rischio | Gravità | Contromisura | Prova |
+|---|---:|---|---|
+| blocco di una lingua per falso positivo | alta | sole forme macchina, astensione sulla prosa | corpus ambiguo `actor` |
+| executor scompare dopo nuova regola | alta | osservazione, bonifica, poi blocco | catalogo prima/dopo |
+| linter costruito su pubblicazione insicura | bloccante | RM-0007 prima di L5 | gate di dipendenza |
+| import difettosi bloccano il catalogo | alta | audit senza autorità, bonifica esplicita | vista import separata |
+| scanner interpreta prosa come codice | alta | solo capitolo PATTERN, parser lineare prudente | casi ambigui |
+| controllo troppo permissivo | alta | mutazioni sintetiche di ogni atomo | matrice parità |
+| regole duplicate nei generatori | media | un solo modulo e ricerca statica | nessuna copia dei codici |
+| nuovo hardcoding linguistico | alta | lingua come dato BCP-47, nessun lessico | fixture terza lingua |
+| conteggi storici diventano requisiti | media | inventario dinamico e report separato | nessun numero nel gate |
+| affinity progettata due volte | alta | esclusione e dipendenza AFF-I18N | revisione del diff |
+
+## 12. Criteri di completamento
+
+RM-0002 passa a `implemented` soltanto quando:
+
+- nessuna API del linter sceglie implicitamente una lingua;
+- ogni chiamante passa una lingua normalizzata;
+- l'attivazione controlla esattamente la lingua richiesta;
+- almeno una prova completa usa il validatore reale;
+- `current actor` non blocca e un argomento runtime passato sì;
+- ordine dei capitoli, atomi del pattern e segnaposto sono verificati prima
+  della pubblicazione;
+- lo scanner rispetta tutti i casi limite di §10.2;
+- il CLI usa l'inventario comune senza concedere autorità agli import;
+- nessun warning editoriale blocca una lingua;
+- non esistono eccezioni per executor, italiano o inglese;
+- il catalogo ammesso non contiene errori deterministici delle nuove regole;
+- audit e linter non entrano nel percorso ordinario dei turni;
+- suite mirate, suite completa e due cicli di routing sono verdi;
+- il rapporto finale è generato dall'inventario e registra revisione e hash;
+- RM-0007 ha completato il confine richiesto da L5;
+- indice anti-regressione e documentazione interna sono aggiornati.
+
+Passa a `closed` dopo distribuzione, prova sull'installazione di riferimento e
+assenza di attività residua.
+
+## 13. Istruzioni per un agente implementatore
+
+1. Leggere per intero questa roadmap, RM-0007, ADR 0223 e il rapporto storico.
+2. Eseguire una sola fase L0-L6 per commit.
+3. Cercare tutti i chiamanti prima di cambiare una firma; non affidarsi
+   all'elenco di §8 come se fosse completo nel futuro.
+4. Scrivere prima la fixture che dimostra il difetto della fase.
+5. Non aggiungere parametri predefiniti per mantenere compatibilità ambigua.
+6. Non aggiungere nomi di executor, lingue o quantità nel codice.
+7. Non usare un LLM nel linter e non correggere automaticamente la prosa.
+8. Non duplicare controlli dello standard executor.
+9. Non modificare `affinity`.
+10. Non rendere bloccante il confronto prima del gate RM-0007.
+11. Non correggere un falso positivo con una eccezione nominale; restringere la
+    regola alla forma macchina che lo rende certo.
+12. Se lo scanner incontra una forma non prevista, aggiungere prima fixture e
+    decidere fra atomo o astensione; non estendere una regex alla cieca.
+13. Dopo ogni fase eseguire test mirati e `git diff --check`.
+14. Registrare commit e prove nel documento prima di cambiare lo stato.
+15. Fermarsi e chiedere una decisione se la modifica richiede nuovi campi del
+    manifest, una severità diversa o un allentamento di firma e autorità.
+
+## 14. Registro
+
+| Data | Stato | Evento |
+|---|---|---|
+| 2026-07-23 | `active` | prima analisi e roadmap |
+| 2026-08-24 | `active` | riverifica, revisione avversariale e controrevisione |
+| 2026-08-24 | `ready` | storia separata; perimetro ridotto; specifica e ordine di sviluppo chiusi |
