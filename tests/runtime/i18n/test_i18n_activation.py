@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from i18n_activation import ActivationBlocked, activate_language, gate
+from i18n_activation import (
+    ActivationBlocked,
+    activate_language,
+    gate,
+    validate_manifests,
+)
 from i18n_materializer import materialize
 from i18n_pipeline import review_semantics, translate_pending
 from i18n_registry import LocalizationRegistry
@@ -32,6 +37,53 @@ def _prepared(tmp_path: Path):
         judge=lambda source, target, resource: bool(source and target and resource),
     )
     return paths, registry
+
+
+def _signed_target_only_lint_defect(tmp_path: Path, monkeypatch):
+    """Build a real signed contract whose defect exists only in ``nl``."""
+    import sign
+
+    paths = replace(
+        _fixture(tmp_path),
+        device_catalog=tmp_path / "device" / "messages_i18n.json",
+    )
+    executor_dir = tmp_path / "executors" / "sample"
+    (executor_dir / "sample.py").write_text(
+        "def invoke(path):\n    return {'ok': bool(path)}\n",
+        encoding="utf-8",
+    )
+    (executor_dir / "manifest.toml").write_text(
+        'name="sample"\nversion="1.0.0"\n'
+        '[description]\n'
+        'en="SCOPO: reads. PATTERN: sample(path=\\\"x\\\"). '
+        'NON: other tools. OUT: {ok}."\n'
+        'nl="SCOPO: leest. PATTERN: sample(unknown=\\\"x\\\"). '
+        'NON: andere tools. OUT: {ok}."\n'
+        '[args]\ntype="object"\nrequired=["path"]\n'
+        '[args.properties.path]\ntype="string"\n'
+        '[args.properties.path.description]\n'
+        'en="File path"\nnl="Bestandspad"\n'
+        '[output]\nschema_inline="{ok: bool}"\n'
+        '[code]\nfiles=["sample.py"]\n'
+        'digest="sha256:placeholder"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sign, "KEYS_DIR", tmp_path / "keys")
+    sign.generate_keypair("author")
+    sign.sign_executor(executor_dir)
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    materialize("nl", registry=registry, paths=paths)
+    return registry
+
+
+def test_real_activation_validator_currently_falls_back_from_target_language(
+    tmp_path: Path, monkeypatch,
+):
+    registry = _signed_target_only_lint_defect(tmp_path, monkeypatch)
+
+    # Characterization for RM-0002 L0: the real validator verifies the
+    # signature but currently lints English, so the Dutch-only defect passes.
+    validate_manifests("nl", registry=registry)
 
 
 def test_gate_blocks_before_semantic_review(tmp_path: Path):
