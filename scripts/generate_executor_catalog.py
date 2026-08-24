@@ -141,58 +141,60 @@ def load_entries(executors_dir: Path = EXECUTORS_DIR) -> list[ExecutorEntry]:
 
 _TEXT = {
     "it": {
-        "title": "Catalogo degli executor distribuiti per dominio",
-        "description": "Censimento degli executor basati su file e distribuiti con Metnos, generato dai manifest firmati e raggruppato per dominio canonico.",
+        "title": "Catalogo degli executor",
+        "description": "Le azioni distribuite con Metnos, raggruppate per dominio e descritte direttamente dai loro manifest firmati.",
         "back": "Guida all'architettura",
         "other": "EN",
-        "lead": "Questo catalogo censisce gli executor basati su file presenti in <code>executors/</code>. Il dominio deriva dall'oggetto canonico del nome; non è una classificazione editoriale mantenuta a mano.",
-        "generated": "Documento generato in modo deterministico da {count} manifest firmati in <code>executors/</code>. Non comprende gli executor interni al processo, quelli installati da skill o quelli sintetizzati nella directory dati della singola istanza. Il catalogo completo in esercizio è visibile nella chat web in Settings → Ciclo di vita → Executor.",
-        "concept": "Un executor può implementare una procedura diretta oppure essere un <a href=\"intelligent_executors.html\">executor intelligente a mandato ristretto</a>; il contratto pubblico e la collocazione nel dominio non cambiano.",
-        "undo_title": "Censimento della possibilità di annullamento",
-        "undo_explanation": "La possibilità di annullamento ha tre stati distinti. <strong>Annullabile</strong> significa che il manifest firmato dichiara <code>revertible = true</code> e uno o più <code>reverse_pattern</code>. Il contratto opzionale <code>undo.outcome = per_execution</code> precisa che la singola esecuzione può produrre una ricevuta reversibile, nessun effetto oppure un effetto irreversibile: il runtime registra l'esito reale e non deduce l'inverso dal nome dell'executor. <strong>Non annullabile</strong> significa che l'azione modifica stato, ma il contratto non dichiara un percorso inverso. <strong>Non applicabile</strong> identifica operazioni che non lasciano stato utente da ripristinare, riconosciute dall'effetto firmato <code>read_only</code> o dalla tassonomia canonica delle letture e dei calcoli puri. La classificazione deriva dai contratti firmati, non da un elenco editoriale di executor.",
-        "undo_question": "Domanda verificabile dal Tutor: «Quali executor modificano file e, per ciascuno, l'annullamento è supportato, non supportato o non applicabile?»",
-        "undoable_list": "Executor annullabili dichiarati",
+        "lead": "Questa pagina risponde a una domanda pratica: quali azioni sono fornite con Metnos e che cosa dichiara il contratto di ciascuna? Gli executor sono raggruppati automaticamente in base al loro nome canonico; l'elenco non viene ricopiato e riordinato a mano.",
+        "generated": "L'elenco qui sotto proviene da {count} manifest firmati nella distribuzione. Non comprende le capacità interne al processo, gli executor aggiunti da skill o quelli creati nella singola installazione. Per vedere tutto ciò che l'istanza può usare in questo momento, apri <strong>Settings → Ciclo di vita → Executor</strong> nella chat web.",
+        "concept": "Un executor può seguire una procedura diretta oppure adattare alcuni passi entro un <a href=\"intelligent_executors.html\">mandato ristretto</a>. In entrambi i casi conserva lo stesso contratto pubblico: scopo, argomenti, autorità, collocazione e forma del risultato.",
+        "properties_explanation": "Nella colonna <strong>Contratto</strong>, <code>standard</code> e <code>critico</code> indicano la classe di rischio; <code>server</code>, <code>any</code> e le piattaforme indicano dove l'executor può essere collocato. Il trattino segnala che il manifest non limita esplicitamente la piattaforma.",
+        "undo_title": "Quali azioni si possono annullare",
+        "undo_explanation": "<p>L'annullamento non si applica nello stesso modo a tutte le azioni:</p><ul><li><strong>Annullabile</strong>: il manifest dichiara una procedura di ripristino. Alcuni executor stabiliscono l'annullabilità soltanto dopo l'esecuzione, perché dipende dall'effetto realmente prodotto e dalla ricevuta disponibile.</li><li><strong>Non annullabile</strong>: l'azione modifica lo stato, ma il contratto non offre un ripristino affidabile.</li><li><strong>Non applicabile</strong>: una lettura o un calcolo puro non lascia niente da ripristinare.</li></ul><p>La classificazione deriva dal contratto firmato e, quando previsto, dalla ricevuta della singola esecuzione. Metnos non deduce una procedura inversa dal nome dell'executor.</p>",
+        "undo_question": "Il Tutor può usare questo catalogo per rispondere, per esempio: «Quali executor modificano file e quali di queste azioni posso annullare?»",
+        "undoable_list": "Executor dichiarati annullabili",
         "undoable": "annullabile",
         "not_undoable": "non annullabile",
         "not_applicable": "non applicabile",
-        "no_reverse": "nessun percorso inverso dichiarato",
+        "no_reverse": "nessuna procedura di ripristino dichiarata",
         "no_state": "nessuno stato utente da ripristinare",
-        "reverse_pattern": "percorso inverso",
-        "per_execution": "esito determinato dalla ricevuta della singola esecuzione",
+        "reverse_pattern": "procedura di ripristino",
+        "per_execution": "la ricevuta della singola esecuzione stabilisce l'annullabilità effettiva",
         "domain": "Dominio",
         "executor": "Executor",
         "purpose": "Scopo",
-        "properties": "Proprietà",
+        "properties": "Contratto",
         "undo": "Annullamento",
         "source": "Percorso",
         "critical": "critico",
         "standard": "standard",
-        "system": "sistema / tra domini",
+        "system": "sistema / più domini",
         "footer": "Fonte: manifest firmati sotto <code>executors/</code>. Rigenerazione dalla radice del repository: <code>./.venv/bin/python scripts/generate_executor_catalog.py</code>.",
     },
     "en": {
-        "title": "Distributed executor catalog by domain",
-        "description": "Inventory of the file-based executors distributed with Metnos, generated from signed manifests and grouped by canonical domain.",
+        "title": "Executor catalog",
+        "description": "The actions distributed with Metnos, grouped by domain and described directly by their signed manifests.",
         "back": "Architecture guide",
         "other": "IT",
-        "lead": "This catalog inventories the file-based executors under <code>executors/</code>. A domain is derived from the canonical object in the name; it is not a manually maintained editorial classification.",
-        "generated": "This document is deterministically generated from {count} signed manifests under <code>executors/</code>. It excludes in-process executors, skill-installed executors, and executors synthesized in an instance's data directory. The complete live catalog is available in the web chat under Settings → Lifecycle → Executors.",
-        "concept": "An executor may implement a direct procedure or be a <a href=\"intelligent_executors.html\">narrow-mandate intelligent executor</a>; its public contract and domain placement do not change.",
-        "undo_title": "Undo applicability census",
-        "undo_explanation": "Undo applicability has three distinct states. <strong>Undoable</strong> means the signed manifest declares <code>revertible = true</code> and one or more <code>reverse_pattern</code> values. The optional <code>undo.outcome = per_execution</code> contract means that an individual execution may produce a reversible receipt, no effect, or an irreversible effect: the runtime records the actual outcome and never infers an inverse from the executor name. <strong>Not undoable</strong> means the action changes state but its contract declares no inverse path. <strong>Not applicable</strong> identifies operations that leave no user state to restore, recognized from the signed <code>read_only</code> effect or the canonical taxonomy of reads and pure computations. Classification derives from signed contracts, not an editorial list of executors.",
-        "undo_question": "A question the Tutor can verify: “Which executors modify files and, for each one, is undo supported, unsupported, or not applicable?”",
+        "lead": "This page answers a practical question: which actions come with Metnos, and what does each contract declare? Executors are grouped automatically from their canonical names; nobody copies and rearranges this inventory by hand.",
+        "generated": "The list below comes from {count} signed manifests in the distribution. It does not include in-process capabilities, executors added by skills, or executors created within one installation. To see everything the instance can use right now, open <strong>Settings → Lifecycle → Executors</strong> in web chat.",
+        "concept": "An executor may follow a direct procedure or adapt some steps within a <a href=\"intelligent_executors.html\">narrow mandate</a>. Either way, it keeps the same public contract: purpose, arguments, authority, placement, and result shape.",
+        "properties_explanation": "In the <strong>Contract</strong> column, <code>standard</code> and <code>critical</code> indicate the risk class; <code>server</code>, <code>any</code>, and the platform names show where the executor may run. A dash means that the manifest does not explicitly restrict the platform.",
+        "undo_title": "Which actions can be undone",
+        "undo_explanation": "<p>Undo does not apply to every action in the same way:</p><ul><li><strong>Undoable</strong>: the manifest declares a restoration procedure. Some executors can determine reversibility only after execution, because it depends on the effect that actually occurred and the receipt available.</li><li><strong>Not undoable</strong>: the action changes state, but its contract offers no reliable restoration.</li><li><strong>Not applicable</strong>: a read or pure computation leaves nothing to restore.</li></ul><p>The classification comes from the signed contract and, where required, the receipt for that particular execution. Metnos never invents an inverse from the executor's name.</p>",
+        "undo_question": "Tutor can use this catalog to answer questions such as: “Which executors modify files, and which of those actions can I undo?”",
         "undoable_list": "Executors declared undoable",
         "undoable": "undoable",
         "not_undoable": "not undoable",
         "not_applicable": "not applicable",
-        "no_reverse": "no inverse path declared",
+        "no_reverse": "no restoration procedure declared",
         "no_state": "no user state to restore",
-        "reverse_pattern": "inverse path",
-        "per_execution": "outcome determined by the individual execution receipt",
+        "reverse_pattern": "restoration procedure",
+        "per_execution": "the individual execution receipt determines actual reversibility",
         "domain": "Domain",
         "executor": "Executor",
         "purpose": "Purpose",
-        "properties": "Properties",
+        "properties": "Contract",
         "undo": "Undo",
         "source": "Location",
         "critical": "critical",
@@ -272,7 +274,7 @@ def render(entries: list[ExecutorEntry], lang: str) -> str:
     }
     undo_summary = (
         f'<h2 id="undo-census">{text["undo_title"]}</h2>\n'
-        f'<p>{text["undo_explanation"]}</p>\n'
+        f'{text["undo_explanation"]}\n'
         f'<p><strong>{text["undo_question"]}</strong></p>\n'
         '<div class="status" data-undo-census="true">'
         f'{text["undoable"]}: {undo_counts[UNDOABLE]}; '
@@ -301,6 +303,7 @@ def render(entries: list[ExecutorEntry], lang: str) -> str:
 <p class="lead">{text["lead"]}</p>
 <div class="status">{generated}</div>
 <p>{text["concept"]}</p>
+<p>{text["properties_explanation"]}</p>
 {undo_summary}
 {"\n".join(sections)}
 <footer>{text["footer"]}</footer></body></html>
