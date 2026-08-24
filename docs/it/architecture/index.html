@@ -218,6 +218,25 @@ serve davvero. Le skill importate seguono lo stesso confine: il loro contenuto
 viene tradotto in capacità Metnos, controllato e ammesso; il codice di terzi non
 eredita automaticamente i privilegi dell'istanza.</p>
 
+<h3>Un vocabolario comune</h3>
+
+<p>I nomi degli executor combinano un'azione e un oggetto scelti da un
+vocabolario chiuso. Oggi comprende <strong>28 azioni</strong> e <strong>27 oggetti</strong>.
+In questo modo «leggere file» e «leggere messaggi» condividono
+lo stesso verbo senza diventare la stessa capacità.</p>
+
+<p><strong>Azioni:</strong>
+<span data-vocab="actions">read,write,move,delete,create,find,list,filter,sort,group,classify,get,set,send,describe,render,extract,compress,compute,compare,change,order,share,open,login,act,install,run</span>.</p>
+
+<p><strong>Oggetti:</strong>
+<span data-vocab="objects">files,dirs,packages,messages,events,contacts,places,processes,urls,numbers,images,signatures,texts,proposals,persons,tasks,inputs,approval,credentials,issues,pulls,calendars,entries,lists,skills,sites,preferences</span>.</p>
+
+<p>Quando un piano deve lavorare su una raccolta già ottenuta, usa operatori
+comuni anziché creare una variante per ogni dominio. Quelli strutturali sono
+<span data-entry-primitives="structural">filter_entries,filter_lists,sort_entries,group_entries,compute_entries</span>;
+quelli semantici sono
+<span data-entry-primitives="semantic">classify_entries,compare_entries,extract_entries,describe_entries</span>.</p>
+
 <h2 id="limiti">Limiti intenzionali</h2>
 
 <ul>
