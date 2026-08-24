@@ -85,6 +85,22 @@ def test_real_activation_validator_checks_the_exact_target_language(
         validate_manifests("nl", registry=registry)
 
 
+def test_activation_passes_target_language_to_injected_validator(tmp_path: Path):
+    paths = _fixture(tmp_path)
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    materialize("nl", registry=registry, paths=paths)
+    calls: list[tuple[Path, str]] = []
+
+    validate_manifests(
+        "nl",
+        registry=registry,
+        validator=lambda path, language: (calls.append((path, language)) or True, ""),
+    )
+
+    assert calls
+    assert {language for _path, language in calls} == {"nl"}
+
+
 def test_gate_blocks_before_semantic_review(tmp_path: Path):
     paths = replace(
         _fixture(tmp_path),
@@ -111,7 +127,7 @@ def test_activation_promotes_all_layers_then_flips_signed_authority(tmp_path: Pa
     result = activate_language(
         "nl", registry=registry, paths=paths,
         signer=lambda _path: None,
-        manifest_validator=lambda _path: (True, ""),
+        manifest_validator=lambda _path, _language: (True, ""),
         tutor_compiler=lambda: (digest, {"en", "nl"}),
         request_writer=writer,
         restart=lambda: restarts.append(True),
@@ -144,7 +160,7 @@ def test_activation_does_not_flip_config_when_device_catalog_is_incomplete(tmp_p
         activate_language(
             "nl", registry=registry, paths=paths,
             signer=lambda _path: None,
-            manifest_validator=lambda _path: (True, ""),
+            manifest_validator=lambda _path, _language: (True, ""),
             tutor_compiler=lambda: ("x", {"nl"}),
             request_writer=lambda **kwargs: (writes.append(kwargs), True),
         )
@@ -191,7 +207,7 @@ def test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale(
         registry=registry,
         paths=paths,
         signer=lambda _path: None,
-        manifest_validator=lambda _path: (True, ""),
+        manifest_validator=lambda _path, _language: (True, ""),
         tutor_compiler=lambda: (digest, {"en", "nl"}),
         request_writer=writer,
     )
