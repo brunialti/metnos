@@ -115,7 +115,7 @@ objects with independent registries and revocation paths.</p>
 <table>
 <thead><tr><th>Object</th><th>What it identifies</th><th>Current source</th></tr></thead>
 <tbody>
-<tr><td><strong>Logical user</strong></td><td>The person who owns a role, preferences, and channels.</td><td><code>users.db</code>, <code>users</code> table</td></tr>
+<tr><td><strong>Logical user</strong></td><td>The identity that owns a role, preferences, and channels.</td><td><code>users.db</code>, <code>users</code> table</td></tr>
 <tr><td><strong>Channel</strong></td><td>A verified address, such as a Telegram <code>chat_id</code> or a paired browser.</td><td><code>users.db</code>, <code>user_channels</code> table; Telegram also uses <code>pairings.db</code></td></tr>
 <tr><td><strong>Chat session</strong></td><td>The device that currently has write access to the user's web conversation.</td><td><code>users.db</code>, <code>active_sessions</code> and <code>chat_conversations</code> tables</td></tr>
 <tr><td><strong>Remote device</strong></td><td>A machine authorised to run executors for a specified owner.</td><td><code>devices.db</code>, <code>devices</code> table</td></tr>
@@ -166,8 +166,8 @@ Telegram application.</p>
 
 <ol>
  <li>From the user detail page, issue a token for the Telegram channel.</li>
- <li>Transfer the token to the person through a trusted medium.</li>
- <li>The person opens the Metnos bot and sends <code>/start &lt;token&gt;</code>.</li>
+ <li>Transfer the token to the user through a trusted medium.</li>
+ <li>The user opens the Metnos bot and sends <code>/start &lt;token&gt;</code>.</li>
  <li>The daemon consumes the token, binds the <code>chat_id</code> to the user, and confirms the pairing.</li>
 </ol>
 

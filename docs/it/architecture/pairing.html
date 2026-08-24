@@ -114,7 +114,7 @@ esecuzione sono oggetti distinti, con registri e revoche indipendenti.</p>
 <table>
 <thead><tr><th>Oggetto</th><th>Cosa identifica</th><th>Fonte corrente</th></tr></thead>
 <tbody>
-<tr><td><strong>Utente logico</strong></td><td>La persona alla quale appartengono ruolo, preferenze e canali.</td><td><code>users.db</code>, tabella <code>users</code></td></tr>
+<tr><td><strong>Utente logico</strong></td><td>L'identità alla quale appartengono ruolo, preferenze e canali.</td><td><code>users.db</code>, tabella <code>users</code></td></tr>
 <tr><td><strong>Canale</strong></td><td>Un recapito verificato, per esempio un <code>chat_id</code> Telegram o un browser associato.</td><td><code>users.db</code>, tabella <code>user_channels</code>; per Telegram anche <code>pairings.db</code></td></tr>
 <tr><td><strong>Sessione di chat</strong></td><td>Il dispositivo che, in questo momento, può scrivere nella conversazione web dell'utente.</td><td><code>users.db</code>, tabelle <code>active_sessions</code> e <code>chat_conversations</code></td></tr>
 <tr><td><strong>Dispositivo remoto</strong></td><td>Una macchina autorizzata a eseguire executor per un determinato proprietario.</td><td><code>devices.db</code>, tabella <code>devices</code></td></tr>
@@ -164,8 +164,8 @@ Metnos, non nell'app Telegram.</p>
 
 <ol>
  <li>Nel dettaglio dell'utente emetti il token per il canale Telegram.</li>
- <li>Trasferisci il token alla persona tramite un mezzo fidato.</li>
- <li>La persona apre il bot Metnos e invia <code>/start &lt;token&gt;</code>.</li>
+ <li>Trasferisci il token all'utente tramite un mezzo fidato.</li>
+ <li>L'utente apre il bot Metnos e invia <code>/start &lt;token&gt;</code>.</li>
  <li>Il daemon consuma il token, lega il <code>chat_id</code> all'utente e conferma l'associazione.</li>
 </ol>
 

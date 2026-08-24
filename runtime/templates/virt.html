@@ -55,6 +55,12 @@
 .virt-block-title{font-size:var(--fs-0);font-weight:650;letter-spacing:.07em;
   text-transform:uppercase;color:var(--muted);margin:0 0 var(--sp-2)}
 .virt-binding{display:grid;gap:.55rem}.virt-binding-item{min-width:0}
+.virt-observation{padding:.7rem .8rem;border:1px solid var(--accent-line);
+  border-radius:var(--r-2);background:var(--accent-soft)}
+.virt-observation-head{display:flex;align-items:center;gap:.45rem;flex-wrap:wrap}
+.virt-observation-models{margin:.35rem 0 0;padding-left:1.2rem}
+.virt-observation-meta{display:block;margin-top:.3rem;color:var(--muted);
+  font-size:var(--fs-0)}
 .virt-binding-name{display:block;color:var(--muted);font-size:var(--fs-0);margin-bottom:.1rem}
 .virt-binding-value{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;min-width:0}
 .virt-binding-value code{overflow-wrap:anywhere;word-break:break-word}
@@ -179,6 +185,22 @@
       </div>
       {% if role.description_key %}<p class="virt-role-desc">{{ msg(role.description_key) }}</p>{% endif %}
       {% if role.fields %}<div class="virt-card-body">
+      <section class="virt-block virt-observation">
+        <div class="virt-observation-head">
+          <strong>{{ msg("UI_VIRT_OBSERVED_MODEL") }}</strong>
+          <span class="virt-status {{ role.model_observation.status }}">
+            {{ msg("UI_VIRT_MODEL_STATUS_" ~ role.model_observation.status|upper) }}
+          </span>
+        </div>
+        {% if role.model_observation.identities %}
+        <ul class="virt-observation-models">
+          {% for identity in role.model_observation.identities %}<li><code>{{ identity }}</code></li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% if role.model_observation.observed_at %}
+        <span class="virt-observation-meta">{{ msg("UI_VIRT_MODEL_OBSERVED_AT", observed_at=role.model_observation.observed_at) }}</span>
+        {% endif %}
+      </section>
       {% if role.binding_fields %}
       <section class="virt-block">
         <h4 class="virt-block-title">{{ msg("UI_VIRT_BINDING") }}</h4>

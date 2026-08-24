@@ -29,6 +29,7 @@ import config as _C  # §7.11
 from http_auth import (
     ADMIN_COOKIE,
     ADMIN_COOKIE_TTL_S,
+    safe_admin_next,
     consume_admin_onboard_token,
     external_request_scheme,
     issue_admin_cookie,
@@ -1412,57 +1413,43 @@ async def admin_user_set_autonomy(request: web.Request) -> web.Response:
                               "autonomy_level": level})
 
 
-_LOGIN_HTML = """<!doctype html>
-<html lang="it"><head><meta charset="utf-8"><title>Metnos admin · login</title>
-<style>
-body{font:14px system-ui;display:flex;align-items:center;justify-content:center;
-     min-height:80vh;margin:0;background:#fafafa}
-form{background:#fff;padding:1.5rem;border:1px solid #ddd;border-radius:.5rem;
-     min-width:340px}
-h1{font-size:1.1em;margin:0 0 1rem 0}
-input[type=password]{width:100%;padding:.5rem;font:inherit;font-family:monospace;
-     box-sizing:border-box;border:1px solid #ccc;border-radius:.3rem}
-button{margin-top:.7rem;padding:.5rem 1rem;font:inherit;cursor:pointer}
-.err{color:#c00;margin-top:.5rem;font-size:.9em}
-.muted{color:#888;font-size:.85em;margin-top:.7rem}
-</style></head><body>
-<form method="post" action="/admin/login">
-<h1>Metnos admin</h1>
-<input type="password" name="key" placeholder="admin key (hex)" autofocus required>
-<button type="submit">entra</button>
-__ERR__
-<div class="muted">la chiave e' in <code>~/.config/metnos/admin.key</code> sul host.</div>
-</form></body></html>"""
-
-
 async def admin_login(request: web.Request) -> web.Response:
     """GET /admin/login — form HTML; POST /admin/login — verifica + cookie."""
     admin_key = app_get(request.app, APP_ADMIN_KEY, "")
+    next_path = safe_admin_next(request.query.get("next", ""))
+    headers = {
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+    }
     if request.method == "GET":
         already = request.cookies.get(ADMIN_COOKIE, "")
         if already:
             from http_auth import verify_admin_cookie
             if admin_key and verify_admin_cookie(already, admin_key):
-                raise web.HTTPFound("/admin")
+                raise web.HTTPFound(next_path, headers=headers)
         return web.Response(
-            text=_LOGIN_HTML.replace("__ERR__", ""),
+            text=render_template(
+                "admin_login.html", error_key="", next_path=next_path),
             content_type="text/html",
+            headers=headers,
         )
     # POST
     body = await request.post()
+    next_path = safe_admin_next(body.get("next") or next_path)
     submitted = (body.get("key") or "").strip()
     import hmac as _hmac
     if not (admin_key and submitted and
             _hmac.compare_digest(submitted, admin_key)):
         return web.Response(
-            text=_LOGIN_HTML.replace(
-                "__ERR__", '<div class="err">chiave non valida</div>'
-            ),
+            text=render_template(
+                "admin_login.html", error_key="ERR_ADMIN_LOGIN_INVALID_KEY",
+                next_path=next_path),
             content_type="text/html",
             status=401,
+            headers=headers,
         )
     cookie_val = issue_admin_cookie(admin_key)
-    resp = web.HTTPFound("/admin")
+    resp = web.HTTPFound(next_path, headers=headers)
     resp.set_cookie(
         ADMIN_COOKIE, cookie_val,
         max_age=ADMIN_COOKIE_TTL_S,

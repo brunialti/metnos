@@ -1430,8 +1430,13 @@ class ChannelDaemon:
         # Prossimo step: prompt + keyboard.
         next_idx = step_idx + 1
         next_step = dialog[next_idx]
-        next_prompt = (f"Step {next_idx+1}/{len(dialog)} — "
-                        f"{next_step.get('prompt', '?')}")
+        next_prompt = _msg(
+            "MSG_DIALOG_STEP_PROMPT",
+            n=next_idx + 1,
+            total=len(dialog),
+            prompt=next_step.get("prompt", "?"),
+            hint="",
+        )
         # PR5: choice_with_preview → manda album thumb prima della
         # keyboard. Se >10 opzioni o invio thumb fallisce, degrada
         # silenziosamente a keyboard sola con i label.

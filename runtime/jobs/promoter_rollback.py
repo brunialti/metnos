@@ -4,7 +4,8 @@ Operazioni:
 1. Read row dello state DB per il proposal_id.
 2. Verifica state in ('promoted_grace', 'promoted_finalized').
 3. Estrai blob_path; se mancante → fail-loud §2.8 con `error: 'no_blob'`.
-4. Rimuovi `~/.local/share/metnos/executors/<name>/` (mai handcrafted).
+4. Ripristina dal blob l'esatto candidato quarantinato precedente alla
+   promozione (mai la directory handcrafted).
 5. Sposta blob in `~/.local/share/metnos/promoter_blobs/_rolled_back/<id>.tar.gz`.
 6. UPDATE state DB: state='rolled_back', rolled_back_at=now.
 7. Audit JSONL append.
@@ -17,7 +18,9 @@ import os
 import shutil
 from pathlib import Path
 
-from .promoter_promote import _blob_dir, _handcrafted_dir, _synth_exec_dir
+from .promoter_promote import (
+    _blob_dir, _handcrafted_dir, _restore_rollback_blob, _synth_exec_dir,
+)
 from .promoter_state import (
     audit_append,
     load_proposal_state,
@@ -66,15 +69,11 @@ def rollback_promotion(proposal_id: str) -> dict:
         return {"ok": False, "error": "target_dir_inside_handcrafted",
                 "proposal_id": proposal_id, "name": name,
                 "target_dir": str(target_dir)}
-    removed = False
-    if target_dir.exists():
-        try:
-            shutil.rmtree(str(target_dir))
-            removed = True
-        except OSError as ex:
-            return {"ok": False, "error": f"rmtree_failed: {ex}",
-                    "proposal_id": proposal_id, "name": name,
-                    "target_dir": str(target_dir)}
+    restored, restore_error = _restore_rollback_blob(target_dir, blob_path)
+    if not restored:
+        return {"ok": False, "error": restore_error,
+                "proposal_id": proposal_id, "name": name,
+                "target_dir": str(target_dir)}
 
     # Sposta blob in _rolled_back/.
     rolled_dir = _blob_dir() / "_rolled_back"
@@ -100,7 +99,7 @@ def rollback_promotion(proposal_id: str) -> dict:
         "proposal_id": proposal_id,
         "name": name,
         "action": "rolled_back",
-        "removed_path": str(target_dir) if removed else None,
+        "restored_path": str(target_dir),
         "rolled_back_blob": str(rolled_blob),
         "prev_state": current,
     })
@@ -109,7 +108,8 @@ def rollback_promotion(proposal_id: str) -> dict:
         "ok": True,
         "proposal_id": proposal_id,
         "name": name,
-        "removed_path": str(target_dir) if removed else None,
+        "removed_path": None,
+        "restored_path": str(target_dir),
         "rolled_back_blob": str(rolled_blob),
         "prev_state": current,
     }

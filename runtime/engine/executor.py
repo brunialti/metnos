@@ -2373,8 +2373,14 @@ class Executor:
             # intenzionale. Se un placeholder fosse invalido deve emergere
             # come tale, non essere mascherato con l'ultimo producer.
             _has_explicit_multilist = bool(args.get("entries_lists"))
+            # ``from_step`` dichiara una sorgente precisa anche quando quella
+            # sorgente ha prodotto zero record. In quel caso ``entries=[]`` e'
+            # il risultato osservato, non un argomento mancante da riparare
+            # pescando una lista precedente e non correlata.
+            _has_explicit_from_step = "from_step" in _step_args
             if (step.tool in _ENTRIES_CONSUMERS and result.steps
                     and not _has_explicit_multilist
+                    and not _has_explicit_from_step
                     and (not args.get("entries")
                          or _detect_unresolved_placeholders(args.get("entries")))):
                 for _prev in reversed(result.steps):

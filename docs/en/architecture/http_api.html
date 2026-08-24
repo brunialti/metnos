@@ -86,9 +86,11 @@ li { margin-bottom:4px; }
 
 <p class="lead"><code>metnos_http_server</code> serves the web chat, turn API,
 and Settings area. A new guided installation defaults to
-<code>0.0.0.0:8770</code> so the UI is reachable from the same private LAN; phase
-4 can select loopback-only access or a different port. The installer prints the
-exact usable URLs and saves them. The remote-executor protocol on
+<code>0.0.0.0:8770</code> so the UI is reachable from the same private LAN.
+During Metnos installation, step 4 lets the administrator restrict access, for
+security, to a browser running on the server itself, or select a different
+port. The installer prints the exact usable URLs and saves them. The
+remote-executor protocol on
 <code>8765</code> and browser service on <code>8771</code> are separate
 components with their own authority and routes.</p>
 

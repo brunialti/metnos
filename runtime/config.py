@@ -610,6 +610,12 @@ TIMEOUT_APPROVAL_S     = 600
 TIMEOUT_LOCATION_S     = 300
 # Scratchpad TTL (1 ora).
 TIMEOUT_SCRATCHPAD_S   = 3600
+# Destinazione conversazionale: abbastanza lunga per un seguito immediato, ma
+# non e' una preferenza permanente. Il clamp evita sia memoria quasi nulla sia
+# una destinazione remota che sopravvive per giorni a una richiesta esplicita.
+TIMEOUT_TARGET_CONTEXT_S = max(
+    60, min(_env_int("METNOS_TARGET_CONTEXT_TTL_S", 15 * 60), 24 * 60 * 60)
+)
 
 # --- Default app ---------------------------------------------------------
 
@@ -620,6 +626,15 @@ DEFAULT_LANG           = INSTANCE_LANG
 DEFAULT_TIMEZONE       = _env_str("METNOS_TZ", "Europe/Rome")
 DEFAULT_CHANNEL        = "telegram"
 DEFAULT_ACTOR          = "host"
+# Alias dell'istanza server, separati da virgola. Sono dati di identita', non
+# lessico di routing; il resolver aggiunge anche l'hostname osservato.
+SERVER_ALIASES         = tuple(
+    dict.fromkeys(
+        value.strip().casefold()
+        for value in _env_str("METNOS_SERVER_ALIASES", "metnos").split(",")
+        if value.strip()
+    )
+)
 
 # --- Recurring tasks quota -----------------------------------------------
 

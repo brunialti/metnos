@@ -275,7 +275,7 @@ guarantees, and a diagram of the server / PC fork.
     </div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">List the Documents folder on my <b>office-laptop</b></div></div>
-    <div class="rx-route">&#128256; device <b>OFFICE-LAPTOP</b> recognised &rarr; routing there, and from now on it is the destination</div>
+    <div class="rx-route">&#128256; device <b>OFFICE-LAPTOP</b> recognised &rarr; routing there and retaining it for an immediate follow-up</div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-device">&#128187; OFFICE-LAPTOP</span>
      <div class="rx-bubble">On <b>OFFICE-LAPTOP</b>, in <b>Documents</b>:
@@ -289,7 +289,7 @@ budget.xlsx     88 KB</div>
     <div class="rx-destnow">&#128205; destination now: OFFICE-LAPTOP</div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Zip it up</div></div>
-    <div class="rx-sticky">&#8627; no PC named &rarr; the last destination stays: <b>OFFICE-LAPTOP</b></div>
+    <div class="rx-sticky">&#8627; immediate follow-up in the same conversation &rarr; reuse <b>OFFICE-LAPTOP</b></div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-device">&#128187; OFFICE-LAPTOP</span>
      <div class="rx-bubble">Done on the laptop: created <b>Documents.zip</b> (1.2 MB) next to the folder.</div>
@@ -320,16 +320,16 @@ budget.xlsx     88 KB</div>
    <div class="rx-step"><div class="rx-n">1</div><div class="rx-t">
     <b>Who you are</b> <span>&mdash; the chat is authenticated: Metnos knows the user (the actor) and the PCs that belong to them.</span></div></div>
    <div class="rx-step"><div class="rx-n">2</div><div class="rx-t">
-    <b>Which PC</b> <span>&mdash; from the device <em>name</em> cited in the request, anchored by a locative preposition (&ldquo;on office-laptop&rdquo;). If you name nothing, <b>the last destination stays</b>; on the first turn that is the server.</span></div></div>
+    <b>Which PC</b> <span>&mdash; from the device <em>name</em> cited in the request, anchored by a locative preposition (&ldquo;on office-laptop&rdquo;). An immediate follow-up may reuse the observed destination within the same conversation; that context then expires.</span></div></div>
    <div class="rx-step"><div class="rx-n">3</div><div class="rx-t">
     <b>Tag and route</b> <span>&mdash; the turn is tagged with the resolved device; the current destination is always shown at the top of the chat.</span></div></div>
    <div class="rx-safe">
-    <b>The server is the initial destination</b> and you return to it whenever you want with &ldquo;on the server&rdquo; or &ldquo;here&rdquo;.
-    Only a reference to one of your PCs (or the last destination, which is sticky) moves execution.
+    <b>The server is the initial destination</b> and you can return to it with &ldquo;on the server&rdquo;.
+    A remembered PC is not a permanent preference: the memory is isolated by user and conversation, lasts only long enough for a follow-up, and is updated from the machine that actually ran the action.
    </div>
    <div class="rx-safe rx-warn">
     <b>Before every dispatch, Metnos checks that the PC is connected.</b> If the target &mdash; named or
-    the last destination &mdash; does not answer (no heartbeat for over a minute), Metnos says so
+    retained for an immediate follow-up &mdash; does not answer (no heartbeat for over a minute), Metnos says so
     (&ldquo;device not connected&rdquo;) and does not run elsewhere in secret.
    </div>
    <figure class="rx-fig">
@@ -340,18 +340,18 @@ budget.xlsx     88 KB</div>
      <text x="51" y="114" text-anchor="middle" fill="#5b6675">(known user)</text>
      <rect x="126" y="78" width="90" height="50" rx="9" fill="#fff" stroke="#1A477A"/>
      <text x="171" y="97" text-anchor="middle" fill="#1A477A" font-weight="600">Metnos</text>
-     <text x="171" y="112" text-anchor="middle" fill="#5b6675">name? or last?</text>
+     <text x="171" y="112" text-anchor="middle" fill="#5b6675">name? follow-up?</text>
      <rect x="246" y="18" width="86" height="42" rx="9" fill="#eef0f3" stroke="#cfd6df"/>
      <text x="289" y="36" text-anchor="middle" fill="#4a5568" font-weight="600">&#128421; server</text>
      <text x="289" y="50" text-anchor="middle" fill="#5b6675">(initial)</text>
      <rect x="246" y="146" width="86" height="42" rx="9" fill="#e8effa" stroke="#bcd2f0"/>
      <text x="289" y="164" text-anchor="middle" fill="#1A477A" font-weight="600">&#128187; your PC</text>
-     <text x="289" y="178" text-anchor="middle" fill="#5b6675">(named/last)</text>
+     <text x="289" y="178" text-anchor="middle" fill="#5b6675">(named/recent)</text>
      <line x1="94" y1="103" x2="122" y2="103" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
      <line x1="216" y1="92" x2="243" y2="48" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
      <line x1="216" y1="114" x2="243" y2="160" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
     </svg>
-    <div class="rx-cap">The same request goes to the server or to one of your PCs depending on the name cited &mdash; or on the last destination.</div>
+    <div class="rx-cap">The request goes to the server or one of your PCs according to the name cited and, for an immediate follow-up, the destination actually used a short time earlier.</div>
    </figure>
    <div class="rx-legend">
     <i><span class="rx-sw" style="background:#eef0f3;border:1px solid #cfd6df"></span> run on the server</i>
@@ -369,6 +369,12 @@ That is why the anchor is the device name &mdash; matched against the real names
 your paired PCs &mdash; and not the network fingerprint. A name dropped mid-sentence, without a
 locative preposition to anchor it, does not move the destination.
 </p>
+
+<p><strong>Context lifetime.</strong> The remembered destination exists to
+resolve nearby elliptical requests such as &ldquo;zip it up&rdquo;. It is not a
+permanent preference: it belongs to one conversation, expires after a short
+window, and returns to the server when a turn runs entirely there. Answers
+that execute no executor do not change this context.</p>
 
 <h2 id="installation">4. Installation from the UI</h2>
 

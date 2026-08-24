@@ -4002,6 +4002,10 @@ class TurnLog:
     steps: list = field(default_factory=list)
     final_message: str = ""
     final_kind: str = ""
+    # Versione prodotto e origine del routing, necessarie per trend affidabili.
+    # Non contengono testo utente e restano vuote sui record storici.
+    metnos_version: str = ""
+    match_source: str = ""
     # Lista di proposte di cap expand emerse dal turno: ogni elemento e'
     # {step_num, executor, args, used, available_total, suggested_args}.
     # Popolata in write() per i daemon channel che gestiscono dialog
@@ -5053,6 +5057,12 @@ class TurnLog:
         return notices
 
     def write(self):
+        if not self.metnos_version:
+            try:
+                from __version__ import __version__ as _product_version
+                self.metnos_version = str(_product_version)
+            except Exception:
+                self.metnos_version = "unknown"
         # Shape FSM ADR 0154: l'ultimo step di un turno terminale deve
         # avere `chosen_tool` settato. Step generati da percorsi che NON
         # passano dal tool_call dispatch (LLM ritorna testo senza
@@ -5578,6 +5588,11 @@ class TurnLog:
                 except Exception:
                     pass
             self._canonical_recorded = True
+
+        # DEV-001: la memoria di collocazione segue l'esecuzione osservata,
+        # non una scelta esplicita vecchia. Gli attributi sono runtime-only e
+        # quindi non entrano nel record pubblico prodotto da ``asdict``.
+        _remember_observed_target(self)
 
         _C.ensure_private_dir(TURN_LOG_DIR)
         path = TURN_LOG_DIR / f"{time.strftime('%Y-%m-%d')}.jsonl"
@@ -6329,6 +6344,7 @@ def _run_engine(
         # (Il caso upload-senza-testo resta coperto: stesso intent {}.)
         intent_raw = {}
     intent = Intent(
+        kind=(intent_raw.get("kind") or "unknown").lower(),
         verb=(intent_raw.get("verb") or "").lower(),
         object=(intent_raw.get("object") or "").lower(),
         keywords=list(intent_raw.get("keywords") or []),
@@ -6339,8 +6355,8 @@ def _run_engine(
     # Osservabilità (§2.8, 9/7): il TurnLog registra solo intent_verb — i
     # misroute da OBJECT sbagliato (es. «stato del server»→object=approval)
     # erano invisibili in prod. Una riga INFO per turno, costo zero.
-    log.info("[intent] verb=%s object=%s conf=%.2f actions=%s q=%r",
-             intent.verb or "-", intent.object or "-",
+    log.info("[intent] kind=%s verb=%s object=%s conf=%.2f actions=%s q=%r",
+             intent.kind, intent.verb or "-", intent.object or "-",
              intent.confidence, intent.actions or "-", query[:60])
 
     # L'estrazione pre-planner ha gia' scritto il vault senza autorita'
@@ -6817,6 +6833,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
     Estratto (ADR 0177 M1) per riuso fra il path principale (run_turn, non-upload)
     e il branch foto-allegate (engine-uploads). Comportamento byte-invariato."""
     log.steps.extend(_engine_v2_res.get("steps") or [])
+    log.match_source = str(_engine_v2_res.get("match_source") or "")
     # §7.3: se Engine ha ritornato needs_inputs → handle dialog
     _ni = _engine_v2_res.get("needs_inputs_obs")
     if _ni:
@@ -6914,6 +6931,47 @@ def _apply_device_tag(log) -> None:
     if not _dev:
         return
     log.target_device = _dev
+
+
+def _remember_observed_target(log) -> None:
+    """Persist the real placement of a turn in its short-lived context.
+
+    A remote marker is an execution receipt. Without it, a resolved server
+    target is remembered only when at least one real executor was attempted.
+    Direct answers and failures before dispatch do not move the context.
+    """
+
+    scope = getattr(log, "_target_context_key", "")
+    resolved = getattr(log, "_resolved_target_id", "")
+    if not scope or not resolved:
+        return
+    executed = []
+    remote_name = ""
+    for step in getattr(log, "steps", []) or []:
+        tool = str(getattr(step, "chosen_tool", "") or "")
+        result = getattr(step, "result", None)
+        if not tool or tool == "final_answer" or tool.startswith("@"):
+            continue
+        if not isinstance(result, dict):
+            continue
+        executed.append(step)
+        marker = result.get("_ran_on_device")
+        if isinstance(marker, str) and marker:
+            remote_name = marker
+            break
+    if not executed:
+        return
+    try:
+        import chat_target_store as _target_store
+        import target_device as _target_device
+        if remote_name and resolved != _target_device.SERVER:
+            _target_store.set_last_target(scope, resolved, remote_name)
+        elif resolved == _target_device.SERVER:
+            _target_store.set_last_target(
+                scope, _target_device.SERVER, None,
+            )
+    except Exception as exc:  # best-effort context, never fail the turn
+        _LOG.warning("placement context update failed: %r", exc)
 
 
 # --- Strato 3 escalation UI (task #30) ----------------------------------
@@ -7046,6 +7104,7 @@ def _strato3_routing_changed(user_query: str, *, lang: str) -> bool:
 
         ir = extract_intent(user_query, _fast) or {}
         intent = Intent(
+            kind=(ir.get("kind") or "unknown").lower(),
             verb=(ir.get("verb") or "").lower(),
             object=(ir.get("object") or "").lower(),
             keywords=list(ir.get("keywords") or []),
@@ -7374,8 +7433,19 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
         if _dl:
             _explicit_device_ref = _td_mod.references_device(user_query_for_run, _dl)
             _sid = f"{channel}:{actor}" if channel else (actor or "host")
+            _target_scope = _cts_mod.scope_key(
+                owner_user_id=_who,
+                actor=actor or "host",
+                channel=channel or "",
+                conversation_id=conversation_id or "",
+            )
+            # Runtime-only: ``TurnLog.asdict`` does not serialize dynamic attrs.
+            log._target_context_key = _target_scope
             _tr = _td_mod.resolve_target(
-                user_query_for_run, _dl, last_target=_cts_mod.get_last_target(_sid))
+                user_query_for_run, _dl,
+                last_target=_cts_mod.get_last_target(_target_scope),
+            )
+            log._resolved_target_id = _tr.target
             if _tr.status in ("unreachable", "ambiguous"):
                 # Bersaglio non raggiungibile o ambiguo → esito onesto, NIENTE
                 # esecuzione (né qui né altrove) §2.8/§2.11.
@@ -7412,7 +7482,9 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 _placement_target = _tr.device_name
             _query_for_planning = _tr.cleaned_query or user_query_for_run
             if _tr.explicit:  # destinazione appiccicosa: solo su riferimento esplicito
-                _cts_mod.set_last_target(_sid, _tr.target, _tr.device_name)
+                _cts_mod.set_last_target(
+                    _target_scope, _tr.target, _tr.device_name,
+                )
     except Exception as _pe:  # noqa: BLE001 — best-effort, mai bloccare il turno
         _LOG.warning("placement resolve fallito: %r", _pe)
         # #3: se l'utente ha nominato ESPLICITAMENTE un PC ma la risoluzione è

@@ -105,6 +105,7 @@ effettive del runtime sono descritte nei documenti dei componenti che le applica
 <ol>
  <li><a href="#cap1">Cos'&egrave; policy</a></li>
  <li><a href="#cap2">Registro delle capability</a></li>
+ <li><a href="#read-vs-change">Lettura e modifica: controlli comuni e differenze</a></li>
  <li><a href="#cap3">Tabella autonomia &times; capability</a></li>
  <li><a href="#cap4">Concessioni persistenti per bersaglio</a></li>
  <li><a href="#cap5">Esito combinato (<code>effective_outcome</code>)</a></li>
@@ -233,6 +234,38 @@ Il registro comprende letture, scritture, accessi a fornitori esterni, operazion
 <p>
 Per esempio, <code>compute:pure</code> e <code>time:read</code> hanno classe <code>none</code>; <code>fs:write</code> ha classe <code>per_target</code>; <code>mail:send</code>, <code>mail:write</code>, <code>system:admin</code> e <code>drive:permissions</code> hanno classe <code>always</code>. L'elenco completo va letto dal registro, non mantenuto a mano in questa pagina.
 </p>
+
+<h2 id="read-vs-change">2.2 Lettura e modifica: controlli comuni e differenze</h2>
+
+<p>Non esiste un unico controllo scelto dal verbo &laquo;leggere&raquo; o
+&laquo;modificare&raquo;. Metnos parte dal contratto firmato dell'executor realmente
+selezionato, dalle sue capability effettive, dal bersaglio concreto e dal
+profilo dell'attore. Per gli executor conformi, il manifest deve essere ammesso,
+gli argomenti devono rispettare lo schema e le capability devono appartenere al
+registro canonico. Il vaglio, l'eventuale dialogo di approvazione, la sandbox e
+il dispatcher applicano poi le responsabilit&agrave; che spettano a ciascuno.</p>
+
+<table>
+<thead><tr><th>Aspetto</th><th>Lettura di un file</th><th>Modifica di un file</th></tr></thead>
+<tbody>
+<tr><td>Capability dichiarativa</td><td><code>fs:read</code>, non critica e circoscritta ai percorsi dichiarati dal manifest.</td><td><code>fs:write</code>, critica e circoscritta ai percorsi dichiarati dal manifest.</td></tr>
+<tr><td>Accesso al filesystem</td><td>La sandbox ricava dalle capability effettive gli ambiti leggibili e li monta in sola lettura.</td><td>La sandbox rende scrivibili soltanto gli ambiti autorizzati dalla capability effettiva; gli altri restano esclusi o in sola lettura.</td></tr>
+<tr><td>Autorizzazione</td><td>Nella matrice dichiarativa <code>fs:read</code> &egrave; negata, subordinata ad approvazione o consentita secondo il livello e l'eventuale concessione sul bersaglio.</td><td>Nella matrice dichiarativa <code>fs:write</code> &egrave; negata in ReadOnly, richiede approvazione in Supervised ed &egrave; consentita in Full. Il percorso ordinario non applica ancora questa matrice come unico vaglio generale: vale il contratto di approvazione effettivamente integrato per quell'executor.</td></tr>
+<tr><td>Annullamento</td><td>Se l'esecuzione non lascia stato dell'utente da ripristinare, la nozione di annullamento non &egrave; applicabile.</td><td>Una modifica &egrave; annullabile soltanto quando il manifest firmato dichiara <code>revertible = true</code>, un percorso inverso e, quando previsto, la ricevuta della singola esecuzione. In assenza di quel contratto &egrave; non annullabile; un'esecuzione che non ha prodotto effetti viene registrata come tale.</td></tr>
+</tbody>
+</table>
+
+<p>Autorizzazione, isolamento e annullamento sono quindi tre domande separate.
+La pagina <strong>Settings &gt; Ciclo di vita &gt; Modifiche</strong> governa le
+proposte di modifica del sistema che appartengono a quel ciclo di vita: non &egrave;
+un passaggio obbligatorio per ogni scrittura di file. Per sapere che cosa pu&ograve;
+essere annullato, il riferimento verificabile &egrave; il
+<a href="executor_catalog.html#undo-census">censimento generato dai manifest
+firmati</a>, non il nome dell'azione.</p>
+
+<p><strong>Domanda verificabile dal Tutor:</strong> &laquo;Spiega quali controlli
+si applicano quando chiedo di leggere un file e quali quando chiedo di
+modificarlo.&raquo;</p>
 
 <h1 id="cap3">3. Tabella autonomia &times; capability</h1>
 

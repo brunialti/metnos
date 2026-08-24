@@ -22,6 +22,7 @@ BUILD_HEALTHCHECK_TASK = web.AppKey("build_healthcheck_task", asyncio.Task)
 BUILD_DISPATCHER_TASK = web.AppKey("build_dispatcher_task", asyncio.Task)
 BUILD_SWEEPER_TASK = web.AppKey("build_sweeper_task", asyncio.Task)
 DIALOG_SWEEPER_TASK = web.AppKey("dialog_sweeper_task", asyncio.Task)
+MODEL_IDENTITY_TASK = web.AppKey("model_identity_task", asyncio.Task)
 TUTOR_BOOTSTRAP_TASK = web.AppKey("tutor_bootstrap_task", asyncio.Task)
 TURN_POOL = web.AppKey("turn_pool", object)
 TUTOR_GATE = web.AppKey("tutor_gate", asyncio.Semaphore)
@@ -40,6 +41,7 @@ _LEGACY_NAMES = {
     BUILD_DISPATCHER_TASK: "build_dispatcher_task",
     BUILD_SWEEPER_TASK: "build_sweeper_task",
     DIALOG_SWEEPER_TASK: "dialog_sweeper_task",
+    MODEL_IDENTITY_TASK: "model_identity_task",
     TUTOR_BOOTSTRAP_TASK: "tutor_bootstrap_task",
     TURN_POOL: "turn_pool",
     TUTOR_GATE: "tutor_gate",

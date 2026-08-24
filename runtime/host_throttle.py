@@ -1,9 +1,10 @@
-"""host_throttle — throttle thread-safe per-host condiviso (ADR 0103).
+"""host_throttle — budget per-host condiviso nel processo runtime (ADR 0103).
 
 Estratto da find_urls / read_urls_html / read_urls_pdf (regola del 3, §7.2)
 dopo Round 2 di parallelizzazione executor (ADR 0103). Combina:
 
-  - Semaphore con N slot per concurrent fetch verso lo stesso host.
+  - Budget FIFO con N slot per fetch concorrenti verso lo stesso host,
+    condiviso fra executor e invocazioni nello stesso runtime.
   - Lock + last_ts opzionale per garantire `rate_limit_ms` minimo fra
     request consecutive sullo stesso host (0 = disabilitato).
 
@@ -21,10 +22,33 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
+from dataclasses import dataclass, field
+
+
+@dataclass
+class _HostState:
+    active_limits: list[int] = field(default_factory=list)
+    waiters: deque[tuple[object, int]] = field(default_factory=deque)
+    last_start: float = 0.0
+
+
+_COORDINATOR = threading.Condition()
+_HOSTS: dict[str, _HostState] = {}
+
+
+def _normalized_host(value: str) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _admission_ceiling(state: _HostState, requested: int) -> int:
+    """Most restrictive limit among work already active and the candidate."""
+
+    return min([requested, *state.active_limits])
 
 
 class HostThrottle:
-    """Throttle thread-safe per-host (semaforo + rate-limit opzionale).
+    """Runtime-wide per-host throttle with FIFO admission.
 
     `per_host_limit`: numero massimo di fetch concurrent verso lo stesso host.
     `rate_limit_ms`: ms minimi fra request consecutive sullo stesso host.
@@ -32,35 +56,55 @@ class HostThrottle:
     """
 
     def __init__(self, per_host_limit: int, rate_limit_ms: int = 0):
-        self._per_host_limit = per_host_limit
-        self._rate_limit_ms = rate_limit_ms
-        self._semaphores: dict[str, threading.Semaphore] = {}
-        self._last_ts: dict[str, float] = {}
-        self._lock = threading.Lock()
-
-    def _semaphore_for(self, host: str) -> threading.Semaphore:
-        with self._lock:
-            sem = self._semaphores.get(host)
-            if sem is None:
-                sem = threading.Semaphore(self._per_host_limit)
-                self._semaphores[host] = sem
-            return sem
+        self._per_host_limit = max(1, int(per_host_limit))
+        self._rate_limit_ms = max(0, int(rate_limit_ms))
 
     def acquire(self, host: str) -> None:
-        sem = self._semaphore_for(host)
-        sem.acquire()
-        if self._rate_limit_ms <= 0:
-            return
-        with self._lock:
-            last = self._last_ts.get(host, 0.0)
-            elapsed_ms = (time.time() - last) * 1000.0
-            wait_ms = max(0.0, self._rate_limit_ms - elapsed_ms)
-        if wait_ms > 0:
-            time.sleep(wait_ms / 1000.0)
-        with self._lock:
-            self._last_ts[host] = time.time()
+        key = _normalized_host(host)
+        token = object()
+        with _COORDINATOR:
+            state = _HOSTS.setdefault(key, _HostState())
+            state.waiters.append((token, self._per_host_limit))
+            while True:
+                is_head = bool(state.waiters and state.waiters[0][0] is token)
+                room = (
+                    len(state.active_limits)
+                    < _admission_ceiling(state, self._per_host_limit)
+                )
+                if is_head and room:
+                    state.waiters.popleft()
+                    state.active_limits.append(self._per_host_limit)
+                    now = time.monotonic()
+                    not_before = max(
+                        now,
+                        state.last_start + self._rate_limit_ms / 1000.0,
+                    )
+                    state.last_start = not_before
+                    _COORDINATOR.notify_all()
+                    break
+                _COORDINATOR.wait()
+        delay = not_before - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)
 
     def release(self, host: str) -> None:
-        sem = self._semaphores.get(host)
-        if sem is not None:
-            sem.release()
+        key = _normalized_host(host)
+        with _COORDINATOR:
+            state = _HOSTS.get(key)
+            if state is None:
+                return
+            try:
+                state.active_limits.remove(self._per_host_limit)
+            except ValueError:
+                return
+            if not state.active_limits and not state.waiters:
+                _HOSTS.pop(key, None)
+            _COORDINATOR.notify_all()
+
+
+def _reset_for_tests() -> None:
+    """Clear coordinator state; callers must ensure no acquisition is live."""
+
+    with _COORDINATOR:
+        _HOSTS.clear()
+        _COORDINATOR.notify_all()

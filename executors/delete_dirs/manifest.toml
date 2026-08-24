@@ -8,13 +8,14 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "delete_dirs"
-version     = "0.2.0"
+version     = "0.3.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "delete", "elimina", "cancella", "rmdir", "rimuovi", "remove", "directory", "cartella"
             ]
-revertible  = false
+revertible  = true
+reverse_pattern = ["module.reverse", "restore_trashed_files"]
 lifecycle   = "active"
 
 [description]
@@ -23,7 +24,7 @@ en = "SCOPO: delete directories (empty or forced). PATTERN: delete_dirs(paths=[\
 
 [code]
 files  = ["delete_dirs.py"]
-digest = "sha256:8442db41b7e6d1327d28a04bc8e94d285a7a27b884d9faacede606cd40dc4603"
+digest = "sha256:dd7106b098c107a0282b41a3ea37d363848ad78be509fffc5d7ba9c9e5c7d60d"
 
 [args]
 type     = "object"
@@ -67,11 +68,15 @@ schema_inline = """
   partial?: bool,
   results: Array<{path: str, removed: bool}>,
   failed: Array<{index: int, path, error_code?: str, error: str}>,
+  _undo: {outcome: str, reverse_pattern?: str, directories?: Array<object>, scope?: object},
   error_class?: str,
   error_code?: str,
   error?: str
 }
 """
+
+[undo]
+outcome = "per_execution"
 
 [[capabilities]]
 name = "fs:write"
@@ -133,8 +138,8 @@ input  = { paths = "/tmp/foo" }
 expect = { ok = false, error_contains = "must be a list" }
 
 [placement]
-# C7 Area-2 est. (6/7): rmdir SOLO-vuote (force=false) = danno
-# zero contenuti; non revertibile per contratto (nessun reverse_pattern).
+# La ricevuta per-esecuzione rende reversibili le directory realmente vuote e
+# il trash provider; una rimozione ricorsiva con contenuti resta irreversibile.
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"

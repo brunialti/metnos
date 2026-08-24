@@ -62,12 +62,12 @@
   <div class="section-title"><span>04</span><h2>Where the settings are</h2></div>
   <p class="prose">From the web chat you can open <strong>Settings</strong>, the administration area. Its first page gives an overview of system state and leads to four sections; administration-page addresses begin with <code>/admin</code>. The <a href="interface.html">complete interface map</a> is generated from the system registry and therefore remains aligned with the components actually installed.</p>
   <p class="prose">Pages under <code>/admin</code> are reserved for the instance administrator. An invited guest may use the chat but cannot open Settings.</p>
-  <div class="note"><strong>Administrator sign-in comes first.</strong> Typing the address of a page such as <code>/admin/users</code> does not automatically sign the browser in as an administrator. If you see <code>admin role required</code>, open <code>/admin/login</code> in the same browser and sign in with the administration key, or use the single-use link created by the installer. For example, if Metnos is available at <code>192.0.2.0</code>, the sign-in page is <code>http://192.0.2.0:8770/admin/login</code>. After signing in, return to <code>http://192.0.2.0:8770/admin/users</code>.</div>
+  <div class="note"><strong>Administrator sign-in comes first.</strong> If you open a protected page such as <code>/admin/users</code> without a valid administrator session, Metnos takes you to the sign-in page and preserves the destination. After you enter the administration key, the browser returns to the requested page automatically. For example, if Metnos is available at <code>192.0.2.0</code>, you can open <code>http://192.0.2.0:8770/admin/users</code>; when necessary, the visit to <code>/admin/login</code> happens in the same browser. An authenticated user without the administrator role receives an explicit denial instead and gains no new permissions.</div>
 </section>
 
 <section id="user">
   <div class="section-title"><span>05</span><h2>Creating a new user</h2></div>
-  <p class="prose">You need this when you want another person — a family member, a guest — to talk to your Metnos with their own identity, their own history and their own permissions. There are two distinct moments: first you create the person's record, then you give them a way in.</p>
+  <p class="prose">You need this when you want another user — a family member or guest — to use your Metnos with their own identity, history and permissions. There are two distinct steps: first you create the user's profile, then you give them a way in.</p>
 
   <h3>First moment: creating the record</h3>
   <ol>
@@ -82,17 +82,17 @@
         <tr><td>autonomy</td><td>How much they may do on their own: <code>read_only</code> only looks, <code>restricted</code> asks for confirmation on operations that change something, <code>full</code> goes ahead alone. When in doubt leave <code>restricted</code>.</td></tr>
       </table></div>
     </li>
-    <li>Press <strong>create</strong>. The person appears in the list below, still with no channel connected: they exist, but they cannot get in yet.</li>
+    <li>Press <strong>create</strong>. The user appears in the list below, still with no channel connected: the profile exists, but its owner cannot get in yet.</li>
   </ol>
 
   <h3>Second moment: giving them access</h3>
-  <p class="prose">Open the person's name in the list to reach their detail page, and from there issue a connection code for the channel they will use. The code is valid for <strong>one hour</strong> and is <strong>single-use</strong>.</p>
+  <p class="prose">Open the user's name in the list to reach their detail page, and from there issue a connection code for the channel they will use. The code is valid for <strong>one hour</strong> and is <strong>single-use</strong>.</p>
   <ul>
-    <li><strong>Web chat.</strong> Metnos generates a complete address. You send it to the person, they open it on their own phone or computer, and from then on they get straight in without typing anything.</li>
-    <li><strong>Telegram.</strong> Metnos generates a code. The person opens a conversation with your instance's Telegram bot and sends <code>/start</code> followed by the code; the bot answers with a confirmation.</li>
+    <li><strong>Web chat.</strong> Metnos generates a complete address. You send it to the user, they open it on their own phone or computer, and the association completes without asking them to enter any other data.</li>
+    <li><strong>Telegram.</strong> Metnos generates a code. The user opens a conversation with your instance's Telegram bot and sends <code>/start</code> followed by the code; the bot answers with a confirmation.</li>
   </ul>
   <div class="warn"><strong>Send the code only through a way you trust</strong> — in person, or over a private conversation. Whoever has that address gets in as that person. If it expires before being used, go back to the user's detail page and generate another one: the old one is of no further use.</div>
-  <p class="prose">From that same detail page you can later edit the person's data, disconnect a channel, change their preferences or delete them.</p>
+  <p class="prose">From that same detail page you can later edit the user's data, disconnect a channel, change their preferences or delete the user.</p>
 </section>
 
 <section id="ask">

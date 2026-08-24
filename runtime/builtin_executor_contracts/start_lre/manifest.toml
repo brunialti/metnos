@@ -10,8 +10,8 @@ revertible = false
 lifecycle = "active"
 
 [description]
-it = "SCOPO: Avvia, per compatibilità tecnica, un piano LRE già registrato. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/percorso/assoluto\"]). USA: soltanto integrazioni che conoscono già il profilo registrato. NON: non usarlo per decidere se un’attività debba usare LRE; il normale motore affida automaticamente le azioni lunghe ammissibili. OUT: identificativo, stato, numero di sorgenti e collegamento alla console LRE."
-en = "SCOPO: Starts an already registered LRE plan for technical compatibility. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/absolute/path\"]). USE: only integrations that already know the registered profile. NON: do not use it to decide whether work should use LRE; the normal engine automatically submits eligible long actions. OUT: identifier, state, source count, and LRE console link."
+it = "SCOPO: avvia un piano LRE registrato per integrazioni che ne conoscono il profilo. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/percorso\"]). NON: scegliere se usare LRE; il runtime affida da sé i lavori lunghi ammessi. OUT: id, stato, sorgenti, URL."
+en = "SCOPO: starts a registered LRE plan for integrations that know its profile. PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/path\"]). NON: choosing whether to use LRE; the runtime submits eligible long work itself. OUT: id, state, sources, URL."
 
 [code]
 files = ["../../lre_submission.py"]

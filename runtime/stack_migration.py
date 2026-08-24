@@ -19,6 +19,8 @@ import os
 import pwd
 import re
 import shlex
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -31,11 +33,13 @@ from stack_reconcile import (
     CONTROL_PLANE_UNITS,
     ReconcileLock,
     RUNTIME_COMPONENT_UNITS,
+    STACK_UNITS,
     StackFailure,
     StackReconciler,
     Systemctl,
     TARGET_UNIT,
     _atomic_json,
+    _admin_key,
 )
 
 
@@ -51,11 +55,19 @@ STACK_CONTRACT_UNITS = (
     "metnos-stack-watchdog.timer",
     *BASELINE_USER_UNITS,
 )
-CONTROL_PLANE_FILES = (
-    Path(__file__).resolve(),
-    Path(__file__).resolve().with_name("stack_reconcile.py"),
-    Path(__file__).resolve().with_name("http_routes_stack.py"),
+STACK_SOURCE_ROOTS = (
+    Path(__file__).resolve().parent,
+    Path(__file__).resolve().parents[1] / "executors",
 )
+STACK_SOURCE_SUFFIXES = frozenset({
+    ".html", ".j2", ".js", ".json", ".py", ".sh", ".sig", ".sql",
+    ".toml", ".txt", ".webmanifest", ".yaml", ".yml",
+})
+USER_STACK_UNITS = tuple(dict.fromkeys((
+    TARGET_UNIT,
+    *CONTROL_PLANE_UNITS,
+    *STACK_UNITS,
+)))
 
 
 def _unit_quote(value: str) -> str:
@@ -110,6 +122,56 @@ def _parse_execstart(value: str) -> list[str]:
     return argv
 
 
+def _service_process_environment(
+        service_user: str, systemctl: Systemctl | None = None) -> dict[str, str]:
+    """Build the bounded service identity used by a privileged cutover.
+
+    Only Metnos' XDG roots cross this boundary.  Code paths, Python settings,
+    arbitrary unit variables and HOME remain owned by the privileged process.
+    """
+    try:
+        identity = pwd.getpwnam(service_user)
+    except KeyError as exc:
+        raise StackFailure(
+            "service_user_invalid", "Metnos service user does not exist",
+        ) from exc
+    adapter = systemctl or Systemctl(service_user=service_user)
+    result = adapter.run(
+        "user", "show", SYSTEM_HTTP, "--property=Environment", "--value",
+        timeout_s=15,
+    )
+    if result.returncode != 0:
+        raise StackFailure(
+            "service_environment_unavailable",
+            "cannot inspect the Metnos service identity",
+            details={"detail": (result.stderr or "")[-300:]},
+        )
+    unit_environment = _parse_environment(result.stdout.strip())
+    defaults = {
+        "METNOS_USER_DATA": Path(identity.pw_dir) / ".local/share/metnos",
+        "METNOS_USER_STATE": Path(identity.pw_dir) / ".local/state/metnos",
+        "METNOS_USER_CONFIG": Path(identity.pw_dir) / ".config/metnos",
+        "METNOS_USER_CACHE": Path(identity.pw_dir) / ".cache/metnos",
+    }
+    out = os.environ.copy()
+    for key, default in defaults.items():
+        value = Path(unit_environment.get(key) or default)
+        if not value.is_absolute():
+            raise StackFailure(
+                "service_environment_invalid",
+                "service identity paths must be absolute",
+            )
+        out[key] = str(value)
+    out["METNOS_INSTALL_ROOT"] = str(Path(__file__).resolve().parents[1])
+    out["METNOS_SERVICE_USER"] = service_user
+    out["XDG_RUNTIME_DIR"] = f"/run/user/{identity.pw_uid}"
+    out["DBUS_SESSION_BUS_ADDRESS"] = (
+        f"unix:path=/run/user/{identity.pw_uid}/bus"
+    )
+    out["METNOS_MIGRATION_IDENTITY_READY"] = "1"
+    return out
+
+
 class HttpScopeMigration:
     def __init__(self, *, systemctl: Systemctl | None = None,
                  reconciler: StackReconciler | None = None,
@@ -141,6 +203,11 @@ class HttpScopeMigration:
             systemctl=self.systemctl,
             report_path=state_dir / "stack_reconcile_last.json",
             admin_key_path=config_dir / "admin.key",
+            catalog_names_provider=(
+                self._service_catalog_names
+                if self.service_uid != os.getuid() else None
+            ),
+            default_write_report=self.service_uid == os.getuid(),
         )
         self.user_unit_dir = (
             user_unit_dir or self.service_home / ".config/systemd/user"
@@ -171,6 +238,80 @@ class HttpScopeMigration:
                 details={"detail": (result.stderr or "")[-300:]},
             )
         return result.stdout.strip()
+
+    def _service_catalog_names(self) -> set[str]:
+        """Load executable contracts under the service identity, never root.
+
+        The executor loader reads instance-owned keys and may import admitted
+        synthesized contracts.  A privileged migration process therefore
+        delegates this one local inventory operation to the declared service
+        account with the exact path contract from its HTTP unit.
+        """
+        unit_environment = _parse_environment(
+            self._show_value("user", "Environment")
+        )
+        defaults = {
+            "METNOS_USER_DATA": self.service_home / ".local/share/metnos",
+            "METNOS_USER_STATE": self.service_home / ".local/state/metnos",
+            "METNOS_USER_CONFIG": self.service_home / ".config/metnos",
+            "METNOS_USER_CACHE": self.service_home / ".cache/metnos",
+        }
+        identity_environment = {
+            key: str(unit_environment.get(key) or value)
+            for key, value in defaults.items()
+        }
+        if any(not Path(value).is_absolute()
+               for value in identity_environment.values()):
+            raise StackFailure(
+                "service_environment_invalid",
+                "service identity paths must be absolute",
+            )
+        target_argv = _parse_execstart(
+            self._show_value("user", "ExecStart")
+        )
+        command = [
+            target_argv[0],
+            str(Path(__file__).resolve().with_name("stack_reconcile.py")),
+            "catalog",
+        ]
+        environment = os.environ.copy()
+        environment.update(identity_environment)
+        environment["METNOS_INSTALL_ROOT"] = str(Path(__file__).resolve().parents[1])
+        environment["XDG_RUNTIME_DIR"] = f"/run/user/{self.service_uid}"
+        environment["DBUS_SESSION_BUS_ADDRESS"] = (
+            f"unix:path=/run/user/{self.service_uid}/bus"
+        )
+        if os.geteuid() == 0 and self.service_uid != 0:
+            command = [
+                "runuser", "--user", self.service_user, "--", *command,
+            ]
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+                env=environment,
+            )
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
+            raise StackFailure(
+                "service_catalog_failed", type(exc).__name__,
+            ) from exc
+        try:
+            payload = json.loads(result.stdout)
+            names = payload.get("names") if isinstance(payload, dict) else None
+        except json.JSONDecodeError as exc:
+            raise StackFailure(
+                "service_catalog_failed", "service catalog output is invalid",
+            ) from exc
+        if result.returncode != 0 or not isinstance(names, list) or not names:
+            raise StackFailure(
+                "service_catalog_failed",
+                "service account could not load the executor catalog",
+                details={"detail": (result.stderr or result.stdout)[-300:]},
+            )
+        return {str(name) for name in names if isinstance(name, str) and name}
 
     def prepare(self) -> dict:
         """Render a runtime-settings drop-in without stopping either scope."""
@@ -219,7 +360,12 @@ class HttpScopeMigration:
         }
 
     def _stack_contract_sha256(self) -> str:
-        """Bind pilot evidence to effective units and control-plane sources."""
+        """Bind pilot evidence to effective units and executable sources.
+
+        Hashing the declared source roots avoids a hand-maintained dependency
+        list that can silently miss a new dynamic import.  Runtime caches,
+        databases and compiled bytecode are excluded by construction.
+        """
         digest = hashlib.sha256()
         for unit in STACK_CONTRACT_UNITS:
             state = self.systemctl.show(unit, "user")
@@ -237,15 +383,32 @@ class HttpScopeMigration:
                 )
             digest.update(result.stdout.encode("utf-8", errors="surrogateescape"))
             digest.update(b"\0")
-        for path in CONTROL_PLANE_FILES:
+        install_root = Path(__file__).resolve().parents[1]
+        sources = sorted(
+            path
+            for root in STACK_SOURCE_ROOTS
+            for path in root.rglob("*")
+            if (
+                path.is_file()
+                and path.suffix in STACK_SOURCE_SUFFIXES
+                and not any(part.startswith(".") for part in path.parts)
+                and "__pycache__" not in path.parts
+            )
+        )
+        if not sources:
+            raise StackFailure(
+                "stack_inventory_failed", "stack source inventory is empty",
+            )
+        for path in sources:
             try:
                 payload = path.read_bytes()
             except OSError as exc:
                 raise StackFailure(
                     "stack_inventory_failed",
-                    f"cannot read control-plane source {path.name}",
+                    f"cannot read stack source {path.name}",
                 ) from exc
-            digest.update(f"source:{path.name}\0".encode())
+            relative = path.relative_to(install_root).as_posix()
+            digest.update(f"source:{relative}\0".encode())
             digest.update(payload)
             digest.update(b"\0")
         return digest.hexdigest()
@@ -269,7 +432,14 @@ class HttpScopeMigration:
             f"{self.reconciler.endpoints.http}/agent/turn",
             data=body,
             method="POST",
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "metnos-stack-migration/1",
+                "Authorization": "Bearer " + _admin_key(
+                    self.reconciler.admin_key_path
+                ),
+            },
         )
         try:
             with urllib.request.urlopen(request, timeout=180) as response:
@@ -307,6 +477,25 @@ class HttpScopeMigration:
             if self.systemctl.show(unit, "user").get("ActiveState") == "active"
         )
 
+    def _reset_start_limits(self, candidates: tuple[str, ...]):
+        """Reset rate-limit counters only for installed Metnos user units.
+
+        A migration pilot intentionally performs several bounded stop/start
+        transitions in quick succession.  Those transitions must not consume
+        the operational restart budget that protects services from crashes.
+        Filtering through LoadState keeps the operation scoped to the declared
+        and installed Metnos stack instead of resetting unrelated user units.
+        """
+        loaded = tuple(
+            unit for unit in dict.fromkeys(candidates)
+            if self.systemctl.show(unit, "user").get("LoadState") == "loaded"
+        )
+        if not loaded:
+            return None
+        return self.systemctl.run(
+            "user", "reset-failed", *loaded, timeout_s=30,
+        )
+
     def _restore_baseline(self, active_user_units: tuple[str, ...]) -> None:
         target_stop = self.systemctl.run(
             "user", "stop", TARGET_UNIT, timeout_s=180,
@@ -323,6 +512,7 @@ class HttpScopeMigration:
                     "quarantine_returncode": quarantine_stop.returncode,
                 },
             )
+        reset_result = self._reset_start_limits(active_user_units)
         component_result = None
         if active_user_units:
             component_result = self.systemctl.run(
@@ -333,6 +523,7 @@ class HttpScopeMigration:
         )
         if (
             http_result.returncode != 0
+            or (reset_result is not None and reset_result.returncode != 0)
             or (component_result is not None and component_result.returncode != 0)
         ):
             raise StackFailure(
@@ -340,6 +531,10 @@ class HttpScopeMigration:
                 "could not restart the complete legacy baseline",
                 details={
                     "http_returncode": http_result.returncode,
+                    "reset_returncode": (
+                        reset_result.returncode
+                        if reset_result is not None else 0
+                    ),
                     "components_returncode": (
                         component_result.returncode
                         if component_result is not None else 0
@@ -376,6 +571,12 @@ class HttpScopeMigration:
             baseline_user_units = self._active_user_baseline()
             self.reconciler.check(require_quiescent=True)
             for number in range(1, cycles + 1):
+                reset_result = self._reset_start_limits(USER_STACK_UNITS)
+                if reset_result is not None and reset_result.returncode != 0:
+                    raise StackFailure(
+                        "target_reset_failed",
+                        "could not reset Metnos transition rate limits",
+                    )
                 mutation_started = True
                 stopped = self.systemctl.run("system", "stop", SYSTEM_HTTP, timeout_s=180)
                 if stopped.returncode != 0:
@@ -475,6 +676,12 @@ class HttpScopeMigration:
             self._expect_system_baseline()
             baseline_user_units = self._active_user_baseline()
             self.reconciler.check(require_quiescent=True)
+            reset_result = self._reset_start_limits(USER_STACK_UNITS)
+            if reset_result is not None and reset_result.returncode != 0:
+                raise StackFailure(
+                    "target_reset_failed",
+                    "could not reset Metnos transition rate limits",
+                )
             if self.systemctl.run("system", "stop", SYSTEM_HTTP, timeout_s=180).returncode:
                 raise StackFailure("legacy_stop_failed", "could not stop system HTTP")
             if self.systemctl.run("system", "disable", SYSTEM_HTTP, timeout_s=60).returncode:
@@ -492,10 +699,15 @@ class HttpScopeMigration:
                 "readiness": readiness,
                 "turn": turn,
             }
-        except StackFailure:
+        except StackFailure as exc:
             self.systemctl.run("user", "disable", "--now", TARGET_UNIT, timeout_s=180)
             self.systemctl.run("system", "enable", SYSTEM_HTTP, timeout_s=60)
-            self._restore_baseline(baseline_user_units)
+            try:
+                self._restore_baseline(baseline_user_units)
+            except StackFailure as rollback_exc:
+                rollback_exc.details.setdefault("original_error", exc.code)
+                rollback_exc.details.setdefault("original_details", exc.details)
+                raise rollback_exc from exc
             raise
         finally:
             lock.release()
@@ -511,7 +723,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = _parser().parse_args(raw_argv)
     if args.command == "cutover" and os.geteuid() == 0 and not args.service_user:
         print(json.dumps({
             "schema_version": SCHEMA_VERSION,
@@ -521,6 +734,18 @@ def main(argv: list[str] | None = None) -> int:
             "details": {},
         }, sort_keys=True))
         return 1
+    if (
+        args.command == "cutover"
+        and os.geteuid() == 0
+        and args.service_user
+        and os.environ.get("METNOS_MIGRATION_IDENTITY_READY") != "1"
+    ):
+        environment = _service_process_environment(args.service_user)
+        os.execve(
+            sys.executable,
+            [sys.executable, str(Path(__file__).resolve()), *raw_argv],
+            environment,
+        )
     migration = HttpScopeMigration(service_user=args.service_user)
     try:
         if args.command == "prepare":

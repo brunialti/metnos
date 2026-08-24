@@ -311,7 +311,7 @@ def _manifest_family(hit: SourceHit) -> str:
 def _coherent_manifest_scope(
         hits: tuple[SourceHit, ...], primary: SourceHit,
 ) -> tuple[SourceHit, ...]:
-    """Bound operation help to one explicit manifest neighbourhood.
+    """Bound focused help to the structural neighbourhood of its primary.
 
     Executor arguments are leaf evidence, while retrieved manuals may discuss
     a nearby but different pipeline.  When the primary is a complete admitted
@@ -320,9 +320,26 @@ def _coherent_manifest_scope(
     additional publication that names the primary executor.  This derives the
     neighbourhood entirely from source structure and authored cross-references;
     it contains no query words, domains, or executor-specific table.
+
+    A published document is already an authored explanatory boundary.  When
+    one of its sections is primary, retain only selected sections of that same
+    document.  Other high-scoring sources remain useful ranking candidates but
+    cannot silently expand a focused explanation into unrelated procedures or
+    runtime objects.  Current-state authority follows the separate OBSERVE
+    path, so this restriction does not hide live evidence.
     """
 
     unit = primary.unit
+    if (unit is not None
+            and unit.authority == "published_documentation"):
+        document_ref = unit.source_ref.split("#", 1)[0]
+        same_document = tuple(
+            hit for hit in hits
+            if hit.unit is not None
+            and hit.unit.authority == "published_documentation"
+            and hit.unit.source_ref.split("#", 1)[0] == document_ref
+        )
+        return same_document or (primary,)
     if unit is None or unit.source_kind != "executor_manifest":
         return hits
     primary_family = _manifest_family(primary)
@@ -1024,24 +1041,56 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             request.previous_question.strip()
             if mode_decision.is_followup else "")
         conversation_context_used = bool(previous_question)
-        retrieval_trace: dict = {}
-        context = retrieve_sources(
-            working_query,
-            lang,
-            request.principal.audience,
-            cards=cards,
-            card_index=snapshot.card_index,
-            units=bound_units,
-            knowledge_index=snapshot.knowledge_index,
-            companion_query=(
-                f"{previous_question} {working_query}".strip()
-                if previous_question else ""
-            ),
-            owner_user_id=request.principal.user_id,
-            required_source_ref=required_source_ref,
-            explain=retrieval_trace,
-            deadline_at=deadline_at,
+        from .obligations import (
+            QuestionObligations, classify_question_obligations, merge_contexts,
         )
+        obligations = QuestionObligations((working_query,))
+        if document_reference is None:
+            obligations = classify_question_obligations(
+                working_query, lang, deadline_at=deadline_at)
+        retrieval_traces: list[dict] = []
+        obligation_contexts = []
+        for obligation_query in obligations.queries:
+            trace: dict = {}
+            obligation_contexts.append(retrieve_sources(
+                obligation_query,
+                lang,
+                request.principal.audience,
+                cards=cards,
+                card_index=snapshot.card_index,
+                units=(snapshot.units if obligations.decomposed else bound_units),
+                knowledge_index=snapshot.knowledge_index,
+                companion_query=(
+                    f"{previous_question} {working_query}".strip()
+                    if previous_question and not obligations.decomposed else ""
+                ),
+                owner_user_id=request.principal.user_id,
+                required_source_ref=required_source_ref,
+                explain=trace,
+                deadline_at=deadline_at,
+            ))
+            retrieval_traces.append(trace)
+        if obligations.decomposed:
+            scoped_contexts = []
+            for obligation_context in obligation_contexts:
+                if (obligation_context is None or obligation_context.restricted
+                        or not obligation_context.hits):
+                    scoped_contexts.append(obligation_context)
+                    continue
+                scoped_contexts.append(SemanticContext(
+                    _coherent_manifest_scope(
+                        obligation_context.hits, obligation_context.hits[0]),
+                    obligation_context.top_score,
+                    restricted=False,
+                ))
+            context = merge_contexts(scoped_contexts)
+        else:
+            scoped_contexts = obligation_contexts
+            context = obligation_contexts[0] if obligation_contexts else None
+        retrieval_trace = retrieval_traces[0] if retrieval_traces else {}
+        if obligations.decomposed:
+            retrieval_trace["question_obligation_count"] = len(
+                obligations.queries)
         remaining(deadline_at)
         # Both real loaders above admit/verify the signed catalog.  Read its
         # identity only afterwards and without starting an extra compilation;
@@ -1140,8 +1189,9 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             )
             if not effective_hits:
                 effective_hits = (primary,)
-            effective_hits = _coherent_manifest_scope(
-                effective_hits, primary)
+            if not obligations.decomposed:
+                effective_hits = _coherent_manifest_scope(
+                    effective_hits, primary)
             rendered_blocks = tuple((
                 hit,
                 _render_context(
@@ -1151,13 +1201,56 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             ) for hit in effective_hits)
             rendered_context = "\n\n".join(
                 block for _hit, block in rendered_blocks)
+            if obligations.decomposed:
+                from .obligations import (
+                    map_context_sources, render_question_obligations,
+                )
+
+                obligation_source_ids = map_context_sources(
+                    scoped_contexts,
+                    effective_hits,
+                    source_id=_source_id,
+                )
+                obligation_block = render_question_obligations(
+                    obligations.queries,
+                    obligation_source_ids,
+                )
+                if obligation_block:
+                    rendered_context = (
+                        f"{rendered_context}\n\n{obligation_block}")
             outline = ""
             if document_reference is not None and bound_units is not None:
                 outline = _document_outline(
                     bound_units, required_source_ref)
                 if outline:
                     rendered_context = f"{rendered_context}\n\n{outline}"
-            coverage = _coverage_items(_ledger_scope(effective_hits, primary))
+            if obligations.decomposed:
+                admitted_keys = {
+                    (hit.source_type, hit.source_id) for hit in effective_hits
+                }
+                obligation_ledger_hits: list[SourceHit] = []
+                ledger_seen: set[tuple[str, str]] = set()
+                for candidate in scoped_contexts:
+                    if (candidate is None or candidate.restricted
+                            or not candidate.hits):
+                        continue
+                    admitted_candidate_hits = tuple(
+                        hit for hit in candidate.hits
+                        if (hit.source_type, hit.source_id) in admitted_keys
+                    )
+                    if not admitted_candidate_hits:
+                        continue
+                    for hit in _ledger_scope(
+                            admitted_candidate_hits,
+                            admitted_candidate_hits[0]):
+                        key = (hit.source_type, hit.source_id)
+                        if key not in ledger_seen:
+                            ledger_seen.add(key)
+                            obligation_ledger_hits.append(hit)
+                coverage_hits = tuple(obligation_ledger_hits)
+            else:
+                coverage_hits = _ledger_scope(effective_hits, primary)
+            coverage = _coverage_items(coverage_hits)
             ledger = _render_ledger(coverage)
             if ledger:
                 rendered_context = f"{rendered_context}\n\n{ledger}"

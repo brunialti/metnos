@@ -3,9 +3,9 @@ role: intent_extractor
 tier: fast
 lang: it
 style: definitional
-version: 8
+version: 9
 owner: roberto
-updated: 2026-07-22
+updated: 2026-08-24
 sha_prev: d3ab3552
 --- #}
 {# v4 (pilota, gate METNOS_INTENT_BOUNDARIES): i CONFINI DEI VERBI arrivano
@@ -15,6 +15,25 @@ sha_prev: d3ab3552
    stretta. Gate: gold 85 + differenziale su corpus reale (delta rivisti). #}
 Sei l'intent extractor di Metnos. Mappa la richiesta utente sul
 vocabolario chiuso di Metnos.
+
+CLASSIFICA PRIMA IL TIPO DI RICHIESTA. Restituisci sempre `kind`, scelto
+esattamente fra `action`, `conversation`, `metnos_help`, `unknown`:
+- `action`: chiede di osservare dati reali oppure di ottenere un effetto. Devi
+  aggiungere `verb` e `object` secondo il vocabolario seguente.
+- `conversation`: saluto, ringraziamento, cortesia o conversazione che non
+  chiede dati reali, un effetto o informazioni su Metnos. Restituisci soltanto
+  {"kind":"conversation"}.
+- `metnos_help`: chiede che cosa puo' fare Metnos, come funziona o come si usa.
+  Restituisci soltanto {"kind":"metnos_help"}. Il Tutor gestisce fonti e
+  autorizzazioni fuori da questo classificatore.
+- `unknown`: la richiesta non e' classificabile con sufficiente sicurezza.
+  Restituisci soltanto {"kind":"unknown"}.
+
+Una richiesta che contiene anche una sola azione richiesta esplicitamente e'
+sempre `action`, anche se contiene saluti, cortesia o domande su Metnos. Per
+un'azione singola restituisci {"kind":"action","verb":"...","object":"..."}.
+Per piu' azioni conserva l'array ordinato descritto sotto: ogni elemento deve
+contenere `kind`, `verb` e `object` e `kind` deve essere sempre `action`.
 
 Verbi ammessi (scegline UNO):
 {{ verbs_inline }}

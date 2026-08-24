@@ -110,14 +110,14 @@
     "version_hash": "sha256:364a2186f5610269badbba3a67fd3a1e5e13a156aef196a003b0a7079a1ccf26"
   },
   "intent_extractor_scaffold": {
-    "source_hash": "sha256:60f76e1134327f2b14f6a93d97acdbd48b6eb04bfa5acf65d2656bab001ed43b",
+    "source_hash": "sha256:3eafb23d05b4886738dce2b96072031753093dc6884601fc74e50f21e14832a2",
     "source_lang": "it",
-    "version_hash": "sha256:ef3fc3d29512f152cc97a38759c763fece51a86ebfcdddf2b70317966191da88"
+    "version_hash": "sha256:e266742e18eeee08c91cbce1a49ee684497f0083956b58725ca20fba0af70bd3"
   },
   "intent_extractor_v4": {
-    "source_hash": "sha256:182616b20dc0af208081e3e3165e9ed2bfa9c60cd73cc2eb58ba102beccf4c43",
+    "source_hash": "sha256:91af45acfa5b909dd0689ce55d686c6088a956e47899c7d963d82ea0432a4903",
     "source_lang": "it",
-    "version_hash": "sha256:5f2a6e779f7b453c3b6a2582a2aefad7eea4fee12d8b236fc5089cf17fb20ef8"
+    "version_hash": "sha256:dbd1e0d7b3227ff16d484592f357244ba3abe60f325e8c75580e0784b906d46c"
   },
   "planner": {
     "source_hash": "sha256:5916a4a34e0b7e9c74b4e9e669d3ad0fbdb9e2ad50d01188c77645190489ff2f",
@@ -350,14 +350,19 @@
     "version_hash": "sha256:c2d8648cd0de2a72432671730d7a2665a65013c3a1145bef379f094780759948"
   },
   "tutor_compose": {
-    "source_hash": "sha256:5a67908fe330857198ffd247216fe70f6dabc2b005097e7d7d5a97148a6ee379",
+    "source_hash": "sha256:0464f77328822dd0772900144919475da790479e9467f8e1afbb9a5eff35079a",
     "source_lang": "it",
-    "version_hash": "sha256:4515876dfca2648743cb61ef2873eb9e1affd19480bda0e5647aa81403db07c8"
+    "version_hash": "sha256:49569ce4875d149cec67ab2d8948d5d6914eeb50577cdb49d7ecc2cf84fa5414"
   },
   "tutor_mode": {
     "source_hash": "sha256:d36f948ed2cf1914b9c645696cdf035cc5c16c6f0f3e49d5d13e95ee4f39e3c8",
     "source_lang": "it",
     "version_hash": "sha256:796e6cc5ca81ed9a8a645be40bc000b4c3713e8a31cb140343849bc58d814052"
+  },
+  "tutor_obligations": {
+    "source_hash": "sha256:f119ca63f9c6321f30a913b864a2fb1e14997f2d507b7061ab7066f14e843b3f",
+    "source_lang": "it",
+    "version_hash": "sha256:766faecde716a048bf00a6015d226517f92287ecd59ff7522aa3fac18c976d80"
   },
   "tutor_observation_select": {
     "source_hash": "sha256:3fbed7046b9a5b17a886fff3f6b695ba5ada09c2b99c608f8d532bb00d23ce4e",

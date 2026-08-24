@@ -62,12 +62,12 @@
   <div class="section-title"><span>04</span><h2>Accedere alle impostazioni</h2></div>
   <p class="prose">Dalla chat web si accede a <strong>Settings</strong>, l'area amministrativa. La pagina iniziale offre una panoramica dello stato del sistema e conduce a quattro sezioni; gli indirizzi delle pagine amministrative cominciano con <code>/admin</code>. La <a href="interface.html">mappa completa dell'interfaccia</a> è generata dal registro del sistema e rimane quindi allineata ai componenti effettivamente installati.</p>
   <p class="prose">Le pagine sotto <code>/admin</code> sono riservate all'amministratore dell'istanza. Un ospite invitato può usare la chat, ma non accedere alle impostazioni.</p>
-  <div class="note"><strong>Prima occorre l'accesso amministrativo.</strong> Scrivere direttamente l'indirizzo di una pagina, per esempio <code>/admin/users</code>, non effettua automaticamente l'accesso come amministratore. Se compare il messaggio <code>admin role required</code>, apri <code>/admin/login</code> nello stesso browser e accedi con la chiave di amministrazione, oppure usa il collegamento monouso prodotto dall'installazione. Per esempio, se Metnos risponde all'indirizzo <code>192.0.2.0</code>, la pagina di accesso è <code>http://192.0.2.0:8770/admin/login</code>. Dopo l'accesso puoi tornare a <code>http://192.0.2.0:8770/admin/users</code>.</div>
+  <div class="note"><strong>Prima occorre l'accesso amministrativo.</strong> Se apri direttamente una pagina protetta, per esempio <code>/admin/users</code>, senza una sessione amministrativa valida, Metnos ti porta alla pagina di accesso e conserva la destinazione. Dopo aver inserito la chiave di amministrazione, il browser torna automaticamente alla pagina richiesta. Per esempio, se Metnos risponde all'indirizzo <code>192.0.2.0</code>, puoi aprire <code>http://192.0.2.0:8770/admin/users</code>: quando necessario, il passaggio da <code>/admin/login</code> avviene nello stesso browser. Un utente autenticato ma privo del ruolo amministrativo riceve invece un rifiuto esplicito e non acquisisce nuovi permessi.</div>
 </section>
 
 <section id="utente">
   <div class="section-title"><span>05</span><h2>Creare un nuovo utente</h2></div>
-  <p class="prose">Questa procedura consente a un'altra persona, per esempio un familiare o un ospite, di usare l'istanza con un'identità, una cronologia e permessi propri. L'operazione comprende due passaggi distinti: la creazione del profilo e l'associazione di un canale di accesso.</p>
+  <p class="prose">Questa procedura consente a un altro utente, per esempio un familiare o un ospite, di usare l'istanza con un'identità, una cronologia e permessi propri. L'operazione comprende due passaggi distinti: la creazione del profilo e l'associazione di un canale di accesso.</p>
 
   <h3>Primo passaggio: creare il profilo</h3>
   <ol>
@@ -77,7 +77,7 @@
         <tr><th>Campo</th><th>Valore</th></tr>
         <tr><td>nome</td><td>Un identificativo breve composto soltanto da lettere minuscole, cifre e trattino basso, per esempio <code>lucia</code> o <code>marco_r</code>. Il campo è obbligatorio.</td></tr>
         <tr><td>nome visualizzato</td><td>Il nome mostrato nell'interfaccia, per esempio <code>Lucia Rossi</code>.</td></tr>
-        <tr><td>email</td><td>L'indirizzo della persona, se disponibile.</td></tr>
+        <tr><td>email</td><td>L'indirizzo dell'utente, se disponibile.</td></tr>
         <tr><td>ruolo</td><td><code>guest</code> per un ospite; <code>host</code> per un secondo proprietario. Se non occorre attribuire il ruolo di proprietario, scegli <code>guest</code>.</td></tr>
         <tr><td>autonomia</td><td>Il livello entro cui l'utente può operare: <code>read_only</code> consente soltanto la consultazione, <code>restricted</code> richiede conferma per le operazioni che modificano lo stato, <code>full</code> consente di procedere senza conferma. Se non hai esigenze diverse, scegli <code>restricted</code>.</td></tr>
       </table></div>
@@ -86,18 +86,18 @@
   </ol>
 
   <h3>Secondo passaggio: associare un canale di accesso</h3>
-  <p class="prose">Seleziona il nome della persona per aprirne la pagina di dettaglio, quindi genera un codice di collegamento per il canale prescelto. Il codice è <strong>monouso</strong> e rimane valido per <strong>un'ora</strong>.</p>
+  <p class="prose">Seleziona il nome dell'utente per aprirne la pagina di dettaglio, quindi genera un codice di collegamento per il canale prescelto. Il codice è <strong>monouso</strong> e rimane valido per <strong>un'ora</strong>.</p>
   <ul>
-    <li><strong>Chat web.</strong> Metnos genera un indirizzo completo. Condividilo con la persona, che dovrà aprirlo sul proprio telefono o computer. L'associazione viene completata senza richiedere l'inserimento manuale di altri dati.</li>
-    <li><strong>Telegram.</strong> Metnos genera un codice. La persona apre una conversazione con il bot Telegram associato all'istanza e invia <code>/start</code> seguito dal codice; il bot conferma l'avvenuto collegamento.</li>
+    <li><strong>Chat web.</strong> Metnos genera un indirizzo completo. Condividilo con l'utente, che dovrà aprirlo sul proprio telefono o computer. L'associazione viene completata senza richiedere l'inserimento manuale di altri dati.</li>
+    <li><strong>Telegram.</strong> Metnos genera un codice. L'utente apre una conversazione con il bot Telegram associato all'istanza e invia <code>/start</code> seguito dal codice; il bot conferma l'avvenuto collegamento.</li>
   </ul>
   <div class="warn"><strong>Trasmetti il codice soltanto attraverso un canale affidabile</strong>, di persona oppure in una conversazione privata. Chiunque possieda il collegamento può accedere con l'identità a cui è destinato. Se il codice scade prima dell'uso, torna alla pagina di dettaglio dell'utente e generane uno nuovo: quello precedente non sarà più valido.</div>
-  <p class="prose">Dalla stessa pagina puoi successivamente modificare i dati della persona, scollegare un canale, aggiornare le preferenze o eliminare l'utente.</p>
+  <p class="prose">Dalla stessa pagina puoi successivamente modificare i dati dell'utente, scollegare un canale, aggiornare le preferenze o eliminare l'utente.</p>
 </section>
 
 <section id="chiedi">
   <div class="section-title"><span>06</span><h2>Chiedere indicazioni al Tutor</h2></div>
-  <p class="prose">Non è necessario ricordare tutti i percorsi. Puoi chiedere indicazioni direttamente nella chat, con espressioni naturali come «dove si cambia il modello?» oppure «come posso invitare una persona?». Il Tutor indica il percorso e l'indirizzo appropriati e descrive ciò che è effettivamente disponibile nella <em>tua</em> installazione. Se una pagina non esiste, lo dichiara senza suggerire un percorso inesistente.</p>
+  <p class="prose">Non è necessario ricordare tutti i percorsi. Puoi chiedere indicazioni direttamente nella chat, con espressioni naturali come «dove si cambia il modello?» oppure «come posso invitare un utente?». Il Tutor indica il percorso e l'indirizzo appropriati e descrive ciò che è effettivamente disponibile nella <em>tua</em> installazione. Se una pagina non esiste, lo dichiara senza suggerire un percorso inesistente.</p>
 </section>
 
 <footer>Guida introduttiva alla chat web di Metnos. I dettagli tecnici del server, delle route e dell'identità sono raccolti in <a href="architecture/http_api.html">Chat web e API HTTP</a>; la struttura delle pagine di amministrazione è descritta in <a href="interface.html">L'interfaccia di Metnos</a>.</footer>

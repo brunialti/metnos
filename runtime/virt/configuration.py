@@ -264,6 +264,8 @@ def _role_payload(
         spec, sources=sources, policy_keys=policy_keys,
         pointer_prefix=pointer_prefix or (name,), include_edit=include_edit,
     )
+    from model_identity import observation_for
+
     return {
         "name": name,
         "origin": origin,
@@ -275,6 +277,7 @@ def _role_payload(
         "parameter_fields": [
             f for f in fields if f["group"] == "parameters"
         ],
+        "model_observation": observation_for(spec),
     }
 
 

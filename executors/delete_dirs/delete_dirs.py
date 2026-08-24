@@ -77,7 +77,36 @@ def invoke(args):
             _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
             error_class="not_applicable",
         )
-    return backend.delete_dirs(args)
+    result = backend.delete_dirs(args)
+    if not isinstance(result, dict):
+        return result
+    metadata = result.get("_undo")
+    if isinstance(metadata, dict) and metadata.get("reverse_pattern"):
+        metadata.setdefault("outcome", "reversible")
+    elif not isinstance(metadata, dict):
+        mutated = bool(result.get("results")) or bool(result.get("n_deleted"))
+        result["_undo"] = {
+            "outcome": "irreversible" if mutated else "no_effect",
+        }
+    return result
+
+
+def reverse(plan, results):
+    """Undo the executed local branch from its signed state receipt."""
+    if not isinstance(plan, dict) or not isinstance(results, dict):
+        return _failure("invalid_reverse_receipt", _msg("ERR_ARGS_NOT_OBJECT"))
+    args = plan.get("args") or {}
+    if not isinstance(args, dict):
+        return _failure("plan_args_not_object", _msg("ERR_ARGS_NOT_OBJECT"))
+    client = args.get("client") or "local"
+    backend = _backend(client)
+    if backend is None or not hasattr(backend, "reverse_delete_dirs"):
+        return _failure(
+            "reverse_not_supported",
+            _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
+            error_class="not_applicable",
+        )
+    return backend.reverse_delete_dirs(plan, results)
 
 
 def main():

@@ -309,6 +309,14 @@ def build_routing_pool(query: str, intent, catalog: list, *,
          (default 12). Il pool finale può eccedere k per universal-helpers,
          companions e completamento famiglia-object (come in produzione).
     """
+    intent_kind = str(getattr(intent, "kind", "unknown") or "unknown")
+    if intent_kind in {"conversation", "metnos_help"}:
+        # ``final_answer`` e' virtuale e viene sempre aggiunto dalla grammar.
+        # Un pool vuoto impedisce qualsiasi executor reale. Le richieste di
+        # aiuto Metnos sono normalmente gia' state prese dal Tutor; questo e'
+        # il confine fail-safe quando il suo pre-gate declina.
+        return []
+
     pool_size = (int(k) if k is not None
                  else int(os.environ.get("METNOS_ENGINE_POOL_SIZE", "12")))
     if intent.is_complete():

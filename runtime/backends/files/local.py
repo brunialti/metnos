@@ -1868,6 +1868,22 @@ def _remove_one(path_arg, force):
         return False, str(target), f"cannot list: {e}"
     if children and not force:
         return False, str(target), f"directory not empty ({len(children)} items); use force=true for recursive remove"
+    # An empty directory has no payload to retain.  Its application-visible
+    # state is captured before rmdir so that the signed executor can recreate
+    # it without guessing from the original query.  Recursive removal is
+    # classified separately because this receipt cannot restore descendants.
+    try:
+        before = os.stat(target, follow_symlinks=False)
+    except OSError as e:
+        return False, str(target), f"cannot stat: {e}"
+    receipt = None
+    if not children:
+        receipt = {
+            "path": str(target),
+            "mode": stat.S_IMODE(before.st_mode),
+            "atime_ns": int(before.st_atime_ns),
+            "mtime_ns": int(before.st_mtime_ns),
+        }
     try:
         if force and children:
             shutil.rmtree(target)
@@ -1877,7 +1893,7 @@ def _remove_one(path_arg, force):
         return False, str(target), f"permission denied (possibly outside allowed scope): {e}"
     except OSError as e:
         return False, str(target), f"os error: {e}"
-    return True, str(target), None
+    return True, str(target), receipt
 
 
 def _file_revision(value: os.stat_result) -> tuple[int, int, int, int, int]:
@@ -2138,6 +2154,8 @@ def delete_dirs(args: dict) -> dict:
 
     results = []
     failed = []
+    receipts = []
+    irreversible_effect = False
     for i, p in enumerate(paths):
         if not isinstance(p, str) or not p:
             failed.append({"index": i, "path": p, "error_code": "ERR_ARG_INVALID",
@@ -2152,11 +2170,130 @@ def delete_dirs(args: dict) -> dict:
         ok, target, info = _remove_one(p, force)
         if ok:
             results.append({"path": target, "removed": True})
+            if isinstance(info, dict):
+                receipts.append(info)
+            else:
+                irreversible_effect = True
         else:
             failed.append({"index": i, "path": target,
                            "error_code": "ERR_DIR_OP_FAILED", "error": info})
 
-    return _dir_vector_result(results, failed)
+    out = _dir_vector_result(results, failed)
+    if not results:
+        out["_undo"] = {"outcome": "no_effect"}
+    elif irreversible_effect:
+        # A batch is reversible only when every successful mutation can be
+        # restored.  Offering a partial inverse would misrepresent the action.
+        out["_undo"] = {"outcome": "irreversible"}
+    else:
+        out["_undo"] = {
+            "outcome": "reversible",
+            "reverse_pattern": "module.reverse",
+            "directories": receipts,
+            "scope": {"client": "local"},
+        }
+    return out
+
+
+def reverse_delete_dirs(_plan: dict, results: dict) -> dict:
+    """Recreate directories removed while empty from their exact receipt.
+
+    The function is deliberately narrower than ``mkdir -p``: every target
+    must still be absent and every parent must already exist or belong to the
+    same receipt.  This compare-and-swap boundary prevents undo from replacing
+    a new occupant or manufacturing unrelated parent directories.
+    """
+    metadata = results.get("_undo") if isinstance(results, dict) else None
+    raw = metadata.get("directories") if isinstance(metadata, dict) else None
+    if (not isinstance(raw, list) or not raw
+            or metadata.get("outcome") != "reversible"):
+        return _dir_vector_result([], [{
+            "index": 0, "path": None, "error_code": "ERR_ARG_INVALID",
+            "error": _msg("ERR_ARG_INVALID", arg="_undo.directories",
+                          reason="missing reversible directory receipt"),
+        }])
+
+    receipts = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict):
+            return _dir_vector_result([], [{
+                "index": i, "path": None, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="directory receipt",
+                              reason="must be an object"),
+            }])
+        path_value = item.get("path")
+        mode = item.get("mode")
+        atime_ns = item.get("atime_ns")
+        mtime_ns = item.get("mtime_ns")
+        if (not isinstance(path_value, str) or not path_value
+                or not Path(path_value).is_absolute()
+                or not isinstance(mode, int) or not 0 <= mode <= 0o7777
+                or not isinstance(atime_ns, int)
+                or not isinstance(mtime_ns, int)):
+            return _dir_vector_result([], [{
+                "index": i, "path": path_value,
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="directory receipt",
+                              reason="invalid path or metadata"),
+            }])
+        receipts.append({
+            "path": Path(path_value), "mode": mode,
+            "atime_ns": atime_ns, "mtime_ns": mtime_ns,
+        })
+
+    receipt_paths = {item["path"] for item in receipts}
+    for i, item in enumerate(receipts):
+        path = item["path"]
+        if path.exists() or path.is_symlink():
+            return _dir_vector_result([], [{
+                "index": i, "path": str(path),
+                "error_code": "ERR_PATH_EXISTS",
+                "error": _msg("ERR_ARG_INVALID", arg="path",
+                              reason="restore target is no longer absent"),
+            }])
+        if not path.parent.is_dir() and path.parent not in receipt_paths:
+            return _dir_vector_result([], [{
+                "index": i, "path": str(path),
+                "error_code": "ERR_PATH_NOT_FOUND",
+                "error": _msg("ERR_PATH_NOT_FOUND", path=str(path.parent)),
+            }])
+
+    created = []
+    failed = []
+    try:
+        for item in sorted(receipts, key=lambda value: len(value["path"].parts)):
+            path = item["path"]
+            os.mkdir(path, item["mode"])
+            created.append(item)
+        # Creating a child changes its parent's timestamps.  Restore metadata
+        # only after the complete hierarchy exists, deepest entries first.
+        for item in sorted(created, key=lambda value: len(value["path"].parts),
+                           reverse=True):
+            path = item["path"]
+            os.chmod(path, item["mode"], follow_symlinks=False)
+            os.utime(path, ns=(item["atime_ns"], item["mtime_ns"]),
+                     follow_symlinks=False)
+    except OSError as exc:
+        failed.append({
+            "index": len(created),
+            "path": str(created[-1]["path"]) if created else None,
+            "error_code": "ERR_DIR_OP_FAILED",
+            "error": _msg("ERR_DIR_OP_FAILED", op="restore", path=str(
+                created[-1]["path"] if created else "?"), reason=str(exc)),
+        })
+        # Best-effort rollback of only the directories created above.  Never
+        # remove a directory that acquired concurrent content.
+        for item in sorted(created, key=lambda value: len(value["path"].parts),
+                           reverse=True):
+            try:
+                item["path"].rmdir()
+            except OSError:
+                pass
+        return _dir_vector_result([], failed)
+
+    return _dir_vector_result(
+        [{"path": str(item["path"]), "restored": True}
+         for item in receipts], [])
 
 
 # --- spreadsheet (LOCAL, default client) -----------------------------------

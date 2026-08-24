@@ -2,11 +2,11 @@
 
 Step:
 1. Verifica admission ADR 0114 dry-run (layer 2/3/5/6 pre-emptivo).
-2. Crea `~/.local/share/metnos/executors/<name>/` con `manifest.toml` +
-   `<name>.py` rigenerati dal payload della proposta.
-3. Firma Ed25519 via `sign.py`.
-4. Crea rollback blob `~/.local/share/metnos/promoter_blobs/<id>.tar.gz`
-   (atomic tmp+rename).
+2. Verifica il candidate standard gia' materializzato da Synt e ne salva una
+   copia esatta per il rollback.
+3. Applica l'unica transizione ammessa `synthesized -> active` e firma Ed25519.
+4. Ammette l'artefatto con il loader verificato; su errore ripristina il
+   candidate byte per byte.
 
 §7.9 deterministico ovunque tranne layer 6 (LLM verifier, gia' chiuso in
 proposal_evaluator). §2.8 fail-loud: ogni admission fail ritorna esplicito
@@ -15,12 +15,12 @@ proposal_evaluator). §2.8 fail-loud: ogni admission fail ritorna esplicito
 from __future__ import annotations
 
 import os
+import shutil
 import sys as _sys
 import tarfile
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
 
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
@@ -55,117 +55,6 @@ def _blob_dir() -> Path:
 def _handcrafted_dir() -> Path:
     """Dir handcrafted canonico. Promoter NON deve mai toccarla (read-only)."""
     return _DEFAULT_HANDCRAFTED_DIR
-
-
-def _build_manifest_toml(proposal: dict) -> str:
-    """Rigenera il manifest TOML del nuovo executor dalla proposta.
-
-    Schema (compat ADR 0086+0114):
-        [executor]
-        name = "..."
-        description = "..."
-        affinity = [...]
-        capabilities = [...]
-        reverse_pattern = null | "..."
-
-        [code]
-        files = ["<name>.py"]
-        digest = ""  # sign_executor lo riempie
-
-        [args_schema]
-        ... (passthrough dallo stage 2)
-    """
-    name = proposal.get("name") or proposal.get("expected_name") or "?"
-    stages = proposal.get("stages") or []
-    s2 = stages[1].get("output") if len(stages) >= 2 else {}
-    s4 = stages[3].get("output") if len(stages) >= 4 else {}
-    if not isinstance(s2, dict):
-        s2 = {}
-    if not isinstance(s4, dict):
-        s4 = {}
-
-    description = s4.get("description") or ""
-    affinity = s4.get("affinity") or []
-    capabilities = s2.get("capabilities") or []
-    reverse_pattern = s2.get("reverse_pattern") or ""
-    args_required = s2.get("args_required") or []
-    args_properties = s2.get("args_properties") or {}
-    if not args_properties and isinstance(s2.get("args_schema"), dict):
-        sch = s2["args_schema"]
-        args_required = sch.get("required") or args_required
-        args_properties = sch.get("properties") or args_properties
-
-    # Costruzione TOML manuale (no tomli_w): determinismo §7.9, niente dep.
-    out: list[str] = []
-    out.append("# Manifest sintetizzato dal promoter daemon.")
-    out.append("# Provenance: synth (proposal_id=" + str(proposal.get("id", "?")) + ")")
-    out.append("")
-    out.append("[executor]")
-    out.append(f'name = "{_toml_esc(name)}"')
-    out.append(f'description = "{_toml_esc(description)}"')
-    out.append("affinity = " + _toml_list(affinity))
-    out.append("capabilities = " + _toml_caps(capabilities))
-    if reverse_pattern:
-        out.append(f'reverse_pattern = "{_toml_esc(reverse_pattern)}"')
-    out.append("")
-    out.append("[code]")
-    out.append(f'files = ["{_toml_esc(name)}.py"]')
-    # Placeholder digest: `sign_executor` lo riscrive col digest reale.
-    # Il regex `_DIGEST_RE` di sign.py richiede prefisso `sha256:`.
-    out.append('digest = "sha256:placeholder"')
-    out.append("")
-    out.append("[args_schema]")
-    out.append("type = \"object\"")
-    out.append("required = " + _toml_list(args_required))
-    out.append("")
-    if args_properties and isinstance(args_properties, dict):
-        for arg_name, arg_spec in args_properties.items():
-            if not isinstance(arg_spec, dict):
-                continue
-            out.append(f"[args_schema.properties.{arg_name}]")
-            for k, v in arg_spec.items():
-                out.append(f"{k} = {_toml_value(v)}")
-            out.append("")
-    return "\n".join(out) + "\n"
-
-
-def _toml_esc(s: Any) -> str:
-    """Escape minimale per stringa TOML basic (no triple-quote)."""
-    s = str(s) if s is not None else ""
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-
-
-def _toml_list(items: list) -> str:
-    if not items:
-        return "[]"
-    parts = [f'"{_toml_esc(x)}"' for x in items]
-    return "[" + ", ".join(parts) + "]"
-
-
-def _toml_caps(caps: list) -> str:
-    """Capabilities sono list of dict {name, hint?}. Serializza inline."""
-    if not caps:
-        return "[]"
-    parts: list[str] = []
-    for c in caps:
-        if not isinstance(c, dict):
-            continue
-        bits = [f'name = "{_toml_esc(c.get("name", ""))}"']
-        hint = c.get("hint")
-        if hint:
-            bits.append(f"hint = {_toml_list(hint if isinstance(hint, list) else [hint])}")
-        parts.append("{ " + ", ".join(bits) + " }")
-    return "[" + ", ".join(parts) + "]"
-
-
-def _toml_value(v: Any) -> str:
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, (int, float)):
-        return str(v)
-    if isinstance(v, list):
-        return _toml_list(v)
-    return f'"{_toml_esc(v)}"'
 
 
 def _extract_code(proposal: dict) -> str:
@@ -221,6 +110,75 @@ def _write_rollback_blob(executor_dir: Path, blob_path: Path) -> None:
         except OSError:
             pass
         raise
+
+
+def _restore_rollback_blob(
+        executor_dir: Path, blob_path: Path,
+) -> tuple[bool, str]:
+    """Restore an exact candidate tree with traversal-safe atomic switching."""
+
+    if not blob_path.is_file():
+        return False, "rollback_blob_missing"
+    executor_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(
+        prefix=f".{executor_dir.name}.restore.", dir=str(executor_dir.parent)))
+    displaced = executor_dir.parent / (
+        f".{executor_dir.name}.displaced.{time.time_ns()}")
+    try:
+        with tarfile.open(str(blob_path), "r:gz") as archive:
+            members = archive.getmembers()
+            if not members:
+                return False, "rollback_blob_empty"
+            for member in members:
+                path = Path(member.name)
+                if (path.is_absolute() or ".." in path.parts
+                        or member.issym() or member.islnk()
+                        or not member.isfile()):
+                    return False, "rollback_blob_unsafe_member"
+            archive.extractall(str(staging), members=members, filter="data")
+        if not (staging / "manifest.toml").is_file():
+            return False, "rollback_manifest_missing"
+        if executor_dir.exists():
+            os.replace(str(executor_dir), str(displaced))
+        try:
+            os.replace(str(staging), str(executor_dir))
+        except Exception:
+            if displaced.exists() and not executor_dir.exists():
+                os.replace(str(displaced), str(executor_dir))
+            raise
+        if displaced.exists():
+            shutil.rmtree(displaced)
+        return True, ""
+    except (OSError, tarfile.TarError) as exc:
+        return False, f"rollback_restore_failed:{type(exc).__name__}"
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def _loader_admission(executor_dir: Path, name: str) -> tuple[bool, str]:
+    """Exercise the real verified loader against only the promoted artifact."""
+
+    from loader import Catalog, _load_dir_into_catalog
+
+    with tempfile.TemporaryDirectory(prefix="metnos-promoter-admit-") as raw:
+        root = Path(raw)
+        os.symlink(str(executor_dir), str(root / executor_dir.name),
+                   target_is_directory=True)
+        catalog = Catalog()
+        _load_dir_into_catalog(
+            root, catalog, verify=True, is_synthesized=True,
+            current_lang="it",
+        )
+    if name not in catalog.executors:
+        reason = next((reason for path, reason in catalog.rejected
+                       if Path(path).name == executor_dir.name),
+                      "executor_not_admitted")
+        return False, reason
+    executor = catalog.executors[name]
+    if executor.lifecycle != "active" or executor.standard_state != "declared":
+        return False, "executor_not_conformant_active"
+    return True, ""
 
 
 def _dry_run_admission_layer2(proposal: dict) -> tuple[bool, str]:
@@ -347,26 +305,49 @@ def promote_to_catalog(proposal: dict) -> dict:
                 "name": name,
             }
 
-    code = _extract_code(proposal)
-    if not code:
-        return {"ok": False, "error": "stage5_code_missing",
+    # Synt already created and signed the candidate. Promotion is one state
+    # transition of that exact artifact, never a second manifest generator.
+    manifest_path = target_dir / "manifest.toml"
+    if not manifest_path.is_file():
+        return {"ok": False, "error": "candidate_not_found",
+                "proposal_id": proposal_id, "name": name}
+    try:
+        candidate_text = manifest_path.read_text(encoding="utf-8")
+        from generated_executor_contract import (
+            GeneratedContractError, transition_generated_manifest_text,
+        )
+        active_text, candidate_manifest = transition_generated_manifest_text(
+            candidate_text, expected_lifecycle="synthesized",
+            target_lifecycle="active")
+    except (OSError, GeneratedContractError) as ex:
+        return {"ok": False, "error": "candidate_not_conformant",
+                "reason": str(ex)[:500], "proposal_id": proposal_id,
+                "name": name}
+    if str(candidate_manifest.get("name") or "") != name:
+        return {"ok": False, "error": "candidate_identity_mismatch",
+                "proposal_id": proposal_id, "name": name}
+    code_files = (candidate_manifest.get("code") or {}).get("files") or []
+    proposal_code = _extract_code(proposal)
+    if (len(code_files) != 1 or not proposal_code
+            or not (target_dir / str(code_files[0])).is_file()):
+        return {"ok": False, "error": "candidate_code_missing",
+                "proposal_id": proposal_id, "name": name}
+    try:
+        installed_code = (target_dir / str(code_files[0])).read_text(
+            encoding="utf-8")
+    except OSError:
+        installed_code = ""
+    if installed_code != proposal_code:
+        return {"ok": False, "error": "candidate_proposal_mismatch",
                 "proposal_id": proposal_id, "name": name}
 
-    manifest_text = _build_manifest_toml(proposal)
-
-    # Refuse to overwrite existing executor (idempotency safety, §2.8).
-    if target_dir.exists() and (target_dir / "manifest.toml").exists():
-        return {"ok": False, "error": "executor_already_exists",
-                "proposal_id": proposal_id, "name": name,
-                "path": str(target_dir)}
-
-    # Write files.
-    target_dir.mkdir(parents=True, exist_ok=True)
+    # Snapshot the exact quarantined state before the activation commit.
+    blob_path = _blob_dir() / f"{proposal_id}.tar.gz"
     try:
-        _atomic_write(target_dir / f"{name}.py", code)
-        _atomic_write(target_dir / "manifest.toml", manifest_text)
+        _write_rollback_blob(target_dir, blob_path)
+        _atomic_write(manifest_path, active_text)
     except OSError as ex:
-        return {"ok": False, "error": f"write_failed: {ex}",
+        return {"ok": False, "error": f"transition_write_failed: {ex}",
                 "proposal_id": proposal_id, "name": name}
 
     # Sign (Ed25519). Errori qui sono fatal: senza firma il loader scarta.
@@ -377,25 +358,23 @@ def promote_to_catalog(proposal: dict) -> dict:
     try:
         sign_executor(target_dir)
     except Exception as ex:
+        _restore_rollback_blob(target_dir, blob_path)
         return {"ok": False, "error": f"sign_failed: {ex}",
                 "proposal_id": proposal_id, "name": name,
                 "path": str(target_dir)}
-
-    # Rollback blob (tar.gz dei file appena scritti).
-    blob_path = _blob_dir() / f"{proposal_id}.tar.gz"
-    try:
-        _write_rollback_blob(target_dir, blob_path)
-    except OSError as ex:
-        # Niente blob = niente rollback sicuro. Marca executor come orfano
-        # (rimuovi cosi' non promuoviamo qualcosa che non possiamo annullare).
-        try:
-            for f in target_dir.iterdir():
-                f.unlink()
-            target_dir.rmdir()
-        except OSError:
-            pass
-        return {"ok": False, "error": f"blob_failed: {ex}",
-                "proposal_id": proposal_id, "name": name}
+    admitted, admission_reason = _loader_admission(target_dir, name)
+    if not admitted:
+        restored, restore_reason = _restore_rollback_blob(
+            target_dir, blob_path)
+        return {
+            "ok": False,
+            "error": "admission_failed_standard",
+            "reason": admission_reason,
+            "rollback_restored": restored,
+            "rollback_error": restore_reason,
+            "proposal_id": proposal_id,
+            "name": name,
+        }
 
     return {
         "ok": True,
