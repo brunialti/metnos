@@ -86,31 +86,28 @@ li { margin-bottom: 5px; }
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">model virtualization</strong></span>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Model virtualization</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle">model virtualization &mdash; <code>LLM</code> &middot; <code>embedding</code> &middot; <code>VLM</code></div>
- <div class="meta">A guide to configuration and runtime boundaries</div>
+ <div class="subtitle">Model virtualization &mdash; <code>LLM</code> &middot; <code>embedding</code> &middot; <code>VLM</code></div>
+ <div class="meta">Logical roles, configured models, and observed models</div>
 </div>
 
-<p><strong>Ask Metnos with a request like this example:</strong>
-“Show me where I can change the model and reasoning budget for the
-<code>wise</code> tier.”</p>
+<p class="lead">The planner does not ask directly for &ldquo;Qwen&rdquo; or
+&ldquo;Claude&rdquo;: it asks for a role such as <code>wise</code> or
+<code>fast.micro</code>. The instance configuration decides which provider,
+model, and endpoint will fulfil that role. This allows a model to change without
+rewriting the component that uses it.</p>
 
-<p>Metnos guides you to the administration page in the web chat:
-<span class="path">Settings &gt; System &gt; Models</span>. If you ask from
-Telegram, the Tutor can explain the path, but the page opens in the web chat.
-Its internal address is <code>/admin/virt</code>, and it requires administrator
-access.</p>
-
-<p class="lead">The runtime does not bind its components to a model name. Each
-component asks for a logical role; the effective configuration maps that role
-to a provider, model, endpoint, and related parameters. The
-<strong>Models</strong> page shows this mapping and lets an administrator change
-it without changing the code of the components that use it.</p>
+<p>The <span class="path">Settings &gt; System &gt; Models</span> page shows both
+the configured binding and, when the provider supports it, the name of the model
+that the service says it is actually running. For example, a tier may be configured
+with <code>provider=llamacpp</code> and <code>model=Qwen&hellip;.gguf</code>; the
+<strong>Observed model</strong> panel lets you compare that value with the identity
+returned by the endpoint.</p>
 
 <div class="toc">
 <h2>Table of contents</h2>
@@ -122,7 +119,7 @@ it without changing the code of the components that use it.</p>
  <li><a href="#cap5">Restoring and recovery copies</a></li>
  <li><a href="#cap6">Effective files and precedence</a></li>
  <li><a href="#cap7">Local and remote boundaries</a></li>
- <li><a href="#cap8">LLM-call census</a></li>
+ <li><a href="#cap8">How calls select a tier</a></li>
  <li><a href="#cap9">Technical references</a></li>
 </ol>
 </div>
@@ -144,8 +141,9 @@ it without changing the code of the components that use it.</p>
 </ol>
 
 <p>The page opens in viewing mode. <strong>Reload configuration</strong> reads the
-file and renders the current state again; it does not save changes or restart models. Page edits are
-separate between LLM and VLM; embedding remains view-only and is never rewritten from the UI.</p>
+files and renders the page again; it does not save changes, restart models, or
+force a fresh provider observation. LLM and VLM are edited separately. Embedding
+remains view-only and is never rewritten from the UI.</p>
 
 <p>This is administrative configuration for the Metnos instance run by that
 system account. It is not a personal preference of an individual conversation
@@ -153,8 +151,8 @@ user.</p>
 
 <h1 id="cap2">2. Logical roles and runtime facades</h1>
 
-<p>A consumer states what it needs, not which product or model must satisfy the
-request. Resolution goes through three public entry points in
+<p>A component declares the kind of work it needs to perform, not the product
+that must perform it. Resolution goes through three public interfaces in
 <code>runtime/virt</code>:</p>
 
 <table>
@@ -181,16 +179,16 @@ request. Resolution goes through three public entry points in
 </tbody>
 </table>
 
-<p>The LLM tier names express the caller's intent. They do not by themselves
-certify the quality of the concrete model: the administrator decides which
-provider and model satisfy each role. A partial LLM file overrides only the
-roles it contains; omitted <code>fast</code>, <code>middle</code>, and <code>wise</code> bindings use
-their initial values. Fast levels inherit the <code>fast</code> binding and may
-be overridden in <code>[fast.level.micro]</code>,
-<code>[fast.level.procedural]</code>, or <code>[fast.level.fidelity]</code>.
-When <code>creative</code> is absent, its physical binding is mapped to
-<code>wise</code> while retaining the creative policy.
-<code>frontier</code> is optional, and callers that request it must handle its
+<p>Tier names express the kind of work being requested; they do not guarantee
+the quality of the concrete model. The administrator decides which provider
+and model to assign to each role. A partial LLM file overrides only the sections
+it contains: omitted <code>fast</code>, <code>middle</code>, and <code>wise</code>
+sections retain their defaults. The three <code>fast</code> levels normally share
+its binding, but may be customised in <code>[fast.level.micro]</code>,
+<code>[fast.level.procedural]</code>, and <code>[fast.level.fidelity]</code>.
+When <code>creative</code> is absent, it uses the same provider and model as
+<code>wise</code> while retaining its own generation parameters.
+<code>frontier</code> is optional: a component that requests it must handle its
 possible unavailability.</p>
 
 <pre>from virt import get_embedder, get_llm, get_vlm
@@ -201,7 +199,7 @@ translator = get_llm("fast", level="fidelity")
 vision_spec = get_vlm("default")</pre>
 
 <p>Virtualization therefore separates two decisions: the component selects a
-role; the instance configuration selects the backend. Changing a binding among
+role; the instance configuration selects the provider and model. Changing a binding among
 providers already supported by the runtime does not require changes to
 executors or the planner. Adding a provider type unknown to the runtime still
 requires an implementation.</p>
@@ -217,16 +215,19 @@ requires an implementation.</p>
  <strong>invalid</strong> state;</li>
  <li>the resolved roles and the provenance of each value: configuration,
  initial values, alias, or fallback;</li>
- <li>the provider, model, and endpoint binding;</li>
- <li>the LLM tier's generation policy, including <code>think</code>,
+ <li>the configured provider, model, and endpoint binding;</li>
+ <li>the model identity observed directly from the service, when the provider
+ protocol supports that query;</li>
+ <li>the LLM tier's generation parameters, including <code>think</code>,
  <code>temperature</code>, and <code>reasoning_budget</code> when present;</li>
- <li>the other effective scalar parameters, such as timeouts and model paths.</li>
+ <li>other effective parameters, such as time limits and model paths.</li>
 </ul>
 
-<p>Generation-policy values are the tier's effective values, resolved from the
-configuration file and initial values. Operations select a tier and do not keep
-a second decoding profile. Output ceilings, deadlines, grammars, and tool
-schemas remain operation-level structural constraints.</p>
+<p>The page shows the effective generation parameters obtained by combining the
+configuration file with the defaults. An individual operation selects a tier but
+does not redefine these parameters. It may still impose its own limits, such as
+maximum response length, available time, and the schema that the output must
+follow.</p>
 
 <p>Passwords, tokens, keys, credentials, and sensitive URL parts are not
 shown. They are also excluded from fields submitted by the form. Secrets
@@ -234,18 +235,29 @@ already present in the document are preserved during a save, but they are
 managed through the protected credential flow or the service environment, not
 from this page.</p>
 
-<p>Reading the page neither instantiates providers nor loads models: it builds
-a bounded, secret-free projection of the resolved configuration.</p>
+<p><strong>Configured</strong> and <strong>observed</strong> are not synonyms.
+The first value is what Metnos will request from the provider; the second is what
+that provider reports through its API. If an endpoint advertises several
+identities, the page lists them and marks the result as ambiguous. If it is
+unreachable, does not support the check, or the observation is old, the status
+says so explicitly. This observation helps reveal configuration drift, but it
+does not change routing and is not cryptographic proof of the loaded model.</p>
+
+<p>A separate service task checks the endpoints once a minute by default; after
+three minutes without a refresh, an observation is marked as stale. Opening the
+page does not instantiate providers, load models, or make network calls: it builds
+a bounded, secret-free view of the resolved configuration and the latest
+observations held in memory.</p>
 
 <h1 id="cap4">4. Editing and saving</h1>
 
-<p>For LLM and VLM, after you press <strong>Edit</strong>, Metnos exposes only visible scalar
-values whose type it can preserve. Sensitive fields and values that cannot be
+<p>For LLM and VLM, after you press <strong>Edit</strong>, Metnos makes editable
+only simple values whose type it can preserve. Sensitive fields and values that cannot be
 edited remain read-only. On save, the runtime:</p>
 
 <ol>
  <li>accepts only the exact field set displayed by the editor;</li>
- <li>reconstructs TOML types and validates providers, URLs, numeric values, and
+ <li>converts each value to its expected TOML type and validates providers, URLs, numbers, and
  family constraints;</li>
  <li>rejects a stale revision instead of overwriting a concurrent change;</li>
  <li>retains a private copy of the previous file, when one exists;</li>
@@ -319,15 +331,15 @@ distinguishes any fallback values from a valid configuration.</p>
 </tr>
 <tr>
  <td>embedding</td>
- <td>The initial values use local, in-process providers. Changing the backend is a
+ <td>The defaults use local, in-process providers. Changing the backend is a
  dedicated administrative migration, not a page control; read-only executors that declare local
  computation use <code>get_local_embedder()</code> instead and do not acquire
  network authority because of that setting.</td>
 </tr>
 <tr>
  <td>VLM</td>
- <td><code>get_vlm()</code> returns the specification. Startup is separate and
- lazy: <code>ensure_vlm_up()</code> checks <code>/health</code>, may attempt the
+ <td><code>get_vlm()</code> returns the configuration. The service starts only
+ when needed: <code>ensure_vlm_up()</code> checks <code>/health</code>, may attempt the
  configured VLM script once per process, and returns <code>false</code> if the
  service does not become available. The caller chooses the fallback.</td>
 </tr>
@@ -338,28 +350,34 @@ distinguishes any fallback values from a valid configuration.</p>
 endpoint into a local resource, nor does it grant an executor network access,
 credentials, or additional capabilities by itself.</p>
 
-<h1 id="cap8">8. LLM-call census</h1>
+<h1 id="cap8">8. How calls select a tier</h1>
 
-<p>Every production call selects a logical workload. The router resolves it to
-a tier and, for <code>fast</code>, to its level. A component may define
-operation-specific requirements such as <code>max_tokens</code>, a timeout, or
-an output grammar; it does not select a provider, model, or endpoint, and it does
-not retain a second generation profile. The instance configuration is therefore
-the sole owner of each tier's effective values.</p>
+<p>Production components normally select a canonically named workload, such as
+<code>intent.extract</code> or <code>translation.i18n</code>. The central registry
+maps that name to a tier and, for <code>fast</code>, to one of its three levels.
+An unknown name is rejected. A component may set limits for the individual
+operation, such as <code>max_tokens</code>, a time limit, or an output grammar;
+it does not select a provider, model, or endpoint.</p>
 
 <table>
-<thead><tr><th>Area</th><th>Tier</th><th>Reason for the role</th></tr></thead>
+<thead><tr><th>Tier</th><th>Current use</th><th>Why</th></tr></thead>
 <tbody>
-<tr><td>Routing and intent extraction</td><td><code>fast.micro</code></td><td>Short, structured classification.</td></tr>
-<tr><td>Proposals, planning, and synthesis</td><td><code>wise</code></td><td>Comparing alternatives and articulated generation.</td></tr>
-<tr><td>Normalization, checks, and procedural administration</td><td><code>fast.procedural</code></td><td>Structured transformations and judgments.</td></tr>
-<tr><td>Translation, grounded composition, semantic verification</td><td><code>fast.fidelity</code></td><td>High-context fidelity without divergent decoding.</td></tr>
-<tr><td>Grammar-constrained planning</td><td><code>fast.fidelity</code></td><td>Exact high-context output; the grammar remains an operation constraint.</td></tr>
-<tr><td>Telos and divergent editorial generation</td><td><code>creative</code></td><td>Creative, comparative proposals.</td></tr>
-<tr><td>Alignment</td><td><code>fast.procedural</code></td><td>It produces a structured estimate of fit to telos.</td></tr>
-<tr><td>Explicit external escalation</td><td><code>frontier</code></td><td>Maximum configured capability, invoked intentionally.</td></tr>
+<tr><td><code>fast.micro</code></td><td>Intent recognition, short Tutor decisions, small summaries, and result reranking.</td><td>Short, structured answers.</td></tr>
+<tr><td><code>fast.procedural</code></td><td>Optional NLU extractor, disabled in the default installation.</td><td>Grammar-constrained JSON extraction.</td></tr>
+<tr><td><code>fast.fidelity</code></td><td>No workload in the current registry.</td><td>The role remains available and configurable without implying that it is already in use.</td></tr>
+<tr><td><code>middle</code></td><td>Structured classification and extraction, bills, optional Vaglio judgement, telos-fit assessment, manifest normalisation, and URL reranking.</td><td>Procedural transformations with a precise result.</td></tr>
+<tr><td><code>wise</code></td><td>Translation, Tutor answers, extended descriptions, planning, Synt, and durable image workloads.</td><td>Extended context, source fidelity, and comparison among alternatives.</td></tr>
+<tr><td><code>creative</code></td><td>Telos proposals, editorial commentary, manifest refactoring, and Synt descriptions.</td><td>Produces alternatives that can be compared.</td></tr>
+<tr><td><code>frontier</code></td><td>Explicitly requested external consultation.</td><td>Intentionally uses the most capable model configured for this role.</td></tr>
 </tbody>
 </table>
+
+<p>The NLU extractor is the only current path that selects
+<code>fast.procedural</code> directly instead of going through the workload
+registry. It is disabled by default and can be enabled in observation mode or
+as a replacement for the traditional analysis. The Models page still displays
+every configurable role, including roles to which no workload is currently
+assigned.</p>
 
 <p>A tier may point to a local or remote service and may be changed by an
 administrator. Changing it changes subsequent calls in every row that uses it;
@@ -377,6 +395,8 @@ availability.</p>
  each production workload to one logical tier;</li>
  <li><code>runtime/virt/configuration.py</code> &mdash; effective projection,
  provenance, and secret redaction;</li>
+ <li><code>runtime/model_identity.py</code> &mdash; bounded, secret-free
+ observation of the models reported by providers;</li>
  <li><code>runtime/virt/config_editor.py</code> &mdash; validated editing,
  atomic writes, recovery copies, and restore behavior.</li>
 </ul>
