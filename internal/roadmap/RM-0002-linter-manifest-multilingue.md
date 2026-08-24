@@ -5,12 +5,17 @@
 **Ultima revisione:** 2026-08-24 (riverifica completa contro codice e catalogo
 correnti; nessun manifest modificato)  
 **Implementazione:** non iniziata come motore multilingue. Dal 23 agosto 2026
-RM-0005 ha però realizzato **due pezzi del disegno qui proposto** — la
-pubblicazione transazionale dei contratti tradotti (§7.11) e un gate di
-ammissione che invoca il linter prima di attivare una lingua — e con essi ha
+RM-0005 ha però realizzato **due pezzi del disegno qui proposto** — un primo
+percorso di promozione dei contratti tradotti con ripristino sulle eccezioni
+gestite (§7.11) e un controllo di ammissione che invoca il linter prima di
+attivare una lingua — e con essi ha
 reso **raggiungibile** il difetto centrale che questa roadmap descrive: quel
 gate controlla la lingua scelta da `_description_text()`, non la lingua appena
 prodotta. Vedi §1.1, §4.11 e §4.12  
+**Esito della revisione avversariale:** `non pronta per lo sviluppo`. I rilievi
+P0 e le decisioni sospese sono raccolti in §19 per un ulteriore passaggio con
+un agente esterno. In particolare, “scrittura atomica del singolo file” e
+“transazione manifest-firma-stato” non sono sinonimi.
 **Conservazione:** roadmap persistente fino a implementazione dimostrata o
 cancellazione esplicita di Roberto  
 **Decisione di prodotto:** tutte le superfici linguistiche che possono essere
@@ -84,9 +89,12 @@ dichiara errore bloccante, ed è comparsa in un mese senza che nulla la
 fermasse: nessuno dei controlli attivi confronta le chiamate fra lingue.
 
 **3. Parte del disegno è già stata costruita, da RM-0005 e non da qui.**
-`i18n_pipeline._promote_contracts()` implementa la pubblicazione transazionale
-di §7.11 — candidato in memoria, confronto con l'originale, scrittura atomica,
-rifirma, e ripristino di testo **e firma** in caso di errore. Ma la validazione
+`i18n_pipeline._promote_contracts()` implementa una prima sequenza di
+pubblicazione — candidato in memoria, confronto con l'originale, sostituzione
+atomica del manifest, rifirma, e ripristino di testo **e firma** in caso di
+eccezione intercettata. Non realizza però ancora una transazione resistente a
+concorrenza, arresto del processo o riavvio; questa precedente conclusione è
+ritirata dalla revisione avversariale di §19. La validazione
 del candidato di un contratto è soltanto `_validate_common()`: parità dei token
 Jinja, dei segnaposto `{...}` e del codice fra apici inversi, assenza di
 sentinella, rapporto di lunghezza fra 0,35 e 3,5. Misurato sul catalogo:
@@ -543,14 +551,15 @@ diventato più urgente per il fatto che il resto esiste.**
 
 #### Cosa RM-0005 ha già costruito e RM-0002 non deve rifare
 
-**La pubblicazione transazionale di §7.11.**
-`i18n_pipeline._promote_contracts()` (righe 615-666) fa esattamente la sequenza
-che §7.11 chiedeva: legge il manifest e la firma correnti, costruisce il testo
-candidato in memoria sostituendo la sola lingua di destinazione, lo riparsifica,
-confronta, scrive in modo atomico, rifirma, aggiorna `lang_state`. In caso di
-qualunque eccezione ripristina **sia il testo sia la firma**, con una nota nel
-codice che spiega la ragione: la lingua in esercizio carica quello stesso file.
-Questo pezzo è fatto, ed è fatto bene.
+**Una prima sequenza di pubblicazione, non ancora una transazione.**
+`i18n_pipeline._promote_contracts()` (righe 615-666) legge il manifest e la
+firma correnti, costruisce il testo candidato in memoria sostituendo la sola
+lingua di destinazione, lo riparsifica, confronta, sostituisce il manifest,
+rifirma e aggiorna `lang_state`. In caso di eccezione intercettata ripristina
+**sia il testo sia la firma**. §19 dimostra tuttavia che non ripristina lo stato
+linguistico eventualmente già aggiornato, non protegge dagli arresti fra le
+scritture e può rifirmare una base tecnica non più integra. Questo codice è una
+base da conservare e correggere, non la prova che §7.11 sia già soddisfatto.
 
 **Un invariante forte che §7 non aveva previsto.** Prima di scrivere, il
 promotore verifica `_strip_target_prose(original) == _strip_target_prose(parsed)`:
@@ -1230,9 +1239,11 @@ alla tupla del materializzatore e lasciare il CLI dov'è.
 destinazione ed è invariato. Diventa conveniente quando esiste una terza lingua
 reale, che oggi non esiste: il catalogo è ancora IT+EN puro.
 
-**Cosa NON fare più**, perché già fatto e fatto bene da RM-0005: la transazione
-di pubblicazione, il ripristino di testo e firma in caso di errore, l'invariante
-«tolta la prosa della lingua bersaglio, il manifest è identico». Si riusano.
+**Cosa riusare, senza darlo per concluso:** il candidato in memoria, il
+ripristino di testo e firma sulle eccezioni intercettate e l'invariante «tolta
+la prosa della lingua bersaglio, il manifest è identico». §19 sospende invece
+la conclusione che esista già una transazione completa: integrità della base,
+concorrenza, stato linguistico e recupero dopo un arresto restano da progettare.
 
 ### F0 — Congelamento e corpus
 
@@ -1480,13 +1491,16 @@ Le seguenti scelte sono sufficientemente supportate dall'analisi:
 |---|---|---|---|
 | 2026-07-23 | `active` | analisi macro/micro e creazione della roadmap | codice e 115 manifest ispezionati; nessun manifest modificato |
 | 2026-08-24 | `active` | riverifica completa contro codice e catalogo correnti | 122 manifest, linter rieseguito per lingua (IT 3 errori/124 avvisi, EN 4/100), lunghezze e atomi macchina ricontati, `lang_state` riaudito, pipeline RM-0005 letta; nessun file di prodotto modificato |
+| 2026-08-24 | `active` | revisione avversariale indipendente; stato mantenuto non pronto | tre analisi in sola lettura su codice, sicurezza e specifica; rilievi e mandato per il revisore esterno in §19; nessuna implementazione modificata |
 
 Esito della riverifica del 24 agosto 2026, in breve:
 
 - **le conclusioni del 23 luglio reggono tutte**; nessuna decisione di §17 è
   stata smentita dai dati nuovi;
-- **due pezzi del disegno sono stati costruiti da RM-0005**, non da qui: la
-  pubblicazione transazionale (§7.11) e metà dell'inventario comune (§7.1);
+- **due pezzi del disegno sono stati avviati da RM-0005**, non da qui: una
+  sequenza di promozione con ripristino parziale (§7.11) e parte
+  dell'inventario comune (§7.1); §19 spiega perché non sono ancora garanzie
+  complete;
 - **il difetto centrale è passato da igiene a correttezza**: il gate di
   attivazione di una lingua invoca il linter, e il linter legge un'altra lingua
   (§4.11);
@@ -1496,3 +1510,485 @@ Esito della riverifica del 24 agosto 2026, in breve:
   percorso li visita (§4.12, D4);
 - il piano operativo è stato riscritto in §12.0 in quattro priorità, la prima
   delle quali è piccola e chiude la lacuna di correttezza.
+
+## 19. Revisione avversariale — materiale per il revisore esterno
+
+### 19.1 Natura e verdetto della revisione
+
+Questa sezione non è una nuova specifica approvata e non autorizza modifiche al
+codice. Raccoglie obiezioni che un secondo revisore deve confermare, confutare o
+trasformare in decisioni esplicite prima dello sviluppo. In caso di contrasto
+con le conclusioni positive delle sezioni precedenti, il rilievo qui riportato
+mantiene sospesa quella conclusione finché il contrasto non è risolto.
+
+Il documento è stato esaminato in sola lettura da tre prospettive indipendenti:
+
+- corrispondenza fra affermazioni e codice corrente;
+- sicurezza, autorità, concorrenza, arresti e recupero;
+- completezza della specifica e verificabilità dei criteri di accettazione.
+
+Il materiale è interamente testuale; non è stato necessario impiegare un
+revisore multimodale. Il verdetto comune è: **RM-0002 è ancora `active`, ma non
+è pronta per lo sviluppo**. Prima del motore multilingue occorre risolvere i P0
+seguenti. Le soluzioni devono essere generali: sono escluse liste di eccezioni
+per executor, conteggi fissati nel codice e rami speciali per italiano e
+inglese.
+
+### 19.2 Rilievi P0 — bloccanti
+
+#### ADV-001 — Una promozione linguistica può autorizzare modifiche tecniche
+
+**Osservazione.** La pipeline assume che la base corrente sia autorizzata, ma
+non lo prova prima di rifirmarla:
+
+- `runtime/i18n_materializer.py:122-151` scopre e legge il manifest senza
+  verificarne firma o digest del codice;
+- `runtime/i18n_pipeline.py:615-664` usa come base i byte correnti e invoca il
+  firmatario generale;
+- `runtime/sign.py:192-237` ricalcola il digest del codice corrente, aggiorna il
+  manifest e firma i nuovi byte;
+- `runtime/i18n_activation.py:523-536` esegue la verifica di ammissione soltanto
+  dopo la promozione.
+
+`_strip_target_prose()` dimostra che la traduzione non ha introdotto altre
+modifiche tecniche rispetto alla base letta in quel momento. Non dimostra che
+quella base fosse già firmata e integra. Una modifica precedente al codice, allo
+schema, alle capability o ad altre parti del contratto può quindi essere
+incorporata e firmata durante un'operazione autorizzata soltanto a cambiare la
+lingua. Il confine di autorità è più ampio di quello dichiarato.
+
+**Requisito da decidere.** La localizzazione deve partire da una fotografia con
+firma e digest già validi; il firmatario linguistico non deve ricalcolare né
+adottare un digest diverso. Base non firmata, firma non valida, codice mutato o
+firmatario inatteso devono produrre un rifiuto senza scritture. Un executor
+nuovo o tecnicamente modificato deve attraversare l'ammissione prevista per il
+suo ciclo di vita, non usare la localizzazione come scorciatoia.
+
+**Prova minima.** Alterare separatamente codice, schema, capability, firma e
+identità del firmatario prima della promozione: ogni caso deve terminare con
+`stale_or_untrusted_base` e lasciare tutti gli artefatti invariati byte per byte.
+
+#### ADV-002 — Manifest, firma e stato non formano una transazione
+
+**Osservazione.** La sequenza corrente sostituisce il manifest, lo modifica di
+nuovo nel firmatario per aggiornare il digest, scrive la firma e aggiorna poi
+`manifest.lang_state.json` voce per voce. Il ripristino sulle eccezioni salva
+manifest e firma, ma non lo stato già aggiornato. Un arresto può lasciare:
+
+- manifest nuovo e firma vecchia;
+- manifest e firma nuovi con stato vecchio;
+- soltanto una parte delle voci di stato aggiornata;
+- una traduzione già pubblicata e firmata anche se il successivo controllo di
+  attivazione la rifiuta.
+
+La sostituzione atomica di un file non rende atomica una pubblicazione composta
+da più file. Mancano inoltre un vincolo di mutua esclusione, un'identità di
+generazione, un protocollo di recupero e la persistenza della directory dopo la
+sostituzione.
+
+**Requisito da decidere.** Confrontare almeno due disegni generali:
+
+1. bundle immutabile per generazione, verificato per intero, più un unico
+   puntatore corrente sostituito atomicamente;
+2. registro d'intento con blocco per manifest, ordine delle scritture,
+   identificatore di generazione e recupero obbligatorio al riavvio.
+
+La scelta deve funzionare sui sistemi operativi supportati e garantire che il
+lettore osservi la generazione precedente oppure quella nuova, mai una
+combinazione. Deve comprendere manifest, firma, stato linguistico e ricevuta di
+ammissione.
+
+**Prova minima.** Interrompere il processo dopo ogni confine di scrittura e
+riavviare. Il sistema deve recuperare senza intervento manuale e senza rendere
+caricabile una generazione incompleta.
+
+#### ADV-003 — La verifica non è legata ai byte poi usati dal loader
+
+**Osservazione.** `verify_executor()` verifica una lettura dei byte del manifest
+e successivamente rilegge il percorso per ricavare i file di codice
+(`runtime/sign.py:241-281`). Il loader aveva già parsificato un'altra lettura e
+continua a usare quell'oggetto dopo la verifica
+(`runtime/loader.py:1309-1357`). Il percorso builtin verifica prima e parsifica
+dopo (`runtime/loader.py:250-265`). Con sostituzioni concorrenti si possono
+quindi verificare il manifest A, calcolare il digest secondo B e costruire
+l'executor da C.
+
+**Requisito da decidere.** Lettura, verifica della firma, interpretazione del
+contratto e calcolo del digest devono appartenere a un'unica fotografia. Il
+verificatore dovrebbe restituire al loader un oggetto immutabile, per esempio
+`VerifiedManifest`, contenente esattamente i byte verificati e la relativa
+identità di generazione. Il loader non deve rileggere autonomamente il file.
+
+Anche l'evidenza di `validate_manifests()` deve essere legata alla stessa
+fotografia: oggi linter, verifica e hash dell'evidenza derivano da letture
+distinte. L'attivazione finale deve ricontrollare quella radice; una modifica
+successiva alla verifica deve invalidare automaticamente l'ammissione.
+
+**Conseguenza.** L'affermazione di §7.14 secondo cui il loader può restare del
+tutto invariato non è sostenibile senza un'altra garanzia equivalente, da
+dimostrare.
+
+#### ADV-004 — Il documento e RM-0005 danno verdetti incompatibili
+
+RM-0005 e ADR 0220 risultano chiuse parlando di inventario deterministico,
+promozione atomica e assenza di alterazioni semantiche. RM-0002 dimostra invece
+che il controllo di attivazione legge una lingua diversa da quella promossa,
+che una coppia di descrizioni già diverge negli atomi macchina e che la
+pubblicazione non possiede le garanzie di ADV-001–003.
+
+Il revisore esterno deve proporre una sola delle due decisioni, con motivazione:
+
+- riaprire il perimetro pertinente di RM-0005; oppure
+- mantenerla chiusa come infrastruttura di base, registrare formalmente le
+  limitazioni residue e assegnarne senza ambiguità la chiusura a RM-0002.
+
+Fino a questa decisione, RM-0002 non può assumere come completate transazione,
+inventario e ammissione.
+
+#### ADV-005 — Il modello dei risultati non rappresenta i casi richiesti
+
+§7.4 definisce un solo campo `language`, ma un controllo trasversale coinvolge
+almeno due lingue e l'avviso aggregato di lunghezza ne contiene potenzialmente
+molte. `language = null` renderebbe inoltre indistinguibile un confronto
+trasversale da un controllo globale. Mancano anche identità del manifest,
+origine, versione verificata, profilo e distinzione fra gravità intrinseca ed
+effetto operativo.
+
+Prima del codice serve uno schema serializzabile e versionato di `LintReport`,
+`Finding` e `TextSurface`. Deve rappresentare almeno:
+
+- identità stabile del contratto e fotografia verificata;
+- risorsa testuale e origine;
+- lingua singola oppure insieme/coppia ordinata di lingue;
+- regola, evidenza strutturata e stato `applicata | astenuta | non applicabile`;
+- gravità del difetto separata da `blocca | segnala | ignora` nel profilo
+  corrente.
+
+La presentazione può aggregare risultati elementari, ma non deve perdere la
+possibilità di filtrare, contare e riprodurre il risultato.
+
+#### ADV-006 — Baseline e certificazione finale si contraddicono
+
+§13.5 richiede che il catalogo conservi esattamente la divergenza nota di
+`set_signatures`; F4 e §15 richiedono invece l'assenza finale di errori certi.
+F4 ordina inoltre di correggere tre import mentre §16 non autorizza a modificarli.
+Non può esistere una sola prova che certifichi contemporaneamente questi esiti.
+
+Occorre separare:
+
+- rapporto storico iniziale, non usato come oracolo permanente;
+- fixture sanificata che riproduce ogni difetto noto;
+- certificazione finale del catalogo ammesso, senza divergenze bloccanti;
+- eventuale bonifica dei dati, autorizzata come fase o progetto distinto.
+
+È vietato risolvere il contrasto con eccezioni nominali per gli executor oggi
+difettosi.
+
+### 19.3 Rilievi P1 — specifica da completare
+
+#### ADV-007 — L'inventario deve separare scoperta, stato e autorità
+
+Le radici correnti di RM-0005 comprendono core e builtin con scansione
+ricorsiva, includono almeno un executor ritirato e omettono executor utente
+diretti e import annidati. Il loader usa invece regole di abilitazione e
+ammissione proprie. “Presente sul disco”, “inventariato”, “ammesso”, “attivo”,
+“visibile al planner”, “traducibile” e “rifirmabile” non sono sinonimi.
+
+L'inventario comune deve ricevere radici esplicite dal chiamante e restituire
+una descrizione neutra con origine, proprietario, stato, identità attesa,
+firmatario verificato e ricevuta di ammissione. Le viste operative devono essere
+esplicite per audit, traduzione, promozione, firma e caricamento. La scoperta non
+concede mai autorità di scrittura o firma.
+
+Vanno inoltre specificati deduplicazione, collisioni, executor disabilitati o
+ritirati, installazioni prive di profilo utente, collegamenti simbolici e
+contenimento canonico nelle radici ammesse.
+
+#### ADV-008 — Un candidato può essere applicato a una base diventata obsoleta
+
+Il materializzatore registra `manifest_hash`, ma il promotore non lo confronta
+con il manifest corrente. Il candidato viene convalidato contro il registro e
+poi applicato alla versione trovata più tardi sul disco. Un intervento
+editoriale o tecnico concorrente può quindi essere sovrascritto o inglobato.
+
+La pubblicazione deve usare un confronto condizionato della fotografia attesa:
+hash dell'intero manifest, firma, digest del codice, valore sorgente e vecchio
+valore bersaglio. Ogni differenza produce `stale_candidate`, senza scritture né
+firma. Servono blocco per risorsa e prove con due promotori concorrenti, anche su
+lingue diverse.
+
+Le precondizioni non possono dipendere dall'ordine del chiamante:
+`promote_candidates()` deve imporre direttamente qualità richiesta, stato
+ammesso, identità esatta del selettore e hash finale della prosa. Il firmatario
+deve inoltre verificare la firma appena emessa prima di rendere pubblicabile la
+generazione.
+
+#### ADV-009 — `lang_state` non ha ancora un'autorità e un'identità uniche
+
+Il companion influenza la scelta della sorgente ma non è coperto dalla firma.
+File assente o corrotto viene trattato permissivamente come oggetto vuoto;
+l'allineatore legacy può allora scegliere la prima lingua in ordine alfabetico.
+Inoltre il firmatario usa selettori del tipo `args.<nome>.description`, mentre
+materializzatore e pipeline producono
+`args.properties.<nome>.description`. Lo stesso testo può avere due identità.
+
+Occorre decidere se l'autorità sia il registro centrale di RM-0005, il companion
+o una loro relazione precisamente definita. Lo schema deve avere versione,
+identità del manifest, generazione e migrazione atomica dei selettori. Stato
+mancante, malformato, di versione ignota o non legato alla generazione corrente
+deve bloccare le scritture; il recupero permissivo può esistere soltanto in
+audit e non può scegliere una lingua sorgente.
+
+#### ADV-010 — Esistono due autorità concorrenti di traduzione
+
+Il lavoro RM-0005 usa registro, candidati e promozione versionata. Il vecchio
+`align_manifest_descriptions()` resta disponibile, sceglie la sorgente
+alfabeticamente e scrive manifest e stato prima di tentare la firma. Se la firma
+fallisce restituisce comunque `ok = true` e lascia file incoerenti.
+
+La specifica deve scegliere se ritirare questo percorso o ridurlo a un semplice
+involucro della nuova autorità. Nessun secondo percorso deve poter scrivere
+manifest, firma o stato. Il ritiro o l'unificazione deve essere un criterio di
+completamento esplicito.
+
+#### ADV-011 — Il documento sottostima i controlli già esistenti
+
+`executor_standard` controlla già i quattro capitoli in ogni lingua. Il
+validatore comune dei contratti generati enumera le lingue e verifica il budget;
+è già richiamato dalle famiglie di generatori. Il firmatario applica lo standard
+per gli executor che lo dichiarano. Non è quindi esatto dire che nessun
+passaggio legge la lingua bersaglio secondo il formato dei manifest o che il
+punto comune dei generatori sia interamente da costruire.
+
+La matrice di §7.14 deve distinguere con prove:
+
+- già presente: lingue obbligatorie, presenza dei capitoli e parte dei budget;
+- residuo: ordine, grammatica della chiamata, parità degli atomi, riferimenti,
+  associazione esatta fra lingua richiesta e testo controllato;
+- percorso che oggi non viene provato nelle verifiche di RM-0005: i test di
+  attivazione iniettano infatti un validatore sempre positivo.
+
+#### ADV-012 — Manca una grammatica degli atomi macchina
+
+“Nome della funzione”, “insieme degli argomenti” e “identificatore
+riconoscibile” non sono ancora criteri implementabili. La specifica non decide:
+
+- più chiamate o più esempi nello stesso capitolo;
+- associazione fra chiamata e argomenti, molteplicità e ordine significativo;
+- argomenti posizionali, facoltativi e universali;
+- valori enum, booleani, numeri, unità, wildcard e segnaposto ripetuti;
+- alternative espresse con `|`, `;` o frecce;
+- chiamate incomplete e omonimi nella prosa naturale;
+- insiemi, multiinsiemi o sequenze nel confronto fra lingue;
+- confronto con due, tre o più lingue e ruolo della sorgente dichiarata.
+
+Prima dei blocchi serve una rappresentazione canonica `MachineAtoms`, un parser
+prudente e un corpus avverso. In alternativa, gli atomi devono vivere in campi
+tipizzati dai quali generare la prosa. Finché l'estrazione non ha una precisione
+dimostrata, i casi ambigui restano avvisi o astensioni.
+
+#### ADV-013 — I profili richiedono una matrice normativa
+
+`audit`, `candidate`, `translation` e `active_on_touch` non definiscono ancora
+regola per regola: applicabilità, completezza linguistica richiesta, gravità,
+effetto bloccante, astensione e soggetto autorizzato a scegliere il profilo.
+“Toccato” non è definito e non può essere inferito in modo affidabile da data o
+percorso. Un input non fidato non deve poter scegliere un profilo più permissivo.
+
+Serve una matrice versionata `regola × profilo × effetto`, con codici di uscita
+e formato macchina stabili. Va definita anche la strategia di adozione sui
+difetti preesistenti prima di collegare il controllo alla firma.
+
+#### ADV-014 — Il perimetro delle superfici non coincide con RM-0005
+
+`TextSurface` comprende soltanto `description` e
+`args.<nome>.description`; il materializzatore considera anche `summary`,
+`title`, `label`, `help` e `message` annidati. Serve un'unica autorità versionata
+sulle superfici localizzabili, dalla quale il linter ricavi poi il sottoinsieme
+effettivamente letto dal planner. Due enumeratori indipendenti ricreerebbero la
+divergenza che RM-0002 vuole eliminare.
+
+#### ADV-015 — I marker naturali non possono diventare nuovo codice per lingua
+
+I marker di omissione di §7.8 devono essere risorse linguistiche enumerate,
+versionate, traducibili e sottoposte a copertura secondo ADR 0220. Per una
+lingua priva di risorsa il risultato è un'astensione esplicita, non l'uso del
+lessico inglese e non un dizionario aggiunto al codice. I controlli puramente
+strutturali restano invece indipendenti dalla lingua.
+
+#### ADV-016 — `affinity` dipende da AFF-I18N-001
+
+Il TODO `AFF-I18N-001`, a priorità massima, mette in discussione il contratto
+piatto e misto IT/EN che questa roadmap tratta come dato globale permanente.
+RM-0002 non deve tradurre `affinity`, ma deve dichiarare una dipendenza formale:
+il controllo globale consumerà l'astrazione decisa da AFF-I18N-001 senza
+cristallizzare il formato attuale. Lo sviluppo del controllo affinity resta
+sospeso fino a quella decisione.
+
+#### ADV-017 — Il piano aggiornato e le fasi storiche non hanno lo stesso ordine
+
+§12.0 propone subito di modificare un controllo bloccante di attivazione; F1
+richiede prima sola osservazione e nessun cambiamento dei percorsi produttivi.
+Inoltre F2 ripete lavoro di RM-0005 che §12.0 dice di non rifare, mentre F5
+confonde il supporto del linter a tag linguistici arbitrari con il rilascio reale
+di un nuovo corpus.
+
+Il piano va sostituito, non affiancato a una sequenza storica incompatibile. Il
+supporto generale a tag normalizzati si prova con fixture sintetiche; il
+rilascio di una lingua reale appartiene alla localizzazione dell'istanza.
+
+### 19.4 Rilievi P2-P3 — prove, riproducibilità e forma
+
+#### ADV-018 — I conteggi manuali sono già scaduti
+
+Durante questa revisione la scansione vedeva un manifest in più sotto
+`executors/` rispetto alla fotografia riportata nel documento, perché la
+scansione ricorsiva comprende anche una risorsa ritirata. Questo non autorizza a
+sostituire `122` con un nuovo numero manuale. Il campione unisce inoltre codice
+distribuito e dati mutabili di una singola installazione.
+
+I numeri devono provenire da un rapporto generato e versionato che registri
+commit, radici esplicite, identità di generazione, vista di eleggibilità e hash.
+La roadmap deve conservare soltanto conclusioni e collegamento al rapporto. Le
+prove durevoli devono usare fixture ermetiche e coerenza dinamica
+dell'inventario, non uguaglianze fissate a `115`, `122` o qualunque valore
+successivo.
+
+#### ADV-019 — Mancano le prove delle modalità di guasto decisive
+
+Oltre alle prove di §13 servono almeno:
+
+- arresto dopo ciascun passaggio di pubblicazione e recupero al riavvio;
+- due promotori concorrenti e concorrenza fra promotore, firmatario e loader;
+- base con manifest, firma, codice o stato alterati;
+- candidato obsoleto dopo modifica di sorgente, destinazione o schema;
+- alternanza rapida fra un manifest firmato e uno alterato durante il carico;
+- stato assente, corrotto, di versione sconosciuta o parzialmente aggiornato;
+- import disabilitato, rifiutato, collidente, duplicato o collegato
+  simbolicamente;
+- più chiamate, placeholder ripetuti e marker di capitolo tradotti;
+- tentativo non autorizzato di scegliere un profilo permissivo;
+- garanzia che il loader osservi soltanto generazioni complete.
+
+Le prove di attivazione devono usare almeno una volta il validatore reale: le
+prove correnti sostituiscono `manifest_validator` con una funzione che restituisce
+sempre successo, compresa quella di accettazione completa.
+
+#### ADV-020 — Diversi criteri non hanno ancora un oracolo
+
+“Entro il rumore”, “rapporto estremo”, “variazione ricca”, “semanticamente
+controllato” e “due cicli completi” non indicano soglie, corpus, ambiente o
+procedura. Prima dell'implementazione ogni criterio deve avere misura, oracolo,
+tolleranza e artefatto di prova. La non regressione dell'instradamento deve
+fissare identità del piano, argomenti attesi e variazioni ammesse.
+
+#### ADV-021 — I codici lingua richiedono una sola normalizzazione
+
+Il modello proposto accetta una stringa generica. Deve riusare l'autorità BCP-47
+di ADR 0219, compreso il rifiuto di collisioni come grafie diverse dello stesso
+tag. La grafia originale può essere conservata per la diagnostica, ma chiavi,
+confronti e identità devono usare la forma canonica.
+
+#### ADV-022 — L'inventario dei dati utente richiede vincoli sui percorsi
+
+Ogni radice deve essere esplicita e associata a proprietario e ambito. Vanno
+rifiutati collegamenti simbolici e file non regolari, verificate identità del
+manifest e corrispondenza con la directory, impediti alias dello stesso percorso
+e controllato il contenimento canonico nella radice ammessa. Un percorso
+registrato nel database non deve diventare automaticamente autorità di lettura
+o scrittura.
+
+#### ADV-023 — Analisi storica e specifica eseguibile sono mescolate
+
+Il documento contiene fotografie di due date, stato corrente, specifica,
+vecchie fasi e nuovo piano. Questo aumenta il rischio che un agente implementi
+un dato storico come requisito. Dopo la decisione esterna conviene spostare
+misure e audit in un rapporto versionato separato e mantenere qui soltanto
+confini, invarianti, decisioni, piano vigente e criteri di accettazione.
+
+Nella stessa revisione editoriale vanno sostituiti nella prosa, quando non sono
+nomi API, anglicismi come “gate”, “authoring”, “lifecycle”, “flat”,
+“runtime-owned”, “on-touch” e “boundedness”.
+
+### 19.5 Matrice di riallineamento obbligatoria
+
+Prima di riscrivere il piano, il revisore esterno deve compilare questa matrice
+con riferimenti verificabili:
+
+| Requisito RM-0002 | Autorità corrente | Già dimostrato | Lacuna residua | Azione |
+|---|---|---|---|---|
+| inventario dei contratti | RM-0005 / loader | da verificare per vista | origini e stati divergono | riusare, estendere o separare |
+| superfici localizzabili | materializzatore RM-0005 | enumerazione ampia | sottoinsieme planner non formalizzato | unificare l'autorità |
+| validazione multilingue | standard / generatori / linter | copertura parziale | lingua bersaglio e parità | estendere senza duplicare |
+| valutazione semantica | pipeline RM-0005 | revisore separato | rapporto con errori deterministici | ordinare i controlli |
+| pubblicazione | pipeline / firmatario | ripristino parziale | autorità, concorrenza, arresto | riprogettare il confine |
+| stato linguistico | registro + companion | presenza parziale | identità e fonte autorevole | scegliere e migrare |
+| caricamento verificato | firmatario + loader | firma e digest nominali | fotografia unica | introdurre garanzia equivalente |
+| `affinity` | AFF-I18N-001 | analisi non conclusa | contratto futuro ignoto | dipendenza, nessun anticipo |
+
+Ogni riga deve terminare con una sola azione tra `riusa`, `estendi`, `ritira` o
+`sostituisci`; “convivono entrambi” richiede una motivazione e una prova di non
+concorrenza.
+
+### 19.6 Decisioni che l'agente esterno deve rendere esplicite
+
+1. RM-0005 resta chiusa con limitazioni registrate oppure va riaperta nel
+   perimetro della promozione dei contratti?
+2. Quale protocollo garantisce una pubblicazione coerente dopo arresto e
+   riavvio?
+3. Come si impedisce alla localizzazione di firmare una modifica tecnica?
+4. Qual è la fotografia unica verificata che il loader può consumare?
+5. Qual è l'autorità unica per inventario e superfici localizzabili?
+6. Qual è l'autorità unica fra registro e `manifest.lang_state.json`?
+7. Il vecchio allineatore viene ritirato o subordinato alla nuova pipeline?
+8. Qual è lo schema definitivo di `LintReport`, `Finding`, `TextSurface` e
+   `MachineAtoms`?
+9. Quale lingua o rappresentazione canonica guida il confronto quando le lingue
+   sono più di due?
+10. Qual è la matrice completa regola × profilo × effetto e chi può scegliere
+    il profilo?
+11. I difetti esistenti vengono corretti in RM-0002 o in un intervento
+    separato e ordinato prima dell'attivazione dei blocchi?
+12. Qual è la dipendenza formale da AFF-I18N-001?
+13. Quali soglie, corpus e oracoli rendono misurabili prestazioni e assenza di
+    regressioni?
+
+### 19.7 Perimetro residuo minimo proposto, non ancora approvato
+
+Se i rilievi sono confermati, il nucleo proprio di RM-0002 dovrebbe ridursi a:
+
+1. modello strutturato e versionato delle superfici e dei risultati;
+2. controlli deterministici locali e trasversali su tutte le lingue presenti;
+3. grammatica prudente e canonica degli atomi macchina;
+4. integrazione dei controlli nella pipeline RM-0005 già esistente, prima di
+   qualunque pubblicazione;
+5. inventario condiviso con viste di autorità esplicite;
+6. unificazione o ritiro del percorso legacy;
+7. prove ermetiche, rapporto generato e certificazione finale.
+
+La sicurezza della pubblicazione, della firma e della fotografia caricata è una
+precondizione di questo lavoro. Può diventare la prima fase di RM-0002 oppure
+una dipendenza separata, ma non può restare implicitamente “già fatta”.
+
+### 19.8 Mandato per il prossimo passaggio
+
+L'agente esterno deve lavorare prima in sola analisi e non modificare codice o
+manifest. Per ogni rilievo `ADV-*` deve produrre uno dei verdetti
+`confermato`, `parzialmente confermato` o `respinto`, con riferimento al codice
+e una prova riproducibile. Deve poi:
+
+1. compilare la matrice di §19.5;
+2. confrontare almeno le due alternative transazionali di ADV-002, includendo
+   comportamento su Linux e Windows, migrazione e recupero;
+3. proporre gli schemi completi e la matrice dei profili senza scrivere il
+   motore;
+4. separare requisiti già soddisfatti, lacune di RM-0002 e difetti appartenenti
+   a RM-0005 o AFF-I18N-001;
+5. produrre una proposta di riscrittura delle sezioni 6, 7, 12, 13, 15 e 16;
+6. indicare esplicitamente le decisioni che richiedono l'approvazione di
+   Roberto prima dello sviluppo.
+
+Soltanto dopo l'approvazione di quel rapporto RM-0002 potrà ricevere un piano di
+implementazione. Fino ad allora resta vietata ogni soluzione ad hoc basata sui
+nomi degli executor, sulle sole lingue IT/EN o sui conteggi della macchina di
+sviluppo.
