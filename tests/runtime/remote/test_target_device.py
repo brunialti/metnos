@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 
 import target_device as td  # noqa: E402
@@ -21,8 +22,11 @@ def _avail(dev, now=None):
     return getattr(dev, "online", True)
 
 
-def R(query, devices, last=None):
-    return td.resolve_target(query, devices, last_target=last, is_available=_avail)
+def R(query, devices, last=None, *, server_aliases=None):
+    return td.resolve_target(
+        query, devices, last_target=last, is_available=_avail,
+        server_aliases=server_aliases,
+    )
 
 
 class ResolveTargetTests(unittest.TestCase):
@@ -76,6 +80,30 @@ class ResolveTargetTests(unittest.TestCase):
         r = R("quanti processi girano qui sul server", [self.pc])
         self.assertEqual(r.target, td.SERVER)
         self.assertTrue(r.explicit)
+
+    def test_server_identity_resets_sticky_for_machine_question(self):
+        r = R(
+            "temperatura cpu metnos", [self.pc], last="id-ufficio",
+            server_aliases=["metnos"],
+        )
+        self.assertEqual(r.target, td.SERVER)
+        self.assertTrue(r.explicit)
+
+    def test_explicit_device_wins_over_weak_server_identity(self):
+        r = R(
+            "installa Metnos sul portatile-ufficio", [self.pc],
+            server_aliases=["metnos"],
+        )
+        self.assertEqual(r.target, "id-ufficio")
+        self.assertTrue(r.explicit)
+
+    def test_server_identity_is_not_a_generic_placement_marker(self):
+        r = R(
+            "trova il file metnos", [self.pc], last="id-ufficio",
+            server_aliases=["metnos"],
+        )
+        self.assertEqual(r.target, "id-ufficio")
+        self.assertFalse(r.explicit)
 
     def test_negated_server_does_not_override_italian_local_target(self):
         r = R(
@@ -178,6 +206,11 @@ class ReferencesDeviceTests(unittest.TestCase):
     def test_server_marker_is_reference(self):
         self.assertTrue(td.references_device("quanti processi qui sul server", [self.pc]))
 
+    def test_server_identity_machine_question_is_reference(self):
+        self.assertTrue(td.references_device(
+            "temperatura cpu metnos", [self.pc], server_aliases=["metnos"],
+        ))
+
     def test_plain_query_is_not_reference(self):
         self.assertFalse(td.references_device("quante righe di codice ci sono", [self.pc]))
 
@@ -231,6 +264,30 @@ class StickyStoreTests(unittest.TestCase):
     def test_set_then_get_roundtrip(self):
         self.store.set_last_target("tg:roberto", "id-ufficio", "PORTATILE-UFFICIO")
         self.assertEqual(self.store.get_last_target("tg:roberto"), "id-ufficio")
+
+    def test_expired_target_is_not_reused(self):
+        self.store.set_last_target("tg:roberto", "id-ufficio", "PORTATILE-UFFICIO")
+        future = datetime.now(timezone.utc) + timedelta(minutes=16)
+        self.assertIsNone(self.store.get_last_target(
+            "tg:roberto", max_age_s=15 * 60, now=future,
+        ))
+
+    def test_scope_key_isolates_conversations_and_owners(self):
+        base = dict(actor="host", channel="http")
+        first = self.store.scope_key(
+            owner_user_id="owner-a", conversation_id="one", **base,
+        )
+        second = self.store.scope_key(
+            owner_user_id="owner-a", conversation_id="two", **base,
+        )
+        other = self.store.scope_key(
+            owner_user_id="owner-b", conversation_id="one", **base,
+        )
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(first, other)
+        self.assertEqual(first, self.store.scope_key(
+            owner_user_id="owner-a", conversation_id="one", **base,
+        ))
 
     def test_upsert_overwrites(self):
         self.store.set_last_target("tg:roberto", "id-ufficio", "X")

@@ -24,7 +24,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import config as _C
 
@@ -50,6 +50,7 @@ STACK_UNITS = (
     "metnos-stack-watchdog.timer",
 )
 RUNTIME_COMPONENT_UNITS = (
+    "metnos-durable-worker.service",
     "metnos-side-display.service",
     "metnos-playwright.service",
     "metnos-telegram-daemon.service",
@@ -267,9 +268,16 @@ def _json_request(url: str, *, admin_key: str = "", timeout_s: float = 5) -> dic
 def _admin_key(path: Path | None = None) -> str:
     path = path or Path(_C.PATH_USER_CONFIG) / "admin.key"
     try:
-        return path.read_text(encoding="utf-8").strip()
+        return _RedactedSecret(path.read_text(encoding="utf-8").strip())
     except OSError as exc:
         raise StackFailure("admin_key_unavailable", "local admin key is unavailable") from exc
+
+
+class _RedactedSecret(str):
+    """String-compatible secret that cannot leak through traceback locals."""
+
+    def __repr__(self) -> str:
+        return "<redacted>"
 
 
 def _catalog_names() -> set[str]:
@@ -475,11 +483,15 @@ class StackReconciler:
     def __init__(self, *, endpoints: Endpoints | None = None,
                  systemctl: Systemctl | None = None,
                  report_path: Path | None = None,
-                 admin_key_path: Path | None = None):
+                 admin_key_path: Path | None = None,
+                 catalog_names_provider: Callable[[], set[str]] | None = None,
+                 default_write_report: bool = True):
         self.endpoints = endpoints or Endpoints.from_env()
         self.systemctl = systemctl or Systemctl()
         self.report_path = report_path or _state_dir() / "stack_reconcile_last.json"
         self.admin_key_path = admin_key_path
+        self.catalog_names_provider = catalog_names_provider or _catalog_names
+        self.default_write_report = default_write_report
 
     def _sidecar_required(self, mode: str) -> bool:
         if mode == "yes":
@@ -494,7 +506,7 @@ class StackReconciler:
 
     def check(self, *, require_sidecar: str = "auto",
               require_quiescent: bool = False,
-              write_report: bool = True) -> dict:
+              write_report: bool | None = None) -> dict:
         started = time.time()
         checks: list[dict[str, Any]] = []
 
@@ -510,7 +522,7 @@ class StackReconciler:
             "ok": bool((composite.get("http") or {}).get("contract_aligned")),
         })
 
-        local_names = _catalog_names()
+        local_names = self.catalog_names_provider()
         live_names = set((composite.get("catalog") or {}).get("names") or [])
         catalog_ok = local_names == live_names and bool(local_names)
         checks.append({
@@ -606,7 +618,10 @@ class StackReconciler:
             "duration_ms": int((time.time() - started) * 1000),
             "checks": checks,
         }
-        if write_report:
+        persist_report = (
+            self.default_write_report if write_report is None else write_report
+        )
+        if persist_report:
             _atomic_json(self.report_path, report)
         if not ok:
             failed = [check["name"] for check in checks if not check["ok"]]
@@ -907,7 +922,10 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=("check", "wait-ready", "deploy", "watchdog", "inventory"),
+        choices=(
+            "check", "wait-ready", "deploy", "watchdog", "inventory",
+            "catalog",
+        ),
     )
     parser.add_argument("--executor", action="append", default=[])
     parser.add_argument("--sign", action="store_true")
@@ -941,7 +959,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif args.command == "watchdog":
             out = reconciler.watchdog(require_sidecar=args.require_sidecar)
-        else:
+        elif args.command == "inventory":
             out = {
                 "schema_version": SCHEMA_VERSION,
                 "ok": True,
@@ -950,6 +968,12 @@ def main(argv: list[str] | None = None) -> int:
                     unit: reconciler.systemctl.show(unit)
                     for unit in STACK_UNITS
                 },
+            }
+        else:
+            out = {
+                "schema_version": SCHEMA_VERSION,
+                "ok": True,
+                "names": sorted(_catalog_names()),
             }
     except StackFailure as exc:
         print(json.dumps(_failure_payload(exc), ensure_ascii=False, sort_keys=True))

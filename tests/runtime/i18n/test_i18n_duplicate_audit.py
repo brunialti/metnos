@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from tests.tools.i18n_duplicate_audit import (
+    _blocking_findings,
     _cross_language_identical,
     _groups,
     _placeholders,
@@ -32,3 +33,16 @@ def test_cross_language_identical_is_review_only():
     assert _cross_language_identical(rows)[0]["entries"] == [
         {"lang": "en", "key": "A"}, {"lang": "it", "key": "A"}
     ]
+
+
+def test_objective_drift_blocks_in_both_directions():
+    empty = {
+        "placeholder_mismatch": [], "bundle_drift": [],
+        "seed_live_missing": [], "seed_live_extra": [],
+        "bundle_missing": [], "bundle_extra": [],
+    }
+    assert _blocking_findings(empty) == {}
+    for name in empty:
+        findings = {key: list(value) for key, value in empty.items()}
+        findings[name] = [{"key": "A", "lang": "it"}]
+        assert list(_blocking_findings(findings)) == [name]

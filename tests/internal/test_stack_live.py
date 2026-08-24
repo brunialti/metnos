@@ -7,6 +7,7 @@ metadata and turn identifiers, never messages, keys or catalog payloads.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -24,6 +25,9 @@ import stack_reconcile as stack
 
 SENTINEL = Path("/tmp/metnos-stack-live-enable")
 REPORT = Path("/tmp/metnos_stack_live_report.json")
+LIVE_ADMIN_KEY_PATH = Path(os.environ.get(
+    "METNOS_LIVE_ADMIN_KEY_PATH", "/nonexistent/metnos-live-admin.key",
+))
 
 
 def _turn(cycle: int) -> dict:
@@ -36,7 +40,10 @@ def _turn(cycle: int) -> dict:
         "http://127.0.0.1:8770/agent/turn",
         data=body,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + stack._admin_key(LIVE_ADMIN_KEY_PATH),
+        },
     )
     with urllib.request.urlopen(request, timeout=180) as response:
         payload = json.loads(response.read(2 * 1024 * 1024).decode("utf-8"))
@@ -54,7 +61,19 @@ def _turn(cycle: int) -> dict:
 
 @pytest.mark.skipif(not SENTINEL.is_file(), reason="live stack gate not armed")
 def test_two_live_stack_cycles_are_ready_and_quiescent(tmp_path):
-    reconciler = stack.StackReconciler(report_path=tmp_path / "last.json")
+    assert LIVE_ADMIN_KEY_PATH.is_file(), (
+        "METNOS_LIVE_ADMIN_KEY_PATH must name the live admin key"
+    )
+    reconciler = stack.StackReconciler(
+        report_path=tmp_path / "last.json",
+        admin_key_path=LIVE_ADMIN_KEY_PATH,
+    )
+    system_http = reconciler.systemctl.show("metnos-http.service", "system")
+    user_target = reconciler.systemctl.show(stack.TARGET_UNIT, "user")
+    integrated_ownership = (
+        system_http.get("ActiveState") != "active"
+        and user_target.get("ActiveState") == "active"
+    )
     cycles = []
     for number in (1, 2):
         before = reconciler.check(require_quiescent=True)
@@ -69,10 +88,18 @@ def test_two_live_stack_cycles_are_ready_and_quiescent(tmp_path):
         })
     report = {
         "schema_version": 1,
-        "profile": "live-legacy-host-with-integrated-health",
+        "profile": (
+            "live-integrated-user-target" if integrated_ownership
+            else "live-legacy-host-with-integrated-health"
+        ),
         "ok": True,
-        "live_cutover_performed": False,
+        "live_cutover_performed": integrated_ownership,
+        "ownership": {
+            "system_http_active": system_http.get("ActiveState") == "active",
+            "system_http_enabled": system_http.get("UnitFileState") == "enabled",
+            "user_target_active": user_target.get("ActiveState") == "active",
+            "user_target_enabled": user_target.get("UnitFileState") == "enabled",
+        },
         "cycles": cycles,
     }
     REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-

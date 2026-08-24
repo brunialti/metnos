@@ -20,7 +20,7 @@ reverse_pattern = "module.reverse"
 lifecycle  = "active"
 
 [description]
-it = "SCOPO: aggiunge o rimuove etichette su messaggi Gmail identificati e registra i delta effettivi per l'annullamento. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: elencare label senza target; spostare cartelle -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}; annullabile."
+it = "SCOPO: aggiunge/rimuove etichette da messaggi Gmail e registra il delta effettivo per l'annullamento. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: elencare label; spostare cartelle -> move_messages. OUT: risultati e ricevuta."
 en = "SCOPO: add or remove labels on identified Gmail messages and record the effective deltas for undo. PATTERN: set_messages(message_ids=[\"id\"], add=[\"IMPORTANT\"]). NON: list labels without a target; move folders -> move_messages. OUT: {ok,ok_count,fail_count,results,failed}; undoable."
 
 [code]

@@ -86,8 +86,8 @@ def test_executor_catalog_exposes_three_state_undo_contract():
             module.UNDOABLE, module.NOT_UNDOABLE, module.NOT_APPLICABLE)
     }
     assert counts == {
-        module.UNDOABLE: 23,
-        module.NOT_UNDOABLE: 13,
+        module.UNDOABLE: 24,
+        module.NOT_UNDOABLE: 12,
         module.NOT_APPLICABLE: 49,
     }
 

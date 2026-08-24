@@ -131,9 +131,9 @@ class TestFormatSummary(unittest.TestCase):
         }
         out = format_summary(summary, window_hours=24)
         self.assertIn("Lifecycle Summary", out)
-        self.assertIn("**Executor ager**", out)
+        self.assertIn("**Gestione degli executor**", out)
         self.assertIn("**Introvertiva apply**", out)
-        self.assertIn("**Proposals cleanup**", out)
+        self.assertIn("**Pulizia delle proposte**", out)
 
     def test_missing_section_shown_as_no_audit(self):
         from lifecycle_summary import format_summary

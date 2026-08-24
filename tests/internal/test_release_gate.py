@@ -173,6 +173,25 @@ def test_report_json_is_atomic_and_machine_readable(tmp_path: Path) -> None:
     assert not any(p.name.startswith(".report.json.") for p in tmp_path.iterdir())
 
 
+def test_runtime_environment_uses_explicit_cross_platform_workspace(
+    tmp_path: Path,
+) -> None:
+    layout = gate.PersistentLayout.create(tmp_path / "persistent")
+    env = gate._runtime_env(ROOT, layout, Path(sys.executable))
+
+    assert env["METNOS_WORKSPACE"] == str(layout.workspace)
+    assert os.defpath in env["PATH"]
+    assert env["METNOS_VENV"]
+
+
+def test_virtualenv_interpreter_follows_host_convention(tmp_path: Path) -> None:
+    value = gate._venv_python(tmp_path / "venv")
+    if os.name == "nt":
+        assert value.parts[-2:] == ("Scripts", "python.exe")
+    else:
+        assert value.parts[-2:] == ("bin", "python")
+
+
 def test_markdown_report_is_atomic(tmp_path: Path) -> None:
     report = gate.GateReport(
         gate_id="test-gate",

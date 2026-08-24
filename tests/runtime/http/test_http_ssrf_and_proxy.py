@@ -110,11 +110,14 @@ class TestSsrfGuard(unittest.TestCase):
 class _FakeRequest:
     """Stub minimale di aiohttp.web.Request per auth_middleware."""
 
-    def __init__(self, remote, headers=None, path="/agent/turn"):
+    def __init__(self, remote, headers=None, path="/agent/turn",
+                 method="GET"):
         self.remote = remote
         self.headers = headers or {}
         self.cookies = {}
         self.path = path
+        self.path_qs = path
+        self.method = method
         self.app = {"admin_key": "k"}
         self._store = {}
 
@@ -180,6 +183,52 @@ class TestForwardedHeaderSpoof(unittest.TestCase):
             self.assertEqual(_run_mw(req), "user")
         self.assertTrue(req._store["lan_principal"].startswith("http_lan_"))
         self.assertIsNone(req._store["authenticated_user_id"])
+
+
+class TestAdminAuthenticationBoundary(unittest.TestCase):
+
+    def test_safe_admin_next_accepts_only_same_origin_admin_paths(self):
+        self.assertEqual(
+            http_auth.safe_admin_next("/admin/users?view=all"),
+            "/admin/users?view=all",
+        )
+        for hostile in (
+            "https://example.com/admin", "//example.com/admin",
+            "/administrator", "/admin/users#secret", "/admin\\users",
+        ):
+            self.assertEqual(http_auth.safe_admin_next(hostile), "/admin")
+
+    def test_html_get_redirects_and_json_get_stays_structured(self):
+        from aiohttp import web
+
+        browser = _FakeRequest(
+            "203.0.113.7", {"Accept": "text/html"},
+            "/admin/users?view=all")
+        with self.assertRaises(web.HTTPFound) as raised:
+            _run_mw(browser)
+        self.assertEqual(
+            raised.exception.headers["Location"],
+            "/admin/login?next=/admin/users?view%3Dall",
+        )
+
+        api = _FakeRequest(
+            "203.0.113.7", {"Accept": "application/json"},
+            "/admin/users")
+        response = asyncio.run(http_auth.auth_middleware(
+            api, lambda _request: None))
+        self.assertEqual(response.status, 401)
+        self.assertEqual(
+            __import__("json").loads(response.body)["error"],
+            "admin_session_required",
+        )
+
+    def test_html_mutation_is_never_redirected(self):
+        request = _FakeRequest(
+            "203.0.113.7", {"Accept": "text/html"},
+            "/admin/users", method="POST")
+        response = asyncio.run(http_auth.auth_middleware(
+            request, lambda _request: None))
+        self.assertEqual(response.status, 401)
 
 
 class TestUserCookieRevocationLookup(unittest.TestCase):

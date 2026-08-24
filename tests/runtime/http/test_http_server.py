@@ -153,14 +153,58 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertIn("if(inlineFormWrap) d.appendChild(inlineFormWrap)", body)
 
     async def test_admin_changes_unauthorized(self):
-        """GET /admin/changes senza header -> 403 (anonymous su path admin).
+        """A JSON client gets a stable, actionable authentication error."""
+        r = await self.client.get(
+            "/admin/changes", headers={"Accept": "application/json"})
+        self.assertEqual(r.status, 401)
+        body = await r.json()
+        self.assertEqual(body["error"], "admin_session_required")
+        self.assertEqual(
+            body["login_url"],
+            "/admin/login?next=%2Fadmin%2Fchanges",
+        )
 
-        Nota: il test client puo' presentarsi come 127.0.0.1 (LAN trusted →
-        ruolo `user`), che pero' non e' admin: la policy admin_prefix
-        richiede admin → 403.
-        """
-        r = await self.client.get("/admin/changes")
-        self.assertEqual(r.status, 403)
+    async def test_admin_html_navigation_returns_to_requested_page(self):
+        first = await self.client.get(
+            "/admin/users?view=all",
+            headers={"Accept": "text/html"},
+            allow_redirects=False,
+        )
+        self.assertEqual(first.status, 302)
+        self.assertEqual(
+            first.headers["Location"],
+            "/admin/login?next=/admin/users?view%3Dall",
+        )
+        login = await self.client.post(
+            first.headers["Location"],
+            data={"key": ADMIN_KEY, "next": "/admin/users?view=all"},
+            headers={"Accept": "text/html"},
+            allow_redirects=False,
+        )
+        self.assertEqual(login.status, 302)
+        self.assertEqual(login.headers["Location"], "/admin/users?view=all")
+
+    async def test_admin_login_rejects_cross_origin_next(self):
+        response = await self.client.post(
+            "/admin/login?next=https://example.com/steal",
+            data={"key": ADMIN_KEY,
+                  "next": "https://example.com/steal"},
+            allow_redirects=False,
+        )
+        self.assertEqual(response.status, 302)
+        self.assertEqual(response.headers["Location"], "/admin")
+
+    async def test_admin_mutation_is_never_redirected_to_login(self):
+        response = await self.client.post(
+            "/admin/users",
+            data={"name": "must-not-run"},
+            headers={"Accept": "text/html"},
+            allow_redirects=False,
+        )
+        self.assertEqual(response.status, 401)
+        body = await response.json()
+        self.assertEqual(body["error"], "admin_session_required")
+        self.assertEqual(body["login_url"], "/admin/login")
 
     # NB (13/6/2026): /admin/proposals rimossa (superata da /admin/changes,
     # ADR 0158). Il test ETag usa ora una collezione admin viva (/admin/executors).
@@ -452,9 +496,12 @@ class HttpServerTests(AioHTTPTestCase):
             eng_fastpath._db_path = orig
 
     async def test_admin_praxis_fastpath_delete_unauthorized(self):
-        """POST delete senza admin key -> 403."""
+        """POST delete senza sessione resta inerte e chiede autenticazione."""
         r = await self.client.post("/admin/praxis/fastpaths/1/delete")
-        self.assertEqual(r.status, 403)
+        self.assertEqual(r.status, 401)
+        body = await r.json()
+        self.assertEqual(body["error"], "admin_session_required")
+        self.assertEqual(body["login_url"], "/admin/login")
 
     async def test_admin_praxis_fastpath_delete_bad_id(self):
         """POST delete con id non-int -> 400."""

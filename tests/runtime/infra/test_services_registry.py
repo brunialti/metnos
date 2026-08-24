@@ -300,6 +300,22 @@ def test_user_manager_gets_explicit_bus_environment(monkeypatch):
     assert env["DBUS_SESSION_BUS_ADDRESS"] == "unix:path=/run/user/1234/bus"
 
 
+def test_root_uses_declared_account_for_user_manager(monkeypatch):
+    monkeypatch.setenv("METNOS_SERVICE_USER", "test-user")
+    monkeypatch.setattr(
+        registry.pwd, "getpwnam", lambda _: SimpleNamespace(pw_uid=1234),
+    )
+    monkeypatch.setattr(registry.os, "geteuid", lambda: 0)
+    cmd, env = registry._systemctl(
+        registry.ServiceTarget("metnos-test.service", "user"), "show",
+    )
+    assert cmd[:5] == [
+        "runuser", "--user", "test-user", "--", "systemctl",
+    ]
+    assert cmd[5:] == ["--user", "show"]
+    assert env["XDG_RUNTIME_DIR"] == "/run/user/1234"
+
+
 def test_control_rejects_unknown_unit_without_systemctl(monkeypatch):
     called = False
 

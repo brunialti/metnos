@@ -24,6 +24,7 @@ class FakeSystemctl:
         self.target_loaded = True
         self.target_active = False
         self.user_active = {
+            "metnos-durable-worker.service",
             "metnos-side-display.service",
             "metnos-playwright.service",
             "metnos-telegram-daemon.service",
@@ -122,9 +123,13 @@ class FakeReconciler:
 
 
 def _instance(tmp_path, fake):
+    admin_key_path = tmp_path / "admin.key"
+    admin_key_path.write_text("test-admin-key", encoding="utf-8")
+    reconciler = FakeReconciler(fake)
+    reconciler.admin_key_path = admin_key_path
     return migration.HttpScopeMigration(
         systemctl=fake,
-        reconciler=FakeReconciler(fake),
+        reconciler=reconciler,
         user_unit_dir=tmp_path / "user-units",
         evidence_path=tmp_path / "pilot.json",
         turn_probe=lambda: {"turn_id": "turn-test", "final_kind": "answer", "steps": 1},
@@ -204,6 +209,12 @@ def test_pilot_runs_two_e2e_cycles_and_restores_baseline(monkeypatch, tmp_path):
     assert re.fullmatch(r"[0-9a-f]{64}", report["host_fingerprint"])
     assert all(row["turn"]["steps"] >= 1 for row in report["cycles"])
     assert len(json.loads((tmp_path / "pilot.json").read_text())["cycles"]) == 2
+    reset_calls = [
+        call for call in fake.calls
+        if call[:3] == ("run", "user", "reset-failed")
+    ]
+    assert len(reset_calls) == 4
+    assert all("metnos-durable-worker.service" in call for call in reset_calls)
 
 
 def test_pilot_refuses_a_single_cycle(monkeypatch, tmp_path):
@@ -292,6 +303,7 @@ def test_natural_turn_requires_steps_and_uses_unique_conversation_ids(monkeypatc
 
     def urlopen(request, timeout):
         assert timeout == 180
+        assert request.get_header("Authorization") == "Bearer test-admin-key"
         requests.append(json.loads(request.data.decode("utf-8")))
         return Response(next(payloads))
 

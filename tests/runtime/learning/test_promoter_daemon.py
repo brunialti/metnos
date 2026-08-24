@@ -139,6 +139,52 @@ def _seed_proposal_json(proposals_dir: Path, prop: dict) -> Path:
     return fp
 
 
+def _seed_active_ready_candidate(synth_dir: Path, prop: dict) -> Path:
+    """Materialize the exact quarantined artifact that Synt hands to promoter."""
+    from generated_executor_contract import generated_contract_context
+
+    name = prop["name"]
+    code = prop["stages"][4]["output"]["code"]
+    target = synth_dir / name
+    target.mkdir(parents=True, exist_ok=True)
+    (target / f"{name}.py").write_text(code, encoding="utf-8")
+    contract = generated_contract_context(lifecycle="synthesized")
+    manifest = "\n".join((
+        contract["generated_header_toml"],
+        f'name = "{name}"',
+        'version = "0.1.0"',
+        'platforms = ["linux"]',
+        f'description = {{ it = "SCOPO: trova elementi. PATTERN: {name}. NON: modifica dati. OUT: risultati.", en = "SCOPO: finds items. PATTERN: {name}. NON: changes data. OUT: results." }}',
+        '[[capabilities]]',
+        'name = "fs:read"',
+        'hint = ["arg:query"]',
+        '[code]',
+        f'files = ["{name}.py"]',
+        'digest = "sha256:' + "a" * 64 + '"',
+        '[args]',
+        'type = "object"',
+        'required = ["query"]',
+        '[args.properties.query]',
+        'type = "string"',
+        'description = { it = "Ricerca.", en = "Search query." }',
+        '[output]',
+        'schema_inline = "{ok: bool, results: list}"',
+        '[presentation]',
+        'default_view = "list"',
+        '[presentation.list]',
+        'columns = [{ key = "item", source = "$entry" }]',
+        '[[tests]]',
+        'name = "valid"',
+        'input = { query = "x" }',
+        'expect = { ok = true }',
+        contract["execution_policy_toml"],
+        "",
+    ))
+    (target / "manifest.toml").write_text(manifest, encoding="utf-8")
+    (target / "manifest.toml.sig").write_text("candidate-signature\n", encoding="utf-8")
+    return target
+
+
 def _mock_evaluator_result(verdict: str, score: float = 5.0,
                             *, proposal_id: str = "?", name: str = "?",
                             killers: list[str] | None = None,
@@ -332,6 +378,7 @@ class TestAcceptVerdict(_BasePromoterTest):
         prop = _build_synth_proposal(proposal_id="proptest_acc",
                                       name="find_packages")
         _seed_proposal_json(self._proposals_dir, prop)
+        _seed_active_ready_candidate(self._synth_dir, prop)
         with mock.patch("proposal_evaluator.evaluate_proposal") as m, \
                  mock.patch("jobs.promoter_promote.sign_executor",
                             create=True) as sign_m, \
@@ -340,6 +387,8 @@ class TestAcceptVerdict(_BasePromoterTest):
                             return_value=(True, "")), \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer5",
+                            return_value=(True, "")), \
+                 mock.patch("jobs.promoter_promote._loader_admission",
                             return_value=(True, "")):
             # Mocka sign_executor cosi' i test non richiedono keypair.
             m.return_value = _mock_evaluator_result(
@@ -489,7 +538,7 @@ class TestPracticalExampleDeterministic(_BasePromoterTest):
         out1 = ex_mod.render_practical_example(prop, verdict, skip_llm=True)
         out2 = ex_mod.render_practical_example(prop, verdict, skip_llm=True)
         self.assertEqual(out1, out2)
-        self.assertIn("Query", out1)
+        self.assertIn("Richiesta", out1)
         self.assertIn("Pipeline corrente", out1)
         self.assertIn("Nuova pipeline", out1)
         self.assertIn("Sostituisce", out1)
@@ -523,13 +572,14 @@ class TestPracticalExampleETAFallback(_BasePromoterTest):
 
 class TestRollbackRestores(_BasePromoterTest):
 
-    def test_rollback_removes_files(self):
+    def test_rollback_restores_quarantined_candidate(self):
         promoter = self._import_module("promoter")
         state_mod = self._import_module("promoter_state")
         rollback_mod = self._import_module("promoter_rollback")
         prop = _build_synth_proposal(proposal_id="proptest_rb",
                                       name="find_packages")
         _seed_proposal_json(self._proposals_dir, prop)
+        _seed_active_ready_candidate(self._synth_dir, prop)
         with mock.patch("proposal_evaluator.evaluate_proposal") as m, \
                  mock.patch("jobs.promoter_promote.sign_executor",
                             create=True) as sign_m, \
@@ -538,6 +588,8 @@ class TestRollbackRestores(_BasePromoterTest):
                             return_value=(True, "")), \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer5",
+                            return_value=(True, "")), \
+                 mock.patch("jobs.promoter_promote._loader_admission",
                             return_value=(True, "")):
             m.return_value = _mock_evaluator_result(
                 "accept", score=5.0,
@@ -555,8 +607,12 @@ class TestRollbackRestores(_BasePromoterTest):
         # Rollback
         result = rollback_mod.rollback_promotion("proptest_rb")
         self.assertTrue(result["ok"])
-        # File rimossi
-        self.assertFalse(exec_dir.exists())
+        # Il payload non viene cancellato: torna esattamente in quarantena.
+        self.assertTrue(exec_dir.exists())
+        self.assertIn(
+            'lifecycle = "synthesized"',
+            (exec_dir / "manifest.toml").read_text(encoding="utf-8"),
+        )
         # Blob spostato in _rolled_back/
         rolled = self._blob_dir / "_rolled_back" / "proptest_rb.tar.gz"
         self.assertTrue(rolled.exists())

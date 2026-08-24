@@ -920,6 +920,44 @@
    ]
   },
   {
+   "id": "admin-lre-content",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Che cosa mostra la pagina LRE e quali controlli offre sui lavori lunghi?",
+   "expected": "answer",
+   "route": "/admin/lre",
+   "must_cover": [
+    [
+     "Settings > Sistema > LRE"
+    ],
+    [
+     "avanzamento"
+    ],
+    [
+     "budget",
+     "limiti"
+    ],
+    [
+     "eventi",
+     "timeline"
+    ],
+    [
+     "artefatti"
+    ],
+    [
+     "pausa",
+     "sospendi"
+    ],
+    [
+     "riprendi"
+    ],
+    [
+     "annulla"
+    ]
+   ]
+  },
+  {
    "id": "admin-restricted-user",
    "group": "admin_ui",
    "audience": "user",

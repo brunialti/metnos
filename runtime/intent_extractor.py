@@ -47,6 +47,7 @@ import detection_lexicon as _dl
 # 320 copre ~7 clausole; il mono resta invariato (il modello chiude il JSON
 # molto prima). §7.3 generale, non patch per-query.
 _INTENT_MAX_TOKENS = 320
+INTENT_KINDS = frozenset({"action", "conversation", "metnos_help", "unknown"})
 
 # Prompt persistito in `runtime/prompts/<lang>/intent_extractor_v4.j2` (ADR 0092
 # Phase 2; v3 `intent_extractor.j2` ritirato 26/6, §7.1 — v4 unico template mono).
@@ -155,7 +156,8 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # (call concorrenti sul llama-server) estraeva object INSTABILE
     # (approval/numbers) → misroute a valle. Lessico i18n, zero LLM.
     if _dl.match("system.status_query", query):
-        return {"verb": "get", "object": "processes", "confidence": 1.0}
+        return {"kind": "action", "verb": "get", "object": "processes",
+                "confidence": 1.0}
     # Bypass HARDWARE-descrittivo (9/7): domanda su una SEZIONE health (ip/gpu/
     # cpu/usb/dischi/temperature…, lessico `health.section_focus`) riferita
     # alla MACCHINA (`machine.reference`) e SENZA verbi d'azione → è sempre
@@ -171,7 +173,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
                 from prefilter import tokenize, detect_canonical_verbs_all
                 _verbs = detect_canonical_verbs_all(tokenize(query)) or []
                 if not any(v in DESTRUCTIVE_VERBS for v in _verbs):
-                    return {"verb": "get", "object": "processes",
+                    return {"kind": "action", "verb": "get", "object": "processes",
                             "confidence": 1.0}
     except Exception:  # noqa: BLE001 — best-effort, si prosegue con l'LLM
         pass
@@ -328,6 +330,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         except Exception:
             pass
 
+    kind = (parsed.get("kind") or "").strip().lower()
     verb = (parsed.get("verb") or "").strip().lower()
     obj = (parsed.get("object") or "").strip().lower()
     if verb not in VOCAB_VERBS:
@@ -344,12 +347,21 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # classificatore d'object (17/6/2026): rimosso l'override Qwen3-Emb FT
     # (intent_classifier package) — anchors per-lingua hardcoded = anti-pattern
     # i18n, e il solo LLM copre il gold 25/25. Vedi rimozione anchors.py.
-    if not verb and not obj:
+    # La presenza di un'azione canonica prevale sempre sulla forma sociale o
+    # esplicativa che la circonda.  Per compatibilita' con i prompt candidati
+    # gia' materializzati, un output legacy verb/object implica ``action``.
+    if verb or obj or actions:
+        kind = "action"
+    if kind not in INTENT_KINDS:
         return None
+    if kind == "action" and not (verb or obj):
+        return None
+    if kind != "action":
+        return {"kind": kind}
     # La sonda tocca solo l'ULTIMA clausola, e si applica da due in su: la
     # clausola primaria non e' mai quella, quindi `verb`/`obj` non si toccano.
     actions = _bind_reads_to_open_source(query, actions, llm_call)
-    out = {"verb": verb, "object": obj}
+    out = {"kind": "action", "verb": verb, "object": obj}
     # Esponi la decomposizione SOLO se compound reale (>=2 clausole distinte):
     # dispatch la usa per il ranking pool per-clausola. Mono-azione → assente
     # (back-compat: il ramo compound resta inattivo).

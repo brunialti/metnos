@@ -21,6 +21,7 @@ import ipaddress
 import secrets
 import threading
 import time
+import urllib.parse
 
 from aiohttp import web
 
@@ -29,6 +30,7 @@ from http_app_state import ADMIN_KEY as APP_ADMIN_KEY, app_get
 import devices
 import config as _C  # §7.11
 from logging_setup import get_logger
+from messages import get as _msg
 
 log = get_logger(__name__)
 
@@ -64,6 +66,33 @@ USER_COOKIE_TTL_S = 86400 * 90  # 90 giorni (device pairing persistente)
 
 class IdentityStoreUnavailable(RuntimeError):
     """Firma valida, ma il binding/revocation store non e' consultabile."""
+
+
+def safe_admin_next(value: object) -> str:
+    """Return one same-origin admin destination or the safe dashboard root."""
+
+    candidate = str(value or "").strip()
+    if (not candidate or "\\" in candidate
+            or any(ord(char) < 0x20 or ord(char) == 0x7f
+                   for char in candidate)):
+        return "/admin"
+    try:
+        parsed = urllib.parse.urlsplit(candidate)
+    except ValueError:
+        return "/admin"
+    path = parsed.path
+    if (parsed.scheme or parsed.netloc or parsed.fragment
+            or not path.startswith("/") or path.startswith("//")
+            or not (path == "/admin" or path.startswith("/admin/"))):
+        return "/admin"
+    return urllib.parse.urlunsplit(("", "", path, parsed.query, ""))
+
+
+def admin_login_url(next_path: object = "") -> str:
+    """Build a relative login URL carrying only a validated destination."""
+
+    target = safe_admin_next(next_path)
+    return "/admin/login?next=" + urllib.parse.quote(target, safe="")
 
 def _env_enabled(name: str, default: bool = False) -> bool:
     raw = _os.environ.get(name)
@@ -430,9 +459,39 @@ async def auth_middleware(request: web.Request, handler):
         return await handler(request)
 
     if path.startswith(ADMIN_PREFIX) and role != "admin":
+        # Only an idempotent page navigation may be resumed after sign-in.
+        # A mutation must never be encoded as ``next``: doing so would imply
+        # replaying a rejected POST/PUT/PATCH/DELETE as a later GET.
+        login_url = (
+            admin_login_url(safe_admin_next(request.path_qs))
+            if request.method in {"GET", "HEAD"}
+            else "/admin/login"
+        )
+        admin_cookie_supplied = bool(request.cookies.get(ADMIN_COOKIE, ""))
+        if role == "user":
+            status = 403
+            code = "admin_role_required"
+            message_key = "MSG_ADMIN_ROLE_REQUIRED"
+        elif admin_cookie_supplied:
+            status = 401
+            code = "admin_session_expired"
+            message_key = "MSG_ADMIN_SESSION_EXPIRED"
+        else:
+            status = 401
+            code = "admin_session_required"
+            message_key = "MSG_ADMIN_SESSION_REQUIRED"
+        headers = {
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+        }
+        if (request.method in {"GET", "HEAD"}
+                and "text/html" in request.headers.get("Accept", "")):
+            raise web.HTTPFound(login_url, headers=headers)
         return web.json_response(
-            {"error": "forbidden", "message": "admin role required"},
-            status=403,
+            {"error": code, "message": _msg(message_key),
+             "login_url": login_url},
+            status=status,
+            headers=headers,
         )
 
     if role == "anonymous":

@@ -134,7 +134,6 @@ def test_catalog_target_reconcile_and_phase5_unit_sets_remain_in_parity():
     assert set(reconcile.RUNTIME_COMPONENT_UNITS) == (
         registry_units - {
             "metnos-http.service",
-            "metnos-durable-worker.service",
             "metnos-i18n-translator.service",
         }
     )

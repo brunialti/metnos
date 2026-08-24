@@ -1,7 +1,17 @@
 # Contratto executor e confine MCP
 
-**Stato:** analisi proposta. Nessuna integrazione MCP e nessuna migrazione degli
-executor sono implicate da questo documento.
+**Stato:** decisione architetturale completata il 24/8/2026. MCP resta un
+possibile trasporto interno e non viene integrato finche' un caso d'uso concreto
+non dimostra un vantaggio rispetto a un provider gia' ammesso. Nessuna
+migrazione degli executor e' implicata da questo documento.
+
+**Protocollo verificato:** release candidate MCP `2026-07-28`. La verifica non
+assume che nomi, descrizioni o annotation del server siano affidabili; la
+specifica stessa richiede che le annotation siano considerate non fidate e
+ammette cataloghi diversi secondo l'autorita' presentata. Fonti primarie:
+[tools 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/server/tools),
+[authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization),
+[reference servers](https://github.com/modelcontextprotocol/servers).
 
 **Dipendenza normativa:** `EXECUTOR_STANDARD.md` definisce il contratto
 fondativo `metnos.executor/1.0`. Questo documento descrive soltanto come MCP puo'
@@ -143,9 +153,60 @@ dominio dell'azione e conservano il codice tecnico solo come dettaglio diagnosti
 6. Provare la mappatura di un tool come backend di un executor esistente conforme.
 7. Valutare separatamente tool mutativi e promozione nativa.
 
+## Tre mappature end-to-end
+
+Queste mappature usano server pubblici reali, ma non li ammettono.
+
+| Tool esterno | Classificazione | Contratto Metnos | Autorita' ed esito |
+|---|---|---|---|
+| `search_issues` del server MCP ufficiale GitHub | backend possibile | un executor canonico di ricerca issue conserva schema, provider e output Metnos; owner/repository non diventano nomi di tool | token separato per GitHub, scope letto dal mandato, risultati ridotti e validati; schema o tool cambiato sospende il binding |
+| operazioni di lettura del reference server Filesystem | quarantena nella forma pubblicata `stdio`; proxy possibile solo su un dispositivo gia' governato | il planner continua a vedere `read_files`/`find_files`, mai path o comando di avvio del server come metalinguaggio | root esatte, sandbox e identita' del device restano di Metnos; avviare un pacchetto locale non verificato equivale a eseguire codice e non e' discovery innocua |
+| `fetch` del reference server MCP | backend possibile, ma oggi senza vantaggio rispetto a `read_urls_html` | URL, limiti, rete, redirect, contenuto e fallimenti restano nel contratto dell'executor esistente | allowlist/mandato di rete, timeout e limite di output applicati da Metnos; testo remoto resta non fidato e non puo' modificare catalogo o policy |
+
+Le tre mappature non richiedono di riscrivere il catalogo: la relazione fra
+executor e backend appartiene alla configurazione ammessa del trasporto. Non e'
+stato trovato un caso che giustifichi oggi il costo di broker, credenziali,
+revoca, invalidazione e nuova superficie operativa.
+
+## Matrice semantica
+
+| Concetto MCP | Concetto Metnos | Regola |
+|---|---|---|
+| server/tool name | backend di un executor ammesso | mai esposto direttamente al planner; identita' composta da origine fissata, versione protocollo e impronta schema |
+| `inputSchema` | `args` del manifest | deve essere compatibile per inclusione; campi MCP extra non diventano automaticamente argomenti pubblici |
+| `outputSchema`/`structuredContent` | contratto di output e postcondizione | validazione obbligatoria quando dichiarato; l'assenza di schema impedisce l'ammissione iniziale |
+| annotation read-only/destructive/idempotent | effect, capability, idempotenza e undo | soltanto un indizio non fidato; l'autorita' e' il manifest Metnos verificato |
+| errore tool/protocollo | errore operativo tipizzato | mai trasformato in successo; dettaglio MCP redatto e conservato nell'audit tecnico |
+| `tools/list_changed` | candidato di configurazione | invalida cache e sospende il binding; non promuove o modifica il catalogo |
+| task sperimentale | job/processo Metnos | nessuna equivalenza automatica; fuori dal primo perimetro |
+| elicitation/sampling | dialogo/LLM governati da Metnos | disabilitati: non possono invertire controllo, consenso o scelta del modello |
+
+## Threat model minimo
+
+| Minaccia | Effetto | Controllo necessario |
+|---|---|---|
+| descrizione o output con prompt injection | il planner tenta azioni o amplia lo scopo | dati MCP trattati come contenuto, schema/limiti, nessuna autorita' derivata dal testo |
+| cambio silenzioso di tool o schema | stessa capability esegue un'altra operazione | pin di origine/versione/impronta, invalidazione e nuova ammissione esplicita |
+| token passthrough/confused deputy | credenziale riusata verso una risorsa diversa | token con audience per il server, credenziale upstream separata, nessun token nei prompt/log |
+| server o trasporto compromesso | output falso, esfiltrazione o mutazione | sandbox/rete/mandato Metnos, postcondizione indipendente, timeout e revoca |
+| collisione di nomi fra server | invocazione del backend sbagliato | identita' interna composta; il nome MCP non e' mai una chiave pubblica canonica |
+| output enorme, ciclico o malformato | esaurimento di memoria, token o tempo | limiti byte/elementi/profondita', validazione streaming e fallimento tipizzato |
+| catalogo dipendente dall'utente | capability leak fra identita' | discovery legata allo stesso principal/mandato dell'invocazione e cache segregata |
+| task orfano o cancellazione inefficace | effetto tardivo non osservato | task esclusi dal primo perimetro; futura adozione richiede identita', TTL e riconciliazione |
+
+## Decisione
+
+Il broker interno, la classificazione `backend/proxy/quarantena`, il divieto di
+ammissione automatica e il primo perimetro read-only sono ratificati come unico
+confine accettabile. La decisione operativa e' **non integrare MCP ora**: Metnos
+possiede gia' provider conformi per i tre esempi e non esiste un requisito
+utente che compensi la nuova superficie di sicurezza e manutenzione. Una futura
+richiesta riaprira' il lavoro dal passo 3 della sequenza, con una sola capacita'
+read-only e senza modificare questa decisione per implicazione.
+
 ## Criteri di accettazione dell'analisi
 
-Prima di modificare il codice devono essere approvati esplicitamente:
+Sono stati ratificati come precondizioni obbligatorie di qualunque futuro codice:
 
 - il broker MCP come componente interno e non come tool generico;
 - la classificazione backend, proxy o quarantena;

@@ -470,15 +470,15 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "(guest per un ospite, host per un secondo proprietario) e "
             "autonomia (read_only guarda soltanto, restricted chiede conferma "
             "per le operazioni che modificano, full procede da solo).",
-            "Premi crea: la persona compare nell'elenco ma non ha ancora "
+            "Premi crea: l'utente compare nell'elenco ma non ha ancora "
             "alcun canale collegato, quindi non puo' ancora entrare.",
             "Apri il suo nome nell'elenco ed emetti dal dettaglio un token di "
             "collegamento per il canale che usera'. Vale un'ora ed e' monouso.",
-            "Per la chat web consegna alla persona l'indirizzo completo "
-            "generato; per Telegram consegna il token, che la persona invia al "
+            "Per la chat web consegna all'utente l'indirizzo completo "
+            "generato; per Telegram consegna il token, che l'utente invia al "
             "bot come /start seguito dal token.",
             "Trasferisci indirizzo o token solo per una via fidata: chi li ha "
-            "entra come quella persona. Se scadono prima dell'uso, torna sul "
+            "entra con l'identita' di quell'utente. Se scadono prima dell'uso, torna sul "
             "dettaglio e generane altri.",
         ),
         procedure_en=(
@@ -488,16 +488,16 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "a guest, host for a second owner) and autonomy (read_only only "
             "looks, restricted asks for confirmation on operations that change "
             "something, full goes ahead alone).",
-            "Press create: the person appears in the list but has no channel "
+            "Press create: the user appears in the list but has no channel "
             "connected yet, so they cannot get in.",
             "Open their name in the list and issue, from the detail page, a "
             "connection token for the channel they will use. It is valid for "
             "one hour and single-use.",
-            "For the web chat hand the person the complete address that was "
-            "generated; for Telegram hand them the token, which the person "
+            "For the web chat hand the user the complete address that was "
+            "generated; for Telegram hand them the token, which the user "
             "sends to the bot as /start followed by the token.",
             "Pass the address or the token only through a trusted way: whoever "
-            "holds them gets in as that person. If they expire before use, go "
+            "holds them gets in with that user's identity. If they expire before use, go "
             "back to the detail page and generate new ones.",
         ),
         structure_sha="453642d23605",

@@ -396,6 +396,16 @@ def _systemctl(target: ServiceTarget, *args: str) -> tuple[list[str], dict | Non
     if target.scope == "user":
         cmd.append("--user")
         env = _user_systemd_env()
+        account = service_user()
+        try:
+            account_uid = pwd.getpwnam(account).pw_uid
+        except KeyError:
+            account_uid = os.getuid()
+        if os.geteuid() == 0 and account_uid != 0:
+            # Connecting a root process directly to another account's user
+            # bus is not a supported ownership boundary.  Execute the closed
+            # systemctl command as the declared service account instead.
+            cmd = ["runuser", "--user", account, "--", *cmd]
     cmd.extend(args)
     return cmd, env
 

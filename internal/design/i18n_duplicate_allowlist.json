@@ -2,25 +2,8 @@
   {
     "lang": "en",
     "keys": [
-      "MSG_DIALOG_MASKED_HINT",
-      "MSG_ORCH_MASKED_HINT"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "MSG_OMITTED_OTHERS",
-      "MSG_OMITTED_OTHERS_F"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "MSG_LIFECYCLE_KV_APPLIED",
-      "UI_CHANGE_BADGE_APPLIED",
-      "UI_CHANGE_TAB_APPLIED"
+      "MSG_APPROVAL_TITLE",
+      "MSG_PROMOTER_BUTTON_CONFIRM"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -30,6 +13,7 @@
       "MSG_BTN_CANCEL",
       "MSG_CHAT_SESSION_CANCEL",
       "MSG_TUTOR_HANDOFF_CANCEL",
+      "UI_DURABLE_CANCEL",
       "UI_VIRT_CANCEL"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
@@ -37,8 +21,33 @@
   {
     "lang": "en",
     "keys": [
-      "MSG_APPROVAL_TITLE",
-      "MSG_PROMOTER_BUTTON_CONFIRM"
+      "MSG_BTN_NO",
+      "UI_BUILDS_NO"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "MSG_BTN_YES",
+      "UI_BUILDS_YES"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "MSG_CHAT_DIALOG_TURN_ID_LABEL",
+      "MSG_CHAT_TURN_LABEL"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "MSG_CHAT_FB_RETRY",
+      "UI_CHANGE_BTN_RETRY",
+      "UI_DURABLE_RETRY"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -55,17 +64,50 @@
   {
     "lang": "en",
     "keys": [
-      "UI_CHANGE_BADGE_FAILED",
-      "UI_CHANGE_TAB_FAILED",
-      "UI_SERVICES_STATUS_FAILED"
+      "MSG_CHAT_LOGOUT",
+      "UI_SETTINGS_LOGOUT"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
   {
     "lang": "en",
     "keys": [
-      "UI_CHANGE_BADGE_FINALIZED",
-      "UI_CHANGE_TAB_FINALIZED"
+      "MSG_CHAT_ROLE_USER",
+      "UI_SERVICES_SCOPE_USER"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "MSG_CREATE_PROCESSES_MACHINE_UNKNOWN",
+      "MSG_LOCAL_HERE",
+      "MSG_PACKAGES_CARD_MACHINE_UNKNOWN"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "MSG_DESCRIBE_PATHS",
+      "MSG_OBJECT_PATHS"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "MSG_DIALOG_MASKED_HINT",
+      "MSG_ORCH_MASKED_HINT"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "MSG_LIFECYCLE_KV_APPLIED",
+      "UI_CHANGE_BADGE_APPLIED",
+      "UI_CHANGE_TAB_APPLIED"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -81,89 +123,16 @@
   {
     "lang": "en",
     "keys": [
-      "MSG_BTN_NO",
-      "UI_BUILDS_NO"
+      "MSG_OBJECT_EVENTS",
+      "UI_DURABLE_EVENTS"
     ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+    "reason": "same rendered label or status; distinct typed UI contexts"
   },
   {
     "lang": "en",
     "keys": [
-      "UI_SERVICES_NOT_INSTALLED",
-      "UI_SERVICES_STATUS_MISSING"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "UI_CHANGE_BADGE_OBSERVED",
-      "UI_CHANGE_TAB_OBSERVED"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "MSG_DESCRIBE_PATHS",
-      "MSG_OBJECT_PATHS"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "UI_CHANGE_BADGE_REJECTED",
-      "UI_CHANGE_TAB_REJECTED"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "MSG_CHAT_FB_RETRY",
-      "UI_CHANGE_BTN_RETRY"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "UI_CHANGE_BADGE_ROLLED_BACK",
-      "UI_CHANGE_TAB_ROLLED_BACK"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "UI_BUILDS_STATE_RUNNING",
-      "UI_SERVICES_DESIRED_RUNNING",
-      "UI_SERVICES_STATUS_RUNNING"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "UI_SERVICES_PAGE_TITLE",
-      "UI_SERVICES_TITLE"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "MSG_CHAT_LOGOUT",
-      "UI_SETTINGS_LOGOUT"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "UI_BUILDS_COL_STATUS",
-      "UI_VIRT_STATUS"
+      "MSG_OMITTED_OTHERS",
+      "MSG_OMITTED_OTHERS_F"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -178,16 +147,108 @@
   {
     "lang": "en",
     "keys": [
-      "UI_SERVICES_DESIRED_STOPPED",
-      "UI_SERVICES_STATUS_STOPPED"
+      "MSG_TLDR_PREFIX",
+      "UI_CHANGE_COL_SUMMARY"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
   {
     "lang": "en",
     "keys": [
-      "MSG_TLDR_PREFIX",
-      "UI_CHANGE_COL_SUMMARY"
+      "UI_BUILDS_COL_PROGRESS",
+      "UI_DURABLE_PROGRESS"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_BUILDS_COL_STATUS",
+      "UI_VIRT_STATUS"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_BUILDS_STATE_DONE",
+      "UI_DURABLE_STATE_COMPLETED"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_BUILDS_STATE_RUNNING",
+      "UI_DURABLE_STATE_RUNNING",
+      "UI_SERVICES_DESIRED_RUNNING",
+      "UI_SERVICES_STATUS_RUNNING"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_CHANGE_BADGE_FAILED",
+      "UI_CHANGE_TAB_FAILED",
+      "UI_DURABLE_STATE_FAILED",
+      "UI_SERVICES_STATUS_FAILED"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_CHANGE_BADGE_FINALIZED",
+      "UI_CHANGE_TAB_FINALIZED"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_CHANGE_BADGE_OBSERVED",
+      "UI_CHANGE_TAB_OBSERVED"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_CHANGE_BADGE_REJECTED",
+      "UI_CHANGE_TAB_REJECTED"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_CHANGE_BADGE_ROLLED_BACK",
+      "UI_CHANGE_TAB_ROLLED_BACK"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_DURABLE_ARTIFACT_STATE_NEEDS_ATTENTION",
+      "UI_DURABLE_STATE_NEEDS_ATTENTION"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_DURABLE_UNAVAILABLE",
+      "UI_SERVICES_DOWN"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_SERVICES_DESIRED_STOPPED",
+      "UI_SERVICES_STATUS_STOPPED"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -203,32 +264,32 @@
   {
     "lang": "en",
     "keys": [
-      "MSG_CHAT_DIALOG_TURN_ID_LABEL",
-      "MSG_CHAT_TURN_LABEL"
+      "UI_SERVICES_LRE_FEATURE_INVALID",
+      "UI_VIRT_STATUS_INVALID"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "en",
+    "keys": [
+      "UI_SERVICES_NOT_INSTALLED",
+      "UI_SERVICES_STATUS_MISSING"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
   {
     "lang": "en",
     "keys": [
-      "MSG_CHAT_ROLE_USER",
-      "UI_SERVICES_SCOPE_USER"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "en",
-    "keys": [
-      "MSG_BTN_YES",
-      "UI_BUILDS_YES"
+      "UI_SERVICES_PAGE_TITLE",
+      "UI_SERVICES_TITLE"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
   {
     "lang": "it",
     "keys": [
-      "MSG_OMITTED_OTHERS_F",
-      "MSG_RESUME_ENTRIES_OMITTED"
+      "MSG_APPROVAL_TITLE",
+      "MSG_PROMOTER_BUTTON_CONFIRM"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -238,6 +299,7 @@
       "MSG_BTN_CANCEL",
       "MSG_CHAT_SESSION_CANCEL",
       "MSG_TUTOR_HANDOFF_CANCEL",
+      "UI_DURABLE_CANCEL",
       "UI_VIRT_CANCEL"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
@@ -245,16 +307,33 @@
   {
     "lang": "it",
     "keys": [
-      "UI_SERVICES_DESIRED_STOPPED",
-      "UI_SERVICES_STATUS_STOPPED"
+      "MSG_BTN_NO",
+      "UI_BUILDS_NO"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
   {
     "lang": "it",
     "keys": [
-      "MSG_APPROVAL_TITLE",
-      "MSG_PROMOTER_BUTTON_CONFIRM"
+      "MSG_BTN_YES",
+      "UI_BUILDS_YES"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "MSG_CHAT_DIALOG_TURN_ID_LABEL",
+      "MSG_CHAT_TURN_LABEL"
+    ],
+    "reason": "same rendered label; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "MSG_CHAT_FB_RETRY",
+      "UI_CHANGE_BTN_RETRY",
+      "UI_DURABLE_RETRY"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -280,34 +359,19 @@
   {
     "lang": "it",
     "keys": [
-      "UI_SERVICES_DESIRED_RUNNING",
-      "UI_SERVICES_STATUS_RUNNING"
+      "MSG_CHAT_ROLE_USER",
+      "UI_SERVICES_SCOPE_USER"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
   {
     "lang": "it",
     "keys": [
-      "UI_CHANGE_BADGE_OBSERVED",
-      "UI_CHANGE_TAB_OBSERVED"
+      "MSG_CREATE_PROCESSES_MACHINE_UNKNOWN",
+      "MSG_LOCAL_HERE",
+      "MSG_PACKAGES_CARD_MACHINE_UNKNOWN"
     ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "it",
-    "keys": [
-      "MSG_BTN_NO",
-      "UI_BUILDS_NO"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "it",
-    "keys": [
-      "UI_SERVICES_NOT_INSTALLED",
-      "UI_SERVICES_STATUS_MISSING"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+    "reason": "same rendered label or status; distinct typed UI contexts"
   },
   {
     "lang": "it",
@@ -320,8 +384,41 @@
   {
     "lang": "it",
     "keys": [
+      "MSG_LIFECYCLE_TABLE_KIND",
+      "UI_CHANGE_COL_KIND",
+      "UI_CHANGE_FILTER_KIND"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "MSG_OBJECT_ENTRIES",
+      "MSG_TRUNCATED_DEFAULT_WHAT"
+    ],
+    "reason": "same rendered label; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "MSG_OBJECT_EVENTS",
+      "UI_DURABLE_EVENTS"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
       "MSG_OBJECT_PROPOSALS",
       "UI_CHANGE_TAB_PROPOSED"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "MSG_OMITTED_OTHERS_F",
+      "MSG_RESUME_ENTRIES_OMITTED"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -336,8 +433,49 @@
   {
     "lang": "it",
     "keys": [
-      "MSG_CHAT_FB_RETRY",
-      "UI_CHANGE_BTN_RETRY"
+      "MSG_TASK_STATE_ACTIVE",
+      "UI_SERVICES_LRE_FEATURE_ENABLED"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_BUILDS_COL_PROGRESS",
+      "UI_DURABLE_PROGRESS"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_BUILDS_COL_STATUS",
+      "UI_DURABLE_STATE",
+      "UI_VIRT_STATUS"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_BUILDS_STATE_ABORTED",
+      "UI_DURABLE_STATE_CANCELLED"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_BUILDS_STATE_DONE",
+      "UI_DURABLE_STATE_COMPLETED"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_CHANGE_BADGE_OBSERVED",
+      "UI_CHANGE_TAB_OBSERVED"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -353,8 +491,33 @@
   {
     "lang": "it",
     "keys": [
-      "UI_SERVICES_PAGE_TITLE",
-      "UI_SERVICES_TITLE"
+      "UI_DURABLE_ARTIFACT_STATE_NEEDS_ATTENTION",
+      "UI_DURABLE_STATE_NEEDS_ATTENTION"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_DURABLE_STATE_RUNNING",
+      "UI_SERVICES_DESIRED_RUNNING",
+      "UI_SERVICES_STATUS_RUNNING"
+    ],
+    "reason": "same rendered text; keys retained because callers and UI contexts differ"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_DURABLE_UNAVAILABLE",
+      "UI_SERVICES_DOWN"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_SERVICES_DESIRED_STOPPED",
+      "UI_SERVICES_STATUS_STOPPED"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
@@ -370,34 +533,25 @@
   {
     "lang": "it",
     "keys": [
-      "UI_BUILDS_COL_STATUS",
-      "UI_VIRT_STATUS"
+      "UI_SERVICES_LRE_FEATURE_INVALID",
+      "UI_VIRT_STATUS_INVALID"
+    ],
+    "reason": "same rendered label or status; distinct typed UI contexts"
+  },
+  {
+    "lang": "it",
+    "keys": [
+      "UI_SERVICES_NOT_INSTALLED",
+      "UI_SERVICES_STATUS_MISSING"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   },
   {
     "lang": "it",
     "keys": [
-      "MSG_BTN_YES",
-      "UI_BUILDS_YES"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "it",
-    "keys": [
-      "UI_CHANGE_COL_KIND",
-      "UI_CHANGE_FILTER_KIND"
-    ],
-    "reason": "same rendered text; keys retained because callers and UI contexts differ"
-  },
-  {
-    "lang": "it",
-    "keys": [
-      "MSG_CHAT_ROLE_USER",
-      "UI_SERVICES_SCOPE_USER"
+      "UI_SERVICES_PAGE_TITLE",
+      "UI_SERVICES_TITLE"
     ],
     "reason": "same rendered text; keys retained because callers and UI contexts differ"
   }
 ]
-

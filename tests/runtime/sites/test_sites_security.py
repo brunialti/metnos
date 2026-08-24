@@ -4875,7 +4875,7 @@ def test_nested_login_gate_resumes_executor_tail_without_reopening_site(
     assert callback["tail_final_message"] == "${step3.@table}"
 
 
-def test_gate_for_different_approve_executor_keeps_full_engine_resume(
+def test_planner_approval_executes_the_declared_branch_without_replanning(
         monkeypatch):
     from engine import dispatch as dispatch
     from engine.types import Framework, RunResult, StepRun, StepSpec
@@ -4900,7 +4900,12 @@ def test_gate_for_different_approve_executor_keeps_full_engine_resume(
     dispatch._inject_gate_resume_if_paused(
         run, "invia messaggio", {"actor": "alice", "owner_user_id": "alice-id"}, framework=framework)
 
-    assert saved["on_complete"]["type"] == "resume_engine_gate"
+    callback = saved["on_complete"]
+    assert callback["type"] == "resume_executor_gate_tail"
+    assert callback["gate_on_approve"] == {
+        "tool": "send_messages", "args": {},
+    }
+    assert callback["tail_steps"] == []
 
 
 def test_sites_guard_wires_open_before_act():

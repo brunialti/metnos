@@ -3,9 +3,9 @@ role: intent_extractor
 tier: fast
 lang: it
 style: definitional
-version: 5
+version: 6
 owner: roberto
-updated: 2026-06-24
+updated: 2026-08-24
 sha_prev: 8e858375
 --- #}
 {# scaffold (hybrid, gate METNOS_INTENT_SCAFFOLD): testa = v4 (confini SoT +
@@ -158,7 +158,8 @@ contenitore), altrimenti e' l'elemento.
 "crea la cartella" → dirs (azione sul contenitore stesso).
 
 COMPOSTO — la richiesta è GIÀ stata divisa in SEGMENTI numerati (vedi «Segmenti»
-in fondo). Produci un JSON con UNA chiave "clauses" = lista ordinata, UN oggetto
+in fondo). Questa pipeline contiene azioni per costruzione. Produci un JSON con
+`kind` = `action` e "clauses" = lista ordinata, UN oggetto
 per segmento, nello stesso ordine. Ogni oggetto:
   {"n": <numero del segmento>, "ref": <clausola con l'antecedente sostituito>,
    "verb": <uno dei verbi>, "object": <uno degli oggetti>}
@@ -196,7 +197,7 @@ Segmenti: 1. salva le foto in /tmp  2. comprimile  3. inviamele
    {"n":2,"ref":"comprimi LE FOTO","verb":"compress","object":"files"},
    {"n":3,"ref":"invia LE FOTO (archivio) a me","verb":"send","object":"messages"}]}
 
-Rispondi SOLO col JSON {"clauses":[…]}, niente prosa.
+Rispondi SOLO col JSON {"kind":"action","clauses":[…]}, niente prosa.
 
 Segmenti:
 {{ segments_block }}

@@ -43,6 +43,7 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "sites.action_reduce": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "images.search_rerank": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "tutor.mode": WorkloadContract("fast", "micro", "micro_decision", "label"),
+    "tutor.obligations": WorkloadContract("fast", "micro", "micro_decision", "json"),
     "entries.describe.map": WorkloadContract("fast", "micro", "micro_decision", "text"),
     "entries.describe.small": WorkloadContract("fast", "micro", "micro_decision", "text"),
     "entries.classify.small": WorkloadContract("fast", "micro", "micro_decision", "json"),

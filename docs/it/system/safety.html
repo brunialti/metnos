@@ -4,7 +4,7 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width, initial-scale=1">
  <title>Metnos &mdash; Safety</title>
- <meta name="description" content="Come le firme di safety ammettono, subordinano a conferma o bloccano i comandi in Metnos.">
+ <meta name="description" content="Come le firme di safety ammettono i comandi, ne richiedono la conferma o li bloccano in Metnos.">
  <link rel="canonical" href="https://metnos.com/it/system/safety">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/safety">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/safety">
@@ -21,9 +21,9 @@ decisione non è affidata a un modello linguistico.</p>
 
 <h2 id="firme">Che cos'è una firma</h2>
 
-<p>Una firma descrive la forma di un comando, per esempio binario, azione e tipo
+<p>Una firma descrive la forma di un comando, per esempio programma eseguito, azione e tipo
 di bersaglio. Il simbolo <code>*</code> rappresenta una parte ammessa come
-variabile. La canonicalizzazione evita che differenze cosmetiche o argomenti
+variabile. La canonicalizzazione evita che differenze puramente formali o argomenti
 fuori posizione aggirino il controllo.</p>
 
 <table>
@@ -38,14 +38,14 @@ fuori posizione aggirino il controllo.</p>
 
 <p>Il controllo applica prima i divieti più forti. La severità descrive la
 conseguenza potenziale, mentre l'origine distingue regole distribuite, curate
-dall'utente o maturate dal processo previsto. Il conteggio degli usi aiuta a
-revisionare le regole, ma non trasforma da solo un divieto assoluto in un
+dall'utente o acquisite secondo il processo previsto. Il conteggio degli usi aiuta a
+riesaminare le regole, ma non trasforma da solo un divieto assoluto in un
 permesso.</p>
 
 <h2 id="confini">Safety, autorità e conferma</h2>
 
-<p>Una firma in whitelist non concede da sola l'autorità a un utente. Prima
-restano validi identità, ruolo, autonomia, proprietario, policy dell'executor e
+<p>Una firma in whitelist non concede da sola autorità a un utente. Continuano
+ad applicarsi identità, ruolo, autonomia, proprietario, policy dell'executor e
 ambito della sorgente. La firma risponde a una domanda più circoscritta: quella
 forma di comando è ammessa, richiede conferma o deve essere fermata?</p>
 
@@ -65,7 +65,7 @@ più specifica e riesamina il bersaglio reale.</p>
 
 <figure class="ui-guide">
  <div class="ui-shot-frame">
-  <img src="/assets/images/system-safety-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale Safety della HTTP UI, con guida alle classi, filtri e tabella delle firme.">
+  <img src="/assets/images/system-safety-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale Safety dell'interfaccia web, con guida alle classi, filtri e tabella delle firme.">
   <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
   <span class="ui-badge" style="--x:49%;--y:13%" aria-hidden="true">2</span>
   <span class="ui-badge" style="--x:42%;--y:31%" aria-hidden="true">3</span>
@@ -75,9 +75,9 @@ più specifica e riesamina il bersaglio reale.</p>
  <figcaption>La pagina accompagna la tabella con una legenda operativa: la classe non va interpretata soltanto dal colore.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>Navigazione.</strong> Safety è una componente distinta da utenti, servizi ed executor.</li>
+ <li><strong>Navigazione.</strong> Safety è un componente distinto da utenti, servizi ed executor.</li>
  <li><strong>Forma canonica.</strong> La guida spiega come viene rappresentato un comando prima del confronto.</li>
- <li><strong>Classi.</strong> Ogni classe dichiara con parole esplicite il proprio effetto.</li>
+ <li><strong>Classi.</strong> Ogni classe dichiara in modo esplicito il proprio effetto.</li>
  <li><strong>Filtri.</strong> Restringono la tabella senza modificare le regole.</li>
  <li><strong>Provenienza.</strong> Firma, classe, severità, origine, usi e data consentono una revisione verificabile.</li>
 </ol>

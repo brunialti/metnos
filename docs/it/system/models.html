@@ -4,7 +4,7 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width, initial-scale=1">
  <title>Metnos &mdash; Modelli</title>
- <meta name="description" content="Come leggere e amministrare LLM, embedding e modello di visione nella HTTP UI di Metnos.">
+ <meta name="description" content="Come consultare e amministrare LLM, modelli di embedding e modelli di visione nell'interfaccia web di Metnos.">
  <link rel="canonical" href="https://metnos.com/it/system/models">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/models">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/models">
@@ -14,21 +14,22 @@
 <body>
 <h1>Modelli</h1>
 
-<p class="lead">Metnos non affida ogni richiesta a un modello scelto per nome.
-Usa contratti funzionali: il lavoro dichiara il tipo di capacità necessario e
-la configurazione dell'istanza risolve quel contratto nel modello e nel
-fornitore effettivi. In questo modo il codice resta indipendente da uno specifico
-modello e le sostituzioni sono controllabili.</p>
+<p class="lead">Metnos assegna le richieste in base a contratti funzionali, non
+al nome di uno specifico modello. Ogni attività dichiara la capacità di cui ha
+bisogno; la configurazione dell'istanza associa quindi quel contratto a un
+modello e a un fornitore effettivamente disponibili. Il codice rimane così
+indipendente dalle singole implementazioni e ogni sostituzione può essere
+controllata.</p>
 
 <h2 id="famiglie">Tre famiglie, compiti diversi</h2>
 
 <dl>
  <dt><strong>Modelli linguistici (LLM)</strong></dt>
  <dd>Comprendono, classificano, pianificano o generano testo. Sono organizzati in livelli funzionali; più livelli possono usare lo stesso modello fisico con parametri differenti.</dd>
- <dt><strong>Embedding</strong></dt>
- <dd>Trasforma testi o immagini in vettori confrontabili, usati per ricerca semantica, memoria e Tutor. La HTTP UI lo mostra ma non lo modifica.</dd>
- <dt><strong>Modello di visione (VLM)</strong></dt>
- <dd>Legge il contenuto delle immagini quando un executor ammesso ne ha bisogno. Configurazione, limiti e tempi sono separati da quelli degli LLM.</dd>
+ <dt><strong>Modelli di embedding</strong></dt>
+ <dd>Trasformano testi o immagini in vettori confrontabili, impiegati nella ricerca semantica, nella memoria e nel Tutor. L'interfaccia web ne mostra la configurazione, ma non consente di modificarla.</dd>
+ <dt><strong>Modelli di visione (VLM)</strong></dt>
+ <dd>Interpretano il contenuto delle immagini quando un executor ammesso ne ha bisogno. Configurazione, limiti e tempi rimangono distinti da quelli degli LLM.</dd>
 </dl>
 
 <h2 id="livelli">I livelli linguistici</h2>
@@ -40,36 +41,36 @@ modello e le sostituzioni sono controllabili.</p>
   <tr><td><code>fast.procedural</code></td><td>Estrazione e classificazione deterministiche su testo breve, quando configurato.</td></tr>
   <tr><td><code>fast.fidelity</code></td><td>Trasformazioni fedeli di testi lunghi, senza aggiunte creative.</td></tr>
   <tr><td><code>middle</code></td><td>Classificazione, estrazione strutturata e valutazioni intermedie.</td></tr>
-  <tr><td><code>wise</code></td><td>Pianificazione, sintesi e lavori deliberativi in cui conta la qualità complessiva.</td></tr>
-  <tr><td><code>creative</code></td><td>Varianti, proposte e formulazioni divergenti; è il solo livello che ammette intenzionalmente maggiore varietà.</td></tr>
+  <tr><td><code>wise</code></td><td>Pianificazione, sintesi e lavori deliberativi per i quali è prioritaria la qualità complessiva.</td></tr>
+  <tr><td><code>creative</code></td><td>Varianti, proposte e formulazioni esplorative; è il solo livello che ammette intenzionalmente una maggiore varietà.</td></tr>
   <tr><td><code>frontier</code></td><td>Ricorso esplicito e facoltativo a un modello remoto di massima capacità, mai scelto silenziosamente per un lavoro ordinario.</td></tr>
  </tbody>
 </table>
 
-<p>Il livello <code>creative</code> non significa «più preciso»: serve a produrre
+<p>Il livello <code>creative</code> non equivale a una maggiore precisione: serve a produrre
 alternative. Per attività fedeli o verificabili Metnos preferisce contratti a
-bassa variabilità. Il livello <code>frontier</code> può comportare consumo esterno
-e richiede una configurazione esplicita.</p>
+bassa variabilità. Il livello <code>frontier</code> può comportare l'uso di risorse
+esterne e richiede una configurazione esplicita.</p>
 
 <h2 id="modifica">Che cosa si può modificare</h2>
 
 <p>La pagina consente di modificare le configurazioni LLM e VLM e di ripristinare
-la versione precedente. Prima del salvataggio, Metnos convalida struttura e
-valori e conserva una copia di recupero. Password, token, credenziali e parti
-sensibili degli URL non sono mostrati né inviati dai campi del modulo: la UI
-interviene soltanto sui valori visibili.</p>
+la versione precedente. Prima del salvataggio, Metnos convalida la struttura e
+i valori e conserva una copia di recupero. Password, token, credenziali e
+segmenti sensibili degli URL non vengono esposti né trasmessi attraverso i campi
+del modulo: l'interfaccia interviene soltanto sui valori visibili.</p>
 
-<p>Modificare un modello non amplia l'autorità di Metnos. Gli executor, la
+<p>Modificare un modello non accresce l'autorità di Metnos. Gli executor, la
 policy, l'identità dell'utente e gli eventuali budget continuano a decidere se
-un'azione è ammissibile. Nei lavori LRE, inoltre, il collegamento al modello è
-registrato nella revisione: un cambio incompatibile non deve mescolare
+un'azione sia ammissibile. Nei lavori LRE, inoltre, l'associazione al modello è
+registrata nella revisione: una variazione incompatibile non deve mescolare
 silenziosamente risultati prodotti con configurazioni diverse.</p>
 
 <h2 id="schermata">La schermata Modelli</h2>
 
 <figure class="ui-guide">
  <div class="ui-shot-frame">
-  <img src="/assets/images/system-models-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale della configurazione dei modelli nella HTTP UI di Metnos.">
+  <img src="/assets/images/system-models-ui-it.png" width="1440" height="1000" loading="lazy" decoding="async" alt="Schermata reale della configurazione dei modelli nell'interfaccia web di Metnos.">
   <span class="ui-badge" style="--x:8%;--y:50%" aria-hidden="true">1</span>
   <span class="ui-badge" style="--x:88%;--y:7%" aria-hidden="true">2</span>
   <span class="ui-badge" style="--x:55%;--y:24%" aria-hidden="true">3</span>
@@ -79,13 +80,13 @@ silenziosamente risultati prodotti con configurazioni diverse.</p>
  <figcaption>La schermata mostra la configurazione effettiva, non un catalogo promozionale di modelli.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>Navigazione.</strong> “Modelli” si trova in Settings, sotto Sistema.</li>
+ <li><strong>Navigazione.</strong> La pagina <strong>Modelli</strong> si trova in Settings, sotto Sistema.</li>
  <li><strong>Rilettura.</strong> Ricarica dai file la configurazione effettiva dopo una modifica esterna controllata.</li>
- <li><strong>Protezione dei segreti.</strong> Ricorda quali dati non vengono mai esposti dal modulo.</li>
- <li><strong>Modifica e ripristino.</strong> Agiscono sulla famiglia ammessa e conservano una via di recupero.</li>
- <li><strong>Schede dei livelli.</strong> Mostrano collegamento, fornitore, modello e parametri realmente risolti.</li>
+ <li><strong>Protezione dei segreti.</strong> Indica quali dati non vengono mai esposti dal modulo.</li>
+ <li><strong>Modifica e ripristino.</strong> I comandi operano sulla famiglia ammessa e conservano una via di recupero.</li>
+ <li><strong>Schede dei livelli.</strong> Mostrano associazione, fornitore, modello e parametri effettivamente risolti.</li>
 </ol>
-<p class="ui-privacy-note">Il percorso locale è abbreviato nell'immagine; la struttura e le etichette provengono dalla HTTP UI reale.</p>
+<p class="ui-privacy-note">Il percorso locale è abbreviato nell'immagine; la struttura e le etichette provengono dall'interfaccia web reale.</p>
 
 </body>
 </html>

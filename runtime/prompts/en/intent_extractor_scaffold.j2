@@ -3,9 +3,9 @@ role: intent_extractor
 tier: fast
 lang: en
 style: definitional
-version: 5
+version: 6
 owner: roberto
-updated: 2026-06-24
+updated: 2026-08-24
 sha_prev: 8e858375
 --- #}
 {# scaffold (hybrid, gate METNOS_INTENT_SCAFFOLD): testa = v4 (confini SoT +
@@ -153,7 +153,8 @@ container), otherwise it is the element.
 "create folder" → dirs (action on the container itself).
 
 COMPOUND — the request has ALREADY been divided into NUMBERED SEGMENTS (see «Segments»
-at the bottom). Produce a JSON with ONE key "clauses" = ordered list, ONE object
+at the bottom). This pipeline contains actions by construction. Produce a JSON
+with `kind` = `action` and "clauses" = ordered list, ONE object
 per segment, in the same order. Each object:
   {"n": <segment number>, "ref": <clause with antecedent replaced>,
    "verb": <one of the verbs>, "object": <one of the objects>}
@@ -191,7 +192,7 @@ Segments: 1. save photos to /tmp 2. compress them 3. send them to me
    {"n":2,"ref":"compress THE PHOTOS","verb":"compress","object":"files"},
    {"n":3,"ref":"send THE PHOTOS (archive) to me","verb":"send","object":"messages"}]}
 
-Respond ONLY with JSON {"clauses":[…]}, no prose.
+Respond ONLY with JSON {"kind":"action","clauses":[…]}, no prose.
 
 Segments:
 {{ segments_block }}

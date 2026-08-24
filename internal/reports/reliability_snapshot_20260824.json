@@ -1,0 +1,106 @@
+{
+  "coverage_gaps": [
+    "client-side UI failures are not represented by server turn records",
+    "orphaned live sessions require a separate lifecycle source",
+    "external dependency causes require an explicit executor error origin"
+  ],
+  "domains": {
+    "answer": 39,
+    "approval": 5,
+    "calendars": 1,
+    "contacts": 1,
+    "conversation": 449,
+    "credentials": 35,
+    "dirs": 58,
+    "entries": 76,
+    "events": 17,
+    "files": 255,
+    "images": 92,
+    "inputs": 47,
+    "issues": 54,
+    "last": 28,
+    "location": 39,
+    "lre": 2,
+    "messages": 34,
+    "multi-domain": 1295,
+    "new": 1,
+    "now": 94,
+    "numbers": 1,
+    "packages": 88,
+    "persons": 20,
+    "places": 45,
+    "preferences": 35,
+    "processes": 157,
+    "proposals": 84,
+    "session": 1,
+    "signatures": 1,
+    "sites": 231,
+    "skills": 1,
+    "tasks": 4,
+    "urls": 53
+  },
+  "failure_origins": {
+    "executor": 592,
+    "none": 2449,
+    "planning": 183,
+    "runtime": 119
+  },
+  "flags": {
+    "false_success": 120,
+    "timeout": 10
+  },
+  "generated_at": "2026-08-24T09:51:11.407965Z",
+  "latency_p95_ms_by_domain": {
+    "answer": 43,
+    "approval": 6661,
+    "calendars": 3933,
+    "contacts": 3476,
+    "conversation": 30328,
+    "credentials": 21797,
+    "dirs": 17190,
+    "entries": 36726,
+    "events": 8788,
+    "files": 77056,
+    "images": 22154,
+    "inputs": 25425,
+    "issues": 25071,
+    "last": 8793,
+    "location": 13855,
+    "lre": 22580,
+    "messages": 29925,
+    "multi-domain": 64298,
+    "new": 254297,
+    "now": 6879,
+    "numbers": 5606,
+    "packages": 35695,
+    "persons": 7445,
+    "places": 13030,
+    "preferences": 15536,
+    "processes": 23694,
+    "proposals": 32563,
+    "session": 16878,
+    "signatures": 19536,
+    "sites": 76417,
+    "skills": 4733,
+    "tasks": 17985,
+    "urls": 146867
+  },
+  "outcomes": {
+    "awaiting_input": 273,
+    "completed": 2149,
+    "failed": 683,
+    "partial": 238
+  },
+  "rates": {
+    "completion": 0.7,
+    "eligible": 3070
+  },
+  "records": {
+    "accepted": 3343,
+    "malformed": 12
+  },
+  "schema_version": "metnos.reliability-snapshot/1",
+  "versions": {
+    "pre-telemetry": 3343
+  }
+}

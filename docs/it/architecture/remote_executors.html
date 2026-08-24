@@ -278,7 +278,7 @@ garanzie e uno schema del bivio server / PC.
     </div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Elenca la cartella Documenti sul mio <b>portatile-ufficio</b></div></div>
-    <div class="rx-route">&#128256; riconosciuto il dispositivo <b>PORTATILE-UFFICIO</b> &rarr; instrado e da ora è la destinazione</div>
+    <div class="rx-route">&#128256; riconosciuto il dispositivo <b>PORTATILE-UFFICIO</b> &rarr; instrado e lo ricordo per il seguito immediato</div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-device">&#128187; PORTATILE-UFFICIO</span>
      <div class="rx-bubble">Su <b>PORTATILE-UFFICIO</b>, in <b>Documenti</b>:
@@ -292,7 +292,7 @@ bilancio.xlsx   88 KB</div>
     <div class="rx-destnow">&#128205; destinazione ora: PORTATILE-UFFICIO</div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Comprimila in zip</div></div>
-    <div class="rx-sticky">&#8627; nessun PC nominato &rarr; resta l'ultima destinazione: <b>PORTATILE-UFFICIO</b></div>
+    <div class="rx-sticky">&#8627; seguito immediato nella stessa conversazione &rarr; riuso <b>PORTATILE-UFFICIO</b></div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-device">&#128187; PORTATILE-UFFICIO</span>
      <div class="rx-bubble">Fatto sul portatile: creato <b>Documenti.zip</b> (1,2 MB) accanto alla cartella.</div>
@@ -323,16 +323,16 @@ bilancio.xlsx   88 KB</div>
    <div class="rx-step"><div class="rx-n">1</div><div class="rx-t">
     <b>Chi sei</b> <span>&mdash; la chat è autenticata: Metnos conosce l'utente (l'attore) e i PC che gli appartengono.</span></div></div>
    <div class="rx-step"><div class="rx-n">2</div><div class="rx-t">
-    <b>Quale PC</b> <span>&mdash; dal <em>nome</em> del dispositivo citato nella richiesta, ancorato a una preposizione di luogo (&laquo;sul portatile-ufficio&raquo;). Se non nomini nulla, <b>resta l'ultima destinazione</b>; al primo turno è il server.</span></div></div>
+    <b>Quale PC</b> <span>&mdash; dal <em>nome</em> del dispositivo citato nella richiesta, ancorato a una preposizione di luogo (&laquo;sul portatile-ufficio&raquo;). Un seguito immediato può riusare la destinazione osservata nella stessa conversazione; il contesto poi scade.</span></div></div>
    <div class="rx-step"><div class="rx-n">3</div><div class="rx-t">
     <b>Etichetta e instrada</b> <span>&mdash; il turno è etichettato col dispositivo risolto; la destinazione corrente è sempre visibile in cima alla chat.</span></div></div>
    <div class="rx-safe">
-    <b>Il server è la destinazione iniziale</b> e ci torni quando vuoi con &laquo;sul server&raquo; o &laquo;qui&raquo;.
-    Solo un riferimento a un tuo PC (o l'ultima destinazione, che resta appiccicosa) sposta l'esecuzione.
+    <b>Il server è la destinazione iniziale</b> e ci torni quando vuoi con &laquo;sul server&raquo;.
+    La memoria di un PC non è permanente: è separata per utente e conversazione, dura soltanto il tempo previsto per un seguito e viene aggiornata in base alla macchina che ha eseguito davvero l'azione.
    </div>
    <div class="rx-safe rx-warn">
     <b>Prima di ogni invio, Metnos verifica che il PC sia connesso.</b> Se il bersaglio &mdash; nominato o
-    l'ultima destinazione &mdash; non risponde (battito oltre un minuto), Metnos lo dice
+    conservato dal seguito immediato &mdash; non risponde (battito oltre un minuto), Metnos lo dice
     (&laquo;dispositivo non connesso&raquo;) e non esegue altrove di nascosto.
    </div>
    <figure class="rx-fig">
@@ -343,18 +343,18 @@ bilancio.xlsx   88 KB</div>
      <text x="51" y="114" text-anchor="middle" fill="#5b6675">(utente noto)</text>
      <rect x="126" y="78" width="90" height="50" rx="9" fill="#fff" stroke="#1A477A"/>
      <text x="171" y="97" text-anchor="middle" fill="#1A477A" font-weight="600">Metnos</text>
-     <text x="171" y="112" text-anchor="middle" fill="#5b6675">nome? o ultima?</text>
+     <text x="171" y="112" text-anchor="middle" fill="#5b6675">nome? o seguito?</text>
      <rect x="246" y="18" width="86" height="42" rx="9" fill="#eef0f3" stroke="#cfd6df"/>
      <text x="289" y="36" text-anchor="middle" fill="#4a5568" font-weight="600">&#128421; server</text>
      <text x="289" y="50" text-anchor="middle" fill="#5b6675">(iniziale)</text>
      <rect x="246" y="146" width="86" height="42" rx="9" fill="#e8effa" stroke="#bcd2f0"/>
      <text x="289" y="164" text-anchor="middle" fill="#1A477A" font-weight="600">&#128187; tuo PC</text>
-     <text x="289" y="178" text-anchor="middle" fill="#5b6675">(nominato/ultimo)</text>
+     <text x="289" y="178" text-anchor="middle" fill="#5b6675">(nominato/recente)</text>
      <line x1="94" y1="103" x2="122" y2="103" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
      <line x1="216" y1="92" x2="243" y2="48" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
      <line x1="216" y1="114" x2="243" y2="160" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
     </svg>
-    <div class="rx-cap">La stessa richiesta va sul server o su un tuo PC a seconda del nome citato &mdash; o dell'ultima destinazione.</div>
+    <div class="rx-cap">La richiesta va sul server o su un tuo PC in base al nome citato e, per un seguito immediato, alla destinazione realmente usata poco prima.</div>
    </figure>
    <div class="rx-legend">
     <i><span class="rx-sw" style="background:#eef0f3;border:1px solid #cfd6df"></span> eseguito sul server</i>
@@ -373,6 +373,12 @@ confrontato con i nomi reali dei tuoi PC associati &mdash; e non l'impronta dell
 rete. Un nome citato a met&agrave; frase, senza una
 preposizione di luogo che lo ancori, non sposta la destinazione.
 </p>
+
+<p><strong>Durata del contesto.</strong> La destinazione ricordata serve a capire
+richieste ellittiche ravvicinate come &laquo;comprimila&raquo;. Non è una preferenza
+permanente: appartiene a una sola conversazione, scade dopo una finestra breve
+e viene riportata al server quando il turno viene eseguito interamente lì. Le
+risposte che non eseguono alcun executor non cambiano questo contesto.</p>
 
 <h2 id="installazione">4. Installazione dall'interfaccia</h2>
 

@@ -18,6 +18,11 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Intent:
+    # Classe language-neutral prodotta dal classificatore chiuso.  ``unknown``
+    # conserva il fallback prudente storico; ``conversation`` e
+    # ``metnos_help`` impediscono invece al planner di inventare un'azione.
+    # Il Tutor intercetta normalmente ``metnos_help`` prima del runtime.
+    kind: str = "unknown"
     verb: str = ""
     object: str = ""
     keywords: list[str] = field(default_factory=list)

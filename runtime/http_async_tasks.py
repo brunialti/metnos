@@ -1,7 +1,7 @@
-"""http_async_tasks — task asincroni del daemon HTTP per build indici
+"""Task asincroni periodici e best-effort del daemon HTTP.
 (ADR 0093, 6/5/2026).
 
-Tre task on_startup:
+Task on_startup:
   1. progress_healthcheck_task — ogni 30s, kill build stale (>5min senza
      update);
   2. notification_dispatcher_task — ogni 10s, legge marker complete e
@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import build_orchestrator
 from http_app_state import (
     BUILD_DISPATCHER_TASK, BUILD_HEALTHCHECK_TASK, BUILD_SWEEPER_TASK,
-    DIALOG_SWEEPER_TASK, app_get,
+    DIALOG_SWEEPER_TASK, MODEL_IDENTITY_TASK, app_get,
 )
 from logging_setup import get_logger
 import config as _C  # §7.11
@@ -46,6 +46,10 @@ _SWEEPER_INTERVAL_S = float(os.environ.get("METNOS_BUILD_SWEEPER_INTERVAL_S", st
 # Dialog get_inputs scaduti: cadenza 60s (bug pre-esistente: `dialog_pending`
 # sweep "funzione scritta, mai chiamata in produzione" → i file restavano).
 _DIALOG_SWEEP_INTERVAL_S = float(os.environ.get("METNOS_DIALOG_SWEEP_INTERVAL_S", "60"))
+_MODEL_IDENTITY_INTERVAL_S = float(os.environ.get(
+    "METNOS_MODEL_IDENTITY_INTERVAL_S", "60"))
+_MODEL_IDENTITY_TIMEOUT_S = float(os.environ.get(
+    "METNOS_MODEL_IDENTITY_TIMEOUT_S", "1.5"))
 _STALE_THRESHOLD_S = float(os.environ.get("METNOS_BUILD_STALE_S", "300"))
 _TMP_MAX_AGE_S = float(os.environ.get("METNOS_BUILD_TMP_MAX_AGE_S", str(7 * 86400)))
 _ARCHIVE_MAX_AGE_S = float(os.environ.get("METNOS_BUILD_ARCHIVE_MAX_AGE_S", str(30 * 86400)))
@@ -312,6 +316,29 @@ async def dialog_sweeper_task(app) -> None:
             log.exception("dialog_sweeper tick error")
 
 
+# --- Task 5: observed model identity ---------------------------------------
+
+async def model_identity_task(app) -> None:
+    """Refresh provider-advertised model identities outside HTTP rendering."""
+
+    log.info("model_identity started (interval=%.0fs)",
+             _MODEL_IDENTITY_INTERVAL_S)
+    while True:
+        try:
+            from model_identity import refresh_configured
+
+            result = await asyncio.to_thread(
+                refresh_configured, timeout_s=_MODEL_IDENTITY_TIMEOUT_S)
+            log.debug("model_identity refresh: %s", result)
+            await asyncio.sleep(_MODEL_IDENTITY_INTERVAL_S)
+        except asyncio.CancelledError:
+            log.info("model_identity cancelled")
+            return
+        except Exception:
+            log.exception("model_identity tick error")
+            await asyncio.sleep(_MODEL_IDENTITY_INTERVAL_S)
+
+
 # --- registrazione lifecycle ------------------------------------------------
 
 def register_async_tasks(app) -> None:
@@ -329,10 +356,14 @@ def register_async_tasks(app) -> None:
         app[DIALOG_SWEEPER_TASK] = asyncio.create_task(
             dialog_sweeper_task(app)
         )
+        app[MODEL_IDENTITY_TASK] = asyncio.create_task(
+            model_identity_task(app)
+        )
 
     async def _stop_tasks(app):
         for key in (BUILD_HEALTHCHECK_TASK, BUILD_DISPATCHER_TASK,
-                    BUILD_SWEEPER_TASK, DIALOG_SWEEPER_TASK):
+                    BUILD_SWEEPER_TASK, DIALOG_SWEEPER_TASK,
+                    MODEL_IDENTITY_TASK):
             t = app_get(app, key)
             if t is not None:
                 t.cancel()

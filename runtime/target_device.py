@@ -25,6 +25,7 @@ i NOMI device sono dato, non lessico, quindi language-agnostic.
 from __future__ import annotations
 
 import re
+import socket
 from dataclasses import dataclass, field
 
 SERVER = "server"
@@ -98,6 +99,53 @@ def _find_marker(qn: str, markers) -> str | None:
     for m in markers:
         if re.search(r"(?<![a-z0-9])" + re.escape(m) + r"(?![a-z0-9])", qn):
             return m
+    return None
+
+
+def _server_aliases(values=None) -> tuple[str, ...]:
+    """Return validated instance aliases; identity data, never query rules."""
+
+    if values is None:
+        import config as _C
+        values = [*_C.SERVER_ALIASES, socket.gethostname()]
+    aliases = []
+    for raw in values or ():
+        value = _norm(str(raw or ""))
+        if (1 <= len(value) <= 64 and "\x00" not in value
+                and value not in aliases):
+            aliases.append(value)
+    return tuple(aliases)
+
+
+def _has_machine_focus(query: str) -> bool:
+    """Whether the request asks about machine state or hardware.
+
+    The natural-language surface comes from the versioned detection catalog;
+    aliases themselves are instance identity. This keeps the algorithm valid
+    for any installed language and any server name.
+    """
+
+    try:
+        import detection_lexicon as _detlex
+        if _detlex.match("system.status_query", query):
+            return True
+        focus = _detlex.mapping("health.section_focus") or {}
+        return any(
+            _detlex.match_any(forms, query)
+            for forms in focus.values()
+            if isinstance(forms, list)
+        )
+    except Exception:
+        return False
+
+
+def _find_server_alias(query: str, aliases) -> str | None:
+    for alias in _server_aliases(aliases):
+        if re.search(
+            r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])",
+            query,
+        ):
+            return alias
     return None
 
 
@@ -197,6 +245,7 @@ def resolve_target(query: str,
                    devices: list,
                    *,
                    last_target: str | None = None,
+                   server_aliases=None,
                    is_available=None,
                    now=None) -> TargetResolution:
     """Risolvi il PC bersaglio.
@@ -273,6 +322,17 @@ def resolve_target(query: str,
         res.candidates = [(d.id, getattr(d, "name", "")) for d in avail]
         return res
 
+    # --- Identita' debole del server ---
+    # Un alias nudo (per esempio il nome dell'istanza o il suo hostname) e'
+    # destinazione soltanto in una domanda sulla macchina. Un device espresso
+    # con sintassi esplicita e i marcatori locali sono gia' stati risolti sopra:
+    # quindi «installa <nome-prodotto> sul PC-X» non viene dirottato al server.
+    if _has_machine_focus(qn) and _find_server_alias(qn, server_aliases):
+        res.target = SERVER
+        res.device_name = None
+        res.explicit = True
+        return res
+
     # --- Nessun segnale: destinazione appiccicosa, poi server ---
     if last_target and last_target != SERVER:
         dev = next((d for d in devices if d.id == last_target), None)
@@ -306,7 +366,7 @@ def resolve_target(query: str,
     return res
 
 
-def references_device(query: str, devices: list) -> bool:
+def references_device(query: str, devices: list, *, server_aliases=None) -> bool:
     """True se la query cita ESPLICITAMENTE una destinazione (nome device
     ancorato, marcatore locale, marcatore server). Usato PRIMA del fast_path
     lessicale (target-blind) per saltarlo: una query che nomina un PC deve
@@ -319,6 +379,8 @@ def references_device(query: str, devices: list) -> bool:
     if _find_marker(qn, _LOCAL_MARKERS):
         return True
     if devices and _find_named_device(qn, devices):
+        return True
+    if _has_machine_focus(qn) and _find_server_alias(qn, server_aliases):
         return True
     return False
 

@@ -84,7 +84,7 @@ def _markdown(report: dict) -> str:
         f"- Profile: `{report['profile']}`",
         f"- Result: `{'green' if report['ok'] else 'red'}`",
         f"- Generated: `{report['generated_at']}`",
-        "- Live cutover performed: `false`",
+        "- Live ownership observed by this isolated gate: `false`",
         "",
         "| Cycle | Result | Passed | Duration ms |",
         "|---:|---|---:|---:|",
@@ -98,8 +98,8 @@ def _markdown(report: dict) -> str:
         "",
         "The isolated profile validates unit semantics, composite readiness,",
         "fresh/upgrade behavior, two-cycle pilot evidence, rollback and guarded",
-        "cutover failure recovery. It does not claim that the live legacy HTTP",
-        "service has already been migrated.",
+        "cutover failure recovery. It neither inspects nor changes live service",
+        "ownership; that evidence belongs to `stack_live.*`.",
         "",
     ]
     return "\n".join(lines)
@@ -115,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
         "profile": "isolated-systemd-contract",
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "ok": all(row["ok"] for row in cycles),
-        "live_cutover_performed": False,
+        "live_cutover_performed": None,
+        "live_ownership_observed": False,
         "coverage": [
             "composite_health", "catalog_parity", "fingerprint",
             "quiescence", "bounded_watchdog", "fresh_install",

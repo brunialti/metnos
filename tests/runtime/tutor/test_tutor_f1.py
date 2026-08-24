@@ -779,6 +779,49 @@ def test_manifest_composition_scope_uses_only_explicit_source_neighbourhood():
     assert len(coverage["tools"]) == 1
 
 
+def test_document_composition_scope_stays_inside_authored_document():
+    from dataclasses import replace
+
+    from tutor.service import _coherent_manifest_scope
+
+    primary = replace(
+        _knowledge_unit(
+            unit_id="doc-policy-it-0001", concept_id="doc-policy-0001",
+            text="A comparative policy explanation.",
+        ),
+        source_kind="manual", authority="published_documentation",
+        source_ref="docs/it/policy.html#1",
+    )
+    sibling = replace(
+        primary,
+        unit_id="doc-policy-it-0002", concept_id="doc-policy-0002",
+        source_ref="docs/it/policy.html#2",
+        text="The adjacent part of the same explanation.",
+    )
+    other_document = replace(
+        primary,
+        unit_id="doc-changes-it-0001", concept_id="doc-changes-0001",
+        source_ref="docs/it/changes.html#1",
+        text="A different procedure.",
+    )
+    manifest = replace(
+        primary,
+        unit_id="executor-write-it", concept_id="executor-write",
+        source_kind="executor_manifest", authority="admitted_manifest",
+        source_ref="manifest:write_items:it",
+    )
+    hits = tuple(SourceHit(
+        source_type="knowledge", source_id=unit.unit_id, lang="it",
+        score=1.0, unit=unit,
+    ) for unit in (primary, other_document, manifest, sibling))
+
+    scoped = _coherent_manifest_scope(hits, hits[0])
+
+    assert tuple(hit.source_id for hit in scoped) == (
+        primary.unit_id, sibling.unit_id,
+    )
+
+
 def test_f2_expands_adjacent_sections_of_a_selected_document():
     from tutor.catalog import VectorIndex
 

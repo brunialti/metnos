@@ -1,78 +1,77 @@
 {
   "schema_version": 1,
-  "profile": "live-legacy-host-with-integrated-health",
-  "generated_at": "2026-07-18T21:19:57Z",
+  "profile": "live-integrated-user-target",
+  "generated_at": "2026-08-24T11:39:47Z",
   "ok": true,
-  "live_cutover_performed": false,
+  "live_cutover_performed": true,
+  "ownership": {
+    "system_http_active": false,
+    "system_http_enabled": false,
+    "user_target_active": true,
+    "user_target_enabled": true
+  },
   "pilot": {
     "ok": true,
     "cycles_completed": 2,
-    "duration_ms": 36531,
+    "duration_ms": 56482,
     "baseline_restored": true,
     "rollback_verified": true,
-    "stack_contract_sha256": "20b4f14bfee1516ae98feee3cad57e4157c8203490162e7521e17910f5117ac2",
+    "stack_contract_sha256": "bf353d431ebbaedfdf1573e69e0e5acfa8f38a46052d38995c62940f53092e6a",
     "host_fingerprint": "33631b19daeb02e1c6cd0a78b4002c703f3aa221b622c43aae7539541ede3b23",
     "cycles": [
       {
         "cycle": 1,
         "ok": true,
-        "readiness": true,
-        "rollback": true,
-        "turn": {
-          "turn_id": "c2801cabbd0041e4",
-          "final_kind": "answer",
-          "successful_steps": 1
-        }
+        "turn_id": "4b5c5a5c15724dee",
+        "successful_steps": 1,
+        "rollback": true
       },
       {
         "cycle": 2,
         "ok": true,
-        "readiness": true,
-        "rollback": true,
-        "turn": {
-          "turn_id": "1f50d0d6e4d148e3",
-          "final_kind": "answer",
-          "successful_steps": 1
-        }
+        "turn_id": "1259e4909212412e",
+        "successful_steps": 1,
+        "rollback": true
       }
     ]
   },
-  "post_pilot": {
-    "system_http_active": true,
-    "user_http_active": false,
-    "target_active": false,
-    "playwright_active": true,
-    "side_display_active": true,
-    "issues_sidecar_active": true,
-    "i18n_timer_active": true,
-    "ready": true,
-    "quiescent": true,
-    "catalog_count": 112,
-    "active_turns": 0,
-    "active_sessions": 0,
-    "approval_pending_sessions": 0,
-    "factor_pending_sessions": 0,
-    "pending_opens": 0,
-    "contract_aligned": true,
-    "playwright_fingerprint": "metnos.playwright/1:33be7f1a2bc9fa063e6531aeee396bf6959f53b69f6d7851812b89b52c8ff99c"
+  "cutover": {
+    "ok": true,
+    "turn_id": "0ecb5e2e71de477c",
+    "successful_steps": 1,
+    "readiness": true,
+    "catalog_count": 122,
+    "quiescent": true
   },
-  "companion_gates": {
-    "isolated_cycles": [
-      "112 passed",
-      "112 passed"
-    ],
-    "host_integrated_cycles": [
-      "132 passed",
-      "132 passed"
-    ],
-    "sites_chromium_real": "5 passed",
-    "index_recovery": "139 passed",
-    "executor_signatures": {
-      "total": 83,
-      "valid": 82,
-      "invalid": [
-        "find_places"
-      ]
-    }
+  "post_cutover_gate": {
+    "ok": true,
+    "cycles": [
+      {
+        "cycle": 1,
+        "before_ready": true,
+        "after_ready": true,
+        "turn_id": "5829a75ec666437b",
+        "tool": "get_now"
+      },
+      {
+        "cycle": 2,
+        "before_ready": true,
+        "after_ready": true,
+        "turn_id": "76065e156ef64eb5",
+        "tool": "get_now"
+      }
+    ]
+  },
+  "isolated_gate": {
+    "ok": true,
+    "cycles": ["148 passed", "148 passed"]
+  },
+  "full_suite": {
+    "ok": true,
+    "passed": 7043,
+    "skipped": 101,
+    "subtests_passed": 1166,
+    "warnings": 4,
+    "duration_seconds": 550.66
   }
 }

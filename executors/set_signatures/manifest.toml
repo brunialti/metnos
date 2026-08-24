@@ -28,7 +28,7 @@ input = { signature = "x" }
 expect = { ok = false }
 
 [description]
-it = "SCOPO: imposta o rimuove signature e registra lo stato esatto per l'annullamento, salvo `forbidden`. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolo -> compute_signatures; lettura -> get_signatures. OUT: {signature,kind,removed?,message,_undo}."
+it = "SCOPO: imposta/rimuove signature e registra lo stato per l'annullamento, salvo `forbidden`. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\"). NON: calcolo -> compute_signatures; lettura -> get_signatures. OUT: esito e ricevuta."
 en = "SCOPO: sets or removes signatures and records exact state for undo, except `forbidden`. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; read -> get_signatures. OUT: {signature,kind,removed?,message,_undo}."
 
 [code]

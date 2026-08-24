@@ -92,6 +92,27 @@ Validazione: unit 16/16; turno REALE su device Windows fisico
   estensioni successive e dai test correnti; il report intermedio è stato
   rimosso come documento superato.
 
+## Estensione DEV-001 (24 agosto 2026): contesto breve e collocazione osservata
+
+La destinazione appiccicosa originaria era indicizzata soltanto per canale e
+attore, non scadeva e veniva aggiornata solo da un riferimento esplicito. Una
+scelta remota poteva quindi sopravvivere per giorni e dirottare una domanda
+nuova anche dopo molte esecuzioni locali. I turni `1a07c3b89956446a` e
+`bb35aae21d224835` ne hanno fornito la riproduzione controllata.
+
+La memoria e' ora un contesto breve circoscritto a proprietario, canale, attore
+e conversazione, con TTL configurabile e limitato. Dopo un'esecuzione viene
+aggiornata dalla ricevuta reale: il marcatore remoto conserva il dispositivo,
+mentre un turno risolto ed eseguito interamente sul server la riporta al server.
+Risposte dirette e fallimenti anteriori all'esecuzione non la cambiano.
+
+Gli alias dell'istanza server sono dati configurabili e includono l'hostname
+osservato. Un alias nudo prevale sulla memoria soltanto in una domanda sulla
+salute o sulle caratteristiche della macchina; un dispositivo nominato
+esplicitamente continua a prevalere. Non esistono rami per executor,
+applicazioni o frasi di prova. Specifica e prove:
+`internal/design/dev-001-placement-context-spec-20260824.md`.
+
 ---
 
 ## Estensione (0181-ext, 2026-07-04): rimozione del PLANNER legacy + robustezza motore

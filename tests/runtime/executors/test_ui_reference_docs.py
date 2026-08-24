@@ -98,12 +98,14 @@ def test_ui_reference_teaches_a_natural_request_and_telegram_boundary():
     italian = module.render("it")
     english = module.render("en")
 
-    assert "Chiedi a Metnos con una richiesta come quella di questo esempio" in italian
-    assert "Ask Metnos with a request like this example" in english
+    # Il contratto richiede un esempio naturale riconoscibile, non una formula
+    # editoriale fissa che obblighi tutte le lingue allo stesso calco.
+    assert "«Mostrami quale embedder è configurato" in italian
+    assert "“Show me which embedder is configured" in english
     assert "Settings &gt; Sistema &gt; Modelli" in italian
     assert "Settings &gt; System &gt; Models" in english
-    assert "si apre sempre nella chat web" in italian
-    assert "always opens in the web chat" in english
+    assert "si aprono sempre nel browser" in italian
+    assert "administration paths always open in a browser" in english
 
 
 def test_major_public_docs_link_to_the_ui_reference():

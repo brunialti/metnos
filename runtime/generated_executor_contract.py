@@ -7,6 +7,7 @@ so standard/policy changes are made once and cannot be overridden by LLM text.
 """
 from __future__ import annotations
 
+import re
 import tomllib
 
 from executor_metadata import (
@@ -17,6 +18,14 @@ from executor_standard import STANDARD_ID, SUPPORTED_MANIFEST_FORMAT
 
 
 GENERATED_LIFECYCLES = frozenset({"active", "proposed", "synthesized"})
+GENERATED_TRANSITIONS = frozenset({
+    ("proposed", "active"),
+    ("synthesized", "active"),
+})
+_LIFECYCLE_LINE = re.compile(
+    r'^(?P<prefix>\s*lifecycle\s*=\s*)"(?P<value>[^"]+)"(?P<suffix>\s*(?:#.*)?)$',
+    re.MULTILINE,
+)
 
 
 from manifest_rules import RENDER_BUDGET, render_head
@@ -121,3 +130,46 @@ def validate_generated_manifest_text(
                 "generated list-producing executor must declare "
                 "presentation.default_view='list'")
     return manifest
+
+
+def transition_generated_manifest_text(
+        text: str, *, expected_lifecycle: str,
+        target_lifecycle: str = "active",
+) -> tuple[str, dict]:
+    """Apply one admitted lifecycle transition and validate its target profile.
+
+    This is the single transition authority shared by all generator families.
+    It changes only the root lifecycle declaration, preserves every authored
+    field byte-for-byte, and proves the complete Executor Standard profile
+    before a caller is allowed to write or sign the result.
+    """
+
+    validate_generated_manifest_text(
+        text, expected_lifecycle=expected_lifecycle)
+    transition = (expected_lifecycle, target_lifecycle)
+    if transition not in GENERATED_TRANSITIONS:
+        raise GeneratedContractError(
+            f"unsupported generated lifecycle transition: {transition!r}")
+    matches = list(_LIFECYCLE_LINE.finditer(text))
+    if len(matches) != 1 or matches[0].group("value") != expected_lifecycle:
+        raise GeneratedContractError(
+            "generated manifest must contain one exact root lifecycle declaration")
+    replacement = (
+        f'{matches[0].group("prefix")}"{target_lifecycle}"'
+        f'{matches[0].group("suffix")}')
+    transitioned = (
+        text[:matches[0].start()] + replacement + text[matches[0].end():])
+    try:
+        manifest = tomllib.loads(transitioned)
+    except tomllib.TOMLDecodeError as exc:  # pragma: no cover - guarded above
+        raise GeneratedContractError(
+            f"transitioned manifest is not TOML: {exc}") from exc
+    from executor_standard import validate_for_lifecycle
+
+    findings = validate_for_lifecycle(manifest, require_declaration=True)
+    if findings:
+        summary = "; ".join(
+            f"{finding.code}:{finding.message}" for finding in findings[:8])
+        raise GeneratedContractError(
+            f"generated active admission failed: {summary}")
+    return transitioned, manifest

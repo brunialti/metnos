@@ -18,6 +18,7 @@ import json
 import shutil
 import sqlite3
 import sys
+import tarfile
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -213,7 +214,14 @@ class TestRollbackGrace(_BaseReviewTest):
         # da fare; senza blob, fallirebbe con no_blob).
         blob_path = self._blob_dir / "g_002.tar.gz"
         self._blob_dir.mkdir(parents=True, exist_ok=True)
-        blob_path.write_bytes(b"fake_tar")
+        candidate = self._tmpdir / "candidate"
+        candidate.mkdir()
+        (candidate / "manifest.toml").write_text(
+            'lifecycle = "synthesized"\n', encoding="utf-8")
+        (candidate / "find_b.py").write_text("# candidate\n", encoding="utf-8")
+        with tarfile.open(blob_path, "w:gz") as archive:
+            for child in sorted(candidate.iterdir()):
+                archive.add(child, arcname=child.name)
         from jobs.promoter_state import ensure_schema
         conn = sqlite3.connect(str(self._db))
         ensure_schema(conn)
@@ -241,8 +249,12 @@ class TestRollbackGrace(_BaseReviewTest):
         # state -> rolled_back
         row = load_proposal_state("g_002")
         self.assertEqual(row["state"], "rolled_back")
-        # exec dir rimosso
-        self.assertFalse(exec_dir.exists())
+        # exec dir riportato allo stato candidato, non cancellato.
+        self.assertTrue(exec_dir.exists())
+        self.assertIn(
+            'lifecycle = "synthesized"',
+            (exec_dir / "manifest.toml").read_text(encoding="utf-8"),
+        )
 
 
 # ─── 6. resurrect archive → resurrect_from_archive ────────────────────────

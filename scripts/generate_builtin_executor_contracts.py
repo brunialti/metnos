@@ -143,8 +143,8 @@ _META = {
         "{ok: bool, entries: Array<object>, partial?: bool, truncated?: bool, error?: str}",
     ),
     "start_lre": (
-        "Avvia, per compatibilità tecnica, un piano LRE già registrato.",
-        "Starts an already registered LRE plan for technical compatibility.",
+        "avvia un piano LRE registrato per integrazioni che ne conoscono il profilo.",
+        "starts a registered LRE plan for integrations that know its profile.",
         [("metnos:write", ["lre"])],
         "{ok: bool, decision?: 'accepted', workload_id?: str, revision_id?: str, state?: str, expected_sources?: int, plan_summary?: {stage_count: int, required_stage_count: int}, limits?: object, status_url?: str, final_message_hint?: str, error?: str}",
     ),
@@ -216,16 +216,12 @@ _ARG_EN = {
 # `delete_preferences`, che pure era primo nel pool di routing.
 _CHAPTERS = {
     "start_lre": (
-        "PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/percorso/assoluto\"]). "
-        "USA: soltanto integrazioni che conoscono già il profilo registrato. "
-        "NON: non usarlo per decidere se un’attività debba usare LRE; il normale motore "
-        "affida automaticamente le azioni lunghe ammissibili. OUT: identificativo, "
-        "stato, numero di sorgenti e collegamento alla console LRE.",
-        "PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/absolute/path\"]). "
-        "USE: only integrations that already know the registered profile. "
-        "NON: do not use it to decide whether work should use LRE; the normal engine "
-        "automatically submits eligible long actions. OUT: identifier, state, "
-        "source count, and LRE console link.",
+        "PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/percorso\"]). "
+        "NON: scegliere se usare LRE; il runtime affida da sé i lavori lunghi "
+        "ammessi. OUT: id, stato, sorgenti, URL.",
+        "PATTERN: start_lre(profile=\"images.questions.v1\", paths=[\"/path\"]). "
+        "NON: choosing whether to use LRE; the runtime submits eligible long work "
+        "itself. OUT: id, state, sources, URL.",
     ),
     "get_preferences": (
         "PATTERN: get_preferences(). NON: non elenca i task schedulati "

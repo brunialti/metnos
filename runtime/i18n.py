@@ -23,6 +23,7 @@ from contextvars import ContextVar
 import logging
 from pathlib import Path
 import sqlite3
+import threading
 
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA
 DB_PATH = _C.DB_I18N
@@ -69,6 +70,10 @@ def _sha256_full(text: str) -> str:
     return sha256_prefixed(text)
 
 _conn: sqlite3.Connection | None = None
+_conn_owner_thread_id: int | None = None
+_conn_path: str | None = None
+_thread_connections = threading.local()
+_connection_init_lock = threading.RLock()
 _instance_context: ContextVar[str | None] = ContextVar(
     "metnos_i18n_language", default=None,
 )
@@ -149,20 +154,48 @@ def available_languages() -> tuple[str, ...]:
 
 
 def _open() -> sqlite3.Connection:
-    """Apre connessione DB (singleton process-local). Auto-crea schema +
-    migration idempotente per colonne aggiunte post-genesi."""
-    global _conn
-    if _conn is None:
+    """Apre una connessione per thread sul DB di processo.
+
+    SQLite permette di disattivare il controllo di appartenenza del thread,
+    ma una stessa connessione non diventa per questo sicura per operazioni
+    concorrenti. Il server usa thread di lavoro per alcune sonde: condividere
+    il vecchio singleton produceva sporadicamente ``InterfaceError`` durante
+    il rendering amministrativo. Ogni thread riceve quindi la propria
+    connessione WAL; ``_conn`` resta la connessione primaria per compatibilita'
+    con gli strumenti amministrativi e i test esistenti.
+    """
+    global _conn, _conn_owner_thread_id, _conn_path
+    thread_id = threading.get_ident()
+    wanted_path = str(DB_PATH)
+    local_conn = getattr(_thread_connections, "conn", None)
+    local_path = getattr(_thread_connections, "path", None)
+
+    with _connection_init_lock:
+        if (_conn is not None and _conn_owner_thread_id == thread_id
+                and _conn_path == wanted_path):
+            _thread_connections.conn = _conn
+            _thread_connections.path = wanted_path
+            return _conn
+        if (_conn is not None and local_conn is not None
+                and local_path == wanted_path):
+            return local_conn
+
         try:
-            _conn = _open_rw()
+            opened = _open_rw()
         except sqlite3.OperationalError:
             # DB montato READ-ONLY (sandbox bwrap: §7.13 — l'executor legge i
             # messaggi ma non può scrivere schema/migration, già fatti dal
             # server). Apri immutable read-only: niente -wal/-shm, lock-free.
-            _conn = sqlite3.connect(
+            opened = sqlite3.connect(
                 f"file:{DB_PATH}?mode=ro&immutable=1",
                 uri=True, check_same_thread=False)
-    return _conn
+        _thread_connections.conn = opened
+        _thread_connections.path = wanted_path
+        if _conn is None or _conn_path != wanted_path:
+            _conn = opened
+            _conn_owner_thread_id = thread_id
+            _conn_path = wanted_path
+        return opened
 
 
 def _open_rw() -> sqlite3.Connection:

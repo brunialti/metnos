@@ -102,6 +102,20 @@ def test_check_requires_catalog_contract_and_quiescence(monkeypatch, tmp_path):
     }
 
 
+def test_check_accepts_an_identity_scoped_catalog_provider(monkeypatch, tmp_path):
+    _wire(monkeypatch, _composite())
+    monkeypatch.setattr(
+        sr, "_catalog_names",
+        lambda: (_ for _ in ()).throw(AssertionError("global loader used")),
+    )
+    rec = sr.StackReconciler(
+        systemctl=FakeSystemctl(),
+        report_path=tmp_path / "report.json",
+        catalog_names_provider=lambda: {"delete_files", "read_sites"},
+    )
+    assert rec.check()["ok"] is True
+
+
 def test_check_rejects_functionally_unhealthy_searx(monkeypatch, tmp_path):
     _wire(monkeypatch, _composite())
 

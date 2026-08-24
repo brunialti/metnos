@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import dataclasses
-import fcntl
+import errno
 import hashlib
 import json
 import os
@@ -32,6 +32,16 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
+
+try:  # POSIX advisory lock.
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - exercised on Windows.
+    _fcntl = None
+
+try:  # Windows byte-range lock.
+    import msvcrt as _msvcrt
+except ImportError:  # pragma: no cover - exercised on POSIX.
+    _msvcrt = None
 
 
 SCHEMA_VERSION = 1
@@ -129,6 +139,7 @@ class GateReport:
     candidate: str
     started_at: str
     dependency_mode: str = "isolated-venv"
+    host: dict[str, str] = dataclasses.field(default_factory=dict)
     finished_at: str = ""
     ok: bool = False
     first_error_code: str = ""
@@ -289,13 +300,27 @@ def _requirements_digest(tree: Path) -> str:
     return _sha256_file(tree / "requirements.txt")
 
 
+def _venv_python(venv: Path) -> Path:
+    """Return the interpreter path using the host virtualenv convention."""
+    if os.name == "nt":
+        return venv / "Scripts" / "python.exe"
+    return venv / "bin" / "python"
+
+
+def _venv_root(python: Path) -> Path:
+    parent = python.parent
+    if parent.name.casefold() in {"bin", "scripts"}:
+        return parent.parent
+    return Path(sys.prefix)
+
+
 def ensure_venv(tree: Path, venv_root: Path, *, skip_dependencies: bool,
                 log_dir: Path) -> Path:
     if skip_dependencies:
         return Path(sys.executable)
     digest = _requirements_digest(tree)[:16]
     venv = venv_root / digest
-    python = venv / "bin" / "python"
+    python = _venv_python(venv)
     if python.is_file():
         return python
     venv.parent.mkdir(parents=True, exist_ok=True)
@@ -303,12 +328,11 @@ def ensure_venv(tree: Path, venv_root: Path, *, skip_dependencies: bool,
         [sys.executable, "-m", "venv", str(venv)], cwd=tree,
         timeout_s=120, log_path=log_dir / f"venv-{digest}.log",
     )
-    pip = venv / "bin" / "pip"
     last_error: GateFailure | None = None
     for attempt in range(1, 5):
         try:
             _run(
-                [str(pip), "install", "--no-cache-dir", "--timeout", "90",
+                [str(python), "-m", "pip", "install", "--no-cache-dir", "--timeout", "90",
                  "--retries", "5", "-r", str(tree / "requirements.txt")],
                 cwd=tree, timeout_s=1800,
                 log_path=log_dir / f"pip-{digest}-attempt-{attempt}.log",
@@ -324,29 +348,18 @@ def ensure_venv(tree: Path, venv_root: Path, *, skip_dependencies: bool,
     )
 
 
-def _bind_workspace(tree: Path, workspace: Path) -> None:
-    link = tree / "workspace"
-    if link.is_symlink():
-        link.unlink()
-    elif link.exists():
-        raise GateFailure(
-            "workspace_in_release", "release package unexpectedly contains mutable workspace data",
-        )
-    relative = os.path.relpath(workspace, tree)
-    link.symlink_to(relative, target_is_directory=True)
-
-
 def _runtime_env(tree: Path, layout: PersistentLayout, python: Path,
                  *, port: int | None = None) -> dict[str, str]:
     env = {
         "HOME": str(layout.home),
         "PYTHONPATH": os.pathsep.join((str(tree), str(tree / "runtime"))),
-        "PATH": os.pathsep.join((str(python.parent), "/usr/bin", "/bin")),
+        "PATH": os.pathsep.join((str(python.parent), os.defpath)),
         "METNOS_INSTALL_ROOT": str(tree),
         "METNOS_USER_CONFIG": str(layout.config),
         "METNOS_USER_DATA": str(layout.data),
         "METNOS_USER_STATE": str(layout.state),
-        "METNOS_VENV": str(python.parent.parent),
+        "METNOS_VENV": str(_venv_root(python)),
+        "METNOS_WORKSPACE": str(layout.workspace),
         **RUNTIME_ENV,
     }
     if port is not None:
@@ -388,7 +401,6 @@ def _active_manifest_names(tree: Path) -> set[str]:
 
 def prepare_runtime(tree: Path, layout: PersistentLayout, python: Path,
                     *, log_dir: Path, label: str) -> dict[str, Any]:
-    _bind_workspace(tree, layout.workspace)
     _seed_runtime(tree, layout)
     env = _runtime_env(tree, layout, python)
     _run(
@@ -784,6 +796,12 @@ class ReleaseGate:
             candidate=candidate.public_label,
             started_at=_utc_now(),
             dependency_mode=("current-python" if skip_dependencies else "isolated-venv"),
+            host={
+                "system": platform.system().lower(),
+                "release": platform.release(),
+                "machine": platform.machine().lower(),
+                "python": platform.python_version(),
+            },
         )
         self._failed = False
 
@@ -990,12 +1008,33 @@ class ReleaseGate:
 @contextlib.contextmanager
 def _exclusive_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as handle:
+    with path.open("a+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
+            if _fcntl is not None:
+                _fcntl.flock(handle.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+            elif _msvcrt is not None:
+                _msvcrt.locking(handle.fileno(), _msvcrt.LK_NBLCK, 1)
+            else:  # Defensive: every supported host has one implementation.
+                raise GateFailure(
+                    "lock_unsupported", "the host provides no supported file-lock primitive",
+                )
+        except OSError as exc:
+            if exc.errno not in {errno.EACCES, errno.EAGAIN}:
+                raise
             raise GateFailure("gate_already_running", "another release gate is already running") from exc
-        yield
+        try:
+            yield
+        finally:
+            handle.seek(0)
+            if _fcntl is not None:
+                _fcntl.flock(handle.fileno(), _fcntl.LOCK_UN)
+            elif _msvcrt is not None:
+                _msvcrt.locking(handle.fileno(), _msvcrt.LK_UNLCK, 1)
 
 
 def _repo_root() -> Path:
@@ -1016,7 +1055,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--work-root", type=Path,
                         help="explicit isolated working directory")
     parser.add_argument("--report", type=Path,
-                        help="JSON report path (default: /tmp/<gate-id>.json)")
+                        help="JSON report path (default: host temporary directory/<gate-id>.json)")
     parser.add_argument("--keep", action="store_true",
                         help="keep isolated trees and logs after the run")
     parser.add_argument("--skip-dependencies", action="store_true",
@@ -1036,7 +1075,8 @@ def main(argv: list[str] | None = None) -> int:
         work_root.mkdir(parents=True, exist_ok=False)
     else:
         work_root = Path(tempfile.mkdtemp(prefix="metnos-release-gate-"))
-    report_path = (args.report or Path("/tmp") / f"{work_root.name}.json").resolve()
+    temp_root = Path(tempfile.gettempdir()).resolve()
+    report_path = (args.report or temp_root / f"{work_root.name}.json").resolve()
     try:
         report_path.relative_to(work_root)
     except ValueError:
@@ -1058,7 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
         turn_timeout_s=args.turn_timeout,
     )
     try:
-        with _exclusive_lock(Path("/tmp/metnos-release-gate.lock")):
+        with _exclusive_lock(temp_root / "metnos-release-gate.lock"):
             report = gate.run()
     except GateFailure as exc:
         print(f"release_gate: FAIL [{exc.code}] {exc}", file=sys.stderr)

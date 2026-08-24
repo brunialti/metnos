@@ -4,7 +4,7 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width, initial-scale=1">
  <title>Metnos &mdash; Services</title>
- <meta name="description" content="How to read service health, desired state, and controls in the Metnos HTTP UI.">
+ <meta name="description" content="How to read service health, desired state, and controls in the Metnos web interface.">
  <link rel="canonical" href="https://metnos.com/en/system/services">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/system/services">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/system/services">
@@ -17,7 +17,7 @@
 <p class="lead">The Services page brings together the supervised components
 that make up a Metnos instance. For each component it reports process state,
 application health, desired state, and admitted controls. The catalog is
-closed: the UI cannot invoke arbitrary units or actions.</p>
+closed: the interface cannot invoke arbitrary units or actions.</p>
 
 <h2 id="states">Four facts that should not be confused</h2>
 
@@ -38,25 +38,25 @@ acting; the status dot alone is not enough.</p>
 
 <h2 id="actions">Start, stop, and restart</h2>
 
-<p><strong>Start</strong> brings a stopped service online.
+<p><strong>Start</strong> makes a stopped service operational.
 <strong>Stop</strong> interrupts an active service and updates its desired state
 when it belongs to the Metnos lifecycle. <strong>Restart</strong> stops and starts
 an active component. Available actions depend on the service, its placement,
-and the observed state; a missing button must not be replaced with an invented
-command.</p>
+and the observed state. A missing control means that the action is unavailable
+in that context; it does not authorise a substitute external command.</p>
 
 <p>The HTTP server is the control plane hosting this page. It can be restarted
 here, whereas stopping it requires an independent control path. The page
-refreshes after an action; the reliable outcome is convergence among effective
-state, health, and desired state.</p>
+refreshes periodically after an action. The result is verified only when
+effective state, health, and desired state converge.</p>
 
 <h2 id="lre">LRE has two distinct states</h2>
 
 <p>LRE deliberately separates its supervised worker from feature activation.
 The worker may be running and healthy while waiting with LRE disabled.
-<em>Enable LRE</em> admits new submissions. Disabling the feature prevents new
-activity without deleting previously recorded state, history, or artifacts. An
-invalid configuration closes the gate safely.</p>
+<em>Enable LRE</em> allows new workloads to be submitted. Disabling the feature
+prevents new activity without deleting previously recorded state, history, or
+artifacts. If the configuration is invalid, the gate remains closed.</p>
 
 <div class="callout warning"><p><strong>Before restarting.</strong> Check for
 active interactive turns and read any warning shown by the page. A restart is
@@ -76,8 +76,8 @@ not a visual refresh: it actually interrupts the selected process.</p></div>
  <figcaption>LRE is disabled in this capture while its worker is healthy and waiting: those are separate states.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>System section.</strong> Stable access to models, services, safety, users, and devices.</li>
- <li><strong>Summary.</strong> Counts running and installed components and states the refresh interval.</li>
+ <li><strong>System section.</strong> Collects the links to models, services, safety, users, and devices.</li>
+ <li><strong>Summary.</strong> Reports the number of installed and running components and shows the refresh interval.</li>
  <li><strong>Complete status.</strong> Process, health, unit, manager, and desired state are shown separately.</li>
  <li><strong>LRE card.</strong> Reports both worker health and feature state.</li>
  <li><strong>Admitted controls.</strong> Restarting the worker and enabling the feature are distinct commands.</li>

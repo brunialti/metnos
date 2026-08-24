@@ -21,9 +21,9 @@ delegated to a language model.</p>
 
 <h2 id="signatures">What a signature is</h2>
 
-<p>A signature describes the shape of a command, such as its binary, action,
+<p>A signature describes the shape of a command, such as the program executed, action,
 and target type. The <code>*</code> symbol represents a component admitted as
-variable. Canonicalisation prevents cosmetic differences or displaced
+variable. Canonicalisation prevents purely formal differences or displaced
 arguments from bypassing the control.</p>
 
 <table>
@@ -38,14 +38,14 @@ arguments from bypassing the control.</p>
 
 <p>The strongest prohibitions are applied first. Severity describes the
 potential consequence, while source distinguishes distributed, user-curated,
-and eligible usage-derived rules. Usage counts support review, but never turn
+and rules acquired through the established process. Usage counts support review, but never turn
 an absolute prohibition into permission by themselves.</p>
 
 <h2 id="boundaries">Safety, authority, and approval</h2>
 
 <p>A whitelisted signature does not grant authority to a user on its own.
-Identity, role, autonomy, data ownership, executor policy, and source scope are
-still checked first. The signature answers a narrower question: may this form
+Identity, role, autonomy, data ownership, executor policy, and source scope
+continue to apply. The signature answers a narrower question: may this form
 of command proceed, does it require approval, or must it be stopped?</p>
 
 <p>Approval likewise cannot override <code>forbidden</code>. A model may flag an
@@ -75,7 +75,7 @@ actual target.</p>
 <ol class="ui-callout-list">
  <li><strong>Navigation.</strong> Safety is separate from user, service, and executor management.</li>
  <li><strong>Canonical form.</strong> The guide explains how a command is represented before matching.</li>
- <li><strong>Classes.</strong> Each class states its effect in words.</li>
+ <li><strong>Classes.</strong> Each class states its effect explicitly.</li>
  <li><strong>Filters.</strong> Narrow the table without changing any rule.</li>
  <li><strong>Provenance.</strong> Signature, class, severity, source, usage, and date support an auditable review.</li>
 </ol>

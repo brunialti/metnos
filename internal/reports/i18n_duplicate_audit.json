@@ -31,10 +31,19 @@
           "MSG_BTN_CANCEL",
           "MSG_CHAT_SESSION_CANCEL",
           "MSG_TUTOR_HANDOFF_CANCEL",
+          "UI_DURABLE_CANCEL",
           "UI_VIRT_CANCEL"
         ],
         "lang": "en",
         "normalized": "cancel"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_STATE_DONE",
+          "UI_DURABLE_STATE_COMPLETED"
+        ],
+        "lang": "en",
+        "normalized": "completed"
       },
       {
         "keys": [
@@ -56,8 +65,17 @@
       },
       {
         "keys": [
+          "MSG_OBJECT_EVENTS",
+          "UI_DURABLE_EVENTS"
+        ],
+        "lang": "en",
+        "normalized": "events"
+      },
+      {
+        "keys": [
           "UI_CHANGE_BADGE_FAILED",
           "UI_CHANGE_TAB_FAILED",
+          "UI_DURABLE_STATE_FAILED",
           "UI_SERVICES_STATUS_FAILED"
         ],
         "lang": "en",
@@ -73,12 +91,28 @@
       },
       {
         "keys": [
+          "UI_SERVICES_LRE_FEATURE_INVALID",
+          "UI_VIRT_STATUS_INVALID"
+        ],
+        "lang": "en",
+        "normalized": "invalid configuration"
+      },
+      {
+        "keys": [
           "MSG_LIFECYCLE_TABLE_KIND",
           "UI_CHANGE_COL_KIND",
           "UI_CHANGE_FILTER_KIND"
         ],
         "lang": "en",
         "normalized": "kind"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_ARTIFACT_STATE_NEEDS_ATTENTION",
+          "UI_DURABLE_STATE_NEEDS_ATTENTION"
+        ],
+        "lang": "en",
+        "normalized": "needs attention"
       },
       {
         "keys": [
@@ -114,6 +148,14 @@
       },
       {
         "keys": [
+          "UI_BUILDS_COL_PROGRESS",
+          "UI_DURABLE_PROGRESS"
+        ],
+        "lang": "en",
+        "normalized": "progress"
+      },
+      {
+        "keys": [
           "UI_CHANGE_BADGE_REJECTED",
           "UI_CHANGE_TAB_REJECTED"
         ],
@@ -123,7 +165,8 @@
       {
         "keys": [
           "MSG_CHAT_FB_RETRY",
-          "UI_CHANGE_BTN_RETRY"
+          "UI_CHANGE_BTN_RETRY",
+          "UI_DURABLE_RETRY"
         ],
         "lang": "en",
         "normalized": "retry"
@@ -139,6 +182,7 @@
       {
         "keys": [
           "UI_BUILDS_STATE_RUNNING",
+          "UI_DURABLE_STATE_RUNNING",
           "UI_SERVICES_DESIRED_RUNNING",
           "UI_SERVICES_STATUS_RUNNING"
         ],
@@ -204,11 +248,28 @@
       },
       {
         "keys": [
+          "MSG_CREATE_PROCESSES_MACHINE_UNKNOWN",
+          "MSG_LOCAL_HERE",
+          "MSG_PACKAGES_CARD_MACHINE_UNKNOWN"
+        ],
+        "lang": "en",
+        "normalized": "this computer"
+      },
+      {
+        "keys": [
           "MSG_CHAT_DIALOG_TURN_ID_LABEL",
           "MSG_CHAT_TURN_LABEL"
         ],
         "lang": "en",
         "normalized": "turn:"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_UNAVAILABLE",
+          "UI_SERVICES_DOWN"
+        ],
+        "lang": "en",
+        "normalized": "unavailable"
       },
       {
         "keys": [
@@ -239,10 +300,19 @@
           "MSG_BTN_CANCEL",
           "MSG_CHAT_SESSION_CANCEL",
           "MSG_TUTOR_HANDOFF_CANCEL",
+          "UI_DURABLE_CANCEL",
           "UI_VIRT_CANCEL"
         ],
         "lang": "it",
         "normalized": "annulla"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_STATE_ABORTED",
+          "UI_DURABLE_STATE_CANCELLED"
+        ],
+        "lang": "it",
+        "normalized": "annullato"
       },
       {
         "keys": [
@@ -254,11 +324,51 @@
       },
       {
         "keys": [
+          "MSG_TASK_STATE_ACTIVE",
+          "UI_SERVICES_LRE_FEATURE_ENABLED"
+        ],
+        "lang": "it",
+        "normalized": "attivo"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_COL_PROGRESS",
+          "UI_DURABLE_PROGRESS"
+        ],
+        "lang": "it",
+        "normalized": "avanzamento"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_STATE_DONE",
+          "UI_DURABLE_STATE_COMPLETED"
+        ],
+        "lang": "it",
+        "normalized": "completato"
+      },
+      {
+        "keys": [
           "MSG_APPROVAL_TITLE",
           "MSG_PROMOTER_BUTTON_CONFIRM"
         ],
         "lang": "it",
         "normalized": "conferma"
+      },
+      {
+        "keys": [
+          "UI_SERVICES_LRE_FEATURE_INVALID",
+          "UI_VIRT_STATUS_INVALID"
+        ],
+        "lang": "it",
+        "normalized": "configurazione non valida"
+      },
+      {
+        "keys": [
+          "MSG_OBJECT_ENTRIES",
+          "MSG_TRUNCATED_DEFAULT_WHAT"
+        ],
+        "lang": "it",
+        "normalized": "elementi"
       },
       {
         "keys": [
@@ -281,6 +391,15 @@
       },
       {
         "keys": [
+          "MSG_OBJECT_EVENTS",
+          "UI_DURABLE_EVENTS"
+        ],
+        "lang": "it",
+        "normalized": "eventi"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_STATE_RUNNING",
           "UI_SERVICES_DESIRED_RUNNING",
           "UI_SERVICES_STATUS_RUNNING"
         ],
@@ -302,6 +421,14 @@
         ],
         "lang": "it",
         "normalized": "no"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_UNAVAILABLE",
+          "UI_SERVICES_DOWN"
+        ],
+        "lang": "it",
+        "normalized": "non disponibile"
       },
       {
         "keys": [
@@ -329,6 +456,23 @@
       },
       {
         "keys": [
+          "MSG_CREATE_PROCESSES_MACHINE_UNKNOWN",
+          "MSG_LOCAL_HERE",
+          "MSG_PACKAGES_CARD_MACHINE_UNKNOWN"
+        ],
+        "lang": "it",
+        "normalized": "questo computer"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_ARTIFACT_STATE_NEEDS_ATTENTION",
+          "UI_DURABLE_STATE_NEEDS_ATTENTION"
+        ],
+        "lang": "it",
+        "normalized": "richiede attenzione"
+      },
+      {
+        "keys": [
           "MSG_PROMOTER_BUTTON_ROLLBACK",
           "UI_VIRT_RESET"
         ],
@@ -338,7 +482,8 @@
       {
         "keys": [
           "MSG_CHAT_FB_RETRY",
-          "UI_CHANGE_BTN_RETRY"
+          "UI_CHANGE_BTN_RETRY",
+          "UI_DURABLE_RETRY"
         ],
         "lang": "it",
         "normalized": "riprova"
@@ -372,6 +517,7 @@
       {
         "keys": [
           "UI_BUILDS_COL_STATUS",
+          "UI_DURABLE_STATE",
           "UI_VIRT_STATUS"
         ],
         "lang": "it",
@@ -387,11 +533,20 @@
       },
       {
         "keys": [
+          "MSG_LIFECYCLE_TABLE_KIND",
           "UI_CHANGE_COL_KIND",
           "UI_CHANGE_FILTER_KIND"
         ],
         "lang": "it",
         "normalized": "tipo"
+      },
+      {
+        "keys": [
+          "MSG_CHAT_DIALOG_TURN_ID_LABEL",
+          "MSG_CHAT_TURN_LABEL"
+        ],
+        "lang": "it",
+        "normalized": "turno:"
       },
       {
         "keys": [
@@ -422,19 +577,6 @@
       {
         "entries": [
           {
-            "key": "MSG_LIFECYCLE_SECTION_EXECUTOR",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_SECTION_EXECUTOR",
-            "lang": "it"
-          }
-        ],
-        "normalized": "**executor ager**"
-      },
-      {
-        "entries": [
-          {
             "key": "MSG_HEALTH_GPU",
             "lang": "en"
           },
@@ -444,32 +586,6 @@
           }
         ],
         "normalized": "**gpu**: {body}"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_LIFECYCLE_SECTION_PROPOSALS_CLEANUP",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_SECTION_PROPOSALS_CLEANUP",
-            "lang": "it"
-          }
-        ],
-        "normalized": "**proposals cleanup** (adr 0096)"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_PROMOTER_EXAMPLE_QUERY",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_PROMOTER_EXAMPLE_QUERY",
-            "lang": "it"
-          }
-        ],
-        "normalized": "**query**: {query}"
       },
       {
         "entries": [
@@ -500,19 +616,6 @@
       {
         "entries": [
           {
-            "key": "MSG_ADMIN_CHANNEL_ROW",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_ADMIN_CHANNEL_ROW",
-            "lang": "it"
-          }
-        ],
-        "normalized": "- `{channel}` → recipient `{rid}` ({verified})"
-      },
-      {
-        "entries": [
-          {
             "key": "get_now.affinity",
             "lang": "en"
           },
@@ -539,40 +642,6 @@
       {
         "entries": [
           {
-            "key": "MSG_LIFECYCLE_KV_APPLIED",
-            "lang": "en"
-          },
-          {
-            "key": "UI_CHANGE_BADGE_APPLIED",
-            "lang": "en"
-          },
-          {
-            "key": "UI_CHANGE_TAB_APPLIED",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_KV_APPLIED",
-            "lang": "it"
-          }
-        ],
-        "normalized": "applied"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_LIFECYCLE_ROW_ARCHIVED",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_ROW_ARCHIVED",
-            "lang": "it"
-          }
-        ],
-        "normalized": "archived"
-      },
-      {
-        "entries": [
-          {
             "key": "MSG_CHAT_BROWSER",
             "lang": "en"
           },
@@ -582,19 +651,6 @@
           }
         ],
         "normalized": "browser"
-      },
-      {
-        "entries": [
-          {
-            "key": "UI_CHANGE_KIND_CACHE_PATTERN",
-            "lang": "en"
-          },
-          {
-            "key": "UI_CHANGE_KIND_CACHE_PATTERN",
-            "lang": "it"
-          }
-        ],
-        "normalized": "cache pattern"
       },
       {
         "entries": [
@@ -625,15 +681,15 @@
       {
         "entries": [
           {
-            "key": "MSG_LIFECYCLE_ROW_DEPRECATED",
+            "key": "UI_DURABLE_RESOURCE_CPU",
             "lang": "en"
           },
           {
-            "key": "MSG_LIFECYCLE_ROW_DEPRECATED",
+            "key": "UI_DURABLE_RESOURCE_CPU",
             "lang": "it"
           }
         ],
-        "normalized": "deprecated"
+        "normalized": "cpu"
       },
       {
         "entries": [
@@ -647,19 +703,6 @@
           }
         ],
         "normalized": "digest"
-      },
-      {
-        "entries": [
-          {
-            "key": "UI_BUILDS_COL_DIRECTORY",
-            "lang": "en"
-          },
-          {
-            "key": "UI_BUILDS_COL_DIRECTORY",
-            "lang": "it"
-          }
-        ],
-        "normalized": "directory"
       },
       {
         "entries": [
@@ -690,75 +733,28 @@
       {
         "entries": [
           {
-            "key": "MSG_OBJECT_ENTRIES",
+            "key": "UI_DURABLE_RUNNER_KIND_EXECUTOR",
             "lang": "en"
           },
           {
-            "key": "MSG_OBJECT_ENTRIES",
+            "key": "UI_DURABLE_RUNNER_KIND_EXECUTOR",
             "lang": "it"
           }
         ],
-        "normalized": "entries"
+        "normalized": "executor"
       },
       {
         "entries": [
           {
-            "key": "MSG_LIFECYCLE_TLDR_EXECUTOR",
+            "key": "UI_DURABLE_TITLE",
             "lang": "en"
           },
           {
-            "key": "MSG_LIFECYCLE_TLDR_EXECUTOR",
+            "key": "UI_DURABLE_TITLE",
             "lang": "it"
           }
         ],
-        "normalized": "executor: {dep} deprecated, {arch} archived"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_SETTINGS_BROWSER_HEADLESS",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_SETTINGS_BROWSER_HEADLESS",
-            "lang": "it"
-          }
-        ],
-        "normalized": "headless"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_LIFECYCLE_TLDR_INTRO",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_TLDR_INTRO",
-            "lang": "it"
-          }
-        ],
-        "normalized": "introvertiva: {n} auto-applied"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_LIFECYCLE_TABLE_KIND",
-            "lang": "en"
-          },
-          {
-            "key": "UI_CHANGE_COL_KIND",
-            "lang": "en"
-          },
-          {
-            "key": "UI_CHANGE_FILTER_KIND",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_TABLE_KIND",
-            "lang": "it"
-          }
-        ],
-        "normalized": "kind"
+        "normalized": "lre (long run engine)"
       },
       {
         "entries": [
@@ -810,19 +806,6 @@
       {
         "entries": [
           {
-            "key": "MSG_LIFECYCLE_NO_AUDIT",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_NO_AUDIT",
-            "lang": "it"
-          }
-        ],
-        "normalized": "no audit"
-      },
-      {
-        "entries": [
-          {
             "key": "UI_SERVICES_OK",
             "lang": "en"
           },
@@ -862,19 +845,6 @@
       {
         "entries": [
           {
-            "key": "MSG_LIFECYCLE_ROW_PROTECTED_SKIPPED",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_ROW_PROTECTED_SKIPPED",
-            "lang": "it"
-          }
-        ],
-        "normalized": "protected_skipped"
-      },
-      {
-        "entries": [
-          {
             "key": "UI_CHANGE_BTN_ROLLBACK",
             "lang": "en"
           },
@@ -892,140 +862,6 @@
           }
         ],
         "normalized": "rollback"
-      },
-      {
-        "entries": [
-          {
-            "key": "UI_CHANGE_COL_SCORE",
-            "lang": "en"
-          },
-          {
-            "key": "UI_CHANGE_COL_SCORE",
-            "lang": "it"
-          }
-        ],
-        "normalized": "score"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_SETTINGS_BROWSER_SIDE",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_SETTINGS_BROWSER_SIDE",
-            "lang": "it"
-          }
-        ],
-        "normalized": "side browser"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_ORCH_STEP_PROMPT",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_ORCH_STEP_PROMPT",
-            "lang": "it"
-          }
-        ],
-        "normalized": "step 1/{n} — {prompt}"
-      },
-      {
-        "entries": [
-          {
-            "key": "ERR_DLG_STEP_PREFIX",
-            "lang": "en"
-          },
-          {
-            "key": "ERR_DLG_STEP_PREFIX",
-            "lang": "it"
-          }
-        ],
-        "normalized": "step {i} ({var}): {detail}"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_DIALOG_STEP_PROMPT",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_DIALOG_STEP_PROMPT",
-            "lang": "it"
-          }
-        ],
-        "normalized": "step {n}/{total} — {prompt}{hint}"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_LIFECYCLE_TLDR_SYNTH",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_TLDR_SYNTH",
-            "lang": "it"
-          }
-        ],
-        "normalized": "synt_proposals: {n} archived"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_LIFECYCLE_ROW_SYNTH_ARCHIVED",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_ROW_SYNTH_ARCHIVED",
-            "lang": "it"
-          }
-        ],
-        "normalized": "synth_proposals archived"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_LIFECYCLE_ROW_TOTAL_SEEN",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_LIFECYCLE_ROW_TOTAL_SEEN",
-            "lang": "it"
-          }
-        ],
-        "normalized": "total_seen"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_CHAT_DIALOG_TURN_ID_LABEL",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_CHAT_TURN_LABEL",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_CHAT_TURN_LABEL",
-            "lang": "it"
-          }
-        ],
-        "normalized": "turn:"
-      },
-      {
-        "entries": [
-          {
-            "key": "MSG_SETTINGS_WEB_BROWSING_TITLE",
-            "lang": "en"
-          },
-          {
-            "key": "MSG_SETTINGS_WEB_BROWSING_TITLE",
-            "lang": "it"
-          }
-        ],
-        "normalized": "website browsing"
       },
       {
         "entries": [
@@ -1078,10 +914,19 @@
           "MSG_BTN_SCHED_CANCEL",
           "MSG_CHAT_SESSION_CANCEL",
           "MSG_TUTOR_HANDOFF_CANCEL",
+          "UI_DURABLE_CANCEL",
           "UI_VIRT_CANCEL"
         ],
         "lang": "en",
         "normalized": "cancel"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_STATE_DONE",
+          "UI_DURABLE_STATE_COMPLETED"
+        ],
+        "lang": "en",
+        "normalized": "completed"
       },
       {
         "keys": [
@@ -1120,8 +965,17 @@
       },
       {
         "keys": [
+          "MSG_OBJECT_EVENTS",
+          "UI_DURABLE_EVENTS"
+        ],
+        "lang": "en",
+        "normalized": "events"
+      },
+      {
+        "keys": [
           "UI_CHANGE_BADGE_FAILED",
           "UI_CHANGE_TAB_FAILED",
+          "UI_DURABLE_STATE_FAILED",
           "UI_SERVICES_STATUS_FAILED"
         ],
         "lang": "en",
@@ -1137,12 +991,28 @@
       },
       {
         "keys": [
+          "UI_SERVICES_LRE_FEATURE_INVALID",
+          "UI_VIRT_STATUS_INVALID"
+        ],
+        "lang": "en",
+        "normalized": "invalid configuration"
+      },
+      {
+        "keys": [
           "MSG_LIFECYCLE_TABLE_KIND",
           "UI_CHANGE_COL_KIND",
           "UI_CHANGE_FILTER_KIND"
         ],
         "lang": "en",
         "normalized": "kind"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_ARTIFACT_STATE_NEEDS_ATTENTION",
+          "UI_DURABLE_STATE_NEEDS_ATTENTION"
+        ],
+        "lang": "en",
+        "normalized": "needs attention"
       },
       {
         "keys": [
@@ -1186,6 +1056,14 @@
       },
       {
         "keys": [
+          "UI_BUILDS_COL_PROGRESS",
+          "UI_DURABLE_PROGRESS"
+        ],
+        "lang": "en",
+        "normalized": "progress"
+      },
+      {
+        "keys": [
           "UI_CHANGE_BADGE_REJECTED",
           "UI_CHANGE_TAB_REJECTED"
         ],
@@ -1195,7 +1073,8 @@
       {
         "keys": [
           "MSG_CHAT_FB_RETRY",
-          "UI_CHANGE_BTN_RETRY"
+          "UI_CHANGE_BTN_RETRY",
+          "UI_DURABLE_RETRY"
         ],
         "lang": "en",
         "normalized": "retry"
@@ -1211,6 +1090,7 @@
       {
         "keys": [
           "UI_BUILDS_STATE_RUNNING",
+          "UI_DURABLE_STATE_RUNNING",
           "UI_SERVICES_DESIRED_RUNNING",
           "UI_SERVICES_STATUS_RUNNING"
         ],
@@ -1284,11 +1164,28 @@
       },
       {
         "keys": [
+          "MSG_CREATE_PROCESSES_MACHINE_UNKNOWN",
+          "MSG_LOCAL_HERE",
+          "MSG_PACKAGES_CARD_MACHINE_UNKNOWN"
+        ],
+        "lang": "en",
+        "normalized": "this computer"
+      },
+      {
+        "keys": [
           "MSG_CHAT_DIALOG_TURN_ID_LABEL",
           "MSG_CHAT_TURN_LABEL"
         ],
         "lang": "en",
         "normalized": "turn"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_UNAVAILABLE",
+          "UI_SERVICES_DOWN"
+        ],
+        "lang": "en",
+        "normalized": "unavailable"
       },
       {
         "keys": [
@@ -1319,10 +1216,19 @@
           "MSG_BTN_CANCEL",
           "MSG_CHAT_SESSION_CANCEL",
           "MSG_TUTOR_HANDOFF_CANCEL",
+          "UI_DURABLE_CANCEL",
           "UI_VIRT_CANCEL"
         ],
         "lang": "it",
         "normalized": "annulla"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_STATE_ABORTED",
+          "UI_DURABLE_STATE_CANCELLED"
+        ],
+        "lang": "it",
+        "normalized": "annullato"
       },
       {
         "keys": [
@@ -1342,11 +1248,43 @@
       },
       {
         "keys": [
+          "MSG_TASK_STATE_ACTIVE",
+          "UI_SERVICES_LRE_FEATURE_ENABLED"
+        ],
+        "lang": "it",
+        "normalized": "attivo"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_COL_PROGRESS",
+          "UI_DURABLE_PROGRESS"
+        ],
+        "lang": "it",
+        "normalized": "avanzamento"
+      },
+      {
+        "keys": [
+          "UI_BUILDS_STATE_DONE",
+          "UI_DURABLE_STATE_COMPLETED"
+        ],
+        "lang": "it",
+        "normalized": "completato"
+      },
+      {
+        "keys": [
           "MSG_APPROVAL_TITLE",
           "MSG_PROMOTER_BUTTON_CONFIRM"
         ],
         "lang": "it",
         "normalized": "conferma"
+      },
+      {
+        "keys": [
+          "UI_SERVICES_LRE_FEATURE_INVALID",
+          "UI_VIRT_STATUS_INVALID"
+        ],
+        "lang": "it",
+        "normalized": "configurazione non valida"
       },
       {
         "keys": [
@@ -1367,6 +1305,7 @@
       {
         "keys": [
           "MSG_AUTO_FINAL_COUNT_UNKNOWN",
+          "MSG_OBJECT_ENTRIES",
           "MSG_TRUNCATED_DEFAULT_WHAT"
         ],
         "lang": "it",
@@ -1394,6 +1333,15 @@
       },
       {
         "keys": [
+          "MSG_OBJECT_EVENTS",
+          "UI_DURABLE_EVENTS"
+        ],
+        "lang": "it",
+        "normalized": "eventi"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_STATE_RUNNING",
           "UI_SERVICES_DESIRED_RUNNING",
           "UI_SERVICES_STATUS_RUNNING"
         ],
@@ -1415,6 +1363,14 @@
         ],
         "lang": "it",
         "normalized": "no"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_UNAVAILABLE",
+          "UI_SERVICES_DOWN"
+        ],
+        "lang": "it",
+        "normalized": "non disponibile"
       },
       {
         "keys": [
@@ -1442,6 +1398,23 @@
       },
       {
         "keys": [
+          "MSG_CREATE_PROCESSES_MACHINE_UNKNOWN",
+          "MSG_LOCAL_HERE",
+          "MSG_PACKAGES_CARD_MACHINE_UNKNOWN"
+        ],
+        "lang": "it",
+        "normalized": "questo computer"
+      },
+      {
+        "keys": [
+          "UI_DURABLE_ARTIFACT_STATE_NEEDS_ATTENTION",
+          "UI_DURABLE_STATE_NEEDS_ATTENTION"
+        ],
+        "lang": "it",
+        "normalized": "richiede attenzione"
+      },
+      {
+        "keys": [
           "MSG_PROMOTER_BUTTON_ROLLBACK",
           "UI_VIRT_RESET"
         ],
@@ -1451,7 +1424,8 @@
       {
         "keys": [
           "MSG_CHAT_FB_RETRY",
-          "UI_CHANGE_BTN_RETRY"
+          "UI_CHANGE_BTN_RETRY",
+          "UI_DURABLE_RETRY"
         ],
         "lang": "it",
         "normalized": "riprova"
@@ -1485,6 +1459,7 @@
       {
         "keys": [
           "UI_BUILDS_COL_STATUS",
+          "UI_DURABLE_STATE",
           "UI_VIRT_STATUS"
         ],
         "lang": "it",
@@ -1500,11 +1475,20 @@
       },
       {
         "keys": [
+          "MSG_LIFECYCLE_TABLE_KIND",
           "UI_CHANGE_COL_KIND",
           "UI_CHANGE_FILTER_KIND"
         ],
         "lang": "it",
         "normalized": "tipo"
+      },
+      {
+        "keys": [
+          "MSG_CHAT_DIALOG_TURN_ID_LABEL",
+          "MSG_CHAT_TURN_LABEL"
+        ],
+        "lang": "it",
+        "normalized": "turno"
       },
       {
         "keys": [
@@ -1517,6 +1501,14 @@
     ],
     "exact_same_language": [],
     "near_same_language": [
+      {
+        "keys": [
+          "MSG_SITES_RC_QUOTA",
+          "MSG_SITES_RC_QUOTA_HOSTS"
+        ],
+        "lang": "en",
+        "score": 0.9753
+      },
       {
         "keys": [
           "MSG_DEGENERATE_FINAL_ITEMS",
@@ -1532,6 +1524,14 @@
         ],
         "lang": "it",
         "score": 0.9737
+      },
+      {
+        "keys": [
+          "MSG_SITES_RC_QUOTA",
+          "MSG_SITES_RC_QUOTA_HOSTS"
+        ],
+        "lang": "it",
+        "score": 0.9723
       },
       {
         "keys": [
@@ -1553,6 +1553,14 @@
         "keys": [
           "MSG_DEGENERATE_FINAL_ITEMS",
           "MSG_DEGENERATE_FINAL_ITEM_ONE"
+        ],
+        "lang": "it",
+        "score": 0.96
+      },
+      {
+        "keys": [
+          "MSG_LIFECYCLE_ROW_SYNTH_ARCHIVED",
+          "MSG_LIFECYCLE_TLDR_SYNTH"
         ],
         "lang": "it",
         "score": 0.96
@@ -1596,6 +1604,14 @@
         ],
         "lang": "en",
         "score": 0.9434
+      },
+      {
+        "keys": [
+          "ERR_FROM_STEP_LIST_MISSING",
+          "ERR_FROM_STEP_RESULT_INVALID"
+        ],
+        "lang": "it",
+        "score": 0.9402
       }
     ],
     "placeholder_mismatch": [],
@@ -1606,9 +1622,9 @@
   "sources": {
     "bundle": "/opt/metnos/runtime/device_shim/messages_i18n.json",
     "counts": {
-      "bundle": 1786,
-      "live": 2292,
-      "seed": 2292
+      "bundle": 2026,
+      "live": 2910,
+      "seed": 2910
     },
     "live": "/home/roberto/.local/share/metnos/i18n.sqlite",
     "seed": "/opt/metnos/install/data/i18n_seed.sqlite"

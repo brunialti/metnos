@@ -202,6 +202,19 @@ def audit(seed: Path, live: Path, bundle: Path, allowlist: Path = DEFAULT_ALLOWL
     }
 
 
+def _blocking_findings(findings: dict[str, Any]) -> dict[str, list[Any]]:
+    """Return only objective source-contract drift that must fail automation."""
+    names = (
+        "placeholder_mismatch",
+        "bundle_drift",
+        "seed_live_missing",
+        "seed_live_extra",
+        "bundle_missing",
+        "bundle_extra",
+    )
+    return {name: findings[name] for name in names if findings.get(name)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=Path, default=DEFAULT_SEED)
@@ -217,9 +230,7 @@ def main() -> int:
     else:
         print(output, end="")
     findings = report["findings"]
-    blocking = (findings["placeholder_mismatch"] or findings["bundle_drift"]
-                or findings["seed_live_missing"] or findings["bundle_missing"])
-    return 1 if blocking else 0
+    return 1 if _blocking_findings(findings) else 0
 
 
 if __name__ == "__main__":

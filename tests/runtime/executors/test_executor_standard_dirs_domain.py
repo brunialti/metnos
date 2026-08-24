@@ -78,8 +78,68 @@ def test_delete_is_idempotent_for_empty_and_preserves_nonempty(tmp_path: Path) -
     assert result["ok"] is False
     assert result["partial"] is True
     assert result["ok_count"] == 1 and result["fail_count"] == 1
+    assert result["_undo"]["outcome"] == "reversible"
     assert not empty.exists()
     assert child.read_text(encoding="utf-8") == "keep"
+
+
+def test_delete_empty_directory_roundtrip_uses_exact_receipt(tmp_path: Path) -> None:
+    target = tmp_path / "empty"
+    target.mkdir(mode=0o750)
+    target.chmod(0o750)
+    before = target.stat()
+
+    forward = delete_dirs.invoke({"paths": [str(target)], "client": "local"})
+    assert forward["_undo"]["outcome"] == "reversible"
+    assert forward["_undo"]["reverse_pattern"] == "module.reverse"
+    assert not target.exists()
+
+    restored = delete_dirs.reverse(
+        {"args": {"client": "local"}}, forward)
+    assert restored["ok"] is True
+    after = target.stat()
+    assert after.st_mode & 0o777 == before.st_mode & 0o777
+    assert after.st_mtime_ns == before.st_mtime_ns
+
+
+def test_delete_undo_never_replaces_new_occupant(tmp_path: Path) -> None:
+    target = tmp_path / "empty"
+    target.mkdir()
+    forward = delete_dirs.invoke({"paths": [str(target)], "client": "local"})
+    target.mkdir()
+
+    restored = delete_dirs.reverse(
+        {"args": {"client": "local"}}, forward)
+
+    assert restored["ok"] is False
+    assert restored["error_code"] == "ERR_PATH_EXISTS"
+    assert target.is_dir()
+
+
+def test_recursive_delete_with_payload_is_honestly_irreversible(tmp_path: Path) -> None:
+    target = tmp_path / "full"
+    target.mkdir()
+    (target / "payload.txt").write_text("payload", encoding="utf-8")
+
+    result = delete_dirs.invoke({
+        "paths": [str(target)], "force": True, "client": "local",
+    })
+
+    assert result["ok"] is True
+    assert result["_undo"] == {"outcome": "irreversible"}
+    assert not target.exists()
+
+
+def test_recursive_flag_on_empty_directory_uses_observed_reversible_effect(
+        tmp_path: Path) -> None:
+    target = tmp_path / "empty"
+    target.mkdir()
+
+    result = delete_dirs.invoke({
+        "paths": [str(target)], "force": True, "client": "local",
+    })
+
+    assert result["_undo"]["outcome"] == "reversible"
 
 
 def test_dirs_natural_paraphrases_remain_routable() -> None:

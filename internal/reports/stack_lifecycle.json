@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
   "profile": "isolated-systemd-contract",
-  "generated_at": "2026-07-18T21:19:51.522288Z",
+  "generated_at": "2026-08-24T11:39:42.730360Z",
   "ok": true,
-  "live_cutover_performed": false,
+  "live_cutover_performed": null,
+  "live_ownership_observed": false,
   "coverage": [
     "composite_health",
     "catalog_parity",
@@ -21,39 +22,24 @@
     "tests": [
       "tests/runtime/http/test_http_server.py"
     ],
-    "reason": "requires local socket bind unavailable in isolated profile",
-    "profile": "host-integrated",
-    "ok": true,
-    "cycles": [
-      {
-        "cycle": 1,
-        "passed": 132,
-        "known_warnings": 180
-      },
-      {
-        "cycle": 2,
-        "passed": 132,
-        "known_warnings": 180
-      }
-    ],
-    "warning_class": "aiohttp.NotAppKey"
+    "reason": "requires local socket bind unavailable in isolated profile"
   },
   "cycles": [
     {
       "cycle": 1,
       "ok": true,
       "exit_code": 0,
-      "passed": 112,
-      "duration_ms": 915,
-      "summary_tail": "........................................................................ [ 64%]\n........................................                                 [100%]\n112 passed in 0.64s"
+      "passed": 148,
+      "duration_ms": 1315,
+      "summary_tail": "........................................................................ [ 48%]\n........................................................................ [ 97%]\n....                                                                     [100%]\n148 passed in 0.92s"
     },
     {
       "cycle": 2,
       "ok": true,
       "exit_code": 0,
-      "passed": 112,
-      "duration_ms": 864,
-      "summary_tail": "........................................................................ [ 64%]\n........................................                                 [100%]\n112 passed in 0.64s"
+      "passed": 148,
+      "duration_ms": 1265,
+      "summary_tail": "........................................................................ [ 48%]\n........................................................................ [ 97%]\n....                                                                     [100%]\n148 passed in 0.89s"
     }
   ]
 }

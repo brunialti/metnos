@@ -23,11 +23,13 @@ l'export pubblico, il firmatore, il loader e il server reali.
 
 ## 2. Confini
 
-Il profilo iniziale e' **portabile e isolato**:
+Il profilo iniziale e' **portabile e isolato**. Qui `portabile` descrive il
+contratto del verificatore, non estende da solo le piattaforme supportate dal
+prodotto:
 
 - alberi baseline e candidato materializzati sotto una directory temporanea;
 - virtualenv separati quando cambiano le dipendenze;
-- `HOME`, config, dati, stato, workspace, chiavi e porte dedicate;
+- home utente, config, dati, stato, workspace, chiavi e porte dedicate;
 - avvio diretto del server, senza scrivere unit systemd;
 - endpoint LLM esistente usato soltanto attraverso la configurazione runtime;
 - nessuna credenziale di produzione copiata;
@@ -38,6 +40,24 @@ Il profilo portabile non certifica pacchetti di sistema, linger o policy
 systemd. Questi appartengono a un successivo profilo gestito su utente/macchina
 dedicata. Il rapporto deve dichiarare il profilo, senza promuovere un risultato
 parziale a certificazione completa.
+
+Il verificatore usa il layout nativo dei virtualenv, il percorso temporaneo e
+il lock esclusivo del sistema operativo. Il workspace persistente viene passato
+esplicitamente al runtime e non richiede collegamenti simbolici. Il rapporto
+registra sistema, release, architettura e versione Python dell'host.
+
+## 2.1 Matrice di supporto e ruolo
+
+| Ruolo | Piattaforma | Stato | Evidenza richiesta |
+|---|---|---|---|
+| server Metnos | Linux | supportato | gate fresh/upgrade/rollback completo, due cicli consecutivi |
+| client di dispositivo | Windows | supportato | installer, aggiornamento, identita', esecuzione e undo remoti |
+| client di dispositivo | macOS | sperimentale | build manuale; nessuna sandbox nativa equivalente certificata |
+| server Metnos | Windows o macOS | non supportato | escluso finche' installer, sandbox e gate host non sono deliberati e certificati |
+
+Una prova del client Windows non vale come prova del server Windows. Allo
+stesso modo, il fatto che il codice del verificatore eviti assunzioni POSIX non
+costituisce certificazione di una piattaforma server aggiuntiva.
 
 ## 3. Modello futuro pubblico
 
@@ -103,6 +123,7 @@ attivi della release e confrontato con i nomi effettivamente caricati.
 Il JSON e' la fonte macchina; il Markdown e' una vista. Entrambi contengono:
 
 - versione dello schema, id esecuzione, profilo e tempi;
+- piattaforma, release, architettura e versione Python dell'host;
 - identita' non segreta delle due sorgenti;
 - esito e durata di ogni fase;
 - conteggio atteso/caricato/rifiutato del catalogo;

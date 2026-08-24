@@ -481,13 +481,16 @@ html { scroll-behavior: smooth; }
 <h1 id="s1">1. Cos'&egrave; Metnos</h1>
 
 <p class="lead">
-Metnos &egrave; un'<strong>architettura ospitata in proprio per un agente governato</strong>.
-Il nucleo non definisce un dominio applicativo: pianifica, applica regole, ricorda,
-sintetizza, isola e registra. &Egrave; l'<strong>insieme degli executor ammessi</strong> a
-definire cosa pu&ograve; fare davvero una specifica istanza. Gli executor sono piccoli
-programmi firmati, generati o importati soltanto dentro un vocabolario chiuso e
-orchestrati da un pianificatore LLM che privilegia i modelli locali. I modelli del livello <code>frontier</code> offrono consulti
-opzionali, non la sede del sistema.
+Metnos &egrave; un <strong><i lang="en">agent governor</i> installabile su un computer
+locale</strong>: governa agenti il cui raggio d'azione &egrave; definito in modo
+esplicito. Il nucleo non appartiene a un particolare dominio applicativo:
+pianifica, applica regole, ricorda, sintetizza, isola e registra. &Egrave;
+l'<strong>insieme degli executor ammessi</strong> a stabilire che cosa possa fare
+concretamente una specifica istanza. Gli executor sono piccoli programmi
+firmati, generati o importati soltanto dentro un vocabolario chiuso e
+orchestrati da un pianificatore LLM che privilegia i modelli locali. I modelli
+del livello <code>frontier</code> offrono consulti facoltativi; non sono il luogo
+in cui risiede il sistema.
 </p>
 
 <p>
@@ -2927,7 +2930,7 @@ questa lista va respinta.
 <p>
 Ora avete entrambi i livelli: il sistema dall'alto e la mappa dei contratti
 dei componenti. Usate l'atlante per il dettaglio implementativo, oppure
-proseguite con la visita guidata, il riferimento dei domini e la guida dell'interfaccia.
+proseguite con la visita guidata, la Reference dei domini e la guida dell'interfaccia.
 </p>
 
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">

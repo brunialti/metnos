@@ -196,7 +196,13 @@ class TestIntegration(_BaseCommentaryTest):
                 prop, verdict, lang="it",
             )
         # Sezione 1 (deterministica).
-        self.assertIn("**Query**", out)
+        self.assertIn(
+            promoter_example._t(
+                "it", "MSG_PROMOTER_EXAMPLE_QUERY",
+                query=prop["user_query"],
+            ),
+            out,
+        )
         self.assertIn("**Pipeline corrente**", out)
         # Sezione 2 (perf savings).
         self.assertIn("## Stima del risparmio", out)
@@ -219,7 +225,13 @@ class TestIntegration(_BaseCommentaryTest):
         self.assertNotIn(promoter_example._LLM_MARKER, out)
         self.assertNotIn("## Commento", out)
         # Le prime 2 sezioni ci sono ancora.
-        self.assertIn("**Query**", out)
+        self.assertIn(
+            promoter_example._t(
+                "it", "MSG_PROMOTER_EXAMPLE_QUERY",
+                query=prop["user_query"],
+            ),
+            out,
+        )
         self.assertIn("## Stima del risparmio", out)
 
 

@@ -8,10 +8,12 @@ Estensione ADR 0092 (6/5/2026):
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import shutil
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -177,6 +179,30 @@ class TestI18nSetVersionHash(unittest.TestCase):
         self.assertEqual(pending[0]["key"], "MSG_ONLY_IT")
         self.assertEqual(pending[0]["source_lang"], "it")
         self.assertEqual(pending[0]["target_lang"], "en")
+
+    def test_each_worker_thread_uses_an_independent_sqlite_connection(self):
+        self.i18n.set_catalog_translations(
+            "MSG_THREADS", {"it": "Ciao", "en": "Hello"},
+        )
+        primary_id = id(self.i18n._open())
+        barrier = threading.Barrier(5)
+
+        def read_from_worker():
+            conn_id = id(self.i18n._open())
+            barrier.wait(timeout=5)
+            return conn_id, self.i18n.get_for_language(
+                "MSG_THREADS", "it",
+            )
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(read_from_worker) for _ in range(4)]
+            barrier.wait(timeout=5)
+            observed = [future.result(timeout=5) for future in futures]
+
+        connection_ids = {conn_id for conn_id, _text in observed}
+        self.assertEqual(len(connection_ids), 4)
+        self.assertNotIn(primary_id, connection_ids)
+        self.assertEqual({text for _conn_id, text in observed}, {"Ciao"})
 
     def test_language_context_propagates_but_cannot_replace_instance_language(self):
         original = self.i18n._C.INSTANCE_LANG

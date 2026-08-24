@@ -105,6 +105,7 @@ components that enforce it.</p>
 <ol>
  <li><a href="#cap1">What policy is</a></li>
  <li><a href="#cap2">Capability Registry</a></li>
+ <li><a href="#read-vs-change">Reading and modifying: shared controls and differences</a></li>
  <li><a href="#cap3">Autonomy &times; capability table</a></li>
  <li><a href="#cap4">Persistent target-scoped grants</a></li>
  <li><a href="#cap5">Combined outcome (<code>effective_outcome</code>)</a></li>
@@ -231,6 +232,36 @@ The registry covers reads, writes, external-provider access, administrative oper
 <p>
 For example, <code>compute:pure</code> and <code>time:read</code> use <code>none</code>; <code>fs:write</code> uses <code>per_target</code>; and <code>mail:send</code>, <code>mail:write</code>, <code>system:admin</code>, and <code>drive:permissions</code> use <code>always</code>. Read the complete set from the registry rather than a hand-maintained list on this page.
 </p>
+
+<h2 id="read-vs-change">2.2 Reading and modifying: shared controls and differences</h2>
+
+<p>There is no single control selected by the verb “read” or “modify”. Metnos
+starts from the signed contract of the executor that was actually selected,
+its effective capabilities, the concrete target, and the actor's profile. For
+conforming executors, the manifest must be admitted, arguments must satisfy the
+schema, and capabilities must belong to the canonical registry. Vaglio, any
+approval dialog, the sandbox, and the dispatcher then enforce their respective
+responsibilities.</p>
+
+<table>
+<thead><tr><th>Aspect</th><th>Reading a file</th><th>Modifying a file</th></tr></thead>
+<tbody>
+<tr><td>Declarative capability</td><td><code>fs:read</code>, non-critical and limited to paths declared by the manifest.</td><td><code>fs:write</code>, critical and limited to paths declared by the manifest.</td></tr>
+<tr><td>Filesystem access</td><td>The sandbox derives readable scopes from effective capabilities and mounts them read-only.</td><td>The sandbox makes only scopes authorized by the effective capability writable; other scopes remain excluded or read-only.</td></tr>
+<tr><td>Authorization</td><td>In the declarative matrix, <code>fs:read</code> is denied, approval-bound, or allowed according to the level and any target grant.</td><td>In the declarative matrix, <code>fs:write</code> is denied in ReadOnly, requires approval in Supervised, and is allowed in Full. The ordinary path does not yet apply this matrix as one universal gate: the approval contract actually integrated for that executor remains authoritative.</td></tr>
+<tr><td>Undo</td><td>When execution leaves no user state to restore, undo is not applicable.</td><td>A modification is undoable only when the signed manifest declares <code>revertible = true</code>, an inverse path, and, where required, a per-execution receipt. Without that contract it is not undoable; an execution that produced no effect is recorded as such.</td></tr>
+</tbody>
+</table>
+
+<p>Authorization, isolation, and undo are therefore three separate questions.
+The <strong>Settings &gt; Lifecycle &gt; Changes</strong> page governs system-change
+proposals that belong to that lifecycle; it is not a mandatory step for every
+file write. To determine what can be undone, use the
+<a href="executor_catalog.html#undo-census">census generated from signed
+manifests</a>, not the action's name.</p>
+
+<p><strong>A question the Tutor can verify:</strong> “Explain which controls
+apply when I ask to read a file and which apply when I ask to modify it.”</p>
 
 <h1 id="cap3">3. Autonomy &times; capability table</h1>
 

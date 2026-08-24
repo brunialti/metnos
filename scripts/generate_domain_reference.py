@@ -279,7 +279,7 @@ GROUPS = {
 
 TEXT = {
     "it": {
-        "title": "Riferimento dei domini",
+        "title": "Reference dei domini",
         "domain_count": "domini canonici",
         "description": "Guida completa ai domini operativi di Metnos, con confini, disponibilità ed esempi di richieste in linguaggio naturale.",
         "eyebrow": "Riferimento operativo · generato dal catalogo canonico",

@@ -23,32 +23,35 @@ Metnos decides automatically whether to use LRE.</p>
 
 <h2 id="not-a-preset">One engine, multiple kinds of work</h2>
 
-<p>The LRE core knows nothing about images, mail, databases, or other domains.
-It consumes typed plans that declare sources, dependencies, outputs,
-resources, limits, timeouts, and failure behaviour. In the ordinary path, the
-runtime builds the smallest possible plan directly from the executor already
-selected and its final arguments. For established compound workloads it may
-instead use a plan registered in advance. This is a technical optimisation,
-not a user requirement or a profile that someone must configure.</p>
+<p>LRE is independent of any particular domain: it governs image processing,
+mail, databases, and other activities in the same way. For each workload it
+receives a structured description of what must be done: the sources to use,
+dependencies between steps, expected results, available resources, limits,
+timeouts, and failure behaviour. In ordinary cases Metnos derives this
+description from the executor already selected and the arguments approved for
+the request. For established compound procedures, it can instead reuse a
+structure prepared in advance. This is an internal execution choice: users do
+not configure profiles or need to know the plan's representation.</p>
 
-<p>The first distributed compound plan processes image collections and produces
-questions, solutions, notes, and a formula reference. It demonstrates the
-multi-stage path, but it neither defines LRE nor limits automatic admission:
-every compatible ordinary executor enters through the same general compiler,
-without domain-specific code.</p>
+<p>One example is processing a collection of images from which Metnos produces
+questions, solutions, notes, and a formula reference. LRE coordinates the
+different stages and preserves their state. The example illustrates how the
+engine works but does not define its scope: any compatible ordinary executor
+can be admitted through the same general mechanism, without code written for a
+specific domain.</p>
 
 <div class="callout note"><p><strong>What “universal” means.</strong> The
 engine is domain-independent and does not use a list of profiles as a filter.
 “Universal” does not mean “unchecked”: LRE automatically accepts every long
 action it can represent without losing arguments, authority, placement, or
-recovery guarantees. If it cannot do so, the action is not quietly run inline;
-Metnos explains the limitation.</p></div>
+recovery guarantees. If it cannot do so, the action is not silently executed
+through the interactive path; Metnos explains the limitation.</p></div>
 
 <h2 id="decision">When LRE is activated</h2>
 
 <p>Metnos first prepares the ordinary plan for the turn. Immediately before
 execution, one central check examines the final plan and the executor's signed
-contract. In the first automatic version, an action is considered
+contract. In the current automatic path, an action is considered
 <strong>intrinsically long</strong> when its declared maximum duration is at
 least ten minutes. This decision uses structured metadata, not words such as
 “long”, “in the background”, or “many files”.</p>
@@ -58,9 +61,9 @@ least ten minutes. This decision uses structured metadata, not words such as
  <tbody>
   <tr><td>The plan contains no action above the threshold.</td><td>Metnos uses the ordinary interactive path. LRE is not involved.</td></tr>
   <tr><td>The plan contains one independent long action; its executor is active, signed, and deterministic; its arguments, effect, and destination can be frozen.</td><td>Metnos creates the LRE plan during the turn, queues the workload, and returns a receipt. No profile is required.</td></tr>
-  <tr><td>The long action first requires approval.</td><td>Metnos performs the approval step only. After approval, it checks the resumed plan again and, when eligible, hands it to LRE exactly once.</td></tr>
+  <tr><td>The long action first requires approval.</td><td>Metnos suspends execution and requests approval. After approval, it checks the resumed plan again and, when eligible, hands it to LRE exactly once.</td></tr>
   <tr><td>The instance switch is disabled.</td><td>No new workload enters LRE. Ordinary chat and access to existing workload history continue to work.</td></tr>
-  <tr><td>A long stage is recognised, but the plan contains dependent actions, unresolved references, a model binding that is not fully frozen, or an ambiguous remote destination.</td><td>Metnos states that the workload was not started. It neither runs the long part inline nor invents a recovery guarantee.</td></tr>
+  <tr><td>The plan contains a long action, but also dependent actions, unresolved references, a model binding that is not fully frozen, or an ambiguous remote destination.</td><td>Metnos states that the workload was not started. It neither executes the long part through the interactive path nor promises recovery it cannot guarantee.</td></tr>
   <tr><td>Configuration is invalid or the execution service is unavailable.</td><td>Admission fails with a precise explanation. No unit bypasses the check.</td></tr>
  </tbody>
 </table>
@@ -70,18 +73,18 @@ least ten minutes. This decision uses structured metadata, not words such as
 <ol>
  <li><strong>Decision.</strong> The central check finds the long action in the final plan and verifies that it can be represented faithfully.</li>
  <li><strong>Admission.</strong> Metnos checks the instance switch, signature, authority, arguments, placement, effect, and limits.</li>
- <li><strong>Frozen state.</strong> Arguments and destination enter the revision through verifiable fingerprints; corpus plans also seal sources, identities, and order.</li>
+ <li><strong>Frozen state.</strong> Arguments and destination are bound to the revision through verifiable fingerprints; corpus-based plans also seal sources, identities, and order.</li>
  <li><strong>Persistent planning.</strong> Stages and units are stored in an immutable revision.</li>
- <li><strong>Governed execution.</strong> The coordinator proposes ready units; the central scheduler assigns resources and concurrency.</li>
+ <li><strong>Governed execution.</strong> The coordinator makes ready units available; the central scheduler assigns resources and concurrency.</li>
  <li><strong>Consolidation.</strong> Hierarchical reductions avoid loading an entire corpus into memory or a single prompt.</li>
  <li><strong>Completion.</strong> LRE reports completion only after accounting for all units and validating required artifacts.</li>
 </ol>
 
-<p>There is no hidden 98- or 980-item corpus ceiling. Each revision does,
-however, have finite and visible limits consistent with its admitted resources.
+<p>LRE imposes no arbitrary threshold on the number of items. Each revision
+does, however, have finite and visible limits consistent with its admitted resources.
 Plans that expose units and reductions advance in batches instead of
 accumulating an entire corpus in memory. A monolithic executor remains one
-unit: LRE can govern its attempt but cannot invent internal recovery points.
+unit: LRE can govern its attempt but cannot create internal recovery points.
 If a budget is exhausted, the workload exposes a structured state rather than
 pretending that coverage is complete.</p>
 
@@ -92,17 +95,17 @@ runs on the server; a remote executor runs on a paired device. Either can be
 deterministic or use a language or vision model. Placement does not determine
 intelligence: they are independent properties.</p>
 
-<p>The LRE engine supports all these classes through common ports. The current
+<p>The LRE engine supports all these classes through common interfaces. The current
 automatic direct path, however, admits deterministic executors only. An
-executor that uses a model enters when its plan, prompt, model, language, cost,
+executor that uses a model can be admitted when its plan, prompt, model, language, cost,
 and number of calls have all been frozen by a complete contract, as they are
 in verified compound plans. This distinction prevents a resumed workload from
 silently changing model midway through execution.</p>
 
-<p>Independent units may run in parallel, but they do not create private pools
-of threads or processes. All concurrency passes through the central scheduler,
+<p>Independent units may run in parallel, but they do not have private pools of
+threads or processes. All concurrency passes through the central scheduler,
 which enforces global, owner, workload, model, and device limits. “Maximum
-concurrency” is a ceiling, not a promise to occupy every slot at all times.</p>
+concurrency” is a ceiling, not a promise to use all available capacity at all times.</p>
 
 <h2 id="recovery">Interruptions, retries, and duplicates</h2>
 
@@ -110,10 +113,10 @@ concurrency” is a ceiling, not a promise to occupy every slot at all times.</p
  <thead><tr><th>Situation</th><th>LRE behaviour</th></tr></thead>
  <tbody>
   <tr><td>Worker or computer restarts</td><td>State remains in persistent storage; expired leases and unfinished units are reconciled in bounded batches.</td></tr>
-  <tr><td>A recoverable attempt is interrupted</td><td>It may be attempted at least once again, with the delay and attempt number recorded.</td></tr>
+  <tr><td>A recoverable attempt is interrupted</td><td>It may run again under <em>at least once</em> semantics, with the delay and attempt number recorded.</td></tr>
   <tr><td>Two attempts finish for the same unit</td><td>Fencing and conditional commit admit one result only for that unit and revision.</td></tr>
-  <tr><td>The same HTTP request is redelivered with the same idempotency key</td><td>It returns the same workload instead of creating a second revision or corpus.</td></tr>
-  <tr><td>An external effect has an ambiguous outcome</td><td>It is not retried automatically unless it is idempotent or reconcilable; human attention is required.</td></tr>
+  <tr><td>The same HTTP request is repeated with the same idempotency key</td><td>It returns the same workload instead of creating a second revision or corpus.</td></tr>
+  <tr><td>An external effect has an ambiguous outcome</td><td>The operation is not retried automatically unless it is idempotent or reconcilable; human attention is required.</td></tr>
  </tbody>
 </table>
 
@@ -123,7 +126,7 @@ if the service stops after invoking it but before recording the result, LRE
 requests attention instead of risking a second effect.</p>
 
 <div class="callout note"><p><strong>The precise guarantee.</strong> LRE uses
-at-least-once attempts and admits one valid commit per unit. It can make an
+attempts with <em>at least once</em> semantics and admits one valid commit per unit. It can make an
 observable effect effectively once when the operation is pure, idempotent, or
 reconcilable. It does not promise universal <em>exactly once</em> semantics
 across databases, filesystems, providers, and remote devices.</p></div>
@@ -136,9 +139,9 @@ altering half of a running workload. Results may be reused only when dependency
 digests match. When one source changes, LRE invalidates that unit and its
 descendants, not independent siblings.</p>
 
-<p>Pausing prevents new claims while allowing a commit already in flight to
-finish safely. Cancellation is cooperative and prevents new units from being
-claimed. Pause, resume, cancel, and error-resolution commands carry both an
+<p>Pausing prevents new units from being acquired while allowing a commit
+already in flight to finish safely. Cancellation is cooperative and prevents
+other units from starting. Pause, resume, cancel, and error-resolution commands carry both an
 expected version and an idempotency key, so redelivering a command does not
 multiply its effects.</p>
 
@@ -147,20 +150,20 @@ multiply its effects.</p>
 <div class="callout note"><p><strong>One activation per instance.</strong> The
 switch under Services does not enable one workload. It determines whether the
 whole Metnos instance may accept new LRE workloads. It is not a per-user
-setting and does not need to be changed before each request.</p></div>
+setting and should not be changed before each request.</p></div>
 
 <ol>
  <li><strong>Initial administrator configuration.</strong> Under <a href="services.html">System → Services</a>, check that the LRE worker is healthy and enable workload admission. It is disabled by default on new installations; the setting remains in force until changed.</li>
  <li><strong>Normal use.</strong> Describe the desired outcome and authorised sources in chat, without issuing commands to LRE.</li>
  <li><strong>Automatic selection.</strong> If the final plan contains an intrinsically long, compatible action, Metnos creates its LRE plan and returns a receipt containing the <code>workload_id</code>. You do not need to know or select a profile.</li>
- <li><strong>Transparent outcome.</strong> A short action remains in the turn. A long action that cannot yet be represented is stopped with an explanation; it does not continue inline without protection.</li>
+ <li><strong>Transparent outcome.</strong> A short action remains in the turn. A long action that cannot yet be represented is stopped with an explanation and is not executed through the interactive path without the required guarantees.</li>
  <li><strong>Optional monitoring.</strong> You may close the page and keep using Metnos. Open <code>Settings → System → LRE</code> whenever you want to inspect state, denominator, budget, stages, and events.</li>
- <li>On completion, check artifact digests and validation before downloading them.</li>
+ <li><strong>Final verification.</strong> On completion, check artifact digests and validation before downloading them.</li>
 </ol>
 
-<p>Disabling the feature stops new submissions but does not delete history or
-artifacts. Data deletion follows the owner's lifecycle and retention rules.
-Downloads and views remain scoped to the authorised identity.</p>
+<p>Disabling the feature prevents new workloads from being submitted but does
+not delete history or artifacts. Data deletion follows the owner's lifecycle
+and retention rules. Downloads and views remain scoped to the authorised identity.</p>
 
 <h2 id="limits">Current limitations and the extension path</h2>
 
@@ -170,8 +173,8 @@ can be added without losing traceability or safety.</p>
 <table>
  <thead><tr><th>Current limitation</th><th>Practical effect</th><th>Correct extension path</th></tr></thead>
  <tbody>
-  <tr><td>Automatic compound plans</td><td>The first automatic version queues one independent long action. A plan with several executable steps or unresolved dependencies is not started.</td><td>Compile the whole final plan into LRE's typed graph, with explicit references and checks; do not preserve it as an opaque block.</td></tr>
-  <tr><td>Intelligent executors</td><td>The direct path currently excludes language- and vision-model executors without a complete immutable binding.</td><td>Freeze prompt, language, model, call limits, tokens, and cost in the same contract, then use the same general port.</td></tr>
+  <tr><td>Automatic compound plans</td><td>The current automatic path queues one independent long action. A plan with several executable steps or unresolved dependencies is not started.</td><td>Compile the whole final plan into LRE's typed graph, with explicit references and checks; do not preserve it as an opaque block.</td></tr>
+  <tr><td>Intelligent executors</td><td>The direct path currently excludes language- and vision-model executors without a complete immutable binding.</td><td>Freeze prompt, language, model, call limits, tokens, and cost in the same contract, then use the same general interface.</td></tr>
   <tr><td>Implicit remote destination</td><td>An executor that can run only on a device is not queued until the exact device has been resolved.</td><td>Name the device in the request or add deterministic, verifiable resolution before admission.</td></tr>
   <tr><td>Monolithic executor</td><td>LRE sees one unit and cannot resume halfway through an undeclared internal loop.</td><td>Expose the work as general, identifiable, idempotent units or as a batched reduction; do not add domain-specific cases.</td></tr>
   <tr><td>External effects are not always repeatable</td><td>A write to a service or device may have an unknown outcome after interruption.</td><td>Use native idempotency keys or an authoritative reconciliation read; when neither exists, stop and request a decision.</td></tr>
@@ -214,7 +217,7 @@ open for execution to continue.</p>
  <figcaption>A completed pilot workload: the console exposes the real denominator, admitted limits, and plan composition.</figcaption>
 </figure>
 <ol class="ui-callout-list">
- <li><strong>General navigation.</strong> Open <code>Settings → System → LRE</code>; the entry remains visible in the HTTP UI navigation column.</li>
+ <li><strong>General navigation.</strong> Open <code>Settings → System → LRE</code>; the entry remains visible in the web interface's navigation column.</li>
  <li><strong>Workload list.</strong> Each row shows state and progress; <strong>Open</strong> loads its detail without starting another execution.</li>
  <li><strong>Workload facts.</strong> Priority, state, accounted units, and creation time.</li>
  <li><strong>Revision digests.</strong> Identify the plan and inventory that were actually admitted.</li>

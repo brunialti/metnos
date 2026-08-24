@@ -187,7 +187,9 @@ def test_recovered_in_flight_turn_keeps_badges_and_metadata():
         ) == ["deterministic", "agentic", "llm"]
         assert bubble.locator("svg.executor-brain").count() == 3
         assert "server" in bubble.locator(".meta .where").inner_text().lower()
-        assert "turn:recoverm" in bubble.locator(".meta-left").inner_text()
+        # Il prefisso e' localizzato (per esempio ``turno:`` in italiano):
+        # questo test verifica l'identificativo, non una superficie linguistica.
+        assert "recoverm" in bubble.locator(".meta-left").inner_text()
         assert "38.6" in bubble.locator(".meta-left").inner_text()
         assert bubble.locator(".meta-right").inner_text().strip()
         assert bubble.locator(".msg-fb").count() == 1

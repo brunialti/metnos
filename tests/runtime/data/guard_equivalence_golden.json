@@ -117,7 +117,7 @@
       },
       {
         "args": {
-          "client": "local",
+          "client": "google_workspace",
           "columns": [
             "data",
             "descrizione",
@@ -175,7 +175,7 @@
       },
       {
         "args": {
-          "client": "local",
+          "client": "google_workspace",
           "columns": [
             "data",
             "descrizione",

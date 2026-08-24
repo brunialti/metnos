@@ -1,14 +1,16 @@
-"""runtime.chat_target_store — destinazione appiccicosa per (utente, canale).
+"""runtime.chat_target_store — destinazione breve per conversazione.
 
-Ricorda l'ultima destinazione (`server` o un device_id) scelta in una chat, così
-un turno senza riferimento esplicito riusa l'ultima destinazione (ADR 0034,
-chat-driven placement). Chiave = `sender_id` (`<channel>:<actor>`), la stessa di
-`dialog_pending`. Minimale: una tabella sqlite, nessuna migrazione, pre-1.0.
+Ricorda l'ultima destinazione realmente usata (`server` o un device_id) nel
+contesto breve di una conversazione (ADR 0034 e DEV-001). Un record scaduto non
+e' una preferenza e non puo' instradare una richiesta nuova.
 
 Co-locato con `devices.db` (segue l'isolamento dei test via METNOS_DEVICES_DB).
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import hashlib
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -44,22 +46,65 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
-def get_last_target(sender_id: str) -> str | None:
-    """Ritorna l'ultima destinazione ('server' | device_id) o None se mai scelta."""
+def scope_key(*, owner_user_id: str, actor: str, channel: str,
+              conversation_id: str = "") -> str:
+    """Return an opaque, unambiguous key for one placement context.
+
+    The owner is authoritative; actor and channel keep legacy endpoints apart;
+    a conversation id prevents two browser conversations from sharing a target.
+    Length-prefix ambiguity and raw personal identifiers are avoided by hashing
+    the canonical tuple.
+    """
+
+    fields = [
+        str(owner_user_id or actor or "host"),
+        str(actor or "host"),
+        str(channel or ""),
+        str(conversation_id or ""),
+    ]
+    material = json.dumps(
+        fields, ensure_ascii=False, separators=(",", ":"),
+    ).encode("utf-8")
+    return "scope-v2:" + hashlib.sha256(
+        b"metnos:placement-context:2\x00" + material,
+    ).hexdigest()
+
+
+def get_last_target(sender_id: str, *, max_age_s: int | None = None,
+                    now: datetime | None = None) -> str | None:
+    """Return a fresh target, or ``None`` for missing/expired state."""
     if not sender_id:
+        return None
+    ttl = _C.TIMEOUT_TARGET_CONTEXT_S if max_age_s is None else max_age_s
+    if not isinstance(ttl, int) or ttl <= 0:
         return None
     with _conn() as c:
         row = c.execute(
-            "SELECT target FROM chat_target WHERE sender_id = ?", (sender_id,)
+            "SELECT target, updated_at FROM chat_target WHERE sender_id = ?",
+            (sender_id,),
         ).fetchone()
-    return row["target"] if row else None
+    if row is None:
+        return None
+    try:
+        updated = datetime.fromisoformat(str(row["updated_at"]))
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        age = (current.astimezone(timezone.utc)
+               - updated.astimezone(timezone.utc)).total_seconds()
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if age < 0 or age > ttl:
+        return None
+    return row["target"]
 
 
 def set_last_target(sender_id: str, target: str, device_name: str | None = None) -> None:
     """Registra la destinazione per il sender. `target` = 'server' | device_id."""
     if not sender_id or not target:
         return
-    from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
     with _conn() as c:
         c.execute(

@@ -54,6 +54,11 @@
   preesistenti; l'inverso segue la coorte del pacchetto anche quando il processo di
   attivazione passa l'esecuzione, esclude identita' precedenti e dichiara
   successo soltanto con attestazione positiva di ripristino.
+- **Destinazione conversazionale osservata** (24/8, ADR 0181 DEV-001): la
+  memoria server/device e' circoscritta a proprietario, canale, attore e
+  conversazione, scade dopo una finestra breve e viene aggiornata soltanto da
+  un'esecuzione osservata. Gli alias configurabili dell'istanza risolvono al
+  server nelle domande sulla macchina; un dispositivo esplicito prevale.
 - **LRE F0-F14 implementato** (22/8, ADR 0213-0214, RM-0004):
   `runtime/durable_workloads/` contiene contratti, schema
   SQLite, archivio circoscritto al proprietario, acquisizione, concessioni a
