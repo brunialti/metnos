@@ -36,11 +36,12 @@
  <div class="meta">Schema SQLite, query, manutenzione e integrazioni effettive.</div>
 </div>
 
-<p class="lead">Il mnestoma &egrave; l'archivio locale che pu&ograve; rappresentare un
-grafo di <a href="mnest.html">mnest</a> fra executor. Il codice implementa
-persistenza, navigazione, decadimento e strumenti di ispezione. Non &egrave; oggi
-un grafo che il runtime popola automaticamente da ogni turno, e non &egrave; una
-memoria personale dell'utente.</p>
+<p class="lead">Il mnestoma &egrave; l'archivio locale dei
+<a href="mnest.html">mnest</a>: i collegamenti fra executor che, insieme,
+formano un grafo operativo. Il codice sa salvare, percorrere, indebolire nel
+tempo e ispezionare questi collegamenti. Il runtime, per&ograve;, non li registra
+ancora automaticamente alla fine di ogni turno; il mnestoma non va quindi
+scambiato per una memoria personale gi&agrave; appresa.</p>
 
 <div class="toc">
 <h2>Indice</h2>
@@ -61,23 +62,26 @@ memoria personale dell'utente.</p>
 
 <h1 id="cap1">1. Scopo e stato</h1>
 
-<p><code>Mnestoma</code> apre un database SQLite con WAL e foreign key attive.
-L'API permette di registrare archi, cambiarne lo stato, percorrerli, cercare i
-proto ricorrenti e leggere statistiche ed eventi.</p>
+<p><code>Mnestoma</code> apre un database SQLite con scrittura WAL e vincoli di
+integrit&agrave; fra le tabelle. La sua API permette di registrare collegamenti,
+cambiarne lo stato, percorrerli, cercare i proto-mnest ricorrenti e leggere
+statistiche ed eventi.</p>
 
-<p>Il runtime dei turni alimenta nello stesso file la tabella distinta
-<code>canonical_query_log</code> quando riceve una canonical query utile. Non
-chiama invece <code>record_passing()</code> per gli archi. Le due forme di
-telemetria non vanno confuse.</p>
+<p>Nello stesso file esiste anche la tabella distinta
+<code>canonical_query_log</code>, con un collegamento di registrazione
+<em>best effort</em> dal runtime dei turni. Il riuso corrente dei piani non
+dipende da quella tabella e il runtime non chiama <code>record_passing()</code>
+per costruire gli archi. Le due strutture non vanno confuse.</p>
 
 <span id="cap-brodo"></span>
 <h1 id="cap2">2. Modello del grafo</h1>
 
-<p>Nel modello logico, i nodi sono nomi/versioni di executor e gli archi sono
-mnest diretti e pesati. Un arco <code>proto</code> termina su un nome desiderato
-senza versione. La query <code>walk(start, max_depth)</code> esegue una ricerca
-in ampiezza, evita i proto per impostazione predefinita e ordina i percorsi per
-peso medio decrescente.</p>
+<p>Nel modello logico, ogni nodo identifica il nome e la versione di un executor;
+ogni mnest &egrave; un collegamento diretto e pesato fra due nodi. Un collegamento
+<code>proto</code> termina invece sul nome di un executor desiderato che non ha
+ancora una versione concreta. <code>walk(start, max_depth)</code> percorre il
+grafo a partire da un executor, esclude i proto per impostazione predefinita e
+ordina i percorsi dal peso medio pi&ugrave; alto al pi&ugrave; basso.</p>
 
 <p>Questa struttura pu&ograve; essere usata dal composer di Synt per trovare una catena
 di executor gi&agrave; esistenti. Non genera L0 o L1, non modifica il ranking ordinario
@@ -145,9 +149,10 @@ Quest'ultimo:</p>
  <li>conta i proto che hanno raggiunto le soglie di ricorrenza.</li>
 </ol>
 
-<p>Il processo &egrave; idempotente rispetto allo stesso istante logico soltanto se non
-viene ripetuto con timestamp crescente: ogni esecuzione aggiorna
-<code>ts_last</code> e scrive eventi per i record decaduti.</p>
+<p>Se il processo viene richiamato due volte con lo stesso istante di riferimento,
+la seconda chiamata non applica altro decadimento. Una chiamata successiva con
+un orario pi&ugrave; avanzato calcola invece il nuovo intervallo, aggiorna
+<code>ts_last</code> e registra gli eventi corrispondenti.</p>
 
 <h1 id="cap7">7. Archiviazione e conservazione</h1>
 
@@ -160,12 +165,13 @@ Queste operazioni richiedono una politica esterna esplicita.</p>
 proto-mnest con peso inferiore a <code>0.05</code>. Anche in questo caso gli eventi
 associati vengono rimossi dalla foreign key con <code>ON DELETE CASCADE</code>.</p>
 
-<h1 id="cap8">8. Nomi nelle due lingue</h1>
+<h1 id="cap8">8. Il nome nelle due lingue</h1>
 
-<p>La documentazione italiana usa <em>mnestoma</em>; quella inglese usa
-<em>mnestome</em>. Il nome del modulo Python, della classe e della directory
-SQLite resta <code>mnestoma</code> in entrambe le lingue. <em>Mnest</em> &egrave; il
-nome tecnico del singolo arco e non viene tradotto.</p>
+<p><em>Mnestoma</em> &egrave; un nome tecnico di Metnos e resta invariato in italiano e
+in inglese, come <em>mnest</em>. Anche il modulo Python, la classe e la directory
+SQLite usano <code>mnestoma</code>. La pagina inglese conserva per compatibilit&agrave;
+il vecchio indirizzo <code>/en/architecture/mnestome.html</code>, ma nel testo il
+nome del componente non viene tradotto.</p>
 
 <h1 id="cap9">9. Avvio e alimentazione</h1>
 
@@ -174,16 +180,18 @@ installato un seed nascosto di archi e non esiste uno stato <code>seed</code>
 ammesso dalla classe <code>Mnest</code>. Gli archi compaiono soltanto attraverso
 chiamate esplicite all'API o dati gi&agrave; presenti nel database configurato.</p>
 
-<p>I turni possono invece aggiungere record a <code>canonical_query_log</code>.
-Questa attivit&agrave; non deve essere mostrata come nascita di mnest, cluster o
-percorsi L0/L1.</p>
+<p>Un collegamento <em>best effort</em> pu&ograve; tentare di aggiungere ai turni una
+riga in <code>canonical_query_log</code>. Nessun sottosistema corrente fa
+affidamento su questa tabella per riusare i piani. In ogni caso, una sua riga
+non rappresenta la nascita di un mnest, di un cluster o di un percorso L0/L1.</p>
 
 <h1 id="cap10">10. Ispezione e osservabilit&agrave;</h1>
 
 <p>Il comando <code>python3 -m mnestoma</code> offre sottocomandi per statistiche,
-ager, relazioni principali in ingresso e in uscita, prototipi, percorsi, sommario e tracciabilit&agrave;. Il renderer
-<code>python3 -m observability render</code> pu&ograve; includere conteggi, archi attivi,
-proto ed eventi recenti in un HTML statico.</p>
+ager, principali relazioni in ingresso e in uscita, proto-mnest, percorsi,
+riepiloghi ed eventi. Il renderer <code>python3 -m observability render</code>
+pu&ograve; includere conteggi, archi attivi, proto ed eventi recenti in una pagina
+HTML statica.</p>
 
 <p>Questi strumenti leggono il contenuto dell'archivio; non dimostrano che il
 contenuto sia completo. Un mnestoma vuoto &egrave; un esito legittimo
