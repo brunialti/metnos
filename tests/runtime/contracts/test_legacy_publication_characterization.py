@@ -21,11 +21,7 @@ def _manifest_text(*, code_file: str, digest: str) -> str:
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="RM-0007 M1 must parse the same manifest bytes whose signature passed",
-)
-def test_verifier_rejects_manifest_swapped_between_signature_and_parse(
+def test_verifier_parses_the_same_manifest_bytes_whose_signature_passed(
     tmp_path: Path, monkeypatch,
 ) -> None:
     import sign
@@ -47,18 +43,24 @@ def test_verifier_rejects_manifest_swapped_between_signature_and_parse(
     sign.generate_keypair("author")
     sign.sign_executor(executor)
     swapped = _manifest_text(code_file=second_code.name, digest=second_digest)
-    original_read_text = Path.read_text
+    original_read_bytes = Path.read_bytes
+    swapped_on_disk = False
 
-    def read_text(path: Path, *args, **kwargs):
-        if path == manifest:
-            return swapped
-        return original_read_text(path, *args, **kwargs)
+    def read_bytes(path: Path, *args, **kwargs):
+        nonlocal swapped_on_disk
+        value = original_read_bytes(path, *args, **kwargs)
+        if path == manifest and not swapped_on_disk:
+            swapped_on_disk = True
+            manifest.write_text(swapped, encoding="utf-8")
+        return value
 
-    monkeypatch.setattr(Path, "read_text", read_text)
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
 
-    ok, _details = sign.verify_executor(executor)
+    ok, details = sign.verify_executor(executor)
 
-    assert not ok
+    assert ok
+    assert details["digest"] == first_digest
+    assert manifest.read_text(encoding="utf-8") == swapped
 
 
 @pytest.mark.xfail(

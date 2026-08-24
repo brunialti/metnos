@@ -19,8 +19,11 @@ import hashlib
 import os
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable, TypeAlias
 
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -34,6 +37,70 @@ log = get_logger(__name__)
 KEYS_DIR = _C.PATH_USER_CONFIG / "keys"
 DEFAULT_AUTHOR_KEY = "author"
 BUILTIN_CONTRACTS_DIR = Path(__file__).resolve().parent / "builtin_executor_contracts"
+
+TrustedPublic: TypeAlias = tuple[str, Ed25519PublicKey]
+
+
+@dataclass(frozen=True, slots=True)
+class SignerIdentity:
+    name: str
+
+
+class ManifestSignatureError(ValueError):
+    """The supplied bytes are not authorized by any trusted public key."""
+
+
+def sign_manifest_bytes(
+    manifest_bytes: bytes,
+    *,
+    private_key: Ed25519PrivateKey,
+) -> bytes:
+    """Sign exactly ``manifest_bytes`` without consulting the filesystem."""
+    if not isinstance(manifest_bytes, bytes):
+        raise TypeError("manifest_bytes must be bytes")
+    signer = getattr(private_key, "sign", None)
+    if not callable(signer):
+        raise TypeError("private_key must provide Ed25519 signing")
+    signature = signer(manifest_bytes)
+    if not isinstance(signature, bytes):
+        raise TypeError("private_key returned a non-bytes signature")
+    return signature
+
+
+def verify_manifest_bytes(
+    manifest_bytes: bytes,
+    signature_bytes: bytes,
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+) -> SignerIdentity:
+    """Return the signer name after verifying the exact supplied bytes.
+
+    The function is intentionally pure: callers load keys and bytes before
+    entering this boundary.  Only an Ed25519 key object, never a key name or a
+    path, can grant trust here.
+    """
+    if not isinstance(manifest_bytes, bytes):
+        raise TypeError("manifest_bytes must be bytes")
+    if not isinstance(signature_bytes, bytes):
+        raise TypeError("signature_bytes must be bytes")
+    found = False
+    for item in trusted_publics:
+        try:
+            name, public_key = item
+        except (TypeError, ValueError) as exc:
+            raise TypeError("trusted_publics entries must be (name, Ed25519PublicKey)") from exc
+        if not isinstance(name, str) or not name.strip():
+            raise TypeError("trusted public name must be non-empty text")
+        if not isinstance(public_key, Ed25519PublicKey):
+            raise TypeError("trusted public key must be an Ed25519PublicKey")
+        found = True
+        try:
+            public_key.verify(signature_bytes, manifest_bytes)
+        except InvalidSignature:
+            continue
+        return SignerIdentity(name=name)
+    detail = "no trusted public keys" if not found else "signature is not trusted"
+    raise ManifestSignatureError(detail)
 
 
 def ensure_keys_dir():
@@ -233,7 +300,7 @@ def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     # Firma i bytes finali del manifest
     manifest_bytes = manifest_path.read_bytes()
     priv = load_private(key_name)
-    signature = priv.sign(manifest_bytes)
+    signature = sign_manifest_bytes(manifest_bytes, private_key=priv)
     sig_path.write_bytes(signature)
     return digest, sig_path
 
@@ -257,20 +324,20 @@ def verify_executor(manifest_dir):
     if not trusted:
         return False, {"reason": "nessuna chiave trusted configurata in ~/.config/metnos/keys/"}
 
-    verified_by = None
-    for name, pub in trusted:
-        try:
-            pub.verify(signature, manifest_bytes)
-            verified_by = name
-            break
-        except Exception:
-            continue
-
-    if verified_by is None:
+    try:
+        verified_by = verify_manifest_bytes(
+            manifest_bytes,
+            signature,
+            trusted_publics=trusted,
+        )
+    except ManifestSignatureError:
         return False, {"reason": "firma non verificata da alcuna chiave trusted"}
 
     import tomllib
-    manifest = tomllib.loads(manifest_path.read_text())
+    try:
+        manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        return False, {"reason": f"manifest non valido: {exc}"}
     declared = manifest.get("code", {}).get("digest", "")
     code_files = manifest.get("code", {}).get("files", [])
     actual = compute_code_digest(manifest_dir, code_files)
@@ -278,7 +345,7 @@ def verify_executor(manifest_dir):
     if declared != actual:
         return False, {"reason": f"digest mismatch: declared={declared} actual={actual}"}
 
-    return True, {"signed_by": verified_by, "digest": actual}
+    return True, {"signed_by": verified_by.name, "digest": actual}
 
 
 def main():
