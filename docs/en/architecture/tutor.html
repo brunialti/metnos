@@ -65,12 +65,13 @@ table{width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt}th{backgr
  <div class="subtitle">verified knowledge, current state, and private learning</div>
 </div>
 
-<p><strong>Ask Metnos with a request like this example:</strong>
-“What does the file <code>Metnos_Extended_Perspectives_v1.html</code> contain?”</p>
+<p>For example, you can ask Metnos: “What does the file
+<code>Metnos_Extended_Perspectives_v1.html</code> contain?”</p>
 
 <p class="lead">Tutor answers questions about Metnos before the operational
 planner is involved. It composes the answer from admitted sources and may add
-current observations, but it owns no tools and performs no actions.</p>
+current observations. It cannot freely choose executors and does not perform
+the actions requested by the user.</p>
 
 <div class="flow">
 question &rarr; explanation/action distinction &rarr; authorized sources
@@ -128,7 +129,8 @@ catalog includes:</p>
 </ul>
 
 <p>It does not include personal files, messages, calendars, conversations,
-execution logs, roadmaps, or internal development notes. Authorization is
+execution logs, internal roadmaps, or development notes. Public, indexable
+roadmaps are documentation like any other page on the site. Authorization is
 applied before text reaches the model. A source that is not visible to the
 person asking cannot contribute to the answer.</p>
 
@@ -139,33 +141,39 @@ but it cannot introduce capabilities, permissions, or facts that the sources do
 not attest.</p>
 
 <p>Manifests also have structure. The complete executor contract describes the
-operation, while individual arguments refine its parameters and limits. If a
-generic field is close to the request but a complete contract lies in the same
-relevance band, that contract becomes the primary source. Its argument
-descriptions remain supporting evidence. This rule follows source hierarchy; it
-does not contain lists of requests, special words, or domain-specific
-exceptions.</p>
+operation, while individual argument entries refine its parameters and limits.
+When both are relevant, the complete contract comes first and argument entries
+provide supporting detail. This precedence comes from source type, not from a
+list of questions or exceptions written for a particular domain.</p>
+
+<p>To compare reads and modifications, Tutor can combine an executor manifest
+with the public reversibility census. It must distinguish three cases: an action
+that can be undone, a modification with no reliable restoration, and a read or
+pure computation for which there is nothing to restore. It never infers an
+inverse operation from an executor's name.</p>
 
 <h1 id="current-state">3. When current state is needed</h1>
 
 <p>Some questions ask not only what a page is meant to show, but what it is
 showing now. A signed source may then refer to a registered, read-only runtime
-probe. The model does not choose the probe and cannot invent its arguments.</p>
+probe. A classifier may select only the identifier of an admitted view; the
+registry binds that view to exactly one probe and one precise data projection.
+The model writing the answer cannot choose the probe or invent its arguments.</p>
 
 <p>Topical proximity is not enough. The runtime first proposes a view, then
 independently verifies that this view alone covers every requested fact, and
 finally compares it semantically with all other visible views. It must be the
-primary match with a sufficient margin. If any check fails, Tutor steps aside
-and the request reaches the ordinary read executor. For example, “Check whether
+most relevant choice by a sufficient margin. If any check fails, Tutor steps
+aside and the request reaches the ordinary read executor. For example, “Check whether
 the Metnos mailbox has mail” uses the mailbox; it is not answered with service
 status.</p>
 
-<p>The checks that grant Tutor authority share a short admission window. Once a
-view has been admitted, its read-only probe and composition use the full turn
-deadline. If Tutor's optional pre-gate is busy, or the view or composer does not
-produce a valid result, the request continues through the ordinary engine:
-optional help does not become an HTTP error and does not take the turn away from
-the planner.</p>
+<p>The preliminary checks share a short time limit, so an operational request is
+not held up by Tutor. After a view is admitted, its read-only probe and the
+composition step may use the turn's full deadline. If the preliminary check is
+busy, or the view or composer does not produce a valid result, the request
+continues through the ordinary engine: optional help does not become an HTTP
+error and does not take the turn away from the planner.</p>
 
 <p>For a newly added language, a view may temporarily use its English contract
 as fallback evidence. The composer still receives the instance's current language,
@@ -195,11 +203,9 @@ as a period with no executions does not prove that the engine is down. If a
 question starts from an incorrect failure premise, Tutor corrects it; it states
 a cause only when the current observation attests that cause.</p>
 
-<p><strong>Ask Metnos with a request like this example:</strong>
-“Which services are running, and what are they for?”</p>
+<p>You can ask: “Which services are running, and what are they for?”</p>
 
-<p><strong>Ask Metnos with a request like this example:</strong>
-“Why is the scheduler down?”</p>
+<p>Or: “Why is the scheduler down?”</p>
 
 <h1 id="mixed-requests">4. Explanation and action in one request</h1>
 
@@ -223,8 +229,7 @@ Vaglio, autonomy, consent, and executors.</p>
 <p>An existing dialog is never replaced. If clause separation is not safe,
 Metnos asks the user to state the explanation and action separately.</p>
 
-<p><strong>Ask Metnos with a request like this example:</strong>
-“How do I archive email? Also archive yesterday's messages.”</p>
+<p>For example: “How do I archive email? Also archive yesterday's messages.”</p>
 
 <p>Tutor explains the operation attested by the <code>move_messages</code>
 manifest, retains “Also archive yesterday's messages” without rewriting it,
@@ -270,10 +275,11 @@ embed the administrative interface.</p>
 
 <h1 id="updates">7. Updates and failure behavior</h1>
 
-<p>Any admitted-source change alters the input stamp. The compiler builds a
-complete candidate, verifies its schema, vectors, and signature, and atomically
-replaces the current catalog. Vectors for unchanged units may be reused, but a
-partial catalog is never admitted.</p>
+<p>Any change to an admitted source alters the material fingerprint used to
+build the catalog. The compiler prepares a complete new version, verifies its
+schema, vectors, and signature, and only then replaces the current catalog in
+one atomic operation. Vectors for unchanged units may be reused, but a partial
+version is never admitted.</p>
 
 <p>If retrieval finds <em>no</em> admissible source at all, Tutor does not
 answer and leaves the request to the ordinary engine. The only thing
