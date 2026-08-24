@@ -2,8 +2,10 @@
 
 **Stato:** `active`  
 **Creazione:** 2026-07-23  
-**Ultima revisione:** 2026-08-24 (riverifica completa contro codice e catalogo
-correnti; nessun manifest modificato)  
+**Ultima revisione:** 2026-08-24, terza stesura della giornata: riverifica
+completa (§1.1, §4.11-§4.12), revisione avversariale (§19) e **secondo giro
+avversariale con verdetti verificati (§20)**. Nessun manifest modificato in
+nessuna delle tre  
 **Implementazione:** non iniziata come motore multilingue. Dal 23 agosto 2026
 RM-0005 ha però realizzato **due pezzi del disegno qui proposto** — un primo
 percorso di promozione dei contratti tradotti con ripristino sulle eccezioni
@@ -99,8 +101,16 @@ del candidato di un contratto è soltanto `_validate_common()`: parità dei toke
 Jinja, dei segnaposto `{...}` e del codice fra apici inversi, assenza di
 sentinella, rapporto di lunghezza fra 0,35 e 3,5. Misurato sul catalogo:
 **0 dei 170 capitoli `PATTERN:` dei manifest core — 85 manifest per due lingue —
-contiene apici inversi**, quindi quella tutela non copre nessuna chiamata. I capitoli `SCOPO:/PATTERN:/NON:/OUT:`
-non sono controllati affatto. Dettaglio e conseguenze in §4.11.
+contiene apici inversi**, quindi quella tutela non copre nessuna chiamata.
+
+**Correzione del 24 agosto, secondo giro (§20.5).** La prima stesura di questo
+paragrafo affermava che i capitoli `SCOPO:/PATTERN:/NON:/OUT:` non fossero
+controllati affatto. È falso: la loro **presenza** è richiesta in ogni lingua da
+`executor_standard`, che `sign_executor` applica a tutti e 122 i manifest, quindi
+una traduzione che localizzi i marker viene rifiutata alla firma e la
+pubblicazione ripristina testo e firma. Resta invece scoperto l'**ordine** dei
+capitoli, e restano scoperte la chiamata e i suoi argomenti. Dettaglio e
+conseguenze in §4.11 e §20.5.
 
 Il lavoro che resta a RM-0002 è quindi più piccolo e più mirato di quanto il
 piano di luglio prevedesse: non serve più costruire la transazione di
@@ -184,7 +194,15 @@ cambiato.
 | core | `executors/*/manifest.toml` | 85 (82) | sì | sì |
 | builtin firmati | `runtime/builtin_executor_contracts/*/manifest.toml` | 21 (17) | no | sì |
 | import installati | `~/.local/share/metnos/executors/skills/*/*/manifest.toml` | 16 | no | **no** |
-| totale osservato | tre classi | **122** (115) | **85/122** | **106/122** |
+| totale osservato | tre classi | **122** (115) | **85/122** | **107**, uno ritirato |
+
+Correzione del secondo giro avversariale (§20.5, C2): la copertura della
+pipeline RM-0005 non è 106 su 122. La sua scansione è ricorsiva e raccoglie
+anche `executors/_retired/reply_messages/manifest.toml`, che il primo livello
+non vede: 107 manifest, di cui **uno ritirato**. Il numero sbagliato nasceva da
+un conteggio a un livello applicato a una scansione ricorsiva, ed è la
+dimostrazione pratica di ADV-018: le cifre di questo documento devono venire da
+un rapporto generato, non contate a mano nella prosa.
 
 Tutti i 122 manifest hanno descrizione principale italiana e inglese: 244
 superfici principali. Le descrizioni di argomento multilingue sono 693 (654),
@@ -587,7 +605,8 @@ lunghezza fra 0,35 e 3,5. Confrontando questo elenco con le superfici reali:
 
 | Atomo del manifest | Protetto da `_validate_common`? | Misura |
 |---|---|---|
-| capitoli `SCOPO:/PATTERN:/NON:/OUT:` | **no** | 244 descrizioni li usano; tradurli rompe proposer e linter |
+| capitoli `SCOPO:/PATTERN:/NON:/OUT:` — presenza | **sì, altrove** | `executor_standard._validate_description` li richiede in **ogni** lingua e `sign_executor` lo applica a tutti e 122 i manifest; prova in §20.5 |
+| capitoli — **ordine** | **no** | l'ordine è controllato solo da `manifest_lint`, che al confine di firma non viene invocato, ed è `warn`, quindi non blocca neanche nel gate di attivazione |
 | nome della funzione nel `PATTERN` | **no** | 0 dei 170 capitoli `PATTERN:` del catalogo core contiene apici inversi |
 | argomenti top-level della chiamata | **no** | stessa ragione |
 | `${RUNTIME:chiave}` | **parzialmente** | `_FORMAT_RE` cattura `{RUNTIME:...}` ma confronta solo il gruppo `RUNTIME`: scambiare `actor` con `now` passa |
@@ -1491,6 +1510,8 @@ Le seguenti scelte sono sufficientemente supportate dall'analisi:
 |---|---|---|---|
 | 2026-07-23 | `active` | analisi macro/micro e creazione della roadmap | codice e 115 manifest ispezionati; nessun manifest modificato |
 | 2026-08-24 | `active` | riverifica completa contro codice e catalogo correnti | 122 manifest, linter rieseguito per lingua (IT 3 errori/124 avvisi, EN 4/100), lunghezze e atomi macchina ricontati, `lang_state` riaudito, pipeline RM-0005 letta; nessun file di prodotto modificato |
+| 2026-08-24 | `active` | revisione avversariale in sola lettura | 23 rilievi `ADV-*` su autorità, transazione, inventario, stato, specifica e prove (§19) |
+| 2026-08-24 | `active` | secondo giro avversariale: verdetti verificati contro il codice | 20 confermati, 3 parzialmente confermati, 0 respinti; 4 rilievi nuovi (§20.6); 2 affermazioni della riverifica corrette (§20.5); nessun file di prodotto modificato |
 | 2026-08-24 | `active` | revisione avversariale indipendente; stato mantenuto non pronto | tre analisi in sola lettura su codice, sicurezza e specifica; rilievi e mandato per il revisore esterno in §19; nessuna implementazione modificata |
 
 Esito della riverifica del 24 agosto 2026, in breve:
@@ -1992,3 +2013,337 @@ Soltanto dopo l'approvazione di quel rapporto RM-0002 potrà ricevere un piano d
 implementazione. Fino ad allora resta vietata ogni soluzione ad hoc basata sui
 nomi degli executor, sulle sole lingue IT/EN o sui conteggi della macchina di
 sviluppo.
+
+## 20. Secondo giro avversariale — verdetti verificati (24 agosto 2026)
+
+### 20.1 Metodo e sintesi
+
+Questa sezione risponde al mandato di §19.8. Ogni rilievo `ADV-*` riceve un
+verdetto `confermato`, `parzialmente confermato` o `respinto`, con riferimento
+al codice e una prova rieseguibile. Il lavoro è stato in sola lettura: nessun
+file di prodotto, manifest, firma o stato è stato modificato. Le uniche
+modifiche sono a questo documento, e sono correzioni imposte da due rilievi
+fondati (§20.5).
+
+Sintesi sui 23 rilievi: **20 confermati, 3 parzialmente confermati, 0
+respinti** — i parziali sono ADV-004, ADV-006 e ADV-014 — più quattro
+difetti che §19 non aveva visto (§20.6). Il verdetto di §19.1 regge — RM-0002
+non è pronta per lo sviluppo — ma la ragione si sposta. Non è che manchi la
+specifica del linter: è che **il confine di pubblicazione dei contratti non è
+sicuro**, e un motore multilingue costruito su un confine insicuro
+certificherebbe una superficie che qualcun altro può cambiare mentre la si
+certifica.
+
+Le tre catene, in ordine di gravità:
+
+1. **la localizzazione può firmare modifiche tecniche** — ADV-001, NEW-001;
+2. **la pubblicazione non è atomica, e l'anello debole è il firmatario, non la
+   pipeline** — ADV-002, NEW-002, NEW-003;
+3. **verifica e uso non guardano gli stessi byte** — ADV-003.
+
+Una nota di metodo, perché conta più dei singoli verdetti: due affermazioni
+scritte nella riverifica del 24 agosto erano sbagliate, e sono state trovate
+dalla revisione, non da chi le aveva scritte. Entrambe erano affermazioni
+**negative** — «questo non è controllato», «la copertura è 106» — cioè della
+classe che si verifica peggio, perché una lacuna si dimostra solo cercandola in
+tutti i punti dove potrebbe non esserci. È la stessa lezione già a verbale nelle
+memorie di progetto: prima della misura serve un avversario.
+
+### 20.2 Verdetti sui rilievi P0
+
+#### ADV-001 — `confermato`, con un aggravante
+
+`i18n_pipeline._promote_contracts()` non chiama mai `verify_executor()` sulla
+base; il gate che precede la promozione (`i18n_activation.gate()`) misura
+copertura e freschezza del registro, non firme; e `sign_executor()` ricalcola
+`compute_code_digest()` dai file presenti, riscrive il digest nel manifest e
+firma i byte risultanti (`runtime/sign.py:190-235`). Una modifica al codice
+avvenuta prima della promozione viene quindi adottata e firmata da
+un'operazione autorizzata soltanto a cambiare la lingua.
+
+Aggravante non rilevato da §19, in NEW-001: la promozione precede
+`validate_manifests()` e **il rifiuto non la annulla**.
+
+#### ADV-002 — `confermato`, e il difetto è più grave di come è descritto
+
+Il ripristino di `_promote_contracts()` copre testo e firma, non le voci di
+`manifest.lang_state.json` già scritte da `_update_state()`. Non esistono mutua
+esclusione, identità di generazione né recupero al riavvio.
+
+Due precisazioni che appesantiscono il rilievo:
+
+- `_atomic_text()` e `_atomic_bytes()` (`i18n_pipeline.py:71-101`) fanno `fsync`
+  del file ma **non della directory** dopo `os.replace`: la sostituzione non è
+  durevole a fronte di un'interruzione dell'alimentazione;
+- soprattutto, il firmatario che la pipeline invoca scrive con
+  `manifest_path.write_text()` e `sig_path.write_bytes()`
+  (`runtime/sign.py:216, 231`), cioè **senza alcuna atomicità**. La cura della
+  pipeline è annullata dal componente che essa chiama. Un protocollo
+  transazionale che non tocchi il firmatario protegge il percorso sbagliato.
+
+#### ADV-003 — `confermato`
+
+`loader._load_dir_into_catalog()` parsifica `manifest.toml`
+(`runtime/loader.py:1309`), gli applica l'Executor Standard e **poi** chiama
+`verify_executor()`, che riapre lo stesso percorso due volte ancora
+(`sign.py:253` per i byte firmati, `sign.py:272` per il testo da cui ricava
+`code.files` e il digest atteso). Quattro letture in tutto. Con sostituzioni
+concorrenti si può ammettere A, verificare B e costruire da C. La conseguenza
+dichiarata dal rilievo è corretta: §7.14 non può promettere un loader del tutto
+invariato.
+
+#### ADV-004 — `parzialmente confermato`
+
+La contraddizione esiste ma non è tecnica, è di governo. Nessuna affermazione di
+RM-0005 risulta falsa nei termini in cui è scritta: la promozione **è** atomica
+per singolo file, l'inventario **è** deterministico, l'equivalenza semantica
+**è** verificata da un revisore separato. Mancano garanzie che RM-0005 non ha
+mai dichiarato di dare: autorità della base, transazione fra più file,
+fotografia unica.
+
+Raccomandazione motivata, da sottoporre a Roberto: **tenere RM-0005 chiusa**,
+registrare le limitazioni residue come debito assegnato a RM-0002, con una sola
+eccezione — ADV-019 è debito di prova di RM-0005 e va sanato lì.
+
+#### ADV-005 — `confermato`
+
+§7.4 definisce `language` come «codice lingua oppure null per controlli
+globali». Un confronto trasversale coinvolge almeno due lingue e non ha modo di
+rappresentarsi; `null` collassa «globale» e «trasversale» sullo stesso valore.
+Fondato per costruzione.
+
+#### ADV-006 — `parzialmente confermato`; la tesi forte è respinta
+
+«Non può esistere una sola prova che certifichi contemporaneamente questi
+esiti» non regge alla lettura del documento:
+
+- §16 vieta la correzione **immediata** dei tre import; F4 è una fase successiva
+  e ne costituisce l'autorizzazione. Le due frasi si compongono;
+- §7.7 limita gli errori bloccanti ai manifest **nuovi o toccati**. Un legacy
+  divergente e non toccato produce un avviso, quindi «nessun errore certo nel
+  catalogo attivo» e «divergenza nota conservata» sono veri insieme.
+
+Resta fondato il nucleo, che però coincide con ADV-023: §13.5 mescola una
+fotografia storica con un criterio di accettazione. Va separata, non
+riconciliata.
+
+### 20.3 Verdetti sui rilievi P1
+
+#### ADV-007 — `confermato`, con prova
+
+`executors/_retired/reply_messages/manifest.toml` esiste ed è dentro le radici
+del materializzatore, che usa `rglob`. Il loader applica inoltre un cancello di
+abilitazione delle skill (`skill_registry.is_skill_enabled`,
+`runtime/loader.py:1278-1288`) che il materializzatore non ha. «Presente sul
+disco» e «ammesso» sono già oggi due insiemi diversi, e la pipeline lavora sul
+primo.
+
+#### ADV-008 — `confermato`
+
+`manifest_hash` è scritto in `i18n_materializer.py:149` e **non compare in
+nessun altro punto del runtime**. Il promotore rilegge il file corrente e
+applica il candidato a quello che trova. Nessun confronto condizionato.
+
+#### ADV-009 — `confermato`, oggi latente
+
+`iter_localized_text_tables()` produce `args.properties.<nome>.description`
+(percorso TOML completo), mentre i companion su disco usano
+`args.<nome>.description` — controllato su
+`executors/find_files/manifest.lang_state.json`. `_update_state()` scrive con il
+selettore della pipeline: una promozione crea un secondo insieme di chiavi che
+`_decide_edit_source()` non riconosce.
+
+Latente perché nessuna terza lingua è mai stata promossa qui: la ricerca di
+chiavi `args.properties.` nei companion non trova nulla. Latente non è innocuo —
+alla prima promozione reale ogni descrizione argomento risulterebbe «mai
+tradotta» per l'allineatore legacy.
+
+#### ADV-010 — `confermato`, con una riserva che ne riduce l'urgenza
+
+`_align_one()` scrive il manifest, salva lo stato, poi tenta la firma e, se
+fallisce, registra `sign_status = "sign_failed: ..."` e restituisce comunque
+`"ok": True` (`runtime/i18n_translator.py:1024-1044`). È una violazione di §2.8
+e la modalità di guasto più insidiosa del documento: il manifest resta scritto
+con la firma precedente e il loader lo scarta in silenzio al riavvio successivo.
+
+La riserva: **questo percorso non è schedulato**. Il timer obbligatorio
+`metnos-i18n-translator.service` esegue `admin.i18n_cli translate-pending`, che
+chiama `jobs.i18n_translate_pending`, il quale non tocca alcun manifest.
+`align_manifest_descriptions()` è raggiungibile solo dal proprio CLI e dai test.
+Va ritirato o subordinato, ma non sta producendo danni ogni notte.
+
+#### ADV-011 — `confermato`, ed è il rilievo che corregge questo documento
+
+`executor_standard._validate_description()`
+(`runtime/executor_standard.py:85-109`) itera **tutte** le lingue della mappa e
+richiede i quattro capitoli in ciascuna; `sign_executor()` invoca
+`validate_for_lifecycle()` per ogni manifest che dichiara l'Executor Standard, e
+**tutti e 122 lo dichiarano**. La prosa di §4.11 era sbagliata ed è corretta in
+§20.5, con la prova eseguita.
+
+Il rilievo non ribalta però la conclusione, e la stessa prova lo mostra: una
+descrizione con i capitoli **fuori ordine** e una con la **chiamata rinominata**
+superano entrambe l'Executor Standard senza un rilievo.
+
+#### ADV-012, ADV-013, ADV-015 — `confermato`
+
+Lacune di specifica verificabili leggendo §7.7, §7.8 e §7.13: «nome della
+funzione», «insieme degli argomenti», «identificatore riconoscibile»,
+«toccato» e i marker di omissione non sono definiti al punto da poter essere
+implementati senza che chi scrive il codice decida al posto della roadmap.
+
+#### ADV-014 — `parzialmente confermato`
+
+La divergenza esiste nel codice: `_LOCALIZABLE_FIELDS` ammette `description`,
+`summary`, `title`, `label`, `help`, `message`, mentre §7.2 modella due sole
+risorse. Nel catalogo reale però compaiono soltanto `description` (106) e
+`args.properties.*.description` (630) su core e builtin: zero occorrenze delle
+altre quattro. Rischio di specifica, non divergenza in atto: un'autorità unica
+sulle superfici serve, ma non è urgente.
+
+#### ADV-016 — `confermato`
+
+`internal/design/TODO.md:12` registra `AFF-I18N-001` come `P0 MAX` con «analisi
+obbligatoria prima dello sviluppo». La dipendenza formale va dichiarata e il
+controllo affinity resta sospeso.
+
+#### ADV-017 — `confermato`
+
+Riguarda testo scritto nella riverifica del 24 agosto: §12.0 dichiara che «le
+fasi originali restano sotto, invariate, come specifica di dettaglio», cioè
+esattamente l'affiancamento che il rilievo contesta. La priorità 1 di §12.0
+modifica un controllo bloccante di produzione, mentre F1 impone sola
+osservazione. Il piano va sostituito, non affiancato.
+
+### 20.4 Verdetti sui rilievi P2-P3
+
+#### ADV-018 — `confermato`, con la misura esatta
+
+Sotto `executors/` una scansione ricorsiva trova 86 manifest contro gli 85 del
+primo livello, e il file in più è
+`executors/_retired/reply_messages/manifest.toml`. Ne segue che la cifra
+«106/122» di §4.1 era **sbagliata**: sono 107, uno dei quali ritirato.
+Corretta in §4.1 e registrata in §20.5. La conclusione del rilievo vale oltre la
+singola cifra: i numeri devono venire da un rapporto generato.
+
+#### ADV-019 — `confermato`
+
+Le tre prove di `tests/runtime/i18n/test_i18n_activation.py` iniettano
+`manifest_validator=lambda _path: (True, "")` — righe 63, 96 e 143 — e la 143 è
+dentro `test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale`,
+la prova di accettazione completa. Una ricerca di `validate_manifests` in tutto
+l'albero delle prove non trova alcuna chiamata. **Il percorso reale di
+ammissione dei manifest ha copertura zero.**
+
+#### ADV-020, ADV-021, ADV-023 — `confermato`
+
+Verificabili leggendo il documento. Per ADV-021 il confronto è con
+`normalize_language()` della pipeline, che è già l'autorità BCP-47 richiesta e
+che §7.2 ignora parlando di una stringa generica.
+
+Su ADV-023 una nota di merito: il rilievo ha ragione e questa sezione ne è la
+prova. Il documento contiene ormai due fotografie datate, una specifica, due
+piani e due giri di revisione.
+
+#### ADV-022 — `confermato`, con la severità ricalibrata
+
+Il rilievo è fondato e la verifica lo rafforza: `_promote_contracts()` prende
+`manifest_path` dai metadati del registro **senza alcun controllo di
+contenimento**, ci scrive (`i18n_pipeline.py:642`) e ne firma la directory
+(`i18n_pipeline.py:643`). Una riga di database diventa autorità di scrittura e
+di firma su un percorso arbitrario.
+
+La ricalibrazione, per non gonfiare il rilievo: il registro vive in
+`PATH_USER_STATE` e la chiave d'autore in `~/.config/metnos/keys/`, entrambi
+dello stesso utente. Chi può alterare la riga può già usare la chiave
+direttamente, quindi **non c'è attraversamento di un confine di privilegio**. È
+un difetto di contenimento e di robustezza, non un'elevazione: va corretto
+perché un percorso registrato non deve essere un'autorità, non perché apra una
+falla.
+
+### 20.5 Correzioni apportate a RM-0002 da questa revisione
+
+**C1 — i capitoli sono controllati (ADV-011).** §4.11 affermava che i capitoli
+`SCOPO:/PATTERN:/NON:/OUT:` non fossero controllati affatto. Prova eseguita in
+memoria su `executors/find_files/manifest.toml`, con
+`executor_standard.validate_for_lifecycle`:
+
+| Manifest modificato | Esito |
+|---|---|
+| invariato | nessun rilievo |
+| lingua `de` aggiunta con marker tradotti (`ZWECK/MUSTER/NICHT/AUSGABE`) | **rifiutato**, `description_chapters` |
+| capitoli tutti presenti ma in ordine invertito | nessun rilievo |
+| chiamata del `PATTERN` rinominata | nessun rilievo |
+
+La riga della tabella di §4.11 è stata divisa in due — presenza, protetta
+altrove; ordine, scoperto — e il paragrafo seguente è stato corretto.
+Conseguenza per il piano: la protezione dei capitoli non va costruita, va
+**riusata**; resta da costruire quella dell'ordine, della chiamata e degli
+argomenti.
+
+**C2 — la copertura della pipeline è 107, non 106 (ADV-018).** §4.1 contava core
+e builtin al primo livello mentre la pipeline scandisce ricorsivamente e include
+`executors/_retired/reply_messages`. Tabella corretta e nota aggiunta.
+
+Nessun'altra affermazione della riverifica è stata smentita: inventario,
+lunghezze, conteggi del linter per lingua, divergenza di `set_signatures`, stato
+dei companion, tutela nulla sulla chiamata del `PATTERN` e lingua sbagliata nel
+gate di attivazione sono stati tutti riconfermati contro il codice corrente.
+
+### 20.6 Rilievi nuovi, non presenti in §19
+
+**NEW-001 — un'attivazione rifiutata non annulla la promozione.**
+In `activate_language()` l'ordine è `promote_candidates()` →
+`validate_manifests()` → gate finale. Se il controllo dei manifest o il gate
+finale falliscono viene sollevata `ActivationBlocked`, ma i manifest sono già
+riscritti e **rifirmati**, e non esiste un annullamento. Il sistema resta
+operativo nella lingua precedente, quindi il danno non è immediato; ma il
+catalogo firmato è stato modificato da un'operazione che si è dichiarata
+fallita, che è §2.8 applicata agli artefatti. Va deciso insieme ad ADV-002: la
+promozione dev'essere annullabile, oppure dev'essere l'ultimo passo dopo ogni
+verifica.
+
+**NEW-002 — il firmatario annulla l'atomicità della pipeline.**
+`sign_executor()` scrive il manifest con `write_text()` e la firma con
+`write_bytes()`. Un'interruzione fra le due lascia manifest nuovo e firma
+vecchia — lo stato esatto che il ripristino di `_promote_contracts()` esiste per
+evitare, prodotto dal componente che quel ripristino invoca.
+
+**NEW-003 — nessun blocco fra promozioni concorrenti sullo stesso manifest.**
+`_promote_contracts()` legge `original_text` una volta e lo modifica per tutti i
+record di quel manifest. Due promozioni verso lingue diverse, avviate insieme,
+leggono la stessa base e l'ultima che scrive cancella l'altra, restando entrambe
+«riuscite». ADV-008 chiede il confronto condizionato; questo è il meccanismo per
+cui serve anche un blocco per risorsa.
+
+**NEW-004 — l'ordine dei capitoli non è protetto da nessuno.**
+`manifest_lint` lo controlla (`runtime/manifest_lint.py:203-213`) ma emette
+`warn`, e `validate_manifests()` filtra i soli `error`. L'Executor Standard, che
+è il controllo effettivamente applicato alla firma, verifica la presenza e non
+l'ordine. Una traduzione che riordini i capitoli passa quindi ogni confine
+esistente, e il proposer — che taglia la testa fino a `OUT:` — ne riceve una
+diversa da quella prevista.
+
+### 20.7 Cosa resta da decidere, e da chi
+
+Il mandato di §19.8 chiede all'agente esterno anche di scegliere il protocollo
+transazionale, gli schemi e la matrice dei profili. Quelle non sono verifiche:
+sono decisioni di prodotto con conseguenze su firma, autorità e installato, e
+appartengono a Roberto. Restano aperte di proposito; qui c'è il materiale per
+deciderle.
+
+Tre domande vengono prima, perché le altre dieci di §19.6 ne dipendono:
+
+1. **La promozione linguistica può rifirmare?** Se no, serve un firmatario che
+   accetti un digest esistente e rifiuti una base non verificata; se sì, il
+   confine di autorità va riscritto per dirlo esplicitamente.
+2. **Chi possiede lo stato linguistico**, il registro SQLite di RM-0005 o il
+   companion accanto al manifest? Finché sono due, i selettori divergono e
+   ADV-009 si ripresenta a ogni estensione.
+3. **RM-0005 si riapre o si registra il debito?** La risposta decide se
+   ADV-001, ADV-002 e ADV-003 sono lavoro di RM-0002 o rientrano dove il codice
+   è nato.
+
+Fino a queste tre risposte RM-0002 resta `active` e in sola analisi. Il primo
+lavoro di codice, quando arriverà, non è il motore multilingue: è rendere sicuro
+il confine di pubblicazione su cui il motore dovrà appoggiarsi.
