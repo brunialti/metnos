@@ -20,6 +20,17 @@ manutenzione successiva deve:
 Le fasi seguenti restano come traccia verificabile dell’implementazione, non
 come elenco di attività pendenti.
 
+**Debito successivo, senza riapertura.** La revisione avversariale del 24 agosto
+2026 ha distinto l'atomicità dei singoli file e dell'attivazione dell'istanza da
+una garanzia più forte sul contratto composto da manifest, firma e stato. Ha
+inoltre rilevato che il firmatario generale può ricalcolare il digest del
+codice durante una promozione linguistica e che il loader può rileggere byte
+diversi da quelli verificati. Questi limiti non annullano il contratto di
+localizzazione qui certificato: sono assegnati a RM-0007 e alla proposta ADR
+0223, che devono essere completate prima dei nuovi blocchi di RM-0002. Il
+successivo legame fra codice verificato e byte effettivamente eseguiti è
+censito separatamente come `EXEC-BIND-001` e non riapre RM-0005.
+
 RM-0005 definisce il **multilinguismo full** di Metnos: una persona installa
 l’istanza, sceglie una lingua qualsiasi ammessa dal codice lingua e il sistema
 parte immediatamente in inglese se quella lingua non è ancora disponibile. Una
