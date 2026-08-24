@@ -22,7 +22,7 @@ def test_pattern_args_ignore_nested_callback_properties() -> None:
     )
 
     assert _pattern_call_args(description, "get_approval") == [
-        "prompt", "on_approve",
+        "on_approve", "prompt",
     ]
 
 
@@ -34,7 +34,7 @@ def test_pattern_args_handle_nested_commas_equals_and_multiple_calls() -> None:
     )
 
     assert _pattern_call_args(description, "send_messages") == [
-        "messages", "via_channel", "messages",
+        "messages", "messages", "via_channel",
     ]
 
 

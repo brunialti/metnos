@@ -93,6 +93,9 @@ class Finding:
 # Parsing helper: estrae i 4 capitoli dalla lingua richiesta.
 # --------------------------------------------------------------------------
 _CHAPTERS = ("SCOPO:", "PATTERN:", "NON:", "OUT:")
+_LOCALIZABLE_FIELDS = frozenset({
+    "description", "summary", "title", "label", "help", "message",
+})
 
 
 def _localized_text(
@@ -104,6 +107,21 @@ def _localized_text(
     if allow_flat and isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _localized_resource_tables(
+    node: Mapping[str, object], prefix: tuple[str, ...] = (),
+):
+    for key, value in node.items():
+        path = prefix + (str(key),)
+        if not isinstance(value, Mapping):
+            continue
+        if path[-1] in _LOCALIZABLE_FIELDS and any(
+            isinstance(item, str) for item in value.values()
+        ):
+            yield ".".join(path), value
+            continue
+        yield from _localized_resource_tables(value, path)
 
 
 def _without_pattern_chapter(desc: str) -> str:
@@ -139,6 +157,29 @@ def _chapter_span(desc: str, name: str) -> str:
     return desc[start:end].strip()
 
 
+def _chapter_problem(desc: str) -> tuple[str, Mapping[str, object]] | None:
+    occurrences = {
+        marker: tuple(match.start() for match in re.finditer(re.escape(marker), desc))
+        for marker in _CHAPTERS
+    }
+    invalid_counts = {
+        marker: len(positions)
+        for marker, positions in occurrences.items() if len(positions) != 1
+    }
+    if invalid_counts:
+        return (
+            "ogni capitolo SCOPO/PATTERN/NON/OUT deve comparire esattamente una volta",
+            {"counts": invalid_counts},
+        )
+    ordered_positions = [occurrences[marker][0] for marker in _CHAPTERS]
+    if ordered_positions != sorted(ordered_positions):
+        return (
+            "capitoli fuori ordine (atteso SCOPO -> PATTERN -> NON -> OUT)",
+            {},
+        )
+    return None
+
+
 def _output_schema_text(manifest: dict) -> str:
     """Return the declared output schema in a representation-neutral form."""
     output = manifest.get("output") or {}
@@ -148,51 +189,308 @@ def _output_schema_text(manifest: dict) -> str:
     return str(schema).lower()
 
 
+@dataclass(frozen=True, order=True, slots=True)
+class PatternCall:
+    callee: str
+    keyword_names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PatternAtoms:
+    calls: tuple[PatternCall, ...]
+    standalone_assignments: tuple[str, ...]
+    operator_identifiers: tuple[str, ...]
+
+
+class PatternSyntaxError(ValueError):
+    pass
+
+
+_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
+_OPEN_TO_CLOSE = {"(": ")", "[": "]", "{": "}"}
+
+
+def _code_mask(text: str) -> str:
+    """Blank quoted content and validate every delimiter in one pass."""
+    chars = list(text)
+    stack: list[str] = []
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(text):
+        if quote is not None:
+            chars[index] = " "
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            chars[index] = " "
+        elif char in _OPEN_TO_CLOSE:
+            stack.append(_OPEN_TO_CLOSE[char])
+        elif char in ")]}":
+            if not stack or stack.pop() != char:
+                raise PatternSyntaxError(
+                    f"delimitatore inatteso alla posizione {index}"
+                )
+    if quote is not None:
+        raise PatternSyntaxError("stringa non chiusa")
+    if stack:
+        raise PatternSyntaxError(f"delimitatore non chiuso: atteso {stack[-1]}")
+    return "".join(chars)
+
+
+def _matching_paren(text: str, open_index: int) -> int:
+    stack: list[str] = [")"]
+    quote: str | None = None
+    escaped = False
+    for index in range(open_index + 1, len(text)):
+        char = text[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char in _OPEN_TO_CLOSE:
+            stack.append(_OPEN_TO_CLOSE[char])
+        elif char in ")]}":
+            if not stack or stack.pop() != char:
+                raise PatternSyntaxError(
+                    f"delimitatore inatteso alla posizione {index}"
+                )
+            if not stack:
+                return index
+    raise PatternSyntaxError("parentesi di chiamata non chiusa")
+
+
+def _top_level_segments(body: str) -> tuple[str, ...]:
+    segments: list[str] = []
+    start = 0
+    stack: list[str] = []
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(body):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+        elif char in _OPEN_TO_CLOSE:
+            stack.append(_OPEN_TO_CLOSE[char])
+        elif char in ")]}":
+            if not stack or stack.pop() != char:
+                raise PatternSyntaxError(
+                    f"delimitatore inatteso alla posizione {index}"
+                )
+        elif char == "," and not stack:
+            segments.append(body[start:index])
+            start = index + 1
+    if quote is not None or stack:
+        raise PatternSyntaxError("argomento di chiamata non chiuso")
+    segments.append(body[start:])
+    return tuple(segments)
+
+
+def scan_pattern(pattern: str) -> PatternAtoms:
+    """Extract machine atoms from a PATTERN chapter without parsing prose."""
+    masked = _code_mask(pattern)
+    calls: list[PatternCall] = []
+    call_spans: list[tuple[int, int]] = []
+    # A machine call is deliberately the adjacent form ``name(``.  Allowing
+    # whitespace here turns ordinary prose such as ``Google UI (link...)``
+    # into a language-dependent pseudo-call (``UI`` in English, ``Google``
+    # in Italian), which is exactly the kind of false block this scanner must
+    # avoid.
+    call_re = re.compile(rf"\b({_IDENTIFIER})\(")
+    for match in call_re.finditer(masked):
+        open_index = masked.find("(", match.end(1))
+        close_index = _matching_paren(pattern, open_index)
+        keywords: list[str] = []
+        for segment in _top_level_segments(pattern[open_index + 1:close_index]):
+            keyword = re.match(rf"\s*({_IDENTIFIER})\s*=(?!=)", segment)
+            if keyword:
+                keywords.append(keyword.group(1))
+        if len(keywords) != len(set(keywords)):
+            raise PatternSyntaxError(
+                f"keyword duplicata nella chiamata {match.group(1)}"
+            )
+        calls.append(PatternCall(match.group(1), tuple(sorted(keywords))))
+        call_spans.append((match.start(1), close_index + 1))
+
+    outside_calls = list(masked)
+    for start, end in call_spans:
+        outside_calls[start:end] = " " * (end - start)
+    outside = "".join(outside_calls)
+    assignments = tuple(sorted(
+        match.group(1)
+        for match in re.finditer(rf"\b({_IDENTIFIER})\s*=(?!=)", outside)
+    ))
+    operators = tuple(sorted(
+        "+".join(re.findall(_IDENTIFIER, match.group(0)))
+        for match in re.finditer(
+            rf"\b{_IDENTIFIER}(?:\s*\+\s*{_IDENTIFIER})+\b", outside,
+        )
+    ))
+    return PatternAtoms(tuple(sorted(calls)), assignments, operators)
+
+
 def _pattern_call_args(desc: str, name: str) -> list[str]:
-    """Nomi degli argomenti usati nelle CHIAMATE `name(...)` del capitolo PATTERN.
-    Estrae SOLO dalle chiamate reali del tool (non dalla prosa 'ARGS: ...default=':
-    falso positivo se si prende `\\w+=` da tutto il capitolo). Le assegnazioni
-    dentro dict/list annidati non sono argomenti top-level della chiamata."""
-    pat = _chapter_span(desc, "PATTERN:")
-    args: list[str] = []
-    call_re = re.compile(rf"{re.escape(name)}\s*\(")
-    for match in call_re.finditer(pat):
-        start = match.end()
-        stack = [")"]
-        quote: str | None = None
-        escaped = False
-        segment_start = start
-        segments: list[str] = []
-        cursor = start
-        while cursor < len(pat) and stack:
-            char = pat[cursor]
-            if quote is not None:
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == quote:
-                    quote = None
-                cursor += 1
+    """Compatibility helper backed by the canonical scanner."""
+    atoms = scan_pattern(_chapter_span(desc, "PATTERN:"))
+    return [
+        keyword
+        for call in atoms.calls if call.callee == name
+        for keyword in call.keyword_names
+    ]
+
+
+_RUNTIME_PLACEHOLDER = re.compile(r"\$\{RUNTIME:[^{}]+\}")
+
+
+def _runtime_placeholders(text: str) -> tuple[str, ...]:
+    matches = tuple(match.group(0) for match in _RUNTIME_PLACEHOLDER.finditer(text))
+    remainder = _RUNTIME_PLACEHOLDER.sub("", text)
+    if "${RUNTIME:" in remainder:
+        raise ValueError("segnaposto runtime non chiuso")
+    return tuple(sorted(matches))
+
+
+def _template_placeholders(text: str) -> tuple[str, ...]:
+    values: list[str] = []
+    cursor = 0
+    while True:
+        start = text.find("{{", cursor)
+        if start < 0:
+            break
+        end = text.find("}}", start + 2)
+        if end < 0:
+            raise ValueError("segnaposto template non chiuso")
+        values.append(text[start + 2:end].strip())
+        cursor = end + 2
+    return tuple(sorted(values))
+
+
+def _atoms_evidence(atoms: PatternAtoms) -> Mapping[str, object]:
+    return {
+        "calls": tuple(
+            f"{call.callee}({','.join(call.keyword_names)})"
+            for call in atoms.calls[:32]
+        ),
+        "assignments": atoms.standalone_assignments[:32],
+        "operators": atoms.operator_identifiers[:32],
+    }
+
+
+def _local_placeholder_findings(
+    text: str, *, resource: str, language: str,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    for check, extractor in (
+        ("runtime_placeholders", _runtime_placeholders),
+        ("template_placeholders", _template_placeholders),
+    ):
+        try:
+            extractor(text)
+        except ValueError as exc:
+            findings.append(Finding(
+                check, "error", "local", str(exc),
+                resource=resource, languages=(language,),
+            ))
+    return findings
+
+
+def lint_contract_translation(
+    source: str,
+    translated: str,
+    *,
+    resource: str,
+    source_language: str,
+    target_language: str,
+) -> list[Finding]:
+    """Compare only deterministic machine invariants across two texts."""
+    from i18n_registry import normalize_language
+
+    source_lang = normalize_language(source_language)
+    target_lang = normalize_language(target_language)
+    languages = (source_lang, target_lang)
+    findings: list[Finding] = []
+
+    if resource == "description":
+        for text, language in ((source, source_lang), (translated, target_lang)):
+            chapter_problem = _chapter_problem(text)
+            if chapter_problem is not None:
+                message, evidence = chapter_problem
+                findings.append(Finding(
+                    "chapter_order", "error", "local", message,
+                    resource=resource, languages=(language,), evidence=evidence,
+                ))
+        source_atoms = target_atoms = None
+        for text, language, holder in (
+            (source, source_lang, "source"),
+            (translated, target_lang, "target"),
+        ):
+            try:
+                atoms = scan_pattern(_chapter_span(text, "PATTERN:"))
+            except PatternSyntaxError as exc:
+                findings.append(Finding(
+                    "pattern_unparseable", "error", "local", str(exc),
+                    resource=resource, languages=(language,),
+                ))
                 continue
-            if char in ("'", '"'):
-                quote = char
-            elif char in "([{":
-                stack.append({"(": ")", "[": "]", "{": "}"}[char])
-            elif char in ")]}" and char == stack[-1]:
-                stack.pop()
-                if not stack:
-                    segments.append(pat[segment_start:cursor])
-                    break
-            elif char == "," and len(stack) == 1:
-                segments.append(pat[segment_start:cursor])
-                segment_start = cursor + 1
-            cursor += 1
-        for segment in segments:
-            arg_match = re.match(r"\s*([a-zA-Z_]\w*)\s*=(?!=)", segment)
-            if arg_match:
-                args.append(arg_match.group(1))
-    return args
+            if holder == "source":
+                source_atoms = atoms
+            else:
+                target_atoms = atoms
+        if (
+            source_atoms is not None
+            and target_atoms is not None
+            and source_atoms != target_atoms
+        ):
+            findings.append(Finding(
+                "pattern_atoms", "error", "parity",
+                "chiamate o argomenti macchina diversi fra le lingue",
+                resource=resource, languages=languages,
+                evidence={
+                    "source": _atoms_evidence(source_atoms),
+                    "target": _atoms_evidence(target_atoms),
+                },
+            ))
+
+    for check, extractor in (
+        ("runtime_placeholders", _runtime_placeholders),
+        ("template_placeholders", _template_placeholders),
+    ):
+        extracted: list[tuple[str, ...] | None] = []
+        for text, language in ((source, source_lang), (translated, target_lang)):
+            try:
+                extracted.append(extractor(text))
+            except ValueError as exc:
+                extracted.append(None)
+                findings.append(Finding(
+                    check, "error", "local", str(exc),
+                    resource=resource, languages=(language,),
+                ))
+        if None not in extracted and extracted[0] != extracted[1]:
+            findings.append(Finding(
+                check, "error", "parity",
+                "insieme dei segnaposto diverso fra le lingue",
+                resource=resource, languages=languages,
+                evidence={"source": extracted[0], "target": extracted[1]},
+            ))
+    return findings
 
 
 # --------------------------------------------------------------------------
@@ -237,25 +535,20 @@ def lint_manifest(
     if not isinstance(props, Mapping):
         props = {}
     visible = _visible_to_llm(desc)
+    out.extend(_local_placeholder_findings(
+        desc, resource="description", language=requested_language,
+    ))
 
     # C_CHAPTERS — i 4 capitoli presenti e in ordine.
-    positions = [(c, desc.find(c)) for c in _CHAPTERS]
-    missing = [c for c, p in positions if p < 0]
-    if missing:
+    chapter_problem = _chapter_problem(desc)
+    if chapter_problem is not None:
+        chapter_message, chapter_evidence = chapter_problem
         out.append(Finding(
             "chapter_order", "error", "local",
-            f"capitoli mancanti {missing} (atteso SCOPO/PATTERN/NON/OUT §2.5)",
+            chapter_message,
             resource="description", languages=(requested_language,),
-            evidence={"missing": tuple(missing)},
+            evidence=chapter_evidence,
         ))
-    else:
-        order = [p for _, p in positions]
-        if order != sorted(order):
-            out.append(Finding(
-                "chapter_order", "error", "local",
-                "capitoli fuori ordine (atteso SCOPO -> PATTERN -> NON -> OUT)",
-                resource="description", languages=(requested_language,),
-            ))
 
     # C_BUDGET — oltre il budget medio il pool elastico puo' recuperare spazio,
     # ma la visibilita' non e' garantita in un pool composto da molte teste
@@ -313,11 +606,30 @@ def lint_manifest(
                 resource=resource, languages=(requested_language,),
                 evidence={"length": len(ad), "limit": ARG_DESC_MAX},
             ))
+        if ad is not None:
+            out.extend(_local_placeholder_findings(
+                ad, resource=resource, language=requested_language,
+            ))
+
+    pattern_atoms: PatternAtoms | None = None
+    if "PATTERN:" in desc:
+        try:
+            pattern_atoms = scan_pattern(_chapter_span(desc, "PATTERN:"))
+        except PatternSyntaxError as exc:
+            out.append(Finding(
+                "pattern_unparseable", "error", "local", str(exc),
+                resource="description", languages=(requested_language,),
+            ))
 
     # C_PATTERN_ARGS — il PATTERN usa solo arg esistenti nello schema (+ universali).
-    if "PATTERN:" in desc and props:
+    if pattern_atoms is not None and props:
         allowed = set(props.keys()) | _UNIVERSAL_ARGS
-        for a in _pattern_call_args(desc, name):
+        pattern_arguments = [
+            keyword
+            for call in pattern_atoms.calls if call.callee == name
+            for keyword in call.keyword_names
+        ]
+        for a in pattern_arguments:
             if a not in allowed:
                 out.append(Finding("pattern_unknown_arg", "error", "local",
                                    f"il PATTERN usa l'arg '{a}' che NON e' nello schema "
@@ -325,7 +637,12 @@ def lint_manifest(
                                    resource="description", languages=(requested_language,),
                                    evidence={"argument": a}))
 
-    pattern_arguments = set(_pattern_call_args(desc, name))
+    pattern_arguments = {
+        keyword
+        for call in (pattern_atoms.calls if pattern_atoms is not None else ())
+        if call.callee == name
+        for keyword in call.keyword_names
+    }
     outside_pattern = _without_pattern_chapter(visible)
     for pname, spec in props.items():
         if not isinstance(spec, Mapping) or not spec.get("runtime_resolved"):
@@ -421,35 +738,29 @@ def lint_file(
 
 
 def _load_all_affinities() -> dict:
+    """Compatibility view backed by the shared neutral inventory."""
     import tomllib
-    base = _RUNTIME.parent / "executors"
+    from manifest_inventory import inventory_manifests
+
     out = {}
-    for mt in base.glob("*/manifest.toml"):
+    for ref in inventory_manifests().manifests:
         try:
-            with mt.open("rb") as handle:
+            with ref.manifest_path.open("rb") as handle:
                 m = tomllib.load(handle)
-            out[m.get("name", mt.parent.name)] = {a.lower() for a in (m.get("affinity") or [])}
+            out[ref.name] = {
+                str(value).lower() for value in (m.get("affinity") or [])
+            }
         except Exception:
             continue
     return out
 
 
 def _load_catalog_names(affinities: dict | None = None) -> set[str]:
-    """Load every live executor name, including runtime builtin contracts.
+    """Compatibility view of names from the shared neutral inventory."""
+    from manifest_inventory import inventory_manifests
 
-    Builtins do not take part in external affinity comparisons, but references
-    to them in a NON chapter are valid and must not be reported as dead.
-    """
-    import tomllib
     names = set((affinities or {}).keys())
-    contracts = _RUNTIME / "builtin_executor_contracts"
-    for mt in contracts.glob("*/manifest.toml"):
-        try:
-            with mt.open("rb") as handle:
-                manifest = tomllib.load(handle)
-            names.add(manifest.get("name", mt.parent.name))
-        except Exception:
-            continue
+    names.update(ref.name for ref in inventory_manifests().manifests)
     return names
 
 
@@ -509,11 +820,8 @@ def main(argv=None):
                 catalog_names=names,
                 sibling_affinities=affinities if index == 0 else None,
             )
-            if strict:
-                errs, warns = findings, []
-            else:
-                errs = [f for f in findings if f.severity == "error"]
-                warns = [f for f in findings if f.severity == "warn"]
+            errs = [f for f in findings if f.severity == "error"]
+            warns = [f for f in findings if f.severity == "warn"]
             total_err += len(errs)
             total_warn += len(warns)
             if findings:
@@ -523,10 +831,37 @@ def main(argv=None):
                 )
                 for f in findings:
                     print(f)
+        from itertools import combinations
+        for resource, table in _localized_resource_tables(manifest):
+            variants = sorted(
+                (str(language), text)
+                for language, text in table.items()
+                if isinstance(language, str) and isinstance(text, str)
+            )
+            for (source_language, source), (target_language, target) in combinations(
+                variants, 2,
+            ):
+                parity = [
+                    finding for finding in lint_contract_translation(
+                        source, target, resource=resource,
+                        source_language=source_language,
+                        target_language=target_language,
+                    )
+                    if finding.scope == "parity"
+                ]
+                total_err += sum(item.severity == "error" for item in parity)
+                total_warn += sum(item.severity == "warn" for item in parity)
+                if parity:
+                    print(
+                        f"{ref.name} [{source_language}↔{target_language}; "
+                        f"{ref.origin.value}; {resource}]:"
+                    )
+                    for finding in parity:
+                        print(finding)
     print(f"\n=== manifest_lint: {total_err} error, {total_warn} warn "
           f"su {checked} varianti di {len(inventory.manifests)} manifest; "
           f"{len(inventory.problems)} problemi inventario ===")
-    return 1 if total_err else 0
+    return 1 if total_err or (strict and total_warn) else 0
 
 
 if __name__ == "__main__":
