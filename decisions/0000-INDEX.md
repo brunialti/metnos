@@ -157,4 +157,8 @@ for format and discipline; see `_template.md` for the template.
 > cohort and no command or application table. Latest: `0222` adds a
 > capability-gated, signed `reverse` entrypoint for the same remote executor
 > bundle, requires a semantic restoration attestation and preserves dialog turn
-> identity through completion callbacks.
+> identity through completion callbacks. Latest: `0223` proposes immutable
+> generations for localized executor contracts, with one atomic current
+> pointer, verified manifest bytes, pure signing and portable writer locking;
+> technical code packaging remains outside its KISS boundary. It complements
+> ADR 0220 without reopening RM-0005.
