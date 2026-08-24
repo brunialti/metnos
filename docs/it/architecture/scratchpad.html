@@ -84,11 +84,12 @@ li { margin-bottom:4px; }
 </div>
 
 <p class="lead"><code>runtime/scratchpad.py</code> implementa un archivio
-temporaneo per conservare un'osservazione completa e mostrarne al modello
-soltanto un riferimento o una porzione. L'API esiste, ma il motore corrente non
-collega automaticamente le grandi osservazioni a questo archivio e non espone
-<code>scratchpad_read</code> nel catalogo ordinario. La distinzione &egrave;
-essenziale: il modulo disponibile non va presentato come funzione attiva.</p>
+temporaneo pensato per tenere fuori dal contesto del modello i risultati troppo
+grandi. Potrebbe conservare il risultato completo e lasciarne nel piano soltanto
+un riepilogo con un identificatore. L'API esiste, ma il motore corrente non la
+usa per archiviare automaticamente le osservazioni e non espone
+<code>scratchpad_read</code> nel catalogo ordinario. &Egrave; quindi un componente
+disponibile, non una funzione attiva del prodotto.</p>
 
 <div class="toc">
 <h2>Indice</h2>
@@ -96,7 +97,7 @@ essenziale: il modulo disponibile non va presentato come funzione attiva.</p>
  <li><a href="#cap1">Comportamento corrente</a></li>
  <li><a href="#cap2">API disponibile</a></li>
  <li><a href="#cap3">Archivio e durata</a></li>
- <li><a href="#cap4">Rappresentazione sintetica</a></li>
+ <li><a href="#cap4">Il riepilogo prodotto dal modulo</a></li>
  <li><a href="#cap5">Lettura a porzioni</a></li>
  <li><a href="#cap6">Cosa occorre per collegarlo</a></li>
  <li><a href="#cap7">Verifiche necessarie</a></li>
@@ -106,12 +107,23 @@ essenziale: il modulo disponibile non va presentato come funzione attiva.</p>
 
 <h1 id="cap1">1. Comportamento corrente</h1>
 
+<p>L'idea &egrave; semplice. Se un executor restituisse, per esempio, mille righe di
+testo, lo scratchpad potrebbe conservarle e mostrare al modello soltanto
+&laquo;mille righe disponibili, identificatore X&raquo;. Il modello potrebbe poi leggere
+solo l'inizio, la fine o l'intervallo che gli serve. Questo evita di riempire il
+contesto con dati che potrebbero non essere necessari.</p>
+
 <p>Nel motore attivo, i risultati dei passi restano nella cronologia di
 esecuzione del turno. Un passo successivo li riusa con
 <code>from_step</code> o con un riferimento <code>&#36;{stepN.campo}</code>; il
 runtime risolve il valore effettivo senza chiedere al modello di ricopiarlo.
 La sintesi finale proietta e limita i campi testuali che presenta al modello,
 mentre i dati completi restano nel risultato del passo.</p>
+
+<p>Nel codice il termine <em>scratchpad</em> compare anche, in senso pi&ugrave;
+generico, per indicare la cronologia dei passi usata durante un turno o la sua
+copia durante la ripresa di un dialogo. Quella cronologia &egrave; attiva, ma non &egrave;
+il database SQLite descritto in questa pagina.</p>
 
 <p>All'inizio di un turno <code>agent_runtime</code> apre il database dello
 scratchpad ed elimina le voci scadute. Nel percorso corrente, per&ograve;, non
@@ -147,16 +159,16 @@ L'eliminazione non &egrave; un processo autonomo: avviene soltanto quando un
 chiamante esegue <code>gc</code>. Una voce scaduta pu&ograve; quindi restare su
 disco fino alla pulizia successiva.</p>
 
-<h1 id="cap4">4. Rappresentazione sintetica</h1>
+<h1 id="cap4">4. Il riepilogo prodotto dal modulo</h1>
 
-<p>Per un testo lungo, il modulo conserva l'intero contenuto e produce un
-riassunto formato dall'inizio e dalla fine. Per dati binari registra i byte e
-mostra dimensione e prefisso dell'impronta SHA-256. Per un risultato
-strutturato cerca campi quali <code>entries</code>, <code>matches</code> o
-<code>results</code> e comunica conteggio e schema, senza riversare gli
-elementi nel riassunto.</p>
+<p>Quando viene chiamato <code>put</code>, un testo lungo viene conservato per
+intero e il riepilogo ne mostra l'inizio e la fine. Per dati binari il modulo
+registra i byte e mostra dimensione e prefisso dell'impronta SHA-256. Per un
+risultato strutturato cerca campi quali <code>entries</code>,
+<code>matches</code> o <code>results</code> e comunica conteggio e schema, senza
+riversare gli elementi nel riepilogo.</p>
 
-<p>La rappresentazione sintetica pu&ograve; mantenere anche scalari utili, per
+<p>Il riepilogo pu&ograve; mantenere anche valori semplici utili, per
 esempio conteggi, stato di troncamento, dimensione, messaggio ed errore. Il
 campo <code>ref_hint</code> spiega come riusare il risultato di un passo o
 come chiedere una porzione del contenuto.</p>
@@ -184,7 +196,7 @@ completa, dimensione restituita, tipo e modalit&agrave; di lettura.</p>
 <li>la chiamata a <code>put</code> prima di costruire il contesto visibile al modello;</li>
 <li>l'esposizione di <code>scratchpad_read</code> soltanto quando esistono voci accessibili al turno e all'utente correnti;</li>
 <li>un controllo di propriet&agrave; su ogni <code>get</code>, <code>read</code> e <code>list_for_turn</code>;</li>
-<li>limiti sulla lettura <code>full</code>, cos&igrave; una voce grande non rientra interamente nel contesto che si voleva proteggere;</li>
+<li>limiti sulla lettura <code>full</code>, che oggi non ha un tetto proprio, cos&igrave; una voce grande non rientra interamente nel contesto che si voleva proteggere;</li>
 <li>pulizia, osservabilit&agrave; e prove di ripresa dopo un dialogo sospeso.</li>
 </ol>
 
