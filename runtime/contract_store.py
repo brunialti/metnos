@@ -1764,7 +1764,7 @@ def _lock_conflict(exc: OSError) -> bool:
 
 
 def _windows_delete_share_conflict(path: Path) -> bool:
-    """Probe one Windows path for a conflicting delete-sharing mode.
+    """Return whether an access-denied replace is safe to retry.
 
     ``MoveFileExW`` can report ``ERROR_ACCESS_DENIED`` (5) when an existing
     destination handle was opened without ``FILE_SHARE_DELETE``.  Retrying
@@ -1773,8 +1773,11 @@ def _windows_delete_share_conflict(path: Path) -> bool:
     cases: an incompatible live handle is reported as
     ``ERROR_SHARING_VIOLATION`` (32), while a denied access check remains 5.
 
-    This is a classifier only.  It never changes the path and fails closed
-    for every result other than a documented sharing/lock violation.
+    A successful DELETE-only probe is also sufficient: it proves that the
+    caller has rename/delete authority, so the preceding error 5 was not an
+    ACL denial and may be retried for the same finite deadline.  This covers
+    short antivirus/indexer races which can disappear before the probe runs.
+    The probe never changes the path and every other result fails closed.
     """
     if os.name != "nt":
         return False
@@ -1808,7 +1811,7 @@ def _windows_delete_share_conflict(path: Path) -> bool:
     if handle in {None, invalid}:
         return ctypes.get_last_error() in {32, 33}
     kernel32.CloseHandle(handle)
-    return False
+    return True
 
 
 def _pointer_replace_conflict(
