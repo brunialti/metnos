@@ -4,8 +4,9 @@
 # Cornice (decisioni 5/6/2026, [[project-public-release-initiative]]):
 #   - Baseline = versione in ESERCIZIO (/opt/metnos). NIENTE fork divergenti:
 #     una sola sorgente, il pubblico e' un EXPORT-subset deterministico di questa.
-#   - GitHub pubblico = SOLO run-essentials e certificazione portabile:
-#     `tests/portable/**` e' l'unico sottoalbero di test pubblicato. Restano
+#   - GitHub pubblico = SOLO run-essentials e certificazione pubblica:
+#     `tests/portable/**` e `tests/windows_identity/**` sono i soli sottoalberi
+#     di test pubblicati. Restano
 #     esclusi supporto, bench, stress, simulator, history, stato runtime e
 #     documentazione interna (CLAUDE.md).
 #   - ADR e rapporti interni non vanno su GitHub. La documentazione pubblica
@@ -90,10 +91,10 @@ EXCLUDE_RE=$(printf '%s' "$EXCLUDE" | tr -d '\n ')
 # Estensioni binarie/dati mai distribuite (modelli/stato scaricati a parte).
 BIN_RE='\.(gguf|onnx|safetensors|sqlite|sqlite-journal|env|key|pem|p12|db)$'
 
-# Unica eccezione al confine `tests/`: prove di certificazione autonome che
+# Uniche eccezioni al confine `tests/`: prove di certificazione autonome che
 # devono poter girare anche dal repository pubblico. Le esclusioni binarie
 # continuano ad applicarsi al loro contenuto.
-PORTABLE_TEST_RE='^tests/portable/'
+PUBLIC_TEST_RE='^tests/(portable|windows_identity)/'
 
 # Eccezione binari: seed RUN-ESSENTIAL all'install (i18n) che NON e' stato/modello
 # scaricabile a parte. Incluso, ma SANIFICATO via SQL piu' sotto (sed lo
@@ -130,7 +131,7 @@ for f in "${ALL[@]}"; do
   fi
   if [[ "$f" =~ $BIN_RE ]]; then
     DROP+=("$f")
-  elif [[ "$f" =~ $EXCLUDE_RE ]] && [[ ! "$f" =~ $PORTABLE_TEST_RE ]]; then
+  elif [[ "$f" =~ $EXCLUDE_RE ]] && [[ ! "$f" =~ $PUBLIC_TEST_RE ]]; then
     DROP+=("$f")
   else
     KEEP+=("$f")
@@ -147,6 +148,23 @@ rm -rf "$DEST"
 mkdir -p "$DEST"
 printf '%s\0' "${KEEP[@]}" | rsync -a --files-from=- --from0 ./ "$DEST/" 2>/dev/null \
   || { while IFS= read -r -d '' f; do mkdir -p "$DEST/$(dirname "$f")"; cp -p "$f" "$DEST/$f"; done < <(printf '%s\0' "${KEEP[@]}"); }
+
+# Un workflow pubblico non deve poter citare una suite che il filtro ha
+# escluso. Il controllo usa soltanto riferimenti letterali sotto `tests/` e
+# fallisce prima della pubblicazione, invece di lasciare che GitHub scopra il
+# disallineamento dopo il push.
+if [ -d "$DEST/.github/workflows" ]; then
+  mapfile -t WORKFLOW_TEST_PATHS < <(
+    grep -rhoE 'tests/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*' \
+      "$DEST/.github/workflows" 2>/dev/null | LC_ALL=C sort -u || true
+  )
+  for relative in "${WORKFLOW_TEST_PATHS[@]}"; do
+    if [ ! -e "$DEST/$relative" ]; then
+      echo "ERRORE: workflow pubblico riferisce un percorso escluso: $relative" >&2
+      exit 1
+    fi
+  done
+fi
 
 # --- Sanificazione contenuto nei file esportati -------------------------------
 # Mappa IP/host RFC1918 locali -> range documentazione (RFC5737/RFC3849), cosi'
