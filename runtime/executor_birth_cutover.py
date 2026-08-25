@@ -47,6 +47,26 @@ class CurrentReceiptProof:
     identities: tuple[tuple[str, str], ...]
     receipt_hashes: Mapping[tuple[str, str], str]
 
+    def __post_init__(self) -> None:
+        identities = tuple(self.identities)
+        if identities != tuple(sorted(identities)) or len(identities) != len(set(identities)):
+            raise BirthCutoverError("birth_cutover_inventory_invalid")
+        hashes = dict(self.receipt_hashes)
+        if set(hashes) != set(identities):
+            raise BirthCutoverError("birth_cutover_receipt_binding_invalid")
+        for identity in identities:
+            contract_id, generation_id = identity
+            if (
+                not isinstance(contract_id, str) or not contract_id or "\x00" in contract_id
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", generation_id) is None
+                or re.fullmatch(r"sha256:[0-9a-f]{64}", hashes[identity]) is None
+            ):
+                raise BirthCutoverError("birth_cutover_receipt_binding_invalid")
+        object.__setattr__(self, "identities", identities)
+        object.__setattr__(
+            self, "receipt_hashes", MappingProxyType(dict(sorted(hashes.items()))),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class BirthCutoverReport:
