@@ -183,7 +183,7 @@ def _generation_deletion_guard(observed_version: int) -> GenerationDeletionGuard
     )
 
 
-_SCHEMA = """
+_SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS retention_meta (
   singleton INTEGER PRIMARY KEY CHECK(singleton=1),
   graph_version INTEGER NOT NULL, root_version INTEGER NOT NULL
@@ -245,7 +245,24 @@ BEFORE INSERT ON retention_edges WHEN EXISTS (
 ) BEGIN SELECT RAISE(ABORT,'retention_deleting'); END;
 """
 
-_SCHEMA_VERSION = 1
+_SCHEMA_V2_ADDITION = """
+CREATE TABLE IF NOT EXISTS retention_outbox (
+  event_id TEXT PRIMARY KEY,
+  event_version INTEGER NOT NULL CHECK(event_version=1),
+  node_type TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state IN ('pending','applying','applied')),
+  created_at TEXT NOT NULL,
+  applied_at TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),
+  last_error TEXT
+);
+"""
+_SCHEMA = _SCHEMA_V1 + _SCHEMA_V2_ADDITION
+
+_SCHEMA_VERSION = 2
 _SCHEMA_TABLE_COLUMNS = {
     "retention_meta": ("singleton", "graph_version", "root_version"),
     "retention_nodes": ("node_type", "node_id", "object_version", "state",
@@ -258,6 +275,9 @@ _SCHEMA_TABLE_COLUMNS = {
                              "eligible_after", "status"),
     "retention_receipts": ("run_id", "node_type", "node_id", "object_version",
                            "deleted_at", "authentication"),
+    "retention_outbox": ("event_id", "event_version", "node_type", "node_id",
+                         "event_kind", "payload_json", "state", "created_at",
+                         "applied_at", "attempts", "last_error"),
 }
 _SCHEMA_TRIGGERS = {
     "retention_no_root_while_deleting",
@@ -305,12 +325,18 @@ def _schema_fingerprint(connection: sqlite3.Connection) -> tuple[tuple[str, str,
     ))
 
 
-@lru_cache(maxsize=1)
-def _expected_schema_fingerprint() -> tuple[tuple[str, str, str], ...]:
+@lru_cache(maxsize=2)
+def _expected_schema_fingerprint(
+        version: int = _SCHEMA_VERSION) -> tuple[tuple[str, str, str], ...]:
     reference = sqlite3.connect(":memory:", isolation_level=None)
     try:
         reference.execute("PRAGMA foreign_keys=ON")
-        reference.executescript(_SCHEMA)
+        if version == 1:
+            reference.executescript(_SCHEMA_V1)
+        elif version == _SCHEMA_VERSION:
+            reference.executescript(_SCHEMA)
+        else:
+            raise RetentionError("retention_schema_version", str(version))
         return _schema_fingerprint(reference)
     finally:
         reference.close()
@@ -322,7 +348,8 @@ def _validate_schema(connection: sqlite3.Connection) -> None:
     objects = _retention_objects(connection)
     if objects != expected:
         raise RetentionError("retention_schema_mismatch", "objects")
-    if _schema_fingerprint(connection) != _expected_schema_fingerprint():
+    if _schema_fingerprint(connection) != _expected_schema_fingerprint(
+            _SCHEMA_VERSION):
         raise RetentionError("retention_schema_mismatch", "definition")
     for table, columns in _SCHEMA_TABLE_COLUMNS.items():
         actual = tuple(str(row[1]) for row in connection.execute(
@@ -345,6 +372,14 @@ def _initialize_or_validate_schema(connection: sqlite3.Connection) -> None:
             raise RetentionError("retention_schema_version", "unversioned")
         connection.executescript(
             "BEGIN IMMEDIATE;\n" + _SCHEMA
+            + f"\nPRAGMA user_version={_SCHEMA_VERSION};\nCOMMIT;"
+        )
+    elif version == 1:
+        if _schema_fingerprint(connection) != _expected_schema_fingerprint(1):
+            raise RetentionError(
+                "retention_schema_mismatch", "v1 migration source")
+        connection.executescript(
+            "BEGIN IMMEDIATE;\n" + _SCHEMA_V2_ADDITION
             + f"\nPRAGMA user_version={_SCHEMA_VERSION};\nCOMMIT;"
         )
     elif version != _SCHEMA_VERSION:
@@ -519,6 +554,16 @@ def close_edge(source: NodeKey, target: NodeKey, *, edge_type: EdgeType,
 
 
 def _reachable(connection: sqlite3.Connection) -> set[tuple[str, str]]:
+    # Until every durable owner event has been reconciled, absence of a graph
+    # edge or root is not evidence of unreachability.  Treat the whole live
+    # graph as rooted; this deliberately trades collection progress for safety.
+    pending = connection.execute(
+        "SELECT 1 FROM retention_outbox WHERE state IN ('pending','applying') LIMIT 1"
+    ).fetchone()
+    if pending is not None:
+        return {(row[0], row[1]) for row in connection.execute(
+            "SELECT node_type,node_id FROM retention_nodes WHERE state!='deleted'"
+        )}
     # Open nodes and both endpoints of open references are conservative roots.
     roots = {(row[0], row[1]) for row in connection.execute(
         "SELECT node_type,node_id FROM retention_roots UNION "

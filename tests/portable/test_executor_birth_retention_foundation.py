@@ -36,7 +36,7 @@ def test_v1_database_and_signed_receipt_round_trip(tmp_path):
     )
     assert result.deleted == (key,)
     connection = sqlite3.connect(database)
-    assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
     row = connection.execute(
         "SELECT run_id,object_version,deleted_at,authentication "
         "FROM retention_receipts"

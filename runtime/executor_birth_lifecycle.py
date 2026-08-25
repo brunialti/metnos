@@ -114,6 +114,9 @@ def load_f5_activation(encoded: bytes, *, authorities: Mapping[str, Ed25519Publi
         raise LifecycleError("f4_certification_invalid", "evidence sets")
     receipt_ids = tuple(_digest(item, "admission_receipt_id") for item in receipts)
     producer_ids = tuple(_text(item, "producer_id") for item in producers)
+    if (receipt_ids != tuple(sorted(receipt_ids, key=str.encode))
+            or producer_ids != tuple(sorted(producer_ids, key=str.encode))):
+        raise LifecycleError("f4_certification_invalid", "evidence order")
     cycles, defects = value["routing_cycles"], value["unresolved_defects"]
     if type(cycles) is not int or type(defects) is not int or cycles < 0 or defects < 0:
         raise LifecycleError("f4_certification_invalid", "counts")
@@ -127,6 +130,9 @@ def load_f5_activation(encoded: bytes, *, authorities: Mapping[str, Ed25519Publi
     signature = value["signature"]
     try:
         raw_signature = base64.b64decode(signature, validate=True)
+        if (not isinstance(signature, str) or len(raw_signature) != 64
+                or base64.b64encode(raw_signature).decode("ascii") != signature):
+            raise ValueError("noncanonical signature")
         key.verify(raw_signature, CERTIFICATION_DOMAIN + _canonical(
             {key: item for key, item in value.items() if key != "signature"}))
     except (TypeError, ValueError, InvalidSignature) as exc:
