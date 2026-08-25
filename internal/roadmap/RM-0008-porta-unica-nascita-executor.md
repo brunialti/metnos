@@ -1282,3 +1282,193 @@ sviluppo.
 | 2026-08-25 | `active` | Roberto autorizza lo sviluppo. F0 avviata: controlli Synt e importazione resi fail-closed, variabili d'ambiente ritirate e documentazione allineata; guardia Birth e quarantena firmata degli orfani ancora aperte. |
 | 2026-08-25 | `active` | F0 completata: la guardia congela 24 chiamanti da migrare; L5/L6 non espongono bypass; 12 residui non ammessi sono stati censiti, attestati con ricevute Ed25519 e spostati senza cancellazione nella quarantena sullo stesso filesystem. La verifica successiva trova zero residui. F1 è la fase successiva. |
 | 2026-08-25 | `active` | F1 completata: staging chiusa e snapshot privato anti-link/anti-race; codec tipizzato e vettori golden per le tre identità; contesto di ammissione chiuso; ricevute Producer e Admission autenticate come codec puri. Le prove strutturali e dinamiche confermano zero chiamate al publisher, nessun consumo e nessuna influenza sul loader. F2 è la fase successiva. |
+| 2026-08-25 | `active` | Interruzione prudenziale e verifica completa del residuo: F4-F6 dispongono di primitive significative, ma non sono integrate né certificabili in produzione. Il §23 rende esplicite le lacune e l'ordine non permutabile della ripresa. |
+
+## 23. Verifica dello stato e piano esecutivo prima della ripresa
+
+Questa sezione registra la verifica svolta dopo l'interruzione prudenziale dello
+sviluppo del 25 agosto 2026. Lo scopo non è ridurre i requisiti precedenti, ma
+distinguere le primitive già costruite dalla loro effettiva integrazione nel
+prodotto. Un test unitario prova il contratto della primitiva; non prova che il
+percorso produttivo la invochi, che l'installatore la configuri o che un
+riavvio la applichi.
+
+### 23.1 Verdetto verificato
+
+F2 e le fondamenta di F3-F6 contengono una quantità significativa di codice e
+prove. F4, F5 e F6 non sono tuttavia completate in senso produttivo.
+
+- F4 dispone di riattestazione, censimento stabile, certificato firmato,
+  manifest di distribuzione, catena a sola aggiunta, selettore atomico, guardia
+  statica e controllo preliminare di avvio. Manca il coordinatore posseduto da
+  `root` che li componga; mancano inoltre la predisposizione delle autorità e il
+  collegamento all'installatore e ai servizi. La guardia chiusa non è verde e
+  il diniego dei percorsi precedenti compilato resta `False`.
+- F5 dispone di politica di preesercizio, archivio delle epoche, indice univoco
+  dell'epoca corrente, coordinatore del ciclo, identità delle memorie
+  temporanee e primitive di riscontro. Questi moduli si dichiarano inattivi e
+  non sono collegati a caricatore, instradatore, memorie temporanee,
+  pubblicazione RM-0007 o tentativi durevoli. Il vecchio stato per nome e
+  `promoted_grace` restano attivi.
+- F6 dispone del grafo di raggiungibilità, marcatura, cancellazione, ricevuta
+  minima e coda d'uscita. Il registro produttivo degli adattatori è vuoto; non
+  esistono raccoglitore, pianificazione o funzioni produttive di cancellazione.
+  Non è quindi avvenuta alcuna conservazione reale governata dal grafo.
+- La matrice pubblica più recente è verde su Linux e rossa su Windows. Non può
+  costituire certificazione finale.
+
+### 23.2 Evidenze e lacune per F4
+
+Le seguenti primitive costituiscono basi accettabili, ma non autorizzano la
+chiusura della fase:
+
+| Requisito | Evidenza presente | Lacuna da chiudere |
+|---|---|---|
+| registrazione Birth e ricevuta prima del puntatore | `executor_birth_operational.py`, `contract_store.py::commit_birth_snapshot` e prove di arresto/rilettura | dimostrazione sul percorso installato e su ogni produttore reale |
+| riattestazione delle correnti | `executor_birth_reattestation.py` e `executor_birth_cutover.py` | fabbrica produttiva sigillata di richieste e ricevute Producer; nessun dato autorevole deve essere scelto dal chiamante |
+| manutenzione e censimento | coordinatore puro con doppio censimento | guardia posseduta da `root` che mantenga il blocco, produca osservazioni canoniche complete e le ricontrolli prima della firma |
+| certificato e catena | `executor_birth_ownership_cutover.py`, `executor_birth_distribution_manifest.py`, `executor_birth_ownership_chain.py` | registri di fiducia installati, emittente del manifest, allocazione della sequenza, installazione posseduta da `root` e collegamento completo al controllo preliminare |
+| avvio senza ritorno a versioni precedenti | `executor_birth_ownership_preflight.py` | `ExecStartPre` dominante su tutti gli ingressi e verifica della catena richiesta, non soltanto dell'ancora iniziale |
+| proprietario unico | guardia `--birth-closed` e punto di diniego | inventario chiuso ancora non valido, eccezioni mancanti, installatore e generatore incorporato con autorità di firma precedente, booleano compilato ancora falso |
+| prova operativa | prove unitarie e portabili | prova generale Linux sotto `root`, passaggio controllato, caricamento a freddo dal solo archivio, riavvio e due cicli di instradamento |
+
+Il coordinatore F4 deve possedere un registro durevole con almeno gli stati
+`PREPARED`, `RECEIPTS_COMPLETE`, `CERTIFICATE_PUBLISHED`, `BUILD_VERIFIED`,
+`HEAD_REQUIRED` e `PREFLIGHT_VERIFIED`. `CERTIFICATE_PUBLISHED` è il punto di
+non ritorno: dopo tale stato il recupero non può cancellare il certificato,
+riaprire i proprietari precedenti o avviare un artefatto anteriore. Ogni
+passaggio deve rileggere il proprio risultato autenticato prima di avanzare.
+
+Il controllo preliminare transitorio deve essere installato prima del passaggio
+al nuovo regime. In assenza del certificato permette soltanto l'artefatto
+predecessore autenticato indicato dal descrittore posseduto da `root`. In
+presenza del certificato permette soltanto l'artefatto chiuso e la testa
+richiesta corrispondenti. Assenza ambigua, firma errata, catena incompleta o
+artefatto precedente arrestano tutti i servizi dominati dal controllo
+preliminare.
+
+### 23.3 Diagnosi Windows da conservare
+
+Il registro pubblico ha mostrato firme `.sig` con dimensione di 65 o 66 byte,
+mentre Ed25519 produce sempre 64 byte. Attributi, numero di link e tipo del file
+erano corretti. La causa è `_write_temporary()` in
+`executor_birth_ownership_cutover.py`: `os.open()` e `os.write()` operavano in
+modalità testo su Windows, perciò un byte `0x0a` della firma veniva espanso in
+CRLF.
+
+La correzione minima richiesta è aggiungere `O_BINARY` all'apertura e provare
+con una firma contenente esplicitamente `0x0a` che i byte scritti e riletti
+restino identici. L'insieme completo di prove reali Windows resta obbligatorio.
+La registrazione Git che usa `GetFileInformationByHandleEx` fornisce metadati
+Win32 con struttura stabile e va mantenuta come primitiva condivisa, riducendo
+eventuali duplicazioni. Il dettaglio diagnostico dei valori rifiutati non è una funzione
+del prodotto: dopo la conferma del difetto deve tornare a un errore stabile e
+non parametrico oppure restare soltanto nel log tecnico.
+
+### 23.4 Evidenze e lacune per F5
+
+Il certificato di attivazione F5 non deve fidarsi di conteggi dichiarati. Un
+certificatore separato deve ricostruire la soglia del §10 da evidenze
+in sola aggiunta e autenticate: almeno cinque ammissioni tecniche reali e non
+semplici ritentativi idempotenti, almeno due produttori distinti autenticati,
+ricevute rilette, due cicli di instradamento consecutivi e zero difetti o
+aggiramenti irrisolti.
+Gli identificativi fittizi firmati provano soltanto l'autenticità del
+contenitore e non soddisfano la soglia.
+
+L'integrazione deve seguire questo ordine:
+
+1. migrare senza perdita lo stato precedente per nome e conservarlo come
+   irrisolto finché non esiste una corrispondenza autenticata con
+   `(ContractId, generation_id)`;
+2. disabilitare le letture produttive di `promoted_grace` e delle sostituzioni di
+   ciclo per nome soltanto dopo una riconciliazione completa e verificata;
+3. collegare il coordinatore del ciclo al pubblicatore RM-0007 reale, con
+   pubblicazione, rilettura e CAS dell'epoca esatta;
+4. tenere il preesercizio fuori dalla selezione ordinaria e dai durevoli; la
+   politica chiusa deve essere derivata dalle capacità firmate, non da fatti
+   forniti dal candidato;
+5. includere `(ContractId, generation_id, lifecycle)` in tutte le famiglie di
+   memorie temporanee e provare l'invalidazione di L0, L1, alternative e
+   prefiltri a ogni transizione;
+6. applicare `DurableBirthAttemptGuard` a ogni tentativo durevole e rileggere
+   generazione, ricevuta ed epoca immediatamente prima dell'invocazione;
+7. collegare il riscontro reale allo `StepLog`: CAS esatto, pubblicazione e
+   rilettura della quarantena, esclusione dalla selezione prima della coda
+   d'uscita, ripresa idempotente dopo arresto e rifiuto del riscontro obsoleto.
+
+Le prove devono attraversare il caricatore, l'instradatore e le memorie
+temporanee reali. Funzioni di richiamo fittizie e basi di dati temporanee
+restano prove di modulo e non dimostrano l'integrazione.
+
+### 23.5 Evidenze e lacune per F6
+
+Il grafo non può essere attivato finché manca anche un solo proprietario. Devono
+esistere adattatori collocati con i rispettivi dati, o un protocollo
+equivalente provato, per generazioni, ricevute Admission e Producer, evidenze,
+`StepLog`, proposte, registri di verifica e ogni altro nodo dichiarato. Ciascun
+adattatore deve censire riferimenti e radici, applicare
+la cancellazione del proprio oggetto e riconciliare la coda d'uscita in modo
+idempotente.
+
+Prima della prima cancellazione produttiva sono obbligatori:
+
+1. raccolta completa del grafo e confronto con i proprietari reali;
+2. esecuzione della marcatura in osservazione e diagnostica senza cancellazione;
+3. prova che `audit_jsonl` e `proposals_cleanup` non cancellino autonomamente
+   oggetti governati dal grafo;
+4. nuova marcatura sotto blocco, CAS delle versioni e ricevuta minima autenticata
+   prima della cancellazione;
+5. arresto e ripresa per ogni tipo di nodo, gara con un nuovo arco, doppia
+   cancellazione e mantenimento delle generazioni storiche non richieste;
+6. una cancellazione reale controllata e recuperabile su dati predisposti, mai
+   sulla storia corrente.
+
+### 23.6 Sequenza non permutabile per la ripresa
+
+Il lavoro successivo deve essere suddiviso nei seguenti gruppi. Ogni gruppo
+produce codice, prove e una registrazione Git autonoma; il gruppo seguente
+parte soltanto dopo il criterio di uscita del precedente.
+
+1. **Ripristino della matrice:** correzione binaria Windows, prova deterministica
+   e reale, rimozione della sola diagnostica temporanea, insieme di prove
+   portabili verdi su Linux e Windows.
+2. **Chiusura statica F4:** eliminazione o migrazione delle autorità precedenti
+   residue, inventario e manifest reali, guardia `--birth-closed` verde sullo
+   stesso albero destinato alla distribuzione. Il diniego compilato resta falso.
+3. **Autorità e coordinatore F4:** predisposizione delle chiavi con scopi
+   separati, fabbrica sigillata di riattestazione, prova canonica di
+   manutenzione, registro posseduto da `root` e recupero oltre il punto di non
+   ritorno.
+4. **Distribuzione e avvio F4:** assemblaggio firmato, installazione atomica,
+   catena completa, controllo preliminare transitorio e definitivo, copertura di
+   tutti i servizi e dell'installatore.
+5. **Passaggio e artefatto chiuso F4:** prova generale isolata, passaggio reale
+   controllato, artefatto separato con diniego compilato vero, caricamento a
+   freddo, riavvio, ripetizione equivalente e due cicli di instradamento. Solo
+   questo gruppo può dichiarare F4.
+6. **Certificatore e migrazione F5:** soglia derivata da evidenze, migrazione
+   senza perdita e ritiro delle letture precedenti per nome.
+7. **Integrazione F5:** ciclo, preesercizio, epoche, memorie temporanee,
+   tentativi durevoli e riscontro attraversano i percorsi reali e superano prove
+   di arresto e CAS su stato superato.
+8. **Integrazione F6:** adattatori completi, raccolta in osservazione, coda
+   d'uscita, cancellazione reale controllata e certificazione delle gare.
+9. **Certificazione finale:** insieme completo di prove Linux e Windows, due
+   cicli di instradamento reali consecutivi, prova non distruttiva, ADR 0224,
+   documentazione italiana e inglese, note dell'installatore, procedura
+   operativa di migrazione e recupero, pubblicazione e verifica della
+   distribuzione installata.
+
+### 23.7 Evidenza richiesta a ogni gruppo
+
+Ogni agente di codifica deve consegnare una tabella con requisito, simbolo
+produttivo, test di modulo, test di integrazione, prova installata, risultato e
+registrazione Git. Deve inoltre indicare esplicitamente ciò che non è stato
+provato. È vietato usare come prova produttiva un modulo importato soltanto dai
+test, una funzione di richiamo fittizia, un certificato costruito da conteggi dichiarati,
+una base di dati sintetica o una matrice che non esegua il percorso interessato.
+
+La roadmap resta `active`. Non deve essere marcata `implemented` o `closed`
+finché ogni riga dei §§15-17 e di questa sezione non dispone dell'evidenza
+autorevole corrispondente.
