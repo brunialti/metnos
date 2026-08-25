@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+import sqlite3
+from datetime import datetime, timedelta, timezone
 from threading import Barrier, Lock, Thread
 
 import pytest
@@ -10,7 +11,10 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
 from executor_birth_producer_store import (
     ProducerReceiptBinding,
+    claim_producer_receipt,
     consume_producer_receipt,
+    finalize_producer_receipt,
+    recover_producer_receipt_claim,
     register_producer_receipt,
 )
 from executor_birth_receipts import (
@@ -18,6 +22,7 @@ from executor_birth_receipts import (
     IssuerRegistry,
     ReceiptError,
     issue_producer_receipt,
+    verify_producer_receipt,
 )
 
 
@@ -166,3 +171,183 @@ def test_manifest_cannot_declare_issuer_authority(tmp_path):
             encoded, registry=denied, now=ISSUED,
             db_path=tmp_path / "producer.sqlite",
         )
+
+
+def test_claim_survives_reopen_and_same_request_replays_idempotently(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    first = claim_producer_receipt(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=ISSUED, db_path=db, lease_seconds=30,
+    )
+    replay = claim_producer_receipt(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=ISSUED + timedelta(seconds=1), db_path=db, lease_seconds=999,
+    )
+    assert replay == first
+
+
+def test_different_request_can_never_steal_live_or_expired_claim(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    other = "sha256:" + "4" * 64
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    claim_producer_receipt(encoded, registry=registry, binding=binding,
+                           request_id=REQUEST, now=ISSUED, db_path=db, lease_seconds=2)
+    for instant in (ISSUED + timedelta(seconds=1), ISSUED + timedelta(seconds=2)):
+        with pytest.raises(ReceiptError, match="owned_by_other_request"):
+            claim_producer_receipt(encoded, registry=registry, binding=binding,
+                                   request_id=other, now=instant, db_path=db)
+
+
+def test_expired_lease_requires_explicit_recovery_by_owner(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    claim_producer_receipt(encoded, registry=registry, binding=binding,
+                           request_id=REQUEST, now=ISSUED, db_path=db, lease_seconds=2)
+    expired = ISSUED + timedelta(seconds=2)
+    with pytest.raises(ReceiptError, match="explicit_recovery_required"):
+        claim_producer_receipt(encoded, registry=registry, binding=binding,
+                               request_id=REQUEST, now=expired, db_path=db)
+    recovered = recover_producer_receipt_claim(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=expired, db_path=db, lease_seconds=5,
+    )
+    assert recovered.lease_expires_at == "2026-08-25T12:00:07Z"
+
+
+def test_terminal_result_is_durable_idempotent_and_conflicts_fail(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    result = "sha256:" + "5" * 64
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    claim_producer_receipt(encoded, registry=registry, binding=binding,
+                           request_id=REQUEST, now=ISSUED, db_path=db)
+    committed = finalize_producer_receipt(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=ISSUED, db_path=db, result_binding=result,
+    )
+    assert committed.state == "committed" and committed.result_binding == result
+    assert finalize_producer_receipt(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=ISSUED, db_path=db, result_binding=result,
+    ) == committed
+    assert claim_producer_receipt(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=ISSUED, db_path=db,
+    ) == committed
+    with pytest.raises(ReceiptError, match="producer_receipt_final_conflict"):
+        finalize_producer_receipt(
+            encoded, registry=registry, binding=binding, request_id=REQUEST,
+            now=ISSUED, db_path=db, rejection_code="publication_failed",
+        )
+
+
+def test_concurrent_different_requests_have_one_permanent_owner(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    requests = [REQUEST, "sha256:" + "4" * 64]
+    barrier = Barrier(2); outcomes = []; lock = Lock()
+    def run(request):
+        barrier.wait()
+        try:
+            value = claim_producer_receipt(encoded, registry=registry, binding=binding,
+                                           request_id=request, now=ISSUED, db_path=db)
+            value = value.request_id
+        except ReceiptError as exc:
+            value = exc.code
+        with lock: outcomes.append(value)
+    threads = [Thread(target=run, args=(request,)) for request in requests]
+    for thread in threads: thread.start()
+    for thread in threads: thread.join(timeout=5)
+    assert sum(value in requests for value in outcomes) == 1
+    assert outcomes.count("producer_receipt_replay") == 1
+
+
+def test_concurrent_retries_of_same_request_observe_one_claim(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    barrier = Barrier(2); outcomes = []; lock = Lock()
+    def run():
+        barrier.wait()
+        value = claim_producer_receipt(encoded, registry=registry, binding=binding,
+                                       request_id=REQUEST, now=ISSUED, db_path=db)
+        with lock: outcomes.append(value)
+    threads = [Thread(target=run), Thread(target=run)]
+    for thread in threads: thread.start()
+    for thread in threads: thread.join(timeout=5)
+    assert len(outcomes) == 2 and outcomes[0] == outcomes[1]
+
+
+def test_crash_before_finalization_cannot_be_mistaken_for_commit(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    claim_producer_receipt(encoded, registry=registry, binding=binding,
+                           request_id=REQUEST, now=ISSUED, db_path=db, lease_seconds=2)
+    # Reopening after the simulated process loss exposes in_progress, never a
+    # false committed result.  Recovery is an explicit owner-only operation.
+    with pytest.raises(ReceiptError, match="explicit_recovery_required"):
+        finalize_producer_receipt(
+            encoded, registry=registry, binding=binding, request_id=REQUEST,
+            now=ISSUED + timedelta(seconds=2), db_path=db,
+            result_binding="sha256:" + "5" * 64,
+        )
+    recover_producer_receipt_claim(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=ISSUED + timedelta(seconds=2), db_path=db,
+    )
+    rejected = finalize_producer_receipt(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=ISSUED + timedelta(seconds=2), db_path=db,
+        rejection_code="postcondition_unknown_after_crash",
+    )
+    assert rejected.state == "rejected"
+
+
+def test_claimed_authority_can_be_recovered_after_issue_expiry(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    claim_producer_receipt(encoded, registry=registry, binding=binding,
+                           request_id=REQUEST, now=ISSUED, db_path=db, lease_seconds=2)
+    after_expiry = ISSUED + timedelta(hours=1)
+    recovered = recover_producer_receipt_claim(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=after_expiry, db_path=db,
+    )
+    assert recovered.state == "in_progress"
+    committed = finalize_producer_receipt(
+        encoded, registry=registry, binding=binding, request_id=REQUEST,
+        now=after_expiry, db_path=db, result_binding="sha256:" + "5" * 64,
+    )
+    assert committed.state == "committed"
+
+
+def test_v1_database_migrates_available_and_consumed_without_reopening_authority(tmp_path):
+    _, registry, encoded, binding = _fixture()
+    db = tmp_path / "producer.sqlite"
+    old = sqlite3.connect(db)
+    old.executescript("""CREATE TABLE birth_producer_receipts (
+      receipt_id TEXT PRIMARY KEY,receipt_hash TEXT NOT NULL,encoded BLOB NOT NULL,issuer_id TEXT NOT NULL,
+      objective_hash TEXT NOT NULL,candidate_source_id TEXT NOT NULL,executor_origin TEXT NOT NULL,
+      revision_authorship TEXT NOT NULL,expires_at TEXT NOT NULL,state TEXT NOT NULL,
+      registered_at TEXT NOT NULL,consumed_at TEXT,request_id TEXT);
+    """)
+    receipt = verify_producer_receipt(encoded, registry=registry, now=ISSUED)
+    from executor_birth_producer_store import producer_receipt_hash
+    old.execute("INSERT INTO birth_producer_receipts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (receipt.receipt_id, producer_receipt_hash(encoded), encoded, receipt.issuer_id,
+                 receipt.objective_hash, receipt.candidate_source_id, receipt.executor_origin.value,
+                 receipt.revision_authorship.value, receipt.expires_at, "consumed",
+                 "2026-08-25T12:00:00Z", "2026-08-25T12:00:01Z", REQUEST))
+    old.commit(); old.close()
+    replay = claim_producer_receipt(encoded, registry=registry, binding=binding,
+                                    request_id=REQUEST, now=ISSUED, db_path=db)
+    assert replay.state == "rejected" and replay.rejection_code == "legacy_terminal"
+    with sqlite3.connect(db) as check:
+        assert check.execute("PRAGMA user_version").fetchone()[0] == 2
