@@ -248,7 +248,12 @@ canonica `ContractId.value`, `generation_id`, `candidate_id`,
 `semantic_core_id`, `admission_context_id`, `predecessor_id` nullable,
 `producer_receipt_hash`, `revision_class`, `check_results`,
 `semantic_review_hash` nullable, `approval_hash` nullable,
-`approved_lifecycle`, `kind`, `issued_at` e `authentication`.
+`birth_request_id`, `authoring_journal_hash`, `approved_lifecycle`, `kind`,
+`issued_at` e `authentication`. `birth_request_id` e
+`authoring_journal_hash` sono digest SHA-256 canonici e obbligatori per
+`kind=admission|reattestation`; permettono di ricostruire e provare la stessa
+transazione dopo la rimozione del journal operativo. Il codec F1 storico senza
+questi campi è sostituito in F4 e non è accettato dal commit operativo.
 `approved_lifecycle` è `active|preexercise|quarantined`. Un valore non
 applicabile per revisione o approvazione è `null`, distinto da un digest.
 `check_results` è una mappa senza duplicati indicizzata da `check_id`; ogni

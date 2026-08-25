@@ -860,8 +860,8 @@
       "scope": "commit_birth_snapshot",
       "role": "store_owner",
       "capabilities": [
+        "authoring_read",
         "authoring_write",
-        "publish_technical",
         "store_write"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",

@@ -341,25 +341,45 @@ def authoring_token(
 def read_tree(root: Path, relative_paths: tuple[str, ...]) -> Mapping[str, bytes]:
     """Read a closed list and reject links, hard links and undeclared entries."""
     expected = {_relative(item) for item in relative_paths}
+    expected_directories = {
+        parent.as_posix()
+        for name in expected
+        for parent in PurePosixPath(name).parents
+        if parent != PurePosixPath(".")
+    }
     present: set[str] = set()
+    present_directories: set[str] = set()
     payloads: dict[str, bytes] = {}
     try:
+        root_status = root.lstat()
+        if (
+            not stat.S_ISDIR(root_status.st_mode)
+            or stat.S_ISLNK(root_status.st_mode)
+            or bool(getattr(root_status, "st_file_attributes", 0) & 0x400)
+        ):
+            raise AuthoringInstallError("authoring_tree_invalid", str(root))
         for entry in root.rglob("*"):
             relative = entry.relative_to(root).as_posix()
             status = entry.lstat()
+            if stat.S_ISLNK(status.st_mode) or bool(
+                getattr(status, "st_file_attributes", 0) & 0x400
+            ):
+                raise AuthoringInstallError("authoring_tree_invalid", relative)
             if stat.S_ISDIR(status.st_mode):
+                if relative not in expected_directories:
+                    raise AuthoringInstallError("authoring_tree_invalid", relative)
+                present_directories.add(relative)
                 continue
             if (
-                relative not in expected or stat.S_ISLNK(status.st_mode)
-                or not stat.S_ISREG(status.st_mode) or status.st_nlink != 1
-                or bool(getattr(status, "st_file_attributes", 0) & 0x400)
+                relative not in expected or not stat.S_ISREG(status.st_mode)
+                or status.st_nlink != 1
             ):
                 raise AuthoringInstallError("authoring_tree_invalid", relative)
             present.add(relative)
             payloads[relative] = entry.read_bytes()
     except OSError as exc:
         raise AuthoringInstallError("authoring_tree_invalid", str(exc)) from exc
-    if present != expected:
+    if present != expected or present_directories != expected_directories:
         raise AuthoringInstallError("authoring_tree_invalid", "closed set")
     return MappingProxyType(payloads)
 
@@ -538,6 +558,11 @@ def _tree_file_names(root: Path) -> tuple[str, ...]:
         ))
     except OSError as exc:
         raise AuthoringInstallError("authoring_tree_invalid", str(exc)) from exc
+
+
+def observe_tree(root: Path) -> Mapping[str, bytes]:
+    """Observe every file while still enforcing the exact closed-tree rules."""
+    return read_tree(root, _tree_file_names(root))
 
 
 def cleanup_transaction(paths: AuthoringPaths, journal: AuthoringInstallJournalV1) -> None:

@@ -65,6 +65,7 @@ def _admission(key: Ed25519PrivateKey, **changes) -> bytes:
         "contract_id": ContractId(ManifestOrigin.USER, "sample/manifest.toml"),
         "generation_id": D1, "candidate_id": D2, "semantic_core_id": D3,
         "admission_context_id": D4, "predecessor_id": None,
+        "birth_request_id": D3, "authoring_journal_hash": D4,
         "producer_receipt_hash": D5, "revision_class": RevisionClass.FIRST_BIRTH,
         "check_results": {"manifest": AdmissionCheck(
             "manifest/v1", AdmittedCheckStatus.PASSED, D6,
