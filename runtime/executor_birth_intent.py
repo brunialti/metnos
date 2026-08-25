@@ -126,13 +126,17 @@ def _producer_capabilities_for_bootstrap() -> tuple[_ProducerCapability, ...]:
             _INSTALLER, _BUILTIN, _PROMOTER_ROLLBACK)
 
 
-def _submit_birth_intent_for_test(intent: BirthIntent, *, request_factory: RequestFactory) -> "BirthResult":
+def _submit_birth_intent_for_test(
+    intent: BirthIntent, *, request_factory: RequestFactory, _core: object,
+) -> "BirthResult":
     """Local test hook; cannot read or replace productive runtime state."""
-    from executor_birth_operational import BirthRequest, birth_executor
+    from executor_birth_operational import BirthRequest, _BirthCore, _execute
     request = request_factory(intent)
     if not isinstance(request, BirthRequest):
         raise ValueError("birth_request_invalid")
-    return birth_executor(request)
+    if not isinstance(_core, _BirthCore):
+        raise ValueError("birth_core_untrusted")
+    return _execute(request, _core)
 
 
 __all__ = [

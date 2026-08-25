@@ -50,6 +50,11 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     "executor_birth_operational": {
         "birth_executor": ("birth",),
     },
+    "executor_birth_synth": {
+        "submit_synth_multistage": ("birth",),
+        "submit_synth_specialize": ("birth",),
+        "submit_synth_approve": ("birth",),
+    },
     "contract_store": {
         "verify_manifest_source": ("authoring_read", "authoring_verify"),
         "prepare_technical_draft": ("authoring_read", "authoring_verify"),
@@ -108,6 +113,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     }),
     "executor_birth_operational": frozenset({
         "executor_birth_operational", "runtime.executor_birth_operational",
+    }),
+    "executor_birth_synth": frozenset({
+        "executor_birth_synth", "runtime.executor_birth_synth",
     }),
     "contract_store": frozenset({"contract_store", "runtime.contract_store"}),
     "sign": frozenset({"sign", "runtime.sign"}),
