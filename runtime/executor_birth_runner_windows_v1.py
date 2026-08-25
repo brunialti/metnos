@@ -40,7 +40,9 @@ _ATTESTATION_KEYS = frozenset({
 
 
 class WindowsBirthHelperError(ValueError):
-    pass
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
 
 
 @dataclass(frozen=True, slots=True)

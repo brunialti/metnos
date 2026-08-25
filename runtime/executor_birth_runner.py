@@ -23,6 +23,11 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Mapping, Sequence
 
+from executor_birth_runner_windows_v1 import (
+    WindowsBirthHelperError,
+    invoke_helper as invoke_windows_birth_helper,
+)
+
 from bounded_subprocess import (
     SubprocessOutputLimitExceeded,
     SubprocessTerminationError,
@@ -82,6 +87,15 @@ class RunnerPolicy:
 
 
 V1_POLICY = RunnerPolicy()
+
+
+@dataclass(frozen=True, slots=True)
+class WindowsSandboxRegistry:
+    helper_path: Path
+    helper_binary_hash: str
+    config_path: Path
+    config_hash: str
+    runtime_binary_hash: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,6 +252,25 @@ def materialize_fixture(root: Path, ops: Sequence[FixtureOp]) -> None:
             raise
 
 
+def materialize_candidate_files(root: Path, files: Mapping[str, bytes]) -> None:
+    if not isinstance(files, Mapping) or not files:
+        raise RunnerInputError("candidate_files_invalid")
+    folded: set[str] = set()
+    checked: list[tuple[PurePosixPath, bytes]] = []
+    for name, payload in files.items():
+        path = _relative_path(name)
+        key = path.as_posix().casefold()
+        if key in folded or not isinstance(payload, bytes):
+            raise RunnerInputError("candidate_files_invalid")
+        folded.add(key); checked.append((path, payload))
+    for path, payload in sorted(checked, key=lambda item: (len(item[0].parts), item[0].as_posix())):
+        destination = root.joinpath(*path.parts)
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o400)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload); handle.flush(); os.fsync(handle.fileno())
+
+
 def _command(command: Sequence[str]) -> tuple[str, ...]:
     if isinstance(command, (str, bytes)) or not isinstance(command, Sequence):
         raise RunnerInputError("command_invalid")
@@ -344,6 +377,9 @@ def run_birth_phase(
     fixture_ops: Sequence[FixtureOp] = (),
     phase: str = "candidate",
     deadline: BirthDeadline | None = None,
+    candidate_id: str | None = None,
+    windows_registry: WindowsSandboxRegistry | None = None,
+    candidate_files: Mapping[str, bytes] | None = None,
 ) -> RunnerResult:
     """Run one birth-test phase under the complete fixed v1 policy."""
     started = time.monotonic()
@@ -363,7 +399,46 @@ def run_birth_phase(
     if phase not in {"candidate", "reference", "equivalence"}:
         raise RunnerInputError("phase_invalid")
     if os.name == "nt":
-        return _unavailable("windows_backend_unattested", "windows", started)
+        if (not isinstance(candidate_id, str) or not isinstance(windows_registry, WindowsSandboxRegistry)
+                or not isinstance(candidate_files, Mapping)):
+            return _unavailable("windows_sandbox_registry_unavailable", "windows-appcontainer-job-v1", started)
+        request_id = "sha256:" + __import__("hashlib").sha256(uuid.uuid4().bytes).hexdigest()
+        with tempfile.TemporaryDirectory(prefix="metnos-birth-runner-") as temporary:
+            private_root = Path(temporary).resolve()
+            try:
+                candidate_root = private_root / "candidate"
+                work_root = private_root / "work"
+                candidate_root.mkdir(mode=0o700)
+                work_root.mkdir(mode=0o700)
+                materialize_candidate_files(candidate_root, candidate_files)
+                materialize_fixture(work_root, checked_ops)
+                result = invoke_windows_birth_helper(
+                    windows_registry.helper_path,
+                    trusted_hashes=frozenset({windows_registry.helper_binary_hash}),
+                    config=windows_registry.config_path,
+                    expected_config_hash=windows_registry.config_hash,
+                    request_id=request_id, candidate_id=candidate_id, phase=phase,
+                    private_root=private_root, entrypoint=argv[0], arguments=argv[1:],
+                    timeout_s=budget + TERMINATION_DRAIN_S,
+                    expected_runtime_hash=windows_registry.runtime_binary_hash,
+                )
+            except (WindowsBirthHelperError, OSError, RunnerInputError) as exc:
+                code = exc.code if isinstance(exc, WindowsBirthHelperError) else (
+                    str(exc) if isinstance(exc, RunnerInputError) else "windows_helper_unavailable"
+                )
+                return _unavailable(code, "windows-appcontainer-job-v1", started)
+        available = result.status != RunnerStatus.UNAVAILABLE.value
+        attestation = ProcessAttestation(
+            backend="windows-appcontainer-job-v1", sandboxed=available,
+            network_unshared=available, pid_unshared=False, user_unshared=available,
+            ipc_unshared=False, uts_unshared=False, cgroup_v2=False, cgroup_path=None,
+            tree_empty=result.attestation["tree_empty"] is True,
+            termination_attested=result.attestation["termination_attested"] is True,
+        )
+        return RunnerResult(RunnerStatus(result.status), result.error_code,
+                            result.exit_code, result.stdout.decode("utf-8", "replace"),
+                            result.stderr.decode("utf-8", "replace"),
+                            result.elapsed_ms / 1000.0, attestation)
     if not sys.platform.startswith("linux"):
         return _unavailable("platform_backend_unavailable", sys.platform, started)
     bwrap = shutil.which("bwrap")
@@ -526,6 +601,7 @@ __all__ = [
     "V1_POLICY",
     "begin_birth_deadline",
     "materialize_fixture",
+    "materialize_candidate_files",
     "run_birth_phase",
     "validate_fixture_ops",
 ]

@@ -46,5 +46,16 @@ jobs:
       - name: Install the minimal test dependencies
         run: python -m pip install --disable-pip-version-check --requirement tests/portable/requirements.txt
 
+      - name: Build the Windows Birth AppContainer helper
+        if: runner.os == 'Windows'
+        run: cargo build --manifest-path client-rs/Cargo.toml --release --bin metnos-birth-sandbox
+
+      - name: Register the Windows Birth helper for certification
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $helper = (Resolve-Path "client-rs/target/release/metnos-birth-sandbox.exe").Path
+          "METNOS_BIRTH_SANDBOX_HELPER=$helper" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Run the portable certification suite
         run: python -m pytest -q -p no:cacheprovider --confcutdir=tests/portable tests/portable

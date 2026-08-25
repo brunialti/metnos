@@ -29,6 +29,7 @@ use std::io::{Read, Write};
 use std::os::windows::io::{FromRawHandle, RawHandle};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 use anyhow::{bail, Context, Result};
 
@@ -48,7 +49,10 @@ use windows_sys::Win32::Security::{
     FreeSid, ACL, DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES,
     SECURITY_CAPABILITIES, SID_AND_ATTRIBUTES, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
 };
-use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, TerminateJobObject};
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, QueryInformationJobObject, TerminateJobObject,
+    JobObjectBasicAccountingInformation, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+};
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList, ResumeThread,
@@ -90,6 +94,16 @@ pub enum Outcome {
         stdout: String,
         stderr: String,
         timed_out: bool,
+        exit_code: i32,
+        stdout_truncated: bool,
+        stderr_truncated: bool,
+        appcontainer_sid: String,
+        active_processes: u32,
+        termination_attested: bool,
+        assigned_before_resume: bool,
+        startup_attested: bool,
+        stdout_raw: Vec<u8>,
+        stderr_raw: Vec<u8>,
     },
     /// Container NON costruibile su questo device (edizione, policy, FS non-NTFS,
     /// gate): il chiamante degrada a job-object dichiarando `motivo`.
@@ -99,6 +113,7 @@ pub enum Outcome {
 /// Parametri per l'esecuzione nel container. Tutti dati POSSEDUTI (Send): la
 /// funzione gira in `spawn_blocking` e non deve trasportare handle non-Send.
 pub struct ContainerParams {
+    pub profile_name: String,
     pub python: PathBuf,
     pub entry: PathBuf,
     pub shim_dir: PathBuf,
@@ -108,10 +123,13 @@ pub struct ContainerParams {
     pub scratch_dir: PathBuf,
     pub env_pairs: Vec<(String, String)>,
     pub args_json: String,
+    pub command_args: Vec<String>,
     pub deadline_ms: u64,
     /// Concessioni fs derivate dalle capability (radici gia' de-globbate).
     pub grants: Vec<HintGrant>,
     pub want_net: bool,
+    pub stdout_limit: usize,
+    pub stderr_limit: usize,
 }
 
 /// Gate W4 — **default ON su Windows** dal 7/7/2026 (fase 7 chiusa).
@@ -303,8 +321,8 @@ fn check_win32(op: &str, code: WIN32_ERROR) -> Result<()> {
 // --- profilo + SID -----------------------------------------------------------
 
 /// Crea (idempotente) il profilo del container e ritorna il suo SID.
-fn ensure_profile_sid() -> Result<OwnedSid> {
-    let name = common::to_wide_null(PROFILE_NAME);
+fn ensure_profile_sid_named(profile_name: &str) -> Result<OwnedSid> {
+    let name = common::to_wide_null(profile_name);
     let display = common::to_wide_null("Metnos Executor");
     let desc = common::to_wide_null("Sandbox executor remoti Metnos");
     let mut psid: PSID = std::ptr::null_mut();
@@ -341,6 +359,8 @@ fn ensure_profile_sid() -> Result<OwnedSid> {
     }
     bail!("CreateAppContainerProfile HRESULT {hr:#010x}");
 }
+
+fn ensure_profile_sid() -> Result<OwnedSid> { ensure_profile_sid_named(PROFILE_NAME) }
 
 /// SID della capability `internetClient` (rete uscente).
 fn internet_client_sid() -> Result<OwnedSid> {
@@ -715,7 +735,7 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     // 1. SID del profilo + sua forma stringa (chiave del registro ACL). Se non
     //    serializzabile, un segnaposto: la revoca all'unpair usa comunque il SID
     //    derivato dal nome, non questa stringa.
-    let sid = ensure_profile_sid().context("profilo AppContainer")?;
+    let sid = ensure_profile_sid_named(&p.profile_name).context("profilo AppContainer")?;
     let sid_str = sid_to_string(sid.psid).unwrap_or_else(|e| {
         tracing::warn!(
             "SID container non serializzabile ({e:#}): registro ACL usera' un segnaposto"
@@ -834,7 +854,9 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     //     CreateProcessW).
     let python_str = p.python.display().to_string();
     let entry_str = p.entry.display().to_string();
-    let cmdline = common::build_command_line(&[python_str.clone(), entry_str]);
+    let mut command = vec![python_str.clone(), entry_str];
+    command.extend(p.command_args.iter().cloned());
+    let cmdline = common::build_command_line(&command);
     let app_w = common::to_wide_null(&python_str);
     let mut cmdline_w = common::to_wide_null(&cmdline);
     let env_w = common::env_block_utf16(&p.env_pairs);
@@ -880,7 +902,9 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     drop(stdout_wr);
     drop(stderr_wr);
 
-    let (stdout, stderr, timed_out) = run_child(
+    let (stdout_raw, stderr_raw, timed_out, exit_code, stdout_truncated, stderr_truncated,
+         active_processes, termination_attested, assigned_before_resume,
+         startup_attested) = run_child(
         job.raw(),
         pi,
         stdin_wr.release(),
@@ -888,11 +912,23 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
         stderr_rd.release(),
         p.args_json,
         p.deadline_ms,
+        p.stdout_limit,
+        p.stderr_limit,
     );
     Ok(Outcome::Ran {
-        stdout,
-        stderr,
+        stdout: String::from_utf8_lossy(&stdout_raw).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr_raw).into_owned(),
         timed_out,
+        exit_code,
+        stdout_truncated,
+        stderr_truncated,
+        appcontainer_sid: sid_str,
+        active_processes,
+        termination_attested,
+        assigned_before_resume,
+        startup_attested,
+        stdout_raw,
+        stderr_raw,
     })
     // `job`, `attr_list`, `sid`, `net_sid`, i buffer wide droppano qui.
 }
@@ -909,7 +945,9 @@ fn run_child(
     stderr_rd: HANDLE,
     args_json: String,
     deadline_ms: u64,
-) -> (String, String, bool) {
+    stdout_limit: usize,
+    stderr_limit: usize,
+) -> (Vec<u8>, Vec<u8>, bool, i32, bool, bool, u32, bool, bool, bool) {
     // Assegna PRIMA del resume: il figlio non gira mai fuori dal job.
     // Fail-closed: se l'assegnazione fallisce NON risvegliamo il processo. La
     // vecchia sequenza lo avviava comunque fuori dal job; al timeout
@@ -949,10 +987,12 @@ fn run_child(
 
     // stdout/stderr: due thread lettori concorrenti (il figlio potrebbe
     // riempire un buffer pipe mentre l'altro e' fermo → deadlock se seriale).
-    let out_h = SendHandle(stdout_rd);
-    let t_out = std::thread::spawn(move || read_all(out_h.take()));
+    let overflow = Arc::new(AtomicBool::new(false));
+    let out_h = SendHandle(stdout_rd); let out_overflow = Arc::clone(&overflow);
+    let t_out = std::thread::spawn(move || read_limited(out_h.take(), stdout_limit, out_overflow));
     let err_h = SendHandle(stderr_rd);
-    let t_err = std::thread::spawn(move || read_all(err_h.take()));
+    let err_overflow = Arc::clone(&overflow);
+    let t_err = std::thread::spawn(move || read_limited(err_h.take(), stderr_limit, err_overflow));
 
     let wait_ms = if startup_failed {
         5_000
@@ -961,11 +1001,22 @@ fn run_child(
     } else {
         deadline_ms.min(u32::MAX as u64) as u32
     };
-    let waited = unsafe { WaitForSingleObject(pi.hProcess, wait_ms) };
+    let wait_started = std::time::Instant::now();
+    let waited = loop {
+        let slice = if wait_ms == INFINITE { 10 } else {
+            let elapsed = wait_started.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
+            if elapsed >= wait_ms { break windows_sys::Win32::Foundation::WAIT_TIMEOUT; }
+            (wait_ms - elapsed).min(10)
+        };
+        let value = unsafe { WaitForSingleObject(pi.hProcess, slice) };
+        if value == WAIT_OBJECT_0 || overflow.load(Ordering::Acquire) { break value; }
+        if value != windows_sys::Win32::Foundation::WAIT_TIMEOUT { break value; }
+    };
     // Solo WAIT_OBJECT_0 significa processo concluso. WAIT_FAILED e qualunque
     // esito inatteso non devono cadere nel join delle pipe con il figlio vivo.
-    let timed_out = startup_failed || waited != WAIT_OBJECT_0;
-    if timed_out {
+    let output_overflow = overflow.load(Ordering::Acquire);
+    let timed_out = startup_failed || (waited != WAIT_OBJECT_0 && !output_overflow);
+    if timed_out || output_overflow {
         // Gemello del SIGKILL-al-gruppo: uccide l'albero; gli estremi-scrittura
         // del figlio si chiudono → i lettori ricevono EOF e i thread terminano.
         unsafe {
@@ -977,24 +1028,57 @@ fn run_child(
         }
     }
 
-    let stdout = t_out.join().unwrap_or_default();
-    let stderr = t_err.join().unwrap_or_default();
+    let (stdout, stdout_truncated) = t_out.join().unwrap_or_default();
+    let (stderr, stderr_truncated) = t_err.join().unwrap_or_default();
+    let mut exit_code_u32 = 126u32;
+    unsafe { windows_sys::Win32::System::Threading::GetExitCodeProcess(pi.hProcess, &mut exit_code_u32); }
+    // Closing the root is not sufficient proof: a descendant can still be
+    // active in the job.  Terminate the whole job after every phase, wait a
+    // bounded interval, then query the kernel-owned accounting record.
+    unsafe { TerminateJobObject(job, if timed_out { 137 } else { 0 }); }
+    let drain_until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let (active_processes, termination_attested) = loop {
+        let mut accounting: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
+        let queried = unsafe { QueryInformationJobObject(job, JobObjectBasicAccountingInformation,
+            &mut accounting as *mut _ as *mut _, std::mem::size_of_val(&accounting) as u32,
+            std::ptr::null_mut()) } != 0;
+        if !queried { break (u32::MAX, false); }
+        if accounting.ActiveProcesses == 0 { break (0, true); }
+        if std::time::Instant::now() >= drain_until { break (accounting.ActiveProcesses, false); }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
     unsafe {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
     }
     (
-        String::from_utf8_lossy(&stdout).into_owned(),
-        String::from_utf8_lossy(&stderr).into_owned(),
+        stdout,
+        stderr,
         timed_out,
+        exit_code_u32 as i32,
+        stdout_truncated,
+        stderr_truncated,
+        active_processes,
+        termination_attested,
+        assigned,
+        !startup_failed,
     )
 }
 
 /// Legge un estremo-lettura di pipe fino a EOF; l'handle e' chiuso dal `File`
 /// alla Drop.
-fn read_all(handle: HANDLE) -> Vec<u8> {
+fn read_limited(handle: HANDLE, limit: usize, overflow: Arc<AtomicBool>) -> (Vec<u8>, bool) {
     let mut f = unsafe { File::from_raw_handle(handle as RawHandle) };
-    let mut buf = Vec::new();
-    let _ = f.read_to_end(&mut buf);
-    buf
+    let mut output = Vec::with_capacity(limit.min(64 * 1024));
+    let mut chunk = [0u8; 64 * 1024];
+    let mut truncated = false;
+    loop {
+        let Ok(n) = f.read(&mut chunk) else { break };
+        if n == 0 { break; }
+        let keep = n.min(limit.saturating_sub(output.len()));
+        output.extend_from_slice(&chunk[..keep]);
+        truncated |= keep != n;
+        if truncated { overflow.store(true, Ordering::Release); }
+    }
+    (output, truncated)
 }

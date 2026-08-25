@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -136,9 +137,42 @@ def test_windows_backend_is_explicitly_unavailable(monkeypatch):
     monkeypatch.setattr(runner.os, "name", "nt")
     result = runner.run_birth_phase(("python.exe", "-V"))
     assert result.status is runner.RunnerStatus.UNAVAILABLE
-    assert result.error_code == "windows_backend_unattested"
-    assert result.attestation.backend == "windows"
+    assert result.error_code == "windows_sandbox_registry_unavailable"
+    assert result.attestation.backend == "windows-appcontainer-job-v1"
     assert result.attestation.termination_attested is False
+
+
+def test_windows_adapter_materializes_closed_candidate_and_work_layout(monkeypatch, tmp_path):
+    from pathlib import PosixPath
+    monkeypatch.setattr(runner.os, "name", "nt")
+    monkeypatch.setattr(runner, "Path", PosixPath)
+    helper = tmp_path / "helper.exe"; helper.write_bytes(b"h")
+    config = tmp_path / "config.json"; config.write_bytes(b"c")
+    registry = runner.WindowsSandboxRegistry(
+        helper, "sha256:" + "a" * 64, config, "sha256:" + "b" * 64,
+        "sha256:" + "c" * 64,
+    )
+    observed = {}
+    def fake_invoke(_helper, **kwargs):
+        root = kwargs["private_root"]
+        observed["top"] = sorted(p.name for p in root.iterdir())
+        observed["candidate"] = (root / "candidate" / "main.py").read_bytes()
+        observed["fixture"] = (root / "work" / "seed.json").read_bytes()
+        return SimpleNamespace(
+            status="passed", error_code=None, exit_code=0, stdout=b"ok", stderr=b"",
+            elapsed_ms=1, attestation={"tree_empty": True, "termination_attested": True},
+        )
+    monkeypatch.setattr(runner, "invoke_windows_birth_helper", fake_invoke)
+    result = runner.run_birth_phase(
+        ("main.py",), candidate_id="sha256:" + "d" * 64,
+        windows_registry=registry, candidate_files={"main.py": b"print('ok')\n"},
+        fixture_ops=(runner.FixtureOp(runner.FixtureOpKind.SEED_JSON,
+                                      "seed.json", {"x": 1}),),
+    )
+    assert result.status is runner.RunnerStatus.PASSED
+    assert observed == {"top": ["candidate", "work"],
+                        "candidate": b"print('ok')\n",
+                        "fixture": b'{"x":1}\n'}
 
 
 @pytest.mark.parametrize("command", [(), "echo hi", ("",), ("ok\x00bad",)])
@@ -151,7 +185,10 @@ def test_shell_setup_and_teardown_are_not_part_of_public_api():
     import inspect
 
     parameters = inspect.signature(runner.run_birth_phase).parameters
-    assert set(parameters) == {"command", "fixture_ops", "phase", "deadline"}
+    assert set(parameters) == {
+        "command", "fixture_ops", "phase", "deadline", "candidate_id",
+        "windows_registry", "candidate_files",
+    }
     assert not {"shell", "setup", "teardown", "env", "policy"} & set(parameters)
 
 

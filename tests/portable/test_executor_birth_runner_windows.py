@@ -55,11 +55,11 @@ def test_real_job_object_terminates_a_descendant_left_by_the_root():
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires real Windows Job Objects")
-def test_productive_gate_remains_unavailable_despite_job_containment():
+def test_productive_gate_requires_the_core_owned_sandbox_registry():
     job = windows_runner._run_job_object_probe((sys.executable, "-I", "-c", "pass"))
     assert job.available is True, job.error_code
     result = executor_birth_runner.run_birth_phase((sys.executable, "-I", "-c", "pass"))
     assert result.status is executor_birth_runner.RunnerStatus.UNAVAILABLE
-    assert result.error_code == "windows_backend_unattested"
+    assert result.error_code == "windows_sandbox_registry_unavailable"
     assert result.attestation.sandboxed is False
     assert result.attestation.termination_attested is False
