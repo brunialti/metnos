@@ -480,6 +480,134 @@ già consumata, candidato, nucleo, contesto, predecessore e operazione; restitui
 il precedente risultato soltanto con ricevuta valida e generazione coerente.
 Ogni differenza produce `producer_receipt_replayed` o `commit_conflict`.
 
+### 7.3 Chiusura atomica dei proprietari precedenti
+
+La proprietà esclusiva non dipende da un flag nello stato scrivibile dal
+servizio. È la congiunzione di una build F4 chiusa, che nega
+incondizionatamente le vecchie API sulla radice produttiva, e di un certificato
+firmato che autorizza l'avvio di quella build dopo il censimento. Assenza,
+cancellazione, alterazione o mancata corrispondenza del certificato bloccano
+l'avvio della build chiusa e non riaprono il percorso precedente. Dopo il punto
+di non ritorno è vietato avviare una build anteriore a F4. Il marker
+`contract-publications.ACTIVE` di RM-0007 resta indipendente e non viene
+reinterpretato.
+
+Il certificato usa la chiave Birth di ammissione già attiva, con autorizzazione
+separata `ownership_cutover_v1` nel registro storico core-owned. La firma
+Ed25519 usa il dominio
+`metnos.executor-birth.ownership-cutover/v1\0`; una chiave ammessa a firmare
+ricevute ma priva di tale scopo non può firmare il cutover. Nessuna chiave
+pubblica o selezione di autorità proviene dal certificato o dal chiamante.
+
+Il payload V1 è JSON ASCII canonico, senza campi extra o duplicati, e contiene
+esattamente:
+
+```text
+schema_version=1
+cutover_id
+previous_cutover_id
+request_id
+signing_key_id
+catalog_id
+current_count
+current_receipts
+maintenance_evidence_hash
+boundary_inventory_hash
+boundary_guard_version
+closed_build_id
+```
+
+`previous_cutover_id` è nullo soltanto per il primo cutover e lega gli upgrade
+successivi in una catena append-only. `current_receipts` è la lista ordinata per
+byte UTF-8 di oggetti contenenti esattamente `contract_id`, `generation_id` e
+`receipt_hash`; non ammette duplicati. `current_count` coincide con la lunghezza
+della lista, compreso zero. Tutti gli identificativi e gli hash sono SHA-256
+canonici. `catalog_id` usa il dominio
+`metnos.executor-birth.current-catalog/v1\0` e il framing length-delimited della
+lista completa. `cutover_id` usa il dominio
+`metnos.executor-birth.ownership-cutover-id/v1\0` e il payload canonico senza
+il solo `cutover_id`. La firma è un file separato di esattamente 64 byte.
+
+`boundary_inventory_hash` autentica i byte canonici dell'inventario della
+guardia; `boundary_guard_version` è la versione chiusa della sua politica.
+`closed_build_id` autentica il manifest di distribuzione firmato, che include
+almeno gli hash di `contract_store.py`, `sign.py`,
+`contract_boundary_guard.py`, tutti i moduli `executor_birth*`, il preflight del
+servizio e la versione del pacchetto. Il certificato non contiene tempi,
+percorsi personali o dati liberi dell'operatore.
+
+`maintenance_evidence_hash` usa il dominio
+`metnos.executor-birth.maintenance-proof/v1\0` sul documento canonico
+`{schema_version:1,source,units}`. `source` appartiene all'enum chiuso del
+coordinatore amministrativo; `units` è ordinato e ogni elemento contiene
+esattamente `scope`, `unit`, `load_state`, `active_state` e `main_pid`. Tutte le
+unità interessate devono essere inattive o fallite e avere PID zero. Il
+coordinatore opera dentro `contract_cutover_guard`, prova la quiescenza prima e
+dopo la firma, rilegge e autentica ogni ricevuta dalla memoria durevole,
+ricalcola il censimento subito prima della firma e richiede zero
+`birth_migration_findings`, zero scope non classificati o obsoleti e lo stesso
+hash di inventario incorporato nella build chiusa.
+
+Sul sistema Linux amministrato i file sono
+`/var/lib/metnos/executor-birth/ownership-cutover-v1.json` e `.sig`. La directory
+è creata dall'installer come `root:root 0755`; i file sono `root:root 0644` e il
+servizio non può crearli, rimuoverli o sostituirli. Un eventuale percorso diverso
+proviene soltanto dal manifest d'installazione root-owned e il suo hash entra nel
+`closed_build_id`, mai da ambiente o richiesta. La lettura è limitata, tramite
+handle, e rifiuta link, reparse point, hard link, cambi d'identità o metadati e
+riletture diverse. Windows certifica parser ed enforcement, mentre il cutover
+amministrato resta Linux/systemd.
+
+L'ordine dei blocchi è `catalog_admission_lock`, blocco di riconciliazione e
+manutenzione, writer lock dei contratti ordinati per `ContractId`, quindi blocco
+di deployment root-owned. La sequenza è:
+
+1. installare un `ExecStartPre` root-owned che consente una build precedente
+   soltanto finché il certificato non esiste e, quando esiste, consente
+   esclusivamente il `closed_build_id` autenticato;
+2. fermare lo stack, censire e riattestare tutte e sole le correnti;
+3. scrivere e sincronizzare payload e firma temporanei, rileggerli per handle,
+   rinominare prima la firma e poi il payload senza sovrascrittura e
+   sincronizzare la directory; il rename del payload è il punto di non ritorno;
+4. installare la build chiusa corrispondente e verificarla integralmente;
+5. all'avvio, prima dell'ingresso, ricensire catalogo e ricevute e confrontare
+   build, inventario, guardia e certificato; solo allora esporre readiness.
+
+Un retry accetta file esistenti soltanto se sono byte per byte identici e la
+firma è valida. Un crash prima del payload non chiude la proprietà e lascia lo
+stack fermo. Una firma orfana può essere rimossa soltanto dal recovery root se
+payload è assente e firma e journal coincidono. Payload senza firma valida,
+build precedente dopo payload, build chiusa non pronta o qualunque divergenza
+restano fail-closed e riprendono dal journal root-owned; non esiste una
+procedura che cancelli il certificato o riabiliti l'autorità precedente.
+
+Nella build chiusa, sulla radice produttiva, sono negate prima di leggere input,
+chiavi o callback: `publish_technical_update`, `reactivate_technical_update`,
+`rollback`, `publish_signed_source` dopo l'attivazione RM-0007 e gli equivalenti
+`sign_executor`, `publish_executor`, `publish_authoring_update`,
+`reactivate_executor_contract` e `rollback_executor_contract`, inclusi alias,
+import dinamici e subprocess. L'unica pubblicazione tecnica usa
+`commit_birth_snapshot` con `BirthCommitAuthorization` sigillata. Restano
+eccezioni chiuse: sola localizzazione RM-0007, ritiro riduttivo, bootstrap
+one-shot precedente al certificato e strumenti offline diretti a una radice
+non produttiva che non può essere caricata. Riavvio, installer e rollback
+applicativo producono intent Birth.
+
+Gli errori V1 sono `birth_ownership_proof_missing`,
+`birth_ownership_proof_invalid`, `birth_ownership_binding_invalid`,
+`birth_ownership_key_unauthorized`, `birth_ownership_build_mismatch`,
+`birth_ownership_inventory_mismatch`, `birth_ownership_catalog_changed`,
+`birth_ownership_cutover_conflict`, `birth_ownership_legacy_api_closed` e
+`birth_ownership_recovery_required`. Soltanto il recovery amministrativo può
+ritentare gli ultimi stati. La guardia possiede una modalità `--birth-closed`
+che richiede esattamente un proprietario Birth, nessuna capacità
+`publish_technical|reactivate|rollback|sign` fuori dai moduli sigillati, le sole
+eccezioni elencate e zero confini dinamici. La CI prova zero, una e molte
+correnti, ricevuta già presente, canonicalizzazione, chiave e scopo, mismatch di
+catalogo/inventario/build, cancellazione che non riapre, accessi diretti e
+riflessivi, crash a ogni frontiera, orfani, replay, conflitto, downgrade,
+parser/enforcement Windows e preflight Linux reale.
+
 ## 8. Revisione, proprietà e approvazione
 
 `executor.birth.semantic_review` usa il router centrale, almeno il livello
