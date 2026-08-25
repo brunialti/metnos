@@ -364,21 +364,32 @@ def _cgroup_v2_delegate() -> tuple[Path | None, str | None]:
     if not delegate.is_dir():
         return None, "cgroup_delegate_missing"
     required = (
-        "cgroup.procs", "cgroup.events", "cgroup.subtree_control",
-        "memory.max", "pids.max",
+        "cgroup.procs", "cgroup.events", "cgroup.controllers",
+        "cgroup.subtree_control", "memory.max", "pids.max",
     )
     if any(not (delegate / name).exists() for name in required):
         return None, "cgroup_delegate_incomplete"
+    if not os.access(delegate, os.W_OK):
+        return None, "cgroup_delegate_not_writable"
     try:
-        enabled = set((delegate / "cgroup.subtree_control").read_text(
-            encoding="ascii",
-        ).split())
+        available = set((delegate / "cgroup.controllers").read_text(
+            encoding="ascii").split())
+        if not {"memory", "pids"}.issubset(available):
+            return None, "cgroup_controllers_not_delegated"
+        control = delegate / "cgroup.subtree_control"
+        enabled = set(control.read_text(encoding="ascii").split())
+        missing = {"memory", "pids"} - enabled
+        if missing:
+            # DelegateSubgroup keeps the service process out of this domain
+            # parent.  The delegated owner must explicitly enable available
+            # controllers before creating bounded child scopes; systemd does
+            # not promise to populate subtree_control on its behalf.
+            _write_control(control, " ".join(f"+{name}" for name in sorted(missing)))
+            enabled = set(control.read_text(encoding="ascii").split())
     except OSError:
         return None, "cgroup_delegate_incomplete"
     if not {"memory", "pids"}.issubset(enabled):
         return None, "cgroup_controllers_not_delegated"
-    if not os.access(delegate, os.W_OK):
-        return None, "cgroup_delegate_not_writable"
     return delegate, None
 
 
