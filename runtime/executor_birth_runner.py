@@ -419,7 +419,10 @@ def run_birth_phase(
                     expected_config_hash=windows_registry.config_hash,
                     request_id=request_id, candidate_id=candidate_id, phase=phase,
                     private_root=private_root, entrypoint=argv[0], arguments=argv[1:],
-                    timeout_s=budget + TERMINATION_DRAIN_S,
+                    # The helper enforces the phase deadline and the 2-second
+                    # Job drain.  The parent transport gets bounded startup/
+                    # serialization slack so it does not race that attestation.
+                    timeout_s=budget + TERMINATION_DRAIN_S + 5.0,
                     expected_runtime_hash=windows_registry.runtime_binary_hash,
                 )
             except (WindowsBirthHelperError, OSError, RunnerInputError) as exc:
