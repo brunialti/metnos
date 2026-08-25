@@ -1231,6 +1231,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_cutover.py",
+      "scope": "enumerate_authenticated_current_generations",
+      "role": "administrative_tool",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "one-time F4 maintenance census of authenticated current generations",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_intent.py",
       "scope": "submit_builtin_generation_birth",
       "role": "administrative_tool",
