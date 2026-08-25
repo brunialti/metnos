@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,21 @@ pytestmark = pytest.mark.skipif(os.name != "nt", reason="real Windows AppContain
 CANDIDATE = "sha256:" + "c" * 64
 
 
+@lru_cache(maxsize=1)
+def _helper_path():
+    configured = os.environ.get("METNOS_BIRTH_SANDBOX_HELPER")
+    if configured:
+        return Path(configured).resolve()
+    subprocess.run(
+        ("cargo", "build", "--manifest-path", "client-rs/Cargo.toml",
+         "--release", "--bin", "metnos-birth-sandbox"),
+        check=True,
+    )
+    return Path("client-rs/target/release/metnos-birth-sandbox.exe").resolve()
+
+
 def _registry(tmp_path):
-    helper = Path(os.environ["METNOS_BIRTH_SANDBOX_HELPER"]).resolve()
+    helper = _helper_path()
     runtime = Path(sys.executable).resolve()
     runtime_hash = helper_binary_hash(runtime)
     config = helper.parent / f"birth-helper-{tmp_path.name}.json"
