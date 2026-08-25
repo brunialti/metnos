@@ -8,13 +8,17 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Mapping
+from typing import ClassVar, Mapping
 
 from llm_workloads import tier_for
 
 
 WORKLOAD = "executor.birth.semantic_review"
+FRONTIER_WORKLOAD = "executor.birth.semantic_review.frontier"
 REQUEST_TIMEOUT_S = 30.0
+RISK_FRONTIER_THRESHOLD = 70
+COMPLEXITY_FRONTIER_THRESHOLD = 80
+UNCERTAINTY_FRONTIER_THRESHOLD = 50
 REVIEW_EVIDENCE_DOMAIN = b"metnos.executor-birth.semantic-review-evidence/v1\0"
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _REVIEW_KEYS = frozenset({
@@ -95,6 +99,10 @@ class IndependentEvidence:
 
 @dataclass(frozen=True, slots=True)
 class ReviewPolicyV1:
+    risk_frontier_threshold: ClassVar[int] = RISK_FRONTIER_THRESHOLD
+    complexity_frontier_threshold: ClassVar[int] = COMPLEXITY_FRONTIER_THRESHOLD
+    uncertainty_frontier_threshold: ClassVar[int] = UNCERTAINTY_FRONTIER_THRESHOLD
+
     versions: Mapping[IndependentEvidenceKind, frozenset[str]]
     owners: Mapping[IndependentEvidenceKind, frozenset[str]]
 
@@ -110,6 +118,21 @@ class ReviewPolicyV1:
                 raise SemanticReviewError("birth_request_invalid", "review policy value")
         object.__setattr__(self, "versions", MappingProxyType(versions))
         object.__setattr__(self, "owners", MappingProxyType(owners))
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewRiskFacts:
+    """Deterministic policy inputs; none names a workload, tier or model."""
+
+    risk_score: int
+    complexity_score: int
+    uncertainty_score: int
+
+    def __post_init__(self) -> None:
+        for name in ("risk_score", "complexity_score", "uncertainty_score"):
+            value = getattr(self, name)
+            if type(value) is not int or not 0 <= value <= 100:
+                raise SemanticReviewError("birth_request_invalid", name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,7 +262,9 @@ Tests contain only test_id, kind (example or metamorphic), and description.
 """
 
 
-def _invoke_semantic_review(system: str, user: str, *, tier: str, timeout_s: float) -> str:
+def _invoke_semantic_review(
+    system: str, user: str, *, workload: str, tier: str, timeout_s: float,
+) -> str:
     from llm_router import LLMRouter
 
     response = LLMRouter().provider(tier).chat(
@@ -248,9 +273,12 @@ def _invoke_semantic_review(system: str, user: str, *, tier: str, timeout_s: flo
     return getattr(response, "text", None) or ""
 
 
-def _review_hash(request_payload: dict[str, object], review_payload: bytes, tier: str) -> str:
+def _review_hash(
+    request_payload: dict[str, object], review_payload: bytes,
+    workload: str, tier: str,
+) -> str:
     evidence = {
-        "schema_version": 1, "workload": WORKLOAD, "tier": tier,
+        "schema_version": 1, "workload": workload, "tier": tier,
         "request": request_payload,
         "review": json.loads(review_payload.decode("utf-8")),
     }
@@ -280,15 +308,30 @@ def _independent(
     return None
 
 
+def _review_workload(policy: ReviewPolicyV1, risk_facts: ReviewRiskFacts) -> str:
+    if not isinstance(policy, ReviewPolicyV1):
+        raise SemanticReviewError("birth_request_invalid", "review policy")
+    if not isinstance(risk_facts, ReviewRiskFacts):
+        raise SemanticReviewError("birth_request_invalid", "review risk facts")
+    if (
+        risk_facts.risk_score >= policy.risk_frontier_threshold
+        or risk_facts.complexity_score >= policy.complexity_frontier_threshold
+        or risk_facts.uncertainty_score >= policy.uncertainty_frontier_threshold
+    ):
+        return FRONTIER_WORKLOAD
+    return WORKLOAD
+
+
 def review_candidate_semantics(
     request: SemanticReviewRequest, *, independent_evidence: tuple[IndependentEvidence, ...],
-    policy: ReviewPolicyV1,
+    policy: ReviewPolicyV1, risk_facts: ReviewRiskFacts,
 ) -> SemanticReviewDecision:
     """Review one immutable candidate; callers cannot select model or tier."""
     _validate_request(request)
     if not isinstance(policy, ReviewPolicyV1) or not isinstance(independent_evidence, tuple):
         raise SemanticReviewError("birth_request_invalid", "review authority")
-    logical_tier = tier_for(WORKLOAD)
+    workload = _review_workload(policy, risk_facts)
+    logical_tier = tier_for(workload)
     tier = str(logical_tier)
     request_payload = _request_payload(request)
     user = _canonical(request_payload).decode("utf-8")
@@ -297,7 +340,7 @@ def review_candidate_semantics(
     for attempt in range(2):
         try:
             response = _invoke_semantic_review(
-                _SYSTEM_PROMPT, user, tier=logical_tier,
+                _SYSTEM_PROMPT, user, workload=workload, tier=logical_tier,
                 timeout_s=REQUEST_TIMEOUT_S,
             )
         except Exception as exc:
@@ -315,6 +358,6 @@ def review_candidate_semantics(
     if review.verdict is SemanticVerdict.ALIGNED and accepted is None:
         operational = SemanticVerdict.UNCERTAIN
     return SemanticReviewDecision(
-        review, operational, _review_hash(request_payload, raw, tier),
-        accepted.evidence_id if accepted else None, WORKLOAD, tier,
+        review, operational, _review_hash(request_payload, raw, workload, tier),
+        accepted.evidence_id if accepted else None, workload, tier,
     )

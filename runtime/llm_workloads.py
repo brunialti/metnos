@@ -73,6 +73,12 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "executor.birth.semantic_review": WorkloadContract(
         "wise", None, "high_fidelity_exact", "json",
     ),
+    "executor.birth.semantic_review.frontier": WorkloadContract(
+        "frontier", None, "frontier", "json",
+    ),
+    "executor.birth.failure_review": WorkloadContract(
+        "frontier", None, "frontier", "json",
+    ),
     "tutor.compose": WorkloadContract("wise", None, "high_fidelity_exact", "text"),
     "planner.grammar": WorkloadContract("wise", None, "high_fidelity_exact", "grammar"),
     # Durable image preset: exact structured extraction and synthesis.  The
