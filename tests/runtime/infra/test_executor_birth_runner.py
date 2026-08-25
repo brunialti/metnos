@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -150,5 +151,108 @@ def test_shell_setup_and_teardown_are_not_part_of_public_api():
     import inspect
 
     parameters = inspect.signature(runner.run_birth_phase).parameters
-    assert set(parameters) == {"command", "fixture_ops", "phase"}
+    assert set(parameters) == {"command", "fixture_ops", "phase", "deadline"}
     assert not {"shell", "setup", "teardown", "env", "policy"} & set(parameters)
+
+
+def test_shared_deadline_cannot_exceed_fixed_total_budget(monkeypatch):
+    now = 1000.0
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now)
+    deadline = runner.begin_birth_deadline()
+    assert deadline.expires_at - deadline.started_at == runner.TOTAL_TIMEOUT_S
+    now = deadline.expires_at
+    result = runner.run_birth_phase(("/usr/bin/true",), deadline=deadline)
+    assert result.status is runner.RunnerStatus.UNAVAILABLE
+    assert result.error_code == "total_timeout"
+
+
+def test_caller_cannot_extend_shared_deadline():
+    deadline = runner.BirthDeadline(1.0, 1.0 + runner.TOTAL_TIMEOUT_S + 1.0)
+    with pytest.raises(runner.RunnerInputError, match="deadline_invalid"):
+        runner.run_birth_phase(("/usr/bin/true",), deadline=deadline)
+
+
+def test_setup_handshake_is_strict_and_core_owned(tmp_path):
+    status = tmp_path / "status.json"
+    status.write_text('{"child_started":true,"exit_code":17}', encoding="utf-8")
+    assert runner._read_setup_handshake(status) == (True, 17)
+    status.write_text(
+        '{"child_started":true,"exit_code":0,"candidate_claim":true}',
+        encoding="utf-8",
+    )
+    assert runner._read_setup_handshake(status) == (False, None)
+
+
+def _install_fake_linux_backend(monkeypatch, tmp_path, *, handshake):
+    delegate = tmp_path / "delegate"
+    delegate.mkdir()
+    monkeypatch.setattr(runner.os, "name", "posix")
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setattr(runner.shutil, "which", lambda _name: "/usr/bin/bwrap")
+    monkeypatch.setattr(runner, "_cgroup_v2_delegate", lambda: (delegate, None))
+    monkeypatch.setattr(runner, "_write_control", lambda _path, _value: None)
+    monkeypatch.setattr(runner, "_tree_empty", lambda _scope: True)
+
+    def fake_run(command, **_kwargs):
+        status_path = Path(command[5])
+        if handshake is not None:
+            status_path.write_text(json.dumps(handshake), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(runner, "run_bounded_subprocess", fake_run)
+
+
+def test_candidate_failure_requires_successful_core_setup_handshake(monkeypatch, tmp_path):
+    _install_fake_linux_backend(
+        monkeypatch, tmp_path,
+        handshake={"child_started": True, "exit_code": 17},
+    )
+    result = runner.run_birth_phase(("/bin/false",))
+    assert result.status is runner.RunnerStatus.FAILED
+    assert result.error_code == "candidate_process_failed"
+    assert result.returncode == 17
+    assert result.attestation.sandboxed is True
+
+
+def test_missing_setup_handshake_is_unavailable_not_candidate_failure(monkeypatch, tmp_path):
+    _install_fake_linux_backend(monkeypatch, tmp_path, handshake=None)
+    result = runner.run_birth_phase(("/bin/false",))
+    assert result.status is runner.RunnerStatus.UNAVAILABLE
+    assert result.error_code == "sandbox_setup_unattested"
+    assert result.returncode is None
+    assert result.attestation.sandboxed is False
+
+
+def _real_linux_result(command):
+    if not runner.sys.platform.startswith("linux"):
+        pytest.skip("Linux-only isolation proof")
+    result = runner.run_birth_phase(command)
+    if result.status is runner.RunnerStatus.UNAVAILABLE:
+        pytest.skip(f"complete Linux backend unavailable: {result.error_code}")
+    return result
+
+
+def test_real_linux_sandbox_cannot_see_undeclared_host_files():
+    result = _real_linux_result((
+        "/bin/sh", "-c", "test ! -e /etc/passwd && test ! -e /opt/metnos",
+    ))
+    assert result.status is runner.RunnerStatus.PASSED
+    assert result.attestation.sandboxed is True
+    assert result.attestation.network_unshared is True
+
+
+def test_real_linux_sandbox_terminates_detached_descendants():
+    result = _real_linux_result((
+        "/bin/sh", "-c", "sleep 60 </dev/null >/dev/null 2>&1 & exit 0",
+    ))
+    assert result.status is runner.RunnerStatus.PASSED
+    assert result.attestation.tree_empty is True
+    assert result.attestation.termination_attested is True
+
+
+def test_real_linux_candidate_exit_is_not_misreported_as_setup_failure():
+    result = _real_linux_result(("/bin/sh", "-c", "exit 17"))
+    assert result.status is runner.RunnerStatus.FAILED
+    assert result.error_code == "candidate_process_failed"
+    assert result.returncode == 17
+    assert result.attestation.sandboxed is True
