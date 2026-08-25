@@ -47,7 +47,7 @@ def test_cardinality_and_limit_generate_bounded_evidence():
 
 
 def test_oracle_failure_and_runner_unavailability_are_evidence_not_bypass():
-    profile = PropertyCandidateProfile(output_required=("ok",))
+    profile = PropertyCandidateProfile(output_schema=(("ok", "boolean"),))
     failed = run_property("output.schema.actual", profile, _runner=Runner({"wrong": True}))
     assert failed[0].status is PropertyStatus.FAILED
     unavailable = run_property("output.schema.actual", profile, _runner=Runner(error=RuntimeError("down")))
@@ -95,3 +95,49 @@ def test_candidate_copy_flag_cannot_replace_runner_filesystem_trace():
         "recovery_copy_hash": D,
     })
     assert run_property("delete.copy_before_delete", profile, _runner=trusted)[0].status is PropertyStatus.PASSED
+
+
+def test_output_schema_checks_core_declared_types_not_only_keys():
+    profile = PropertyCandidateProfile(output_schema=(("ok", "boolean"), ("count", "integer")))
+    assert run_property("output.schema.actual", profile, _runner=Runner({"ok": True, "count": 1}))[0].status is PropertyStatus.PASSED
+    assert run_property("output.schema.actual", profile, _runner=Runner({"ok": 1, "count": True}))[0].status is PropertyStatus.FAILED
+
+
+@pytest.mark.parametrize("observations", [
+    {"state_before_hash": "sha256:a", "state_after_forward_hash": "sha256:b", "state_after_undo_hash": "sha256:a"},
+    {"state_before_hash": D, "state_after_forward_hash": "sha256:" + "2" * 64, "state_after_undo_hash": None},
+])
+def test_round_trip_requires_three_canonical_non_null_digests(observations):
+    evidence = run_property("undo.round_trip", PropertyCandidateProfile(revertible=True), _runner=Runner({}, observations))
+    assert evidence[0].status is PropertyStatus.FAILED
+
+
+def test_copy_before_delete_requires_two_canonical_non_null_equal_digests():
+    observations = {"filesystem_events": ["copy", "delete"]}
+    evidence = run_property("delete.copy_before_delete", PropertyCandidateProfile(destructive_with_undo=True), _runner=Runner({}, observations))
+    assert evidence[0].status is PropertyStatus.FAILED
+
+
+def test_malformed_runner_contract_is_not_downgraded_to_unavailability():
+    class MalformedRunner:
+        def run(self, *args, **kwargs):
+            return {"output": {}}
+
+    with pytest.raises(PropertyContractError, match="property_runner_result_invalid"):
+        run_property(
+            "output.schema.actual", PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
+            _runner=MalformedRunner(),
+        )
+
+
+def test_runner_contract_error_is_not_reported_as_transport_unavailability():
+    class ContractFailingRunner:
+        def run(self, *args, **kwargs):
+            raise PropertyContractError("property_runner_result_invalid", "trusted adapter")
+
+    with pytest.raises(PropertyContractError, match="property_runner_result_invalid"):
+        run_property(
+            "output.schema.actual",
+            PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
+            _runner=ContractFailingRunner(),
+        )

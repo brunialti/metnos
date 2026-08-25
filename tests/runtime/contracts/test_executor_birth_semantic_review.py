@@ -44,7 +44,7 @@ def _review(**changes) -> str:
 
 def _request() -> SemanticReviewRequest:
     return SemanticReviewRequest(
-        D1, D2, b'name="sample"\n', b"{}\n",
+        D1, D2, "model:generator", b'name="sample"\n', b"{}\n",
         {"pkg/helper.py": b"HELPER", "main.py": b"MAIN"},
     )
 
@@ -158,6 +158,35 @@ def test_obsolete_or_untrusted_evidence_is_rejected(
     with pytest.raises(SemanticReviewError, match="evidence_obsolete"):
         review_candidate_semantics(
             _request(), independent_evidence=(_evidence(**change),), policy=_policy(),
+            risk_facts=LOW_RISK,
+        )
+
+
+def test_allowlisted_generator_cannot_attest_its_own_candidate(monkeypatch) -> None:
+    monkeypatch.setattr(semantic, "_invoke_semantic_review", lambda *a, **k: _review())
+    policy = ReviewPolicyV1(
+        versions={kind: frozenset({"v1"}) for kind in IndependentEvidenceKind},
+        owners={kind: frozenset({"model:generator", f"owner:{kind.value}"})
+                for kind in IndependentEvidenceKind},
+    )
+    with pytest.raises(SemanticReviewError, match="evidence_obsolete"):
+        review_candidate_semantics(
+            _request(), independent_evidence=(_evidence(owner_id="model:generator"),),
+            policy=policy, risk_facts=LOW_RISK,
+        )
+
+
+@pytest.mark.parametrize("owner", ["", "x\x00y", "x" * 129])
+def test_generator_owner_binding_is_strict(monkeypatch, owner) -> None:
+    monkeypatch.setattr(semantic, "_invoke_semantic_review", lambda *a, **k: _review())
+    request = _request()
+    request = SemanticReviewRequest(
+        request.candidate_id, request.admission_context_id, owner,
+        request.manifest_bytes, request.language_state_bytes, request.code_files,
+    )
+    with pytest.raises(SemanticReviewError, match="birth_request_invalid"):
+        review_candidate_semantics(
+            request, independent_evidence=(_evidence(),), policy=_policy(),
             risk_facts=LOW_RISK,
         )
 

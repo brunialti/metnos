@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import math
+import re
 from dataclasses import dataclass
 from typing import Mapping, Protocol
 
@@ -36,7 +38,7 @@ class PropertyRunner(Protocol):
 @dataclass(frozen=True, slots=True)
 class PropertyCandidateProfile:
     """Core-derived applicability facts; never decoded from a manifest table."""
-    output_required: tuple[str, ...] = ()
+    output_schema: tuple[tuple[str, str], ...] = ()
     collection_output: bool = False
     limit_input: bool = False
     truncation_declared: bool = False
@@ -45,8 +47,17 @@ class PropertyCandidateProfile:
     entries_and_results: bool = False
 
     def __post_init__(self) -> None:
-        if any(not isinstance(item, str) or not item for item in self.output_required):
-            raise PropertyContractError("property_candidate_invalid", "output_required")
+        allowed_types = {"array", "boolean", "integer", "null", "number", "object", "string"}
+        keys: set[str] = set()
+        for item in self.output_schema:
+            if (
+                not isinstance(item, tuple) or len(item) != 2
+                or not isinstance(item[0], str) or not item[0]
+                or item[0] in keys or not isinstance(item[1], str)
+                or item[1] not in allowed_types
+            ):
+                raise PropertyContractError("property_candidate_invalid", "output_schema")
+            keys.add(item[0])
         for name in (
             "collection_output", "limit_input", "truncation_declared", "revertible",
             "destructive_with_undo", "entries_and_results",
@@ -91,7 +102,23 @@ _GENERATORS = {
 
 
 def _output_schema(output, candidate, _expect, _observations):
-    return bool(candidate.output_required) and all(key in output for key in candidate.output_required)
+    def matches(value: object, type_name: str) -> bool:
+        return {
+            "array": lambda: isinstance(value, list),
+            "boolean": lambda: type(value) is bool,
+            "integer": lambda: type(value) is int,
+            "null": lambda: value is None,
+            "number": lambda: type(value) is int or (
+                type(value) is float and math.isfinite(value)
+            ),
+            "object": lambda: isinstance(value, Mapping),
+            "string": lambda: isinstance(value, str),
+        }[type_name]()
+
+    return bool(candidate.output_schema) and all(
+        key in output and matches(output[key], type_name)
+        for key, type_name in candidate.output_schema
+    )
 
 
 def _cardinality(output, _candidate, expect, _observations):
@@ -119,21 +146,25 @@ def _state_round_trip(_output, _candidate, _expect, observations):
     mutated = observations.get("state_after_forward_hash")
     restored = observations.get("state_after_undo_hash")
     return (
-        isinstance(before, str) and before.startswith("sha256:")
-        and isinstance(mutated, str) and mutated.startswith("sha256:")
+        isinstance(before, str) and _DIGEST_RE.fullmatch(before) is not None
+        and isinstance(mutated, str) and _DIGEST_RE.fullmatch(mutated) is not None
+        and isinstance(restored, str) and _DIGEST_RE.fullmatch(restored) is not None
         and restored == before and mutated != before
     )
 
 
 def _copy_precedes_delete(_output, _candidate, _expect, observations):
     events = observations.get("filesystem_events")
+    source = observations.get("source_before_hash")
+    recovery = observations.get("recovery_copy_hash")
     return (
         isinstance(events, list)
         and events.count("copy") == 1
         and events.count("delete") == 1
         and events.index("copy") < events.index("delete")
-        and observations.get("recovery_copy_hash")
-        == observations.get("source_before_hash")
+        and isinstance(source, str) and _DIGEST_RE.fullmatch(source) is not None
+        and isinstance(recovery, str) and _DIGEST_RE.fullmatch(recovery) is not None
+        and recovery == source
     )
 
 
@@ -156,7 +187,7 @@ _FIXTURES = frozenset({
     "private_mutable_state", "private_deletion_tree",
 })
 _APPLICABILITY = {
-    "output_schema_declared": lambda c: bool(c.output_required),
+    "output_schema_declared": lambda c: bool(c.output_schema),
     "collection_output": lambda c: c.collection_output,
     "bounded_collection_input": lambda c: c.limit_input,
     "truncation_declared": lambda c: c.truncation_declared,
@@ -164,6 +195,8 @@ _APPLICABILITY = {
     "destructive_with_undo": lambda c: c.destructive_with_undo,
     "entries_and_results_output": lambda c: c.entries_and_results,
 }
+
+_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 def _resolve(spec: PropertySpec):
@@ -199,8 +232,20 @@ def run_property(
     for case in cases:
         try:
             result = _runner.run(case, fixture_id=spec.fixture_id, isolation=spec.isolation.value)
+        except PropertyContractError:
+            raise
+        except Exception as exc:  # runner unavailability is fail-closed evidence
+            status = PropertyStatus.UNAVAILABLE
+            error = "property_runner_unavailable"
+            output_hash = _hash({"unavailable": type(exc).__name__})
+            attestation_hash = _hash({"attestation": "unavailable"})
+        else:
             if not isinstance(result, PropertyRunResult):
                 raise PropertyContractError("property_runner_result_invalid")
+            if not isinstance(result.output, Mapping) or not isinstance(result.observations, Mapping):
+                raise PropertyContractError("property_runner_result_invalid", "mappings")
+            if not isinstance(result.runner_attestation_hash, str) or _DIGEST_RE.fullmatch(result.runner_attestation_hash) is None:
+                raise PropertyContractError("property_runner_result_invalid", "attestation")
             passed = oracle(
                 result.output, candidate, case.expectation, result.observations,
             )
@@ -211,11 +256,6 @@ def run_property(
                 "trusted_observations": dict(result.observations),
             })
             attestation_hash = result.runner_attestation_hash
-        except Exception as exc:  # runner unavailability is fail-closed evidence
-            status = PropertyStatus.UNAVAILABLE
-            error = "property_runner_unavailable"
-            output_hash = _hash({"unavailable": type(exc).__name__})
-            attestation_hash = _hash({"attestation": "unavailable"})
         evidence.append(PropertyEvidence(
             property_id=spec.property_id, property_version=spec.version,
             case_id=case.case_id, status=status,

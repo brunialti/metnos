@@ -80,6 +80,7 @@ class SemanticReview:
 class SemanticReviewRequest:
     candidate_id: str
     admission_context_id: str
+    generator_owner_id: str
     manifest_bytes: bytes
     language_state_bytes: bytes
     code_files: Mapping[str, bytes]
@@ -231,6 +232,8 @@ def _validate_request(request: SemanticReviewRequest) -> None:
     for field in ("candidate_id", "admission_context_id"):
         if not _DIGEST_RE.fullmatch(getattr(request, field)):
             raise SemanticReviewError("birth_request_invalid", field)
+    if not _bounded_text(request.generator_owner_id, 128):
+        raise SemanticReviewError("birth_request_invalid", "generator_owner_id")
     if not isinstance(request.manifest_bytes, bytes) or not isinstance(request.language_state_bytes, bytes):
         raise SemanticReviewError("birth_request_invalid", "contract bytes")
     if (
@@ -245,6 +248,7 @@ def _request_payload(request: SemanticReviewRequest) -> dict[str, object]:
         "schema_version": 1,
         "candidate_id": request.candidate_id,
         "admission_context_id": request.admission_context_id,
+        "generator_owner_id": request.generator_owner_id,
         "manifest_base64": base64.b64encode(request.manifest_bytes).decode("ascii"),
         "language_state_base64": base64.b64encode(request.language_state_bytes).decode("ascii"),
         "code_files": {
@@ -302,6 +306,8 @@ def _independent(
         if item.candidate_id != request.candidate_id or item.admission_context_id != request.admission_context_id:
             raise SemanticReviewError("evidence_obsolete", item.evidence_id)
         if item.evidence_version not in policy.versions[item.kind] or item.owner_id not in policy.owners[item.kind]:
+            raise SemanticReviewError("evidence_obsolete", item.evidence_id)
+        if item.owner_id == request.generator_owner_id:
             raise SemanticReviewError("evidence_obsolete", item.evidence_id)
         if item.status is EvidenceStatus.PASSED:
             return item
