@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from threading import Barrier, Lock, Thread
@@ -14,6 +15,7 @@ from executor_birth_producer_store import (
     claim_producer_receipt,
     consume_producer_receipt,
     finalize_producer_receipt,
+    get_or_issue_producer_receipt,
     recover_producer_receipt_claim,
     register_producer_receipt,
 )
@@ -30,6 +32,8 @@ D1 = "sha256:" + "1" * 64
 D2 = "sha256:" + "2" * 64
 REQUEST = "sha256:" + "3" * 64
 ISSUED = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
+CAPABILITY = "synt_multistage:create_or_replay"
+CONTRACT = "executor:test/example"
 
 
 def _fixture():
@@ -50,6 +54,159 @@ def _fixture():
         D1, D2, ExecutorOrigin.SYNTHESIZED, RevisionAuthor.MODEL,
     )
     return key, registry, encoded, binding
+
+
+def _issue_once(db, registry, encoded, *, request=REQUEST, capability=CAPABILITY,
+                contract=CONTRACT, objective=D1, source=D2, callback=None):
+    return get_or_issue_producer_receipt(
+        request_id=request, issuer_id="synt", capability_id=capability,
+        contract_id=contract, objective_hash=objective,
+        candidate_source_id=source, registry=registry, now=ISSUED,
+        db_path=db, issue=callback or (lambda: encoded),
+    )
+
+
+def test_issuance_restarts_with_identical_bytes_without_reinvoking_issuer(tmp_path):
+    _, registry, encoded, _ = _fixture()
+    db = tmp_path / "producer.sqlite"
+    assert _issue_once(db, registry, encoded) == encoded
+
+    def forbidden():
+        raise AssertionError("issuer callback must not run on replay")
+
+    assert _issue_once(db, registry, b"not-used", callback=forbidden) == encoded
+    with sqlite3.connect(db) as check:
+        assert check.execute("PRAGMA user_version").fetchone()[0] == 5
+        row = check.execute(
+            "SELECT capability_id,contract_id,encoded FROM birth_producer_issuance"
+        ).fetchone()
+    assert row[:2] == (CAPABILITY, CONTRACT)
+    assert bytes(row[2]) == encoded
+
+
+@pytest.mark.parametrize("changed", ["capability", "contract", "objective", "source", "issuer"])
+def test_issuance_request_id_rejects_every_changed_binding(tmp_path, changed):
+    _, registry, encoded, _ = _fixture()
+    db = tmp_path / "producer.sqlite"
+    _issue_once(db, registry, encoded)
+    values = dict(capability=CAPABILITY, contract=CONTRACT, objective=D1, source=D2)
+    if changed != "issuer":
+        values[changed] = ("sha256:" + "9" * 64 if changed in {"objective", "source"}
+                           else "different")
+    kwargs = dict(
+        request_id=REQUEST, issuer_id="different" if changed == "issuer" else "synt",
+        capability_id=values["capability"], contract_id=values["contract"],
+        objective_hash=values["objective"], candidate_source_id=values["source"],
+        registry=registry, now=ISSUED, db_path=db,
+        issue=lambda: pytest.fail("issuer callback ran for conflicting binding"),
+    )
+    with pytest.raises(ReceiptError, match="producer_receipt_request_conflict"):
+        get_or_issue_producer_receipt(**kwargs)
+
+
+def test_concurrent_issuance_threads_call_issuer_once(tmp_path):
+    _, registry, encoded, _ = _fixture()
+    db = tmp_path / "producer.sqlite"
+    barrier = Barrier(8); lock = Lock(); calls = []; results = []
+
+    def issue():
+        with lock:
+            calls.append(1)
+        return encoded
+
+    def run():
+        barrier.wait()
+        value = _issue_once(db, registry, encoded, callback=issue)
+        with lock:
+            results.append(value)
+
+    threads = [Thread(target=run) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+    assert len(calls) == 1
+    assert results == [encoded] * 8
+
+
+@pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="requires fork")
+def test_concurrent_issuance_processes_return_identical_bytes(tmp_path):
+    _, registry, encoded, _ = _fixture()
+    db = tmp_path / "producer.sqlite"
+    context = multiprocessing.get_context("fork")
+    barrier = context.Barrier(4)
+    calls = context.Value("i", 0)
+    results = context.Queue()
+
+    def run():
+        def issue():
+            with calls.get_lock():
+                calls.value += 1
+            return encoded
+        barrier.wait()
+        try:
+            results.put((True, _issue_once(db, registry, encoded, callback=issue)))
+        except Exception as exc:  # pragma: no cover - reported in parent
+            results.put((False, repr(exc)))
+
+    processes = [context.Process(target=run) for _ in range(4)]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=15)
+        assert not process.is_alive()
+        assert process.exitcode == 0
+    observed = [results.get(timeout=2) for _ in processes]
+    assert observed == [(True, encoded)] * 4
+    assert calls.value == 1
+
+
+def test_failed_ledger_insert_rolls_back_receipt_registration(tmp_path):
+    _, registry, encoded, _ = _fixture()
+    db = tmp_path / "producer.sqlite"
+    # Establish/migrate the schema, then force the second statement of the
+    # issuance transaction to abort. The receipt row must not leak through.
+    connection = sqlite3.connect(db)
+    connection.execute("PRAGMA foreign_keys=ON")
+    connection.close()
+    from executor_birth_producer_store import _open
+    initialized = _open(db); initialized.close()
+    connection = sqlite3.connect(db)
+    connection.execute("""CREATE TRIGGER abort_issuance BEFORE INSERT ON birth_producer_issuance
+                         BEGIN SELECT RAISE(ABORT, 'simulated crash frontier'); END""")
+    connection.commit(); connection.close()
+    with pytest.raises(sqlite3.IntegrityError, match="simulated crash frontier"):
+        _issue_once(db, registry, encoded)
+    with sqlite3.connect(db) as check:
+        assert check.execute("SELECT count(*) FROM birth_producer_receipts").fetchone()[0] == 0
+        check.execute("DROP TRIGGER abort_issuance"); check.commit()
+    assert _issue_once(db, registry, encoded) == encoded
+
+
+def test_v4_issuance_migration_preserves_unknown_binding_fail_closed(tmp_path):
+    _, registry, encoded, _ = _fixture()
+    db = tmp_path / "producer.sqlite"
+    register_producer_receipt(encoded, registry=registry, now=ISSUED, db_path=db)
+    with sqlite3.connect(db) as old:
+        old.execute("DROP TABLE birth_producer_issuance")
+        old.execute("""CREATE TABLE birth_producer_issuance (
+          request_id TEXT PRIMARY KEY, issuer_id TEXT NOT NULL, operation TEXT NOT NULL,
+          objective_hash TEXT NOT NULL, candidate_source_id TEXT NOT NULL,
+          encoded BLOB NOT NULL UNIQUE)""")
+        old.execute("INSERT INTO birth_producer_issuance VALUES (?,?,?,?,?,?)",
+                    (REQUEST, "synt", CAPABILITY, D1, D2, encoded))
+        old.execute("PRAGMA user_version=4")
+    with pytest.raises(ReceiptError, match="producer_receipt_request_conflict"):
+        _issue_once(db, registry, encoded,
+                    callback=lambda: pytest.fail("legacy issuance was reopened"))
+    with sqlite3.connect(db) as check:
+        row = check.execute(
+            "SELECT capability_id,contract_id,encoded FROM birth_producer_issuance"
+        ).fetchone()
+        assert check.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert row[:2] == (CAPABILITY, "__legacy_unknown_contract__")
+    assert bytes(row[2]) == encoded
 
 
 def test_registered_receipt_is_consumed_exactly_once(tmp_path):
@@ -350,4 +507,4 @@ def test_v1_database_migrates_available_and_consumed_without_reopening_authority
                                     request_id=REQUEST, now=ISSUED, db_path=db)
     assert replay.state == "rejected" and replay.rejection_code == "legacy_terminal"
     with sqlite3.connect(db) as check:
-        assert check.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert check.execute("PRAGMA user_version").fetchone()[0] == 5
