@@ -126,6 +126,49 @@ def _new_root(parent: Path, name: str, service_sid: str) -> Path:
     return root
 
 
+def _independent_directory(
+    root: Path,
+    service_sid: str,
+    name: str,
+    *,
+    profile: str,
+    service_mask: int | None = None,
+) -> Path:
+    path = root / name
+    path.mkdir()
+    oracle.apply_profile(
+        path,
+        profile,
+        service_sid,
+        directory=True,
+        service_mask=service_mask,
+    )
+    if service_mask is None:
+        oracle.assert_exact_profile(
+            path, profile, service_sid, directory=True
+        )
+    return path
+
+
+def _independent_file(
+    root: Path,
+    service_sid: str,
+    name: str,
+    payload: bytes,
+    *,
+    profile: str,
+) -> Path:
+    path = root / name
+    path.write_bytes(payload)
+    oracle.apply_profile(
+        path, profile, service_sid, directory=False
+    )
+    oracle.assert_exact_profile(
+        path, profile, service_sid, directory=False
+    )
+    return path
+
+
 def _closed_directory_sddl(
     service_sid: str,
     outsider_sid: str,
@@ -310,32 +353,29 @@ def _diagnose_r5_profile_catalog(
     parent: Path, service_sid: str
 ) -> dict[str, object]:
     root = _new_root(parent, "r5-catalog", service_sid)
+    _independent_directory(
+        root, service_sid, "public", profile="integrity_only"
+    )
+    _independent_file(
+        root,
+        service_sid,
+        "private.bin",
+        b"confidential",
+        profile="confidential",
+    )
     directory_mismatch = False
     file_mismatch = False
     with secure_fs._adopt_authenticated_root(_descriptor(root, service_sid)) as session:
-        with session.global_lock(exclusive=True, create=True):
-            session.create_directory_exclusive(
-                ("public",), profile="integrity_only"
+        try:
+            session.inventory(("public",))
+        except secure_fs.BirthSecureFSError as exc:
+            directory_mismatch = exc.code == "birth_provisioning_acl_unsafe"
+        try:
+            session.read_file(
+                ("private.bin",), maximum=32, exact_private=False
             )
-            session.create_file_exclusive(
-                ("private.bin",), b"confidential", profile="confidential"
-            )
-            oracle.assert_exact_profile(
-                root / "public", "integrity_only", service_sid, directory=True
-            )
-            oracle.assert_exact_profile(
-                root / "private.bin", "confidential", service_sid, directory=False
-            )
-            try:
-                session.inventory(("public",))
-            except secure_fs.BirthSecureFSError as exc:
-                directory_mismatch = exc.code == "birth_provisioning_acl_unsafe"
-            try:
-                session.read_file(
-                    ("private.bin",), maximum=32, exact_private=False
-                )
-            except secure_fs.BirthSecureFSError as exc:
-                file_mismatch = exc.code == "birth_provisioning_acl_unsafe"
+        except secure_fs.BirthSecureFSError as exc:
+            file_mismatch = exc.code == "birth_provisioning_acl_unsafe"
     _require(
         directory_mismatch and file_mismatch,
         "the frozen profile-catalog mismatch was not observed",
@@ -347,31 +387,55 @@ def _diagnose_r5_profile_catalog(
     }
 
 
-def _create_confidential_directory(
-    root: Path, service_sid: str, name: str
-) -> None:
+def _diagnose_r5_product_acl_self_check(
+    parent: Path, service_sid: str
+) -> dict[str, object]:
+    root = _new_root(parent, "r5-product-self-check", service_sid)
+    rejected = False
     with secure_fs._adopt_authenticated_root(_descriptor(root, service_sid)) as session:
-        with session.global_lock(exclusive=True, create=True):
-            session.create_directory_exclusive((name,), profile="confidential")
+        try:
+            with session.global_lock(exclusive=True, create=True):
+                pass
+        except secure_fs.BirthSecureFSError as exc:
+            rejected = (
+                exc.code == "birth_provisioning_acl_unsafe"
+                and exc.__cause__ is None
+            )
+    lock = root / "provisioning-v1.lock"
+    _require(rejected, "the frozen product ACL self-check did not reject")
+    _require(
+        lock.is_file() and lock.stat().st_size == 0,
+        "the rejected product lock did not leave the expected empty fixture",
+    )
+    oracle.assert_exact_profile(
+        lock, "integrity_only", service_sid, directory=False
+    )
+    return {
+        "criterion": "D-R5-product-self-check",
+        "product_rejected_its_created_acl": True,
+        "independent_oracle_accepts_created_acl": True,
+        "empty_lock_remained_after_rejection": True,
+    }
 
 
 def _diagnose_r6_cached_handle(parent: Path, service_sid: str) -> dict[str, object]:
     root = _new_root(parent, "r6-cached", service_sid)
-    _create_confidential_directory(root, service_sid, "source")
+    _independent_directory(
+        root, service_sid, "source", profile="confidential"
+    )
     denied = False
     with secure_fs._adopt_authenticated_root(_descriptor(root, service_sid)) as session:
-        with session.global_lock(exclusive=True, create=False):
-            session.open_directory(("source",), exact_private=True)
-            try:
-                session.rename_no_replace(
-                    ("source",), ("destination",), directory=True
-                )
-            except secure_fs.BirthSecureFSError as exc:
-                denied = (
-                    exc.code == "birth_provisioning_io_unavailable"
-                    and isinstance(exc.__cause__, OSError)
-                    and exc.__cause__.errno == 5  # ERROR_ACCESS_DENIED
-                )
+        session.open_directory(("source",), exact_private=True)
+        try:
+            session.rename_no_replace(
+                ("source",), ("destination",), directory=True
+            )
+        except secure_fs.BirthSecureFSError as exc:
+            denied = (
+                exc.code == "birth_provisioning_io_unavailable"
+                and isinstance(exc.__cause__, OSError)
+                and exc.__cause__.errno == 5  # ERROR_ACCESS_DENIED
+            )
     _require(denied, "the cached inspection handle unexpectedly renamed")
     _require(
         (root / "source").is_dir() and not (root / "destination").exists(),
@@ -386,12 +450,11 @@ def _diagnose_r6_cached_handle(parent: Path, service_sid: str) -> dict[str, obje
 
 def _diagnose_r6_fresh_handle(parent: Path, service_sid: str) -> dict[str, object]:
     root = _new_root(parent, "r6-fresh", service_sid)
-    _create_confidential_directory(root, service_sid, "source")
-    oracle.apply_profile(
-        root / "source",
-        "confidential",
+    _independent_directory(
+        root,
         service_sid,
-        directory=True,
+        "source",
+        profile="confidential",
         service_mask=0x001F01FF,
     )
     _require(
@@ -401,10 +464,9 @@ def _diagnose_r6_fresh_handle(parent: Path, service_sid: str) -> dict[str, objec
         "independent oracle did not observe the source DACL mutation",
     )
     with secure_fs._adopt_authenticated_root(_descriptor(root, service_sid)) as session:
-        with session.global_lock(exclusive=True, create=False):
-            session.rename_no_replace(
-                ("source",), ("destination",), directory=True
-            )
+        session.rename_no_replace(
+            ("source",), ("destination",), directory=True
+        )
     _require(
         not (root / "source").exists() and (root / "destination").is_dir(),
         "fresh-handle rename did not reach the expected destination",
@@ -424,17 +486,19 @@ def _diagnose_r6_fresh_handle(parent: Path, service_sid: str) -> dict[str, objec
 
 def _diagnose_r7_inventory(parent: Path, service_sid: str) -> dict[str, object]:
     root = _new_root(parent, "r7", service_sid)
-    with secure_fs._adopt_authenticated_root(_descriptor(root, service_sid)) as session:
-        with session.global_lock(exclusive=True, create=True):
-            session.create_directory_exclusive(
-                ("parent",), profile="confidential"
-            )
-            session.create_directory_exclusive(
-                ("target",), profile="confidential"
-            )
-            session.create_file_exclusive(
-                ("parent", "item.bin"), b"payload", profile="confidential"
-            )
+    item_parent = _independent_directory(
+        root, service_sid, "parent", profile="confidential"
+    )
+    _independent_directory(
+        root, service_sid, "target", profile="confidential"
+    )
+    _independent_file(
+        item_parent,
+        service_sid,
+        "item.bin",
+        b"payload",
+        profile="confidential",
+    )
     item = root / "parent" / "item.bin"
     alias = root / "alias.bin"
     junction = root / "parent" / "junction"
@@ -468,11 +532,10 @@ def _diagnose_r7_inventory(parent: Path, service_sid: str) -> dict[str, object]:
         with secure_fs._adopt_authenticated_root(
             _descriptor(root, service_sid)
         ) as session:
-            with session.global_lock(exclusive=False, create=False):
-                with patch.object(
-                    secure_fs, "_win_inventory", mutate_between_scans
-                ):
-                    entries = session._inventory_state(("parent",))
+            with patch.object(
+                secure_fs, "_win_inventory", mutate_between_scans
+            ):
+                entries = session._inventory_state(("parent",))
         by_name = {entry.name: entry for entry in entries}
         links_after, _ = _independent_shape(item, directory=False)
         _require(
@@ -542,6 +605,7 @@ def main() -> int:
         )
         observations = [
             _diagnose_r5_root_profiles(root, service.sid, outsider.sid),
+            _diagnose_r5_product_acl_self_check(root, service.sid),
             _diagnose_r5_profile_catalog(root, service.sid),
             _diagnose_r6_cached_handle(root, service.sid),
             _diagnose_r6_fresh_handle(root, service.sid),
