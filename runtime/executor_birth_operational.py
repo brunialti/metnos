@@ -6,6 +6,8 @@ receipt keys/verifiers and the publisher are assembled behind a module seal.
 from __future__ import annotations
 
 import hashlib
+import base64
+import json
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -24,7 +26,8 @@ from executor_birth import ObservedCandidate, observe_candidate
 from executor_birth_approval import approval_evidence_hash
 from executor_birth_identity import AdmissionContextV1
 from executor_birth_producer_store import (
-    ProducerReceiptBinding, consume_producer_receipt, producer_receipt_hash,
+    ProducerReceiptBinding, claim_producer_receipt,
+    finalize_producer_receipt, producer_receipt_hash,
 )
 from executor_birth_receipts import (
     AdmissionCheck, AdmissionKind, AdmittedCheckStatus, ApprovedLifecycle,
@@ -32,7 +35,7 @@ from executor_birth_receipts import (
     issue_admission_receipt, verify_admission_receipt,
 )
 from executor_birth_shadow import (
-    BirthOutcome, BirthReport, CheckStatus, RevisionFacts, _BirthDependencies,
+    BirthOutcome, BirthReport, CheckResult, CheckStatus, RevisionClass, RevisionFacts, _BirthDependencies,
     _observe_birth_for_test, classify_revision,
 )
 
@@ -94,6 +97,95 @@ class BirthResult:
     error_code: str | None
 
 
+def _terminal_envelope(result: BirthResult, admission_receipt: bytes | None = None) -> bytes:
+    report = result.report
+    publication = result.publication
+    value = {
+        "admission_receipt": (base64.b64encode(admission_receipt).decode("ascii")
+                              if admission_receipt is not None else None),
+        "error_code": result.error_code,
+        "publication": None if publication is None else {
+            "contract_id": publication.contract_id.value,
+            "current_generation_id": publication.current_generation_id,
+            "operation": publication.operation,
+            "previous_generation_id": publication.previous_generation_id,
+        },
+        "report": {
+            "admission_context_id": report.admission_context_id,
+            "candidate_id": report.candidate_id,
+            "changed_dimensions": list(report.changed_dimensions),
+            "checks": [{
+                "check_id": check.check_id, "error_code": check.error_code,
+                "evidence_hash": check.evidence_hash, "redacted_detail": check.redacted_detail,
+                "rule_version": check.rule_version, "status": check.status.value,
+            } for check in report.checks],
+            "error_code": report.error_code, "outcome": report.outcome.value,
+            "revision_class": report.revision_class.value if report.revision_class else None,
+            "semantic_core_id": report.semantic_core_id,
+        },
+        "request_id": result.request_id, "schema_version": 1,
+    }
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+
+
+def _decode_terminal_envelope(encoded: bytes, request: BirthRequest) -> tuple[BirthResult, bytes | None]:
+    try:
+        value = json.loads(encoded.decode("ascii"), object_pairs_hook=lambda pairs: _unique_object(pairs))
+        if json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii") != encoded:
+            raise ValueError("noncanonical")
+        if value["schema_version"] != 1 or value["request_id"] != request.request_id:
+            raise ValueError("binding")
+        item = value["report"]
+        checks = tuple(CheckResult(
+            check["check_id"], check["rule_version"], CheckStatus(check["status"]),
+            check["error_code"], check["evidence_hash"], check["redacted_detail"],
+        ) for check in item["checks"])
+        report = BirthReport(
+            1, request.manifest_ref.contract_id, item["candidate_id"], item["semantic_core_id"],
+            item["admission_context_id"],
+            RevisionClass(item["revision_class"]) if item["revision_class"] else None,
+            tuple(item["changed_dimensions"]), checks, BirthOutcome(item["outcome"]), item["error_code"],
+        )
+        pub = value["publication"]
+        publication = None if pub is None else PublicationResult(
+            request.manifest_ref.contract_id, pub["previous_generation_id"],
+            pub["current_generation_id"], pub["operation"], True,
+        )
+        admission = (base64.b64decode(value["admission_receipt"], validate=True)
+                     if value["admission_receipt"] is not None else None)
+        return BirthResult(request.request_id, report, publication, value["error_code"]), admission
+    except Exception as exc:
+        raise ValueError("birth_terminal_envelope_invalid") from exc
+
+
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate key")
+        result[key] = value
+    return result
+
+
+def _sign_terminal(core: "_BirthCore", encoded: bytes) -> bytes:
+    return core.admission_private_key.sign(b"metnos.executor-birth.terminal/v1\0" + encoded)
+
+
+def _replay_terminal(core: "_BirthCore", request: BirthRequest, claim: object) -> BirthResult:
+    encoded = getattr(claim, "terminal_envelope", None)
+    signature = getattr(claim, "terminal_auth", None)
+    if encoded is None or signature is None:
+        raise ValueError("birth_terminal_envelope_missing")
+    core.admission_public_key.verify(signature, b"metnos.executor-birth.terminal/v1\0" + encoded)
+    result, admission = _decode_terminal_envelope(encoded, request)
+    if result.publication is not None:
+        verified = core.postcondition_verifier(request, result.publication, admission)
+        if verified != result.publication:
+            raise ValueError("birth_publication_replay_mismatch")
+        result = BirthResult(result.request_id, result.report, verified, result.error_code)
+    return result
+
+
 def _require_digest(value: object, field: str) -> str:
     if (not isinstance(value, str) or len(value) != 71 or
             not value.startswith("sha256:") or
@@ -105,6 +197,7 @@ def _require_digest(value: object, field: str) -> str:
 ContextResolver = Callable[[BirthRequest], AdmissionContextV1]
 FactsResolver = Callable[[BirthRequest], RevisionFacts]
 Publisher = Callable[..., PublicationResult]
+PostconditionVerifier = Callable[[BirthRequest, PublicationResult, bytes | None], PublicationResult]
 
 _CORE_SEAL = object()
 
@@ -122,6 +215,7 @@ class _BirthCore:
     policy_version: str
     now: Callable[[], datetime]
     publisher: Publisher
+    postcondition_verifier: PostconditionVerifier
     publisher_options: Mapping[str, object]
     _seal: object
 
@@ -143,13 +237,14 @@ def _assemble_birth_core(
     shadow_dependencies: _BirthDependencies, admission_private_key: object,
     admission_public_key: object, admission_key_id: str, policy_version: str,
     now: Callable[[], datetime], publisher_options: Mapping[str, object],
+    postcondition_verifier: PostconditionVerifier,
 ) -> _BirthCore:
     """Core bootstrap assembler; productive publication is not selectable."""
     from contract_store import commit_birth_snapshot
     return _BirthCore(
         producer_registry, producer_db, context_resolver, facts_resolver,
         shadow_dependencies, admission_private_key, admission_public_key,
-        admission_key_id, policy_version, now, commit_birth_snapshot,
+        admission_key_id, policy_version, now, commit_birth_snapshot, postcondition_verifier,
         publisher_options, _CORE_SEAL,
     )
 
@@ -183,10 +278,45 @@ def _receipt_checks(report: BirthReport) -> Mapping[str, AdmissionCheck]:
     return MappingProxyType(result)
 
 
+def _publication_binding(request: BirthRequest, publication: PublicationResult) -> str:
+    """Bind the complete replayable publication postcondition."""
+    if publication.contract_id != request.manifest_ref.contract_id:
+        raise ValueError("birth_publication_invalid: contract_id")
+    if publication.previous_generation_id != request.expected_revision_id:
+        raise ValueError("birth_publication_invalid: previous_generation_id")
+    _require_digest(publication.current_generation_id, "current_generation_id")
+    if publication.operation != "commit_birth_snapshot":
+        raise ValueError("birth_publication_invalid: operation")
+    return _digest(b"metnos.executor-birth.publication-result/v1\0", {
+        "contract_id": publication.contract_id.value.encode(),
+        "current_generation_id": publication.current_generation_id.encode(),
+        "operation": publication.operation.encode(),
+        "previous_generation_id": (publication.previous_generation_id or "").encode(),
+        "request_id": request.request_id.encode(),
+    })
+
+
+def _rejected_report(request: BirthRequest, *, observed: ObservedCandidate | None,
+                     facts: RevisionFacts | None, error_code: str) -> BirthReport:
+    decision = classify_revision(facts) if facts is not None else None
+    return BirthReport(
+        1, request.manifest_ref.contract_id,
+        observed.identities.candidate_id if observed is not None else None,
+        observed.identities.semantic_core_id if observed is not None else None,
+        observed.identities.admission_context_id if observed is not None else None,
+        decision.revision_class if decision is not None else None,
+        decision.changed_dimensions if decision is not None else (), (),
+        BirthOutcome.REJECTED, error_code,
+    )
+
+
 def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
     observed: ObservedCandidate | None = None
     report: BirthReport | None = None
     facts: RevisionFacts | None = None
+    receipt_binding: ProducerReceiptBinding | None = None
+    claimed = False
+    publication_started = False
     try:
         if not isinstance(core, _BirthCore) or core._seal is not _CORE_SEAL:
             raise ValueError("birth_core_untrusted")
@@ -205,13 +335,26 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
                 objective_hash=producer_preview.objective_hash,
                 admission_context=context,
             )
-            producer = consume_producer_receipt(
-                request.producer_receipt, registry=core.producer_registry,
-                binding=ProducerReceiptBinding(
-                    observed.objective_hash, candidate_source_id(observed),
-                    observed.executor_origin, observed.revision_authorship,
-                ), request_id=request.request_id, now=instant, db_path=core.producer_db,
+            receipt_binding = ProducerReceiptBinding(
+                observed.objective_hash, candidate_source_id(observed),
+                observed.executor_origin, observed.revision_authorship,
             )
+            claim = claim_producer_receipt(
+                request.producer_receipt, registry=core.producer_registry,
+                binding=receipt_binding, request_id=request.request_id,
+                now=instant, db_path=core.producer_db,
+            )
+            producer = claim.receipt
+            claimed = True
+        if claim.state == "rejected":
+            error_code = claim.rejection_code or "birth_rejected"
+            return BirthResult(
+                request.request_id,
+                _rejected_report(request, observed=observed, facts=facts,
+                                 error_code=error_code),
+                None, error_code,
+            )
+        committed_binding = claim.result_binding if claim.state == "committed" else None
         shadow = core.shadow_dependencies
         borrowed_dependencies = _BirthDependencies(
             observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
@@ -230,6 +373,12 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             revision_facts=facts, _dependencies=borrowed_dependencies,
         )
         if report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}:
+            finalize_producer_receipt(
+                request.producer_receipt, registry=core.producer_registry,
+                binding=receipt_binding, request_id=request.request_id, now=instant,
+                db_path=core.producer_db,
+                rejection_code=report.error_code or "birth_not_admitted",
+            )
             return BirthResult(request.request_id, report, None, report.error_code)
 
         checks = dict(_receipt_checks(report))
@@ -270,24 +419,26 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
                 expected_key_id=core.admission_key_id,
             ),
         )
+        publication_started = True
         publication = core.publisher(
             request.manifest_ref, expected_generation_id=predecessor,
             snapshot=observed.snapshot, request_id=request.request_id,
             birth_authorization=authorization, **dict(core.publisher_options),
         )
+        result_binding = _publication_binding(request, publication)
+        if committed_binding is not None and result_binding != committed_binding:
+            raise ValueError("birth_publication_replay_mismatch")
+        finalize_producer_receipt(
+            request.producer_receipt, registry=core.producer_registry,
+            binding=receipt_binding, request_id=request.request_id, now=instant,
+            db_path=core.producer_db, result_binding=result_binding,
+        )
         return BirthResult(request.request_id, report, publication, None)
     except Exception as exc:
         error_code = getattr(exc, "code", "birth_unavailable")
         if report is None:
-            decision = classify_revision(facts) if facts is not None else None
-            report = BirthReport(
-                1, request.manifest_ref.contract_id,
-                observed.identities.candidate_id if observed is not None else None,
-                observed.identities.semantic_core_id if observed is not None else None,
-                observed.identities.admission_context_id if observed is not None else None,
-                decision.revision_class if decision is not None else None,
-                decision.changed_dimensions if decision is not None else (), (),
-                BirthOutcome.REJECTED, error_code,
+            report = _rejected_report(
+                request, observed=observed, facts=facts, error_code=error_code,
             )
         elif report.outcome in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}:
             # Admission is not an operational success until the atomic commit
@@ -298,6 +449,20 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
                 report.revision_class, report.changed_dimensions, report.checks,
                 BirthOutcome.REJECTED, error_code,
             )
+        # Once publication starts, failure is ambiguous: the durable store may
+        # already expose the postcondition.  Keep the claim recoverable so an
+        # exact retry can make the publisher prove (or reject) that state.
+        if claimed and not publication_started and receipt_binding is not None:
+            try:
+                finalize_producer_receipt(
+                    request.producer_receipt, registry=core.producer_registry,
+                    binding=receipt_binding, request_id=request.request_id,
+                    now=instant, db_path=core.producer_db,
+                    rejection_code=str(error_code),
+                )
+            except Exception:
+                # Never replace the original failure with bookkeeping noise.
+                pass
         return BirthResult(request.request_id, report, None, error_code)
     finally:
         if observed is not None:

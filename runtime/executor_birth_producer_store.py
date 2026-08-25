@@ -10,7 +10,7 @@ from pathlib import Path
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
 from executor_birth_receipts import IssuerRegistry, ProducerReceipt, ReceiptError, verify_producer_receipt
 
-_VERSION = 2
+_VERSION = 3
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS birth_producer_receipts (
  receipt_id TEXT PRIMARY KEY, receipt_hash TEXT NOT NULL UNIQUE, encoded BLOB NOT NULL,
@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS birth_producer_receipts (
  state TEXT NOT NULL CHECK(state IN ('available','in_progress','committed','rejected')),
  registered_at TEXT NOT NULL, request_id TEXT, claimed_at TEXT, lease_expires_at TEXT,
  finalized_at TEXT, result_binding TEXT, rejection_code TEXT,
+ terminal_envelope BLOB, terminal_auth BLOB,
  CHECK ((state='available' AND request_id IS NULL AND claimed_at IS NULL AND lease_expires_at IS NULL AND finalized_at IS NULL AND result_binding IS NULL AND rejection_code IS NULL)
  OR (state='in_progress' AND request_id IS NOT NULL AND claimed_at IS NOT NULL AND lease_expires_at IS NOT NULL AND finalized_at IS NULL AND result_binding IS NULL AND rejection_code IS NULL)
  OR (state='committed' AND request_id IS NOT NULL AND claimed_at IS NOT NULL AND lease_expires_at IS NULL AND finalized_at IS NOT NULL AND result_binding IS NOT NULL AND rejection_code IS NULL)
@@ -41,6 +42,8 @@ class ProducerReceiptClaim:
     lease_expires_at: str | None
     result_binding: str | None
     rejection_code: str | None
+    terminal_envelope: bytes | None = None
+    terminal_auth: bytes | None = None
 
     @property
     def terminal(self) -> bool:
@@ -85,11 +88,14 @@ def _migrate(db: sqlite3.Connection) -> None:
               CASE WHEN state='available' THEN NULL ELSE COALESCE(request_id,'sha256:0000000000000000000000000000000000000000000000000000000000000000') END,
               CASE WHEN state='available' THEN NULL ELSE consumed_at END,NULL,
               CASE WHEN state='available' THEN NULL ELSE consumed_at END,NULL,
-              CASE WHEN state='available' THEN NULL ELSE 'legacy_terminal' END
+              CASE WHEN state='available' THEN NULL ELSE 'legacy_terminal' END,NULL,NULL
              FROM birth_producer_receipts_v1""")
             db.execute("DROP TABLE birth_producer_receipts_v1")
         else:
             db.execute(_SCHEMA)
+        if exists and version == 2:
+            db.execute("ALTER TABLE birth_producer_receipts ADD COLUMN terminal_envelope BLOB")
+            db.execute("ALTER TABLE birth_producer_receipts ADD COLUMN terminal_auth BLOB")
         db.execute(f"PRAGMA user_version={_VERSION}")
         db.commit()
     except Exception:
@@ -158,11 +164,11 @@ def register_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, now: 
     try:
         db.execute("BEGIN IMMEDIATE")
         try:
-            db.execute("INSERT INTO birth_producer_receipts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO birth_producer_receipts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                        (receipt.receipt_id, producer_receipt_hash(encoded), encoded, receipt.issuer_id,
                         receipt.objective_hash, receipt.candidate_source_id, receipt.executor_origin.value,
                         receipt.revision_authorship.value, receipt.expires_at, "available", _iso(instant),
-                        None, None, None, None, None, None))
+                        None, None, None, None, None, None, None, None))
         except sqlite3.IntegrityError as exc:
             raise ReceiptError("producer_receipt_replay", "already_registered") from exc
         db.commit(); return receipt
@@ -191,7 +197,9 @@ def claim_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, binding:
         if row["state"] == "in_progress" and row["lease_expires_at"] <= _iso(instant):
             raise ReceiptError("producer_receipt_lease_expired", "explicit_recovery_required")
         db.commit()
-        return ProducerReceiptClaim(receipt, request, row["state"], row["lease_expires_at"], row["result_binding"], row["rejection_code"])
+        return ProducerReceiptClaim(receipt, request, row["state"], row["lease_expires_at"], row["result_binding"], row["rejection_code"],
+                                    bytes(row["terminal_envelope"]) if row["terminal_envelope"] is not None else None,
+                                    bytes(row["terminal_auth"]) if row["terminal_auth"] is not None else None)
     finally:
         if db.in_transaction: db.rollback()
         db.close()
@@ -225,7 +233,9 @@ def recover_producer_receipt_claim(encoded: bytes, *, registry: IssuerRegistry,
 def finalize_producer_receipt(encoded: bytes, *, registry: IssuerRegistry,
                               binding: ProducerReceiptBinding, request_id: str,
                               now: datetime, db_path: Path, result_binding: str | None = None,
-                              rejection_code: str | None = None) -> ProducerReceiptClaim:
+                              rejection_code: str | None = None,
+                              terminal_envelope: bytes | None = None,
+                              terminal_auth: bytes | None = None) -> ProducerReceiptClaim:
     """Finalize a claim; an identical retry is idempotent, a conflict fails."""
     instant = _utc(now); request = _digest(request_id, "request_id")
     if (result_binding is None) == (rejection_code is None):
@@ -233,6 +243,11 @@ def finalize_producer_receipt(encoded: bytes, *, registry: IssuerRegistry,
     if result_binding is not None: _digest(result_binding, "result_binding")
     if rejection_code is not None and (not isinstance(rejection_code, str) or not rejection_code or "\x00" in rejection_code):
         raise ReceiptError("producer_receipt_invalid", "rejection_code")
+    if (terminal_envelope is None) != (terminal_auth is None):
+        raise ReceiptError("producer_receipt_invalid", "terminal_envelope")
+    if terminal_envelope is not None and (not isinstance(terminal_envelope, bytes) or not terminal_envelope
+                                           or not isinstance(terminal_auth, bytes) or not terminal_auth):
+        raise ReceiptError("producer_receipt_invalid", "terminal_envelope")
     receipt = _verify_claimed(encoded, registry=registry, now=instant, db_path=db_path); _require_binding(receipt, binding)
     state = "committed" if result_binding is not None else "rejected"
     db = _open(db_path)
@@ -241,16 +256,18 @@ def finalize_producer_receipt(encoded: bytes, *, registry: IssuerRegistry,
         if row["request_id"] != request:
             raise ReceiptError("producer_receipt_replay", "owned_by_other_request")
         if row["state"] in {"committed", "rejected"}:
-            if (row["state"], row["result_binding"], row["rejection_code"]) != (state, result_binding, rejection_code):
+            stored_envelope = bytes(row["terminal_envelope"]) if row["terminal_envelope"] is not None else None
+            stored_auth = bytes(row["terminal_auth"]) if row["terminal_auth"] is not None else None
+            if (row["state"], row["result_binding"], row["rejection_code"], stored_envelope, stored_auth) != (state, result_binding, rejection_code, terminal_envelope, terminal_auth):
                 raise ReceiptError("producer_receipt_final_conflict", str(row["state"]))
-            db.commit(); return ProducerReceiptClaim(receipt, request, state, None, result_binding, rejection_code)
+            db.commit(); return ProducerReceiptClaim(receipt, request, state, None, result_binding, rejection_code, terminal_envelope, terminal_auth)
         if row["state"] != "in_progress":
             raise ReceiptError("producer_receipt_final_invalid", str(row["state"]))
         if row["lease_expires_at"] <= _iso(instant):
             raise ReceiptError("producer_receipt_lease_expired", "explicit_recovery_required")
-        db.execute("UPDATE birth_producer_receipts SET state=?,lease_expires_at=NULL,finalized_at=?,result_binding=?,rejection_code=? WHERE receipt_id=? AND state='in_progress' AND request_id=?",
-                   (state, _iso(instant), result_binding, rejection_code, receipt.receipt_id, request))
-        db.commit(); return ProducerReceiptClaim(receipt, request, state, None, result_binding, rejection_code)
+        db.execute("UPDATE birth_producer_receipts SET state=?,lease_expires_at=NULL,finalized_at=?,result_binding=?,rejection_code=?,terminal_envelope=?,terminal_auth=? WHERE receipt_id=? AND state='in_progress' AND request_id=?",
+                   (state, _iso(instant), result_binding, rejection_code, terminal_envelope, terminal_auth, receipt.receipt_id, request))
+        db.commit(); return ProducerReceiptClaim(receipt, request, state, None, result_binding, rejection_code, terminal_envelope, terminal_auth)
     finally:
         if db.in_transaction: db.rollback()
         db.close()
