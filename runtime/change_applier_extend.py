@@ -7,8 +7,7 @@ Strategia conservativa (no parser TOML lossy):
     purche' non duplichino sezioni esistenti.
   - Backup del manifest pre-modifica in
     `~/.local/share/metnos/rollback_blobs/<sha8>-<executor>.toml`.
-  - Pubblicazione tramite il confine canonico
-    `sign.publish_authoring_update(manifest_dir)`.
+  - Pubblicazione esclusivamente tramite il confine operativo Birth F4.
 
 Limitazioni MVP:
   - Solo aggiunta di arg string/boolean/array semplici (no nested).
@@ -21,12 +20,19 @@ short-circuit con `already_extended`.
 from __future__ import annotations
 
 import hashlib
+import contextlib
+import shutil
+import stat
+import tempfile
 import time
 import tomllib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import config as C
 from change_intents import ChangeIntent
+from executor_birth_intent import (
+    BirthIntent, require_birth_intent_adapter, submit_birth_intent,
+)
 
 
 # Tipo arg → snippet TOML
@@ -84,6 +90,65 @@ def _resolve_executor_dir(name: str) -> Path | None:
     return None
 
 
+def _run_birth(intent: BirthIntent):
+    result = submit_birth_intent(intent)
+    if (getattr(result, "error_code", "invalid_result") is not None
+            or getattr(result, "publication", None) is None):
+        detail = getattr(result, "error_code", "invalid_result")
+        raise RuntimeError(f"birth rejected: {detail}")
+    return result
+
+
+def _contract_id(manifest_path: Path):
+    from manifest_inventory import (
+        inventory_authoring_manifests, manifest_ref_for_source_path,
+    )
+    return manifest_ref_for_source_path(
+        inventory_authoring_manifests(), manifest_path,
+    ).contract_id
+
+
+@contextlib.contextmanager
+def _stage_candidate(source_root: Path, manifest_bytes: bytes):
+    """Build a private, closed candidate without mutating authoring."""
+    parsed = tomllib.loads(manifest_bytes.decode("utf-8"))
+    files = ((parsed.get("code") or {}).get("files") or [])
+    if not isinstance(files, list) or not files:
+        raise RuntimeError("candidate has no code.files")
+    parent = C.PATH_USER_DATA / "birth_staging"
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix="change-extend-", dir=parent))
+    try:
+        payloads = {"manifest.toml": manifest_bytes}
+        for relative in ("manifest.lang_state.json", *files):
+            pure = PurePosixPath(relative) if isinstance(relative, str) else None
+            if (pure is None or not relative or pure.is_absolute()
+                    or pure.as_posix() != relative or "\\" in relative
+                    or any(part in {"", ".", ".."} for part in pure.parts)):
+                raise RuntimeError(f"candidate path invalid: {relative}")
+            source = source_root.joinpath(*pure.parts)
+            cursor = source_root
+            for component in pure.parts[:-1]:
+                cursor /= component
+                parent_status = cursor.lstat()
+                if not stat.S_ISDIR(parent_status.st_mode):
+                    raise RuntimeError(f"candidate parent invalid: {relative}")
+            status = source.lstat()
+            if (not stat.S_ISREG(status.st_mode) or status.st_nlink != 1
+                    or source.is_symlink()):
+                raise RuntimeError(f"candidate file is not private regular data: {relative}")
+            payloads[relative] = source.read_bytes()
+        for relative, payload in payloads.items():
+            destination = staging / relative
+            destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            with destination.open("xb") as handle:
+                handle.write(payload)
+            destination.chmod(0o600)
+        yield staging
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def extend_executor_manifest(ci: ChangeIntent) -> dict:
     """Applica extend_executor: append section + rollback_blob + re-sign.
 
@@ -106,25 +171,27 @@ def extend_executor_manifest(ci: ChangeIntent) -> dict:
     mdir = _resolve_executor_dir(target)
     if mdir is None:
         raise RuntimeError(f"executor manifest dir not found for {target}")
-    from manifest_inventory import ManifestLayout, resolve_manifest_layout
-    layout = resolve_manifest_layout()
     manifest_path = mdir / "manifest.toml"
     text = manifest_path.read_text(encoding="utf-8")
+    # Fail closed before creating blobs or changing authoring. The producer
+    # supplies only data; receipt, trust and publisher stay core-owned.
+    require_birth_intent_adapter()
+    contract_id = _contract_id(manifest_path)
 
     # Idempotenza: verifica se sezione gia' presente
     marker = f"[args.properties.{arg_name}]"
     if marker in text:
-        if layout is ManifestLayout.STORE_ONLY:
-            # Un tentativo precedente puo' avere committato la generazione ma
-            # fallito durante la riconciliazione finale. Il retry deve
-            # riattraversare il publisher, non fermarsi sul file authoring.
-            from sign import publish_authoring_update
-            try:
-                publish_authoring_update(mdir)
-            except Exception as exc:
-                raise RuntimeError(
-                    f"publication outcome requires retry: {exc}; source retained"
-                ) from exc
+        # Un tentativo precedente puo' avere lasciato la sorgente candidata.
+        # Il retry deve riattraversare Birth: la receipt one-use rende un
+        # replay della stessa richiesta un rifiuto verificabile.
+        with _stage_candidate(mdir, text.encode("utf-8")) as staging:
+            _run_birth(BirthIntent(
+                candidate_source_root=staging, contract_id=contract_id,
+                actor="change_applier",
+                reason=f"extend_executor retry change_intent={ci.id}",
+                operation="extend",
+                approval_refs=(ci.id,),
+            ))
         return {
             "executor_name": target,
             "manifest_path": str(manifest_path),
@@ -162,34 +229,32 @@ def extend_executor_manifest(ci: ChangeIntent) -> dict:
         arg=arg_name, desc_it=desc_it, desc_en=desc_en,
     )
     new_text = text.rstrip() + "\n" + snippet
-    manifest_path.write_text(new_text, encoding="utf-8")
-
-    # Verifica TOML parsabile (rollback se rotto)
+    # Verifica TOML parsabile senza scrivere l'authoring.
     try:
         tomllib.loads(new_text)
     except tomllib.TOMLDecodeError as exc:
-        manifest_path.write_text(text, encoding="utf-8")
-        raise RuntimeError(f"post-extend manifest TOML invalid: {exc}; rolled back")
+        raise RuntimeError(f"post-extend manifest TOML invalid: {exc}")
 
-    # Rendi viva la modifica attraverso l'unico confine dipendente dal layout:
-    # firma nel layout legacy, pubblicazione immutabile dopo il cutover.
+    # Rendi viva la modifica esclusivamente attraverso Birth.
     try:
-        from sign import publish_authoring_update
-        digest, sig_path, _publication = publish_authoring_update(mdir)
+        with _stage_candidate(mdir, new_text.encode("utf-8")) as staging:
+            result = _run_birth(BirthIntent(
+                candidate_source_root=staging, contract_id=contract_id,
+                actor="change_applier",
+                reason=f"extend_executor change_intent={ci.id}",
+                operation="extend",
+                approval_refs=(ci.id,),
+            ))
     except Exception as exc:
-        if layout is ManifestLayout.AUTHORING:
-            # Nel layout legacy la firma e' l'ultimo passo e il ripristino
-            # conserva il contratto precedentemente ammesso.
-            manifest_path.write_text(text, encoding="utf-8")
-            raise RuntimeError(
-                f"re-sign failed: {exc}; manifest restored"
-            ) from exc
-        # Dopo l'ingresso nel publisher un'eccezione puo' seguire il commit.
-        # Non riscrivere la sorgente: il retry idempotente ripara mirror e
-        # registro senza creare divergenza con la generazione viva.
+        # Il chiamante non interpreta una failure tardiva né tenta di riparare
+        # il live store: lo staging viene eliminato e l'authoring resta sotto
+        # l'esclusiva responsabilità del commit/recovery core-owned.
         raise RuntimeError(
-            f"publication outcome requires retry: {exc}; source retained"
+            f"birth publication requires retry: {exc}; source retained"
         ) from exc
+
+    publication = result.publication
+    assert publication is not None
 
     return {
         "executor_name": target,
@@ -197,8 +262,9 @@ def extend_executor_manifest(ci: ChangeIntent) -> dict:
         "rollback_blob_path": str(rollback_path),
         "arg_added": arg_name,
         "arg_type": arg_type,
-        "new_digest": digest,
-        "sig_path": str(sig_path),
+        "new_generation_id": publication.current_generation_id,
+        "birth_request_id": result.request_id,
+        "publication_repeated": publication.repeated,
         "applied_at_iso": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "diff_summary": f"+ args.properties.{arg_name} ({arg_type})",
     }

@@ -20,6 +20,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -74,7 +75,7 @@ def _audit_log_path() -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Sign helper (importa da <install_root>/runtime/sign.py senza modificarlo)
+# Executor Birth adapter
 # ---------------------------------------------------------------------------
 
 
@@ -91,45 +92,45 @@ def _sign_keys_present(key_name: str = "author") -> tuple[bool, Optional[Path]]:
     return (priv.is_file() and pub.is_file()), priv
 
 
-def _try_publish_authoring_update(manifest_dir: Path) -> Optional[str]:
-    """Admit one generated executor through the layout-aware boundary.
-
-    It signs in the legacy layout and publishes exactly once in the
-    store-only layout.
-    """
+def _try_submit_birth(
+    manifest_dir: Path, *, contract_id=None,
+) -> Optional[str]:
+    """Admit or reactivate one imported executor through Executor Birth."""
     canonical = Path(__file__).resolve().parents[1]  # ADR 0148 rename-resilient (cli/ → runtime/)
     if not canonical.exists():
         return None
     if str(canonical) not in sys.path:
         sys.path.insert(0, str(canonical))
-    try:
-        import sign as sign_mod  # type: ignore
-    except Exception as e:
-        return f"signer_import_failed: {e}"
     # L'admission boundary richiede keys gia' presenti; in dry-run skippato.
     if os.environ.get("METNOS_SKILLS_NO_SIGN") == "1":
         return "skipped_by_env"
     try:
-        _digest, _signature, publication = sign_mod.publish_authoring_update(
-            str(manifest_dir),
-        )
-        return "signed" if publication is None else "published"
-    except Exception as e:
-        # A tombstone is an authenticated, explicit lifecycle boundary.  A
-        # reinstall may cross it only through the separately audited
-        # reactivation primitive; every other publication error remains loud.
-        from contract_store import ContractStoreError
-        if isinstance(e, ContractStoreError) and e.code == "contract_retired":
+        from executor_birth_intent import BirthIntent, submit_birth_intent
+        from manifest_inventory import ContractId, ManifestOrigin
+        if contract_id is None:
             try:
-                sign_mod.reactivate_executor_contract(
-                    str(manifest_dir),
-                    actor="skills_cli",
-                    reason="reinstall imported executor contract",
-                )
-                return "reactivated"
-            except Exception as reactivation_error:
-                return f"sign_failed: {reactivation_error}"
-        return f"sign_failed: {e}"
+                relative = Path(manifest_dir).relative_to(_executors_base())
+            except ValueError as exc:
+                return f"birth_failed: contract_id_required: {exc}"
+            contract_id = ContractId(
+                ManifestOrigin.USER_SKILL,
+                (relative / "manifest.toml").as_posix(),
+            )
+        result = submit_birth_intent(BirthIntent(
+            candidate_source_root=Path(manifest_dir),
+            contract_id=contract_id,
+            actor="skills_cli",
+            reason="import or reinstall imported executor contract",
+            operation="skill_import_or_reactivation",
+        ))
+        if result.error_code or result.publication is None:
+            return f"birth_failed: {result.error_code or 'publication_missing'}"
+        operation = str(result.publication.operation)
+        if "reactivat" in operation:
+            return "reactivated"
+        return "published"
+    except Exception as e:
+        return f"birth_failed: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -189,21 +190,6 @@ def _cmd_import(args) -> int:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
-    # Gap 3: verifica sign keys PRIMA di processare la skill (a meno che
-    # l'utente abbia dichiarato --no-sign / METNOS_SKILLS_NO_SIGN=1).
-    skip_sign = bool(args.no_sign) or os.environ.get("METNOS_SKILLS_NO_SIGN") == "1"
-    if not skip_sign:
-        keys_ok, expected = _sign_keys_present("author")
-        if not keys_ok:
-            print(
-                "ERROR: chiave Ed25519 author non trovata.\n"
-                f"  Atteso: {expected}\n"
-                "  Genera con: python3 <install_root>/runtime/sign.py keygen author\n"
-                "  Oppure: usa --no-sign per saltare la firma (sviluppo).",
-                file=sys.stderr,
-            )
-            return 2
-
     print(f"Parsing {skill_path}...")
     parsed = parse_skill_md(skill_path)
     print(f"  skill: {parsed.name} v{parsed.version} - {len(parsed.sub_commands)} sub-commands")
@@ -226,7 +212,12 @@ def _cmd_import(args) -> int:
     )
     print(f"  plans: {len(plans)}, translator-rejected: {len(rejected)}{extra}")
 
-    executors_dir = _executors_base() / parsed.name
+    authoring_skill_dir = _executors_base() / parsed.name
+    authoring_skill_dir.parent.mkdir(parents=True, exist_ok=True)
+    birth_staging = tempfile.TemporaryDirectory(
+        prefix=f"metnos-skill-{parsed.name}-birth-",
+    )
+    executors_dir = Path(birth_staging.name) / parsed.name
     executors_dir.mkdir(parents=True, exist_ok=True)
 
     # R1 (24/5/2026): description LLM PRIMA del codegen, una call per ogni
@@ -307,10 +298,17 @@ def _cmd_import(args) -> int:
         for v in report.accepted:
             d = executors_dir / v.plan_name
             if d.exists():
-                status = _try_publish_authoring_update(d)
+                from manifest_inventory import ContractId, ManifestOrigin
+                status = _try_submit_birth(
+                    d,
+                    contract_id=ContractId(
+                        ManifestOrigin.USER_SKILL,
+                        f"{parsed.name}/{v.plan_name}/manifest.toml",
+                    ),
+                )
                 print(f"  {v.plan_name}: {status}")
                 if status not in {
-                    "signed", "published", "reactivated", "skipped_by_env",
+                    "published", "reactivated", "skipped_by_env",
                 }:
                     admission_errors.append((v.plan_name, status or "unavailable"))
 
@@ -343,7 +341,9 @@ def _cmd_import(args) -> int:
             + ", ".join(name for name, _detail in admission_errors),
             file=sys.stderr,
         )
+        birth_staging.cleanup()
         return 2
+    birth_staging.cleanup()
     return 0 if report.accepted else 1
 
 

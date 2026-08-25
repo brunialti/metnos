@@ -15,16 +15,20 @@ from __future__ import annotations
 import json
 import os
 import time
+from pathlib import Path
 
 from synt_multistage import run_full as multistage_run_full
 from loader import SYNTHESIZED_EXECUTORS_DIR
-from sign import publish_authoring_update
+from executor_birth_synth import (
+    SynthBirthData, require_synth_birth_service, submit_synth_birth,
+)
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
 from messages import get as _msg
 from generated_executor_contract import (
     generated_contract_context,
     validate_generated_manifest_text,
 )
+from manifest_inventory import ContractId, ManifestOrigin
 
 from logging_setup import get_logger
 import config as _C  # §7.11
@@ -102,6 +106,7 @@ def _install_synthesized(run, intent, user_query):
     un executor con SyntaxError che fallira' sempre a runtime
     (`feedback_no_silent_failure`).
     """
+    require_synth_birth_service()
     if not run.name or not run.code_text:
         raise RuntimeError("run senza name o code_text, niente da installare")
     # Validazione sintassi Python: compile() solleva SyntaxError se il
@@ -118,7 +123,11 @@ def _install_synthesized(run, intent, user_query):
     s2 = (run.stages[1].output or {}) if len(run.stages) >= 2 else {}
     s4 = (run.stages[3].output or {}) if len(run.stages) >= 4 else {}
 
-    out_dir = SYNTHESIZED_EXECUTORS_DIR / run.name
+    import tempfile
+    # Candidate bytes live outside authoring.  Only commit_birth_snapshot may
+    # create/replace SYNTHESIZED_EXECUTORS_DIR/<name>.
+    staging_root = Path(tempfile.mkdtemp(prefix="metnos-synt-birth-"))
+    out_dir = staging_root / run.name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     code_filename = f"{run.name}.py"
@@ -264,13 +273,25 @@ def _install_synthesized(run, intent, user_query):
         ).state_bytes,
     )
 
-    publish_authoring_update(out_dir)
+    import shutil
+    try:
+        birth = submit_synth_birth(SynthBirthData(
+            candidate_root=out_dir,
+            contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml"),
+            producer="synt_multistage",
+            operation="create",
+            reason=f"synt multistage: {intent}",
+        ))
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
+    if birth.publication is None:
+        raise RuntimeError(birth.error_code or "synth_birth_rejected")
     # (Rimosso 21/6 il blocco i18n at-gen-time: leggeva run.description/
     # run.affinity_keywords — attributi INESISTENTI su MultistageRun → sempre
     # no-op, codice morto. Gli executor synth portano description/affinity nel
     # MANIFEST in lingua utente, non nel DB i18n — vedi memoria
     # i18n-scope-by-executor-class.)
-    return out_dir
+    return SYNTHESIZED_EXECUTORS_DIR / run.name
 
 
 def build_synth_request_tool() -> dict:
@@ -420,7 +441,17 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
                 authoring_path = _existing_candidate.authoring_manifest_path
                 if authoring_path is None:
                     raise RuntimeError("candidate authoring provenance missing")
-                publish_authoring_update(authoring_path.parent)
+                birth = submit_synth_birth(SynthBirthData(
+                    candidate_root=authoring_path.parent,
+                    contract_id=ContractId(
+                        ManifestOrigin.USER, f"{expected_name}/manifest.toml",
+                    ),
+                    producer="synt_multistage",
+                    operation="replay",
+                    reason=f"replay synthesized candidate {expected_name}",
+                ))
+                if birth.publication is None:
+                    raise RuntimeError(birth.error_code or "synth_birth_rejected")
         except Exception as exc:
             return {
                 "ok": False,
