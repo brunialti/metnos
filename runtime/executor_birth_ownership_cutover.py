@@ -360,7 +360,12 @@ def _sync_directory(path: Path) -> None:
 
 
 def _write_temporary(path: Path, payload: bytes) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    # Ed25519 signatures are arbitrary bytes.  Without O_BINARY the Windows
+    # CRT expands any 0x0a byte to CRLF, changing both length and signature.
+    flags = (
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_BINARY", 0)
+    )
     fd = os.open(path, flags, 0o600)
     try:
         offset = 0
