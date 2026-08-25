@@ -2,10 +2,9 @@
 
 The certificate codec lives in :mod:`executor_birth_ownership_cutover`.  This
 module performs the independent checks needed by a root-owned ``ExecStartPre``
-after that certificate exists.  It deliberately does not define or select a
-distribution-signing authority: the signed distribution manifest verifier is
-not yet specified by RM-0008 and must supply the already authenticated build
-identifier to this boundary.
+after that certificate exists.  The separate
+:mod:`executor_birth_distribution_manifest` verifier supplies the authenticated
+and sealed build identity; this module never selects distribution authority.
 """
 from __future__ import annotations
 
@@ -90,7 +89,7 @@ def _sealed_build_identity_for_test(
     closed_build_id: str, boundary_inventory_hash: str,
     boundary_guard_version: str,
 ) -> ClosedBuildIdentity:
-    """Test seam; production creation belongs to the missing manifest verifier."""
+    """Test seam; production creation belongs to the distribution verifier."""
     return ClosedBuildIdentity(
         closed_build_id, boundary_inventory_hash, boundary_guard_version,
         _BUILD_AUTHORITY_SEAL,

@@ -15,6 +15,7 @@ import stat
 import ctypes
 import errno
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -330,10 +331,22 @@ def _safe_read(path: Path, maximum: int) -> bytes:
     # Reuse the already certified POSIX/Win32 handle reader.  Translate its
     # subsystem-specific exception at this ownership boundary.
     from executor_birth_semantic_authority import _secure_file_bytes
-    try:
-        return _secure_file_bytes(path, maximum=maximum, error="unsafe")
-    except Exception as exc:
-        raise OwnershipCutoverError("birth_ownership_recovery_required", path.name) from exc
+    deadline = time.monotonic() + (2.0 if os.name == "nt" else 0.0)
+    while True:
+        try:
+            return _secure_file_bytes(path, maximum=maximum, error="unsafe")
+        except Exception as exc:
+            # NTFS metadata and filter drivers can briefly report a freshly
+            # renamed file as unavailable or with transitional metadata.  We
+            # never accept that observation: retry the complete handle-based
+            # verification for a finite interval and fail closed if no single
+            # stable, regular, one-link observation succeeds.  A real hard
+            # link, reparse point or tamper therefore remains rejected.
+            if os.name != "nt" or time.monotonic() >= deadline:
+                raise OwnershipCutoverError(
+                    "birth_ownership_recovery_required", path.name,
+                ) from exc
+            time.sleep(0.01)
 
 
 def _sync_directory(path: Path) -> None:

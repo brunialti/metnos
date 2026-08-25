@@ -107,6 +107,17 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     "executor_birth_authoring": {
         "read_manifest_ref_versioned": ("authoring_versioned_read",),
     },
+    "executor_birth_ownership_chain": {
+        "_append_pair": ("store_write",),
+        "_replace_required_pointer": ("store_write",),
+        "_required_head_lock": ("store_write",),
+        "_update_required_head_locked": ("store_write",),
+        "append_authenticated_build": ("store_write",),
+        "append_cutover": ("store_write",),
+        "append_head": ("store_write",),
+        "initialize": ("store_write",),
+        "update_required_head": ("store_write",),
+    },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
@@ -138,6 +149,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth_authoring": frozenset({
         "executor_birth_authoring", "runtime.executor_birth_authoring",
     }),
+    "executor_birth_ownership_chain": frozenset({
+        "executor_birth_ownership_chain", "runtime.executor_birth_ownership_chain",
+    }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
@@ -151,6 +165,7 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/contract_cutover_guard.py": "contract_cutover_guard",
     "runtime/manifest_inventory.py": "manifest_inventory",
     "runtime/executor_birth_authoring.py": "executor_birth_authoring",
+    "runtime/executor_birth_ownership_chain.py": "executor_birth_ownership_chain",
 }
 READ_OPERATIONS = frozenset({
     "exists",
@@ -246,6 +261,17 @@ BIRTH_CLOSED_SEALED_MODULES = (
     "runtime/sign.py",
 )
 BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
+BIRTH_CLOSED_COORDINATOR_STORE_OWNERS = frozenset({
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._append_pair",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore._update_required_head_locked",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_authenticated_build",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_cutover",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.append_head",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.initialize",
+    "runtime/executor_birth_ownership_chain.py:OwnershipChainStore.update_required_head",
+    "runtime/executor_birth_ownership_chain.py:_replace_required_pointer",
+    "runtime/executor_birth_ownership_chain.py:_required_head_lock",
+})
 BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
     "publish_technical", "reactivate", "rollback", "sign",
 })
@@ -1553,6 +1579,7 @@ def birth_closed_findings(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [
             {"scope": scope, "exception": exception}
@@ -1581,6 +1608,11 @@ def birth_closed_findings(
         ))
 
     fact_keys = {fact.key for fact in facts}
+    for scope in sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS - fact_keys):
+        findings.append(Finding(
+            "birth_closed_coordinator_scope_missing", scope,
+            "compiled ownership coordinator has no discovered store boundary",
+        ))
     for scope in sorted(set(BIRTH_CLOSED_EXCEPTION_SCOPES) - fact_keys):
         findings.append(Finding(
             "birth_closed_exception_scope_missing", scope,
@@ -1592,6 +1624,12 @@ def birth_closed_findings(
         entry = entries.get(fact.key, {})
         exception = entry.get("closed_exception")
         expected_exception = BIRTH_CLOSED_EXCEPTION_SCOPES.get(fact.key)
+        if fact.key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
+            if entry.get("role") != "store_owner" or capabilities != {"store_write"}:
+                findings.append(Finding(
+                    "birth_closed_coordinator_invalid", fact.key,
+                    "ownership coordinator must be an exact store_write owner",
+                ))
         if exception != expected_exception:
             findings.append(Finding(
                 "birth_closed_exception_invalid", fact.key,
@@ -1679,6 +1717,7 @@ def render_birth_closed_inventory(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [
             {"scope": scope, "exception": exception}
@@ -1691,6 +1730,9 @@ def render_birth_closed_inventory(
         if isinstance(entry, dict)
     }
     for entry in payload["entries"]:
+        key = _entry_key(entry)
+        if key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS:
+            entry["role"] = "store_owner"
         old = previous.get(_entry_key(entry), {})
         if "closed_exception" in old:
             entry["closed_exception"] = old["closed_exception"]
