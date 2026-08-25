@@ -448,6 +448,48 @@ e nipoti. Se non può provarla restituisce `process_termination_unattested`.
 directory, shell o smontaggio. La disciplina copre candidato, pytest di
 riferimento ed equivalenza.
 
+Su Windows Birth usa un helper Rust dedicato e non il modulo privato del client
+remoto. Il profilo AppContainer è `Metnos.ExecutorBirth.V1`, distinto da quello
+del client; non riceve `internetClient` né altre capability di rete. Gli unici
+ACE temporanei riguardano binario runtime, copia privata del candidato e work
+root privata. Sono registrati per richiesta e revocati da una guardia RAII anche
+su errore. Nessun percorso personale, grant del manifest o registro ACL del
+client è condiviso.
+
+La richiesta wire V1 dell'helper è JSON UTF-8 canonico con esattamente
+`schema_version=1`, `request_id`, `candidate_id`, `phase`, `private_root`,
+`entrypoint` e `arguments`. `request_id` e `candidate_id` sono digest SHA-256;
+`phase` è `candidate|reference|equivalence`; `private_root` è un percorso
+assoluto già acquisito da Birth e non entra nelle identità; `entrypoint` è un
+percorso relativo POSIX, senza link, `..` o collisioni di maiuscole, contenuto
+nella copia privata. `arguments` contiene al massimo 32 stringhe senza NUL, di
+massimo 4.096 byte UTF-8 ciascuna. Ambiente, interprete, limiti, rete e grant non
+sono campi della richiesta: appartengono alla politica V1 dell'helper.
+
+La risposta wire V1 è JSON UTF-8 canonico con esattamente `schema_version=1`,
+`request_id`, `candidate_id`, `status`, `error_code`, `exit_code`,
+`stdout_base64`, `stderr_base64`, `stdout_bytes`, `stderr_bytes`,
+`stdout_truncated`, `stderr_truncated`, `elapsed_ms` e `attestation`.
+`status` è `passed|failed|test_environment_unavailable`; `error_code` ed
+`exit_code` sono nullable soltanto dove coerente. I conteggi e il tempo sono
+interi non negativi, distinti da booleani. L'oggetto `attestation` contiene
+esattamente `backend=windows-appcontainer-job-v1`, `helper_binary_hash`,
+`profile_name`, `appcontainer_sid`, `network_capability=false`,
+`assigned_before_resume`, `active_processes`, `tree_empty`,
+`termination_attested`, `memory_limit_bytes`, `process_limit`,
+`stdout_limit_bytes` e `stderr_limit_bytes`. Birth accetta un'esecuzione soltanto
+se i binding coincidono, l'hash dell'helper è nel registro sandbox del contesto,
+assegnazione prima del risveglio è vera, processi attivi sono zero, albero vuoto
+e terminazione attestata sono veri, e tutti i limiti coincidono con V1.
+
+L'helper legge e drena le pipe con limiti prima di attendere i thread, termina
+l'intero Job Object su timeout o overflow e non degrada mai a solo Job Object.
+Profilo, ACL, runtime, AppContainer o attestazione indisponibili producono
+`test_environment_unavailable`. La certificazione Windows compila l'helper e
+prova file host, credenziali e rete non accessibili, nipote terminato, overflow,
+timeout e indisponibilità; un test che verifica soltanto il Job Object non
+soddisfa questo requisito.
+
 ## 10. Ciclo di vita e preesercizio
 
 ```text
@@ -640,6 +682,14 @@ Migrare a Birth: cambiamenti e rollback, richieste/approvazioni Synt, promoter,
 skill import/reinstall, restart `sign_first`, generatore builtin e installer.
 Eccezioni: sola localizzazione RM-0007, ritiro riduttivo, cutover una tantum e
 strumenti offline che non rendono operativo un executor.
+
+L'inventario iniziale congela 24 **scope statici di propagazione**, non 24
+produttori indipendenti: funzioni, wrapper, `main` e scope di modulo dello stesso
+flusso possono comparire separatamente. Il cutover richiede sia l'azzeramento di
+questi scope sia la verifica dei flussi foglia elencati sopra. La guardia tratta
+come debito tecnico Birth `publish_technical`, riattivazione, firma e rollback;
+non assimila a un bypass il ritiro riduttivo, la sola localizzazione o il confine
+di migrazione una tantum.
 
 ## 14. Errori minimi
 
