@@ -239,6 +239,50 @@ def add_root(key: NodeKey, *, root_kind: str, db_path: Path) -> None:
         connection.close()
 
 
+def remove_root(key: NodeKey, *, root_kind: str, db_path: Path) -> None:
+    kind = _text(root_kind, "root_kind")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        deleted = connection.execute(
+            "DELETE FROM retention_roots WHERE root_kind=? AND node_type=? AND node_id=?",
+            (kind, key.node_type.value, key.node_id),
+        )
+        if deleted.rowcount != 1:
+            raise RetentionError("retention_state_changed", "root absent")
+        connection.execute(
+            "UPDATE retention_meta SET root_version=root_version+1 WHERE singleton=1"
+        )
+        connection.commit()
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def close_edge(source: NodeKey, target: NodeKey, *, edge_type: str,
+               closed_at: str, db_path: Path) -> None:
+    edge, closed = _text(edge_type, "edge_type"), _timestamp(closed_at)
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        changed = connection.execute(
+            "UPDATE retention_edges SET state='closed',edge_version=edge_version+1,closed_at=? "
+            "WHERE source_type=? AND source_id=? AND edge_type=? AND target_type=? "
+            "AND target_id=? AND state='open'",
+            (closed, source.node_type.value, source.node_id, edge,
+             target.node_type.value, target.node_id),
+        )
+        if changed.rowcount != 1:
+            raise RetentionError("retention_state_changed", "edge not open")
+        connection.execute("UPDATE retention_meta SET graph_version=graph_version+1 WHERE singleton=1")
+        connection.commit()
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
 def _reachable(connection: sqlite3.Connection) -> set[tuple[str, str]]:
     # Open nodes and both endpoints of open references are conservative roots.
     roots = {(row[0], row[1]) for row in connection.execute(

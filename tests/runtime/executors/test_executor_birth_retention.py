@@ -4,7 +4,8 @@ import pytest
 
 from executor_birth_retention import (
     CandidateStatus, EdgeState, NodeKey, NodeState, NodeType, RetentionError,
-    add_edge, add_root, historical_generation_selectable, mark, put_node, sweep,
+    add_edge, add_root, close_edge, historical_generation_selectable, mark,
+    put_node, remove_root, sweep,
 )
 
 
@@ -57,6 +58,18 @@ def test_open_reference_is_conservative_root(tmp_path):
     add_edge(report, evidence, edge_type="evidence", state=EdgeState.OPEN,
              created_at=OLD, db_path=db)
     assert mark(run_id="run-open", observed_at=NOW, db_path=db) == ()
+    close_edge(report, evidence, edge_type="evidence", closed_at=NOW, db_path=db)
+    assert set(mark(run_id="run-closed", observed_at=NOW, db_path=db)) == {report, evidence}
+
+
+def test_removed_pointer_stops_being_a_root(tmp_path):
+    db = tmp_path / "retention.sqlite"
+    generation = node(NodeType.GENERATION, "old-current")
+    closed(db, generation)
+    add_root(generation, root_kind="current_pointer", db_path=db)
+    assert mark(run_id="rooted", observed_at=NOW, db_path=db) == ()
+    remove_root(generation, root_kind="current_pointer", db_path=db)
+    assert mark(run_id="unrooted", observed_at=NOW, db_path=db) == (generation,)
 
 
 def test_mark_sweep_race_new_root_wins(tmp_path):
