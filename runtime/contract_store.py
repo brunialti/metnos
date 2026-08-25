@@ -163,6 +163,8 @@ class ContractRetirement:
 QuiescenceProof = Callable[[], bool]
 ContractRevision: TypeAlias = VerifiedManifest | ContractRetirement
 RegistryReconciler = Callable[[ContractRevision], None]
+BirthReceiptIssuer = Callable[[str, Mapping[str, str]], bytes]
+BirthReceiptVerifier = Callable[[bytes], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +174,24 @@ class PublicationResult:
     current_generation_id: str
     operation: str
     repeated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class BirthCommitAuthorization:
+    """Sealed Birth authority used at the exact RM-0007 precommit point.
+
+    The store deliberately does not own Birth's private signing key.  The
+    issuer receives the generation selected by RM-0007 and hashes of the
+    canonical payloads; the verifier must authenticate the returned wire
+    receipt.  All identity bindings are checked again by this boundary.
+    """
+
+    candidate_id: str
+    semantic_core_id: str
+    admission_context_id: str
+    predecessor_id: str | None
+    issuer: BirthReceiptIssuer
+    verifier: BirthReceiptVerifier
 
 
 @dataclass(frozen=True, slots=True)
@@ -2366,6 +2386,7 @@ def _direct_staging_recovery_plan(
         if not reserved:
             if entry.name not in {
                 BINDING_FILE, "current", "writer.lock", "generations",
+                "admission-receipts",
             }:
                 raise ContractStoreError("staging_invalid", str(entry))
             continue
@@ -2709,9 +2730,18 @@ def _verify_activation_catalog(
             raise ContractStoreError(
                 "activation_contract_invalid", str(exc),
             ) from exc
-        if {entry.name for entry in contract_entries} != {
+        contract_names = {entry.name for entry in contract_entries}
+        required_contract_names = {
             BINDING_FILE, "writer.lock", "current", "generations",
-        }:
+        }
+        if (
+            not required_contract_names.issubset(contract_names)
+            or contract_names - required_contract_names != (
+                {"admission-receipts"}
+                if "admission-receipts" in contract_names
+                else set()
+            )
+        ):
             raise ContractStoreError(
                 "activation_contract_invalid", str(contract_dir),
             )
@@ -3221,6 +3251,7 @@ def _commit_payloads_locked(
     store_root: Path,
     replace_timeout: float,
     precommit: Callable[[str], None] | None = None,
+    birth_authorization: BirthCommitAuthorization | None = None,
 ) -> tuple[str, bool]:
     """Verify and commit one complete postcondition under the writer lock."""
     candidate = _verify_payloads(
@@ -3260,6 +3291,16 @@ def _commit_payloads_locked(
     ):
         repeated = True
 
+    if birth_authorization is not None:
+        _persist_birth_receipt_locked(
+            ref,
+            desired,
+            canonical_payloads,
+            previous=(expected_generation_id if repeated else previous),
+            contract_dir=contract_dir,
+            authorization=birth_authorization,
+            replace_timeout=replace_timeout,
+        )
     if not repeated:
         if precommit is not None:
             precommit(desired)
@@ -3288,6 +3329,118 @@ def _commit_payloads_locked(
             replace_timeout=replace_timeout,
         )
     return desired, repeated
+
+
+def _birth_receipt_path(contract_dir: Path, generation_identifier: str) -> Path:
+    return contract_dir / "admission-receipts" / (
+        generation_directory_name(generation_identifier) + ".json"
+    )
+
+
+def _validate_birth_receipt_binding(
+    receipt: object,
+    *,
+    ref: ManifestRef,
+    generation_identifier: str,
+    previous: str | None,
+    authorization: BirthCommitAuthorization,
+) -> None:
+    expected = {
+        "contract_id": ref.contract_id.value,
+        "generation_id": generation_identifier,
+        "candidate_id": authorization.candidate_id,
+        "semantic_core_id": authorization.semantic_core_id,
+        "admission_context_id": authorization.admission_context_id,
+        "predecessor_id": previous,
+    }
+    if authorization.predecessor_id != previous:
+        raise ContractStoreError(
+            "commit_conflict",
+            f"authorized predecessor={authorization.predecessor_id} current={previous}",
+        )
+    for field, wanted in expected.items():
+        if getattr(receipt, field, object()) != wanted:
+            raise ContractStoreError("birth_receipt_binding_invalid", field)
+
+
+def _persist_birth_receipt_locked(
+    ref: ManifestRef,
+    generation_identifier: str,
+    payloads: Mapping[str, bytes],
+    *,
+    previous: str | None,
+    contract_dir: Path,
+    authorization: BirthCommitAuthorization,
+    replace_timeout: float,
+) -> bytes:
+    """Authenticate, durably store and exactly reread AdmissionReceipt.
+
+    This runs while both catalog and per-contract writer locks are held and
+    before generation installation or pointer replacement.  A crash can leave
+    an orphan receipt, which is harmless: an exact retry validates and reuses
+    it, while any byte or binding mismatch fails closed.
+    """
+    if not isinstance(authorization, BirthCommitAuthorization):
+        raise ContractStoreError("birth_authorization_invalid")
+    if not callable(authorization.issuer) or not callable(authorization.verifier):
+        raise ContractStoreError("birth_authorization_invalid")
+    for field in (
+        "candidate_id", "semantic_core_id", "admission_context_id",
+    ):
+        _canonical_sha256(getattr(authorization, field), field=field)
+    if authorization.predecessor_id is not None:
+        generation_directory_name(authorization.predecessor_id)
+
+    digests = MappingProxyType({
+        name: _sha256(payloads[name]) for name in GENERATION_FILES
+    })
+    receipt_path = _birth_receipt_path(contract_dir, generation_identifier)
+    receipt_dir = receipt_path.parent
+    if receipt_dir.exists():
+        _require_plain_directory(receipt_dir, code="birth_receipt_store_invalid")
+        _require_no_link_components(receipt_dir, code="birth_receipt_store_invalid")
+    else:
+        try:
+            receipt_dir.mkdir(mode=0o700)
+            _sync_directory(receipt_dir.parent)
+        except OSError as exc:
+            raise ContractStoreError("birth_receipt_store_invalid", str(exc)) from exc
+
+    if receipt_path.exists():
+        encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+    else:
+        try:
+            encoded = authorization.issuer(generation_identifier, digests)
+        except ContractStoreError:
+            raise
+        except Exception as exc:
+            raise ContractStoreError("birth_receipt_issue_failed", str(exc)) from exc
+        if not isinstance(encoded, bytes) or not encoded:
+            raise ContractStoreError("birth_receipt_invalid", "empty wire receipt")
+        try:
+            receipt = authorization.verifier(encoded)
+        except Exception as exc:
+            raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+        _validate_birth_receipt_binding(
+            receipt, ref=ref, generation_identifier=generation_identifier,
+            previous=previous, authorization=authorization,
+        )
+        _atomic_replace_file(
+            receipt_path, encoded, replace_timeout=replace_timeout, mode=0o600,
+        )
+
+    reread = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+    if reread != encoded:
+        raise ContractStoreError("birth_receipt_reread_mismatch")
+    try:
+        receipt = authorization.verifier(reread)
+    except Exception as exc:
+        raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+    _validate_birth_receipt_binding(
+        receipt, ref=ref, generation_identifier=generation_identifier,
+        previous=previous, authorization=authorization,
+    )
+    return reread
 
 
 def _verify_published_postcondition(
@@ -3923,6 +4076,7 @@ def publish_technical_update(
     removal: SurfaceRemoval | None = None,
     removal_audit: Callable[[Mapping[str, object]], None] | None = None,
     registry_reconciler: RegistryReconciler | None = None,
+    birth_authorization: BirthCommitAuthorization | None = None,
     store_root: Path | str | None = None,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
     replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
@@ -3993,6 +4147,7 @@ def publish_technical_update(
             trusted_publics=trusted,
             store_root=root,
             replace_timeout=replace_timeout,
+            birth_authorization=birth_authorization,
             precommit=(
                 None
                 if removal is None
@@ -4027,6 +4182,50 @@ def publish_technical_update(
         current_generation_id=str(fresh.generation_id),
         operation="publish_technical_update",
         repeated=repeated,
+    )
+
+
+def commit_birth_snapshot(
+    ref: ManifestRef,
+    *,
+    expected_generation_id: str | None,
+    draft: TechnicalDraft,
+    private_key: Ed25519PrivateKey,
+    trusted_publics: Iterable[TrustedPublic],
+    birth_authorization: BirthCommitAuthorization,
+    registry_reconciler: RegistryReconciler | None = None,
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
+) -> PublicationResult:
+    """Commit an admitted Birth snapshot through RM-0007's sole pointer.
+
+    This deliberately has no removal-policy escape hatch.  The exact
+    AdmissionReceipt is authenticated, durably persisted and reread at the
+    precommit point before the immutable generation and ``current`` pointer.
+    Existing technical publishers retain their historical API while F4
+    callers migrate explicitly to this boundary.
+    """
+    if not isinstance(birth_authorization, BirthCommitAuthorization):
+        raise ContractStoreError("birth_authorization_required")
+    result = publish_technical_update(
+        ref,
+        expected_generation_id=expected_generation_id,
+        draft=draft,
+        private_key=private_key,
+        trusted_publics=trusted_publics,
+        registry_reconciler=registry_reconciler,
+        birth_authorization=birth_authorization,
+        store_root=store_root,
+        lock_timeout=lock_timeout,
+        replace_timeout=replace_timeout,
+    )
+    return PublicationResult(
+        contract_id=result.contract_id,
+        previous_generation_id=result.previous_generation_id,
+        current_generation_id=result.current_generation_id,
+        operation="commit_birth_snapshot",
+        repeated=result.repeated,
     )
 
 
@@ -4668,6 +4867,7 @@ def diagnose_store(
                 raise ContractStoreError("binding_invalid", str(ref.contract_id))
             allowed_contract_entries = {
                 BINDING_FILE, "writer.lock", "current", "generations",
+                "admission-receipts",
             }
             for child in contract_dir.iterdir():
                 if child.name not in allowed_contract_entries:
@@ -4789,6 +4989,7 @@ __all__ = [
     "ACTIVE_RELATIVE",
     "BINDING_FILE",
     "BINDING_VERSION",
+    "BirthCommitAuthorization",
     "ContractBinding",
     "ContractRetirement",
     "ContractRevision",
@@ -4810,6 +5011,7 @@ __all__ = [
     "WINDOWS_POWER_LOSS_LIMIT",
     "activate_store",
     "catalog_admission_lock",
+    "commit_birth_snapshot",
     "contract_storage_key",
     "contract_revision_id",
     "current_contract",

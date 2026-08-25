@@ -23,6 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from contract_store import (
     ACTIVE_BYTES,
     BINDING_FILE,
+    BirthCommitAuthorization,
     GENERATION_FILES,
     RETIREMENT_FILES,
     ContractRetirement,
@@ -32,6 +33,7 @@ from contract_store import (
     SurfaceRemoval,
     TechnicalDraft,
     activate_store,
+    commit_birth_snapshot,
     contract_storage_key,
     contract_revision_id,
     current_contract,
@@ -71,6 +73,13 @@ from manifest_inventory import (
 )
 import manifest_inventory as manifest_inventory_module
 from sign import sign_manifest_bytes
+from executor_birth_receipts import (
+    AdmissionKind,
+    ApprovedLifecycle,
+    RevisionClass,
+    issue_admission_receipt,
+    verify_admission_receipt,
+)
 import contract_store as contract_store_module
 from audit_jsonl import append_jsonl
 
@@ -2197,6 +2206,169 @@ def test_technical_publication_updates_code_without_regressing_localization(
     assert current.parsed["description"] == before.parsed["description"]
     assert current.language_state == before.language_state
     assert _source_payloads(ref) == authoring_before
+
+
+_BIRTH_DIGEST = "sha256:" + ("7" * 64)
+
+
+def _birth_authorization(
+    ref: ManifestRef,
+    predecessor_id: str | None,
+    admission_private: Ed25519PrivateKey,
+    *,
+    observed: list[tuple[str, Mapping[str, str]]] | None = None,
+) -> BirthCommitAuthorization:
+    public = admission_private.public_key()
+
+    def issue(identifier: str, payload_hashes: Mapping[str, str]) -> bytes:
+        if observed is not None:
+            observed.append((identifier, dict(payload_hashes)))
+        return issue_admission_receipt(
+            policy_version="birth-policy-v1",
+            contract_id=ref.contract_id,
+            generation_id=identifier,
+            candidate_id=_BIRTH_DIGEST,
+            semantic_core_id=_BIRTH_DIGEST,
+            admission_context_id=_BIRTH_DIGEST,
+            predecessor_id=predecessor_id,
+            producer_receipt_hash=_BIRTH_DIGEST,
+            revision_class=RevisionClass.CODE_REVISION,
+            check_results={},
+            semantic_review_hash=None,
+            approval_hash=None,
+            approved_lifecycle=ApprovedLifecycle.ACTIVE,
+            kind=AdmissionKind.ADMISSION,
+            issued_at="2026-08-25T12:00:00Z",
+            key_id="birth-test-key",
+            private_key=admission_private,
+        )
+
+    return BirthCommitAuthorization(
+        candidate_id=_BIRTH_DIGEST,
+        semantic_core_id=_BIRTH_DIGEST,
+        admission_context_id=_BIRTH_DIGEST,
+        predecessor_id=predecessor_id,
+        issuer=issue,
+        verifier=lambda encoded: verify_admission_receipt(
+            encoded, public_key=public, expected_key_id="birth-test-key",
+        ),
+    )
+
+
+def _birth_draft(ref: ManifestRef) -> TechnicalDraft:
+    (ref.manifest_dir / "sample.py").write_text(
+        "def invoke(args):\n    return {'results': [], 'birth': 2}\n",
+        encoding="utf-8",
+    )
+    return prepare_technical_draft(ref)
+
+
+def test_birth_receipt_is_durable_and_reread_before_pointer(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    draft = _birth_draft(ref)
+    observed: list[tuple[str, Mapping[str, str]]] = []
+    admission_private = Ed25519PrivateKey.generate()
+    authorization = _birth_authorization(
+        ref, initial.current_generation_id, admission_private, observed=observed,
+    )
+
+    result = commit_birth_snapshot(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        birth_authorization=authorization,
+        store_root=store,
+    )
+
+    assert len(observed) == 1
+    desired, payload_hashes = observed[0]
+    assert desired == result.current_generation_id
+    assert tuple(payload_hashes) == GENERATION_FILES
+    receipt_files = tuple(store.rglob("admission-receipts/*.json"))
+    assert len(receipt_files) == 1
+    receipt = verify_admission_receipt(
+        receipt_files[0].read_bytes(),
+        public_key=admission_private.public_key(),
+        expected_key_id="birth-test-key",
+    )
+    assert receipt.generation_id == current_revision_id(ref, store_root=store)
+
+
+def test_birth_crash_after_receipt_before_generation_is_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    draft = _birth_draft(ref)
+    observed: list[tuple[str, Mapping[str, str]]] = []
+    authorization = _birth_authorization(
+        ref, initial.current_generation_id, Ed25519PrivateKey.generate(),
+        observed=observed,
+    )
+    original_install = contract_store_module._install_generation
+
+    def crash(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("injected crash after receipt")
+
+    monkeypatch.setattr(contract_store_module, "_install_generation", crash)
+    with pytest.raises(RuntimeError, match="injected crash"):
+        commit_birth_snapshot(
+            ref, expected_generation_id=initial.current_generation_id,
+            draft=draft, private_key=private, trusted_publics=trusted,
+            birth_authorization=authorization, store_root=store,
+        )
+    assert current_revision_id(ref, store_root=store) == initial.current_generation_id
+    assert len(tuple(store.rglob("admission-receipts/*.json"))) == 1
+
+    monkeypatch.setattr(contract_store_module, "_install_generation", original_install)
+    result = commit_birth_snapshot(
+        ref, expected_generation_id=initial.current_generation_id,
+        draft=draft, private_key=private, trusted_publics=trusted,
+        birth_authorization=authorization, store_root=store,
+    )
+    assert current_revision_id(ref, store_root=store) == result.current_generation_id
+    assert len(observed) == 1
+
+
+def test_birth_receipt_failure_leaves_pointer_unchanged(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    draft = _birth_draft(ref)
+    good = _birth_authorization(
+        ref, initial.current_generation_id, Ed25519PrivateKey.generate(),
+    )
+    invalid = BirthCommitAuthorization(
+        candidate_id=good.candidate_id,
+        semantic_core_id=good.semantic_core_id,
+        admission_context_id=good.admission_context_id,
+        predecessor_id=good.predecessor_id,
+        issuer=lambda _identifier, _hashes: b"not a receipt",
+        verifier=good.verifier,
+    )
+
+    with pytest.raises(ContractStoreError, match="birth_receipt_invalid"):
+        commit_birth_snapshot(
+            ref, expected_generation_id=initial.current_generation_id,
+            draft=draft, private_key=private, trusted_publics=trusted,
+            birth_authorization=invalid, store_root=store,
+        )
+    assert current_revision_id(ref, store_root=store) == initial.current_generation_id
+    assert not tuple(store.rglob("admission-receipts/*.json"))
 
 
 def test_technical_publication_rebases_and_preserves_live_localization(

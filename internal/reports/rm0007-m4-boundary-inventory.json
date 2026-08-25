@@ -641,6 +641,16 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "_persist_birth_receipt_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "_prepare_technical_payloads_locked",
       "role": "store_owner",
       "capabilities": [
@@ -841,6 +851,18 @@
       "role": "store_owner",
       "capabilities": [
         "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "commit_birth_snapshot",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical",
+        "store_write"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
       "phase": "M4"
