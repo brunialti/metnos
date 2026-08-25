@@ -129,6 +129,27 @@ predicato è falso. Il publisher non viene chiamato.
 staging dedicata. La radice locale non entra nella ricevuta e non conferisce
 autorità: serve soltanto a localizzare i byte attestati.
 
+Il payload wire V1 della ricevuta del produttore ha esattamente tali dieci
+campi esclusa `authentication`, più `authentication` come undicesimo campo.
+`schema_version` è l'intero `1`; hash e identificatori di sorgente sono digest
+SHA-256 canonici. `nonce` è composto da 32 cifre esadecimali minuscole. I tempi
+sono UTC nella sola forma `YYYY-MM-DDTHH:MM:SSZ`, senza frazioni: scadenza
+strettamente successiva all'emissione, emissione non oltre 30 secondi nel futuro
+e verifica anteriore alla scadenza. `receipt_id` è SHA-256 del payload privo di
+`receipt_id` e autenticazione, con dominio
+`metnos.executor-birth.producer-receipt-id/v1\0`. L'autenticazione firma il
+payload completo privo della sola autenticazione con dominio
+`metnos.executor-birth.producer-receipt/v1\0` ed ha esattamente
+`algorithm="ed25519"`, `key_id` e `signature` Base64 canonico.
+
+Il registro emittenti V1 associa ogni `issuer_id` a una o più chiavi nominate
+per rotazione. Ogni voce contiene `key_id`, chiave pubblica Ed25519, insieme non
+vuoto delle origini consentite e insieme non vuoto degli autori consentiti;
+`issuer_id` e `key_id` identificano univocamente la voce. La verifica richiede
+che origine e autore ricadano entrambi nella stessa voce. Il registro è un
+componente dell'`admission_context_id`; nessuna chiave globale o dichiarazione
+del manifest può sostituirlo.
+
 `BirthRequest` contiene `request_id`, `manifest_ref`, `expected_revision_id`,
 `producer_receipt`, `actor`, `reason`, `approval_refs` e `operation_hint`.
 Contiene inoltre `candidate_source_root`, percorso locale della staging root
@@ -164,6 +185,28 @@ versioni, `receipt_id`, i tre identificatori, predecessore, hash della ricevuta
 del produttore, classe, mappa ordinata `check_id -> (rule_version, status,
 evidence_hash)`, hash di revisione e approvazione, ciclo di vita approvato,
 generazione, data, `kind=admission|reattestation` e autenticazione.
+
+Il payload wire V1 di `AdmissionReceipt` ha esattamente: `schema_version=1`,
+`policy_version`, `identity_version=1`, `receipt_id`, `contract_id` nella forma
+canonica `ContractId.value`, `generation_id`, `candidate_id`,
+`semantic_core_id`, `admission_context_id`, `predecessor_id` nullable,
+`producer_receipt_hash`, `revision_class`, `check_results`,
+`semantic_review_hash` nullable, `approval_hash` nullable,
+`approved_lifecycle`, `kind`, `issued_at` e `authentication`.
+`approved_lifecycle` è `active|preexercise|quarantined`. Un valore non
+applicabile per revisione o approvazione è `null`, distinto da un digest.
+`check_results` è una mappa senza duplicati indicizzata da `check_id`; ogni
+valore ha esattamente `rule_version`, `status` ed `evidence_hash`. Una ricevuta
+di ammissione può contenere soltanto `passed|not_applicable`: `failed` o
+`unavailable` non sono rappresentabili come ammissione.
+
+`receipt_id` usa il dominio
+`metnos.executor-birth.admission-receipt-id/v1\0`; firma e autenticazione usano
+`metnos.executor-birth.admission-receipt/v1\0` e lo stesso envelope Ed25519
+chiuso della ricevuta del produttore. `issued_at` usa la medesima forma UTC. In
+F1 emissione e verifica sono codec puri con chiavi di prova: nessuna ricevuta è
+persistita, consumata o consultata dal loader. L'emittente Birth operativo e lo
+store univoco vengono introdotti soltanto nelle fasi di commit.
 
 `BirthReport` è distinto dalla ricevuta di autorità. È append-only e gestito
 dalla conservazione; registra provenienza, contratto, nome, classe, generazioni,
