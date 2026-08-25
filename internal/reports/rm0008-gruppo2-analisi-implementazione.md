@@ -1867,19 +1867,19 @@ l'arresto diagnostico del §15.
 ### 16.9 Registrazioni candidate e criterio conclusivo del codice 2A
 
 Per eseguire GitHub Actions sullo stesso SHA del prototipo sono ammesse
-registrazioni candidate incrementali sul solo ramo di revisione. Ogni candidata:
+registrazioni candidate incrementali esclusivamente su `main`, unico ramo
+pubblico autorizzato. Ogni candidata:
 
 - è approvata in sola lettura prima della pubblicazione;
 - supera tutte le prove locali applicabili e non regredisce controlli già
   certificati;
 - contiene nel messaggio il marcatore `RM-0008-Status: candidate-not-certified`;
-- non viene unita in `main`, etichettata, rilasciata o descritta come 2A
-  completata;
+- non viene etichettata, rilasciata o descritta come 2A completata;
 - associa il risultato della matrice pubblica al proprio SHA esatto;
 - al secondo fallimento della stessa classe riattiva l'arresto diagnostico.
 
-La registrazione conclusiva, l'unione in `main` e qualunque dichiarazione di
-certificazione 2A sono consentite soltanto quando:
+La registrazione conclusiva e qualunque dichiarazione di certificazione 2A sono
+consentite soltanto quando:
 
 1. tutte le righe R1-R8, C1-C4 e G1-G12 sono verdi sulla piattaforma proprietaria;
 2. il manifesto dimostra la raccolta pubblica esatta, senza salti o successi

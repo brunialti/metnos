@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      rm0008_windows_diagnostics:
+        description: Record the frozen RM-0008 2A Windows defects (non-certifying)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -60,6 +66,15 @@ jobs:
           python -m pytest -q -p no:cacheprovider --strict-markers --maxfail=1
           --confcutdir=tests/windows_identity
           tests/windows_identity/test_windows_real_identity_oracle.py
+
+      - name: Record the frozen RM-0008 2A Windows diagnostics
+        if: >-
+          runner.os == 'Windows' &&
+          github.event_name == 'workflow_dispatch' &&
+          inputs.rm0008_windows_diagnostics
+        env:
+          PYTHONPATH: runtime;tests/windows_identity
+        run: python tests/windows_identity/rm0008_increment_2a_windows_diagnostics.py
 
       - name: Run the portable certification suite
         run: python -m pytest -q -p no:cacheprovider --confcutdir=tests/portable tests/portable
