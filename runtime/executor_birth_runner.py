@@ -437,10 +437,13 @@ sys.exit(0 if started else 125)
         stderr = ""
         error_code: str | None = None
         try:
+            execution_budget = birth_deadline.phase_budget()
+            if execution_budget <= 0:
+                raise subprocess.TimeoutExpired(host_command, 0.0)
             completed = run_bounded_subprocess(
                 host_command,
                 input_text="",
-                timeout_s=budget,
+                timeout_s=execution_budget,
                 env={},
                 stdout_limit_bytes=STDOUT_LIMIT_BYTES,
                 stderr_limit_bytes=STDERR_LIMIT_BYTES,
