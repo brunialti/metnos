@@ -4,7 +4,7 @@
 > persistente · 33 correzioni adversarial approvate da Roberto · rilievi sul
 > dossier risolti nel §21 · prove in
 > `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
-> autorizzata e iniziata: F0 in corso
+> autorizzata e iniziata: F0 completata, F1 successiva
 
 ## 1. Obiettivo
 
@@ -532,7 +532,7 @@ personali.
 
 Ogni fase produce un commit Git autonomo e inizia dopo i criteri della precedente.
 
-- **F0, caratterizzazione e riparazioni:** congelare inventario e prove rosse dei
+- **F0, caratterizzazione e riparazioni — completata il 25 agosto 2026:** congelare inventario e prove rosse dei
   bypass; registrare ricevute e rimuovere i 12 orfani; creare fixture storiche;
   rifiutare verdetti non tipizzati; ritirare le esclusioni d'ambiente convertendo
   i test all'iniezione. Completata quando inventario e ricevute sono completi,
@@ -715,3 +715,4 @@ sviluppo.
 | 2026-08-25 | `ready` | Verifica della risoluzione (§21.1): R1-R8 chiuse; restano P1 (riattestazione delle generazioni correnti in F4) e P2 (vincolo di epoca corrente unica); con quelle due l'analisi è concordata. |
 | 2026-08-25 | `ready` | P1 e P2 risolti: riattestazione corrente prima della chiusura dei chiamanti in F4 e indice univoco dell'epoca corrente; analisi adversarial concordata. |
 | 2026-08-25 | `active` | Roberto autorizza lo sviluppo. F0 avviata: controlli Synt e importazione resi fail-closed, variabili d'ambiente ritirate e documentazione allineata; guardia Birth e quarantena firmata degli orfani ancora aperte. |
+| 2026-08-25 | `active` | F0 completata: la guardia congela 24 chiamanti da migrare; L5/L6 non espongono bypass; 12 residui non ammessi sono stati censiti, attestati con ricevute Ed25519 e spostati senza cancellazione nella quarantena sullo stesso filesystem. La verifica successiva trova zero residui. F1 è la fase successiva. |
