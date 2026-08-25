@@ -211,6 +211,31 @@ produce una nuova `BirthRequest`; `misaligned` conserva la quarantena;
 `uncertain` richiede un umano. Oggetto malformato o servizio indisponibile
 conservano la quarantena.
 
+Il payload wire V1 di `FailureReview` è JSON UTF-8 canonico, senza chiavi
+duplicate, spazi esterni, preamboli o suffissi. Contiene esattamente
+`verdict`, `execution_receipt_id`, `execution_receipt_hash`, `candidate_id`,
+`generation_id`, `failure_evidence_hash`, `reason`, `repair_objective` e
+`confidence`. I tre hash e `execution_receipt_id` sono digest SHA-256
+canonici; `generation_id` è una stringa non vuota senza NUL di massimo 128 byte
+UTF-8. `reason` è non vuota, senza NUL e di massimo 2.000 byte UTF-8;
+`confidence` è un intero, distinto da booleano, tra 0 e 100.
+`repair_objective` è `null` salvo per `repairable`, per cui è una stringa non
+vuota senza NUL di massimo 1.000 byte UTF-8. È soltanto l'obiettivo ridotto di
+una nuova richiesta: non può contenere codice, shell, percorsi, credenziali,
+fixture, patch, identificativi di workload o autorità di pubblicazione.
+
+La richiesta al revisore contiene gli stessi identificativi e hash, il codice
+di errore tipizzato, l'output e gli argomenti già ridotti secondo la politica di
+`ExecutionReceipt`, e nessun byte vivo riaperto dall'host. Il workload è fisso;
+non sono ammessi tentativi successivi, estrazione tollerante o ripiego di
+livello. Prima dell'invocazione Birth verifica un consenso d'istanza valido e
+legato a `executor.birth.failure_review`; in sua assenza restituisce
+`failure_review_consent_required`, conserva la quarantena e notifica
+l'amministratore. La risposta passa soltanto se tutti i binding coincidono
+esattamente con la richiesta. Nessun verdetto muta direttamente la generazione:
+ogni eventuale azione successiva usa il proprio protocollo CAS e la propria
+autorità.
+
 `AdmissionReceipt`, indicizzata da `(ContractId, generation_id)`, contiene
 versioni, `receipt_id`, i tre identificatori, predecessore, hash della ricevuta
 del produttore, classe, mappa ordinata `check_id -> (rule_version, status,
