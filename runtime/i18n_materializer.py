@@ -15,20 +15,58 @@ import sqlite3
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from types import MappingProxyType
+from typing import Any, Iterator, Mapping
 
 import config as _C
 from i18n_registry import LocalizationRegistry, normalize_language
+from manifest_inventory import (
+    ManifestOrigin,
+    ManifestSource,
+    default_manifest_sources,
+    inventory_manifests,
+)
 
 
-_LOCALIZABLE_FIELDS = frozenset({
-    "description", "summary", "title", "label", "help", "message",
-})
 _HUMAN_REVIEW_DETECTION_KINDS = frozenset({"regex"})
 _GENERATED_ALTERNATE_LINK = re.compile(
     r"<link\b(?=[^>]*\brel\s*=\s*[\"']alternate[\"'])[^>]*>\s*",
     flags=re.IGNORECASE,
 )
+_CONTRACT_STATE_VERSION = 1
+_CONTRACT_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_SCHEMA_MAP_CHILDREN = frozenset({
+    "$defs", "definitions", "dependentSchemas", "patternProperties",
+    "properties",
+})
+_SCHEMA_SINGLE_CHILDREN = frozenset({
+    "additionalProperties", "contains", "contentSchema", "else", "if",
+    "items", "not", "propertyNames", "then", "unevaluatedItems",
+    "unevaluatedProperties",
+})
+_SCHEMA_LIST_CHILDREN = frozenset({
+    "allOf", "anyOf", "oneOf", "prefixItems",
+})
+
+
+class LanguageStateError(ValueError):
+    """A manifest language-state document is invalid or non-canonical."""
+
+    def __init__(self, code: str, detail: str = "") -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}" if detail else code)
+
+
+@dataclass(frozen=True, slots=True)
+class LanguageStateMigration:
+    """Canonical bytes and deterministic evidence from a legacy migration."""
+
+    state_bytes: bytes
+    added_entries: tuple[str, ...]
+    dropped_entries: tuple[str, ...]
+    normalized_language_tags: tuple[str, ...]
+    cleared_provenance: tuple[str, ...]
 
 
 def sha256_text(value: str) -> str:
@@ -37,6 +75,417 @@ def sha256_text(value: str) -> str:
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _state_hash(value: str) -> str:
+    return "sha256:" + sha256_text(value)
+
+
+def _freeze_state(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({
+            str(key): _freeze_state(item) for key, item in value.items()
+        })
+    if isinstance(value, list):
+        return tuple(_freeze_state(item) for item in value)
+    return value
+
+
+def _state_json_without_duplicates(data: bytes) -> Any:
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in items:
+            if key in result:
+                raise LanguageStateError("language_state_duplicate_key", key)
+            result[key] = value
+        return result
+
+    try:
+        return json.loads(data.decode("utf-8"), object_pairs_hook=pairs)
+    except UnicodeDecodeError as exc:
+        raise LanguageStateError("language_state_utf8", str(exc)) from exc
+    except json.JSONDecodeError as exc:
+        raise LanguageStateError("language_state_json", str(exc)) from exc
+
+
+def manifest_language_selectors(
+    manifest: Mapping[str, Any],
+) -> Mapping[str, Mapping[str, str]]:
+    """Enumerate every localized contract surface in canonical path form.
+
+    The executor arguments are a JSON-Schema tree, so descriptions may occur
+    below nested ``properties`` and ``items`` nodes.  Traversing the tree is
+    both simpler and more future-proof than special-casing top-level argument
+    names.  Dots in a path segment are rejected because v1 selectors use dots
+    as their unambiguous structural separator.
+    """
+    selectors: dict[str, Mapping[str, str]] = {}
+
+    def add(path: tuple[str, ...], languages: Mapping[str, Any]) -> None:
+        if any(not part or "." in part for part in path):
+            raise LanguageStateError(
+                "language_selector_invalid", ".".join(path),
+            )
+        selector = ".".join(path)
+        if selector in selectors:
+            raise LanguageStateError("language_selector_duplicate", selector)
+        selectors[selector] = languages
+
+    def visit_schema(node: Mapping[str, Any], path: tuple[str, ...]) -> None:
+        description = node.get("description")
+        if isinstance(description, Mapping):
+            add((*path, "description"), description)
+
+        for keyword in sorted(_SCHEMA_MAP_CHILDREN):
+            children = node.get(keyword)
+            if not isinstance(children, Mapping):
+                continue
+            for raw_name, child in children.items():
+                if isinstance(child, Mapping):
+                    visit_schema(child, (*path, keyword, str(raw_name)))
+
+        for keyword in sorted(_SCHEMA_SINGLE_CHILDREN):
+            child = node.get(keyword)
+            if isinstance(child, Mapping):
+                visit_schema(child, (*path, keyword))
+            elif isinstance(child, list):
+                for index, item in enumerate(child):
+                    if isinstance(item, Mapping):
+                        visit_schema(item, (*path, keyword, str(index)))
+
+        for keyword in sorted(_SCHEMA_LIST_CHILDREN):
+            children = node.get(keyword)
+            if not isinstance(children, list):
+                continue
+            for index, child in enumerate(children):
+                if isinstance(child, Mapping):
+                    visit_schema(child, (*path, keyword, str(index)))
+
+    description = manifest.get("description")
+    if isinstance(description, Mapping):
+        add(("description",), description)
+    args = manifest.get("args")
+    if isinstance(args, Mapping):
+        visit_schema(args, ("args",))
+    return MappingProxyType(selectors)
+
+
+def iter_localized_text_tables(
+    node: Mapping[str, Any],
+    source_lang: str,
+    prefix: tuple[str, ...] = (),
+) -> Iterator[tuple[str, str]]:
+    """Yield contract prose through the canonical selector enumerator."""
+    for selector, languages in manifest_language_selectors(node).items():
+        source = languages.get(source_lang)
+        if isinstance(source, str):
+            yield ".".join((*prefix, selector)), source
+
+
+def _normalize_contract_language_state(
+    state: Mapping[str, Any],
+    *,
+    manifest: Mapping[str, Any],
+) -> dict[str, Any]:
+    if set(state) != {"schema_version", "selectors"}:
+        raise LanguageStateError(
+            "language_state_schema",
+            "expected only schema_version and selectors",
+        )
+    if (
+        type(state.get("schema_version")) is not int
+        or state.get("schema_version") != _CONTRACT_STATE_VERSION
+    ):
+        raise LanguageStateError(
+            "language_state_version", str(state.get("schema_version"))
+        )
+    raw_selectors = state.get("selectors")
+    if not isinstance(raw_selectors, Mapping):
+        raise LanguageStateError(
+            "language_state_selectors", "selectors must be an object"
+        )
+    expected = manifest_language_selectors(manifest)
+    if set(raw_selectors) != set(expected):
+        raise LanguageStateError(
+            "language_state_coverage",
+            f"expected={sorted(expected)} "
+            f"actual={sorted(str(key) for key in raw_selectors)}",
+        )
+    normalized_selectors: dict[str, Any] = {}
+    for selector, raw_languages in raw_selectors.items():
+        if not isinstance(selector, str):
+            raise LanguageStateError("language_selector_invalid", repr(selector))
+        if selector != "description":
+            parts = selector.split(".")
+            if (
+                len(parts) < 2
+                or parts[0] != "args"
+                or parts[-1] != "description"
+                or any(not part for part in parts)
+            ):
+                raise LanguageStateError("language_selector_invalid", selector)
+        if not isinstance(raw_languages, Mapping) or not raw_languages:
+            raise LanguageStateError("language_state_languages", selector)
+        manifest_languages = expected.get(selector)
+        if manifest_languages is not None and set(raw_languages) != set(manifest_languages):
+            raise LanguageStateError("language_state_language_coverage", selector)
+        normalized_languages: dict[str, Any] = {}
+        for language, raw_entry in raw_languages.items():
+            if not isinstance(language, str):
+                raise LanguageStateError("language_tag_invalid", repr(language))
+            try:
+                normalized_language = normalize_language(language)
+            except (TypeError, ValueError) as exc:
+                raise LanguageStateError("language_tag_invalid", language) from exc
+            if normalized_language != language:
+                raise LanguageStateError("language_tag_noncanonical", language)
+            if not isinstance(raw_entry, Mapping) or set(raw_entry) != {
+                "version_hash", "source_lang", "source_hash",
+            }:
+                raise LanguageStateError(
+                    "language_state_entry", f"{selector}:{language}"
+                )
+            version_hash = raw_entry.get("version_hash")
+            source_language = raw_entry.get("source_lang")
+            source_hash = raw_entry.get("source_hash")
+            if (
+                not isinstance(version_hash, str)
+                or not _CONTRACT_DIGEST_RE.fullmatch(version_hash)
+            ):
+                raise LanguageStateError(
+                    "language_version_hash", f"{selector}:{language}"
+                )
+            if source_language is None:
+                if source_hash is not None:
+                    raise LanguageStateError(
+                        "language_source_pair", f"{selector}:{language}"
+                    )
+            else:
+                if not isinstance(source_language, str):
+                    raise LanguageStateError(
+                        "language_source_tag", f"{selector}:{language}"
+                    )
+                try:
+                    canonical_source = normalize_language(source_language)
+                except (TypeError, ValueError) as exc:
+                    raise LanguageStateError(
+                        "language_source_tag", source_language
+                    ) from exc
+                if canonical_source != source_language:
+                    raise LanguageStateError("language_source_tag", source_language)
+                if (
+                    not isinstance(source_hash, str)
+                    or not _CONTRACT_DIGEST_RE.fullmatch(source_hash)
+                ):
+                    raise LanguageStateError(
+                        "language_source_hash", f"{selector}:{language}"
+                    )
+                if source_language not in manifest_languages:
+                    raise LanguageStateError(
+                        "language_source_missing", source_language
+                    )
+                source_text = manifest_languages.get(source_language)
+                if (
+                    not isinstance(source_text, str)
+                    or _state_hash(source_text) != source_hash
+                ):
+                    raise LanguageStateError(
+                        "language_source_mismatch",
+                        f"{selector}:{language}",
+                    )
+            text = manifest_languages.get(language)
+            if not isinstance(text, str):
+                raise LanguageStateError(
+                    "language_text_invalid", f"{selector}:{language}"
+                )
+            if _state_hash(text) != version_hash:
+                raise LanguageStateError(
+                    "language_version_mismatch", f"{selector}:{language}"
+                )
+            normalized_languages[language] = {
+                "source_hash": source_hash,
+                "source_lang": source_language,
+                "version_hash": version_hash,
+            }
+        normalized_selectors[selector] = normalized_languages
+    return {
+        "schema_version": _CONTRACT_STATE_VERSION,
+        "selectors": normalized_selectors,
+    }
+
+
+def encode_language_state(
+    state: Mapping[str, Any],
+    *,
+    manifest: Mapping[str, Any],
+) -> bytes:
+    """Validate and encode the sole canonical v1 contract-state format."""
+    normalized = _normalize_contract_language_state(state, manifest=manifest)
+    return (
+        json.dumps(
+            normalized,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n"
+    ).encode("utf-8")
+
+
+def decode_language_state(
+    state_bytes: bytes,
+    *,
+    manifest: Mapping[str, Any],
+) -> Mapping[str, object]:
+    """Decode strictly; legacy selectors are deliberately not aliases."""
+    parsed = _state_json_without_duplicates(state_bytes)
+    if not isinstance(parsed, Mapping):
+        raise LanguageStateError("language_state_schema", "root must be an object")
+    normalized = _normalize_contract_language_state(parsed, manifest=manifest)
+    if encode_language_state(normalized, manifest=manifest) != state_bytes:
+        raise LanguageStateError("language_state_noncanonical")
+    return _freeze_state(normalized)
+
+
+def migrate_language_state_bytes(
+    legacy_bytes: bytes,
+    *,
+    manifest: Mapping[str, Any],
+) -> LanguageStateMigration:
+    """Rebuild canonical state and report every normalization or discard.
+
+    M4 records this evidence before cutover.  Nothing is silently retained or
+    silently discarded merely because a legacy companion was permissive.
+    """
+    legacy = _state_json_without_duplicates(legacy_bytes)
+    if not isinstance(legacy, Mapping):
+        raise LanguageStateError("language_state_migration_root")
+    legacy_selectors: Mapping[str, Any]
+    if set(legacy) == {"schema_version", "selectors"}:
+        raw_selectors = legacy.get("selectors")
+        if not isinstance(raw_selectors, Mapping):
+            raise LanguageStateError("language_state_migration_root")
+        legacy_selectors = raw_selectors
+    else:
+        legacy_selectors = legacy
+    expected = manifest_language_selectors(manifest)
+    added_entries: set[str] = set()
+    dropped_entries: set[str] = set()
+    normalized_tags: set[str] = set()
+    cleared_provenance: set[str] = set()
+    mapped: dict[str, Mapping[str, Any]] = {}
+    for raw_selector, raw_languages in legacy_selectors.items():
+        if not isinstance(raw_selector, str):
+            dropped_entries.add(f"{raw_selector!r}:*")
+            continue
+        if not isinstance(raw_languages, Mapping):
+            dropped_entries.add(f"{raw_selector}:*")
+            continue
+        canonical = raw_selector
+        parts = raw_selector.split(".")
+        if (
+            len(parts) == 3
+            and parts[0] == "args"
+            and parts[1]
+            and parts[2] == "description"
+        ):
+            canonical = f"args.properties.{parts[1]}.description"
+        if canonical not in expected:
+            dropped_entries.add(f"{raw_selector}:*")
+            continue
+        if canonical in mapped:
+            raise LanguageStateError("language_state_migration_ambiguous", canonical)
+        mapped[canonical] = raw_languages
+    selectors: dict[str, Any] = {}
+    for selector, language_table in expected.items():
+        legacy_languages = mapped.get(selector, {})
+        normalized_legacy: dict[str, tuple[str, Mapping[str, Any]]] = {}
+        for raw_language, raw_entry in legacy_languages.items():
+            entry_id = f"{selector}:{raw_language}"
+            if not isinstance(raw_language, str) or not isinstance(raw_entry, Mapping):
+                dropped_entries.add(entry_id)
+                continue
+            try:
+                language = normalize_language(raw_language)
+            except (TypeError, ValueError):
+                dropped_entries.add(entry_id)
+                continue
+            if language in normalized_legacy:
+                raise LanguageStateError(
+                    "language_state_migration_ambiguous",
+                    f"{selector}:{language}",
+                )
+            if language != raw_language:
+                normalized_tags.add(f"{selector}:{raw_language}->{language}")
+            normalized_legacy[language] = (raw_language, raw_entry)
+        for language, (raw_language, _raw_entry) in normalized_legacy.items():
+            if language not in language_table:
+                dropped_entries.add(f"{selector}:{raw_language}")
+        rebuilt_languages: dict[str, Any] = {}
+        for language, text in language_table.items():
+            if not isinstance(language, str):
+                raise LanguageStateError("language_tag_invalid", str(language))
+            try:
+                canonical_language = normalize_language(language)
+            except (TypeError, ValueError) as exc:
+                raise LanguageStateError("language_tag_invalid", language) from exc
+            if canonical_language != language:
+                raise LanguageStateError("language_tag_noncanonical", language)
+            if not isinstance(text, str):
+                raise LanguageStateError(
+                    "language_text_invalid", f"{selector}:{language}"
+                )
+            current_hash = _state_hash(text)
+            old = normalized_legacy.get(language)
+            old_entry = old[1] if old is not None else {}
+            if old is None:
+                added_entries.add(f"{selector}:{language}")
+            source_language: str | None = None
+            source_hash: str | None = None
+            if old_entry.get("version_hash") == current_hash:
+                raw_source_language = old_entry.get("source_lang")
+                raw_source_hash = old_entry.get("source_hash")
+                if isinstance(raw_source_language, str):
+                    try:
+                        candidate_source = normalize_language(raw_source_language)
+                    except (TypeError, ValueError):
+                        candidate_source = ""
+                    if candidate_source and candidate_source != raw_source_language:
+                        normalized_tags.add(
+                            f"{selector}:{language}:source:"
+                            f"{raw_source_language}->{candidate_source}"
+                        )
+                    source_text = language_table.get(candidate_source)
+                    if (
+                        candidate_source == raw_source_language
+                        and isinstance(source_text, str)
+                        and isinstance(raw_source_hash, str)
+                        and _CONTRACT_DIGEST_RE.fullmatch(raw_source_hash)
+                        and raw_source_hash == _state_hash(source_text)
+                    ):
+                        source_language = candidate_source
+                        source_hash = raw_source_hash
+            if old is not None and source_language is None and (
+                old_entry.get("source_lang") is not None
+                or old_entry.get("source_hash") is not None
+            ):
+                cleared_provenance.add(f"{selector}:{language}")
+            rebuilt_languages[language] = {
+                "version_hash": current_hash,
+                "source_lang": source_language,
+                "source_hash": source_hash,
+            }
+        selectors[selector] = rebuilt_languages
+    state_bytes = encode_language_state(
+        {"schema_version": _CONTRACT_STATE_VERSION, "selectors": selectors},
+        manifest=manifest,
+    )
+    return LanguageStateMigration(
+        state_bytes=state_bytes,
+        added_entries=tuple(sorted(added_entries)),
+        dropped_entries=tuple(sorted(dropped_entries)),
+        normalized_language_tags=tuple(sorted(normalized_tags)),
+        cleared_provenance=tuple(sorted(cleared_provenance)),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,55 +548,59 @@ def _iter_prompt_items(paths: LocalizationPaths, source_lang: str) -> Iterator[I
         )
 
 
-def iter_localized_text_tables(
-    node: Mapping[str, Any], source_lang: str, prefix: tuple[str, ...] = (),
-) -> Iterator[tuple[str, str]]:
-    """Yield prose tables without treating schemas or capabilities as text.
+def _manifest_sources(roots: tuple[Path, ...]) -> tuple[ManifestSource, ...]:
+    """Map configured localization roots to the neutral shared inventory.
 
-    Any nested field whose semantic name is localizable and whose value is a
-    language table is admitted.  Thus new ``output.description`` or
-    ``hint.description`` fields need no new executor-specific code.
+    Known roots keep their stable origin and topology.  An injected fixture
+    remains explicit and receives no authority beyond its own directory.
     """
-    for key, value in node.items():
-        path = prefix + (str(key),)
-        if not isinstance(value, Mapping):
-            continue
-        source = value.get(source_lang)
-        if path[-1] in _LOCALIZABLE_FIELDS and isinstance(source, str):
-            yield ".".join(path), source
-            continue
-        yield from iter_localized_text_tables(value, source_lang, path)
-
-
-def _iter_manifest_paths(roots: Iterable[Path]) -> Iterator[tuple[Path, Path]]:
-    seen: set[Path] = set()
+    known = {
+        Path(source.root).resolve(strict=False): source
+        for source in default_manifest_sources()
+    }
+    selected: list[ManifestSource] = []
     for root in roots:
-        root = Path(root)
-        if not root.is_dir():
-            continue
-        for path in sorted(root.rglob("manifest.toml")):
-            resolved = path.resolve()
-            if resolved in seen:
-                continue
-            seen.add(resolved)
-            yield root, path
+        path = Path(root)
+        source = known.get(path.resolve(strict=False))
+        if source is None:
+            source = ManifestSource(
+                ManifestOrigin.EXPLICIT,
+                path,
+                min_depth=0,
+                max_depth=None,
+                allowed_code_roots=(path,),
+            )
+        selected.append(source)
+    return tuple(selected)
 
 
 def _iter_contract_items(paths: LocalizationPaths, source_lang: str) -> Iterator[InventoryItem]:
-    for root, path in _iter_manifest_paths(paths.manifest_roots):
+    manifest_inventory = inventory_manifests(
+        _manifest_sources(paths.manifest_roots),
+    )
+    if manifest_inventory.problems:
+        summary = "; ".join(
+            f"{problem.code}:{problem.path}"
+            for problem in manifest_inventory.problems[:8]
+        )
+        raise ValueError(f"manifest inventory is not clean: {summary}")
+    for ref in manifest_inventory.manifests:
+        path = ref.manifest_path
         raw = path.read_bytes()
         manifest = tomllib.loads(raw.decode("utf-8"))
-        manifest_name = str(manifest.get("name") or path.parent.name)
-        relative = _relative_id(path, root)
         for selector, source in iter_localized_text_tables(manifest, source_lang):
             yield InventoryItem(
-                resource_id=f"contract:{manifest_name}:{selector}",
+                resource_id=f"contract:{ref.name}:{selector}",
                 layer="contract", source_lang=source_lang,
                 source_hash=sha256_text(source), source_text=source,
                 metadata={
-                    "manifest_path": str(path), "manifest_relative": relative,
+                    "manifest_path": str(path),
+                    "manifest_relative": ref.manifest_relative,
                     "manifest_hash": sha256_bytes(raw), "selector": selector,
-                    "executor": manifest_name,
+                    "executor": ref.name,
+                    "contract_id": str(ref.contract_id),
+                    "origin": ref.origin.value,
+                    "status": ref.status.value,
                 },
             )
 

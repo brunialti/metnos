@@ -3,9 +3,9 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; Mnestome</title>
- <meta name="description" content="The mnestome SQLite store: schema, queries, maintenance, observability, and the actual state of its Metnos integration.">
- <meta name="keywords" content="Metnos, mnestome, mnest, SQLite, graph, ager">
+ <title>Metnos &mdash; Mnestoma</title>
+ <meta name="description" content="The Mnestoma SQLite store: schema, queries, maintenance, observability, and the actual state of its Metnos integration.">
+ <meta name="keywords" content="Metnos, mnestoma, mnest, SQLite, graph, ager">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/mnestome">
@@ -26,21 +26,21 @@
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Mnestome</strong></span>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Mnestoma</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle">Mnestome: store of operational edges</div>
+ <div class="subtitle">Mnestoma: store of operational edges</div>
  <div class="meta">SQLite schema, queries, maintenance, and actual integrations.</div>
 </div>
 
-<p class="lead">The mnestome is the local store that can represent a graph of
-<a href="mnest.html">mnests</a> between executors. Its code implements
-persistence, traversal, decay, and inspection tools. It is not currently a graph
-that the runtime populates automatically from every turn, and it is not a personal
-memory of the user.</p>
+<p class="lead">Mnestoma is the local store for
+<a href="mnest.html">mnests</a>: links between executors that together form an
+operational graph. Its code can save, traverse, decay, and inspect these links.
+The runtime does not yet record them automatically at the end of every turn, so
+Mnestoma must not be mistaken for an already learned personal memory.</p>
 
 <div class="toc">
 <h2>Contents</h2>
@@ -61,22 +61,24 @@ memory of the user.</p>
 
 <h1 id="cap1">1. Scope and status</h1>
 
-<p><code>Mnestoma</code> opens a SQLite database with WAL and foreign keys
-enabled. Its API can record edges, change their state, traverse them, find
-recurring protos, and read statistics and events.</p>
+<p><code>Mnestoma</code> opens a SQLite database with WAL writes and integrity
+constraints between tables. Its API can record links, change their state,
+traverse them, find recurring proto-mnests, and read statistics and events.</p>
 
-<p>The turn runtime populates the separate <code>canonical_query_log</code> table
-in the same file when it receives a useful canonical query. It does not call
-<code>record_passing()</code> for edges. These two kinds of telemetry must not be
+<p>The same file also contains a separate <code>canonical_query_log</code> table,
+with a best-effort recording hook from the turn runtime. Current plan reuse does
+not depend on that table, and the runtime does not call
+<code>record_passing()</code> to build edges. The two structures must not be
 confused.</p>
 
 <span id="cap-broth"></span>
 <h1 id="cap2">2. Graph model</h1>
 
-<p>In the logical model, nodes are executor names and versions and edges are
-directed, weighted mnests. A <code>proto</code> edge ends at a desired name with
-no version. <code>walk(start, max_depth)</code> performs breadth-first search,
-excludes protos by default, and orders paths by decreasing average weight.</p>
+<p>In the logical model, each node identifies an executor name and version; each
+mnest is a directed, weighted link between two nodes. A <code>proto</code> link
+instead ends at the name of a desired executor that has no concrete version yet.
+<code>walk(start, max_depth)</code> traverses the graph from an executor, excludes
+protos by default, and orders paths from highest to lowest average weight.</p>
 
 <p>Synt's composer can use this structure to find a chain of existing executors.
 It does not generate L0 or L1, alter the ordinary planner ranking, or replace the
@@ -142,9 +144,9 @@ executor aging and <code>Mnestoma.apply_ager()</code> in sequence. The latter:</
  <li>counts protos that reached recurrence thresholds.</li>
 </ol>
 
-<p>The job is idempotent for the same logical instant only if it is not repeated
-with an advancing timestamp: each run updates <code>ts_last</code> and writes
-events for decayed records.</p>
+<p>If the job is called twice with the same reference time, the second call does
+not apply more decay. A later call with a more recent time calculates the new
+interval, updates <code>ts_last</code>, and records the corresponding events.</p>
 
 <h1 id="cap7">7. Archiving and retention</h1>
 
@@ -157,12 +159,13 @@ Those operations require an explicit external policy.</p>
 with weight below <code>0.05</code>. Their associated events are also removed by
 the foreign key's <code>ON DELETE CASCADE</code>.</p>
 
-<h1 id="cap8">8. Names in the two languages</h1>
+<h1 id="cap8">8. The name in both languages</h1>
 
-<p>Italian documentation uses <em>mnestoma</em>; English documentation uses
-<em>mnestome</em>. The Python module, class, and SQLite-directory name remain
-<code>mnestoma</code> in both languages. <em>Mnest</em> is the technical name of
-one edge and is not translated.</p>
+<p><em>Mnestoma</em> is a Metnos technical name and remains unchanged in Italian
+and English, as does <em>mnest</em>. The Python module, class, and SQLite
+directory also use <code>mnestoma</code>. For compatibility, this page retains
+its former <code>/en/architecture/mnestome.html</code> address, but the component
+name is no longer translated in the text.</p>
 
 <h1 id="cap9">9. Bootstrap and population</h1>
 
@@ -171,18 +174,20 @@ seed is installed, and the <code>Mnest</code> class does not admit a
 <code>seed</code> state. Edges appear only through explicit API calls or data
 already present in the configured database.</p>
 
-<p>Turns may instead add records to <code>canonical_query_log</code>. This
-activity must not be shown as the birth of mnests, clusters, or L0/L1 paths.</p>
+<p>A best-effort hook may try to add a row to <code>canonical_query_log</code>
+from a turn. No current subsystem relies on this table for plan reuse. In any
+case, one of its rows does not represent the creation of a mnest, cluster, or
+L0/L1 path.</p>
 
 <h1 id="cap10">10. Inspection and observability</h1>
 
 <p><code>python3 -m mnestoma</code> provides commands for statistics, aging,
-top incoming/outgoing edges, protos, walks, summaries, and audit. The
-<code>python3 -m observability render</code> renderer can include counts, active
-edges, protos, and recent events in static HTML.</p>
+top incoming and outgoing links, proto-mnests, walks, summaries, and events.
+The <code>python3 -m observability render</code> renderer can include counts,
+active links, protos, and recent events in a static HTML page.</p>
 
 <p>These tools read store contents; they do not establish that those contents are
-complete. An empty mnestome is a legitimate outcome of the current integration.</p>
+complete. An empty Mnestoma is a legitimate outcome of the current integration.</p>
 
 <h1 id="cap11">11. Operational boundaries</h1>
 

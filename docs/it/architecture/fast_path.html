@@ -104,10 +104,10 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); margin: 1
 <h1 id="cap1">1. L'idea in due righe</h1>
 
 <p>
-<strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Trova i file PDF modificati oggi&raquo;. Se ripeti la richiesta, Metnos
-pu&ograve; riusare il piano gi&agrave; riuscito; non devi scegliere o attivare
-manualmente il fastpath.
+Per esempio, puoi chiedere a Metnos: &laquo;Trova i file PDF modificati
+oggi&raquo;. Se in seguito ripeti la stessa richiesta, Metnos pu&ograve; riusare
+il piano che ha gi&agrave; funzionato. Non devi attivare nulla: il controllo
+avviene automaticamente.
 </p>
 
 <p class="lead">
@@ -121,17 +121,17 @@ voce come non valida e torna alla pianificazione normale.
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
 <defs><marker id="m-fp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
 <rect x="10" y="70" width="158" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="89" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">richiesta</text>
-<text x="89" y="112" text-anchor="middle" fill="#475569" font-size="9.5">query utente</text>
+<text x="89" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">request</text>
+<text x="89" y="112" text-anchor="middle" fill="#475569" font-size="9.5">user query</text>
 <rect x="186" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
 <text x="265" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L0 fastpath</text>
-<text x="265" y="112" text-anchor="middle" fill="#475569" font-size="9.5">query esatta o equivalente</text>
+<text x="265" y="112" text-anchor="middle" fill="#475569" font-size="9.5">exact or equivalent query</text>
 <rect x="362" y="70" width="158" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
 <text x="441" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">L1 autopath</text>
-<text x="441" y="112" text-anchor="middle" fill="#475569" font-size="9.5">cluster + piano campione</text>
+<text x="441" y="112" text-anchor="middle" fill="#475569" font-size="9.5">cluster + champion plan</text>
 <rect x="538" y="70" width="158" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
-<text x="617" y="94" text-anchor="middle" fill="#fff" font-weight="700">motore</text>
-<text x="617" y="112" text-anchor="middle" fill="#bbb" font-size="9.5">pianificatore LLM</text>
+<text x="617" y="94" text-anchor="middle" fill="#fff" font-weight="700">engine</text>
+<text x="617" y="112" text-anchor="middle" fill="#bbb" font-size="9.5">LLM planner</text>
 <line x1="168" y1="98" x2="184" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
 <line x1="344" y1="98" x2="360" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
 <line x1="520" y1="98" x2="536" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-fp)"/>
@@ -163,18 +163,20 @@ al pianificatore di costruirlo di nuovo.
 <h1 id="cap3">3. I due livelli e il loro confine</h1>
 
 <p>
-I due livelli si distinguono per ci&ograve; che riconoscono del percorso. L0
-riconosce l'intero piano, compresi gli argomenti: la stessa richiesta, con gli
-stessi valori concreti. L1 riconosce invece la struttura della soluzione,
-senza gli argomenti della richiesta d'origine, e pu&ograve; quindi servire
-un'intera famiglia di richieste affini.
+I due livelli riusano piani gi&agrave; eseguiti, ma con un grado diverso di
+generalizzazione. L0 parte dalla singola richiesta: la corrispondenza esatta
+pu&ograve; riutilizzare anche un piano che contiene valori specifici. Solo quando il
+piano &egrave; dichiaratamente generalizzabile L0 ammette anche una frase diversa ma
+semanticamente equivalente. L1 parte invece dall'intento completo e da un
+gruppo di richieste affini; prima dell'esecuzione, i valori che dipendono dalla
+domanda vengono ricavati nuovamente dal testo corrente.
 </p>
 
 <table>
 <thead><tr><th>Livello</th><th>Cosa riconosce</th><th>Come</th></tr></thead>
 <tbody>
-<tr><td><strong>L0</strong></td><td><strong>Una richiesta gi&agrave; risolta.</strong> La corrispondenza esatta pu&ograve; conservare un piano specifico; quella semantica &egrave; limitata ai piani generalizzabili.</td><td>Impronta deterministica (0a), poi similarit&agrave; tramite l'embedder configurato (0b)</td></tr>
-<tr><td><strong>L1</strong></td><td><strong>Una famiglia di richieste.</strong> Riusa un piano generale associato a un intento completo e a un cluster semantico.</td><td>Intento, cluster semantico e ordinamento deterministico dei piani campione</td></tr>
+<tr><td><strong>L0</strong></td><td><strong>Una richiesta gi&agrave; risolta.</strong> La corrispondenza esatta pu&ograve; conservare un piano specifico; quella semantica &egrave; limitata ai piani generalizzabili.</td><td>Impronta deterministica (0a), poi similarit&agrave; tramite il modello di embedding configurato (0b)</td></tr>
+<tr><td><strong>L1</strong></td><td><strong>Una famiglia di richieste.</strong> Riusa un piano generale associato a un intento completo e a un gruppo semantico.</td><td>Intento, similarit&agrave; semantica e scelta deterministica del piano migliore</td></tr>
 </tbody>
 </table>
 
@@ -193,15 +195,14 @@ corrispondenza valida prosegue nel motore normale.
 <h1 id="cap4">4. L0 &mdash; cache prodotta dal runtime (<code>fastpath.py</code>)</h1>
 
 <p>
-Il primo livello vive in <code>runtime/engine/fastpath.py</code> e custodisce,
-in un database SQLite (<code>fastpaths.sqlite</code>), i piani gi&agrave;
-eseguiti. Le voci nascono da sole: ogni volta che un turno va a buon fine
-&mdash; un piano nuovo del motore, il riuso di L1 oppure una corrispondenza
-semantica L0 &mdash; Metnos annota la richiesta canonica, la sua impronta,
-l'embedding prodotto dal modello configurato, il piano completo (la struttura,
-o <em>framework</em>) e l'intento, cio&egrave; il verbo e l'oggetto della
-richiesta. Non occorre un'approvazione separata: gli executor hanno gi&agrave;
-superato i controlli di ammissione e il turno ha avuto esito positivo.
+Il primo livello vive in <code>runtime/engine/fastpath.py</code> e conserva i
+piani gi&agrave; eseguiti in un database SQLite
+(<code>fastpaths.sqlite</code>). Una voce nasce dopo un turno riuscito prodotto
+dal motore, da L1 oppure da una corrispondenza semantica L0. Metnos registra la
+forma normalizzata della richiesta, la sua impronta, l'embedding quando
+disponibile, il piano completo e l'intento, espresso come verbo e oggetto.
+Non serve un'altra approvazione: il piano &egrave; composto da executor gi&agrave;
+ammessi e ha appena concluso con successo un'esecuzione reale.
 </p>
 
 <h2>Due modi di trovare la corrispondenza</h2>
@@ -238,8 +239,8 @@ rende quindi indisponibile la capacit&agrave; sottostante.
 
 <ul>
 <li><strong>Riscontro negativo:</strong> un &laquo;&#10007;&raquo; dell'utente
-cancella il fastpath della richiesta. Un turno successivo riuscito pu&ograve;
-crearlo di nuovo.</li>
+cancella il fastpath associato a quella richiesta. Se in seguito il motore la
+risolve correttamente, pu&ograve; crearne uno nuovo.</li>
 <li><strong>Amministrazione:</strong> nella chat web apri
 <strong>Impostazioni &gt; Memoria &gt; Praxis</strong> per vedere le scorciatoie
 L0 e cancellarne una. Se chiedi istruzioni da Telegram, il percorso indicato
@@ -294,11 +295,11 @@ l'identificatore.</li>
 
 <p>
 Il confine &egrave; deliberato: L0 privilegia la ripetizione della stessa
-richiesta; L1 generalizza a un gruppo di intenti e pu&ograve; derivare da un
+richiesta; L1 generalizza a una famiglia di richieste e pu&ograve; derivare da un
 riscontro esplicito oppure dalla semina shadow appena descritta. L0 viene prima
-nella cascata, ma entrambi devono superare gli stessi controlli di validit&agrave;,
-corrispondenza degli argomenti con la richiesta e sicurezza prima
-dell'esecuzione.
+nella cascata. Prima di eseguire un piano, entrambi i livelli verificano le
+firme di validit&agrave;, riallineano gli argomenti alla richiesta corrente e passano
+dalla stessa preparazione e dagli stessi controlli usati per un piano nuovo.
 </p>
 
 
@@ -380,28 +381,38 @@ piano aggiornato.
 </p>
 
 
-<h1 id="cap7">7. L'estrattore di argomenti</h1>
+<h1 id="cap7">7. Come si aggiornano gli argomenti</h1>
 
 <p>
-Riconoscere la richiesta &egrave; met&agrave; del lavoro. L'altra met&agrave;
-&egrave; ricavarne i valori concreti: quali percorsi, quali URL, quale data, quale
-soglia. Se ne occupa un estrattore a regole (<code>args_extractor.py</code>),
-anch'esso senza modello:
+Riconoscere un piano non basta: bisogna anche collegarlo ai valori presenti
+nella richiesta corrente, come percorsi, URL, account, date o quantit&agrave;.
+Prima di ogni esecuzione Metnos applica una catena comune di trasformazioni
+deterministiche. Ogni trasformazione opera soltanto sui campi dichiarati dallo
+schema dell'executor; se non dispone di un segnale affidabile, non inventa un
+valore.
 </p>
 
 <ul>
-<li><strong>Regole deterministiche.</strong> Espressioni regolari per i tipi noti: URL
-(<code>https://...</code>), path (<code>~/...</code> o <code>/...</code>, con la
-scorciatoia &laquo;home&raquo; che diventa <code>~/</code>), email, numeri,
-estensioni di file (&laquo;file PDF&raquo; &rarr; <code>*.pdf</code>), date
-(oggi, ieri, domani, dopodomani &mdash; in italiano e in inglese &mdash;
-tradotte in formato ISO) e finestre temporali (&laquo;questa settimana&raquo;,
-&laquo;ultime 24 ore&raquo;, &laquo;last 7 days&raquo;).</li>
-<li><strong>Argomenti che dipendono dalla richiesta.</strong> Alcuni valori
-&mdash; l'account di posta, la finestra temporale &mdash; cambiano con la
-domanda: all'esecuzione (e alla registrazione) si ricalcolano sulla query
-attuale, non si ereditano dal piano in memoria.</li>
+<li><strong>Valori riconoscibili nel testo.</strong>
+<code>args_extractor.py</code> individua tipi noti, tra cui URL, percorsi Linux
+e Windows, indirizzi email, quantit&agrave; esplicite, estensioni di file
+(&laquo;file PDF&raquo; diventa <code>*.pdf</code>), date e finestre temporali in
+italiano e in inglese.</li>
+<li><strong>Risolutori specializzati.</strong> Account di posta, finestra
+temporale e altri campi governati dall'istanza vengono ricalcolati dalla
+richiesta e dal contesto disponibili al momento dell'esecuzione.</li>
+<li><strong>Richieste composte.</strong> Quando una frase contiene pi&ugrave;
+azioni, i valori vengono associati alla relativa proposizione, per evitare che
+la data o il percorso di un'azione finiscano in quella successiva.</li>
 </ul>
+
+<p>
+Questa preparazione viene applicata anche ai piani recuperati da L0 e L1. Un
+piano con valori letterali che non possono essere generalizzati resta
+utilizzabile soltanto per la richiesta esatta; alcuni piani, per esempio quelli
+con identificatori numerici incorporati o sessioni autenticate, non vengono
+memorizzati affatto.
+</p>
 
 
 <h1 id="cap8">8. Configurazione</h1>
@@ -493,9 +504,9 @@ raggruppando i fastpath L0 per forma del piano e intento.
 diventa una proposta che attende l'approvazione di una persona: compare in
 <strong>Impostazioni &gt; Ciclo di vita &gt; Modifiche</strong> della chat web.
 Se la famiglia dell'intento non esiste ancora nel catalogo, l'approvazione
-accoda la sintesi completa: cinque stadi, test iniziali, firma e
-installazione. Se invece il piano compone gi&agrave; un executor della stessa
-famiglia, serve prima un qualificatore scelto da una persona; l'approvazione
+accoda la procedura completa di sintesi, con verifiche deterministiche, test
+iniziali, firma e installazione. Se invece il piano compone gi&agrave; un executor
+della stessa famiglia, serve prima un qualificatore scelto da una persona; l'approvazione
 da sola non avvia la sintesi. Da Telegram si pu&ograve; chiedere una spiegazione,
 ma il percorso conduce sempre alla chat web.</li>
 <li><strong>Modalit&agrave; 2 (opzionale, spenta).</strong> Oltre una soglia
@@ -503,7 +514,7 @@ pi&ugrave; alta, Metnos pu&ograve; sintetizzare automaticamente soltanto un cand
 la cui famiglia &egrave; ancora libera. Occorrono almeno cinque fastpath,
 cinquanta utilizzi, trenta giorni e tre osservazioni notturne della stessa
 proposta; una decisione umana precedente impedisce l'automazione. La sintesi
-attraversa comunque la procedura completa. &Egrave; ammesso un solo tentativo per
+attraversa comunque la stessa procedura completa. &Egrave; ammesso un solo tentativo per
 notte, riuscito o fallito.</li>
 </ul>
 

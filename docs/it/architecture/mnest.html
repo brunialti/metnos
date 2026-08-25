@@ -36,12 +36,11 @@
  <div class="meta">Contratto dati, ciclo di vita e stato dell'integrazione.</div>
 </div>
 
-<p class="lead">Un mnest rappresenta una relazione diretta e pesata da un executor
-sorgente a uno di destinazione. Il relativo archivio, le query e l'ager sono
-implementati. Il runtime corrente, per&ograve;, non chiama automaticamente
-<code>record_passing()</code> alla fine dei turni: un record presente &egrave; quindi un
-dato inserito da un chiamante esplicito, non la prova che ogni passaggio osservato
-venga appreso dal prodotto.</p>
+<p class="lead">Un mnest annota che l'output di un executor &egrave; stato passato a
+un altro executor. Per esempio, pu&ograve; collegare la ricerca di alcuni file alla
+lettura dei file trovati. Il collegamento ha una direzione, un peso e un numero
+di utilizzi. L'archivio e le operazioni per gestirlo esistono, ma il runtime non
+registra ancora automaticamente i passaggi di ogni turno.</p>
 
 <div class="toc">
 <h2>Indice</h2>
@@ -63,10 +62,11 @@ venga appreso dal prodotto.</p>
 
 <h1 id="cap1">1. Scopo e stato corrente</h1>
 
-<p>Il tipo <code>Mnest</code> e le sue operazioni vivono in
-<code>runtime/mnestoma.py</code>. Conservano e interrogano collegamenti fra nomi
-e versioni di executor; non rappresentano una memoria personale e non implicano
-apprendimento automatico.</p>
+<p>Il tipo <code>Mnest</code> e le relative operazioni sono definiti in
+<code>runtime/mnestoma.py</code>. Il modulo conserva e interroga collegamenti fra
+nomi e versioni di executor. Questi collegamenti descrivono una struttura
+operativa dell'installazione: non sono ricordi personali e, da soli, non
+dimostrano che Metnos stia imparando dalle abitudini dell'utente.</p>
 
 <table>
 <thead><tr><th>Parte</th><th>Stato</th></tr></thead>
@@ -81,27 +81,28 @@ apprendimento automatico.</p>
 
 <h1 id="cap2">2. Che cosa rappresenta</h1>
 
-<p>Un mnest ha direzione <code>src_executor &rarr; dst_executor</code>, versioni,
-numero di usi, peso, istanti di primo e ultimo aggiornamento e stato. La struttura
-pu&ograve; rappresentare il fatto operativo &laquo;un chiamante ha registrato il passaggio
-da A a B&raquo;.</p>
+<p>Ogni mnest va da un executor sorgente a uno di destinazione:
+<code>src_executor &rarr; dst_executor</code>. Conserva le versioni coinvolte, il
+numero di utilizzi, il peso della relazione, le date del primo e dell'ultimo
+aggiornamento e lo stato. In termini rigorosi afferma soltanto questo: un
+componente ha registrato il passaggio da A a B.</p>
 
 <p>La direzione conta: A&rarr;B e B&rarr;A sono record diversi. Anche una nuova
-versione della destinazione produce una relazione distinta. Una catena A&rarr;B&rarr;C
-&egrave; composta da due archi; la navigazione di pi&ugrave; archi avviene nella query
-<code>walk()</code>.</p>
+versione della destinazione produce una relazione distinta. Una catena
+A&rarr;B&rarr;C contiene due collegamenti; <code>walk()</code> permette di
+percorrerne pi&ugrave; di uno.</p>
 
 <h1 id="cap3">3. Confine dell'evidenza</h1>
 
-<p>Il record non contiene l'output scambiato e non verifica da solo che il
-trasferimento sia avvenuto. La provenienza dipende dal chiamante di
-<code>record_passing()</code>. L'eventuale <code>turn_id</code> nell'evento permette
-di risalire al turno d'origine, ma soltanto se quel riferimento &egrave; stato fornito e
-il relativo log esiste ancora.</p>
+<p>Il record non contiene l'output scambiato e non pu&ograve; verificare da solo che
+il trasferimento sia davvero avvenuto. La sua attendibilit&agrave; dipende quindi dal
+componente che chiama <code>record_passing()</code>. L'evento pu&ograve; includere un
+<code>turn_id</code>, utile per cercare il turno d'origine se il riferimento
+&egrave; stato fornito e il relativo registro esiste ancora.</p>
 
-<p>Per questo un mnest non deve essere presentato come prova autonoma, memoria
-biografica o preferenza dell'utente. &Egrave; telemetria strutturata su una relazione
-fra capability.</p>
+<p>Un mnest non &egrave; quindi una prova autonoma, una memoria biografica o una
+preferenza dell'utente. &Egrave; telemetria strutturata su una relazione fra
+executor.</p>
 
 <h1 id="cap4">4. Campi e vincoli</h1>
 
@@ -128,15 +129,16 @@ esplicita per rinforzare un proto esistente.</p>
 
 <h1 id="cap5">5. Registrazione</h1>
 
-<p><code>record_passing()</code> apre una transazione. Se trova lo stesso arco
-<code>active</code>, applica il decadimento maturato, aggiunge il rinforzo,
-incrementa <code>uses</code> e registra un evento. Altrimenti crea un nuovo arco
-con peso <code>0.30</code> e un primo evento.</p>
+<p><code>record_passing()</code> esegue l'aggiornamento in una transazione. Se
+trova lo stesso collegamento nello stato <code>active</code>, calcola quanto il
+peso &egrave; diminuito dall'ultimo utilizzo, aggiunge il nuovo rinforzo, incrementa
+<code>uses</code> e registra l'evento. Se il collegamento non esiste, lo crea
+con peso <code>0.30</code>.</p>
 
-<p>Con <code>dst_exists=False</code> la stessa API crea o rinforza un proto-mnest.
-La chiamata &egrave; atomica per la coppia cercata, ma l'oggetto
-<code>Mnestoma</code> mantiene una connessione per processo e non dichiara la
-propria istanza thread-safe.</p>
+<p>Con <code>dst_exists=False</code> la stessa API crea o rinforza un
+proto-mnest. La chiamata &egrave; atomica per la coppia cercata. Ogni istanza di
+<code>Mnestoma</code> apre per&ograve; una propria connessione SQLite e non va
+condivisa fra thread.</p>
 
 <h1 id="cap6">6. Rinforzo e decadimento</h1>
 
@@ -186,6 +188,8 @@ al suo ciclo di promozione.</p>
 <ul>
  <li><strong>Synt.</strong> Il composer pu&ograve; percorrere soltanto archi
  <code>active</code>; i comandi diagnostici possono elencare proto ricorrenti.</li>
+ <li><strong>Telos.</strong> L'introspezione pu&ograve; includere un breve riepilogo
+ dei mnest che fanno riferimento a executor ancora presenti nel catalogo.</li>
  <li><strong>Ager.</strong> Il processo <code>nightly_aging</code> richiama
  <code>apply_ager()</code> insieme all'ager degli executor.</li>
  <li><strong>Osservabilit&agrave; e CLI.</strong> Possono mostrare statistiche, top
@@ -206,16 +210,17 @@ Vaglio non li legge. L0 e L1 hanno archivi e segnali distinti.</p>
 <code>v_mnestoma</code> espone gli archi <code>active</code> e
 <code>proto</code>.</p>
 
-<p>Lo stesso database ospita <code>canonical_query_log</code>, alimentato da alcuni
-turni come telemetria di normalizzazione. Quella tabella non &egrave; un mnest e non
-dimostra che il grafo degli archi sia stato aggiornato. Il modulo non implementa
-snapshot mensili o compressione automatica.</p>
+<p>Lo stesso database contiene anche <code>canonical_query_log</code>, una
+tabella separata nata per la telemetria di normalizzazione delle richieste. Il
+riuso corrente dei piani avviene negli archivi L0 e L1 descritti nella guida ai
+<a href="fast_path.html">fastpath e autopath</a>: una riga in questa tabella non
+&egrave; un mnest e non dimostra che il grafo dei collegamenti sia stato aggiornato.
+Il modulo non crea snapshot mensili e non comprime automaticamente il database.</p>
 
 <h1 id="cap11">11. Esempio</h1>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Spiegami se il mnestoma viene alimentato automaticamente dai miei turni e
-quali componenti lo consultano oggi.&raquo;</p>
+<p>Puoi chiedere a Metnos: &laquo;Il mnestoma viene alimentato automaticamente dai
+miei turni? Quali componenti lo consultano oggi?&raquo;</p>
 
 <p>La risposta corretta deve distinguere il codice disponibile dall'integrazione:
 l'archivio, il compositore, l'ager e gli strumenti di ispezione esistono; la registrazione

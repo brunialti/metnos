@@ -538,6 +538,7 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     import os as _os_lint
     if _os_lint.environ.get("METNOS_SYNT_LINT_DISABLED") != "1":
         try:
+            import config as _C_lint
             from manifest_lint import lint_manifest as _lint
             _man = {
                 "name": run.name or (s1.output.get("name") if s1.output else "") or "",
@@ -548,7 +549,10 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
                     "required": (s2.output.get("args_required") if s2.output else []) or [],
                 },
             }
-            _findings = _lint(_man)
+            _findings = _lint(
+                _man, language=_C_lint.INSTANCE_LANG,
+                allow_flat_description=True,
+            )
             _errs = [f for f in _findings if f.severity == "error"]
             _warns = [f for f in _findings if f.severity == "warn"]
             if _warns:

@@ -34,11 +34,11 @@
 <h1>Multilingual by definition</h1>
 
 <p class="lead">
-In Metnos, language is not a decoration applied to the interface after the
-product is complete. It is a property of the Metnos instance: the configured
-language is shared by its users, channels, requests, and responses. Changing
-the instance language is therefore a deliberate global configuration change,
-not a per-user or per-turn choice.
+In Metnos, language is a property of the whole instance, not an individual
+user preference. The runtime core retains one language for users, channels,
+and concurrent requests. Changing it is therefore a deliberate global
+configuration change. This is the architectural contract; some older surfaces
+do not yet satisfy it completely, and this page identifies those limitations.
 </p>
 
 <p>
@@ -51,36 +51,38 @@ constraint: a feature is not genuinely multilingual when only its surface is.
 <figure class="documentation-infographic" aria-labelledby="multilingual-flow-caption">
  <img src="/assets/multilingual-flow.svg"
       width="1200" height="720" loading="eager" decoding="async"
-      alt="Metnos path: instance language, shared execution context, coordinated prompts and manifests, execution with the same contract, response through the instance-language-English-Italian fallback chain; below, Tutor catalog compilation and signing.">
+      alt="Metnos path: instance language, turn context, coordinated language sources, execution with unchanged authority, and a response with English fallback; below, Tutor catalog compilation and signing.">
  <figcaption id="multilingual-flow-caption">
-  One language follows the entire request path. The numbers refer to the six
-  stages below; arrows show a sequence, not an automatic loop.
+  The five numbered stages describe a request path; the lower path shows how
+  the Tutor catalog is verified. Arrows show a sequence, not an automatic loop.
  </figcaption>
 </figure>
 
 <ol class="infographic-key">
  <li><strong>The instance language.</strong> Language belongs to the Metnos instance and is shared by its users and channels.</li>
  <li><strong>A propagated constraint.</strong> Every request receives the instance language and cannot replace it, including during concurrent execution.</li>
- <li><strong>Four coordinated sources.</strong> Prompts, executor manifests, deterministic messages, and the comprehension lexicon remain separate but consistent.</li>
+ <li><strong>Four coordinated sources.</strong> Prompts, executor manifests, deterministic messages, and the recognition lexicon remain separate but consistent.</li>
  <li><strong>Declared fallbacks.</strong> When text is missing, Metnos follows a known chain and keeps the translation debt visible.</li>
- <li><strong>One language across channels.</strong> Rendering remains consistent in the web chat, notifications, and paired devices.</li>
+ <li><strong>One language across channels.</strong> The main paths propagate the instance language to the web chat, notifications, and paired devices.</li>
  <li><strong>Verification before support.</strong> A language is declared supported only after coverage, structural, and editorial checks.</li>
 </ol>
 
 <h2 id="definition">What “by definition” means</h2>
 
 <p>
-It means that language enters the system boundaries rather than merely its
-copy. The instance language is established in configuration and is retained in
-the execution context; every component that produces words for a person must
-use that same value. There is no per-user or per-turn language override.
+It means that language enters system boundaries rather than merely its copy.
+The core reads it from signed configuration and retains it in an isolated
+context for each concurrent execution. A value received from a request cannot
+replace it. Human-facing components must use that same value: this is a
+verifiable requirement, not a claim that every older page has already been
+migrated.
 </p>
 
 <p>
-This makes the operational rule explicit: all users and channels connected to
-one instance receive the same configured language. If two languages are needed
-at the same time, they require separate Metnos instances; changing the language
-of one instance is a global configuration change for that instance.
+Across the paths managed by the core, every user and channel connected to one
+instance therefore receives the same language. If two languages are needed at
+the same time, they require separate Metnos instances; changing the language of
+one instance is a global configuration change for that instance.
 </p>
 
 <div class="callout note">
@@ -92,7 +94,7 @@ of one instance is a global configuration change for that instance.
 <h2 id="four-layers">One intent, four language layers</h2>
 
 <p>
-The innovation is not simply translating more text automatically. It is the
+The point is not simply to translate more text automatically. It is the
 recognition that an agent uses language at different points, each with a distinct
 purpose and risk. Metnos keeps them separate, so a gap can be found and corrected
 without pretending that the entire system is already ready.
@@ -119,7 +121,7 @@ without pretending that the entire system is already ready.
    <td>These texts must remain dependable even when no model is available.</td>
   </tr>
   <tr>
-   <td><strong>Comprehension lexicon</strong></td>
+   <td><strong>Recognition lexicon</strong></td>
    <td>Recognises natural ways to express intents, objects, and parameters.</td>
    <td>Displaying Italian words does not automatically teach the system every way an intent can be phrased in Italian.</td>
   </tr>
@@ -135,15 +137,30 @@ preserve every canonical action: a partial mapping cannot pass the coverage
 check, and ambiguous forms are reported for linguistic validation.
 </p>
 
+<div class="callout note">
+ <p><strong>Current exception: <code>affinity</code>.</strong> Manifest phrases
+ used to bring a request closer to an executor are still stored in one list
+ that may mix languages. The maximum-priority <code>AFF-I18N-001</code> TODO
+ requires analysis, comparison of alternatives, a specification, and
+ implementation before this layer can be called fully i18n-compliant.</p>
+</div>
+
 <h2 id="fallback">Explicit fallback, not false completeness</h2>
 
-<p>
-A missing translation should lead neither to a crash nor to invented wording.
-Each layer follows a deterministic fallback chain. For visible messages, for
-example, Metnos tries the instance language, then English, then Italian; if no version
-exists, it exposes a recognisable missing key. Prompts and manifests use
-equivalent rules suited to their own sources.
-</p>
+<p>A missing translation should lead neither to invented wording nor hidden
+behaviour. Each layer follows a deterministic rule:</p>
+
+<ul>
+ <li>messages try the instance language and then English; if both are absent,
+ they expose a recognisable key such as <code>&lt;missing:KEY&gt;</code>;</li>
+ <li>prompts try the requested language and then English; loading fails if
+ neither source exists;</li>
+ <li>multilingual manifest fields try the instance language, then English,
+ and finally, only as a deterministic last resort, the first available language;</li>
+ <li>the recognition lexicon may merge current-language forms with registered
+ editorial baselines, but it reports missing native forms and the coverage gate
+ does not count them as complete.</li>
+</ul>
 
 <p>
 Fallback provides continuity; it does not certify linguistic quality. A language
@@ -181,21 +198,30 @@ therefore cannot accidentally enter a published artefact.
 </p>
 
 <p>
-The same rule applies to channels. Language belongs to the Metnos instance;
-Telegram, the web chat, and deferred work all use the instance language and do
-not keep independent preferences that can silently diverge.
+The same rule governs the main channel paths. Telegram, the web chat, and
+deferred work receive the instance language and do not retain an independent
+preference for each user.
 </p>
+
+<div class="callout note">
+ <p><strong>Current coverage, not the ideal.</strong> Some standalone HTML pages
+ inherited from the runtime still contain Italian text directly in code. These
+ include the OAuth result page, the older timers view, and several standalone
+ views. They do not all go through the i18n catalog. The chat core and
+ template-based administration pages follow the contract, but the complete
+ interface cannot yet be described as fully localised.</p>
+</div>
 
 <h2 id="innovation">Where the innovation lies</h2>
 
 <p>
-The distinctive idea is to treat multilingual operation as a verifiable
+The architectural value is to treat multilingual operation as a verifiable
 cross-cutting property, alongside identity and provenance, rather than as a final
 editorial phase. This produces three concrete benefits:
 </p>
 
 <ul>
- <li><strong>consistency:</strong> understanding, tool selection, and the response use the same instance language;</li>
+ <li><strong>verifiable consistency:</strong> the contract requires understanding, tool selection, and the response to use the same instance language;</li>
  <li><strong>isolation:</strong> concurrent users and tasks cannot replace the instance language with a per-user or per-turn value;</li>
  <li><strong>honesty:</strong> fallbacks, stale translations, and incomplete coverage stay observable rather than hidden.</li>
 </ul>
@@ -207,35 +233,46 @@ review remains essential. The innovation is to make those limits part of the
 contract, and therefore measurable and correctable.
 </p>
 
-<h2 id="auto-localisation">Full self-localisation</h2>
+<h2 id="auto-localisation">How a new language is prepared</h2>
 
 <p>
 When installation requests a language other than Italian or English, Metnos
-does not pretend that it is already available. It normalises the BCP-47 code
-and, after the installation key is created, atomically records a signed request
-at <code>$METNOS_USER_STATE/i18n/localization_request.json</code>
-with its date, state, and corpus version. It then starts the instance
-temporarily in English and queues localisation.
-English is therefore a safe transitional bootstrap, never a hidden per-user or
-per-turn choice.
+does not pretend that it is ready. It normalises the BCP-47 code and, after the
+installation key is created, atomically records a signed request at
+<code>$METNOS_USER_STATE/i18n/localization_request.json</code> with its date,
+state, and corpus version. The instance starts temporarily in English and the
+request remains pending. Installation alone does not automatically translate
+the complete system.
 </p>
 
 <p>
-The planned pipeline is incremental and idempotent. Overnight it compares
-source fingerprints and translates, through the dedicated language workload,
-the complete operational corpus: lexicons used by the proposer and
-understanding layer, planner and synt prompts, manifest descriptions and
-arguments, deterministic messages, notifications, device repertories, and
-resources consumed by Tutor. It does not translate labels only: it translates
-the material that guides reasoning and makes execution verifiable.
+The complete pipeline exists, but is currently started through administration
+tools. <code>materialize</code> inventories prompts, textual manifest fields,
+messages, the recognition lexicon, public documentation, the device repertoire,
+and the Tutor catalog. <code>advance</code> translates a bounded number of
+resources, records fingerprints, and submits eligible material to semantic
+review. Sensitive resources, such as regular expressions and consent controls,
+require human review. The <code>affinity</code> field is not yet part of this
+inventory.
+</p>
+
+<p>
+Two narrower periodic jobs also exist. By default, the service timer processes
+messages already pending in the i18n catalog every five minutes; the scheduler
+runs a six-hour fallback and also processes the recognition lexicon. These jobs
+drain queues that have already been materialised, but they do not replace an
+explicit advance of the complete pipeline. Once every required resource has
+passed its checks, activation rebuilds the public catalogs,
+checks manifests and coverage, updates the signed configuration, and can restart
+the service in the new language.
 </p>
 
 <ol class="infographic-key">
- <li><strong>Bootstrap.</strong> The requested language is recorded; the instance remains operational in English.</li>
- <li><strong>Inventory.</strong> Every resource receives a source, language code, fingerprint, and state.</li>
- <li><strong>Translation.</strong> Human-facing and model-facing text follow different safeguards under the same semantic contract.</li>
- <li><strong>Verification.</strong> Placeholders, schemas, manifest signatures, lexicons, and proposer behaviour are checked before enablement.</li>
- <li><strong>Activation.</strong> Only after the gate passes does an administrator restart the instance in the new language.</li>
+ <li><strong>Temporary bootstrap.</strong> The requested language is recorded and the instance remains operational in English.</li>
+ <li><strong>Administrative inventory.</strong> Every inventoried resource receives a source, language code, fingerprint, and state.</li>
+ <li><strong>Bounded translation.</strong> Workers claim finite batches and retain errors without losing earlier work.</li>
+ <li><strong>Review and gates.</strong> Placeholders, schemas, manifests, lexicons, documents, and derived catalogs must pass their checks.</li>
+ <li><strong>Explicit activation.</strong> Only after the gates pass does an administrator make the new language authoritative and restart the instance.</li>
 </ol>
 
 <p class="callout note"><strong>What remains unchanged.</strong> Translation does

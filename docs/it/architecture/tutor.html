@@ -65,12 +65,13 @@ table{width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt}th{backgr
  <div class="subtitle">conoscenza verificata, stato corrente e apprendimento privato</div>
 </div>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Che cosa contiene il file <code>Metnos_Prospettive_Estese_v1.html</code>?&raquo;</p>
+<p>Per esempio, puoi chiedere a Metnos: &laquo;Che cosa contiene il file
+<code>Metnos_Prospettive_Estese_v1.html</code>?&raquo;</p>
 
 <p class="lead">Il Tutor risponde alle domande su Metnos prima che intervenga il
 pianificatore operativo. Formula la risposta a partire da fonti ammesse e pu&ograve;
-aggiungere osservazioni correnti, ma non possiede strumenti e non esegue azioni.</p>
+aggiungere osservazioni correnti. Non pu&ograve; scegliere liberamente gli executor e
+non esegue le azioni richieste dall'utente.</p>
 
 <div class="flow">
 domanda &rarr; distinzione fra spiegazione e azione &rarr; fonti autorizzate
@@ -130,9 +131,11 @@ pubblicazione. Il catalogo comprende:</p>
 </ul>
 
 <p>Non comprende file personali, messaggi, calendari, conversazioni, registri di
-esecuzione, roadmap o note interne di sviluppo. L'autorizzazione viene applicata
-prima che il testo raggiunga il modello. Se una fonte non &egrave; visibile alla persona
-che pone la domanda, non pu&ograve; contribuire alla risposta.</p>
+esecuzione, roadmap interne o note di sviluppo. Le roadmap pubbliche e
+indicizzabili sono invece documentazione come le altre pagine del sito.
+L'autorizzazione viene applicata prima che il testo raggiunga il modello. Se una
+fonte non &egrave; visibile alla persona che pone la domanda, non pu&ograve; contribuire alla
+risposta.</p>
 
 <p>I documenti lunghi sono divisi in sezioni. Una corrispondenza semantica sceglie
 le sezioni pertinenti; quando &egrave; stata riconosciuta l'identit&agrave; di un documento,
@@ -140,35 +143,43 @@ la somiglianza serve soltanto a ordinare le sezioni di quella stessa fonte. Il
 modello compone il testo finale, ma non pu&ograve; introdurre capacit&agrave;, permessi o fatti
 che le fonti non attestino.</p>
 
-<p>Anche i manifesti hanno una struttura. Il contratto completo di un executor
-descrive l'operazione; i singoli argomenti ne precisano parametri e limiti. Se un
-campo generico risulta vicino alla domanda, ma nella stessa banda di pertinenza
-si trova un contratto completo, quest'ultimo diventa la fonte primaria. Le
-descrizioni dei suoi argomenti restano come fonti di dettaglio. La regola riguarda
-la gerarchia delle fonti e non contiene elenchi di domande, parole speciali o
-eccezioni per un dominio.</p>
+<p>Anche i manifest hanno una struttura. Il contratto completo di un executor
+descrive l'operazione; le schede dei singoli argomenti ne precisano parametri e
+limiti. Quando entrambe le fonti sono pertinenti, il contratto completo viene
+prima e le schede degli argomenti lo completano. Questa precedenza deriva dal
+tipo di fonte, non da un elenco di domande o da eccezioni scritte per uno
+specifico dominio.</p>
+
+<p>Per confrontare letture e modifiche, il Tutor pu&ograve; unire il manifest
+dell'executor con il censimento pubblico della reversibilit&agrave;. Deve distinguere
+tre casi: un'azione che pu&ograve; essere annullata, una modifica senza un ripristino
+affidabile e un'operazione di sola lettura o calcolo per la quale non esiste
+nulla da ripristinare. Non deduce mai l'inverso dal nome dell'executor.</p>
 
 <h1 id="stato-corrente">3. Quando serve lo stato corrente</h1>
 
 <p>Alcune domande non chiedono soltanto che cosa una pagina dovrebbe mostrare,
 ma che cosa sta mostrando in questo momento. Una fonte firmata pu&ograve; allora
-richiamare una sonda di sola lettura registrata dal runtime. Il modello non
-sceglie la sonda e non ne inventa gli argomenti.</p>
+richiamare una sonda di sola lettura registrata dal runtime. Un classificatore
+pu&ograve; scegliere soltanto l'identificatore di una vista ammessa; il registro
+associa quella vista a una sola sonda e a una proiezione precisa dei dati. Il
+modello che scrive la risposta non pu&ograve; scegliere la sonda n&eacute; inventarne gli
+argomenti.</p>
 
 <p>La vicinanza di argomento non basta. Il runtime prima propone una vista, poi
 verifica di nuovo che quella sola vista comprenda ogni fatto richiesto e infine
-la confronta semanticamente con tutte le altre viste visibili. Deve risultare
-il primario con un margine sufficiente. Se uno dei controlli fallisce, il Tutor
-si ritira e la richiesta passa al normale executor di lettura. Per esempio,
+la confronta semanticamente con tutte le altre viste visibili. Deve essere la
+scelta pi&ugrave; pertinente con un margine sufficiente. Se uno dei controlli fallisce,
+il Tutor si ritira e la richiesta passa al normale executor di lettura. Per esempio,
 &laquo;Controlla se c'&egrave; posta metnos&raquo; usa la casella di posta: non viene
 gestita mediante lo stato dei servizi.</p>
 
-<p>I controlli che attribuiscono autorit&agrave; al Tutor hanno una finestra breve e
-comune. Una volta ammessa la vista, la sonda di sola lettura e la composizione
-dispongono invece del termine complessivo del turno. Se il controllo preliminare
-del Tutor &egrave; occupato, oppure la vista o il compositore non restituiscono un esito valido,
-la richiesta prosegue nel normale motore: un aiuto facoltativo non diventa un
-errore HTTP e non sottrae il turno al pianificatore.</p>
+<p>I controlli preliminari condividono un tempo massimo breve, cos&igrave; una richiesta
+operativa non resta in attesa del Tutor. Dopo l'ammissione della vista, la sonda
+di sola lettura e la composizione possono usare il tempo complessivo del turno.
+Se il controllo &egrave; occupato, oppure la vista o il compositore non restituiscono
+un esito valido, la richiesta prosegue nel motore normale: un aiuto facoltativo
+non diventa un errore HTTP e non sottrae il turno al pianificatore.</p>
 
 <p>Per una lingua appena aggiunta, una vista pu&ograve; usare temporaneamente il
 contratto inglese come fonte di ripiego. Il compositore riceve comunque la
@@ -200,11 +211,9 @@ come un periodo senza esecuzioni non dimostra che il motore sia fermo. Se la
 domanda presuppone erroneamente un guasto, il Tutor corregge la premessa; indica
 una causa soltanto quando l'osservazione corrente la attesta.</p>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Quali servizi sono attivi e a che cosa servono?&raquo;</p>
+<p>Puoi chiedere: &laquo;Quali servizi sono attivi e a che cosa servono?&raquo;</p>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Perch&eacute; lo scheduler risulta fermo?&raquo;</p>
+<p>Oppure: &laquo;Perch&eacute; lo scheduler risulta fermo?&raquo;</p>
 
 <h1 id="richieste-miste">4. Spiegazione e azione nella stessa richiesta</h1>
 
@@ -229,8 +238,8 @@ consensi ed executor.</p>
 <p>Un dialogo gi&agrave; aperto non viene sostituito. Se la separazione delle clausole
 non &egrave; sicura, Metnos chiede di formulare separatamente spiegazione e azione.</p>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Come si archiviano le email? Archivia anche quelle di ieri&raquo;.</p>
+<p>Per esempio: &laquo;Come si archiviano le email? Archivia anche quelle di
+ieri&raquo;.</p>
 
 <p>Il Tutor spiega l'operazione attestata dal manifest di
 <code>move_messages</code>, conserva senza riscriverla la clausola
@@ -279,10 +288,11 @@ collegamento, ma non incorpora l'interfaccia amministrativa.</p>
 
 <h1 id="aggiornamento">7. Aggiornamento e comportamento in caso di errore</h1>
 
-<p>Ogni modifica a una fonte ammessa cambia l'impronta del materiale in ingresso. Il compilatore
-costruisce un candidato completo, ne verifica schema, vettori e firma e lo
-sostituisce atomicamente al catalogo corrente. I vettori delle unit&agrave; immutate
-possono essere riutilizzati, ma nessun catalogo parziale viene ammesso.</p>
+<p>Ogni modifica a una fonte ammessa cambia l'impronta del materiale usato per
+costruire il catalogo. Il compilatore prepara una nuova versione completa, ne
+verifica schema, vettori e firma e soltanto allora la sostituisce al catalogo
+corrente con un'unica operazione. I vettori delle unit&agrave; immutate possono essere
+riutilizzati, ma una versione parziale non viene mai ammessa.</p>
 
 <p>Se il recupero non trova <em>alcuna</em> fonte ammissibile, il Tutor non
 risponde e lascia la richiesta al normale motore. In quel caso l'unica cosa

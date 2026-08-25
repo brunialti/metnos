@@ -1,449 +1,198 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
- <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; channel</title>
- <meta name="description" content="Technical guide to Metnos channels: web chat, HTTP API, Telegram adapter, daemon, offset persistence, identity, and interactive buttons.">
- <meta name="keywords" content="channel, protocol, telegram, web chat, daemon, long-poll, identity, metnos">
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Conversation channels</title>
+ <meta name="description" content="How web chat and Telegram carry requests and responses between users and the Metnos runtime.">
  <meta name="author" content="the owner">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/channel">
- <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/channel">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/channel">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/channel">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/channel">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/en/architecture/channel">
- <meta property="og:title" content="Metnos &mdash; channel">
- <meta property="og:description" content="Channel adapter and Telegram implementation (send + long-poll + daemon + offset persistence + systemd unit).">
- <meta property="og:locale" content="en_US">
- <meta property="og:locale:alternate" content="it_IT">
- <meta property="og:site_name" content="Metnos">
- <meta name="twitter:card" content="summary">
- <meta name="twitter:title" content="Metnos &mdash; channel">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — channel ",
- "description": "Technical guide to channels: web chat and HTTP API, Channel Protocol, TelegramChannel, ChannelDaemon, offset persistence, and per-user identity.",
- "url": "https://metnos.com/en/architecture/channel.html",
- "inLanguage": "en",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "the owner"}
-}
- </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
-h1:first-of-type { margin-top: 0; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
- </style>
-<link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
-<script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+ <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head>
 <body>
 
-
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/architecture/channel.html" hreflang="it" lang="it">IT</a>
-<span class="sep">&middot;</span>
-<a href="/en/architecture/channel.html" class="active" hreflang="en" lang="en">EN</a>
+ <a href="/it/architecture/channel.html" hreflang="it" lang="it">IT</a>
+ <span class="sep">&middot;</span>
+ <a class="active" href="/en/architecture/channel.html" hreflang="en" lang="en">EN</a>
 </nav>
 
-<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
- <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
- <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">channel</strong></span>
- </div>
-</div>
+<h1>Conversation channels</h1>
 
-<div class="title-page">
- <h1>Metnos</h1>
- <div class="subtitle"><code>channel</code> &mdash; how Metnos receives from and replies to the world</div>
- <div class="meta">
- Guide to conversational channels<br>
- </div>
-</div>
-<p class="lead">Channels translate the browser, HTTP API, and Telegram into the
-runtime's shared message contract. Identity, autonomy level, dialog state, and reply
-destination remain bound to the authenticated user and channel: a message cannot
-inherit another person's context.</p>
-
-<p><strong>Ask Metnos with a request like this example:</strong> &ldquo;Send
-Lucia the summary of today's meeting on Telegram.&rdquo; Metnos resolves the name
-through the channels associated with that user: you do not need to know or
-enter a Telegram <code>chat_id</code>. Delivery remains subject to the controls
-that apply to the requester and recipient.</p>
+<p class="lead">A channel is the route that connects a person to Metnos. Web
+chat and Telegram have different interfaces, but both deliver requests to the
+same runtime. The medium and available features change; the rules governing
+actions do not.</p>
 
 <div class="toc">
-<h2>Contents</h2>
-<ol>
- <li><a href="#cap1">What it does: the channel adapter</a></li>
- <li><a href="#cap2">The <code>Protocol</code> and the types</a></li>
- <li><a href="#cap3">The Telegram channel</a></li>
- <li><a href="#cap4">Long-poll and offset persistence</a></li>
- <li><a href="#cap5">Daemon: the loop poll &rarr; run_turn &rarr; send</a></li>
- <li><a href="#cap6">Inline buttons and interactive actions</a></li>
- <li><a href="#cap7">Relationship with <code>pairing</code></a></li>
- <li><a href="#cap8">Distribution: systemd user unit</a></li>
- <li><a href="#cap9">Web chat and HTTP API</a></li>
- <li><a href="#cap10">Operational constraints</a></li>
-</ol>
+ <h2>On this page</h2>
+ <ol>
+  <li><a href="#overview">What a channel does</a></li>
+  <li><a href="#identity">Identity before message content</a></li>
+  <li><a href="#web">Web chat</a></li>
+  <li><a href="#telegram">The Telegram channel</a></li>
+  <li><a href="#cycle">How Metnos handles a Telegram message</a></li>
+  <li><a href="#features">Text, photos, location, and buttons</a></li>
+  <li><a href="#delivery">Replies and deferred delivery</a></li>
+  <li><a href="#contract">The technical channel contract</a></li>
+  <li><a href="#limits">Limits and guarantees</a></li>
+ </ol>
 </div>
 
-<h1 id="cap1">1. What it does: the channel adapter</h1>
+<h2 id="overview">What a channel does</h2>
 
-<p class="lead">
-A <em>channel</em> connects a conversational interface to the runtime. The web
-chat invokes the HTTP API directly; Telegram uses a long-polling adapter. In
-both cases, the transport supplies text, attachments, and authenticated
-metadata, while the runtime handles planning, execution, dialogs, and safety
-controls.
-</p>
-
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="10" y="70" width="170" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">web chat / Telegram</text>
-<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">request / long polling</text>
-<rect x="198" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">channel gateway</text>
-<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">identity / message</text>
-<rect x="386" y="70" width="170" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
-<text x="471" y="94" text-anchor="middle" fill="#fff" font-weight="700">agent runtime</text>
-<text x="471" y="112" text-anchor="middle" fill="#fff" font-size="9.5">handles the turn</text>
-<rect x="574" y="70" width="170" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">reply</text>
-<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">originating channel</text>
-<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
-<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
-<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
-
-</svg>
-<figcaption>Figure 1 &mdash; Web and Telegram converge on the runtime after identity resolution; the reply returns to the channel that originated the turn.</figcaption>
-</figure>
-
-
-<p>
-The contract separates transport from agent logic. The Telegram channel
-normalises incoming updates and outgoing replies; the HTTP server exposes the
-same runtime through a request-response model. In both cases, identity is
-resolved before the message content is processed.
-</p>
-
-<h1 id="cap2">2. The <code>Protocol</code> and the types</h1>
-
-<p>
-In <code>runtime/channels/__init__.py</code> the channel is a
-<code>typing.Protocol</code> with two minimal methods and a name property.
-No base class, no inheritance: any object that exposes the right shape is a
-channel.
-</p>
-
-<pre>
-@runtime_checkable
-class Channel(Protocol):
- name: str
- def send(self, recipient: str, message: OutboundMessage) -&gt; dict:...
- def poll(self) -&gt; list[InboundMessage]:...
-</pre>
-
-<p>The two message types are <code>dataclass(frozen=True)</code>:</p>
+<p>The channel handles transport. It recognises the sender through an existing
+pairing, gathers text and attachments, calls the runtime, and returns the
+answer. It does not choose executors, bypass Vaglio, or decide which powers to
+grant.</p>
 
 <table>
-<thead><tr><th style="width:24%">Type</th><th>Fields</th><th>Notes</th></tr></thead>
-<tbody>
-<tr>
-<td><code>InboundMessage</code></td>
-<td><code>channel</code>, <code>sender_id</code>, <code>text</code>, <code>message_id</code>, <code>received_at</code>, <code>extra</code></td>
-<td>Normalised: <code>sender_id</code> is always a string even where the channel handles it as int (Telegram <code>chat_id</code>). <code>extra</code> for channel-specific metadata (e.g. <code>from</code>, <code>update_id</code>).</td>
-</tr>
-<tr>
-<td><code>OutboundMessage</code></td>
-<td><code>text</code>, <code>reply_to</code>, <code>buttons</code></td>
-<td><code>buttons</code> is <code>list[list[dict]]</code> (rows of buttons) for transports that support interactive actions.</td>
-</tr>
-</tbody>
+ <thead><tr><th>Part</th><th>Responsibility</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Channel</strong></td><td>Receives and sends messages and keeps the identifiers required by the transport.</td></tr>
+  <tr><td><strong>Runtime</strong></td><td>Understands the request, prepares the work, and coordinates executors.</td></tr>
+  <tr><td><strong>Controls</strong></td><td>Check identity, authority, policy, placement, and required confirmations.</td></tr>
+ </tbody>
 </table>
 
-<p>
-The <em>frozenness</em> prevents the dispatcher from modifying an incoming
-message: whoever wants to enrich it creates a new object. It is a deliberate
-choice: a message that has arrived is a historical fact, not a scratch pad.
-</p>
+<p>For example, “send Lucia the meeting summary on Telegram” does not require
+the requester to know her technical chat number. Metnos finds Lucia's paired
+Telegram channel and, if the action is allowed, delivers the message there.</p>
 
-<h1 id="cap3">3. The Telegram channel</h1>
+<h2 id="identity">Identity before message content</h2>
 
-<p>
-<code>runtime/channels/telegram.py</code> implements the protocol via the Bot
-API. No external library: just <code>urllib</code> + <code>json</code>.
-Coherent with the self-host principle (ch.&nbsp;4 Architecture): the bot
-queries outbound on <code>api.telegram.org</code>, no open ports, no public
-IP.
-</p>
+<p>Each request is attributed using authenticated channel data. A name written
+in the message or displayed by Telegram cannot assign a role, switch users, or
+claim somebody else's resources.</p>
 
-<p>Configuration (in order of precedence):</p>
+<p>Conversations, pending dialogues, approvals, and notices are scoped to the
+recognised user. Even a button click is checked again: knowing or forwarding a
+button's internal code does not authorise the linked action.</p>
+
+<p>Browser and Telegram pairing are described in
+<a href="pairing.html">Pairing and identity</a>.</p>
+
+<h2 id="web">Web chat</h2>
+
+<p>The browser takes a direct path. The page sends the request to the HTTP
+server, which authenticates the session and calls the runtime. It can return a
+complete JSON response or stream progress updates while the turn is running.</p>
+
+<p>Web chat does not implement the polling cycle in the <code>Channel</code>
+contract: HTTP already has its natural request-and-response model. This is a
+transport difference, not a governance difference. Policy, Vaglio, executors,
+and user separation remain the same.</p>
+
+<p>Available routes and methods are documented in
+<a href="http_api.html">HTTP API</a>.</p>
+
+<h2 id="telegram">The Telegram channel</h2>
+
+<p>Telegram uses a small service process and the official Bot API. Metnos opens
+outbound connections to Telegram, so a home server does not need to expose an
+incoming port or configure a webhook.</p>
+
+<p>The channel is enabled during installation when a bot token is provided.
+Metnos looks for that token, in order, in explicit configuration, environment
+variables, the encrypted credential store, and the legacy compatibility file.
+A normal installation uses the encrypted store.</p>
+
+<p>The Telegram service is optional. On systems using <code>systemd</code>, it
+runs as the Metnos user's service, starts with the rest of the instance, and
+restarts after a failure.</p>
+
+<h2 id="cycle">How Metnos handles a Telegram message</h2>
 
 <ol>
-<li>Constructor parameters: <code>TelegramChannel(token=, default_chat_id=, credentials_path=, state_path=)</code>.</li>
-<li>Environment variables: <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code>.</li>
-<li>The encrypted credential store, using the <code>telegram_bot_token</code> and <code>telegram_chat_id_host</code> domains.</li>
-<li>The legacy <code>~/.config/metnos/credentials.env</code> file (mode&nbsp;600), retained as a compatibility fallback.</li>
+ <li>Metnos asks Telegram for new updates. The request may remain open for about
+ 25 seconds, avoiding constant traffic when nothing arrives.</li>
+ <li>The update becomes an internal message containing channel, sender,
+ content, timestamp, identifier, and transport metadata.</li>
+ <li>The service checks the pairing and resolves the logical user. The
+ <code>/start</code> and <code>/pair</code> commands are the exception because
+ their purpose is to create that pairing.</li>
+ <li>If the update is a button click or a reply to an open dialogue, Metnos
+ checks the recorded state. Otherwise it starts a normal runtime turn.</li>
+ <li>It sends the result to the same chat and only then acknowledges the
+ received update.</li>
 </ol>
 
-<p>Methods:</p>
+<p>The identifier of the latest acknowledged update is stored atomically. If
+handling or storage fails, the identifier does not advance, and Telegram may
+redeliver the message on the next pass. This reduces the risk of losing a
+request during an abrupt shutdown.</p>
+
+<h2 id="features">Text, photos, location, and buttons</h2>
+
+<table>
+ <thead><tr><th>Content</th><th>Behaviour</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Text</strong></td><td>It becomes a request or a reply to an already open dialogue.</td></tr>
+  <tr><td><strong>Photos</strong></td><td>They are downloaded only after the sender has been recognised. Closely timed album items are collected into one request, and every file remains subject to configured limits.</td></tr>
+  <tr><td><strong>Location</strong></td><td>It may answer a location prompt or update the authenticated user's location. Sharing is always initiated by the user in Telegram.</td></tr>
+  <tr><td><strong>Buttons</strong></td><td>They support choices, cancellation, and approval. Button data is accepted only while the matching state is valid and belongs to the same user.</td></tr>
+  <tr><td><strong>Unsupported content</strong></td><td>It is acknowledged at transport level without being arbitrarily reinterpreted as a request.</td></tr>
+ </tbody>
+</table>
+
+<p>Long replies are split to respect Telegram's limits. Formatting is adapted
+to the channel; if Telegram rejects formatted text, Metnos retries in plain
+text. A partial or uncertain delivery is reported as such, because retrying the
+whole response could duplicate the part already received.</p>
+
+<h2 id="delivery">Replies and deferred delivery</h2>
+
+<p>A reply normally returns through the channel that originated the turn. A
+different destination must be declared in the request and authorised. Metnos
+does not silently move a conversation between users or channels.</p>
+
+<p>Some work finishes after the original turn has timed out, such as a remote
+executor waiting for its computer to return. Metnos then places the result in
+the user's private queue, and the Telegram service attempts delivery in later
+cycles without running the action again.</p>
+
+<h2 id="contract">The technical channel contract</h2>
+
+<p>For polling-based transports, Metnos defines a very small Python contract:</p>
+
+<pre><code>class Channel(Protocol):
+    name: str
+
+    def poll(self) -&gt; list[InboundMessage]: ...
+    def send(self, recipient: str, message: OutboundMessage) -&gt; dict: ...</code></pre>
+
+<p><code>InboundMessage</code> keeps the sender, text, identifier, timestamp,
+and transport metadata. <code>OutboundMessage</code> contains text, an optional
+message to reply to, and buttons. Received objects are immutable: an arrived
+message is a fact to record, not a workspace to alter.</p>
+
+<p>The contract separates transport mechanics from request semantics. A new
+adapter may normalise its own messages, but it must deliver them to the same
+runtime and honour the same identity checks.</p>
+
+<h2 id="limits">Limits and guarantees</h2>
 
 <ul>
-<li><code>send(recipient, message)</code> &rarr; POST <code>sendMessage</code>
-to <code>api.telegram.org</code>. If <code>buttons</code>, it builds an
-<code>inline_keyboard</code>. Returns <code>{ok, result?, error?, status_code?}</code>.</li>
-<li><code>poll(timeout_s=25)</code> &rarr; long-polls
-<code>getUpdates</code> with an internal offset; it normalises text messages,
-photos, locations, <code>callback_query</code> events, and updates with no
-actionable content. Button clicks are forwarded to the dispatcher described
-in ch.&nbsp;6.</li>
+ <li><strong>No identity inferred from prose.</strong> The sender needs a valid
+ pairing, apart from the pairing commands themselves.</li>
+ <li><strong>No authority in the channel.</strong> The adapter transports; it
+ does not grant executors or change policy.</li>
+ <li><strong>Scoped confirmations.</strong> Buttons and replies apply only to
+ the intended dialogue, user, and time window.</li>
+ <li><strong>Attachments after admission.</strong> Photos are not downloaded
+ for an unknown sender.</li>
+ <li><strong>Careful delivery.</strong> With an uncertain outcome, Metnos does
+ not claim success or blindly repeat an effect.</li>
 </ul>
 
-<h1 id="cap4">4. Long-poll and offset persistence</h1>
-
-<p>
-<code>getUpdates</code> is called in long-poll mode: the Telegram server keeps
-the connection open for up to 25&nbsp;seconds if there are no updates. No
-busy-loop, no useless load, minimal latency when a message arrives.
-</p>
-
-<p>
-The offset &mdash; the <code>update_id</code> of the last acknowledged update
-&mdash; is kept in memory and written atomically to
-<code>~/.local/state/metnos/telegram_offset</code>. If the file is unreadable
-or damaged, the channel starts without an offset instead of failing.
-</p>
-
-<p>
-Persistence is optional: <code>state_path=False</code> disables it, primarily
-for tests. The daemon calls <code>ack()</code> only after handling an update.
-If handling the message or writing its offset fails, that update remains
-unacknowledged and can be delivered again on the next polling cycle.
-</p>
-
-<h1 id="cap5">5. Daemon: the loop poll &rarr; run_turn &rarr; send</h1>
-
-<p>
-<code>runtime/channels/daemon.py</code> contains <code>ChannelDaemon</code>:
-a process that performs
-<em>poll &rarr; for each message: handle &rarr; run_turn &rarr; send</em>
-sequentially. Calls to <code>run_turn</code> are synchronous. The same process
-may start the remote-executor HTTP listener in a separate thread; this does
-not make Telegram message handling concurrent.
-</p>
-
-<p>
-<code>ChannelDaemon</code> works against the <code>Channel</code> Protocol;
-Telegram-specific work, such as attachment downloads and callback replies,
-stays in the adapter or its dispatchers.
-</p>
-
-<p>Error discipline:</p>
-
-<ul>
-<li><strong>Exception in <code>poll</code></strong>: log + sleep 5&nbsp;s +
-retry on the next tick. No crash.</li>
-<li><strong>Exception while handling a message</strong>: the error is logged,
-the update is not acknowledged, and the remainder of the current batch is not
-processed; Telegram can deliver it again. Internal details are not exposed to
-the user.</li>
-<li><strong>Exception in <code>send</code></strong>: caught by
-<code>TelegramChannel._call</code>, returns dict <code>{ok: False, error}</code>.
-The failure is logged, and the daemon applies the configured fallback delivery
-paths for the reply.</li>
-</ul>
-
-<p>Options for <code>./.venv/bin/python -m runtime.channels.daemon</code>, run
-from the repository root:</p>
-
-<ul>
-<li><code>--channel telegram</code>: selects the adapter; Telegram is the only
-available value.</li>
-<li><code>--dry-run</code>: processes the turn and logs the response, but does
-not send the final reply through the channel. It is not a sandbox:
-<code>run_turn</code> still executes and executors may have effects.</li>
-<li><code>--no-bootstrap</code>: disables automatic pairing of the
-<code>default_chat_id</code> (ch.&nbsp;7), so the host user must also complete
-an explicit pairing.</li>
-<li><code>--no-agent-server</code>: does not start the remote-executor HTTP
-listener. Without this option, the listener runs in a separate thread on
-<code>127.0.0.1:8765</code>.</li>
-<li><code>--agent-host</code> and <code>--agent-port</code>: change the bind
-address and port of the remote-executor listener.</li>
-<li><code>-v</code>: log at DEBUG level.</li>
-</ul>
-
-<h1 id="cap6">6. Inline buttons and interactive actions</h1>
-
-<p>
-<code>OutboundMessage.buttons</code> is a matrix
-<code>list[list[dict]]</code>. Each dict has <code>text</code> and
-<code>data</code>; <code>data</code> ends up in the
-<code>callback_data</code> of the Telegram button.
-</p>
-
-<p>
-The <code>callback_data</code> value identifies the action semantically and is
-independent of the displayed text. The daemon currently handles:
-</p>
-
-<ul>
-<li><code>dlg:</code> for answers to guided-dialog steps;</li>
-<li><code>cap:</code> for administrative approvals and operations that need confirmation;</li>
-<li><code>promoter:</code> and <code>sched:</code> for proposals and scheduled work;</li>
-<li><code>loc_cancel</code> to cancel a location request;</li>
-<li><code>approve:</code> and <code>reject:</code> for older requests that are
-still present in the approval store.</li>
-</ul>
-
-<p>
-Button labels are localised in the instance language. Before applying a
-decision, the daemon verifies the identity bound to the channel and ownership
-of the pending state; possessing or forwarding a callback value grants no
-authority. Approvals and dialogs are one-shot and expire. See
-<a href="approval_ux.html">approvals and human control</a> for the interaction
-contract.
-</p>
-
-<h1 id="cap7">7. Relationship with <code>pairing</code></h1>
-
-<p>
-The daemon does not accept messages from just anyone. Before processing an
-<code>InboundMessage</code>, it resolves the binding between the channel,
-sender identifier, and Metnos user. It consults the <code>pairing</code>
-registry and, for multi-user bindings, the user registry (see
-<a href="pairing.html">pairing</a>):
-</p>
-
-<ul>
-<li>If the sender is <em>paired</em>, the daemon applies that user's identity
-and language. With <code>autonomy_level == "ReadOnly"</code>, it may still
-answer informational requests recognised by the Tutor, but it does not start
-an operational turn (<code>LEVEL_BLOCKS_RUN</code> in <code>daemon.py</code>).</li>
-<li>If the sender is the <code>default_chat_id</code> and no other pairing
-exists on that channel, it performs an <strong>automatic bootstrap</strong> at
-<code>Full</code> (<code>_try_bootstrap</code>). The
-<code>--no-bootstrap</code> option disables this behaviour.</li>
-<li>Otherwise, the message is not executed and the channel returns localised
-instructions for completing the pairing.</li>
-</ul>
-
-<p>
-The <code>/pair &lt;code&gt;</code> and <code>/start &lt;token&gt;</code> commands
-are intercepted <em>before</em> the pairing check so an unrecognised sender can
-use them. The first consumes a signed code carrying an autonomy level; the
-second consumes the short-lived, one-shot token issued by user management.
-Every message from a paired sender also updates <code>last_seen</code> through
-<code>pairing.touch_last_seen</code>.
-</p>
-
-<h1 id="cap8">8. Distribution: systemd user unit</h1>
-
-<p>
-The daemon is distributed as a <em>user unit</em>, so it runs as the user who
-installed Metnos rather than as <code>root</code>. Its canonical source is
-<code>install/units/metnos-telegram-daemon.service.tmpl</code>; the installer
-renders it to
-<code>~/.config/systemd/user/metnos-telegram-daemon.service</code> only when
-Telegram has been configured.
-</p>
-
-<ul>
-<li><code>ExecStart</code> uses the installation virtual environment and runs
-<code>runtime.channels.daemon</code> from the repository root.</li>
-<li>The installer supplies the data, configuration, and state directories and
-the selected language through rendered environment variables.</li>
-<li>The unit belongs to <code>metnos.target</code> and starts after the HTTP
-server.</li>
-<li><code>Restart=on-failure</code>, with a 10-second delay before retrying.</li>
-<li>Output goes to the user's journal:
-<code>journalctl --user -u metnos-telegram-daemon.service -f</code>.</li>
-</ul>
-
-<p>
-To keep user services active after logout and across reboots, a system
-administrator can enable lingering once for the service owner:
-<code>sudo loginctl enable-linger "$USER"</code>. Management of the whole
-service group is documented in <code>systemd/README.md</code>.
-</p>
-
-<h1 id="cap9">9. Web chat and HTTP API</h1>
-
-<p>
-The web chat communicates with the Metnos HTTP server on port 8770. On the
-agent side the main routes are <code>POST /agent/turn</code>
-(runs <code>run_turn</code>, in SSE or JSON),
-<code>GET /agent/devices/me</code>, <code>GET /agent/health</code> and
-<code>GET /.well-known/metnos.json</code>. For the full list see
-<a href="http_api.html"><code>http_api</code></a>.
-</p>
-
-<p>
-The relationship between <code>channel</code> and <code>http_api</code>
-is deliberate:
-</p>
-
-<ul>
-<li><strong>Telegram</strong> &mdash; a mobile interface based on long polling, with buttons, location, photos, and document delivery.</li>
-<li><strong>HTTP</strong> &mdash; the interface for browser chat, paired clients, and authorised automation. <code>run_turn</code> receives <code>channel="http"</code> and goes through the same controls (<a href="vaglio.html">vaglio</a>, <a href="policy.html">policy</a>) as Telegram.</li>
-<li><strong>No formal <code>HTTPChannel</code></strong>: the polling model of the <code>Channel</code> Protocol does not match request-response. <code>POST /agent/turn</code> therefore calls <code>run_turn</code> directly.</li>
-</ul>
-
-<p>
-Multi-user: the <code>/start &lt;token&gt;</code> command accepted by
-the Telegram daemon completes the guest pairing issued from the
-<code>/admin/users</code> panel of the HTTP API. The
-<code>send_messages</code> supports <code>to_user="lucia"</code>
-and <code>via_channel="auto"</code>: it resolves through
-<code>users.resolve_recipients</code>, with cross-user vaglio applied
-for non-host actors.
-</p>
-
-<h1 id="cap10">10. Operational constraints</h1>
-
-<ul>
-<li><strong>Identity before content.</strong> The channel resolves the user and
-autonomy level from authenticated transport data; message text cannot declare itself
-the host or change its recipient.</li>
-<li><strong>Separated state.</strong> Pending dialogs, approvals, conversations, and
-history are scoped by user and channel. Moving between web devices transfers a
-conversation only after an explicit choice.</li>
-<li><strong>Transport-dependent features.</strong> Text, attachments, location, and
-buttons are exposed only when the channel supports them. Unrecognized content gets an
-explicit outcome and is not reinterpreted as text.</li>
-<li><strong>Explicit delivery.</strong> A reply remains on the channel that originated
-the turn unless another destination is both declared and authorized.</li>
-</ul>
+<p>To learn how to open the web interface, continue with
+<a href="../guide/getting-started.html">Open and use Metnos</a>. For server
+details, continue with <a href="http_api.html">HTTP API</a>.</p>
 
 </body>
 </html>

@@ -1,0 +1,4 @@
+# Direct dependencies of the portable contract-store certification suite.
+# Keep this list minimal and exact; it is installed independently of Metnos.
+cryptography==47.0.0
+pytest==9.1.1

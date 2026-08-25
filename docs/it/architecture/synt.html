@@ -32,198 +32,201 @@
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle">Synt: creare una capacità senza attivarla alla cieca</div>
- <div class="meta">Lacuna verificata, generazione a stadi, quarantena, valutazione e ripristino.</div>
+ <div class="subtitle">Synt: colmare una lacuna senza attivare codice alla cieca</div>
+ <div class="meta">Prima riusa ci&ograve; che esiste; se non basta, costruisce e mette alla prova un candidato isolato.</div>
 </div>
 
-<p class="lead">Synt costruisce un candidato executor quando il catalogo non offre
-una capacità adatta. Non trasforma una frase del modello in codice subito
-eseguibile: prima esclude duplicati, separa contratto e implementazione, esegue
-controlli e prove iniziali, firma l'artefatto in stato di quarantena e lo consegna al
-processo di promozione, che lo valuta e ne governa osservazione e ripristino.</p>
+<p class="lead">Synt &egrave; la parte di Metnos che affronta una capacit&agrave;
+mancante. Pu&ograve; trovare una combinazione di executor gi&agrave; ammessi oppure generare
+un nuovo candidato. In nessuno dei due casi una risposta del modello diventa
+subito un potere attivo: composizione e generazione seguono percorsi distinti,
+con controlli e responsabilit&agrave; diverse.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Che cosa fa e che cosa non fa</a></li>
- <li><a href="#cap2">Quando si attiva</a></li>
- <li><a href="#cap3">Composizione o nuova sintesi</a></li>
- <li><a href="#cap4">I cinque stadi</a></li>
- <li><a href="#cap5">Controlli dopo la generazione</a></li>
- <li><a href="#cap6">Ciclo di vita del candidato</a></li>
- <li><a href="#cap7">Esempio in linguaggio naturale</a></li>
- <li><a href="#cap8">Decisione, osservazione e ripristino</a></li>
- <li><a href="#cap9">Lingua, dati e audit</a></li>
- <li><a href="#cap10">Limiti delle garanzie</a></li>
+ <li><a href="#cap1">Due percorsi diversi</a></li>
+ <li><a href="#cap2">Prima di generare</a></li>
+ <li><a href="#cap3">Comporre executor esistenti</a></li>
+ <li><a href="#cap4">Generare un candidato</a></li>
+ <li><a href="#cap5">Controlli e prove reali</a></li>
+ <li><a href="#cap6">Quarantena e promozione</a></li>
+ <li><a href="#cap7">Lingua e registri</a></li>
+ <li><a href="#cap8">Garanzie e limiti attuali</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Che cosa fa e che cosa non fa</h1>
+<h1 id="cap1">1. Due percorsi diversi</h1>
 
-<p>Synt riceve un intento non coperto e produce una proposta conforme al contratto
-degli executor. Il risultato pu&ograve; includere nome canonico, schema degli argomenti,
-capacità, reversibilit&agrave;, prove, descrizione, affinit&agrave; e codice Python.</p>
+<table>
+<thead><tr><th>Percorso</th><th>Quando serve</th><th>Che cosa produce</th></tr></thead>
+<tbody>
+<tr><td>Composizione</td><td>La capacit&agrave; esiste gi&agrave;, ma &egrave; distribuita tra pi&ugrave; executor.</td><td>Una breve catena di executor attivi e firmati. Non nasce nuovo codice.</td></tr>
+<tr><td>Generazione</td><td>Manca davvero una capacit&agrave; rappresentabile dallo standard.</td><td>Un executor candidato con manifest, codice e prove, ancora escluso dal catalogo operativo.</td></tr>
+</tbody>
+</table>
 
-<p>Synt non amplia i permessi dell'utente, non crea verbi o oggetti fuori dal
-vocabolario, non sovrascrive executor artigianali e non rende un candidato visibile
-al pianificatore soltanto perch&eacute; il codice compila. Regole, standard, firma, sandbox e
-consenso restano controlli separati.</p>
+<p>Synt non aumenta i permessi dell'utente e non aggira il catalogo. Un nuovo
+executor deve usare i verbi e gli oggetti canonici, dichiarare argomenti,
+capacit&agrave; ed eventuale annullamento, superare le prove e rispettare il profilo di
+esecuzione. La firma protegge l'integrit&agrave; dell'artefatto; non ne autorizza da
+sola l'uso.</p>
 
-<h1 id="cap2">2. Quando si attiva</h1>
+<h1 id="cap2">2. Prima di generare</h1>
 
-<p>La richiesta interna <code>request_new_executor</code> deve indicare un nome atteso
-e l'intento da coprire. Prima di spendere chiamate di generazione, il runtime esegue
-controlli di ammissione:</p>
+<p>Il percorso multistadio inizia dalla richiesta interna
+<code>request_new_executor</code>, che contiene un nome atteso e l'intento da
+coprire. Prima di interrogare i modelli, il runtime verifica se la lacuna esiste
+davvero:</p>
 
 <ul>
  <li>se il nome esiste gi&agrave; nel catalogo, restituisce l'executor corrente;</li>
  <li>se esiste un produttore canonico equivalente, reindirizza a quello;</li>
- <li>se una skill importata copre gi&agrave; verbo e oggetto, usa quella capacità;</li>
- <li>se la richiesta appartiene a un'integrazione nativa come filesystem remoto, SSH o
- sito autenticato, usa il relativo percorso integrato;</li>
+ <li>se una skill importata copre gi&agrave; verbo e oggetto, reindirizza a quella capacit&agrave;;</li>
+ <li>se la richiesta riguarda un'associazione nativa, come file remoti, SSH o un
+ sito autenticato, indica l'executor integrato appropriato;</li>
  <li>se esiste gi&agrave; un candidato <code>proposed</code> o <code>synthesized</code>, non
  ne crea un duplicato.</li>
 </ul>
 
-<p>Questi controlli sono guidati dal catalogo, dal vocabolario e dal registro delle integrazioni,
-non da eccezioni scritte per una singola frase.</p>
+<p>Questi controlli usano catalogo, vocabolario e registro delle integrazioni.
+Non dipendono da frasi speciali inserite per un singolo caso. Se trovano una
+capacit&agrave; esistente, Synt restituisce il nome da usare e non genera nulla.</p>
 
-<h1 id="cap3">3. Composizione o nuova sintesi</h1>
+<h1 id="cap3">3. Comporre executor esistenti</h1>
 
-<p>La soluzione meno invasiva &egrave; la composizione di capacità gi&agrave; firmate. Il
-compositore pu&ograve; cercare nel mnestoma una catena breve che soddisfi l'intento e restituire
-al motore il primo passo suggerito. In questo caso non nasce un nuovo executor.</p>
+<p>Quando il runtime osserva una relazione ancora incompleta tra attivit&agrave;
+gi&agrave; note, pu&ograve; cercare nel mnestoma una catena di massimo cinque passaggi. La
+ricerca considera soltanto executor attivi; se trova un percorso, propone al
+motore il primo executor da eseguire e lascia che il turno prosegua con i
+controlli ordinari.</p>
 
-<p>Se manca davvero una capacità atomica o una sequenza promuovibile, parte la
-sintesi multistadio. I due risultati restano distinti:</p>
+<p class="note">Questa composizione reattiva non &egrave; un finto primo stadio di
+<code>request_new_executor</code>. &Egrave; un percorso separato, basato su una
+relazione gi&agrave; registrata nel mnestoma. La generazione multistadio parte invece
+dopo i controlli di ammissione descritti sopra.</p>
+
+<h1 id="cap4">4. Generare un candidato</h1>
+
+<p>La generazione separa le decisioni sul contratto dalla scrittura del codice.
+I primi cinque stadi producono l'artefatto; un sesto lo confronta con la
+descrizione:</p>
 
 <table>
-<thead><tr><th>Esito</th><th>Artefatto</th><th>Visibilit&agrave;</th></tr></thead>
+<thead><tr><th>Passaggio</th><th>Carico logico</th><th>Risultato vincolante</th></tr></thead>
 <tbody>
-<tr><td>Composizione</td><td>Catena di executor esistenti</td><td>Usabile nel turno dopo i controlli ordinari</td></tr>
-<tr><td>Sintesi</td><td>Nuovo candidato con manifest, codice e prove</td><td>Quarantena fino alla promozione</td></tr>
+<tr><td>1. Nome e classe</td><td><code>middle</code></td><td><code>azione_oggetto[_qualifier]</code>, criticit&agrave;, annullabilit&agrave; e tipo di bersaglio.</td></tr>
+<tr><td>2. Firma operativa</td><td><code>middle</code></td><td>Schema degli argomenti, capacit&agrave; dichiarate e schema inverso quando richiesto.</td></tr>
+<tr><td>3. Prove iniziali</td><td><code>middle</code></td><td>Almeno tre casi con dati in ingresso ed esito osservabile atteso.</td></tr>
+<tr><td>4. Descrizione</td><td><code>creative</code></td><td>Testa del manifest, termini di affinit&agrave; e confini d'uso.</td></tr>
+<tr><td>5. Codice</td><td><code>wise</code></td><td><code>invoke</code>, <code>main</code> e l'eventuale operazione inversa, costruiti sul contratto precedente.</td></tr>
+<tr><td>6. Coerenza</td><td><code>wise</code></td><td>Confronto tra comportamento descritto e codice generato.</td></tr>
 </tbody>
 </table>
 
-<h1 id="cap4">4. I cinque stadi</h1>
+<p>I nomi indicano carichi logici, non modelli fissati nel codice. Provider,
+modello e criteri di generazione sono scelti dalla configurazione centrale dei
+tier. Ogni passaggio riceve la richiesta e soltanto gli esiti gi&agrave; convalidati:
+il codice non pu&ograve; ridefinire in silenzio nome, argomenti o annullabilit&agrave;.</p>
 
-<table>
-<thead><tr><th>Stadio</th><th>Risultato vincolante</th></tr></thead>
-<tbody>
-<tr><td>1. Nome e classe</td><td><code>azione_oggetto[_qualifier]</code>, criticit&agrave;, reversibilit&agrave; e tipo di bersaglio.</td></tr>
-<tr><td>2. Firma operativa</td><td>Schema degli argomenti, capacità dichiarate e schema inverso quando richiesto.</td></tr>
-<tr><td>3. Prove iniziali</td><td>Almeno tre casi con dati in ingresso ed esito osservabile atteso.</td></tr>
-<tr><td>4. Descrizione</td><td>Intestazione del manifest conforme, affinit&agrave; e confini d'uso.</td></tr>
-<tr><td>5. Codice</td><td>Implementazione di <code>invoke</code> e dell'eventuale operazione inversa, costruita sul contratto precedente.</td></tr>
-</tbody>
-</table>
-
-<p>Gli stadi 1&ndash;4 usano il ruolo LLM <code>middle</code>; il codice usa
-<code>wise</code>. Sono ruoli configurabili e possono puntare allo stesso fornitore
-locale. Ogni stadio riceve soltanto la richiesta e i risultati convalidati degli stadi
-precedenti: il codice non pu&ograve; ridefinire silenziosamente il contratto.</p>
-
-<h1 id="cap5">5. Controlli dopo la generazione</h1>
+<h1 id="cap5">5. Controlli e prove reali</h1>
 
 <ol>
  <li><strong>Validazione per stadio.</strong> Forma del nome, vocabolario, tipi,
  reversibilit&agrave;, prove e descrizione vengono controllati prima di proseguire.</li>
- <li><strong>Controllo strutturale.</strong> Il manifest non pu&ograve; citare argomenti
- inesistenti, campi risolti dal runtime o un risultato incompatibile.</li>
+ <li><strong>Controllo strutturale.</strong> Tra codice e verifica semantica, un
+ controllo deterministico impedisce al manifest di citare argomenti inesistenti,
+ campi risolti dal runtime o un risultato incompatibile.</li>
  <li><strong>Verifica semantica.</strong> Un giudice separato confronta descrizione
  e codice. Il verdetto &egrave; probabilistico; la decisione di rifiutare una discordanza
  esplicita &egrave; applicata dal codice.</li>
- <li><strong>Contratto generato.</strong> Formato del manifest, standard, ciclo di vita e
- regole di esecuzione devono coincidere con il contratto posseduto dal runtime.</li>
- <li><strong>Prove iniziali reali.</strong> Il candidato viene eseguito sui casi
- dichiarati. Un fallimento rimuove l'installazione di quarantena.</li>
+ <li><strong>Contratto generato.</strong> Formato del manifest, standard, ciclo
+ di vita e regole di esecuzione devono coincidere con il modello posseduto dal runtime.</li>
+ <li><strong>Compilazione e prove reali.</strong> Prima dell'installazione il
+ codice deve essere Python valido. Subito dopo, il test runner esegue i casi
+ dichiarati; se uno fallisce, la copia in quarantena viene rimossa.</li>
 </ol>
 
-<p>Un errore infrastrutturale del giudice semantico viene registrato ma non &egrave; da
-solo un rifiuto: i controlli deterministici, le prove e il valutatore a valle restano
-obbligatori. Questa &egrave; una degradazione esplicita, non una prova di allineamento.</p>
+<p>Se il giudice semantico segnala una discordanza, il candidato viene rifiutato.
+Se invece il giudice non &egrave; raggiungibile per un errore infrastrutturale, il fatto
+viene registrato ma non blocca da solo la sintesi: lint, contratto, compilazione,
+prove e valutatore successivo restano obbligatori. &Egrave; una degradazione esplicita,
+non una certificazione di coerenza.</p>
 
-<h1 id="cap6">6. Ciclo di vita del candidato</h1>
+<h1 id="cap6">6. Quarantena e promozione</h1>
 
-<p>Quando tutti gli stadi e le prove iniziali terminano con successo, il runtime scrive
-il candidato nell'archivio degli executor dell'utente con ciclo di vita
-<code>synthesized</code> e firma il manifest. La firma attesta integrit&agrave;
-dell'artefatto; non equivale all'attivazione. Il caricatore pu&ograve; ispezionarlo, mentre il
-catalogo del compositore lo esclude.</p>
+<p>Quando i passaggi e le prove terminano con successo, il runtime salva il
+candidato nell'archivio degli executor dell'utente, imposta il ciclo di vita a
+<code>synthesized</code> e firma il manifest. Il caricatore pu&ograve; ispezionarlo,
+ma pianificatore e compositore non possono ancora sceglierlo.</p>
 
-<p>Il processo di promozione valuta poi il documento della proposta con segnali deterministici:
-conformit&agrave; del nome, sovrapposizione con capacità esistenti, prove, parit&agrave; della
-reversibilit&agrave;, classi di errore, stabilit&agrave; dello schema, frequenza d'uso, vantaggio
-stimato e rischio di interferenza con l'instradamento.</p>
+<p>Ogni giorno il promotore esamina fino a cinque candidati, partendo dai pi&ugrave;
+vecchi. Il valutatore &egrave; deterministico: controlla nome, sovrapposizione con
+capacit&agrave; esistenti, prove, coerenza dell'annullamento, classi di errore,
+stabilit&agrave; del risultato, frequenza d'uso e vantaggio stimato.</p>
 
 <table>
 <thead><tr><th>Verdetto</th><th>Effetto</th></tr></thead>
 <tbody>
-<tr><td><code>accept</code></td><td>Nuova verifica di ammissione, firma attiva, archivio di ripristino e periodo di grazia.</td></tr>
-<tr><td><code>gray</code></td><td>Revisione amministrativa necessaria; nessuna attivazione implicita.</td></tr>
-<tr><td><code>reject</code></td><td>Archiviazione con motivazione; il candidato non entra nel catalogo attivo.</td></tr>
+<tr><td><code>accept</code></td><td>Promozione automatica dopo una nuova verifica di ammissione, con archivio di ripristino e, di norma, 72 ore di grazia.</td></tr>
+<tr><td><code>gray</code></td><td>Stato <code>review_needed</code>; nessuna attivazione automatica.</td></tr>
+<tr><td><code>reject</code></td><td>Archiviazione con la motivazione; il candidato non entra nel catalogo attivo.</td></tr>
 </tbody>
 </table>
 
-<h1 id="cap7">7. Esempio in linguaggio naturale</h1>
+<p>Prima della promozione viene creato un archivio di ripristino. Se le
+notifiche Telegram dell'amministratore sono configurate, durante la grazia un
+riepilogo permette di confermare o annullare; scaduto il termine, la promozione viene finalizzata. Il
+controllo automatico degli errori osserva sempre i segnali, ma esegue davvero
+il ripristino soltanto se &egrave; stata abilitata l'opzione
+<code>METNOS_PROMOTER_KILLSWITCH_ENFORCE=1</code>.</p>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Nei file CSV della cartella Sensori individua le sequenze di almeno cinque
-misure che aumentano senza interruzioni e crea un riepilogo per sensore.&raquo;</p>
+<p>Questo ciclo appartiene al promotore, non alla pagina unificata degli
+<a href="lifecycle.html">intenti di modifica</a>. Un candidato
+<code>synthesized</code> non viene duplicato come falsa proposta da approvare in
+un secondo archivio.</p>
 
-<p>Metnos tenta prima una sequenza con le capacità esistenti: ricerca dei file,
-lettura CSV, estrazione e raggruppamento. Solo se il catalogo non rappresenta
-l'operazione necessaria pu&ograve; proporre una nuova capacità. La risposta deve
-distinguere chiaramente tre casi: operazione completata con strumenti esistenti,
-candidato creato ma non ancora attivo, oppure sintesi rifiutata con motivo.</p>
+<h1 id="cap7">7. Lingua e registri</h1>
 
-<p>Da Telegram si usa la stessa frase. Se serve una decisione amministrativa, Metnos
-deve indicare che la gestione avviene nella chat web e fornire il percorso corrente,
-per esempio <strong>Settings &rsaquo; Ciclo di vita &rsaquo; Modifiche</strong>, invece di mostrare
-soltanto un identificatore di proposta.</p>
+<p>I prompt vengono caricati nella lingua del turno. La descrizione del candidato
+e quella dei suoi argomenti nascono in quella lingua; il normale processo di
+allineamento dei manifest pu&ograve; aggiungere le altre versioni. Nome canonico, campi
+dello schema e identificatori restano invece stabili.</p>
 
-<h1 id="cap8">8. Decisione, osservazione e ripristino</h1>
+<p class="note">Il campo <code>affinity</code> &egrave; ancora una lista piatta di
+parole chiave, spesso mescolata tra italiano e inglese. Non &egrave; quindi pienamente
+conforme all'architettura i18n. La riprogettazione generale &egrave; registrata come
+attivit&agrave; di massima priorit&agrave; e richiede analisi, confronto tra alternative,
+specifica e solo dopo sviluppo.</p>
 
-<p>Una proposta accettata entra normalmente in un periodo di grazia configurabile.
-Il processo di promozione crea prima un archivio di ripristino. Durante la grazia, gli errori gravi
-osservati nei turni possono attivare l'interruttore di arresto; l'amministratore pu&ograve; inoltre
-confermare o ritirare la promozione dal riepilogo ricevuto. Alla scadenza senza segnali
-negativi, la promozione viene finalizzata.</p>
+<p>Proposte, risultati dei passaggi, motivi di rifiuto, valutazioni, promozioni
+e ripristini restano negli archivi locali. I prompt non ricevono credenziali in
+chiaro. Il codice generato &egrave; soggetto ai moduli Python consentiti, alla sandbox
+e ai limiti dell'Executor Standard.</p>
 
-<p>Il ciclo di promozione dei candidati Synt e il ciclo unificato degli
-<a href="lifecycle.html">intenti di modifica</a> hanno responsabilit&agrave; distinte. Un candidato
-<code>synthesized</code> non viene duplicato come falsa proposta da approvare in un
-secondo archivio.</p>
-
-<h1 id="cap9">9. Lingua, dati e audit</h1>
-
-<p>I prompt degli stadi vengono caricati nella lingua del turno. Descrizione e
-affinit&agrave; possono essere localizzate; nomi canonici, campi di schema e identificatori
-restano stabili. Eventuali chiavi i18n introdotte dal codice vengono registrate per
-il normale processo di traduzione, non inventate in una singola pagina dell'interfaccia.</p>
-
-<p>Proposte, risultati degli stadi, motivi di rifiuto, valutazioni, promozioni e
-operazioni di ripristino sono conservati negli archivi locali e nei registri JSONL. I prompt non
-ricevono credenziali in chiaro. Il codice generato resta soggetto ai moduli Python
-consentiti, al profilo di sandbox e ai limiti dell'executor standard.</p>
-
-<h1 id="cap10">10. Limiti delle garanzie</h1>
+<h1 id="cap8">8. Garanzie e limiti attuali</h1>
 
 <ul>
- <li>La generazione di nome, descrizione, prove e codice &egrave; probabilistica; i controlli
- riducono il rischio ma non costituiscono una dimostrazione formale.</li>
- <li>Una prova iniziale copre soltanto i casi dichiarati. Prove di base, periodo di grazia e
- ripristino coprono errori che emergono nell'uso reale.</li>
- <li>Il punteggio del valutatore governa una decisione configurata; non prova che
- una nuova capacità sia utile in assoluto.</li>
- <li>Synt non deve creare una copia di ci&ograve; che L0, L1, una skill o un fornitore
- sanno gi&agrave; fare.</li>
+ <li>Nome, descrizione, prove e codice sono generati probabilisticamente. I
+ controlli riducono il rischio, ma non sono una dimostrazione formale.</li>
+ <li>Le prove coprono soltanto i casi dichiarati. Periodo di grazia, telemetria
+ e ripristino servono proprio per gli errori che emergono nell'uso reale.</li>
+ <li>Un verdetto <code>accept</code> produce oggi una promozione automatica. Il
+ punteggio &egrave; una politica operativa configurata, non la prova che la nuova
+ capacit&agrave; sia utile in assoluto.</li>
+ <li>Il percorso <code>gray</code> viene registrato come richiesta di revisione,
+ ma non dispone ancora di una superficie web dedicata e completa.</li>
+ <li>Il ripristino automatico basato sugli errori &egrave; disattivato per impostazione
+ predefinita; senza l'opzione di enforcement, il controllo si limita a segnalare
+ che avrebbe ritirato il candidato.</li>
+ <li>Synt non deve duplicare ci&ograve; che una sequenza appresa, una skill o
+ un'integrazione sanno gi&agrave; fare.</li>
 </ul>
 
 <p>Riferimenti nel codice:</p>
 <ul>
  <li><code>runtime/synth_request.py</code>: ammissione iniziale e persistenza del candidato;</li>
- <li><code>runtime/synt_multistage.py</code>: cinque stadi, controllo strutturale e verifica semantica;</li>
+ <li><code>runtime/synt_multistage.py</code>: generazione a stadi, controllo strutturale e verifica semantica;</li>
  <li><code>runtime/generated_executor_contract.py</code>: contratto dei manifest generati;</li>
  <li><code>runtime/proposal_evaluator.py</code>: valutazione deterministica;</li>
  <li><code>runtime/jobs/promoter*.py</code>: promozione, riepilogo, grazia e ripristino;</li>

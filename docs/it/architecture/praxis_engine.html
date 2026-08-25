@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; motore di pianificazione e riuso</title>
- <meta name="description" content="La cascata del motore Metnos: fast path L0, autopath L1, validator L2 e proposta, esecuzione, recupero e terminazione L3.">
+ <meta name="description" content="Il percorso del motore Metnos: fast path L0, autopath L1, validazione L2 e proposta, esecuzione, recupero e conclusione L3.">
  <meta name="keywords" content="Metnos, motore, fastpath, autopath, validator, proposer, recovery, framework">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
@@ -36,21 +36,21 @@
  <div class="meta">Quattro livelli, una sequenza comune di controlli.</div>
 </div>
 
-<p class="lead">Il motore prova prima i piani riutilizzabili, poi costruisce un
-nuovo framework quando serve. La proposta del modello rimane probabilistica; firma
-della cache, validazione, guardie e semantica degli executor sono applicate dal
-codice. Non esiste quindi una promessa di &laquo;un'unica chiamata al modello&raquo; per
-ogni turno: il numero dipende dal percorso, dalla validazione e dall'eventuale
-recupero.</p>
+<p class="lead">Quando riceve una richiesta, Metnos cerca prima un piano gi&agrave;
+riuscito che possa essere riutilizzato in sicurezza. Se non lo trova, ne
+costruisce uno nuovo. Nel codice questo piano interno si chiama
+<em>framework</em>: &egrave; una sequenza finita di executor e collegamenti fra i loro
+risultati. Il modello pu&ograve; proporla, ma sono controlli scritti nel codice a
+decidere se pu&ograve; essere eseguita.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
  <li><a href="#cap1">Scopo</a></li>
- <li><a href="#cap3">Contratto del motore</a></li>
+ <li><a href="#cap3">Che cosa riceve e restituisce il motore</a></li>
  <li><a href="#cap4">I quattro livelli</a></li>
- <li><a href="#cap5">La cascata di un turno</a></li>
- <li><a href="#cap6">Il framework</a></li>
+ <li><a href="#cap5">Il percorso di un turno</a></li>
+ <li><a href="#cap6">Il piano interno</a></li>
  <li><a href="#cap7">L0: fastpath</a></li>
  <li><a href="#cap8">L1: autopath</a></li>
  <li><a href="#cap9">L2: validatore</a></li>
@@ -73,36 +73,36 @@ capacit&agrave; ammesse. Deve conciliare due esigenze:</p>
  destinazione possono averne cambiato il significato.</li>
 </ul>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Trova i PDF modificati questa settimana in Progetti, calcola l'hash SHA-256 di
-ciascuno e crea un foglio con nome, data e hash.&raquo; La prima esecuzione pu&ograve;
-richiedere un nuovo framework; una richiesta ripetuta riusa il precedente solo se il piano resta
-cacheabile e le firme del mondo operativo coincidono.</p>
+<p>Per esempio, puoi chiedere: &laquo;Trova i PDF modificati questa settimana in
+Progetti, calcola l'hash SHA-256 di ciascuno e crea un foglio con nome, data e
+hash.&raquo; La prima esecuzione pu&ograve; richiedere un piano nuovo. Se ripeti la
+richiesta, Metnos riusa quel piano soltanto se &egrave; adatto al riuso e le firme
+degli executor e del catalogo sono ancora valide.</p>
 
-<h1 id="cap3">2. Contratto del motore</h1>
+<h1 id="cap3">2. Che cosa riceve e restituisce il motore</h1>
 
-<p>L'ingresso contiene richiesta, intenti ordinati, catalogo visibile, lingua,
-utente, canale, destinazione e stato gi&agrave; prodotto dal turno. L'uscita contiene:</p>
+<p>Per pianificare, il motore riceve la richiesta, le azioni riconosciute nel
+loro ordine, il catalogo visibile, la lingua, l'utente, il canale, la
+destinazione e gli eventuali dati gi&agrave; prodotti nel turno. Al termine restituisce:</p>
 
 <ul>
  <li>testo e tipo finale: risposta, domanda, input necessario o errore;</li>
- <li>framework e relativa impronta;</li>
+ <li>il piano eseguito e la sua impronta;</li>
  <li>origine della decisione: fastpath, autopath, motore, recupero o terminatore;</li>
  <li>passi realmente eseguiti, risultati e tempi;</li>
  <li>eventuale dialogo da riprendere dopo una scelta o un consenso.</li>
 </ul>
 
-<p>Il catalogo viene passato dal chiamante e costituisce il mondo dell'esecuzione.
-Un executor non presente o non ammesso non pu&ograve; essere reso disponibile dal testo
-del prompt.</p>
+<p>Il catalogo &egrave; il confine effettivo dell'esecuzione. Un executor assente o
+non ammesso non diventa disponibile soltanto perch&eacute; il modello lo nomina.</p>
 
 <h1 id="cap4">3. I quattro livelli</h1>
 
 <table>
 <thead><tr><th>Livello</th><th>Stato</th><th>Responsabilit&agrave;</th></tr></thead>
 <tbody>
-<tr><td>L0 &mdash; fastpath</td><td>Persistente</td><td>Associa una query a un framework gi&agrave; riuscito ed efficace.</td></tr>
-<tr><td>L1 &mdash; autopath</td><td>Persistente</td><td>Associa cluster semantici e intenti a un framework generalizzabile.</td></tr>
+<tr><td>L0 &mdash; fastpath</td><td>Persistente</td><td>Associa una richiesta a un piano gi&agrave; riuscito ed efficace.</td></tr>
+<tr><td>L1 &mdash; autopath</td><td>Persistente</td><td>Associa gruppi di richieste simili e intenzioni a un piano generalizzabile.</td></tr>
 <tr><td>L2 &mdash; validatore</td><td>Per turno</td><td>Controlla nomi, schemi, campi obbligatori e riferimenti prima dell'esecuzione.</td></tr>
 <tr><td>L3 &mdash; motore completo</td><td>Per turno</td><td>Propone, finalizza, esegue, classifica gli errori e conclude.</td></tr>
 </tbody>
@@ -112,27 +112,29 @@ del prompt.</p>
 l'esecuzione. Piani L0 e L1 attraversano comunque la finalizzazione corrente, che
 applica guardie, ordine, regole di presentazione e richieste di consenso.</p>
 
-<h1 id="cap5">4. La cascata di un turno</h1>
+<h1 id="cap5">4. Il percorso di un turno</h1>
 
 <ol>
  <li>L'instradamento costruisce l'insieme delle capacit&agrave; pertinenti.</li>
- <li>L0 tenta prima una corrispondenza esatta e poi, soltanto per framework
+ <li>L0 tenta prima una corrispondenza esatta e poi, soltanto per piani
  generalizzabili, una corrispondenza semantica.</li>
  <li>Se L0 non risponde, L1 cerca un campione attivo compatibile con intenti,
  oggetto e cluster.</li>
- <li>In assenza di un riuso valido, il proponente selezionato produce uno o pi&ugrave;
- framework candidati secondo la propria configurazione.</li>
+ <li>In assenza di un riuso valido, il componente di proposta costruisce uno o
+ pi&ugrave; piani candidati, secondo la configurazione attiva.</li>
  <li>Le guardie strutturali e il validatore controllano il candidato e, nei casi ammessi, chiedono una
  sola nuova proposta correttiva.</li>
- <li>L'executor condiviso esegue il framework. Se fallisce senza aver gi&agrave;
+ <li>Il motore di esecuzione condiviso esegue il piano. Se fallisce senza aver gi&agrave;
  prodotto effetti, il recupero pu&ograve; tentare un'alternativa.</li>
  <li>Il terminatore presenta il risultato, una richiesta di dati o un limite
  esplicito; un turno efficace e memorizzabile alimenta L0 e le osservazioni L1.</li>
 </ol>
 
-<h1 id="cap6">5. Il framework</h1>
+<h1 id="cap6">5. Il piano interno, o framework</h1>
 
-<p>Il formato canonico &egrave; indipendente dal proponente:</p>
+<p>Un framework descrive i passi da eseguire, gli argomenti di ciascun passo e
+il modo in cui un risultato alimenta il passo successivo. Il suo formato non
+dipende dal modello che lo ha proposto:</p>
 
 <pre><code>{
   "steps": [
@@ -145,11 +147,11 @@ applica guardie, ordine, regole di presentazione e richieste di consenso.</p>
   "final_message": ""
 }</code></pre>
 
-<p><code>from_step</code> e i placeholder <code>${stepN.field}</code> collegano i
+<p><code>from_step</code> e i riferimenti <code>${stepN.field}</code> collegano i
 dati senza chiedere al modello di ricopiarli. Il runtime pu&ograve; inserire valori
 interni con <code>${RUNTIME:key}</code>. I campi di configurazione marcati
 <code>runtime_resolved</code>, come account o client predefinito, non vengono
-scelti dal proponente: li risolve il contesto dell'utente.</p>
+scelti dal componente di proposta: li risolve il contesto dell'utente.</p>
 
 <h1 id="cap7">6. L0: fastpath</h1>
 
@@ -160,7 +162,7 @@ richiede un pulsante di approvazione. La ricerca ha due forme:</p>
  <li><strong>0a, esatta.</strong> L'impronta della query pu&ograve; riusare anche un piano
  legato ai valori specifici di quella stessa frase.</li>
  <li><strong>0b, semantica.</strong> La somiglianza usa l'embedder configurato e pu&ograve;
- servire soltanto framework non legati a valori specifici della query originale.</li>
+ servire soltanto piani non legati a valori specifici della richiesta originale.</li>
 </ul>
 
 <p>Sono esclusi i piani dipendenti dal contesto del turno, come dialoghi, consenso,
@@ -171,14 +173,14 @@ essere fondati nella richiesta corrente.</p>
 
 <h1 id="cap8">7. L1: autopath</h1>
 
-<p>L1 conserva osservazioni di framework memorizzabili insieme a intenti, gruppi,
-tempi e riscontri. Un riscontro positivo pu&ograve; promuovere il framework a campione
-attivo. Per sequenze lunghe e ripetute il runtime pu&ograve; creare un campione
-<em>shadow</em>: viene servito con le stesse guardie, ma resta esplicitamente
-distinto da un piano confermato dall'utente.</p>
+<p>L1 conserva i piani riutilizzabili insieme alle intenzioni riconosciute, ai
+gruppi semantici, ai tempi e ai riscontri. Un riscontro positivo pu&ograve; promuovere
+un piano a riferimento attivo per quel gruppo. Per sequenze lunghe riuscite pi&ugrave;
+volte, il runtime pu&ograve; creare un riferimento <em>shadow</em>: pu&ograve; essere usato con
+le stesse guardie, ma resta distinto da un piano confermato dall'utente.</p>
 
 <p>La corrispondenza semantica rispetta il confine dell'oggetto canonico e una soglia di
-pertinenza. Anche L1 rifiuta framework legati a valori specifici della query e controlla le firme del
+pertinenza. Anche L1 rifiuta piani legati a valori specifici della richiesta e controlla le firme del
 catalogo al momento del riuso. Riscontri negativi ripetuti possono retrocedere il
 campione e creare un'anti-autopath temporanea; un riscontro positivo successivo
 pu&ograve; rimuovere l'esclusione corrispondente.</p>
@@ -196,19 +198,21 @@ Controlla:</p>
  <li>placeholder che il runtime possa risolvere.</li>
 </ul>
 
-<p>Se trova un errore, il proponente pu&ograve; essere invocato una volta con l'impronta del
-framework esclusa. Il nuovo candidato attraversa nuovamente le guardie
-deterministiche.</p>
+<p>Se trova un errore, il componente di proposta pu&ograve; essere invocato una volta
+escludendo l'impronta del piano non valido. Il nuovo candidato viene poi
+sottoposto di nuovo alle guardie deterministiche.</p>
 
 <h1 id="cap10">9. L3: proposta, esecuzione e recupero</h1>
 
-<p>Il proponente &egrave; intercambiabile tramite configurazione. Le varianti supportate
-condividono lo stesso contratto <code>Proposer</code>; possono generare un solo
-candidato o pi&ugrave; alternative e ordinarle. La grammatica, quando abilitata, limita la
-forma dell'output, ma non rende deterministica la scelta semantica del modello.</p>
+<p>Il componente che propone il piano &egrave; intercambiabile tramite configurazione.
+Le varianti supportate condividono il contratto <code>Proposer</code>: alcune
+producono un solo candidato, altre confrontano pi&ugrave; alternative e ne restituiscono
+una. La grammatica, quando &egrave; attiva, limita la forma dell'output ma non rende
+deterministica la scelta semantica del modello.</p>
 
-<p>L'esecutore risolve riferimenti, valori di riempimento e dati del runtime, controlla le
-condizioni di ogni passo e invoca la capacit&agrave;. Passi indipendenti vengono
+<p>Prima dell'esecuzione, il motore risolve i riferimenti, i dati raccolti da un
+dialogo e i valori interni del runtime. Poi controlla le condizioni di ogni
+passo e invoca l'executor previsto. Passi indipendenti vengono
 eseguiti in parallelo soltanto quando il contratto e il controllo preliminare lo consentono. Gli
 effetti esterni restano variabili: rete, filesystem, fornitori e contenuti possono
 cambiare fra due esecuzioni.</p>
@@ -218,10 +222,10 @@ per strumento, argomenti o input mancanti; non finge di riparare una rete assent
 Se un passo ha gi&agrave; prodotto una modifica, non ripete l'intera sequenza e restituisce
 un esito parziale dichiarato come tale.</p>
 
-<p>Le riparazioni deterministiche restano indipendenti dal dominio e dalla lingua.
-La polarit&agrave; di un riferimento, per esempio &laquo;usa il dispositivo&raquo; rispetto a
-&laquo;senza usare il dispositivo&raquo;, viene risolta da un lessico sintattico comune e
-traducibile. Se il piano indica un'azione inversa ma omette la destinazione, il
+<p>Le correzioni deterministiche restano indipendenti dal dominio e dalla lingua.
+Per esempio, un lessico sintattico comune e traducibile distingue una richiesta
+positiva come &laquo;usa il dispositivo&raquo; dalla sua negazione, &laquo;senza usare il
+dispositivo&raquo;. Se il piano indica un'azione inversa ma omette la destinazione, il
 motore pu&ograve; ricavarla soltanto dal contratto di annullamento sigillato prodotto da
 un passo precedente, con executor esatto e schema compatibile; un valore esplicito
 non viene mai sostituito.</p>
@@ -242,9 +246,8 @@ aperte inserite nel pianificatore.</p>
 <p>Non occorre conoscere L0, L1 o i nomi degli executor. L'utente descrive il
 risultato desiderato in linguaggio naturale. Per esempio:</p>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Confronta i file delle cartelle Preventivi e Contratti e mostrami quelli che
-hanno lo stesso contenuto ma un nome diverso.&raquo;</p>
+<p>Per esempio: &laquo;Confronta i file delle cartelle Preventivi e Contratti e
+mostrami quelli che hanno lo stesso contenuto ma un nome diverso.&raquo;</p>
 
 <p>Per ispezionare o svuotare le cache serve invece la chat web: apri
 <strong>Impostazioni</strong> e scegli <strong>Praxis</strong>. Se la domanda parte da
@@ -253,14 +256,14 @@ trova nel client Telegram.</p>
 
 <h1 id="cap13">12. Confini delle garanzie</h1>
 
-<p>Il percorso completo &egrave; verificato da una certificazione logica esterna al
-processo sotto prova: 24 flussi di riferimento in italiano e inglese controllano
-piano, autorit&agrave;, consenso, collocazione, effetti, recupero, risposta e
-postcondizioni. La certificazione non &egrave; una prova di carico e non sostituisce le
-sonde non distruttive sui confini reali.</p>
+<p>Il percorso completo &egrave; verificato da una certificazione logica eseguita fuori
+dal processo sotto prova. Ventiquattro flussi, ciascuno in italiano e in
+inglese, controllano piano, autorit&agrave;, consenso, collocazione, effetti, recupero,
+risposta e postcondizioni. La certificazione non &egrave; una prova di carico e non
+sostituisce le sonde non distruttive sui confini reali.</p>
 
 <ul>
- <li>Un riuso valido della cache riprende lo stesso framework, ma non garantisce lo stesso
+ <li>Un riuso valido della cache riprende lo stesso piano, ma non garantisce lo stesso
  risultato di un fornitore esterno.</li>
  <li>Una nuova proposta pu&ograve; variare anche con la stessa query. Insieme dei candidati, grammatica e
  validatore ne delimitano la forma, non ne provano la correttezza.</li>
@@ -278,18 +281,22 @@ una riga L0 o svuotare L0, L1 o entrambe. Lo svuotamento &egrave; amministrativo
 annullabile: rimuove capitale operativo appreso e pu&ograve; rallentare le richieste finch&eacute;
 le cache non vengono ricostruite.</p>
 
-<p>Le cache sono operative a livello dell'istanza e non contengono credenziali. Al
-riuso, account, lingua, consenso, destinazione e autorizzazioni vengono risolti di
-nuovo nel contesto dell'utente corrente.</p>
+<p>Le cache appartengono all'intera istanza. L0 conserva il testo normalizzato
+della richiesta e gli argomenti del piano; L1 conserva piani, impronte,
+intenzioni e vettori semantici. Non sono archivi di credenziali, ma possono
+contenere nomi, percorsi o altri dati presenti nella richiesta e vanno quindi
+trattate come dati riservati. A ogni riuso, account configurati, lingua,
+consenso, destinazione e autorizzazioni vengono risolti di nuovo nel contesto
+dell'utente corrente.</p>
 
 <p>Riferimenti nel codice:</p>
 <ul>
- <li><code>runtime/engine/dispatch.py</code>: cascata e sequenza comune di finalizzazione;</li>
+ <li><code>runtime/engine/dispatch.py</code>: percorso dei livelli e sequenza comune di finalizzazione;</li>
  <li><code>runtime/engine/fastpath.py</code>: L0;</li>
  <li><code>runtime/engine/autopath.py</code>: L1, riscontri e anti-autopath;</li>
  <li><code>runtime/engine/validator.py</code>: L2;</li>
  <li><code>runtime/engine/proposer*.py</code>, <code>executor.py</code>, <code>recovery*.py</code> e <code>terminator*.py</code>: L3;</li>
- <li><code>runtime/engine/cache_validity.py</code>: validit&agrave; del mondo operativo;</li>
+ <li><code>runtime/engine/cache_validity.py</code>: validit&agrave; del piano rispetto al catalogo corrente;</li>
  <li><code>runtime/http_routes_admin.py</code> e <code>runtime/templates/praxis.html</code>: console.</li>
 </ul>
 

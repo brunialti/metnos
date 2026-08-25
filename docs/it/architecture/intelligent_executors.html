@@ -37,59 +37,100 @@
 <main>
  <header class="hero">
   <h1>Agente dentro.<br>Executor fuori.</h1>
-  <p class="lead">Un executor intelligente affronta percorsi variabili senza cambiare incarico. Osserva, sceglie un passo e verifica; il pianificatore continua a vedere un normale executor.</p>
-  <div class="status"><strong>Idea centrale.</strong> L'intelligenza risolve l'incertezza del percorso. Non amplia permessi, scopo o formato del risultato.</div>
+  <p class="lead">Un executor intelligente usa un modello per risolvere uno o
+  pi&ugrave; passaggi incerti, ma conserva il normale contratto di un executor. Il
+  pianificatore gli affida un compito preciso e riceve il risultato previsto,
+  senza dover conoscere il percorso interno.</p>
+  <div class="status"><strong>Idea centrale.</strong> Il modello pu&ograve; proporre
+  come procedere entro un insieme limitato di possibilit&agrave;. Non ottiene per
+  questo nuovi permessi e non decide da solo che cosa conta come successo.</div>
  </header>
 
  <section class="principles" aria-label="Principi">
-  <div class="card"><strong>Contratto stabile</strong>Stessi argomenti e stesso risultato di un executor diretto.</div>
-  <div class="card"><strong>Mandato ristretto</strong>Obiettivo, azioni ammesse e condizioni di arresto sono fissati dal codice.</div>
-  <div class="card"><strong>Esito verificato</strong>Il successo richiede una postcondizione osservabile, non una supposizione del modello.</div>
+  <div class="card"><strong>Contratto stabile</strong>Argomenti, autorit&agrave; e forma del risultato non cambiano quando interviene il modello.</div>
+  <div class="card"><strong>Scelta circoscritta</strong>Il modello propone soltanto valori o azioni che l'adattatore sa convalidare.</div>
+  <div class="card"><strong>Esito verificato</strong>La postcondizione dell'executor, non una dichiarazione del modello, stabilisce se il tentativo &egrave; riuscito.</div>
  </section>
 
  <h2>Il confine architetturale</h2>
- <p>Il mandato nasce dal nome, dalla descrizione, dallo schema degli argomenti, dalle capacit&agrave; dichiarate, dalle regole di consenso, dai limiti e dalla postcondizione. Il modello interno riceve soltanto l'osservazione necessaria e pu&ograve; scegliere solo fra azioni enumerate dal runtime.</p>
+ <p>Il manifest e il codice dell'executor definiscono lo scopo, gli argomenti,
+ le capacit&agrave;, il consenso, i limiti e la forma del risultato. Quando una parte
+ del percorso richiede un modello, l'adattatore prepara un'osservazione
+ limitata, controlla la proposta e decide quale operazione concreta eseguire.
+ Il modello non invoca direttamente gli executor e non modifica il proprio
+ contratto.</p>
+
+ <p>Nel manifest, <code>intelligence = "agentic"</code> dichiara questa modalit&agrave;
+ e permette al registro e all'interfaccia di rappresentarla correttamente. La
+ dichiarazione viene convalidata, ma da sola <strong>non dimostra</strong> che
+ l'implementazione sia sicura: limiti, validazione delle proposte e
+ postcondizioni devono essere verificati nel codice e nei test.</p>
 
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
-   <title id="flow-title">Ciclo di un executor intelligente</title>
-   <desc id="flow-desc">Il contratto pubblico contiene un ciclo interno limitato, circondato da autorit&agrave; e verifiche deterministiche.</desc>
+   <title id="flow-title">Bounded loop inside an intelligent executor</title>
+   <desc id="flow-desc">A stable public contract surrounds a bounded internal loop with deterministic validation and outcome checks.</desc>
    <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#1a477a"/></marker></defs>
    <rect x="18" y="18" width="864" height="254" rx="20" fill="#f7faf8" stroke="#416b4b" stroke-width="2"/>
-   <text x="42" y="49" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#416b4b">AUTORIT&Agrave; FISSA: capacit&agrave; &middot; consenso &middot; segreti &middot; destinazioni</text>
+   <text x="42" y="49" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#416b4b">FIXED AUTHORITY: capabilities &middot; consent &middot; secrets &middot; targets</text>
    <g font-family="Segoe UI,sans-serif" text-anchor="middle">
-    <rect x="50" y="92" width="145" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="122" y="121" font-size="14" font-weight="700" fill="#1a477a">Osserva</text><text x="122" y="143" font-size="12" fill="#18324a">stato minimo</text>
-    <rect x="250" y="92" width="160" height="72" rx="12" fill="#e4f1e7" stroke="#416b4b"/><text x="330" y="121" font-size="14" font-weight="700" fill="#416b4b">Risolvi</text><text x="330" y="143" font-size="12" fill="#18324a">prima con regole</text>
-    <rect x="465" y="92" width="160" height="72" rx="12" fill="#fff3d7" stroke="#9a6418"/><text x="545" y="121" font-size="14" font-weight="700" fill="#9a6418">Disambigua</text><text x="545" y="143" font-size="12" fill="#18324a">LLM solo se serve</text>
-    <rect x="680" y="92" width="165" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="762" y="121" font-size="14" font-weight="700" fill="#1a477a">Agisci e verifica</text><text x="762" y="143" font-size="12" fill="#18324a">postcondizione</text>
+    <rect x="50" y="92" width="145" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="122" y="121" font-size="14" font-weight="700" fill="#1a477a">Observe</text><text x="122" y="143" font-size="12" fill="#18324a">bounded state</text>
+    <rect x="250" y="92" width="160" height="72" rx="12" fill="#e4f1e7" stroke="#416b4b"/><text x="330" y="121" font-size="14" font-weight="700" fill="#416b4b">Propose</text><text x="330" y="143" font-size="12" fill="#18324a">one candidate</text>
+    <rect x="465" y="92" width="160" height="72" rx="12" fill="#fff3d7" stroke="#9a6418"/><text x="545" y="121" font-size="14" font-weight="700" fill="#9a6418">Validate</text><text x="545" y="143" font-size="12" fill="#18324a">adapter rules</text>
+    <rect x="680" y="92" width="165" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="762" y="121" font-size="14" font-weight="700" fill="#1a477a">Execute and check</text><text x="762" y="143" font-size="12" fill="#18324a">postcondition</text>
    </g>
    <g stroke="#1a477a" stroke-width="2" marker-end="url(#arrow)"><line x1="195" y1="128" x2="242" y2="128"/><line x1="410" y1="128" x2="457" y2="128"/><line x1="625" y1="128" x2="672" y2="128"/></g>
-   <text x="450" y="217" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#1a477a">USCITA TIPIZZATA: successo verificato &middot; passaggio all'utente &middot; errore causale</text>
-   <text x="450" y="244" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="12" fill="#5d6d7d">Numero di passi, tempo e dimensione dell'osservazione sono limitati.</text>
+   <text x="450" y="217" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#1a477a">OUTCOME: completed &middot; inconclusive &middot; exhausted</text>
+   <text x="450" y="244" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="12" fill="#5d6d7d">Attempts, elapsed time, history, and observation size are bounded.</text>
   </svg>
-  <figcaption>Il modello opera nel tratto ambiguo; autorit&agrave;, limiti e verifica restano deterministici.</figcaption>
+  <figcaption>Il ciclo comune limita tentativi, tempo, cronologia e dimensione
+  delle osservazioni. L'adattatore conserva il controllo dell'azione.</figcaption>
  </figure>
 
- <h2>Stesso involucro, due modi di eseguire</h2>
+ <h2>Che cosa offre oggi il runtime comune</h2>
+ <p>Metnos fornisce un ciclo sincrono e uno asincrono. A ogni tentativo pu&ograve;
+ aggiornare l'osservazione, chiedere una proposta, convalidarla, eseguirla e
+ controllare la postcondizione. L'esito interno &egrave; uno fra
+ <code>completed</code>, <code>inconclusive</code> ed <code>exhausted</code>.
+ Esiste anche la variante &laquo;prima il metodo deterministico, poi il modello&raquo;:
+ se il ripiego non produce un risultato valido, resta valido il risultato
+ deterministico iniziale.</p>
+
  <table>
-  <tr><th>Propriet&agrave;</th><th>Executor diretto</th><th>Executor intelligente</th></tr>
-  <tr><td>Contratto pubblico</td><td>Input e output tipizzati</td><td>Identico</td></tr>
-  <tr><td>Percorso</td><td>Procedura prestabilita</td><td>Ciclo adattivo e limitato</td></tr>
-  <tr><td>Scopo</td><td>Fissato dal nome</td><td>Identico e non ridefinibile</td></tr>
-  <tr><td>Autorit&agrave;</td><td>Manifest e consenso</td><td>Identica; non pu&ograve; auto-estendersi</td></tr>
-  <tr><td>Esito</td><td>Schema e postcondizione</td><td>Identico, compreso il fallimento esplicito</td></tr>
+  <tr><th>Responsabilit&agrave;</th><th>Runtime comune</th><th>Adattatore dell'executor</th></tr>
+  <tr><td>Limiti</td><td>Impone massimi a tentativi, tempo, cronologia e osservazioni</td><td>Pu&ograve; scegliere limiti pi&ugrave; stretti e deve limitare ogni singola operazione</td></tr>
+  <tr><td>Proposta</td><td>La richiede e ne gestisce il ciclo</td><td>Decide che cosa il modello pu&ograve; vedere e proporre</td></tr>
+  <tr><td>Validazione</td><td>Non accetta una proposta respinta</td><td>Definisce le regole concrete di ammissione</td></tr>
+  <tr><td>Successo</td><td>Restituisce l'esito del ciclo</td><td>Definisce e verifica la postcondizione</td></tr>
+  <tr><td>Autorit&agrave;</td><td>Non la amplia</td><td>Opera entro manifest, policy, consenso e sandbox</td></tr>
  </table>
 
- <h2>Dove porta un vantaggio reale</h2>
+ <div class="note"><strong>Il limite di tempo del ciclo non interrompe
+ automaticamente un'azione gi&agrave; iniziata.</strong> Serve a impedire nuovi
+ tentativi. L'adattatore deve assegnare un proprio timeout a ogni operazione,
+ soprattutto quando questa pu&ograve; modificare dati.</div>
+
+ <h2>Dove viene usato</h2>
  <div class="use-grid">
-  <div class="card yes"><h3>Adatto</h3><p>Scopo stretto, percorso variabile, azioni limitate, progresso riosservabile e conclusione verificabile.</p><p>Esempi: accesso a un sito, procedure a pi&ugrave; schermate, estrazione da strutture variabili, scelta fra controlli equivalenti.</p></div>
-  <div class="card no"><h3>Non adatto</h3><p>Ricerca aperta, strategia fra domini o compiti creativi senza un criterio netto di completamento.</p><p>Queste decisioni appartengono al pianificatore, non a un executor nascosto.</p></div>
+  <div class="card yes"><h3>Scelta controllata</h3><p>Nella navigazione web il modello pu&ograve; scegliere l'identificatore di un controllo fra candidati preparati dal broker. Non produce selettori CSS o XPath.</p><p>Nella ricerca di immagini pu&ograve; riordinare identificatori noti quando i metadati non offrono un segnale lessicale sufficiente.</p></div>
+  <div class="card yes"><h3>Ripiego controllato</h3><p>L'OCR prova prima Tesseract. Soltanto se il testo &egrave; insufficiente pu&ograve; chiedere al modello visivo una trascrizione; un risultato debole non sostituisce quello iniziale.</p><p>L'estrazione strutturata e alcuni percorsi di consultazione usano lo stesso principio con contratti propri.</p></div>
  </div>
- <p>Una nuova lingua, disposizione o sequenza di schermate dovrebbe essere assorbita dallo stesso executor. Serve nuovo codice quando manca una primitiva, un canale di osservazione, un'autorit&agrave; oppure una postcondizione verificabile: l'intelligenza non inventa sensori o permessi.</p>
+ <p>Il modello &egrave; utile quando lo scopo &egrave; ristretto, il percorso pu&ograve; variare e
+ la conclusione &egrave; verificabile. Non &egrave; adatto a nascondere dentro un executor
+ una ricerca aperta, una strategia fra domini o un compito senza un criterio
+ netto di completamento: quelle decisioni appartengono al pianificatore.</p>
 
  <h2>Se non riesce</h2>
- <p>L'executor si arresta in modo chiuso: restituisce un codice causale nello schema pubblico, conserva soltanto lo stato necessario a una ripresa sicura e non inventa risultati. Conferme esterne o ambiguit&agrave; non risolvibili producono un passaggio esplicito all'utente; limiti esauriti, bersaglio instabile e postcondizione assente producono errori distinguibili.</p>
- <div class="note"><strong>Trasporto e intelligenza sono indipendenti.</strong> Un executor locale, remoto o basato in futuro su MCP pu&ograve; essere diretto oppure intelligente. MCP descrive come raggiungere uno strumento; non decide mandato, autorit&agrave; o criterio di successo.</div>
+ <p>Se nessuna proposta viene ammessa, il ciclo &egrave; <code>inconclusive</code>. Se
+ sono terminati i tentativi o il tempo disponibile, &egrave; <code>exhausted</code>.
+ L'adattatore traduce poi questo esito nel contratto pubblico del proprio
+ executor: pu&ograve; mantenere il risultato deterministico, restituire un errore
+ tipizzato o chiedere l'intervento dell'utente. Il ciclo comune non inventa un
+ risultato e non promette da solo una ripresa persistente.</p>
+ <div class="note"><strong>Trasporto e intelligenza sono indipendenti.</strong>
+ Un executor locale o remoto pu&ograve; essere diretto oppure intelligente. Il
+ trasporto stabilisce come raggiungerlo; manifest, policy e codice stabiliscono
+ che cosa pu&ograve; fare.</div>
 
  <p class="related">Approfondimenti: <a href="executor.html">contratto executor</a> &middot; <a href="sandbox.html">sandbox</a> &middot; <a href="skills_backends.html">skill e backend</a> &middot; <a href="agent_runtime.html">runtime agentico</a></p>
 </main>

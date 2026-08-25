@@ -83,17 +83,16 @@ li { margin-bottom:4px; }
  <div class="meta">Seeing system state without mistaking a view for a source of authority.</div>
 </div>
 
-<p class="lead">Metnos provides two separate facilities. The chat's
-<strong>Settings</strong> page is the current administration interface and
-refreshes its data on each request. <code>runtime/observability.py</code>
-instead produces a static HTML file for local diagnosis. That file does not
-feed Settings, does not refresh itself, and is not served as a chat page.</p>
+<p class="lead">Use <strong>Settings</strong>, the administration area in the
+web chat, to inspect a running installation. Metnos can also produce an HTML
+report that opens as a local file. It is a technical snapshot of the moment
+when it was generated, not a second version of Settings.</p>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
- <li><a href="#cap1">A natural-language example</a></li>
- <li><a href="#cap2">The two surfaces</a></li>
+ <li><a href="#cap1">Where to start</a></li>
+ <li><a href="#cap2">The two tools</a></li>
  <li><a href="#cap3">Settings in the chat</a></li>
  <li><a href="#cap4">The static HTML snapshot</a></li>
  <li><a href="#cap5">Data collected by the snapshot</a></li>
@@ -103,33 +102,33 @@ feed Settings, does not refresh itself, and is not served as a chat page.</p>
 </ol>
 </div>
 
-<h1 id="cap1">1. A natural-language example</h1>
+<h1 id="cap1">1. Where to start</h1>
 
-<p>Ask Metnos with a request such as:</p>
+<p>You can ask Metnos directly:</p>
 
 <pre>Show me where I can check the latest turns and service status.</pre>
 
-<p>A useful answer should first give the visible route in the chat:
+<p>The simplest route starts in the web chat:
 <strong>Settings &gt; Activity &gt; Turns</strong> for recent requests and
 <strong>Settings &gt; System &gt; Services</strong> for configured services. If
-the question came from Telegram, this route must be opened in the Metnos web
-chat: Telegram does not embed administration pages.</p>
+you are talking to Metnos through Telegram, you must still open these pages in
+a browser because Telegram does not contain the administration area.</p>
 
-<p>Only after this practical instruction should the answer explain APIs,
-records, or files. The static snapshot is appropriate for an explicitly
-requested technical diagnosis; it is not the ordinary route for chat users.</p>
+<p>APIs, logs, and files are useful for technical diagnosis. The static report
+described below belongs to this second case and is not the ordinary route for
+chat users.</p>
 
-<h1 id="cap2">2. The two surfaces</h1>
+<h1 id="cap2">2. The two tools</h1>
 
 <table>
-<tr><th>Surface</th><th>Refresh behaviour</th><th>Access</th><th>Purpose</th></tr>
-<tr><td><strong>Settings</strong> (<code>/admin</code>)</td><td>Data is read again when the page is opened or refreshed.</td><td>Requires the administrator role enforced by HTTP middleware.</td><td>Inspection and administrative controls for the running installation.</td></tr>
-<tr><td><strong>Static snapshot</strong> (<code>runtime.observability</code>)</td><td>Captures the instant when the command runs.</td><td>Local file; protection depends on filesystem and machine permissions.</td><td>Offline diagnosis across six historical data sources.</td></tr>
+<tr><th>Tool</th><th>Refresh behaviour</th><th>Access</th><th>Purpose</th></tr>
+<tr><td><strong>Settings</strong> (<code>/admin</code>)</td><td>Reads data again whenever a page is opened or refreshed.</td><td>Requires a session with the administrator role.</td><td>Inspect and control the installation while it is running.</td></tr>
+<tr><td><strong>Static report</strong> (<code>runtime.observability</code>)</td><td>Remains fixed at the moment when it was generated.</td><td>It is a local file; protection depends on the file and computer permissions.</td><td>Inspect six local sources offline.</td></tr>
 </table>
 
-<p>The two surfaces must not be merged into a single description. Settings
-uses its own routes and view models; only the command-line interface calls the
-static generator, and the HTTP server has no caller for it.</p>
+<p>These are not two views of the same facility. Settings uses its own pages
+and data, while the static generator runs only from the command line and is
+not used by the HTTP server.</p>
 
 <h1 id="cap3">3. Settings in the chat</h1>
 
@@ -147,15 +146,15 @@ and users. Detail pages keep different operational questions separate:</p>
 <tr><td>Settings &gt; System &gt; Users</td><td>Users, roles, channels, and administrable preferences.</td></tr>
 </table>
 
-<p><code>runtime/ui_surfaces.py</code> is the canonical editorial description
-of visible pages and their navigation routes. Tutor consumes the same
-registry: a structural UI change requires a registry update, a navigation
-guide update, and a rebuilt Tutor index.</p>
+<p><code>runtime/ui_surfaces.py</code> is the canonical description of visible
+pages and their navigation routes. Tutor uses the same registry, so a
+structural interface change also requires an updated navigation guide and a
+rebuilt Tutor index.</p>
 
 <h1 id="cap4">4. The static HTML snapshot</h1>
 
-<p><code>render_dashboard(out_path)</code> queries local sources and composes
-one document with embedded CSS, no JavaScript, and no WebSocket. Sections are
+<p>The generator reads local sources and composes one document with embedded
+styles, no JavaScript, and no live connection to the server. Sections are
 ordered as follows: tests, Mnestoma, pairings, recent turns, Vaglio decisions,
 and scheduler.</p>
 
@@ -171,7 +170,7 @@ presented as one.</p>
 <h1 id="cap5">5. Data collected by the snapshot</h1>
 
 <table>
-<tr><th>Source</th><th>Displayed projection</th><th>Configured location</th></tr>
+<tr><th>Source</th><th>Data shown</th><th>Configured location</th></tr>
 <tr><td><strong>Mnestoma</strong></td><td>Counts, active and proto edges, recent events.</td><td>Mnestoma's database, normally below <code>PATH_WORKSPACE/.mnestoma</code>.</td></tr>
 <tr><td><strong>Pairings</strong></td><td>Channel, sender identifier, level, timestamps, pairing author, and revoked count.</td><td><code>DB_PAIRINGS</code> below <code>PATH_USER_STATE</code>.</td></tr>
 <tr><td><strong>Turns</strong></td><td>Latest fifteen turns: request, outcome, step count, and beginning of the answer.</td><td><code>PATH_TURNS</code> below <code>PATH_USER_DATA</code>.</td></tr>
@@ -180,10 +179,10 @@ presented as one.</p>
 <tr><td><strong>Registered tests</strong></td><td>Modules, enabled cases, latest status, and largest modules.</td><td><code>PATH_RUNTIME/testing/tests.db</code>.</td></tr>
 </table>
 
-<p>Limits are fixed by the generator rather than exposed as CLI options: at
-most five daily turn files, three Vaglio files, and distinct row or event
-limits. A complete analysis must query the authorised source instead of
-inferring totals from this page.</p>
+<p>Limits are fixed in the generator and cannot be changed from the command
+line: at most five turn files, three Vaglio files, and a bounded number of rows
+or events per section. The report helps direct a diagnosis; it is not a source
+for complete totals.</p>
 
 <h1 id="cap6">6. Access, users, and confidentiality</h1>
 

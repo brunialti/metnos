@@ -5,7 +5,7 @@
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; Mnest</title>
  <meta name="description" content="The current mnest contract: edges between executors, persistence, reinforcement, decay, proto-mnests, and actual integrations.">
- <meta name="keywords" content="Metnos, mnest, mnestome, executor, graph, operational memory">
+ <meta name="keywords" content="Metnos, mnest, mnestoma, executor, graph, operational memory">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/mnest">
@@ -36,12 +36,11 @@
  <div class="meta">Data contract, lifecycle, and integration status.</div>
 </div>
 
-<p class="lead">A mnest represents a directed, weighted relation from a source
-executor to a destination executor. Its store, queries, and ager are implemented.
-The current runtime, however, does not automatically call
-<code>record_passing()</code> at the end of turns: a record in the store is data
-inserted by an explicit caller, not proof that the product learns every observed
-passing.</p>
+<p class="lead">A mnest records that the output of one executor was passed to
+another. For example, it can connect a file search to the executor that reads
+the files found. The link has a direction, a weight, and a use count. The store
+and its management operations exist, but the runtime does not yet record every
+turn's hand-offs automatically.</p>
 
 <div class="toc">
 <h2>Contents</h2>
@@ -63,10 +62,11 @@ passing.</p>
 
 <h1 id="cap1">1. Scope and current status</h1>
 
-<p>The <code>Mnest</code> type and its operations live in
-<code>runtime/mnestoma.py</code>. They store and query links between executor
-names and versions; they are not personal memory and do not imply automatic
-learning.</p>
+<p>The <code>Mnest</code> type and its operations are defined in
+<code>runtime/mnestoma.py</code>. The module stores and queries links between
+executor names and versions. These links describe an operational structure of
+the installation: they are not personal memories and, by themselves, do not
+show that Metnos is learning a user's habits.</p>
 
 <table>
 <thead><tr><th>Part</th><th>Status</th></tr></thead>
@@ -81,25 +81,26 @@ learning.</p>
 
 <h1 id="cap2">2. What it represents</h1>
 
-<p>A mnest has a <code>src_executor &rarr; dst_executor</code> direction,
-versions, use count, weight, first and last update times, and state. The structure
-can represent the operational fact that a caller recorded a passing from A to B.</p>
+<p>Every mnest runs from a source executor to a destination executor:
+<code>src_executor &rarr; dst_executor</code>. It stores the versions involved,
+use count, relation weight, first and last update times, and state. Strictly
+speaking, it says only that a component recorded a hand-off from A to B.</p>
 
 <p>Direction matters: A&rarr;B and B&rarr;A are different records. A new destination
-version also creates a distinct relation. A chain A&rarr;B&rarr;C consists of two
-edges; multi-edge traversal is performed by <code>walk()</code>.</p>
+version also creates a distinct relation. A chain A&rarr;B&rarr;C contains two
+links; <code>walk()</code> can traverse more than one.</p>
 
 <h1 id="cap3">3. Evidence boundary</h1>
 
-<p>The record does not contain the transferred output and does not verify by itself
-that the transfer occurred. Provenance depends on the caller of
-<code>record_passing()</code>. An optional <code>turn_id</code> in the event can
-lead back to the originating turn, but only if that reference was supplied and the
-corresponding log still exists.</p>
+<p>The record does not contain the transferred output and cannot verify by itself
+that the transfer actually occurred. Its reliability therefore depends on the
+component that calls <code>record_passing()</code>. An event may include a
+<code>turn_id</code>, which helps locate the originating turn if the reference
+was supplied and the corresponding log still exists.</p>
 
-<p>A mnest must therefore not be presented as self-sufficient evidence, a
-biographical memory, or a user preference. It is structured telemetry about a
-relation between capabilities.</p>
+<p>A mnest is therefore not self-sufficient evidence, a biographical memory, or
+a user preference. It is structured telemetry about a relation between
+executors.</p>
 
 <h1 id="cap4">4. Fields and constraints</h1>
 
@@ -126,15 +127,16 @@ explicit query to reinforce an existing proto.</p>
 
 <h1 id="cap5">5. Recording</h1>
 
-<p><code>record_passing()</code> opens a transaction. If it finds the same
-<code>active</code> edge, it applies accrued decay, adds reinforcement,
-increments <code>uses</code>, and records an event. Otherwise it creates a new
-edge with weight <code>0.30</code> and an initial event.</p>
+<p><code>record_passing()</code> performs the update in a transaction. If it
+finds the same <code>active</code> link, it calculates how much the weight has
+decayed since the previous use, adds the new reinforcement, increments
+<code>uses</code>, and records the event. If the link does not exist, it creates
+one with weight <code>0.30</code>.</p>
 
 <p>With <code>dst_exists=False</code>, the same API creates or reinforces a
-proto-mnest. The call is atomic for the searched pair, but a
-<code>Mnestoma</code> object owns a process-local connection and does not declare
-its instance thread-safe.</p>
+proto-mnest. The call is atomic for the pair being searched. Each
+<code>Mnestoma</code> instance does, however, open its own SQLite connection and
+must not be shared between threads.</p>
 
 <h1 id="cap6">6. Reinforcement and decay</h1>
 
@@ -181,6 +183,8 @@ and its promotion lifecycle.</p>
 <ul>
  <li><strong>Synt.</strong> Its composer may walk <code>active</code> edges only;
  diagnostic commands can list recurring protos.</li>
+ <li><strong>Telos.</strong> Introspection may include a short summary of mnests
+ that refer to executors still present in the catalogue.</li>
  <li><strong>Ager.</strong> The <code>nightly_aging</code> job calls
  <code>apply_ager()</code> together with executor aging.</li>
  <li><strong>Observability and CLI.</strong> They can display statistics, top
@@ -201,16 +205,17 @@ does not read them. L0 and L1 have separate stores and signals.</p>
 <code>v_mnestoma</code> view exposes <code>active</code> and
 <code>proto</code> edges.</p>
 
-<p>The same database contains <code>canonical_query_log</code>, populated by some
-turns as normalization telemetry. That table is not a mnest and does not show that
-the edge graph was updated. The module does not implement monthly snapshots or
-automatic compression.</p>
+<p>The same database also contains <code>canonical_query_log</code>, a separate
+table originally introduced for request-normalisation telemetry. Current plan
+reuse takes place in the L0 and L1 stores described in the
+<a href="fast_path.html">fastpath and autopath guide</a>: a row in this table is
+not a mnest and does not show that the link graph was updated. The module does
+not create monthly snapshots or compress the database automatically.</p>
 
 <h1 id="cap11">11. Example</h1>
 
-<p><strong>Ask Metnos with a request like this example:</strong>
-&ldquo;Explain whether the mnestome is populated automatically by my turns and
-which components read it today.&rdquo;</p>
+<p>You can ask Metnos: &ldquo;Is the mnestoma populated automatically by my turns?
+Which components read it today?&rdquo;</p>
 
 <p>A correct answer must distinguish available code from integration: the store,
 composer, ager, and inspection tools exist; automatic edge recording from turns is

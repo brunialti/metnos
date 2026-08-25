@@ -48,7 +48,16 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 class CandidateValidationError(ValueError):
-    pass
+    """A candidate failed deterministic validation.
+
+    ``findings`` keeps rule results machine-readable for callers that need
+    diagnostics.  The optional field preserves compatibility with the older
+    validation sites, which still raise this exception with a message only.
+    """
+
+    def __init__(self, message: str, *, findings: tuple[Any, ...] = ()) -> None:
+        super().__init__(message)
+        self.findings = findings
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,12 +201,27 @@ def _tokens(pattern: re.Pattern[str], value: str) -> tuple[str, ...]:
     return tuple(found)
 
 
+def _jinja_tokens(value: str) -> tuple[str, ...]:
+    """Return Jinja tokens with insignificant placeholder padding removed.
+
+    Only whitespace immediately inside ``{{`` and ``}}`` is insignificant.
+    Whitespace inside the expression, control-block syntax, order, and
+    multiplicity remain exact invariants.
+    """
+    return tuple(
+        "{{" + token[2:-2].strip() + "}}"
+        if token.startswith("{{") and token.endswith("}}")
+        else token
+        for token in _tokens(_JINJA_RE, value)
+    )
+
+
 def _validate_common(source: str, translated: str) -> None:
     if not isinstance(translated, str) or not translated.strip():
         raise CandidateValidationError("translation is empty")
-    for name, pattern in (
-        ("jinja", _JINJA_RE), ("format", _FORMAT_RE), ("code", _CODE_RE),
-    ):
+    if _jinja_tokens(source) != _jinja_tokens(translated):
+        raise CandidateValidationError("jinja invariants changed")
+    for name, pattern in (("format", _FORMAT_RE), ("code", _CODE_RE)):
         if _tokens(pattern, source) != _tokens(pattern, translated):
             raise CandidateValidationError(f"{name} invariants changed")
     if _SENTINEL_RE.search(translated):
@@ -390,7 +414,29 @@ def _translate_item(item: InventoryItem, target: str, translator: Translator) ->
         source_for_validation = _set_prompt_lang(item.source_text, target)
         _validate_jinja(source_for_validation, translated)
         return translated
-    if item.layer in {"contract", "message"}:
+    if item.layer == "contract":
+        translated = translator(item.source_text, item.source_lang, target, item.resource_id)
+        _validate_common(item.source_text, translated)
+        selector = item.metadata.get("selector")
+        if not isinstance(selector, str) or not selector.strip():
+            raise CandidateValidationError("contract selector is unavailable")
+        from manifest_lint import lint_contract_translation
+        findings = lint_contract_translation(
+            item.source_text,
+            translated,
+            resource=selector,
+            source_language=item.source_lang,
+            target_language=target,
+        )
+        errors = tuple(finding for finding in findings if finding.severity == "error")
+        if errors:
+            checks = ", ".join(sorted({finding.check for finding in errors}))
+            raise CandidateValidationError(
+                f"contract translation invariants changed: {checks}",
+                findings=errors,
+            )
+        return translated.strip()
+    if item.layer == "message":
         translated = translator(item.source_text, item.source_lang, target, item.resource_id)
         _validate_common(item.source_text, translated)
         return translated.strip()

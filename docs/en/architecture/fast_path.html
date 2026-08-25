@@ -104,10 +104,9 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); margin: 1
 <h1 id="cap1">1. The idea, in two lines</h1>
 
 <p>
-<strong>Ask Metnos with a request like this example:</strong>
-&ldquo;Find the PDF files modified today.&rdquo; If you repeat the request, Metnos
-may reuse the plan that already succeeded; you do not select or enable the
-fastpath manually.
+For example, you can ask Metnos: &ldquo;Find the PDF files modified today.&rdquo;
+If you later repeat the same request, Metnos may reuse the plan that already
+worked. There is nothing to enable: the check happens automatically.
 </p>
 
 <p class="lead">
@@ -162,18 +161,20 @@ to build it again.
 <h1 id="cap3">3. The two layers and their boundary</h1>
 
 <p>
-The two layers differ in how much of the path they recognise. L0 recognises all
-of it, arguments included: the same request as before, with the same concrete
-values. L1 recognises the path alone &mdash; the skeleton of the solution,
-stripped of its arguments &mdash; and so it holds for a whole family of related
-requests.
+Both layers reuse plans that have already run, but at different levels of
+generality. L0 starts from one request: an exact match may reuse a plan that
+contains request-specific values. Only plans known to be generalisable are
+eligible for L0's semantic match against differently worded but equivalent
+requests. L1 instead starts from the complete intent and a group of related
+requests; before execution, values that depend on the question are derived
+again from the current text.
 </p>
 
 <table>
 <thead><tr><th>Layer</th><th>What it recognises</th><th>How</th></tr></thead>
 <tbody>
-<tr><td><strong>L0</strong></td><td><strong>An already solved request.</strong> Exact matching may retain a request-specific plan; semantic matching is limited to plans that are safe to generalise.</td><td>Deterministic fingerprint (0a), then similarity through the configured embedder (0b)</td></tr>
-<tr><td><strong>L1</strong></td><td><strong>A family of requests.</strong> Reuses a general plan associated with a complete intent and semantic cluster.</td><td>Intent, semantic cluster, and deterministic champion ordering</td></tr>
+<tr><td><strong>L0</strong></td><td><strong>An already solved request.</strong> Exact matching may retain a request-specific plan; semantic matching is limited to plans that are safe to generalise.</td><td>Deterministic fingerprint (0a), then similarity through the configured embedding model (0b)</td></tr>
+<tr><td><strong>L1</strong></td><td><strong>A family of requests.</strong> Reuses a general plan associated with a complete intent and a semantic group.</td><td>Intent, semantic similarity, and deterministic selection of the best plan</td></tr>
 </tbody>
 </table>
 
@@ -191,15 +192,14 @@ continues through the normal engine.
 <h1 id="cap4">4. L0 &mdash; runtime-produced cache (<code>fastpath.py</code>)</h1>
 
 <p>
-The first layer lives in <code>runtime/engine/fastpath.py</code> and keeps the
-plans it has already run in a SQLite database (<code>fastpaths.sqlite</code>).
-The entries appear on their own: whenever a turn succeeds &mdash; a fresh plan
-from the engine, the reuse of an L1, a promotion from cosine 0b &mdash; Metnos
-notes down the canonical query, its hash, the embedding produced by the
-configured model, the whole plan (the skeleton, or <em>framework</em>) and the
-intent: the verb and the object of the
-request. No approval involved: the chains are built from executors already
-vetted and tested.
+The first layer lives in <code>runtime/engine/fastpath.py</code> and stores
+previously executed plans in a SQLite database
+(<code>fastpaths.sqlite</code>). An entry is created after a successful turn
+produced by the engine, L1, or an L0 semantic match. Metnos records the
+normalised request, its fingerprint, an embedding when available, the complete
+plan, and the intent expressed as a verb and object. No separate approval is
+needed: the plan consists of admitted executors and has just completed a real
+execution successfully.
 </p>
 
 <h2>Two ways to find a match</h2>
@@ -236,8 +236,8 @@ remove the underlying capability.
 
 <ul>
 <li><strong>Negative rating:</strong> a user &ldquo;&#10007;&rdquo; deletes the
-fastpath for that query &mdash; which comes back if the request returns and
-succeeds (the last word always wins).</li>
+fastpath associated with that request. If the engine later resolves it
+successfully, it may create a new one.</li>
 <li><strong>Administration:</strong> in the web chat, open
 <strong>Settings &gt; Memory &gt; Praxis</strong> to inspect L0 shortcuts and
 delete one. If you ask for directions from Telegram, this path still refers
@@ -290,10 +290,11 @@ identifier.</li>
 
 <p>
 The boundary is deliberate: L0 favours repetition of the same request; L1
-generalises to an intent group and may derive either from explicit feedback or
-from the shadow seeding described above. L0 comes first in the cascade, but
-both layers must pass the same validity, argument-grounding, and safety checks
-before execution.
+generalises to a family of requests and may derive either from explicit
+feedback or from the shadow seeding described above. L0 comes first in the
+cascade. Before execution, both layers validate their signatures, realign
+arguments with the current request, and pass through the same preparation and
+safety checks used for a new plan.
 </p>
 
 
@@ -371,28 +372,36 @@ and succeeds, L0 can record the updated plan again.
 </p>
 
 
-<h1 id="cap7">7. The arguments extractor</h1>
+<h1 id="cap7">7. How arguments are refreshed</h1>
 
 <p>
-Recognising the request is half the work. The other half is drawing out its
-concrete values: which paths, which URLs, which date, which threshold. A
-rule-based extractor (<code>args_extractor.py</code>) handles this, again with
-no model:
+Recognising a plan is not enough: it must also be bound to the values in the
+current request, such as paths, URLs, accounts, dates, or quantities. Before
+every execution, Metnos applies one shared sequence of deterministic
+transformations. Each transformation operates only on fields declared by the
+executor schema; when there is no reliable signal, it does not invent a value.
 </p>
 
 <ul>
-<li><strong>Closed rules.</strong> Regular expressions for the known types: URL
-(<code>https://...</code>), path (<code>~/...</code> or <code>/...</code>, with
-the &ldquo;home&rdquo; shortcut becoming <code>~/</code>), email, numbers, file
-extensions (&ldquo;PDF file&rdquo; &rarr; <code>*.pdf</code>), dates (today,
-yesterday, tomorrow, the day after &mdash; in Italian and English &mdash;
-turned into ISO format), and time windows (&ldquo;this week&rdquo;, &ldquo;last
-24 hours&rdquo;, &ldquo;last 7 days&rdquo;).</li>
-<li><strong>Arguments that depend on the request.</strong> Some values &mdash;
-the mail account, the time window &mdash; change with the question: at execution
-(and at recording) they are worked out afresh on the current query, not
-inherited from the stored plan.</li>
+<li><strong>Values recognisable in text.</strong>
+<code>args_extractor.py</code> identifies known types, including URLs, Linux
+and Windows paths, email addresses, explicit quantities, file extensions
+(&ldquo;PDF files&rdquo; becomes <code>*.pdf</code>), dates, and time windows in
+Italian and English.</li>
+<li><strong>Specialised resolvers.</strong> Mail accounts, time windows, and
+other instance-governed fields are recalculated from the request and the
+context available at execution time.</li>
+<li><strong>Compound requests.</strong> When a sentence contains several
+actions, values are associated with the relevant clause, so that a date or
+path belonging to one action does not leak into the next.</li>
 </ul>
+
+<p>
+This preparation also applies to plans retrieved from L0 and L1. A plan with
+literal values that cannot be generalised remains eligible only for the exact
+request; some plans, including those with embedded numeric identifiers or
+authenticated sessions, are not stored at all.
+</p>
 
 
 <h1 id="cap8">8. Configuration</h1>
@@ -480,16 +489,17 @@ plan shape and intent.
 <li><strong>Mode 1 (default, active).</strong> The candidate becomes a proposal
 awaiting a person's approval in <strong>Settings &gt; Lifecycle &gt;
 Changes</strong> in the web chat. If the intent family is absent from the
-catalogue, approval queues the full synthesis: five stages, birth test,
-signing, and installation. If the plan already composes an executor from that
-family, a person must first choose a qualifier; approval alone does not start
+catalogue, approval queues the complete synthesis procedure, including
+deterministic checks, birth tests, signing, and installation. If the plan
+already composes an executor from that family, a person must first choose a
+qualifier; approval alone does not start
 synthesis. Telegram can explain the procedure, but the path always leads to
 the web chat.</li>
 <li><strong>Mode 2 (optional, off).</strong> Past a much higher threshold,
 Metnos may automatically synthesise only a candidate whose family is still
 free. It requires at least five fastpaths, fifty uses, thirty days, and three
 nightly observations of the same proposal; a previous human decision blocks
-automation. The candidate still traverses the complete synthesis pipeline.
+automation. The candidate still traverses the same complete synthesis pipeline.
 Only one attempt is allowed per night, whether it succeeds or fails.</li>
 </ul>
 

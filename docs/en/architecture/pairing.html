@@ -1,295 +1,221 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
- <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; pairing</title>
- <meta name="description" content="Guide to pairing users, channels, web sessions, and remote devices in Metnos: identity, one-time tokens, revocation, and per-user isolation.">
- <meta name="keywords" content="pairing, users, Telegram, web sessions, remote devices, Ed25519, revocation, Metnos">
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Pairing and identity</title>
+ <meta name="description" content="How Metnos pairs users, Telegram, browsers, conversations, and remote computers without confusing identity and authority.">
  <meta name="author" content="the owner">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/pairing">
- <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/pairing">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/pairing">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/pairing">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/pairing">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/en/architecture/pairing">
- <meta property="og:title" content="Metnos &mdash; pairing">
- <meta property="og:description" content="Identity and pairing for users, channels, web sessions, and remote devices.">
- <meta property="og:locale" content="en_US">
- <meta property="og:locale:alternate" content="it_IT">
- <meta property="og:site_name" content="Metnos">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — pairing",
- "description": "Guide to pairing users, channels, web sessions, and remote devices in Metnos.",
- "url": "https://metnos.com/en/architecture/pairing.html",
- "inLanguage": "en",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "the owner"}
-}
- </script>
- <style>
-:root { --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
-  --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
-  --code-bg:#f6f8fa; --table-alt:#f0f4f8; }
-* { box-sizing:border-box; }
-body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt;
-  line-height:1.65; color:var(--text); background:var(--bg); max-width:960px;
-  margin:0 auto; padding:40px 30px; }
-h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy);
-  padding-bottom:8px; margin-top:48px; }
-h2 { color:var(--navy-light); font-size:14pt; margin-top:26px;
-  border-bottom:1px solid var(--border); padding-bottom:4px; }
-p { margin:10px 0; }
-table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
-th { background:var(--navy); color:#fff; padding:8px 10px; text-align:left; }
-td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
-tr:nth-child(even) td { background:var(--table-alt); }
-pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px;
-  padding:12px 16px; overflow-x:auto; font-size:9.5pt; }
-code { font-family:Consolas,'Courier New',monospace; }
-p code, li code, td code { background:var(--code-bg); padding:1px 5px;
-  border-radius:3px; font-size:9.5pt; }
-ul, ol { margin:8px 0; padding-left:24px; }
-li { margin-bottom:5px; }
-.lead { font-size:12pt; color:var(--navy); margin:18px 0; }
-.title-page { text-align:center; padding:55px 0 28px; }
-.title-page h1 { font-size:32pt; border:0; margin:0; }
-.subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 26px; }
-.meta { color:#666; }
-.toc ol { line-height:1.9; }
-.toc a { color:var(--navy); text-decoration:none; }
- </style>
  <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
-<script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head>
 <body>
 
 <nav class="lang-switch" aria-label="Language">
  <a href="/it/architecture/pairing.html" hreflang="it" lang="it">IT</a>
  <span class="sep">&middot;</span>
- <a href="/en/architecture/pairing.html" class="active" hreflang="en" lang="en">EN</a>
+ <a class="active" href="/en/architecture/pairing.html" hreflang="en" lang="en">EN</a>
 </nav>
 
-<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
- <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-  <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">pairing</strong></span>
- </div>
-</div>
+<h1>Pairing and identity</h1>
 
-<div class="title-page">
- <h1>Metnos</h1>
- <div class="subtitle"><code>pairing</code> &mdash; connecting users, channels, and devices</div>
- <div class="meta">A guide to verified identity and instance bindings</div>
-</div>
-
-<p><strong>Ask Metnos with a request like this example:</strong> “Show me how to
-connect Telegram to the user Lucia.” The Tutor gives the path in the web chat
-even when the question comes from Telegram.</p>
-
-<p class="lead">In Metnos, pairing establishes a verified identity before a
-request is processed. Identity is never inferred from message text. A logical
-user, a channel address, a chat session, and an execution device are distinct
-objects with independent registries and revocation paths.</p>
+<p class="lead">Before processing a request, Metnos needs to know who is
+speaking and which resources belong to them. It therefore pairs the user,
+channel, web session, and remote computer separately. Writing “I am Roberto” is
+not enough to become Roberto.</p>
 
 <div class="toc">
-<h2>Contents</h2>
-<ol>
- <li><a href="#cap1">The four bindings</a></li>
- <li><a href="#cap2">Users, roles, and isolation</a></li>
- <li><a href="#cap3">Pairing Telegram or a browser</a></li>
- <li><a href="#cap4">Signed channel codes</a></li>
- <li><a href="#cap5">Active session and conversation transfer</a></li>
- <li><a href="#cap6">Remote-executor devices</a></li>
- <li><a href="#cap7">Revocation and lifecycle</a></li>
- <li><a href="#cap8">Security invariants</a></li>
-</ol>
+ <h2>On this page</h2>
+ <ol>
+  <li><a href="#distinctions">Four things not to confuse</a></li>
+  <li><a href="#users">Users, roles, and autonomy</a></li>
+  <li><a href="#telegram">Pairing Telegram</a></li>
+  <li><a href="#browser">Pairing a browser</a></li>
+  <li><a href="#session">Opening the same chat on several devices</a></li>
+  <li><a href="#computer">Pairing a computer for remote executors</a></li>
+  <li><a href="#revocation">Revoking a pairing</a></li>
+  <li><a href="#security">Shared guarantees</a></li>
+ </ol>
 </div>
 
-<h1 id="cap1">1. The four bindings</h1>
+<h2 id="distinctions">Four things not to confuse</h2>
 
 <table>
-<thead><tr><th>Object</th><th>What it identifies</th><th>Current source</th></tr></thead>
-<tbody>
-<tr><td><strong>Logical user</strong></td><td>The identity that owns a role, preferences, and channels.</td><td><code>users.db</code>, <code>users</code> table</td></tr>
-<tr><td><strong>Channel</strong></td><td>A verified address, such as a Telegram <code>chat_id</code> or a paired browser.</td><td><code>users.db</code>, <code>user_channels</code> table; Telegram also uses <code>pairings.db</code></td></tr>
-<tr><td><strong>Chat session</strong></td><td>The device that currently has write access to the user's web conversation.</td><td><code>users.db</code>, <code>active_sessions</code> and <code>chat_conversations</code> tables</td></tr>
-<tr><td><strong>Remote device</strong></td><td>A machine authorised to run executors for a specified owner.</td><td><code>devices.db</code>, <code>devices</code> table</td></tr>
-</tbody>
+ <thead><tr><th>Object</th><th>What it represents</th><th>Example</th></tr></thead>
+ <tbody>
+  <tr><td><strong>User</strong></td><td>The Metnos identity that owns a role, autonomy level, preferences, and resources.</td><td>The owner or a guest.</td></tr>
+  <tr><td><strong>Channel</strong></td><td>A verified address through which that user can talk to Metnos.</td><td>A Telegram chat or paired browser.</td></tr>
+  <tr><td><strong>Web session</strong></td><td>The browser that currently has write access to a particular conversation.</td><td>A phone that has taken over from a laptop.</td></tr>
+  <tr><td><strong>Remote computer</strong></td><td>One of the user's machines on which Metnos may run compatible executors.</td><td>The Windows PC called <code>OFFICE-LAPTOP</code>.</td></tr>
+ </tbody>
 </table>
 
-<p>A paired browser is not automatically a remote device. The former provides
-chat access; the latter receives work from the server and runs it on the
-machine where the relevant data or applications live. Likewise, transferring
-a web session does not alter Telegram pairing or device ownership.</p>
+<p>The four pairings have different effects. Pairing Telegram does not authorise
+the phone to run executors. Opening chat in a new browser does not turn that
+computer into a remote device. Transferring a conversation does not change who
+owns a device.</p>
 
-<h1 id="cap2">2. Users, roles, and isolation</h1>
+<h2 id="users">Users, roles, and autonomy</h2>
 
-<p><code>runtime/users.py</code> maintains one <code>host</code> user and any
-number of <code>guest</code> users. Each record has a technical identifier, a
-unique name, a role, an optional owner, and an autonomy level.
-<code>user_channels</code> links that same user to verified
-<code>telegram</code>, <code>mail</code>, and <code>http</code> channels.</p>
+<p>An installation has one owner with the <code>host</code> role and may have
+several guests. Every user has a stable technical identifier, a unique name, a
+role, and an autonomy level.</p>
 
-<p>Preferences are resolved from the authenticated binding before the turn;
-language instead comes from the signed instance request and is shared by all
-of its users. Conversations, pending dialogs, and web-chat write authority
-remain scoped by user and channel.</p>
+<table>
+ <thead><tr><th>Level</th><th>General meaning</th></tr></thead>
+ <tbody>
+  <tr><td><code>read_only</code></td><td>Allows admitted informational use only; it does not start operational actions.</td></tr>
+  <tr><td><code>restricted</code></td><td>Allows actions within narrow limits and with required confirmations.</td></tr>
+  <tr><td><code>full</code></td><td>Allows the broadest autonomy supported by the instance, without bypassing policy or contracts.</td></tr>
+ </tbody>
+</table>
 
-<p>The two registries use different vocabularies and they are not
-interchangeable:</p>
+<p>An autonomy level is not a free pass. Every action must still pass the
+executor contract, policy, Vaglio, placement, and applicable confirmations. A
+guest with <code>full</code> autonomy does not become the owner or inherit other
+users' resources.</p>
+
+<p>The language belongs to the instance and is shared by its users.
+Conversations, pending dialogues, channels, and devices remain separated by
+user.</p>
+
+<h2 id="telegram">Pairing Telegram</h2>
+
+<ol>
+ <li>In web chat, open <strong>Settings &rsaquo; System &rsaquo; Users</strong>.</li>
+ <li>Create the user if needed, or open their existing record.</li>
+ <li>Generate the Telegram code.</li>
+ <li>Send it to the user through a trusted medium.</li>
+ <li>The user opens the Metnos Telegram bot and sends
+ <code>/start &lt;code&gt;</code>.</li>
+</ol>
+
+<p>The code is random, expires after one hour, and can be consumed only once.
+Two concurrent attempts cannot both pair with the same code. The
+<code>/start</code> command completes the pairing but does not execute a request;
+the next message starts a new turn.</p>
+
+<p>Metnos stores the technical Telegram address alongside the user. Later
+messages are attributed through that pairing, not through the display name in
+the Telegram profile or a claim written in the message.</p>
+
+<h3>The technical <code>/pair</code> code</h3>
+
+<p>A lower-level flow also exists, using an Ed25519-signed code for technical
+channel administration. The code declares its expiry and autonomy level,
+normally lasts five minutes, and can be used once. To pair a user who already
+exists, the <strong>Settings &rsaquo; System &rsaquo; Users</strong> flow is simpler and
+preserves the logical identity explicitly.</p>
+
+<h2 id="browser">Pairing a browser</h2>
+
+<ol>
+ <li>From the user record, generate the HTTP-channel link.</li>
+ <li>Open that link once in the browser you want to pair.</li>
+ <li>Metnos consumes the code, records the browser as one of the user's
+ addresses, and stores a signed cookie.</li>
+</ol>
+
+<p>The pairing code expires after one hour. The cookie may last for up to 90
+days and uses the browser's standard protections (<code>HttpOnly</code> and, over
+HTTPS, <code>Secure</code>). On every request, the server checks that the pairing
+still exists. If the administrator removes the HTTP channel, a cookie left in
+the browser is not enough to sign in.</p>
+
+<div class="callout note"><p><strong>Administrative access.</strong> A user
+cookie allows chat and the surfaces admitted for that role. It does not replace
+an administrator session or automatically grant access to Settings.</p></div>
+
+<h2 id="session">Opening the same chat on several devices</h2>
+
+<p>Only one web session may write for the same user and web channel at a time. If
+you open chat on a second device while the first is still active, Metnos offers
+three choices:</p>
+
+<table>
+ <thead><tr><th>Choice</th><th>Result</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Continue the previous session</strong></td><td>Moves the previous conversation to the current device and revokes the old browser's write access.</td></tr>
+  <tr><td><strong>Make this session active</strong></td><td>Keeps the new device's local conversation and makes the old browser read-only.</td></tr>
+  <tr><td><strong>Cancel</strong></td><td>Changes nothing; the new device remains unable to write.</td></tr>
+ </tbody>
+</table>
+
+<p>The transfer is atomic and applies only to the authenticated user. The
+conversation belongs to the user, not the browser. When connected, the old
+device receives a revocation notice and can no longer send messages with its
+previous write authority.</p>
+
+<h2 id="computer">Pairing a computer for remote executors</h2>
+
+<p>This pairing is different from browser pairing. It installs a component on
+the computer that can receive and perform authorised actions.</p>
+
+<ol>
+ <li>Open <strong>Settings &rsaquo; System &rsaquo; Devices</strong>.</li>
+ <li>Choose the owner and computer name, then generate the link.</li>
+ <li>Open the link on the target computer and install the client. The guided
+ flow offers the appropriate installation for Windows or Linux.</li>
+ <li>The client creates a private Ed25519 key that never leaves the computer and
+ registers only the public key with the server.</li>
+ <li>The server returns its public key, which the client stores to verify future
+ jobs and bundles.</li>
+ <li>The first heartbeat makes completion of the flow visible.</li>
+</ol>
+
+<p>The guided link normally lasts 30 minutes; the manual code lasts 10 minutes.
+Both are single-use. Presenting the same code again with the same key returns
+the same device without duplication; using a different key is rejected.</p>
+
+<p>The page shows <strong>latest heartbeat</strong> and <strong>latest work
+request</strong> separately. The first says that the client process is
+communicating; the second says that the operational loop is actually polling
+the server. Availability requires both to be recent and is not inferred from
+the heartbeat alone.</p>
+
+<p>For verified bundles, caching, sandboxing, and results, see
+<a href="remote_executors.html">Remote executors</a>.</p>
+
+<h2 id="revocation">Revoking a pairing</h2>
+
+<table>
+ <thead><tr><th>What you revoke</th><th>Where</th><th>What happens</th></tr></thead>
+ <tbody>
+  <tr><td>Telegram or HTTP channel</td><td>Settings &rsaquo; System &rsaquo; Users</td><td>That address no longer identifies the user; the related web cookie fails the pairing check.</td></tr>
+  <tr><td>Web session</td><td>Sign out or transfer to another device</td><td>The old browser loses write access; the conversation remains owned by the user.</td></tr>
+  <tr><td>Remote computer</td><td>Settings &rsaquo; System &rsaquo; Devices</td><td>New work requests, results, and heartbeats are rejected; the record remains for audit.</td></tr>
+ </tbody>
+</table>
+
+<p>Revoking one object does not silently change the others. Removing Telegram
+does not revoke a remote computer; revoking a computer does not close the web
+session. This separation makes it clear which access is being removed.</p>
+
+<h2 id="security">Shared guarantees</h2>
 
 <ul>
- <li><code>users.db</code>: <code>read_only</code>, <code>restricted</code>, <code>full</code>;</li>
- <li><code>pairings.db</code>: <code>ReadOnly</code>, <code>Supervised</code>, <code>Full</code>.</li>
+ <li><strong>Identity before content.</strong> A sentence cannot assign a user,
+ role, or owner.</li>
+ <li><strong>Short-lived, single-use codes.</strong> Pairing is recorded
+ atomically before the code is considered consumed.</li>
+ <li><strong>Verified ownership.</strong> Conversations and devices may be read
+ or transferred only within the authorised user.</li>
+ <li><strong>Revocation checked on every access.</strong> A formally valid
+ signature or cookie does not restore a removed pairing.</li>
+ <li><strong>Private keys remain local.</strong> A remote computer's private key
+ is never sent to the server.</li>
+ <li><strong>Separate registries.</strong> Channels, sessions, and computers have
+ distinct, observable revocation paths.</li>
 </ul>
 
-<p>In the Telegram daemon, <code>ReadOnly</code> prevents an operational turn
-from starting. <code>Supervised</code> and <code>Full</code> can enter the
-runtime; every executor remains subject to its manifest, safety controls, and
-required approvals. A stored level is not, by itself, proof that a particular
-action is authorised.</p>
-
-<h1 id="cap3">3. Pairing Telegram or a browser</h1>
-
-<p>From the <strong>web chat</strong>, open
-<strong>Settings &gt; System &gt; Users</strong>. Create or select the user, then
-use the pairing control for the required channel. If you are reading these
-instructions in Telegram, this path is in the Metnos web chat, not in the
-Telegram application.</p>
-
-<h2>Telegram</h2>
-
-<ol>
- <li>From the user detail page, issue a token for the Telegram channel.</li>
- <li>Transfer the token to the user through a trusted medium.</li>
- <li>The user opens the Metnos bot and sends <code>/start &lt;token&gt;</code>.</li>
- <li>The daemon consumes the token, binds the <code>chat_id</code> to the user, and confirms the pairing.</li>
-</ol>
-
-<p>The token is random, one-time, and valid for one hour. Consumption uses a
-SQLite transaction, so two concurrent requests cannot both use the same token.
-The <code>/start</code> command performs the pairing but does not run an
-operational request; the next message starts a new turn.</p>
-
-<h2>Browsers and other web devices</h2>
-
-<ol>
- <li>From the user detail page, issue the HTTP-channel link.</li>
- <li>Open that link once in the browser to pair.</li>
- <li>Metnos consumes the token, records the binding, and stores a signed, <code>HttpOnly</code>, <code>Secure</code> cookie.</li>
-</ol>
-
-<p>The user cookie lasts at most 90 days, but on every verification the server
-checks that the HTTP binding still exists. Removing the channel from the user
-detail page therefore invalidates access even if the browser retains the
-cookie.</p>
-
-<h1 id="cap4">4. Signed channel codes</h1>
-
-<p><code>runtime/pairing.py</code> also provides the technical
-<code>/pair PAIR.&lt;payload&gt;.&lt;signature&gt;</code> flow. The payload declares
-the version, identifier, autonomy level, expiry, and issuer; its Ed25519
-signature is checked against trusted public keys. By default, a code expires
-after five minutes and can be consumed only once.</p>
-
-<pre>./.venv/bin/python -m runtime.pairing generate &lt;ReadOnly|Supervised|Full&gt; 5m
-./.venv/bin/python -m runtime.pairing list
-./.venv/bin/python -m runtime.pairing revoke telegram &lt;sender_id&gt;</pre>
-
-<p>This flow creates the low-level <code>(channel, sender_id)</code> record.
-To connect a person who already exists in the user registry, the
-<strong>Settings &gt; System &gt; Users</strong> flow with <code>/start</code> is
-more direct because it preserves the logical identity explicitly.</p>
-
-<p>When bootstrap is enabled, the first message from the
-<code>default_chat_id</code> can create a <code>Full</code> pairing only while
-the channel has no pairing records. The <code>--no-bootstrap</code> option
-instead requires an explicit pairing for the host as well.</p>
-
-<h1 id="cap5">5. Active session and conversation transfer</h1>
-
-<p>Metnos allows one active write session for each
-<code>(user, web channel)</code> pair. If you open the chat on one device while
-another device holds the session, the window offers three choices:</p>
-
-<table>
-<thead><tr><th>Choice</th><th>Effect</th></tr></thead>
-<tbody>
-<tr><td><strong>Continue the previous session</strong></td><td>Revokes the old device's write authority, transfers its conversation to the current device, and displays its history.</td></tr>
-<tr><td><strong>Make the current session active</strong></td><td>Revokes the old device and keeps the current device's local conversation.</td></tr>
-<tr><td><strong>Cancel</strong></td><td>Changes no session; the current device remains without write authority.</td></tr>
-</tbody>
-</table>
-
-<p>Resolution is atomic and bound to the authenticated user. The resolution
-token is one-time, and a user cannot transfer someone else's conversation.
-When connected, the previous device receives the revocation event and becomes
-read-only. The conversation belongs to the user, not to the browser.</p>
-
-<h1 id="cap6">6. Remote-executor devices</h1>
-
-<p>From the web chat, open
-<strong>Settings &gt; System &gt; Devices</strong>. The page lists the name,
-owner, operating system, client version, key fingerprint, last heartbeat, and
-state. You can install the client on the current PC, generate a link for a
-different PC, or issue a manual token.</p>
-
-<p>The guided flow is:</p>
-
-<ol>
- <li>The administrator chooses a name and owner and creates a join session.</li>
- <li>The target PC opens the link and downloads the Windows or Linux installer.</li>
- <li>The client generates an Ed25519 key pair locally; its private key never leaves the device.</li>
- <li><code>POST /agent/register</code> consumes the token and records the public key, fingerprint, owner, and system characteristics.</li>
- <li>The server returns its public key; the client pins it and uses it to verify subsequent orders.</li>
- <li>The first heartbeat completes the observable installation flow.</li>
-</ol>
-
-<p>The guided join session uses a signed, one-time token that normally lasts
-30 minutes; the manual variant issued from the page lasts 10 minutes. A second
-consume with the same key is idempotent, while the same token presented with a
-different key is rejected. A fresh token paired with the same key is an
-explicit re-authorisation and can restore a previously revoked device.</p>
-
-<p>The remote-executor protocol uses port 8765 by default on an internal or
-private network. Polls, results, and heartbeats are signed by the device over
-the exact request bytes. The client verifies server orders and bundles with
-the key pinned at pairing time. <code>last_heartbeat</code> shows that the
-process is alive; <code>last_poll</code> separately shows that the worker is
-requesting work.</p>
-
-<h1 id="cap7">7. Revocation and lifecycle</h1>
-
-<table>
-<thead><tr><th>Object</th><th>How to revoke it</th><th>Effect</th></tr></thead>
-<tbody>
-<tr><td>User channel</td><td>Remove the channel in <strong>Settings &gt; System &gt; Users</strong>.</td><td>The address no longer resolves to that user; the associated web cookie fails the binding check.</td></tr>
-<tr><td>Low-level Telegram pairing</td><td><code>./.venv/bin/python -m runtime.pairing revoke telegram &lt;sender_id&gt;</code></td><td><code>get_pairing</code> no longer returns the active record.</td></tr>
-<tr><td>Web session</td><td>Explicit sign-out or acquisition from another device.</td><td>The write token is marked revoked; the conversation remains owned by the user.</td></tr>
-<tr><td>Remote device</td><td>Use the revoke control in <strong>Settings &gt; System &gt; Devices</strong>.</td><td>Subsequent polls, results, and heartbeats are rejected; the record remains available for audit.</td></tr>
-</tbody>
-</table>
-
-<h1 id="cap8">8. Security invariants</h1>
-
-<ul>
- <li><strong>Identity before content.</strong> Text cannot declare a user, role, or owner.</li>
- <li><strong>Expiring, one-time tokens.</strong> Consumption is serialised before the binding is created or changed.</li>
- <li><strong>Verified ownership.</strong> Sessions and conversations can be read or transferred only within the same user and channel.</li>
- <li><strong>Revocation checked on every access.</strong> A valid signature or cookie does not restore a removed binding.</li>
- <li><strong>Local private keys.</strong> A remote device's private key is never sent to the server.</li>
- <li><strong>Separate registries.</strong> Revoking one object does not silently mutate the others; the operator can see which identity is being changed.</li>
-</ul>
-
-<p>For the general transport contract, see
-<a href="channel.html"><code>channel</code></a>; for action approvals, see
-<a href="approval_ux.html">approvals and human control</a>; for HTTP routes,
-see <a href="http_api.html"><code>http_api</code></a>.</p>
+<p>For everyday channel use, continue with
+<a href="channel.html">Conversation channels</a>. To understand what a paired
+user may authorise, see <a href="policy.html">Policy and authority</a>.</p>
 
 </body>
 </html>

@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
- <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; runtime delle richieste</title>
- <meta name="description" content="Come Metnos trasforma una richiesta in un piano validato, esegue gli executor, gestisce consenso, continuità e risultati senza confondere la proposta probabilistica con i controlli deterministici.">
- <meta name="keywords" content="Metnos, runtime, pianificazione, executor, fast path, autopath, consenso, continuità">
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Runtime delle richieste</title>
+ <meta name="description" content="Come il runtime di Metnos trasforma una richiesta in un piano controllato, lo esegue e restituisce un risultato verificabile.">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/agent_runtime">
@@ -13,327 +12,219 @@
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/agent_runtime">
  <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
-<script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head>
 <body>
 
 <nav class="lang-switch" aria-label="Lingua">
-<a href="/it/architecture/agent_runtime.html" class="active" hreflang="it" lang="it">IT</a>
-<span class="sep">&middot;</span>
-<a href="/en/architecture/agent_runtime.html" hreflang="en" lang="en">EN</a>
+ <a class="active" href="/it/architecture/agent_runtime.html" hreflang="it" lang="it">IT</a>
+ <span class="sep">&middot;</span>
+ <a href="/en/architecture/agent_runtime.html" hreflang="en" lang="en">EN</a>
 </nav>
 
-<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
- <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
- <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">runtime delle richieste</strong></span>
- </div>
-</div>
+<h1>Runtime delle richieste</h1>
 
-<div class="title-page">
- <h1>Metnos</h1>
- <div class="subtitle">Runtime delle richieste</div>
- <div class="meta">Dalla frase in chat a un piano controllato, eseguito attraverso capacit&agrave; dichiarate.</div>
-</div>
-
-<p class="lead">Il runtime coordina un turno di Metnos. Interpreta la richiesta,
-seleziona le capacit&agrave; ammesse, costruisce o riusa un piano, ne controlla forma e
-permessi, quindi affida ogni passo all'executor competente. Il modello linguistico
-pu&ograve; proporre il piano e comporre una spiegazione; non ottiene per questo accesso
-diretto a file, posta, browser, dispositivi o credenziali.</p>
+<p class="lead">Il runtime accompagna una richiesta dall'ingresso alla
+risposta. Mantiene il contesto dell'utente, sceglie le capacità ammesse,
+costruisce o riusa un piano, applica i controlli e coordina gli executor. È il
+direttore d'orchestra di un turno, non un executor universale.</p>
 
 <div class="toc">
-<h2>Indice</h2>
-<ol>
- <li><a href="#cap1">Responsabilit&agrave; e confini</a></li>
- <li><a href="#cap2">Un turno, dall'inizio alla risposta</a></li>
- <li><a href="#cap3">Percorsi di esecuzione</a></li>
- <li><a href="#cap4">Ruoli dei modelli e lingua</a></li>
- <li><a href="#cap5">Catalogo, insieme dei candidati e riuso dei piani</a></li>
- <li><a href="#cap6">Framework ed executor</a></li>
- <li><a href="#cap7">Passaggio dei dati fra i passi</a></li>
- <li><a href="#cap8">Pause, riprese e stato del turno</a></li>
- <li><a href="#cap9">Policy, Vaglio e consenso</a></li>
- <li><a href="#cap10">Guardie operative</a></li>
- <li><a href="#cap11">Tracce e osservabilit&agrave;</a></li>
- <li><a href="#cap11_2">Attivit&agrave; programmate</a></li>
- <li><a href="#cap12">Errori e recupero</a></li>
- <li><a href="#cap13">Che cosa &egrave; deterministico</a></li>
-</ol>
+ <h2>In questa pagina</h2>
+ <ol>
+  <li><a href="#turno">Che cos'è un turno</a></li>
+  <li><a href="#percorso">Il percorso completo</a></li>
+  <li><a href="#scelta">Come viene scelto il percorso</a></li>
+  <li><a href="#piano">Com'è fatto un piano</a></li>
+  <li><a href="#dati">Come passano i dati</a></li>
+  <li><a href="#controlli">Controlli, conferme e credenziali</a></li>
+  <li><a href="#pause">Pause, riprese e lavori lunghi</a></li>
+  <li><a href="#esiti">Risultati, errori e registri</a></li>
+ </ol>
 </div>
 
-<h1 id="cap1">1. Responsabilit&agrave; e confini</h1>
+<h2 id="turno">Che cos'è un turno</h2>
 
-<p>All'apertura del turno il runtime associa la richiesta a quattro coordinate:
-utente proprietario, attore tecnico, canale e conversazione. Preferenze, lingua,
-credenziali, dispositivi, dialoghi sospesi e cronologia vengono risolti entro questo
-contesto. Un turno di un utente non autorizza l'accesso alle risorse di un altro.</p>
-
-<table>
-<thead><tr><th>Componente</th><th>Responsabilit&agrave;</th></tr></thead>
-<tbody>
-<tr><td>Runtime</td><td>Orchestra il turno, conserva il contesto e applica l'ordine dei controlli.</td></tr>
-<tr><td>Motore degli intenti e proponente</td><td>Interpretano la frase e propongono un framework; il loro risultato &egrave; probabilistico.</td></tr>
-<tr><td>Catalogo</td><td>Espone soltanto executor ammessi, con schema, policy, piattaforme e disponibilit&agrave; correnti.</td></tr>
-<tr><td>Validatore e guardie</td><td>Controllano struttura, tipi, riferimenti, ordine, destinazione e condizioni di sicurezza.</td></tr>
-<tr><td>Executor</td><td>Esegue una capacit&agrave; circoscritta e restituisce un risultato strutturato.</td></tr>
-<tr><td>Canale</td><td>Rende risposta, allegati e richieste di conferma nella forma adatta a Web o Telegram.</td></tr>
-</tbody>
-</table>
-
-<p>Il runtime non &egrave; una shell generale. La superficie operativa coincide con le
-capacit&agrave; presenti nel catalogo attivo e ammesse dalle regole. Per conoscere la
-disponibilit&agrave; effettiva dell'istanza si pu&ograve; chiedere al Tutor oppure aprire, nella
-chat web, <strong>Impostazioni &rsaquo; Sistema &rsaquo; Servizi</strong>.</p>
-
-<h1 id="cap2">2. Un turno, dall'inizio alla risposta</h1>
-
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Cerca sul web le linee guida europee pi&ugrave; recenti sul passaporto digitale dei
-prodotti, leggi le tre fonti pi&ugrave; autorevoli e crea un documento di sintesi nella
-cartella Rapporti.&raquo;</p>
-
-<ol>
- <li>Il canale identifica utente, conversazione, allegati e dispositivo
- eventualmente nominato; il runtime aggiunge la lingua firmata dell'istanza.</li>
- <li>L'estrattore ricava gli intenti ordinati: cercare URL, leggere le fonti e
- creare un documento.</li>
- <li>L'instradamento ricava dal catalogo un insieme pertinente. Un proponente formula
- un framework con i soli executor disponibili.</li>
- <li>Il validatore e le guardie verificano nomi, argomenti, dipendenze, ordine e regole.
- Se il salvataggio richiede una scelta mancante, Metnos presenta un modulo
- localizzato invece di inventarla.</li>
- <li>Gli executor cercano, leggono e scrivono. Il risultato di ogni passo alimenta
- il successivo attraverso riferimenti strutturali.</li>
- <li>Il terminale compone una risposta basata sugli esiti effettivi, registra la
- traccia del turno ed espone l'eventuale documento come allegato o collegamento.</li>
-</ol>
-
-<p>La stessa frase si pu&ograve; inviare da Telegram. Se una regolazione &egrave; disponibile
-soltanto nella chat web, Metnos deve indicare esplicitamente quel canale e il
-percorso di navigazione, non limitarsi a citare il nome tecnico della pagina.</p>
-
-<h1 id="cap3">3. Percorsi di esecuzione</h1>
-
-<p>Non ogni richiesta richiede una nuova proposta del modello. Il runtime prova in
-ordine percorsi con responsabilit&agrave; diverse:</p>
-
-<ol>
- <li><strong>Rotte deterministiche ristrette.</strong> Gestiscono casi chiusi come
- annullamento dell'ultimo turno, alcune risposte di servizio, caricamenti senza
- testo e ricorrenze riconosciute dalla grammatica dello scheduler.</li>
- <li><strong>L0, fast path.</strong> Riusa il framework di una richiesta cacheabile
- gi&agrave; conclusa con esito efficace.</li>
- <li><strong>L1, autopath.</strong> Riusa un framework generalizzato per un cluster
- semantico. Un riscontro positivo pu&ograve; confermare un campione; esecuzioni lunghe e
- ripetute possono creare un campione <em>shadow</em>, distinto da un'approvazione
- dell'utente.</li>
- <li><strong>Motore completo.</strong> Estrae o completa l'intento, riduce il
- catalogo, chiede al proponente un framework, lo valida, lo esegue e, quando &egrave;
- sicuro, tenta un solo percorso di recupero.</li>
-</ol>
-
-<p>Le foto allegate e le continuazioni di un dialogo portano stato specifico del
-turno e quindi non usano come se nulla fosse un piano cache generico. La
-destinazione remota viene risolta prima dell'instradamento: se il dispositivo nominato &egrave;
-ambiguo o irraggiungibile, il turno si ferma o propone un differimento esplicito.</p>
-
-<h1 id="cap4">4. Ruoli dei modelli e lingua</h1>
-
-<p>I nomi <code>fast</code>, <code>middle</code>, <code>wise</code>,
-<code>creative</code> e <code>frontier</code> indicano ruoli configurabili, non prodotti fissi:</p>
+<p>Un turno comincia quando Metnos riceve una richiesta e termina quando
+restituisce una risposta, chiede un'informazione indispensabile oppure affida
+un lavoro lungo a LRE. Il runtime associa subito la richiesta a:</p>
 
 <ul>
- <li><code>fast</code> serve compiti brevi come estrazione dell'intento, filler e
- alcune sintesi;</li>
- <li><code>middle</code> svolge trasformazioni e giudizi intermedi deterministici;</li>
- <li><code>wise</code> propone framework e affronta le composizioni pi&ugrave; complesse;</li>
- <li><code>creative</code> formula proposte e testi divergenti con una policy distinta;</li>
- <li><code>frontier</code> &egrave; facoltativo e viene usato soltanto da percorsi che lo
- richiedono esplicitamente.</li>
+ <li>un utente autenticato e un attore tecnico;</li>
+ <li>un canale, per esempio chat web o Telegram;</li>
+ <li>una conversazione;</li>
+ <li>la lingua dell'istanza;</li>
+ <li>eventuali allegati e dispositivi indicati dall'utente.</li>
 </ul>
 
-<p>La lingua viene risolta dalla richiesta firmata dell'istanza e propagata
-all'intero turno. Prompt, messaggi del runtime, moduli di conferma e risposta
-finale devono usare quella lingua. Il testo di un prompt non deve imporre incidentalmente una lingua diversa:
-ogni famiglia di prompt ha una variante localizzata e, per una nuova lingua, una
-risorsa mancante deve essere rilevata in compilazione o produrre un ripiego
-esplicito, non un miscuglio silenzioso.</p>
+<p>Queste informazioni delimitano tutto ciò che segue. La cronologia di una
+conversazione non viene mescolata con quella di un altro utente; un dispositivo
+associato a un proprietario non diventa una risorsa comune; una credenziale
+viene cercata soltanto entro il mandato autorizzato per quel turno.</p>
 
-<h1 id="cap5">5. Catalogo, insieme dei candidati e riuso dei piani</h1>
+<h2 id="percorso">Il percorso completo</h2>
 
-<p>Il catalogo unisce executor distribuiti con manifest firmato, capacit&agrave; interne
-e operazioni aggiunte da skill ammesse. Prima della proposta, l'instradamento crea un
-insieme pi&ugrave; piccolo usando intenti, oggetti canonici, fornitori nominati, relazioni fra
-produttori e consumatori e stato di disponibilit&agrave;. Se il segnale &egrave; insufficiente,
-il sistema pu&ograve; lasciare al proponente un catalogo pi&ugrave; ampio.</p>
+<p>Consideriamo la richiesta: «Leggi i tre preventivi nella cartella Acquisti,
+confronta i prezzi e crea una tabella riepilogativa».</p>
 
-<p>Un piano L0 o L1 non &egrave; valido per sempre. Alla registrazione conserva due firme:
-quella degli executor usati e quella delle famiglie di candidati pertinenti. A ogni
-riuso il runtime le confronta con il catalogo corrente. Un executor modificato o
-rimosso, una nuova alternativa rilevante o un cambio dell'epoca di instradamento rende il
-piano un miss e forza una nuova decisione.</p>
+<ol>
+ <li><strong>Ingresso.</strong> Il canale autentica la richiesta e ricostruisce il
+ contesto della conversazione. Se esiste già una domanda in sospeso, la risposta
+ dell'utente riprende quel dialogo invece di avviare un compito estraneo.</li>
+ <li><strong>Confine informativo.</strong> Se la frase chiede soltanto come usare
+ Metnos, può rispondere il Tutor senza avviare il pianificatore operativo.</li>
+ <li><strong>Intento.</strong> Il runtime individua il risultato richiesto e le
+ azioni principali: leggere, confrontare e creare.</li>
+ <li><strong>Catalogo pertinente.</strong> Dal catalogo completo ricava gli
+ executor utili e disponibili. Il pianificatore non deve scegliere fra capacità
+ che l'istanza non può eseguire.</li>
+ <li><strong>Piano.</strong> Metnos riusa un piano ancora valido oppure ne chiede
+ uno nuovo al proponente configurato.</li>
+ <li><strong>Validazione.</strong> Prima dell'esecuzione controlla nomi, schemi,
+ argomenti, dipendenze, collocazione e coerenza con la richiesta.</li>
+ <li><strong>Autorità.</strong> Policy, Vaglio, sandbox, destinazione e consenso
+ vengono valutati per i passi a cui si applicano.</li>
+ <li><strong>Esecuzione.</strong> Ogni executor riceve solo gli argomenti risolti
+ per il proprio contratto e restituisce un risultato strutturato.</li>
+ <li><strong>Risposta.</strong> Il runtime compone il messaggio finale dagli esiti
+ osservati e registra la traccia del turno.</li>
+</ol>
 
-<p>Il riuso riguarda il framework operativo, non una scheda personale inserita nel
-pianificatore. Preferenze chiuse e contesto dell'utente vengono applicati nei punti
-previsti dal runtime e nella generazione finale; non contaminano una chiave cache
-condivisa con prosa biografica.</p>
+<p>Il modello linguistico aiuta nei punti in cui serve capire o comporre
+linguaggio. I controlli di schema, identità, autorizzazione, collocazione e firma
+restano invece deterministici. Proporre un piano non equivale ad avere il potere
+di eseguirlo.</p>
 
-<h1 id="cap6">6. Framework ed executor</h1>
+<h2 id="scelta">Come viene scelto il percorso</h2>
 
-<p>Il proponente restituisce un <code>Framework</code>: una lista finita di passi,
-eventuali filler e un terminale. Ogni passo indica un nome presente nel catalogo e
-argomenti conformi allo schema dell'executor. Il framework non contiene codice
-arbitrario da eseguire.</p>
+<p>Il runtime prova i percorsi dal più semplice al più generale:</p>
+
+<table>
+ <thead><tr><th>Percorso</th><th>Quando serve</th><th>Che cosa viene ricontrollato</th></tr></thead>
+ <tbody>
+  <tr><td>Regola deterministica</td><td>Per operazioni dal significato chiuso, come annullare l'ultimo turno o riprendere un dialogo noto.</td><td>Identità, stato corrente e contratto specifico.</td></tr>
+  <tr><td>Fast path</td><td>Per riusare un piano riuscito sulla stessa richiesta.</td><td>Firme del catalogo, argomenti variabili e condizioni operative.</td></tr>
+  <tr><td>Autopath</td><td>Per riusare un piano generalizzato e confermato su una richiesta affine.</td><td>Somiglianza, assenza di valori personali incorporati, catalogo e validazione completa.</td></tr>
+  <tr><td>Nuova proposta</td><td>Quando non esiste un percorso precedente affidabile.</td><td>Intero piano, passo per passo.</td></tr>
+ </tbody>
+</table>
+
+<p>Fast path e autopath sono cache di piani, non scorciatoie intorno ai
+controlli. Conservano le firme delle capacità rilevanti. Se il mondo operativo
+cambia, il riuso non è più valido e Metnos torna alla pianificazione ordinaria.</p>
+
+<p>I modelli sono scelti per funzione attraverso livelli configurabili. Il
+runtime chiede, per esempio, un modello adatto alla pianificazione o alla
+sintesi; non dipende dal nome commerciale di un modello. La configurazione
+effettiva è visibile in <a href="../system/models.html">Sistema &rsaquo;
+Modelli</a>.</p>
+
+<h2 id="piano">Com'è fatto un piano</h2>
+
+<p>Un piano è una lista finita di passi tipizzati. Ogni passo nomina un executor
+presente nel catalogo, fornisce argomenti conformi al suo schema e può dipendere
+da risultati precedenti. Non contiene codice libero da eseguire.</p>
 
 <pre><code>{
   "steps": [
-    {"tool": "find_urls", "args": {"query": "..."}},
-    {"tool": "read_urls_html", "args": {"from_step": 1}},
-    {"tool": "create_files_doc", "args": {"from_step": 2, "path": "Rapporti/..."}},
-    {"tool": "final_answer", "args": {}}
+    {"tool": "find_files", "args": {"base_path": "~/Acquisti", "pattern": "*.pdf"}},
+    {"tool": "read_files", "args": {"from_step": 1}},
+    {"tool": "extract_entries", "args": {"from_step": 2, "fields": ["fornitore", "prezzo"]}},
+    {"tool": "create_files_spreadsheet", "args": {"from_step": 3, "path": "~/Acquisti/riepilogo.xlsx"}}
   ]
 }</code></pre>
 
-<p>Prima dell'esecuzione il validatore controlla executor, tipi, campi obbligatori,
-alternative <code>requires_one_of</code>, riferimenti a passi precedenti e
-placeholder. Le guardie strutturali riallineano l'ordine e possono richiedere una
-nuova proposta se manca un'azione esplicitamente richiesta. L'executor condiviso
-risolve poi gli argomenti e applica la stessa sequenza a piani freschi e piani
-riusati.</p>
+<p>L'esempio mostra la forma, non promette che ogni installazione possieda
+esattamente quegli executor. Il <a href="executor_catalog.html">catalogo
+generato</a> è la fonte per le capacità installate.</p>
 
-<h1 id="cap7">7. Passaggio dei dati fra i passi</h1>
+<p>Il validatore rifiuta un executor sconosciuto, un argomento fuori schema, un
+riferimento a un passo futuro o una combinazione incoerente. Le guardie comuni
+possono anche inserire un produttore indispensabile, riallineare dipendenze note
+o chiedere una nuova proposta quando manca un'azione esplicitamente richiesta.
+Non aggiungono capacità estranee al catalogo.</p>
 
-<p>I dati non vengono copiati nel prompt come testo libero quando esiste un
-riferimento strutturale:</p>
+<h2 id="dati">Come passano i dati</h2>
 
-<ul>
- <li><code>from_step: N</code> passa la raccolta prodotta dal passo N al consumer;</li>
- <li><code>${stepN.field}</code> passa un singolo campo;</li>
- <li><code>${RUNTIME:key}</code> inserisce un valore controllato dal runtime, come
- l'identificatore del turno;</li>
- <li><code>${FILLER:name}</code> risolve un breve valore mancante entro lo schema
- dichiarato.</li>
-</ul>
-
-<p>Una destinazione esplicita scritta dall'utente prevale su un riferimento generico a un
-passo precedente. Il runtime conserva inoltre l'autorit&agrave; dei dati: un percorso
-prodotto su un dispositivo remoto non diventa un percorso locale soltanto perch&eacute;
-un filtro intermedio &egrave; stato calcolato sul server.</p>
-
-<h1 id="cap8">8. Pause, riprese e stato del turno</h1>
-
-<p>Un turno pu&ograve; fermarsi con <code>ask</code> o <code>needs_inputs</code> quando manca
-una scelta, una credenziale, una posizione o un consenso. Il dialogo persistito
-contiene il proprietario, il canale, la conversazione e il callback ammesso. Alla
-risposta, il runtime ricostruisce i passi gi&agrave; completati come stato
-<code>done</code> e pianifica soltanto il seguito; non riesegue automaticamente le
-mutazioni precedenti.</p>
-
-<p>Le osservazioni necessarie ai passi successivi restano nello stato strutturato del
-turno. Il sottosistema <a href="scratchpad.html">scratchpad</a> offre inoltre una
-lettura controllata dei risultati persistiti o voluminosi. Un allegato caricato
-entra come input virtuale consumabile, non come azione gi&agrave; eseguita.</p>
-
-<h1 id="cap9">9. Policy, Vaglio e consenso</h1>
-
-<p>La sicurezza non dipende dalla buona volont&agrave; del proponente. Il catalogo limita ci&ograve;
-che pu&ograve; essere nominato; schema e sandbox limitano gli argomenti e l'ambiente; la
-policy classifica l'azione; il <a href="vaglio.html">Vaglio</a> applica guardia e
-giudizio; la richiesta di consenso sospende la sequenza prima della mutazione quando
-necessario.</p>
-
-<p>L'approvazione &egrave; legata a utente, turno, azione, argomenti e destinazione. Il
-testo &egrave; localizzato e il canale usa il proprio controllo nativo: modulo nella chat
-web, pulsanti o scelta compatibile in Telegram. Frequenza, formulazione della
-richiesta e silenzio non creano da soli un permesso persistente.</p>
-
-<h1 id="cap10">10. Guardie operative</h1>
+<p>I risultati non vengono copiati a mano nella richiesta del passo successivo.
+Il piano usa due riferimenti principali:</p>
 
 <ul>
- <li>un tetto limita il numero dei passi proposti; soltanto normalizzatori interni
- validati possono dichiarare una sequenza canonica pi&ugrave; lunga;</li>
- <li>passi indipendenti possono essere eseguiti in parallelo solo se il contratto
- dell'executor li dichiara idonei e il preflight conserva le stesse guardie;</li>
- <li>una mutazione che riceve una raccolta vuota non viene presentata come successo;</li>
- <li>un piano cache con argomenti mutanti non fondati nella richiesta corrente
- viene scartato;</li>
- <li>dopo un effetto gi&agrave; commesso, un errore non attiva una ripetizione automatica
- che potrebbe duplicarlo;</li>
- <li>annullamento, destinazione remota, input di massa e output finale attraversano
- guardie dedicate prima della consegna.</li>
+ <li><code>from_step: N</code> passa la raccolta prodotta dal passo N;</li>
+ <li><code>{{stepN.campo}}</code> passa un singolo valore del risultato.</li>
 </ul>
 
-<h1 id="cap11">11. Tracce e osservabilit&agrave;</h1>
+<p>Prima dell'invocazione, il runtime risolve questi riferimenti e ricontrolla lo
+schema finale. Se un produttore non restituisce dati, il consumer non riceve per
+errore il risultato di un vecchio passo. Se una raccolta è molto grande, può
+essere conservata nello scratchpad mentre il pianificatore ne vede soltanto una
+proiezione utile e dichiaratamente troncata.</p>
 
-<p>Il <code>TurnLog</code> registra identificatori del turno e della conversazione,
-utente, canale, lingua, intenti, origine del piano, passi, tempi, esiti, effetti
-contabili, destinazione reale e stato finale. Credenziali riconosciute vengono
-oscurate prima della persistenza; gli allegati sono esposti al client tramite URL
-firmati o trasferimento del canale, non come percorsi grezzi.</p>
+<p>I dati conservano anche la loro provenienza. Sapere che un valore arriva dal
+passo 2 non basta a trasformarlo in un percorso locale, in un destinatario o in
+un'autorizzazione: il consumer deve dichiarare che cosa accetta e il runtime
+deve poterlo verificare.</p>
 
-<p>La traccia consente di ricostruire quali executor siano stati invocati e quali
-controlli abbiano deciso. Non trasforma per&ograve; una spiegazione generata dal modello in
-prova: per verificare un fatto servono l'osservazione strutturata e, quando
-applicabile, la sorgente originaria. La pagina
-<a href="observability.html">osservabilit&agrave;</a> descrive viste, metriche e limiti di
-retention.</p>
+<h2 id="controlli">Controlli, conferme e credenziali</h2>
 
-<h2 id="cap11_2">11.1 Attivit&agrave; programmate</h2>
+<p>Ogni passo attraversa lo stesso punto di invocazione, indipendentemente dal
+fatto che il piano sia nuovo, riusato, programmato o destinato a un dispositivo
+remoto. Qui il runtime applica i controlli comuni e registra l'esito reale.</p>
 
-<p>Lo scheduler builtin esegue lavori di manutenzione registrati e alimenta i cicli
-di osservazione e proposta previsti dal prodotto. Le attivit&agrave; create dall'utente
-sono invece richieste persistenti con proprietario, pianificazione, comando,
-canale di consegna e cronologia degli esiti. Al momento dello scatto il corpo viene
-eseguito come un nuovo turno dello stesso utente: non eredita privilegi da un altro
-canale o da un altro account.</p>
+<p>Se serve una conferma, l'esecuzione si ferma prima dell'effetto. La proposta
+deve rendere riconoscibili azione, scopo, destinazione e conseguenze rilevanti.
+La risposta viene legata all'utente e al turno che l'ha generata, così una
+conferma vecchia o appartenente a un'altra conversazione non può riprendere il
+piano.</p>
 
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Ogni luned&igrave; alle 8 cerca le mail non lette dell'account lavoro e mandami un
-riepilogo su Telegram.&raquo; Se la ricorrenza &egrave; riconosciuta in modo univoco, Metnos
-registra l'attivit&agrave;; altrimenti chiede i dati mancanti invece di eseguire subito il
-corpo della richiesta.</p>
+<p>Le credenziali seguono un percorso separato. Il pianificatore può indicare il
+tipo di accesso necessario, ma il runtime risolve il segreto da un archivio
+cifrato e da un mandato circoscritto soltanto al momento dell'esecuzione. Il
+valore non entra nel piano, nei messaggi del modello o nei registri ordinari.</p>
 
-<h1 id="cap12">12. Errori e recupero</h1>
+<h2 id="pause">Pause, riprese e lavori lunghi</h2>
 
-<p>Gli errori strutturali sono classificati come strumento errato, argomenti errati,
-input mancante o fuori ambito. Quando non ci sono effetti gi&agrave; prodotti, il recupero
-pu&ograve; proporre una sola alternativa e la sottopone alla stessa finalizzazione del
-piano originale. Un errore operativo, come rete assente, rate limit o servizio non
-disponibile, non viene mascherato cambiando arbitrariamente executor.</p>
+<p>Non tutte le richieste possono concludersi in un'unica risposta HTTP o
+Telegram.</p>
 
-<p>Se l'executor restituisce opzioni strutturate che l'utente pu&ograve; decidere, il
-runtime le trasforma in un modulo. Se il recupero non &egrave; sicuro, la risposta dichiara
-il limite e conserva gli eventuali risultati parziali. Non deve affermare che una
-scrittura, un invio o una cancellazione siano riusciti quando i contatori degli
-effetti dicono il contrario.</p>
-
-<h1 id="cap13">13. Che cosa &egrave; deterministico</h1>
-
-<table>
-<thead><tr><th>Parte</th><th>Garanzia corretta</th></tr></thead>
-<tbody>
-<tr><td>Catalogo, firme e cache validity</td><td>Controlli deterministici rispetto allo stato osservato.</td></tr>
-<tr><td>Validatore, guardie, passaggio dei dati ed esecuzione</td><td>Regole di codice ripetibili; gli esiti esterni possono cambiare.</td></tr>
-<tr><td>Riuso valido della cache</td><td>Riprende lo stesso framework, dopo averlo sottoposto ai controlli correnti.</td></tr>
-<tr><td>Intent e nuova proposta</td><td>Uscita probabilistica del modello, circoscritta da vocabolario, insieme dei candidati, grammatica quando abilitata e validazione successiva.</td></tr>
-<tr><td>Sintesi finale</td><td>Pu&ograve; variare nella forma; deve restare fondata sugli esiti registrati.</td></tr>
-</tbody>
-</table>
-
-<p>Metnos rende quindi governabili i confini fra proposta ed esecuzione. Non promette
-che una nuova pianificazione linguistica sia identica a ogni invocazione, n&eacute; che un
-servizio esterno restituisca sempre gli stessi dati.</p>
-
-<p>Riferimenti nel codice:</p>
 <ul>
- <li><code>runtime/agent_runtime.py</code>: contesto del turno, canali, dialoghi e bridge verso il motore;</li>
- <li><code>runtime/engine/dispatch.py</code>: cascata L0/L1, proponente, validatore, guardie, recupero e terminatore;</li>
- <li><code>runtime/engine/types.py</code> e <code>runtime/engine/executor.py</code>: framework, riferimenti e semantica di esecuzione;</li>
- <li><code>runtime/engine/cache_validity.py</code>: firme dei piani cache;</li>
- <li><code>runtime/recurring_tasks.py</code> e <code>runtime/scheduler_v2/</code>: attivit&agrave; utente e lavori builtin;</li>
- <li><code>runtime/turn_events.py</code>: persistenza e lettura delle tracce.</li>
+ <li><strong>Informazione mancante:</strong> Metnos mostra un modulo o una scelta
+ e conserva un dialogo monouso, legato a utente e conversazione.</li>
+ <li><strong>Conferma:</strong> il piano resta sospeso finché l'utente accetta o
+ rifiuta la proposta corrente.</li>
+ <li><strong>Dispositivo non raggiungibile:</strong> per le azioni predisposte,
+ Metnos può proporre di riprovare quando il dispositivo tornerà disponibile.</li>
+ <li><strong>Lavoro lungo:</strong> quando un piano soddisfa il contratto di LRE,
+ il runtime può affidarlo automaticamente al motore dei lavori lunghi. L'utente
+ non deve scegliere un profilo tecnico.</li>
 </ul>
+
+<p>Una ripresa non ricomincia alla cieca. Il runtime ricontrolla proprietario,
+scadenza, stato del dialogo, catalogo e condizioni operative prima di proseguire.</p>
+
+<h2 id="esiti">Risultati, errori e registri</h2>
+
+<p>Un executor può riuscire, non produrre alcun elemento, produrre un risultato
+parziale oppure fallire. Questi casi non sono equivalenti. Il runtime conserva
+la distinzione e la usa per decidere se proseguire, tentare un recupero limitato
+o terminare.</p>
+
+<p>Il recupero non ripete ciecamente un'azione che potrebbe avere già modificato
+lo stato. Prima classifica l'errore e considera gli effetti registrati. Se non
+esiste una ripresa sicura, la risposta dichiara il limite. Quando solo una parte
+del piano fallisce, ciò che è riuscito rimane visibile senza trasformare il
+risultato complessivo in un falso successo.</p>
+
+<p>La traccia del turno comprende il percorso scelto, i passi, i controlli, i
+tempi, gli esiti e l'eventuale ricevuta di annullamento. Non deve contenere
+segreti. Amministratori e utenti vedono soltanto le informazioni compatibili con
+il proprio ruolo e la propria identità.</p>
+
+<div class="callout note"><p><strong>In una frase.</strong> Il runtime non
+stabilisce che cosa Metnos può fare: lo stabiliscono gli executor ammessi. Il
+runtime fa sì che quelle capacità vengano scelte, controllate, eseguite e
+raccontate nello stesso modo, qualunque sia il percorso che ha prodotto il
+piano.</p></div>
 
 </body>
 </html>

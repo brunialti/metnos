@@ -264,18 +264,18 @@ like, a few examples for orientation.
 <svg viewBox="0 0 720 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Annotated anatomy of the manifest">
  <rect x="20" y="20" width="480" height="380" rx="6" fill="white" stroke="var(--border)" stroke-width="1.5"/>
  <text x="35" y="45" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">name = "get_now"</text>
- <text x="35" y="65" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">version = "0.1.0"</text>
- <text x="35" y="85" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">affinity = ["time", "date", "now", "ora"]</text>
+ <text x="35" y="65" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">version = "0.2.0"</text>
+ <text x="35" y="85" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">affinity = ["time", "ora", "data", "now", "what time"]</text>
  <text x="35" y="115" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[description]</text>
- <text x="35" y="135" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">en = "Returns the current date and time."</text>
- <text x="35" y="165" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[args.properties.tz]</text>
+ <text x="35" y="135" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">en = "SCOPE: gets the current date and time..."</text>
+ <text x="35" y="165" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[args.properties.timezone]</text>
  <text x="35" y="185" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">type = "string"</text>
- <text x="35" y="205" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">default = "UTC"</text>
+ <text x="35" y="205" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">default = "Europe/Rome"</text>
  <text x="35" y="235" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[output]</text>
  <text x="35" y="255" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">schema_inline = "{ ok: bool,... }"</text>
  <text x="35" y="285" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[code]</text>
  <text x="35" y="305" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">files = ["get_now.py"]</text>
- <text x="35" y="325" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">digest = "sha256:e6e609f6..."</text>
+ <text x="35" y="325" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">digest = "sha256:788db417..."</text>
  <text x="35" y="355" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">[[capabilities]]</text>
  <text x="35" y="375" font-family="Consolas, monospace" font-size="11" fill="var(--ink)">name = "time:read"</text>
  <line x1="320" y1="55" x2="540" y2="55" stroke="var(--diagram-primary)" stroke-width="1" stroke-dasharray="2,3"/>
@@ -303,8 +303,18 @@ like, a few examples for orientation.
  <text x="545" y="369" font-family="Segoe UI, sans-serif" font-size="10.5" fill="var(--diagram-attention)" font-weight="600">permissions</text>
  <text x="545" y="383" font-family="Segoe UI, sans-serif" font-size="9" fill="var(--diagram-attention-ink)">what it may touch</text>
 </svg>
-<figcaption>A real manifest, simplified. Every block plays a clear role: identity, keywords for retrieval, description, arguments, result shape, code with fingerprint, permissions.</figcaption>
+<figcaption>An excerpt from the current <code>get_now</code> manifest, shortened
+for readability. It shows representative fields, not the complete manifest
+schema.</figcaption>
 </figure>
+
+<div class="callout note"><p><strong>About <code>affinity</code>.</strong> It is
+currently one flat list of manually curated Italian and English routing terms.
+It is not selected through the instance language like <code>description</code>
+and argument descriptions. This is compatible with the older manifest rule,
+but it does not yet meet Metnos's newer, full i18n objective for versioned and
+coverage-checked semantic resources. See <a href="multilang.html">Language and
+internationalisation</a>.</p></div>
 
 <h2>What deserves a second look</h2>
 

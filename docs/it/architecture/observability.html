@@ -83,18 +83,17 @@ li { margin-bottom:4px; }
  <div class="meta">Vedere lo stato del sistema senza confondere una vista con una fonte di autorit&agrave;.</div>
 </div>
 
-<p class="lead">Metnos offre due strumenti distinti. La pagina
-<strong>Settings</strong> della chat &egrave; l'interfaccia amministrativa
-corrente, aggiornata a ogni richiesta. <code>runtime/observability.py</code>
-produce invece un file HTML statico per una diagnosi locale. Il file non
-alimenta Settings, non si aggiorna da solo e non &egrave; una pagina servita dalla
-chat.</p>
+<p class="lead">Per controllare un'installazione in funzione si usa
+<strong>Settings</strong>, l'area amministrativa della chat web. Metnos pu&ograve;
+anche produrre un rendiconto HTML da aprire come file locale: &egrave; una fotografia
+tecnica del momento in cui viene generata, non una seconda versione di
+Settings.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Un esempio in linguaggio naturale</a></li>
- <li><a href="#cap2">Le due superfici</a></li>
+ <li><a href="#cap1">Da dove cominciare</a></li>
+ <li><a href="#cap2">I due strumenti</a></li>
  <li><a href="#cap3">Settings nella chat</a></li>
  <li><a href="#cap4">Il rendiconto HTML statico</a></li>
  <li><a href="#cap5">Dati raccolti dal rendiconto</a></li>
@@ -104,33 +103,33 @@ chat.</p>
 </ol>
 </div>
 
-<h1 id="cap1">1. Un esempio in linguaggio naturale</h1>
+<h1 id="cap1">1. Da dove cominciare</h1>
 
-<p>Chiedi a Metnos con una richiesta come quella di questo esempio:</p>
+<p>Puoi chiedere direttamente a Metnos:</p>
 
 <pre>Mostrami dove posso controllare gli ultimi turni e lo stato dei servizi.</pre>
 
-<p>La risposta utile deve indicare anzitutto il percorso visibile nella chat:
+<p>Il percorso pi&ugrave; semplice passa dalla chat web:
 <strong>Settings &gt; Attivit&agrave; &gt; Turni</strong> per le richieste recenti e
 <strong>Settings &gt; Sistema &gt; Servizi</strong> per i servizi configurati. Se
-la domanda arriva da Telegram, il percorso va aperto nella chat web di Metnos:
-Telegram non incorpora le pagine amministrative.</p>
+stai parlando con Metnos da Telegram, devi comunque aprire queste pagine nel
+browser: Telegram non contiene l'area amministrativa.</p>
 
-<p>Solo dopo questa istruzione pratica occorre spiegare API, registri o file.
-Il rendiconto statico &egrave; adatto a una diagnosi tecnica esplicitamente richiesta,
-non &egrave; il percorso ordinario per chi usa la chat.</p>
+<p>API, registri e file servono invece per una diagnosi tecnica. Il rendiconto
+statico descritto pi&ugrave; avanti appartiene a questo secondo caso e non &egrave; il
+percorso ordinario per chi usa la chat.</p>
 
-<h1 id="cap2">2. Le due superfici</h1>
+<h1 id="cap2">2. I due strumenti</h1>
 
 <table>
-<tr><th>Superficie</th><th>Aggiornamento</th><th>Accesso</th><th>Scopo</th></tr>
-<tr><td><strong>Settings</strong> (<code>/admin</code>)</td><td>I dati vengono riletti quando si apre o si aggiorna la pagina.</td><td>Richiede il ruolo amministratore applicato dal middleware HTTP.</td><td>Consultazione e controlli amministrativi dell'installazione in esercizio.</td></tr>
-<tr><td><strong>Rendiconto statico</strong> (<code>runtime.observability</code>)</td><td>Fotografia dell'istante in cui viene eseguito il comando.</td><td>File locale; la protezione dipende dai permessi del file e della macchina.</td><td>Diagnosi fuori linea di sei sorgenti storiche.</td></tr>
+<tr><th>Strumento</th><th>Aggiornamento</th><th>Accesso</th><th>Scopo</th></tr>
+<tr><td><strong>Settings</strong> (<code>/admin</code>)</td><td>Rilegge i dati quando si apre o si aggiorna una pagina.</td><td>Richiede una sessione con ruolo amministratore.</td><td>Controllare l'installazione mentre &egrave; in funzione.</td></tr>
+<tr><td><strong>Rendiconto statico</strong> (<code>runtime.observability</code>)</td><td>Resta fermo all'istante in cui viene generato.</td><td>&Egrave; un file locale; la protezione dipende dai permessi del file e del computer.</td><td>Esaminare fuori linea sei sorgenti locali.</td></tr>
 </table>
 
-<p>Le due superfici non vanno sommate in una descrizione unica. Settings usa
-rotte e modelli propri; il generatore statico &egrave; richiamato soltanto dalla sua
-CLI e non ha chiamanti nel server HTTP.</p>
+<p>Non sono due viste dello stesso strumento. Settings usa pagine e dati propri;
+il generatore statico viene avviato soltanto dalla riga di comando e il server
+HTTP non lo usa.</p>
 
 <h1 id="cap3">3. Settings nella chat</h1>
 
@@ -148,16 +147,16 @@ Le pagine di dettaglio separano le diverse domande operative:</p>
 <tr><td>Settings &gt; Sistema &gt; Utenti</td><td>Utenti, ruoli, canali e preferenze amministrabili.</td></tr>
 </table>
 
-<p>Il registro in <code>runtime/ui_surfaces.py</code> &egrave; la descrizione
-canonica delle pagine visibili e del loro percorso. Tutor usa lo stesso
-registro: una modifica strutturale della UI richiede l'aggiornamento del
-registro, della guida di navigazione e dell'indice di Tutor.</p>
+<p>Il registro in <code>runtime/ui_surfaces.py</code> descrive in modo canonico
+le pagine visibili e il percorso per raggiungerle. Il Tutor usa lo stesso
+registro; per questo una modifica strutturale dell'interfaccia richiede di
+aggiornare anche la guida di navigazione e l'indice del Tutor.</p>
 
 <h1 id="cap4">4. Il rendiconto HTML statico</h1>
 
-<p><code>render_dashboard(out_path)</code> interroga le sorgenti locali e
-compone un unico documento con CSS incorporato, senza JavaScript e senza
-WebSocket. Le sezioni appaiono in questo ordine: test, Mnestoma, associazioni,
+<p>Il generatore legge le sorgenti locali e compone un unico documento con gli
+stili incorporati, senza JavaScript e senza collegamenti in tempo reale con il
+server. Le sezioni appaiono in questo ordine: test, Mnestoma, associazioni,
 turni recenti, decisioni del Vaglio e scheduler.</p>
 
 <p>Ogni raccoglitore gestisce separatamente una sorgente non disponibile. La
@@ -172,7 +171,7 @@ presentato come tale.</p>
 <h1 id="cap5">5. Dati raccolti dal rendiconto</h1>
 
 <table>
-<tr><th>Sorgente</th><th>Proiezione mostrata</th><th>Posizione configurata</th></tr>
+<tr><th>Sorgente</th><th>Dati mostrati</th><th>Posizione configurata</th></tr>
 <tr><td><strong>Mnestoma</strong></td><td>Conteggi, archi attivi e proto, eventi recenti.</td><td>Database di Mnestoma, normalmente sotto <code>PATH_WORKSPACE/.mnestoma</code>.</td></tr>
 <tr><td><strong>Associazioni</strong></td><td>Canale, identificativo del mittente, livello, date e autore dell'associazione; conteggio delle revoche.</td><td><code>DB_PAIRINGS</code> sotto <code>PATH_USER_STATE</code>.</td></tr>
 <tr><td><strong>Turni</strong></td><td>Ultimi quindici turni: richiesta, esito, numero di passi e inizio della risposta.</td><td><code>PATH_TURNS</code> sotto <code>PATH_USER_DATA</code>.</td></tr>
@@ -181,10 +180,10 @@ presentato come tale.</p>
 <tr><td><strong>Prove registrate</strong></td><td>Moduli, casi abilitati, ultimo stato e moduli pi&ugrave; numerosi.</td><td><code>PATH_RUNTIME/testing/tests.db</code>.</td></tr>
 </table>
 
-<p>I limiti sono applicati dal generatore e non sono parametri della CLI:
-cinque file giornalieri al massimo per i turni, tre file per il Vaglio e
-limiti distinti per righe ed eventi. Per un'analisi completa occorre interrogare
-la sorgente autorizzata, non dedurre il totale dalla pagina.</p>
+<p>I limiti sono fissi nel generatore e non si possono cambiare dalla riga di
+comando: al massimo cinque file di turni, tre file del Vaglio e un numero
+limitato di righe o eventi per sezione. Il rendiconto serve quindi a orientare
+la diagnosi, non a calcolare totali completi.</p>
 
 <h1 id="cap6">6. Accesso, utenti e riservatezza</h1>
 

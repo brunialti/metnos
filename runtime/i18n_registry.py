@@ -50,6 +50,7 @@ class TranslationLease:
     lease_token: str
     expires_at: float
     metadata: Mapping[str, Any]
+    basis_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +67,7 @@ class ResourceRecord:
     artifact_path: str | None
     last_error: str | None
     metadata: Mapping[str, Any]
+    basis_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +126,16 @@ class LocalizationRegistry:
         conn = sqlite3.connect(str(self.path), timeout=15, isolation_level=None)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA busy_timeout=15000")
-        conn.execute("PRAGMA journal_mode=WAL")
+        deadline = time.monotonic() + 15.0
+        while True:
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                    conn.close()
+                    raise
+                time.sleep(0.01)
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
@@ -139,6 +150,7 @@ class LocalizationRegistry:
                     source_lang TEXT NOT NULL,
                     target_lang TEXT NOT NULL,
                     source_hash TEXT NOT NULL,
+                    basis_id TEXT,
                     status TEXT NOT NULL DEFAULT 'pending',
                     attempts INTEGER NOT NULL DEFAULT 0,
                     lease_token TEXT,
@@ -169,6 +181,26 @@ class LocalizationRegistry:
                 );
                 """
             )
+            # Schema upgrades may be reached concurrently by the service and
+            # an administration command.  Serialize the recheck and DDL in
+            # SQLite instead of relying on a race-prone check-then-alter.
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                columns = {
+                    str(row[1])
+                    for row in conn.execute(
+                        "PRAGMA table_info(localization_resources)"
+                    )
+                }
+                if "basis_id" not in columns:
+                    conn.execute(
+                        "ALTER TABLE localization_resources "
+                        "ADD COLUMN basis_id TEXT"
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     @staticmethod
     def _record(row: sqlite3.Row) -> ResourceRecord:
@@ -183,6 +215,7 @@ class LocalizationRegistry:
             attempts=int(row["attempts"]), translation_hash=row["translation_hash"],
             quality=row["quality"], artifact_path=row["artifact_path"],
             last_error=row["last_error"], metadata=metadata,
+            basis_id=row["basis_id"],
         )
 
     def register(
@@ -193,6 +226,7 @@ class LocalizationRegistry:
         target_lang: str,
         source_hash: str,
         *,
+        basis_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
         manual_review: bool = False,
     ) -> ResourceRecord:
@@ -203,16 +237,23 @@ class LocalizationRegistry:
         source = normalize_language(source_lang)
         target = normalize_language(target_lang)
         digest = _valid_hash(source_hash, field="source_hash")
+        basis = None if basis_id is None else str(basis_id).strip()
+        if basis_id is not None and not basis:
+            raise ValueError("basis_id must be a non-empty identifier or None")
         now = time.time()
         status = "manual_review" if manual_review else "pending"
         encoded = _canonical_json(metadata)
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute(
-                """SELECT status,metadata_json FROM localization_resources
+                """SELECT status,metadata_json,basis_id FROM localization_resources
                    WHERE resource_id=? AND target_lang=? AND source_hash=?""",
                 (rid, target, digest),
             ).fetchone()
+            basis_changed = (
+                existing is not None
+                and existing["basis_id"] != basis
+            )
             conn.execute(
                 """UPDATE localization_resources
                    SET status='stale', lease_token=NULL, lease_expires_at=NULL,
@@ -223,15 +264,27 @@ class LocalizationRegistry:
             )
             conn.execute(
                 """INSERT INTO localization_resources
-                   (resource_id,layer,source_lang,target_lang,source_hash,status,
-                    metadata_json,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?)
+                   (resource_id,layer,source_lang,target_lang,source_hash,basis_id,
+                    status,metadata_json,created_at,updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(resource_id,target_lang,source_hash) DO UPDATE SET
                      layer=excluded.layer, source_lang=excluded.source_lang,
+                     basis_id=excluded.basis_id,
                      metadata_json=excluded.metadata_json, updated_at=excluded.updated_at""",
-                (rid, layer_name, source, target, digest, status, encoded, now, now),
+                (rid, layer_name, source, target, digest, basis,
+                 status, encoded, now, now),
             )
-            if manual_review:
+            if basis_changed:
+                conn.execute(
+                    """UPDATE localization_resources
+                       SET status=?,attempts=0,lease_token=NULL,
+                           lease_expires_at=NULL,translation_hash=NULL,
+                           quality=NULL,artifact_path=NULL,last_error=NULL,
+                           updated_at=?
+                       WHERE resource_id=? AND target_lang=? AND source_hash=?""",
+                    (status, now, rid, target, digest),
+                )
+            elif manual_review:
                 conn.execute(
                     """UPDATE localization_resources SET status='manual_review',
                        lease_token=NULL,lease_expires_at=NULL,updated_at=?
@@ -310,6 +363,7 @@ class LocalizationRegistry:
             resource_id=rid, layer=row["layer"], source_lang=row["source_lang"],
             target_lang=target, source_hash=row["source_hash"], attempt=attempts,
             lease_token=token, expires_at=expires, metadata=metadata,
+            basis_id=row["basis_id"],
         )
 
     def _leased_row(self, conn: sqlite3.Connection, resource_id: str, target: str) -> sqlite3.Row:
@@ -522,8 +576,23 @@ def _default() -> LocalizationRegistry:
     return LocalizationRegistry()
 
 
-def register(resource_id: str, layer: str, source_lang: str, target_lang: str, source_hash: str) -> ResourceRecord:
-    return _default().register(resource_id, layer, source_lang, target_lang, source_hash)
+def register(
+    resource_id: str,
+    layer: str,
+    source_lang: str,
+    target_lang: str,
+    source_hash: str,
+    *,
+    basis_id: str | None = None,
+) -> ResourceRecord:
+    return _default().register(
+        resource_id,
+        layer,
+        source_lang,
+        target_lang,
+        source_hash,
+        basis_id=basis_id,
+    )
 
 
 def claim(resource_id: str, target_lang: str) -> TranslationLease | None:

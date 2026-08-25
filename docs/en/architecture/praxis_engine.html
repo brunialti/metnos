@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; planning and reuse engine</title>
- <meta name="description" content="The Metnos engine cascade: L0 fast paths, L1 autopaths, the L2 validator, and L3 proposal, execution, recovery, and termination.">
+ <meta name="description" content="The Metnos engine route: L0 fast paths, L1 autopaths, L2 validation, and L3 proposal, execution, recovery, and termination.">
  <meta name="keywords" content="Metnos, engine, fastpath, autopath, validator, proposer, recovery, framework">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
@@ -36,20 +36,20 @@
  <div class="meta">Four layers sharing one control pipeline.</div>
 </div>
 
-<p class="lead">The engine tries reusable plans first and builds a new framework
-when necessary. The model's proposal remains probabilistic; cache signatures,
-validation, guards, and executor semantics are enforced by code. There is therefore
-no promise of “one model call” for every turn: the number depends on the path,
-validation, and possible recovery.</p>
+<p class="lead">When a request arrives, Metnos first looks for a previously
+successful plan that can be reused safely. If it cannot find one, it builds a
+new plan. In the code, this internal plan is called a <em>framework</em>: a
+finite sequence of executors and links between their results. A model may
+propose it, but checks implemented in code decide whether it may run.</p>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
  <li><a href="#cap1">Purpose</a></li>
- <li><a href="#cap3">Engine contract</a></li>
+ <li><a href="#cap3">What the engine receives and returns</a></li>
  <li><a href="#cap4">The four layers</a></li>
- <li><a href="#cap5">The turn cascade</a></li>
- <li><a href="#cap6">The framework</a></li>
+ <li><a href="#cap5">A turn's route</a></li>
+ <li><a href="#cap6">The internal plan</a></li>
  <li><a href="#cap7">L0: fast path</a></li>
  <li><a href="#cap8">L1: autopath</a></li>
  <li><a href="#cap9">L2: validator</a></li>
@@ -72,35 +72,36 @@ capabilities. It balances two requirements:</p>
  may have changed its meaning.</li>
 </ul>
 
-<p><strong>Ask Metnos with a request like this example:</strong> “Find PDFs changed
-this week under Projects, compute each file's SHA-256 hash, and create a spreadsheet
-with the name, date, and hash.” The first run may need a new framework. A repeated
-request is reused only if the plan remains cacheable and its operational-world
-signatures still match.</p>
+<p>For example, you can ask: “Find PDFs changed this week under Projects,
+compute each file's SHA-256 hash, and create a spreadsheet with the name, date,
+and hash.” The first run may need a new plan. If you repeat the request, Metnos
+reuses that plan only when it is safe to cache and the executor and catalog
+signatures are still valid.</p>
 
-<h1 id="cap3">2. Engine contract</h1>
+<h1 id="cap3">2. What the engine receives and returns</h1>
 
-<p>Input includes the request, ordered intents, visible catalog, language, user,
-channel, destination, and state already produced in the turn. Output includes:</p>
+<p>To plan a request, the engine receives the request, its recognized actions
+in order, the visible catalog, language, user, channel, destination, and any
+data already produced during the turn. It returns:</p>
 
 <ul>
  <li>final text and kind: answer, question, required input, or error;</li>
- <li>framework and its fingerprint;</li>
+ <li>the plan that ran and its fingerprint;</li>
  <li>decision source: fast path, autopath, engine, recovery, or terminator;</li>
  <li>steps actually run, their results, and timings;</li>
  <li>any dialog to resume after a choice or consent.</li>
 </ul>
 
-<p>The caller supplies the catalog, which defines the execution world. Prompt text
-cannot make an absent or unadmitted executor available.</p>
+<p>The catalog is the effective execution boundary. An absent or unadmitted
+executor does not become available merely because the model names it.</p>
 
 <h1 id="cap4">3. The four layers</h1>
 
 <table>
 <thead><tr><th>Layer</th><th>State</th><th>Responsibility</th></tr></thead>
 <tbody>
-<tr><td>L0 &mdash; fast path</td><td>Persistent</td><td>Maps a query to a framework that previously succeeded effectively.</td></tr>
-<tr><td>L1 &mdash; autopath</td><td>Persistent</td><td>Maps semantic clusters and intents to a generalizable framework.</td></tr>
+<tr><td>L0 &mdash; fast path</td><td>Persistent</td><td>Maps a request to a plan that previously completed successfully and effectively.</td></tr>
+<tr><td>L1 &mdash; autopath</td><td>Persistent</td><td>Maps groups of similar requests and intents to a generalizable plan.</td></tr>
 <tr><td>L2 &mdash; validator</td><td>Per turn</td><td>Checks names, schemas, required fields, and references before execution.</td></tr>
 <tr><td>L3 &mdash; full engine</td><td>Per turn</td><td>Proposes, finalizes, executes, classifies failures, and terminates.</td></tr>
 </tbody>
@@ -110,21 +111,23 @@ cannot make an absent or unadmitted executor available.</p>
 and L1 plans still cross the current finalization pipeline, which applies guards,
 ordering, output policy, and consent gates.</p>
 
-<h1 id="cap5">4. The turn cascade</h1>
+<h1 id="cap5">4. A turn's route</h1>
 
 <ol>
  <li>Routing builds a pool of relevant capabilities.</li>
- <li>L0 tries an exact match and then—only for generalizable frameworks—a semantic match.</li>
+ <li>L0 tries an exact match and then—only for generalizable plans—a semantic match.</li>
  <li>If L0 does not answer, L1 looks for an active champion compatible with the intent, object, and cluster.</li>
- <li>Without a valid hit, the selected proposer produces one or more candidate frameworks according to configuration.</li>
+ <li>Without a valid reusable plan, the proposal component builds one or more candidates according to the active configuration.</li>
  <li>Structural guards and the validator inspect the candidate and, in admitted cases, request one corrective proposal.</li>
- <li>The shared executor runs the framework. If it fails without committed effects, recovery may try an alternative.</li>
+ <li>The shared execution engine runs the plan. If it fails without committed effects, recovery may try an alternative.</li>
  <li>The terminator presents the result, asks for input, or states an honest limit; an effective cacheable turn feeds L0 and L1 observations.</li>
 </ol>
 
-<h1 id="cap6">5. The framework</h1>
+<h1 id="cap6">5. The internal plan, or framework</h1>
 
-<p>The canonical format is independent of the proposer:</p>
+<p>A framework describes the steps to run, each step's arguments, and how one
+result feeds the next step. Its format does not depend on the model that
+proposed it:</p>
 
 <pre><code>{
   "steps": [
@@ -152,7 +155,7 @@ does not require an approval button. Lookup has two forms:</p>
  <li><strong>0a, exact.</strong> The query fingerprint may reuse a plan tied to
  values specific to that exact sentence.</li>
  <li><strong>0b, semantic.</strong> Similarity uses the configured embedder and may
- serve only frameworks that are not tied to values from the original query.</li>
+ serve only plans that are not tied to values from the original request.</li>
 </ul>
 
 <p>Plans dependent on turn context—such as dialogs, consent, undo, and authenticated
@@ -162,14 +165,14 @@ discriminating argument values must also be grounded in the current request.</p>
 
 <h1 id="cap8">7. L1: autopath</h1>
 
-<p>L1 retains observations of cacheable frameworks together with intents, clusters,
-timings, and feedback. Positive feedback can promote a framework to an active
-champion. For repeated long pipelines, the runtime may create a <em>shadow</em>
-champion: it is served with the same guards but remains explicitly distinct from a
-plan confirmed by the user.</p>
+<p>L1 retains reusable plans together with recognized intents, semantic groups,
+timings, and feedback. Positive feedback can promote a plan to the active
+reference for its group. For long pipelines that succeed repeatedly, the
+runtime may create a <em>shadow</em> reference: it can be used under the same
+guards but remains distinct from a plan confirmed by the user.</p>
 
 <p>Semantic matching respects canonical-object boundaries and a relevance floor. L1
-also rejects query-specific frameworks and validates catalog signatures on every
+also rejects request-specific plans and validates catalog signatures on every
 hit. Repeated negative feedback can demote a champion and create a temporary
 anti-autopath; later positive feedback can remove the corresponding exclusion.</p>
 
@@ -185,18 +188,21 @@ anti-autopath; later positive feedback can remove the corresponding exclusion.</
  <li>placeholders that the runtime can resolve.</li>
 </ul>
 
-<p>If it finds an error, the proposer may be called once with the failed framework
-fingerprint excluded. The new candidate crosses the deterministic guards again.</p>
+<p>If it finds an error, the proposal component may be called once with the
+invalid plan's fingerprint excluded. The new candidate then crosses the
+deterministic guards again.</p>
 
 <h1 id="cap10">9. L3: proposal, execution, and recovery</h1>
 
-<p>The proposer is selected through configuration. Supported variants share the same
-<code>Proposer</code> contract; they may generate one candidate or several
-alternatives and rank them. A grammar, when enabled, constrains output shape but
-does not make the model's semantic choice deterministic.</p>
+<p>The component that proposes a plan is selected through configuration.
+Supported variants share the <code>Proposer</code> contract: some produce one
+candidate, while others compare several alternatives and return one. A
+grammar, when enabled, constrains output shape but does not make the model's
+semantic choice deterministic.</p>
 
-<p>The executor resolves references, fillers, and runtime values, checks step
-conditions, and invokes each capability. Independent steps run in parallel only
+<p>Before execution, the engine resolves references, data gathered through a
+dialog, and internal runtime values. It then checks each step's conditions and
+invokes the selected executor. Independent steps run in parallel only
 when their contracts and preflight admit it. External effects remain variable:
 networks, filesystems, providers, and content can change between executions.</p>
 
@@ -205,9 +211,9 @@ a wrong tool, wrong arguments, or missing input; it does not pretend to repair a
 network outage. If a step has already committed a mutation, the whole pipeline is
 not repeated, and the result reports the partial outcome honestly.</p>
 
-<p>Deterministic repairs remain independent from domain and language. The polarity
-of a reference&mdash;for example, “use the device” versus “without using the
-device”&mdash;is resolved by one shared, translatable syntax vocabulary. If a plan
+<p>Deterministic corrections remain independent from domain and language. For
+example, one shared, translatable syntax vocabulary distinguishes a positive
+request such as “use the device” from its negation, “without using the device.” If a plan
 names an inverse action but omits its target, the engine may derive it only from a
 sealed undo contract produced by a preceding step, with an exact executor and a
 compatible schema; an explicit value is never replaced.</p>
@@ -227,9 +233,8 @@ injected into the planner.</p>
 <p>People do not need to know L0, L1, or executor names. They describe the desired
 outcome in natural language. For example:</p>
 
-<p><strong>Ask Metnos with a request like this example:</strong> “Compare the files
-in the Quotes and Contracts folders and show those with identical content but
-different names.”</p>
+<p>For example: “Compare the files in the Quotes and Contracts folders and show
+those with identical content but different names.”</p>
 
 <p>Inspecting or flushing caches instead requires the web chat: open
 <strong>Settings</strong> and choose <strong>Praxis</strong>. If the question starts
@@ -238,13 +243,14 @@ the Telegram client.</p>
 
 <h1 id="cap13">12. Limits of the guarantees</h1>
 
-<p>The complete path is checked by logical certification outside the process under
-test: 24 reference flows in Italian and English verify planning, authority,
-consent, placement, effects, recovery, response, and postconditions. This is not a
-load test and does not replace non-destructive probes at real boundaries.</p>
+<p>The complete path is checked by logical certification outside the process
+under test. Twenty-four flows, each in Italian and English, verify planning,
+authority, consent, placement, effects, recovery, response, and
+postconditions. This is not a load test and does not replace non-destructive
+probes at real boundaries.</p>
 
 <ul>
- <li>A valid cache hit reuses the same framework; it does not guarantee the same
+ <li>A valid cache hit reuses the same plan; it does not guarantee the same
  result from an external provider.</li>
  <li>A fresh proposal may vary for the same query. Pool, grammar, and validation
  constrain its shape but do not prove correctness.</li>
@@ -262,18 +268,21 @@ L0 row or flush L0, L1, or both. Flushing is an administrative, non-reversible
 operation: it removes accumulated operational capital and may slow requests until
 the caches are rebuilt.</p>
 
-<p>The caches are operational at instance scope and contain no credentials. On
-replay, account, language, consent, target, and authorization are resolved again in
-the current user's context.</p>
+<p>The caches belong to the whole instance. L0 stores normalized request text
+and plan arguments; L1 stores plans, fingerprints, intents, and semantic
+vectors. They are not credential stores, but they may contain names, paths, or
+other data from a request and must therefore be treated as confidential. On
+every reuse, configured accounts, language, consent, destination, and
+authorization are resolved again in the current user's context.</p>
 
 <p>Code references:</p>
 <ul>
- <li><code>runtime/engine/dispatch.py</code>: cascade and shared finalization pipeline;</li>
+ <li><code>runtime/engine/dispatch.py</code>: layer route and shared finalization pipeline;</li>
  <li><code>runtime/engine/fastpath.py</code>: L0;</li>
  <li><code>runtime/engine/autopath.py</code>: L1, feedback, and anti-autopaths;</li>
  <li><code>runtime/engine/validator.py</code>: L2;</li>
  <li><code>runtime/engine/proposer*.py</code>, <code>executor.py</code>, <code>recovery*.py</code>, and <code>terminator*.py</code>: L3;</li>
- <li><code>runtime/engine/cache_validity.py</code>: operational-world validity;</li>
+ <li><code>runtime/engine/cache_validity.py</code>: plan validity against the current catalog;</li>
  <li><code>runtime/http_routes_admin.py</code> and <code>runtime/templates/praxis.html</code>: console.</li>
 </ul>
 

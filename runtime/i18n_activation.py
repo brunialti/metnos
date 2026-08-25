@@ -453,15 +453,18 @@ def validate_manifests(
     target_lang: str,
     *,
     registry: LocalizationRegistry,
-    validator: Callable[[Path], tuple[bool, str]] | None = None,
+    validator: Callable[[Path, str], tuple[bool, str]] | None = None,
 ) -> None:
     target = normalize_language(target_lang)
     if validator is None:
         from manifest_lint import lint_file
         from sign import verify_executor
 
-        def validator(path: Path) -> tuple[bool, str]:
-            findings = [finding for finding in lint_file(path) if finding.severity == "error"]
+        def validator(path: Path, language: str) -> tuple[bool, str]:
+            findings = [
+                finding for finding in lint_file(path, language=language)
+                if finding.severity == "error"
+            ]
             if findings:
                 return False, "; ".join(str(finding) for finding in findings[:3])
             ok, info = verify_executor(path.parent)
@@ -474,7 +477,7 @@ def validate_manifests(
     failures = []
     evidence = hashlib.sha256()
     for path in paths:
-        ok, detail = validator(path)
+        ok, detail = validator(path, target)
         if not ok:
             failures.append(f"{path}: {detail}")
         else:
@@ -504,7 +507,7 @@ def activate_language(
     paths: LocalizationPaths | None = None,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
     signer: Callable[[Path], Any] | None = None,
-    manifest_validator: Callable[[Path], tuple[bool, str]] | None = None,
+    manifest_validator: Callable[[Path, str], tuple[bool, str]] | None = None,
     tutor_compiler: Callable[[], tuple[str, set[str]]] | None = None,
     request_writer: Callable[..., tuple[Any, bool]] | None = None,
     restart: Callable[[], None] | None = None,

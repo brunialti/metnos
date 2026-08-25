@@ -87,11 +87,11 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <h1 id="cap1">1. What a skill is, in thirty seconds</h1>
 
 <p class="lead">
-A skill is a package that describes how to use a service or a family of
-functions. Its entry point is <code>SKILL.md</code>; the package may also contain
-scripts and references needed at runtime. Metnos does not execute it directly:
-it translates the package into executors with explicit names, arguments,
-capabilities, and provenance.
+A skill is an integration package: it describes how to use a service or a
+family of functions. Its entry point is <code>SKILL.md</code>; scripts and
+reference material may sit beside it. Import is an administrative operation.
+Metnos turns what the skill declares into executors with explicit names,
+arguments, capabilities, and provenance.
 </p>
 <p>
 The file contains a metadata header and a readable body for functions,
@@ -103,17 +103,18 @@ the system vocabulary or its capabilities.
 <p>
 Metnos can <strong>import</strong> a skill source: it reads the file, derives a
 set of executors in its own format, and submits each one to admission checks.
-Those that pass enter the same catalog as other executors and can be invoked
-in natural language, while the manifest continues to record their external
-origin.
+Those that pass enter the same catalog as other executors. They become usable
+once they are also signed, enabled, and not dormant because of a missing
+dependency. Their manifests continue to record the external origin.
 </p>
 
 <h2>Why Metnos does not execute the skill directly</h2>
 <p>A <code>SKILL.md</code> file does not carry the signature and contract of a
 Metnos executor. Importing generates a wrapper, declares capabilities and
-arguments in a manifest, applies admission checks, and signs the result. This
-reduces the granted authority and makes it observable, but it does not certify
-third-party code as benign: provenance and source still require judgment.</p>
+arguments in a manifest, applies admission checks, and attempts to sign each
+accepted executor. The wrapper may then call scripts from the package, but it
+does so through the ordinary Metnos execution path. This makes the granted
+authority narrower and observable; it does not prove third-party code benign.</p>
 
 <h1 id="cap2">2. From the SKILL file to the catalog</h1>
 
@@ -122,7 +123,7 @@ matters: successful translation is not yet admission to the catalog.</p>
 
 <ol>
  <li><strong>Acquire.</strong> Metnos resolves the path or URL, obtains the
- source, and fingerprints <code>SKILL.md</code>.</li>
+ source, and fingerprints the <code>SKILL.md</code> file itself.</li>
  <li><strong>Parse.</strong> The parser extracts metadata, dependencies,
  scripts, required credential files, and sub-commands with their arguments.</li>
  <li><strong>Translate.</strong> Each sub-command maps to a canonical
@@ -130,15 +131,17 @@ matters: successful translation is not yet admission to the catalog.</p>
  executors, and collisions within the skill are rejected.</li>
  <li><strong>Generate.</strong> Controlled templates produce the Python
  wrapper, TOML manifest, and language state. A language model may propose
- Italian and English descriptions and affinity terms; a deterministic
- fallback is used when it is unavailable.</li>
+ Italian and English descriptions and one list of affinity phrases; a
+ deterministic fallback is used when it is unavailable. Affinity is not yet
+ separated by language: this is the limitation tracked by the priority
+ <code>AFF-I18N-001</code> TODO.</li>
  <li><strong>Admit.</strong> The runtime checks binding uniqueness, canonical
  naming, affinity overlap, routing, and semantic alignment between manifest
  and code.</li>
  <li><strong>Sign.</strong> Rejected folders are removed. Accepted executors
  are signed with Ed25519; the loader does not expose one without a valid
  signature.</li>
- <li><strong>Register.</strong> The outcome enters the audit log and, for
+ <li><strong>Register.</strong> The outcome enters the import log and, for
  mappable cases, the persistent routing battery. The executors become visible
  on the next valid catalog load.</li>
 </ol>
@@ -175,9 +178,10 @@ A skill can come from three places:
 </ul>
 
 <p>If a skill calls its own scripts, import a complete local directory or the
-repository rather than the raw file alone. Remote sources are kept in the
-local cache for a default maximum of seven days; an operator can force a fresh
-fetch.</p>
+repository rather than the raw file alone. By default, a remote source already
+in the cache is reused for seven days. Once stale, Metnos fetches it again but
+does not automatically remove every old cache file; an operator can force a
+fresh fetch or clear the cache.</p>
 
 <h1 id="cap4">4. Generated files and provenance</h1>
 
@@ -223,6 +227,13 @@ executor from one maintained directly in the product. Signature, contract,
 and execution policy are shared requirements: provenance replaces none of
 those controls.</p>
 
+<p class="callout note"><strong>What the fingerprints actually cover.</strong>
+<code>source_sha256</code> identifies <code>SKILL.md</code>. The executor
+signature protects its manifest and the wrapper code declared by that
+manifest. Scripts and references copied beside the skill do not currently
+receive a separate provenance fingerprint, so they must be reviewed as part
+of the package before import.</p>
+
 <h1 id="cap5">5. Translation and admission checks</h1>
 
 <p>The pipeline separates translation rejections from admission rejections.
@@ -232,7 +243,7 @@ The final audit records both categories.</p>
 <tr><th>Step</th><th>What it checks</th><th>Negative outcome</th></tr>
 <tr><td><strong>Verb boundary</strong></td><td>The source action has a semantically valid match in the closed vocabulary.</td><td>The sub-command produces no plan.</td></tr>
 <tr><td><strong>Name and collisions</strong></td><td>The composed name is canonical, provider-qualified, and distinct from other names in the same skill.</td><td>The translator records the rejection reason.</td></tr>
-<tr><td><strong>Binding uniqueness</strong></td><td>The skill binding is not already owned by another import.</td><td>The whole skill is rejected.</td></tr>
+<tr><td><strong>Binding uniqueness</strong></td><td>The skill identifier, called its <em>binding</em>, is not already owned by another import.</td><td>The whole skill is rejected.</td></tr>
 <tr><td><strong>L1 — vocabulary</strong></td><td>The plan action, object, and qualifiers belong to the current vocabulary.</td><td>The individual plan is rejected.</td></tr>
 <tr><td><strong>L2 — affinity</strong></td><td>Canonical affinity does not exceed the overlap threshold against installed executors; an explicit binding uses a distinct threshold.</td><td>The individual plan is rejected as a possible duplicate.</td></tr>
 <tr><td><strong>L5 — routing</strong></td><td>When a prototype question and runner are available, the assertion must select the expected executor.</td><td>An executed failure rejects the plan; an unmapped or unavailable case is skipped.</td></tr>
@@ -281,12 +292,12 @@ secret values.</p>
 
 <h1 id="cap7">7. Google Workspace: a complete example</h1>
 
-<p><strong>Ask Metnos with a request like this example:</strong> “What
-appointments are on my work calendar tomorrow?” If the Google Workspace
-capability is admitted, enabled, and connected to the user's account, the
-catalog exposes the event-specific executor. Other examples are “Find unread
-messages from Anna,” “Read the contents of this Drive file,” and “Append these
-rows to the Expenses sheet.”</p>
+<p>For the user, an imported skill looks like any other Metnos capability. They
+might ask, “What appointments are on my work calendar tomorrow?” If Google
+Workspace has been imported, admitted, enabled, and connected to their
+account, the catalog can propose the event executor. The same user might ask
+“Find unread messages from Anna,” “Read the contents of this Drive file,” or
+“Append these rows to the Expenses sheet.”</p>
 
 <p>Importing is a separate administrative operation. The Google Workspace
 package included with Metnos also contains the required scripts, so the
@@ -320,21 +331,27 @@ part of the import count.</p>
 <h1 id="cap8">8. Trust boundary and runtime controls</h1>
 
 <p>Importing a skill does not attest that its code is benign. The importer
-checks the wrapper and contract it generates, but it does not perform complete
-static analysis of every received script. Before import, the operator must
-verify origin and fingerprint, review the scripts, and grant only the required
-capabilities and credentials.</p>
+checks the wrapper and contract it generates, but it does not completely
+analyse every received script. Before import, the operator must therefore
+verify the origin of the whole package, review its scripts, and grant only the
+required capabilities and credentials.</p>
 
 <table>
 <tr><th>Control</th><th>When</th><th>Actual assurance</th></tr>
-<tr><td><strong>Provenance and fingerprint</strong></td><td>acquisition</td><td>tie the artifact to the reviewed source; they do not prove it safe</td></tr>
+<tr><td><strong>Provenance and fingerprint</strong></td><td>acquisition</td><td>identify the origin and contents of <code>SKILL.md</code>; they neither fingerprint each script nor prove the package safe</td></tr>
 <tr><td><strong>Generated contract</strong></td><td>generation</td><td>makes arguments, output, capabilities, credentials, and provenance explicit</td></tr>
 <tr><td><strong>L1, L2, L5, L6</strong></td><td>admission</td><td>limit foreign names, overlap, routing failures, and semantic drift</td></tr>
-<tr><td><strong>Digest and Ed25519 signature</strong></td><td>catalog load</td><td>prevent missing, modified, or invalidly signed artifacts from loading</td></tr>
+<tr><td><strong>Digest and Ed25519 signature</strong></td><td>catalog load</td><td>protect the manifest and code files declared by the executor; they do not sign external scripts in the source package</td></tr>
 <tr><td><strong>Sandbox, capabilities, policy, and vaglio</strong></td><td>invocation</td><td>limit concrete authority and apply decisions required by the action's risk</td></tr>
 <tr><td><strong>Per-user credential store</strong></td><td>authentication and use</td><td>separates bindings and keeps secrets away from the planner</td></tr>
-<tr><td><strong>Audit and efficacy statistics</strong></td><td>after invocation</td><td>record use and outcome and feed lifecycle controls</td></tr>
+<tr><td><strong>Audit and usage statistics</strong></td><td>after invocation</td><td>record outcome, duration, and approximate volumes without retaining full arguments and results; today this is observation, not another security gate</td></tr>
 </table>
+
+<p>When <code>bwrap</code> is available, the runtime builds a sandbox from the
+manifest and admitted capabilities. If it is unavailable, or the sandbox was
+explicitly disabled, the executor still runs in a separate process and the
+runtime checks still apply, but the filesystem and network isolation supplied
+by <code>bwrap</code> is absent.</p>
 
 <p>Executors maintained directly by Metnos follow release review, tests,
 signing, and policy; imported executors add specific provenance, admission,

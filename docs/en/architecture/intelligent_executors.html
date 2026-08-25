@@ -37,18 +37,33 @@
 <main>
  <header class="hero">
   <h1>Agent inside.<br>Executor outside.</h1>
-  <p class="lead">An intelligent executor can handle a changing route without changing its assignment. It observes, selects one step and verifies it; the planner still sees a regular executor.</p>
-  <div class="status"><strong>Core idea.</strong> Intelligence resolves uncertainty in the route. It does not expand permissions, purpose, or the result format.</div>
+  <p class="lead">An intelligent executor uses a model to resolve one or more
+  uncertain steps while keeping the ordinary executor contract. The planner
+  gives it a precise task and receives the expected result without having to
+  know its internal route.</p>
+  <div class="status"><strong>Core idea.</strong> The model may propose how to
+  proceed within a bounded set of possibilities. This does not grant it new
+  permissions or let it decide by itself what counts as success.</div>
  </header>
 
  <section class="principles" aria-label="Principles">
-  <div class="card"><strong>Stable contract</strong>The same arguments and result as a direct executor.</div>
-  <div class="card"><strong>Narrow mandate</strong>The goal, allowed actions, and stopping conditions are fixed by code.</div>
-  <div class="card"><strong>Verified outcome</strong>Success requires an observable postcondition, not a model's assumption.</div>
+  <div class="card"><strong>Stable contract</strong>Arguments, authority, and result shape do not change when the model is involved.</div>
+  <div class="card"><strong>Bounded choice</strong>The model proposes only values or actions that the adapter knows how to validate.</div>
+  <div class="card"><strong>Verified outcome</strong>The executor's postcondition, not a model's claim, determines whether an attempt succeeded.</div>
  </section>
 
  <h2>The architectural boundary</h2>
- <p>The mandate comes from the name, description, argument schema, declared capabilities, consent rules, limits, and postcondition. The internal model receives only the observation it needs and may choose only among actions enumerated by the runtime.</p>
+ <p>The executor's manifest and code define its purpose, arguments,
+ capabilities, consent, limits, and result shape. When part of the route needs
+ a model, the adapter prepares a bounded observation, validates the proposal,
+ and decides which concrete operation to run. The model does not invoke
+ executors directly or alter its own contract.</p>
+
+ <p>In a manifest, <code>intelligence = "agentic"</code> declares this mode so
+ that the registry and interface can represent it correctly. The declaration
+ is validated, but it does <strong>not</strong> prove that an implementation is
+ safe: proposal limits, validators, and postconditions must still be checked
+ in code and tests.</p>
 
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
@@ -58,38 +73,62 @@
    <rect x="18" y="18" width="864" height="254" rx="20" fill="#f7faf8" stroke="#416b4b" stroke-width="2"/>
    <text x="42" y="49" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#416b4b">FIXED AUTHORITY: capabilities &middot; consent &middot; secrets &middot; targets</text>
    <g font-family="Segoe UI,sans-serif" text-anchor="middle">
-    <rect x="50" y="92" width="145" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="122" y="121" font-size="14" font-weight="700" fill="#1a477a">Observe</text><text x="122" y="143" font-size="12" fill="#18324a">minimum state</text>
-    <rect x="250" y="92" width="160" height="72" rx="12" fill="#e4f1e7" stroke="#416b4b"/><text x="330" y="121" font-size="14" font-weight="700" fill="#416b4b">Resolve</text><text x="330" y="143" font-size="12" fill="#18324a">rules first</text>
-    <rect x="465" y="92" width="160" height="72" rx="12" fill="#fff3d7" stroke="#9a6418"/><text x="545" y="121" font-size="14" font-weight="700" fill="#9a6418">Disambiguate</text><text x="545" y="143" font-size="12" fill="#18324a">LLM only if needed</text>
-    <rect x="680" y="92" width="165" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="762" y="121" font-size="14" font-weight="700" fill="#1a477a">Act and verify</text><text x="762" y="143" font-size="12" fill="#18324a">postcondition</text>
+    <rect x="50" y="92" width="145" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="122" y="121" font-size="14" font-weight="700" fill="#1a477a">Observe</text><text x="122" y="143" font-size="12" fill="#18324a">bounded state</text>
+    <rect x="250" y="92" width="160" height="72" rx="12" fill="#e4f1e7" stroke="#416b4b"/><text x="330" y="121" font-size="14" font-weight="700" fill="#416b4b">Propose</text><text x="330" y="143" font-size="12" fill="#18324a">one candidate</text>
+    <rect x="465" y="92" width="160" height="72" rx="12" fill="#fff3d7" stroke="#9a6418"/><text x="545" y="121" font-size="14" font-weight="700" fill="#9a6418">Validate</text><text x="545" y="143" font-size="12" fill="#18324a">adapter rules</text>
+    <rect x="680" y="92" width="165" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="762" y="121" font-size="14" font-weight="700" fill="#1a477a">Execute and check</text><text x="762" y="143" font-size="12" fill="#18324a">postcondition</text>
    </g>
    <g stroke="#1a477a" stroke-width="2" marker-end="url(#arrow)"><line x1="195" y1="128" x2="242" y2="128"/><line x1="410" y1="128" x2="457" y2="128"/><line x1="625" y1="128" x2="672" y2="128"/></g>
-   <text x="450" y="217" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#1a477a">TYPED EXIT: verified success &middot; user handoff &middot; causal error</text>
-   <text x="450" y="244" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="12" fill="#5d6d7d">Steps, elapsed time, and observation size are bounded.</text>
+   <text x="450" y="217" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#1a477a">OUTCOME: completed &middot; inconclusive &middot; exhausted</text>
+   <text x="450" y="244" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="12" fill="#5d6d7d">Attempts, elapsed time, history, and observation size are bounded.</text>
   </svg>
-  <figcaption>The model works on the ambiguous segment; authority, limits, and verification remain deterministic.</figcaption>
+  <figcaption>The shared loop limits attempts, elapsed time, history, and
+  observation size. The adapter retains control of the action.</figcaption>
  </figure>
 
- <h2>Same shell, two execution modes</h2>
+ <h2>What the shared runtime provides today</h2>
+ <p>Metnos provides both synchronous and asynchronous loops. On each attempt,
+ the loop may refresh the observation, request a proposal, validate it, execute
+ it, and check its postcondition. The internal outcome is
+ <code>completed</code>, <code>inconclusive</code>, or <code>exhausted</code>.
+ A deterministic-first variant is also available: when the model fallback
+ fails to produce a valid improvement, the initial deterministic result is
+ retained.</p>
+
  <table>
-  <tr><th>Property</th><th>Direct executor</th><th>Intelligent executor</th></tr>
-  <tr><td>Public contract</td><td>Typed input and output</td><td>Identical</td></tr>
-  <tr><td>Route</td><td>Predetermined procedure</td><td>Adaptive, bounded loop</td></tr>
-  <tr><td>Purpose</td><td>Fixed by the name</td><td>Unchanged and not redefinable</td></tr>
-  <tr><td>Authority</td><td>Manifest and consent</td><td>Identical; it cannot expand itself</td></tr>
-  <tr><td>Outcome</td><td>Schema and postcondition</td><td>Identical, including explicit failure</td></tr>
+  <tr><th>Responsibility</th><th>Shared runtime</th><th>Executor adapter</th></tr>
+  <tr><td>Limits</td><td>Caps attempts, elapsed time, history, and observations</td><td>May choose tighter limits and must bound each individual operation</td></tr>
+  <tr><td>Proposal</td><td>Requests it and manages the loop</td><td>Decides what the model may see and propose</td></tr>
+  <tr><td>Validation</td><td>Never executes a rejected proposal</td><td>Defines the concrete admission rules</td></tr>
+  <tr><td>Success</td><td>Returns the loop outcome</td><td>Defines and checks the postcondition</td></tr>
+  <tr><td>Authority</td><td>Does not expand it</td><td>Operates within the manifest, policy, consent, and sandbox</td></tr>
  </table>
 
- <h2>Where it earns its complexity</h2>
+ <div class="note"><strong>The loop's elapsed-time limit does not
+ automatically cancel an operation that has already started.</strong> It stops
+ further attempts. The adapter must give each operation its own timeout,
+ especially when that operation can change data.</div>
+
+ <h2>Where it is used</h2>
  <div class="use-grid">
-  <div class="card yes"><h3>Good fit</h3><p>A narrow purpose, a changing route, limited actions, observable progress, and a verifiable end state.</p><p>Examples include signing in to a website, multi-screen procedures, extracting variable structures, and choosing among equivalent controls.</p></div>
-  <div class="card no"><h3>Poor fit</h3><p>Open-ended research, cross-domain strategy, or creative work without a crisp completion criterion.</p><p>Those decisions belong to the planner, not to a hidden executor.</p></div>
+  <div class="card yes"><h3>Controlled selection</h3><p>During web navigation, the model may choose a control identifier from candidates prepared by the broker. It cannot produce CSS or XPath selectors.</p><p>During image search, it may reorder known identifiers when metadata provides no useful lexical signal.</p></div>
+  <div class="card yes"><h3>Controlled fallback</h3><p>OCR tries Tesseract first. Only when the text is insufficient may it ask the vision model for a transcription; a weak result does not replace the original.</p><p>Structured extraction and some consultation paths apply the same principle under their own contracts.</p></div>
  </div>
- <p>A new language, layout, or screen sequence should be absorbed by the same executor. New code is warranted when an action primitive, observation channel, authority, or verifiable postcondition is missing: intelligence cannot invent sensors or permissions.</p>
+ <p>A model is useful when the purpose is narrow, the route may vary, and the
+ end state is verifiable. It is not a good way to hide open-ended research,
+ cross-domain strategy, or a task without a crisp completion criterion inside
+ an executor. Those decisions belong to the planner.</p>
 
  <h2>When it cannot finish</h2>
- <p>The executor fails closed: it returns a causal code in the public schema, keeps only the state required for safe resumption, and does not invent results. External confirmation or unresolved ambiguity produces an explicit user handoff; exhausted limits, an unstable target, and a missing postcondition produce distinguishable errors.</p>
- <div class="note"><strong>Transport and intelligence are independent.</strong> A local, remote, or future MCP-backed executor may be direct or intelligent. MCP describes how to reach a tool; it does not decide the mandate, authority, or success criterion.</div>
+ <p>If no proposal is admitted, the loop is <code>inconclusive</code>. If its
+ attempts or elapsed-time budget runs out, it is <code>exhausted</code>. The
+ adapter then maps that outcome to its executor's public contract: it may keep
+ the deterministic result, return a typed error, or request user intervention.
+ The shared loop does not invent a result or promise persistent resumption by
+ itself.</p>
+ <div class="note"><strong>Transport and intelligence are independent.</strong>
+ A local or remote executor may be direct or intelligent. Transport determines
+ how it is reached; the manifest, policy, and code determine what it may do.</div>
 
  <p class="related">Read next: <a href="executor.html">executor contract</a> &middot; <a href="sandbox.html">sandbox</a> &middot; <a href="skills_backends.html">skills and backends</a> &middot; <a href="agent_runtime.html">agent runtime</a></p>
 </main>

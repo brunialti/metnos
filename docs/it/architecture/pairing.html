@@ -1,294 +1,223 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
- <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; pairing</title>
- <meta name="description" content="Guida all'associazione di utenti, canali, sessioni web e dispositivi remoti in Metnos: identità, token monouso, revoca e isolamento per utente.">
- <meta name="keywords" content="pairing, utenti, Telegram, sessioni web, dispositivi remoti, Ed25519, revoca, Metnos">
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Associazioni e identità</title>
+ <meta name="description" content="Come Metnos associa utenti, Telegram, browser, conversazioni e computer remoti senza confondere identità e autorizzazioni.">
  <meta name="author" content="the owner">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/pairing">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/pairing">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/pairing">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/pairing">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/it/architecture/pairing">
- <meta property="og:title" content="Metnos &mdash; pairing">
- <meta property="og:description" content="Identità e associazione di utenti, canali, sessioni web e dispositivi remoti.">
- <meta property="og:locale" content="it_IT">
- <meta property="og:site_name" content="Metnos">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — pairing",
- "description": "Guida all'associazione di utenti, canali, sessioni web e dispositivi remoti in Metnos.",
- "url": "https://metnos.com/it/architecture/pairing.html",
- "inLanguage": "it",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "the owner"}
-}
- </script>
- <style>
-:root { --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
-  --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
-  --code-bg:#f6f8fa; --table-alt:#f0f4f8; }
-* { box-sizing:border-box; }
-body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt;
-  line-height:1.65; color:var(--text); background:var(--bg); max-width:960px;
-  margin:0 auto; padding:40px 30px; }
-h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy);
-  padding-bottom:8px; margin-top:48px; }
-h2 { color:var(--navy-light); font-size:14pt; margin-top:26px;
-  border-bottom:1px solid var(--border); padding-bottom:4px; }
-p { margin:10px 0; }
-table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
-th { background:var(--navy); color:#fff; padding:8px 10px; text-align:left; }
-td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
-tr:nth-child(even) td { background:var(--table-alt); }
-pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px;
-  padding:12px 16px; overflow-x:auto; font-size:9.5pt; }
-code { font-family:Consolas,'Courier New',monospace; }
-p code, li code, td code { background:var(--code-bg); padding:1px 5px;
-  border-radius:3px; font-size:9.5pt; }
-ul, ol { margin:8px 0; padding-left:24px; }
-li { margin-bottom:5px; }
-.lead { font-size:12pt; color:var(--navy); margin:18px 0; }
-.title-page { text-align:center; padding:55px 0 28px; }
-.title-page h1 { font-size:32pt; border:0; margin:0; }
-.subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 26px; }
-.meta { color:#666; }
-.toc ol { line-height:1.9; }
-.toc a { color:var(--navy); text-decoration:none; }
- </style>
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/pairing">
  <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
-<script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head>
 <body>
 
 <nav class="lang-switch" aria-label="Lingua">
- <a href="/it/architecture/pairing.html" class="active" hreflang="it" lang="it">IT</a>
+ <a class="active" href="/it/architecture/pairing.html" hreflang="it" lang="it">IT</a>
  <span class="sep">&middot;</span>
  <a href="/en/architecture/pairing.html" hreflang="en" lang="en">EN</a>
 </nav>
 
-<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
- <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
-  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
-  <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">pairing</strong></span>
- </div>
-</div>
+<h1>Associazioni e identità</h1>
 
-<div class="title-page">
- <h1>Metnos</h1>
- <div class="subtitle"><code>pairing</code> &mdash; associare utenti, canali e dispositivi</div>
- <div class="meta">Guida all'identit&agrave; verificata e alle associazioni dell'istanza</div>
-</div>
-
-<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
-&laquo;Mostrami come collegare Telegram all'utente Lucia&raquo;. Il Tutor indica il
-percorso nella chat web anche quando la domanda proviene da Telegram.</p>
-
-<p class="lead">In Metnos, associare significa stabilire un'identità verificata
-prima di elaborare una richiesta. L'identità non viene mai dedotta dal testo del
-messaggio. Utente logico, recapito del canale, sessione di chat e dispositivo di
-esecuzione sono oggetti distinti, con registri e revoche indipendenti.</p>
+<p class="lead">Prima di elaborare una richiesta, Metnos deve sapere chi sta
+parlando e quali risorse gli appartengono. Per questo associa separatamente
+utente, canale, sessione web e computer remoto. Il testo «sono Roberto» non
+basta a diventare Roberto.</p>
 
 <div class="toc">
-<h2>Indice</h2>
-<ol>
- <li><a href="#cap1">Le quattro associazioni</a></li>
- <li><a href="#cap2">Utenti, ruoli e isolamento</a></li>
- <li><a href="#cap3">Associare Telegram o un browser</a></li>
- <li><a href="#cap4">Codici firmati di canale</a></li>
- <li><a href="#cap5">Sessione attiva e trasferimento della conversazione</a></li>
- <li><a href="#cap6">Dispositivi per executor remoti</a></li>
- <li><a href="#cap7">Revoca e ciclo di vita</a></li>
- <li><a href="#cap8">Invarianti di sicurezza</a></li>
-</ol>
+ <h2>In questa pagina</h2>
+ <ol>
+  <li><a href="#distinzioni">Quattro cose da non confondere</a></li>
+  <li><a href="#utenti">Utenti, ruoli e autonomia</a></li>
+  <li><a href="#telegram">Associare Telegram</a></li>
+  <li><a href="#browser">Associare un browser</a></li>
+  <li><a href="#sessione">Aprire la stessa chat su più dispositivi</a></li>
+  <li><a href="#computer">Associare un computer per gli executor remoti</a></li>
+  <li><a href="#revoca">Revocare un'associazione</a></li>
+  <li><a href="#sicurezza">Garanzie comuni</a></li>
+ </ol>
 </div>
 
-<h1 id="cap1">1. Le quattro associazioni</h1>
+<h2 id="distinzioni">Quattro cose da non confondere</h2>
 
 <table>
-<thead><tr><th>Oggetto</th><th>Cosa identifica</th><th>Fonte corrente</th></tr></thead>
-<tbody>
-<tr><td><strong>Utente logico</strong></td><td>L'identità alla quale appartengono ruolo, preferenze e canali.</td><td><code>users.db</code>, tabella <code>users</code></td></tr>
-<tr><td><strong>Canale</strong></td><td>Un recapito verificato, per esempio un <code>chat_id</code> Telegram o un browser associato.</td><td><code>users.db</code>, tabella <code>user_channels</code>; per Telegram anche <code>pairings.db</code></td></tr>
-<tr><td><strong>Sessione di chat</strong></td><td>Il dispositivo che, in questo momento, può scrivere nella conversazione web dell'utente.</td><td><code>users.db</code>, tabelle <code>active_sessions</code> e <code>chat_conversations</code></td></tr>
-<tr><td><strong>Dispositivo remoto</strong></td><td>Una macchina autorizzata a eseguire executor per un determinato proprietario.</td><td><code>devices.db</code>, tabella <code>devices</code></td></tr>
-</tbody>
+ <thead><tr><th>Oggetto</th><th>Che cosa rappresenta</th><th>Esempio</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Utente</strong></td><td>L'identità Metnos a cui appartengono ruolo, autonomia, preferenze e risorse.</td><td>Il proprietario oppure un ospite.</td></tr>
+  <tr><td><strong>Canale</strong></td><td>Un recapito verificato attraverso il quale quell'utente può parlare con Metnos.</td><td>Una chat Telegram o un browser associato.</td></tr>
+  <tr><td><strong>Sessione web</strong></td><td>Il browser che, in questo momento, ha il diritto di scrivere in una determinata conversazione.</td><td>Il telefono che ha preso il posto del portatile.</td></tr>
+  <tr><td><strong>Computer remoto</strong></td><td>Una macchina dell'utente sulla quale Metnos può eseguire executor compatibili.</td><td>Il PC Windows chiamato <code>PORTATILE-UFFICIO</code>.</td></tr>
+ </tbody>
 </table>
 
-<p>Un browser associato non è automaticamente un dispositivo remoto. Il primo
-consente di usare la chat; il secondo riceve lavoro dal server e lo esegue sulla
-macchina in cui risiedono dati o applicazioni. Analogamente, trasferire una
-sessione web non modifica il pairing Telegram né la proprietà di un dispositivo.</p>
+<p>Le quattro associazioni hanno effetti diversi. Collegare Telegram non
+autorizza il telefono a eseguire executor. Aprire la chat su un nuovo browser
+non rende quel computer un dispositivo remoto. Trasferire una conversazione non
+cambia il proprietario di un dispositivo.</p>
 
-<h1 id="cap2">2. Utenti, ruoli e isolamento</h1>
+<h2 id="utenti">Utenti, ruoli e autonomia</h2>
 
-<p><code>runtime/users.py</code> mantiene un solo utente con ruolo
-<code>host</code> e gli eventuali utenti <code>guest</code>. Ogni record ha un
-identificativo tecnico, un nome univoco, un ruolo, un proprietario opzionale e
-un livello di autonomia. <code>user_channels</code> collega quello stesso utente
-ai canali verificati <code>telegram</code>, <code>mail</code> e <code>http</code>.</p>
+<p>Un'installazione ha un solo utente proprietario, con ruolo <code>host</code>,
+e può avere più ospiti. Ogni utente possiede un identificatore tecnico stabile,
+un nome univoco, un ruolo e un livello di autonomia.</p>
 
-<p>Le preferenze vengono risolte dall'associazione autenticata prima del turno;
-la lingua viene invece dalla richiesta firmata dell'istanza ed &egrave; comune a tutti
-i suoi utenti. Conversazioni, dialoghi pendenti e diritto di scrittura della
-chat web restano circoscritti per utente e canale.</p>
+<table>
+ <thead><tr><th>Livello</th><th>Significato generale</th></tr></thead>
+ <tbody>
+  <tr><td><code>read_only</code></td><td>Consente soltanto l'uso informativo ammesso; non avvia azioni operative.</td></tr>
+  <tr><td><code>restricted</code></td><td>Consente azioni entro limiti stretti e con le conferme previste.</td></tr>
+  <tr><td><code>full</code></td><td>Consente l'autonomia più ampia prevista dall'istanza, senza superare policy e contratti.</td></tr>
+ </tbody>
+</table>
 
-<p>I due registri usano vocabolari diversi e non vanno confusi:</p>
+<p>Il livello di autonomia non è un lasciapassare. Ogni azione deve comunque
+superare contratto dell'executor, policy, Vaglio, collocazione e conferme
+applicabili. Un ospite con autonomia <code>full</code> non diventa il
+proprietario e non acquisisce le risorse di altri utenti.</p>
+
+<p>La lingua appartiene all'istanza ed è comune ai suoi utenti. Conversazioni,
+dialoghi in sospeso, canali e dispositivi restano invece separati per utente.</p>
+
+<h2 id="telegram">Associare Telegram</h2>
+
+<ol>
+ <li>Nella chat web apri <strong>Settings &rsaquo; Sistema &rsaquo; Utenti</strong>.</li>
+ <li>Crea l'utente, se non esiste, oppure apri la sua scheda.</li>
+ <li>Genera il codice per Telegram.</li>
+ <li>Invialo all'utente attraverso un mezzo fidato.</li>
+ <li>L'utente apre il bot Telegram di Metnos e invia
+ <code>/start &lt;codice&gt;</code>.</li>
+</ol>
+
+<p>Il codice è casuale, scade dopo un'ora e può essere consumato una volta sola.
+Due tentativi contemporanei non possono associarsi con lo stesso codice. Il
+comando <code>/start</code> conclude l'associazione ma non esegue una richiesta:
+il messaggio successivo avvia un nuovo turno.</p>
+
+<p>Metnos salva il recapito tecnico di Telegram insieme all'utente. I messaggi
+successivi vengono attribuiti da quell'associazione, non dal nome visualizzato
+nel profilo Telegram e non da una frase scritta nel messaggio.</p>
+
+<h3>Il codice tecnico <code>/pair</code></h3>
+
+<p>Esiste anche un flusso tecnico con un codice firmato Ed25519, destinato alla
+gestione di basso livello del canale. Il codice dichiara scadenza ed autonomia,
+vale normalmente cinque minuti e può essere usato una volta. Per associare un
+utente già censito, la procedura da <strong>Settings &rsaquo; Sistema &rsaquo;
+Utenti</strong> è più semplice e conserva esplicitamente l'identità logica.</p>
+
+<h2 id="browser">Associare un browser</h2>
+
+<ol>
+ <li>Dalla scheda dell'utente genera il collegamento per il canale HTTP.</li>
+ <li>Apri quel collegamento una sola volta nel browser da associare.</li>
+ <li>Metnos consuma il codice, registra il browser come recapito dell'utente e
+ salva un cookie firmato.</li>
+</ol>
+
+<p>Il codice di associazione scade dopo un'ora. Il cookie può durare fino a 90
+giorni ed è protetto dalle normali opzioni del browser (<code>HttpOnly</code> e,
+su HTTPS, <code>Secure</code>). A ogni richiesta il server ricontrolla che
+l'associazione esista ancora. Se l'amministratore rimuove il canale HTTP, il
+cookie rimasto nel browser non basta a entrare.</p>
+
+<div class="callout note"><p><strong>Accesso amministrativo.</strong> Il cookie
+di un utente consente la chat e le sole superfici previste per quel ruolo. Non
+sostituisce la sessione amministrativa e non concede automaticamente accesso a
+Settings.</p></div>
+
+<h2 id="sessione">Aprire la stessa chat su più dispositivi</h2>
+
+<p>Per lo stesso utente e canale web può scrivere una sola sessione alla volta.
+Se apri la chat su un secondo dispositivo mentre il primo è ancora attivo,
+Metnos presenta tre scelte:</p>
+
+<table>
+ <thead><tr><th>Scelta</th><th>Risultato</th></tr></thead>
+ <tbody>
+  <tr><td><strong>Continua la sessione precedente</strong></td><td>Porta sul dispositivo corrente la conversazione precedente e revoca il diritto di scrittura del vecchio browser.</td></tr>
+  <tr><td><strong>Rendi attiva la sessione corrente</strong></td><td>Mantiene la conversazione locale del nuovo dispositivo e rende il vecchio browser di sola lettura.</td></tr>
+  <tr><td><strong>Annulla</strong></td><td>Non modifica nulla; il nuovo dispositivo rimane senza diritto di scrittura.</td></tr>
+ </tbody>
+</table>
+
+<p>Il trasferimento è atomico e vale soltanto per l'utente autenticato. La
+conversazione appartiene all'utente, non al browser. Il vecchio dispositivo
+riceve l'avviso di revoca quando è collegato e non può continuare a inviare
+messaggi con il precedente diritto di scrittura.</p>
+
+<h2 id="computer">Associare un computer per gli executor remoti</h2>
+
+<p>Questa associazione è diversa da quella del browser. Installa sul computer un
+componente capace di ricevere e svolgere azioni autorizzate.</p>
+
+<ol>
+ <li>Apri <strong>Settings &rsaquo; Sistema &rsaquo; Dispositivi</strong>.</li>
+ <li>Scegli proprietario e nome del computer, quindi genera il collegamento.</li>
+ <li>Apri il collegamento sul computer di destinazione e installa il client. La
+ procedura guidata propone l'installazione adatta a Windows o Linux.</li>
+ <li>Il client crea una chiave Ed25519 privata che non lascia il computer e
+ registra sul server soltanto la chiave pubblica.</li>
+ <li>Il server restituisce la propria chiave pubblica, che il client conserva per
+ verificare lavori e pacchetti successivi.</li>
+ <li>Il primo heartbeat rende visibile il completamento del percorso.</li>
+</ol>
+
+<p>Il collegamento guidato dura normalmente 30 minuti; il codice manuale dura 10
+minuti. Entrambi sono monouso. Ripresentare lo stesso codice con la stessa chiave
+restituisce lo stesso dispositivo senza duplicarlo; usare una chiave diversa
+viene rifiutato.</p>
+
+<p>La pagina mostra separatamente <strong>ultimo heartbeat</strong> e
+<strong>ultima richiesta di lavoro</strong>. Il primo indica che il processo
+client comunica; il secondo che il ciclo operativo sta effettivamente
+interrogando il server. La disponibilità richiede entrambi recenti e non si
+deduce dal solo heartbeat.</p>
+
+<p>Per capire pacchetti verificati, cache, sandbox e risultati, consulta
+<a href="remote_executors.html">Executor remoti</a>.</p>
+
+<h2 id="revoca">Revocare un'associazione</h2>
+
+<table>
+ <thead><tr><th>Che cosa revochi</th><th>Dove</th><th>Che cosa accade</th></tr></thead>
+ <tbody>
+  <tr><td>Canale Telegram o HTTP</td><td>Settings &rsaquo; Sistema &rsaquo; Utenti</td><td>Quel recapito non identifica più l'utente; il cookie web collegato non supera il controllo.</td></tr>
+  <tr><td>Sessione web</td><td>Uscita oppure trasferimento a un altro dispositivo</td><td>Il vecchio browser perde il diritto di scrittura; la conversazione resta dell'utente.</td></tr>
+  <tr><td>Computer remoto</td><td>Settings &rsaquo; Sistema &rsaquo; Dispositivi</td><td>Nuove richieste di lavoro, risultati e heartbeat vengono rifiutati; il record rimane per la tracciabilità.</td></tr>
+ </tbody>
+</table>
+
+<p>Revocare un oggetto non modifica silenziosamente gli altri. Rimuovere Telegram
+non revoca un computer remoto; revocare un computer non chiude la sessione web.
+Questa separazione rende chiaro quale accesso si sta togliendo.</p>
+
+<h2 id="sicurezza">Garanzie comuni</h2>
 
 <ul>
- <li><code>users.db</code>: <code>read_only</code>, <code>restricted</code>, <code>full</code>;</li>
- <li><code>pairings.db</code>: <code>ReadOnly</code>, <code>Supervised</code>, <code>Full</code>.</li>
+ <li><strong>Prima l'identità, poi il testo.</strong> Una frase non può assegnare
+ un utente, un ruolo o un proprietario.</li>
+ <li><strong>Codici brevi e monouso.</strong> L'associazione viene registrata in
+ modo atomico prima che il codice sia considerato consumato.</li>
+ <li><strong>Proprietà verificata.</strong> Conversazioni e dispositivi possono
+ essere letti o trasferiti soltanto entro l'utente autorizzato.</li>
+ <li><strong>Revoca controllata a ogni accesso.</strong> Una firma o un cookie
+ formalmente validi non riattivano un'associazione rimossa.</li>
+ <li><strong>Chiavi private locali.</strong> La chiave privata di un computer
+ remoto non viene inviata al server.</li>
+ <li><strong>Registri separati.</strong> Canale, sessione e computer hanno revoche
+ distinte e osservabili.</li>
 </ul>
 
-<p>Nel daemon Telegram, <code>ReadOnly</code> impedisce l'avvio di un turno
-operativo. <code>Supervised</code> e <code>Full</code> possono entrare nel
-runtime; ogni executor resta comunque soggetto ai propri manifest, ai controlli
-di sicurezza e alle approvazioni previste. Il livello memorizzato non è, da solo,
-la prova che una specifica azione sia consentita.</p>
-
-<h1 id="cap3">3. Associare Telegram o un browser</h1>
-
-<p>Dalla <strong>chat web</strong> apri
-<strong>Settings &gt; Sistema &gt; Utenti</strong>. Crea o seleziona l'utente,
-quindi usa il controllo di associazione del canale desiderato. Se stai leggendo
-queste istruzioni da Telegram, il percorso indicato si trova nella chat web di
-Metnos, non nell'app Telegram.</p>
-
-<h2>Telegram</h2>
-
-<ol>
- <li>Nel dettaglio dell'utente emetti il token per il canale Telegram.</li>
- <li>Trasferisci il token all'utente tramite un mezzo fidato.</li>
- <li>L'utente apre il bot Metnos e invia <code>/start &lt;token&gt;</code>.</li>
- <li>Il daemon consuma il token, lega il <code>chat_id</code> all'utente e conferma l'associazione.</li>
-</ol>
-
-<p>Il token è casuale, monouso e valido un'ora. Il consumo usa una transazione
-SQLite: due richieste concorrenti non possono usare entrambe lo stesso token.
-Il comando <code>/start</code> associa l'utente ma non esegue una richiesta
-operativa; il messaggio successivo avvia un nuovo turno.</p>
-
-<h2>Browser e altri dispositivi web</h2>
-
-<ol>
- <li>Nel dettaglio dell'utente emetti il collegamento per il canale HTTP.</li>
- <li>Apri quel collegamento una sola volta sul browser da associare.</li>
- <li>Metnos consuma il token, registra il binding e salva un cookie firmato, <code>HttpOnly</code> e <code>Secure</code>.</li>
-</ol>
-
-<p>Il cookie utente dura al massimo 90 giorni, ma a ogni verifica il server
-controlla che il binding HTTP esista ancora. Rimuovere il canale dal dettaglio
-dell'utente invalida quindi l'accesso anche se il browser conserva il cookie.</p>
-
-<h1 id="cap4">4. Codici firmati di canale</h1>
-
-<p><code>runtime/pairing.py</code> espone anche il flusso tecnico
-<code>/pair PAIR.&lt;payload&gt;.&lt;firma&gt;</code>. Il payload dichiara versione,
-identificativo, livello di autonomia, scadenza ed emittente; la firma Ed25519
-viene verificata contro le chiavi pubbliche fidate. Il codice scade dopo cinque
-minuti per impostazione predefinita e può essere consumato una sola volta.</p>
-
-<pre>./.venv/bin/python -m runtime.pairing generate &lt;ReadOnly|Supervised|Full&gt; 5m
-./.venv/bin/python -m runtime.pairing list
-./.venv/bin/python -m runtime.pairing revoke telegram &lt;sender_id&gt;</pre>
-
-<p>Questo flusso crea il record di basso livello <code>(channel, sender_id)</code>.
-Per associare una persona già presente nel registro utenti, il percorso
-<strong>Settings &gt; Sistema &gt; Utenti</strong> con <code>/start</code> è più
-diretto perché conserva esplicitamente l'identità logica.</p>
-
-<p>Se il bootstrap è abilitato, il primo messaggio proveniente dal
-<code>default_chat_id</code> può creare un pairing <code>Full</code> soltanto
-quando il canale non contiene ancora alcun pairing. L'opzione
-<code>--no-bootstrap</code> richiede invece un'associazione esplicita anche per
-l'host.</p>
-
-<h1 id="cap5">5. Sessione attiva e trasferimento della conversazione</h1>
-
-<p>Per ogni coppia <code>(utente, canale web)</code> Metnos ammette una sola
-sessione di scrittura attiva. Se apri la chat su un dispositivo mentre la
-sessione appartiene a un altro, la finestra propone tre scelte:</p>
-
-<table>
-<thead><tr><th>Scelta</th><th>Effetto</th></tr></thead>
-<tbody>
-<tr><td><strong>Continua la sessione precedente</strong></td><td>Revoca il diritto di scrittura del vecchio dispositivo, trasferisce la sua conversazione al dispositivo corrente e ne mostra lo storico.</td></tr>
-<tr><td><strong>Rendi attiva la sessione corrente</strong></td><td>Revoca il vecchio dispositivo e mantiene la conversazione locale del dispositivo corrente.</td></tr>
-<tr><td><strong>Annulla</strong></td><td>Non modifica le sessioni; il dispositivo corrente resta senza diritto di scrittura.</td></tr>
-</tbody>
-</table>
-
-<p>La risoluzione è atomica e legata all'utente autenticato. Il token di
-risoluzione è monouso; un utente non può trasferire la conversazione di un altro.
-Il dispositivo precedente riceve, quando connesso, l'evento di revoca e passa in
-sola lettura. La conversazione appartiene all'utente, non al browser.</p>
-
-<h1 id="cap6">6. Dispositivi per executor remoti</h1>
-
-<p>Dalla chat web apri
-<strong>Settings &gt; Sistema &gt; Dispositivi</strong>. La pagina elenca nome,
-proprietario, sistema operativo, versione del client, impronta della chiave,
-ultimo heartbeat e stato. Puoi installare il client sul PC corrente, generare
-un collegamento per un altro PC oppure emettere un token manuale.</p>
-
-<p>Il flusso guidato è il seguente:</p>
-
-<ol>
- <li>L'amministratore sceglie nome e proprietario e genera una sessione di adesione.</li>
- <li>Il PC di destinazione apre il collegamento e scarica l'installer per Windows o Linux.</li>
- <li>Il client genera localmente una coppia di chiavi Ed25519; la chiave privata non lascia il dispositivo.</li>
- <li><code>POST /agent/register</code> consuma il token e registra chiave pubblica, impronta, proprietario e caratteristiche del sistema.</li>
- <li>Il server restituisce la propria chiave pubblica; il client la fissa e la usa per verificare gli ordini successivi.</li>
- <li>Il primo heartbeat conclude il percorso osservabile di installazione.</li>
-</ol>
-
-<p>La sessione guidata usa un token firmato, monouso, normalmente valido 30
-minuti; la variante manuale emessa dalla pagina vale 10 minuti. Un secondo
-consumo con la stessa chiave è idempotente, mentre lo stesso token presentato
-con una chiave diversa viene rifiutato. Un token nuovo associato alla medesima
-chiave costituisce una ri-autorizzazione esplicita e può riattivare un
-dispositivo revocato.</p>
-
-<p>Il protocollo degli executor remoti usa per impostazione predefinita la
-porta 8765 sulla rete interna o su una rete privata. Poll, risultati e heartbeat
-sono firmati dal dispositivo sui byte esatti del corpo. Gli ordini e i bundle
-del server sono verificati dal client tramite la chiave associata durante l'appaiamento.
-<code>last_heartbeat</code> segnala che il processo è vivo;
-<code>last_poll</code> segnala separatamente che il worker sta chiedendo lavoro.</p>
-
-<h1 id="cap7">7. Revoca e ciclo di vita</h1>
-
-<table>
-<thead><tr><th>Oggetto</th><th>Come si revoca</th><th>Conseguenza</th></tr></thead>
-<tbody>
-<tr><td>Canale utente</td><td>Rimuovi il canale in <strong>Settings &gt; Sistema &gt; Utenti</strong>.</td><td>Il recapito non risolve più quell'utente; il cookie web collegato non supera il controllo del binding.</td></tr>
-<tr><td>Pairing Telegram di basso livello</td><td><code>./.venv/bin/python -m runtime.pairing revoke telegram &lt;sender_id&gt;</code></td><td><code>get_pairing</code> non restituisce più il record attivo.</td></tr>
-<tr><td>Sessione web</td><td>Uscita esplicita o acquisizione da un altro dispositivo.</td><td>Il token di scrittura viene marcato come revocato; la conversazione resta dell'utente.</td></tr>
-<tr><td>Dispositivo remoto</td><td>Pulsante di revoca in <strong>Settings &gt; Sistema &gt; Dispositivi</strong>.</td><td>Poll, risultati e heartbeat successivi vengono rifiutati; il record resta disponibile per l'audit.</td></tr>
-</tbody>
-</table>
-
-<h1 id="cap8">8. Invarianti di sicurezza</h1>
-
-<ul>
- <li><strong>Identità prima del contenuto.</strong> Il testo non può dichiarare un utente, un ruolo o un proprietario.</li>
- <li><strong>Token a scadenza e monouso.</strong> Il consumo è serializzato prima di creare o aggiornare il binding.</li>
- <li><strong>Proprietà verificata.</strong> Sessioni e conversazioni vengono lette e trasferite soltanto entro lo stesso utente e canale.</li>
- <li><strong>Revoca consultata a ogni accesso.</strong> Una firma o un cookie validi non riattivano un binding rimosso.</li>
- <li><strong>Chiavi private locali.</strong> La chiave privata del dispositivo remoto non viene inviata al server.</li>
- <li><strong>Registri separati.</strong> Revocare un oggetto non muta implicitamente gli altri; l'operatore vede quale identità sta modificando.</li>
-</ul>
-
-<p>Per il contratto generale dei trasporti vedi
-<a href="channel.html"><code>channel</code></a>; per le approvazioni delle
-azioni vedi <a href="approval_ux.html">approvazioni e controllo umano</a>;
-per le rotte HTTP vedi <a href="http_api.html"><code>http_api</code></a>.</p>
+<p>Per l'uso quotidiano dei canali continua con
+<a href="channel.html">Canali di conversazione</a>. Per comprendere che cosa un
+utente associato può autorizzare, consulta <a href="policy.html">Policy e
+autorità</a>.</p>
 
 </body>
 </html>

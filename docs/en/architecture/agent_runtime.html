@@ -1,327 +1,221 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
- <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; request runtime</title>
- <meta name="description" content="How Metnos turns a request into a validated plan, runs executors, and handles consent, continuity, and results without confusing probabilistic proposals with deterministic controls.">
- <meta name="keywords" content="Metnos, runtime, planning, executor, fast path, autopath, consent, continuity">
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>Metnos &mdash; Request runtime</title>
+ <meta name="description" content="How the Metnos runtime turns a request into a controlled plan, executes it, and returns a verifiable result.">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/agent_runtime">
- <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/agent_runtime">
  <link rel="stylesheet" href="/assets/metnos.css?v=20260822-2">
-<script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
+ <script defer src="/assets/wiki-shell.js?v=20260822-2"></script>
 </head>
 <body>
 
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/architecture/agent_runtime.html" hreflang="it" lang="it">IT</a>
-<span class="sep">&middot;</span>
-<a href="/en/architecture/agent_runtime.html" class="active" hreflang="en" lang="en">EN</a>
+ <a href="/it/architecture/agent_runtime.html" hreflang="it" lang="it">IT</a>
+ <span class="sep">&middot;</span>
+ <a class="active" href="/en/architecture/agent_runtime.html" hreflang="en" lang="en">EN</a>
 </nav>
 
-<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
- <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
- <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">request runtime</strong></span>
- </div>
-</div>
+<h1>Request runtime</h1>
 
-<div class="title-page">
- <h1>Metnos</h1>
- <div class="subtitle">Request runtime</div>
- <div class="meta">From a sentence in chat to a controlled plan executed by declared capabilities.</div>
-</div>
-
-<p class="lead">The runtime coordinates a Metnos turn. It interprets the request,
-selects admitted capabilities, builds or reuses a plan, checks its shape and
-permissions, and delegates each step to the appropriate executor. A language model
-may propose the plan and compose an explanation; this does not give it direct
-access to files, mail, browsers, devices, or credentials.</p>
+<p class="lead">The runtime accompanies a request from its arrival to the final
+response. It keeps the user's context, selects admitted capabilities, builds or
+reuses a plan, applies the controls, and coordinates the executors. It is the
+conductor of a turn, not a universal executor.</p>
 
 <div class="toc">
-<h2>Contents</h2>
-<ol>
- <li><a href="#cap1">Responsibilities and boundaries</a></li>
- <li><a href="#cap2">A turn from request to answer</a></li>
- <li><a href="#cap3">Execution paths</a></li>
- <li><a href="#cap4">Model roles and language</a></li>
- <li><a href="#cap5">Catalog, routing pool, and plan reuse</a></li>
- <li><a href="#cap6">Frameworks and executors</a></li>
- <li><a href="#cap7">Passing data between steps</a></li>
- <li><a href="#cap8">Pauses, resumptions, and turn state</a></li>
- <li><a href="#cap9">Policy, Vaglio, and consent</a></li>
- <li><a href="#cap10">Operational guards</a></li>
- <li><a href="#cap11">Traces and observability</a></li>
- <li><a href="#cap11_2">Scheduled work</a></li>
- <li><a href="#cap12">Errors and recovery</a></li>
- <li><a href="#cap13">What is deterministic</a></li>
-</ol>
+ <h2>On this page</h2>
+ <ol>
+  <li><a href="#turn">What a turn is</a></li>
+  <li><a href="#path">The complete path</a></li>
+  <li><a href="#choice">How Metnos chooses a path</a></li>
+  <li><a href="#plan">What a plan looks like</a></li>
+  <li><a href="#data">How data moves between steps</a></li>
+  <li><a href="#controls">Controls, confirmation, and credentials</a></li>
+  <li><a href="#pauses">Pauses, resumptions, and long-running work</a></li>
+  <li><a href="#outcomes">Outcomes, errors, and records</a></li>
+ </ol>
 </div>
 
-<h1 id="cap1">1. Responsibilities and boundaries</h1>
+<h2 id="turn">What a turn is</h2>
 
-<p>At the start of a turn, the runtime binds the request to four coordinates: the
-owning user, technical actor, channel, and conversation. Preferences, language,
-credentials, devices, suspended dialogs, and history are resolved within this
-context. One user's turn does not authorize access to another user's resources.</p>
-
-<table>
-<thead><tr><th>Component</th><th>Responsibility</th></tr></thead>
-<tbody>
-<tr><td>Runtime</td><td>Orchestrates the turn, retains context, and enforces the order of controls.</td></tr>
-<tr><td>Intent engine and proposer</td><td>Interpret the sentence and propose a framework; their output is probabilistic.</td></tr>
-<tr><td>Catalog</td><td>Exposes admitted executors only, including their schemas, policy, platforms, and current availability.</td></tr>
-<tr><td>Validator and guards</td><td>Check structure, types, references, order, destination, and safety conditions.</td></tr>
-<tr><td>Executor</td><td>Runs one bounded capability and returns a structured result.</td></tr>
-<tr><td>Channel</td><td>Renders the answer, attachments, and confirmation requests for Web or Telegram.</td></tr>
-</tbody>
-</table>
-
-<p>The runtime is not a general-purpose shell. Its operational surface is the set
-of capabilities in the live catalog and admitted by policy. To inspect what an
-instance can currently do, ask the Tutor or open <strong>Settings &rsaquo; System &rsaquo;
-Services</strong> in the web chat.</p>
-
-<h1 id="cap2">2. A turn from request to answer</h1>
-
-<p><strong>Ask Metnos with a request like this example:</strong> “Search the web for
-the latest European guidance on digital product passports, read the three most
-authoritative sources, and create a summary document in the Reports folder.”</p>
-
-<ol>
- <li>The channel identifies the user, conversation, attachments, and any named
- target device; the runtime adds the signed instance language.</li>
- <li>The intent extractor obtains an ordered set of intents: find URLs, read the
- sources, and create a document.</li>
- <li>Routing builds a relevant pool from the catalog. A proposer formulates a
- framework using available executors only.</li>
- <li>The validator and guards check names, arguments, dependencies, order, and
- policy. If saving requires a missing choice, Metnos presents a localized form
- instead of inventing it.</li>
- <li>Executors search, read, and write. Each step's structured result feeds the
- next step.</li>
- <li>The terminal composes an answer grounded in actual outcomes, records the
- turn trace, and exposes the resulting document as an attachment or link.</li>
-</ol>
-
-<p>The same sentence can be sent through Telegram. If a setting is available only
-in the web chat, Metnos must name that channel and provide the navigation path,
-rather than returning only a technical route or page name.</p>
-
-<h1 id="cap3">3. Execution paths</h1>
-
-<p>Not every request needs a new model proposal. The runtime tries paths with
-different responsibilities in a fixed order:</p>
-
-<ol>
- <li><strong>Narrow deterministic routes.</strong> These cover closed cases such as
- undoing the last turn, selected service answers, uploads without text, and
- recurrences recognized by the scheduler grammar.</li>
- <li><strong>L0, fast path.</strong> Reuses the framework of a cacheable request
- that previously completed with an effective result.</li>
- <li><strong>L1, autopath.</strong> Reuses a generalized framework for a semantic
- cluster. Positive feedback can confirm a champion; repeated expensive runs may
- create a <em>shadow</em> champion, which is explicitly distinct from user approval.</li>
- <li><strong>Full engine.</strong> Extracts or completes intent, reduces the
- catalog, asks the proposer for a framework, validates and runs it, and—when safe—
- attempts one recovery path.</li>
-</ol>
-
-<p>Attached images and resumed dialogs carry turn-specific state and therefore do
-not blindly reuse a generic cached plan. A remote destination is resolved before
-routing: if a named device is ambiguous or unreachable, the turn stops or offers
-explicit deferral.</p>
-
-<h1 id="cap4">4. Model roles and language</h1>
-
-<p>The names <code>fast</code>, <code>middle</code>, <code>wise</code>,
-<code>creative</code>, and <code>frontier</code> denote configurable roles, not fixed products:</p>
+<p>A turn begins when Metnos receives a request. It ends when Metnos returns an
+answer, asks for indispensable information, or hands long-running work to LRE.
+The runtime immediately associates the request with:</p>
 
 <ul>
- <li><code>fast</code> handles short tasks such as intent extraction, fillers, and
- selected summaries;</li>
- <li><code>middle</code> performs deterministic intermediate transformations and judgments;</li>
- <li><code>wise</code> proposes frameworks and handles more complex composition;</li>
- <li><code>creative</code> formulates divergent proposals and editorial text with a distinct policy;</li>
- <li><code>frontier</code> is optional and used only by paths that request it
- explicitly.</li>
+ <li>an authenticated user and a technical actor;</li>
+ <li>a channel, such as web chat or Telegram;</li>
+ <li>a conversation;</li>
+ <li>the instance language;</li>
+ <li>any attachments and devices named by the user.</li>
 </ul>
 
-<p>Language is resolved from the signed instance request and propagated through
-the entire turn. Prompts, runtime messages, confirmation forms, and the final answer must use that language.
-Prompt wording must not accidentally impose another language: each prompt family
-has localized resources, and a missing resource for a new language must be caught
-at compilation time or produce an explicit fallback rather than silent mixing.</p>
+<p>This context bounds everything that follows. One conversation's history is
+not mixed with another user's history; a device paired to one owner does not
+become a shared resource; a credential is sought only within the mandate
+authorised for that turn.</p>
 
-<h1 id="cap5">5. Catalog, routing pool, and plan reuse</h1>
+<h2 id="path">The complete path</h2>
 
-<p>The catalog combines signed-manifest executors, builtin capabilities, and
-operations added by admitted skills. Before planning, routing creates a smaller
-pool using intents, canonical objects, named providers, producer&ndash;consumer
-relations, and availability. When the signal is insufficient, the proposer can be
-given a broader catalog.</p>
+<p>Consider this request: “Read the three quotes in the Purchasing folder,
+compare their prices, and create a summary table.”</p>
 
-<p>An L0 or L1 plan is not valid forever. At registration it stores two signatures:
-one for the executors it uses and one for the relevant candidate families. On each
-hit, the runtime compares them with the current catalog. A changed or removed
-executor, a newly relevant alternative, or a routing-epoch change turns the entry
-into a miss and forces a new decision.</p>
+<ol>
+ <li><strong>Entry.</strong> The channel authenticates the request and restores
+ the conversation context. If a question is already pending, the user's answer
+ resumes that dialogue instead of starting an unrelated task.</li>
+ <li><strong>Informational boundary.</strong> If the sentence only asks how to use
+ Metnos, Tutor may answer without starting the operational planner.</li>
+ <li><strong>Intent.</strong> The runtime identifies the desired outcome and the
+ main actions: read, compare, and create.</li>
+ <li><strong>Relevant catalog.</strong> It selects the useful, currently available
+ executors from the full catalog. The planner is not asked to choose between
+ capabilities that the instance cannot run.</li>
+ <li><strong>Plan.</strong> Metnos reuses a still-valid plan or asks the configured
+ proposer for a new one.</li>
+ <li><strong>Validation.</strong> Before execution, it checks names, schemas,
+ arguments, dependencies, placement, and consistency with the request.</li>
+ <li><strong>Authority.</strong> Policy, Vaglio, sandbox, destination, and consent
+ are evaluated for the steps to which they apply.</li>
+ <li><strong>Execution.</strong> Each executor receives only the arguments resolved
+ for its contract and returns a structured result.</li>
+ <li><strong>Response.</strong> The runtime composes the final message from observed
+ outcomes and records the turn's trace.</li>
+</ol>
 
-<p>Reuse concerns the operational framework, not a personal profile injected into
-the planner. Closed preferences and user context are applied at the runtime points
-that own them and during final generation; biographical prose does not contaminate
-a shared cache key.</p>
+<p>Language models help where understanding or producing language is useful.
+Schema, identity, authorisation, placement, and signature checks remain
+deterministic. Proposing a plan is not the same as having the power to run it.</p>
 
-<h1 id="cap6">6. Frameworks and executors</h1>
+<h2 id="choice">How Metnos chooses a path</h2>
 
-<p>The proposer returns a <code>Framework</code>: a finite list of steps, optional
-fillers, and a terminal. Each step names an executor in the catalog and supplies
-arguments conforming to its schema. A framework does not contain arbitrary code to
-execute.</p>
+<p>The runtime tries paths from the simplest to the most general:</p>
+
+<table>
+ <thead><tr><th>Path</th><th>When it is useful</th><th>What is checked again</th></tr></thead>
+ <tbody>
+  <tr><td>Deterministic rule</td><td>For closed operations such as undoing the latest turn or resuming a known dialogue.</td><td>Identity, current state, and the specific contract.</td></tr>
+  <tr><td>Fast path</td><td>To reuse a successful plan for the same request.</td><td>Catalog signatures, variable arguments, and operating conditions.</td></tr>
+  <tr><td>Autopath</td><td>To reuse a confirmed, generalised plan for a similar request.</td><td>Similarity, absence of embedded personal values, catalog, and full validation.</td></tr>
+  <tr><td>New proposal</td><td>When no earlier path is reliable enough.</td><td>The entire plan, step by step.</td></tr>
+ </tbody>
+</table>
+
+<p>Fast paths and autopaths are plan caches, not shortcuts around the controls.
+They retain signatures for the relevant capabilities. When the operating world
+changes, reuse is no longer valid and Metnos returns to ordinary planning.</p>
+
+<p>Models are selected by function through configurable tiers. The runtime asks,
+for example, for a model suited to planning or summarisation; it does not depend
+on a model's commercial name. The effective configuration is visible under
+<a href="../system/models.html">System &rsaquo; Models</a>.</p>
+
+<h2 id="plan">What a plan looks like</h2>
+
+<p>A plan is a finite list of typed steps. Every step names an executor in the
+catalog, supplies arguments that match its schema, and may depend on earlier
+results. It contains no free-form code to execute.</p>
 
 <pre><code>{
   "steps": [
-    {"tool": "find_urls", "args": {"query": "..."}},
-    {"tool": "read_urls_html", "args": {"from_step": 1}},
-    {"tool": "create_files_doc", "args": {"from_step": 2, "path": "Reports/..."}},
-    {"tool": "final_answer", "args": {}}
+    {"tool": "find_files", "args": {"base_path": "~/Purchasing", "pattern": "*.pdf"}},
+    {"tool": "read_files", "args": {"from_step": 1}},
+    {"tool": "extract_entries", "args": {"from_step": 2, "fields": ["supplier", "price"]}},
+    {"tool": "create_files_spreadsheet", "args": {"from_step": 3, "path": "~/Purchasing/summary.xlsx"}}
   ]
 }</code></pre>
 
-<p>Before execution, the validator checks tools, types, required fields,
-<code>requires_one_of</code> alternatives, references to earlier steps, and
-placeholders. Structural guards realign order and may request one new proposal if
-an explicitly requested action is missing. The shared executor then resolves
-arguments and applies the same sequence to fresh and reused plans.</p>
+<p>This example illustrates the shape; it does not promise that every
+installation has exactly those executors. The <a href="executor_catalog.html">
+generated catalog</a> is the source for installed capabilities.</p>
 
-<h1 id="cap7">7. Passing data between steps</h1>
+<p>The validator rejects unknown executors, out-of-schema arguments, references
+to future steps, and inconsistent combinations. Shared guards may also insert an
+indispensable producer, align known dependencies, or request a new proposal when
+an explicitly requested action is missing. They do not add capabilities outside
+the catalog.</p>
 
-<p>Data need not be copied into a prompt as free-form text when a structured
-reference is available:</p>
+<h2 id="data">How data moves between steps</h2>
 
-<ul>
- <li><code>from_step: N</code> passes the collection produced by step N to a consumer;</li>
- <li><code>${stepN.field}</code> passes one field;</li>
- <li><code>${RUNTIME:key}</code> inserts a runtime-controlled value such as the turn identifier;</li>
- <li><code>${FILLER:name}</code> resolves a short missing value within the declared schema.</li>
-</ul>
-
-<p>An explicit target written by the user takes precedence over a generic reference
-to an earlier step. The runtime also preserves data authority: a path produced on
-a remote device does not become a server-local path merely because an intermediate
-filter ran on the server.</p>
-
-<h1 id="cap8">8. Pauses, resumptions, and turn state</h1>
-
-<p>A turn may pause with <code>ask</code> or <code>needs_inputs</code> when a choice,
-credential, location, or consent is missing. The persisted dialog includes its
-owner, channel, conversation, and admitted callback. After the answer, the runtime
-reconstructs completed steps as <code>done</code> state and plans only the remainder;
-it does not automatically repeat earlier mutations.</p>
-
-<p>Observations needed by downstream steps remain in structured turn state. The
-<a href="scratchpad.html">scratchpad</a> subsystem also provides controlled access
-to persisted or large results. An uploaded attachment enters as consumable virtual
-input, not as an action already performed.</p>
-
-<h1 id="cap9">9. Policy, Vaglio, and consent</h1>
-
-<p>Safety does not depend on the proposer's goodwill. The catalog bounds what can be
-named; schemas and sandboxes constrain arguments and execution; policy classifies
-the action; <a href="vaglio.html">Vaglio</a> applies its guard and judgment; and
-the consent gate pauses the pipeline before a mutation when required.</p>
-
-<p>Approval is bound to the user, turn, action, arguments, and destination. Its text
-is localized and each channel uses its native control: a form in the web chat, or
-compatible buttons and choices in Telegram. Frequency, wording, and silence do not
-by themselves create a persistent permission.</p>
-
-<h1 id="cap10">10. Operational guards</h1>
+<p>Results are not manually copied into the next step's request. A plan uses two
+main references:</p>
 
 <ul>
- <li>a cap limits proposed steps; only validated internal normalizers may declare a
- longer canonical pipeline;</li>
- <li>independent steps may run in parallel only when executor contracts admit it
- and preflight preserves the same guards;</li>
- <li>a mutation consuming an empty collection is not presented as success;</li>
- <li>a cached plan with mutating argument values not grounded in the current
- request is rejected;</li>
- <li>after an effect has already committed, an error does not trigger an automatic
- retry that could duplicate it;</li>
- <li>undo, remote placement, mass input, and final output cross dedicated guards
- before delivery.</li>
+ <li><code>from_step: N</code> passes the collection produced by step N;</li>
+ <li><code>{{stepN.field}}</code> passes one value from the result.</li>
 </ul>
 
-<h1 id="cap11">11. Traces and observability</h1>
+<p>Before invocation, the runtime resolves these references and checks the final
+schema again. If a producer returns no data, the consumer does not accidentally
+receive the result of an older step. A large collection may remain in the
+scratchpad while the planner sees only a useful, explicitly truncated projection.</p>
 
-<p><code>TurnLog</code> records turn and conversation identifiers, user, channel,
-language, intent, plan source, steps, timings, outcomes, counted effects, actual
-destination, and final state. Recognized credentials are redacted before
-persistence; attachments are exposed through signed URLs or channel transfer, not
-as raw filesystem paths.</p>
+<p>Data also retains its provenance. Knowing that a value came from step 2 is not
+enough to turn it into a local path, a recipient, or an authorisation: the
+consumer must declare what it accepts, and the runtime must be able to verify it.</p>
 
-<p>The trace can establish which executors ran and which controls decided. It does
-not turn a model-generated explanation into evidence: verifying a fact requires
-the structured observation and, where applicable, the original source. The
-<a href="observability.html">observability</a> page describes views, metrics, and
-retention boundaries.</p>
+<h2 id="controls">Controls, confirmation, and credentials</h2>
 
-<h2 id="cap11_2">11.1 Scheduled work</h2>
+<p>Every step crosses the same invocation boundary, whether its plan is new,
+reused, scheduled, or destined for a remote device. At that boundary the
+runtime applies the shared controls and records the actual outcome.</p>
 
-<p>The builtin scheduler runs registered maintenance jobs and feeds the observation
-and proposal cycles enabled by the product. User-created tasks are separate,
-persistent requests with an owner, schedule, command, delivery channel, and outcome
-history. When triggered, the body runs as a new turn for the same user; it does not
-inherit privileges from another channel or account.</p>
+<p>If confirmation is required, execution stops before the effect. The proposal
+must make the action, purpose, destination, and relevant consequences
+recognisable. The reply is bound to the user and turn that created it, so an old
+confirmation or one from another conversation cannot resume the plan.</p>
 
-<p><strong>Ask Metnos with a request like this example:</strong> “Every Monday at 8,
-find unread mail in my work account and send me a summary on Telegram.” If the
-recurrence is recognized unambiguously, Metnos records the task. Otherwise it asks
-for the missing detail instead of running the request body immediately.</p>
+<p>Credentials follow a separate path. The planner may indicate the kind of
+access needed, but the runtime resolves the secret from encrypted storage and a
+bounded mandate only at execution time. The value does not enter the plan, model
+messages, or ordinary records.</p>
 
-<h1 id="cap12">12. Errors and recovery</h1>
+<h2 id="pauses">Pauses, resumptions, and long-running work</h2>
 
-<p>Structural errors are classified as wrong tool, wrong arguments, missing input,
-or out of scope. When no effect has committed, recovery may propose one alternative
-and subjects it to the same finalization as the original plan. An operational
-failure such as a network outage, rate limit, or unavailable service is not hidden
-by arbitrarily changing executors.</p>
+<p>Not every request can finish in a single HTTP or Telegram response.</p>
 
-<p>If an executor returns structured options that the user can decide, the runtime
-turns them into a form. If recovery is unsafe, the answer states the limitation and
-retains any useful partial results. It must not claim that a write, send, or delete
-succeeded when the effect counters say otherwise.</p>
-
-<h1 id="cap13">13. What is deterministic</h1>
-
-<table>
-<thead><tr><th>Part</th><th>Correct guarantee</th></tr></thead>
-<tbody>
-<tr><td>Catalog, signatures, and cache validity</td><td>Deterministic checks against observed state.</td></tr>
-<tr><td>Validator, guards, piping, and execution</td><td>Repeatable code rules; external outcomes may change.</td></tr>
-<tr><td>Valid cache hit</td><td>Reuses the same framework after applying current controls.</td></tr>
-<tr><td>Intent and a fresh proposal</td><td>Probabilistic model output bounded by vocabulary, routing pool, optional grammar, and downstream validation.</td></tr>
-<tr><td>Final synthesis</td><td>Wording may vary; it must remain grounded in recorded outcomes.</td></tr>
-</tbody>
-</table>
-
-<p>Metnos therefore makes the boundary between proposal and execution governable.
-It does not claim that fresh language planning is identical on every invocation, or
-that an external service always returns the same data.</p>
-
-<p>Code references:</p>
 <ul>
- <li><code>runtime/agent_runtime.py</code>: turn context, channels, dialogs, and the engine bridge;</li>
- <li><code>runtime/engine/dispatch.py</code>: L0/L1 cascade, proposer, validator, guards, recovery, and terminal;</li>
- <li><code>runtime/engine/types.py</code> and <code>runtime/engine/executor.py</code>: frameworks, references, and execution semantics;</li>
- <li><code>runtime/engine/cache_validity.py</code>: cached-plan signatures;</li>
- <li><code>runtime/recurring_tasks.py</code> and <code>runtime/scheduler_v2/</code>: user tasks and builtin jobs;</li>
- <li><code>runtime/turn_events.py</code>: trace persistence and retrieval.</li>
+ <li><strong>Missing information:</strong> Metnos presents a form or choice and
+ keeps a single-use dialogue bound to the user and conversation.</li>
+ <li><strong>Confirmation:</strong> the plan remains suspended until the user
+ accepts or rejects the current proposal.</li>
+ <li><strong>Unreachable device:</strong> for actions that support it, Metnos may
+ offer to try again when the device becomes available.</li>
+ <li><strong>Long-running work:</strong> when a plan satisfies the LRE contract,
+ the runtime may submit it automatically to the long-running engine. The user
+ does not need to choose a technical profile.</li>
 </ul>
+
+<p>A resumption does not continue blindly. The runtime checks the owner, expiry,
+dialogue state, catalog, and operating conditions again before proceeding.</p>
+
+<h2 id="outcomes">Outcomes, errors, and records</h2>
+
+<p>An executor may succeed, return no entries, produce a partial result, or fail.
+These states are not equivalent. The runtime preserves the distinction and uses
+it to decide whether to continue, attempt bounded recovery, or terminate.</p>
+
+<p>Recovery does not blindly repeat an action that may already have changed
+state. It first classifies the error and considers recorded effects. If no safe
+resumption exists, the response states the limitation. When only one part of a
+plan fails, successful work remains visible without turning the overall result
+into false success.</p>
+
+<p>The turn trace includes the chosen path, steps, controls, timings, outcomes,
+and any undo receipt. It must not contain secrets. Administrators and users see
+only information compatible with their role and identity.</p>
+
+<div class="callout note"><p><strong>In one sentence.</strong> The runtime does
+not decide what Metnos can do; admitted executors do. The runtime ensures that
+those capabilities are selected, controlled, executed, and reported in the
+same way, no matter which path produced the plan.</p></div>
 
 </body>
 </html>

@@ -84,11 +84,12 @@ li { margin-bottom:4px; }
 </div>
 
 <p class="lead"><code>runtime/scratchpad.py</code> implements temporary
-storage that can retain a complete observation while showing the model only a
-reference or slice. The API exists, but the current engine does not
-automatically offload large observations to it and does not expose
-<code>scratchpad_read</code> in its ordinary catalog. This distinction matters:
-an available module must not be presented as an active feature.</p>
+storage designed to keep oversized results out of the model context. It could
+retain the complete result while leaving only a short summary and identifier
+in the plan. The API exists, but the current engine does not use it to archive
+observations automatically and does not expose <code>scratchpad_read</code> in
+its ordinary catalog. It is therefore an available component, not an active
+product feature.</p>
 
 <div class="toc">
 <h2>Contents</h2>
@@ -96,7 +97,7 @@ an available module must not be presented as an active feature.</p>
  <li><a href="#cap1">Current behaviour</a></li>
  <li><a href="#cap2">Available API</a></li>
  <li><a href="#cap3">Storage and lifetime</a></li>
- <li><a href="#cap4">Synthetic representation</a></li>
+ <li><a href="#cap4">The summary produced by the module</a></li>
  <li><a href="#cap5">Sliced reads</a></li>
  <li><a href="#cap6">What integration requires</a></li>
  <li><a href="#cap7">Required verification</a></li>
@@ -106,11 +107,22 @@ an available module must not be presented as an active feature.</p>
 
 <h1 id="cap1">1. Current behaviour</h1>
 
+<p>The idea is simple. If an executor returned a thousand lines of text, for
+example, the scratchpad could retain them and show the model only “one thousand
+lines available, identifier X.” The model could then read just the beginning,
+the end, or the interval it needs. This keeps unnecessary data from filling
+the context.</p>
+
 <p>In the active engine, step results remain in the turn's execution history.
 A later step reuses them through <code>from_step</code> or a
 <code>&#36;{stepN.field}</code> reference; the runtime resolves the actual value
 without asking the model to copy it. Final synthesis projects and limits the
 text fields shown to the model, while full data remain in the step result.</p>
+
+<p>The code also uses the word <em>scratchpad</em> more loosely for the step
+history held during a turn or its snapshot when a suspended dialog resumes.
+That history is active, but it is not the SQLite database described on this
+page.</p>
 
 <p>At the beginning of a turn, <code>agent_runtime</code> opens the scratchpad
 database and removes expired rows. On the current path, however, it does not
@@ -146,15 +158,16 @@ independent background process: it happens only when a caller runs
 <code>gc</code>. An expired row may therefore remain on disk until the next
 cleanup.</p>
 
-<h1 id="cap4">4. Synthetic representation</h1>
+<h1 id="cap4">4. The summary produced by the module</h1>
 
-<p>For long text, the module stores the complete content and produces a summary
-from its beginning and end. For binary data, it stores the bytes and reports
-their size and a SHA-256 prefix. For a structured result, it looks for fields
-such as <code>entries</code>, <code>matches</code>, or <code>results</code>
-and reports count and schema without placing the items in the summary.</p>
+<p>When <code>put</code> is called, long text is stored in full and the summary
+shows its beginning and end. For binary data, the module stores the bytes and
+reports their size and a SHA-256 prefix. For a structured result, it looks for
+fields such as <code>entries</code>, <code>matches</code>, or
+<code>results</code> and reports count and schema without placing the items in
+the summary.</p>
 
-<p>The synthetic representation can retain useful scalars such as counts,
+<p>The summary can retain useful simple values such as counts,
 truncation state, size, message, and error. The <code>ref_hint</code> field
 explains how to reuse a step result or request a content slice.</p>
 
@@ -181,7 +194,7 @@ mode.</p>
 <li>a call to <code>put</code> before building model-visible context;</li>
 <li>exposure of <code>scratchpad_read</code> only when the current user and turn have accessible rows;</li>
 <li>an ownership check on every <code>get</code>, <code>read</code>, and <code>list_for_turn</code> call;</li>
-<li>limits on <code>full</code> reads so a large row cannot simply re-enter the context it was meant to protect;</li>
+<li>limits on <code>full</code> reads, which currently have no cap of their own, so a large row cannot simply re-enter the context it was meant to protect;</li>
 <li>cleanup, observability, and resume tests after a suspended dialog.</li>
 </ol>
 
