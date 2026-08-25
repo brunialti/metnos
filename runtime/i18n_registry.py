@@ -250,9 +250,12 @@ class LocalizationRegistry:
                    WHERE resource_id=? AND target_lang=? AND source_hash=?""",
                 (rid, target, digest),
             ).fetchone()
-            basis_changed = (
+            work_must_reopen = (
                 existing is not None
-                and existing["basis_id"] != basis
+                and (
+                    existing["basis_id"] != basis
+                    or existing["status"] == "stale"
+                )
             )
             conn.execute(
                 """UPDATE localization_resources
@@ -274,7 +277,7 @@ class LocalizationRegistry:
                 (rid, layer_name, source, target, digest, basis,
                  status, encoded, now, now),
             )
-            if basis_changed:
+            if work_must_reopen:
                 conn.execute(
                     """UPDATE localization_resources
                        SET status=?,attempts=0,lease_token=NULL,

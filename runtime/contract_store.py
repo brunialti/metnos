@@ -813,9 +813,69 @@ def _lock_conflict(exc: OSError) -> bool:
     )
 
 
-def _pointer_replace_conflict(exc: OSError) -> bool:
-    """Return only documented Windows sharing/lock violations."""
-    return getattr(exc, "winerror", None) in {32, 33}
+def _windows_delete_share_conflict(path: Path) -> bool:
+    """Probe one Windows path for a conflicting delete-sharing mode.
+
+    ``MoveFileExW`` can report ``ERROR_ACCESS_DENIED`` (5) when an existing
+    destination handle was opened without ``FILE_SHARE_DELETE``.  Retrying
+    every error 5 would also retry real ACL and attribute failures.  A
+    ``CreateFileW`` probe that requests only ``DELETE`` access separates the
+    cases: an incompatible live handle is reported as
+    ``ERROR_SHARING_VIOLATION`` (32), while a denied access check remains 5.
+
+    This is a classifier only.  It never changes the path and fails closed
+    for every result other than a documented sharing/lock violation.
+    """
+    if os.name != "nt":
+        return False
+
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.CreateFileW(
+        str(path),
+        0x00010000,  # DELETE: also grants rename access.
+        0x00000001 | 0x00000002 | 0x00000004,  # Share read/write/delete.
+        None,
+        3,  # OPEN_EXISTING
+        0x00000080,  # FILE_ATTRIBUTE_NORMAL
+        None,
+    )
+    invalid = ctypes.c_void_p(-1).value
+    if handle in {None, invalid}:
+        return ctypes.get_last_error() in {32, 33}
+    kernel32.CloseHandle(handle)
+    return False
+
+
+def _pointer_replace_conflict(
+    exc: OSError,
+    *,
+    source: Path,
+    destination: Path,
+) -> bool:
+    """Return only proven Windows sharing/lock violations."""
+    error = getattr(exc, "winerror", None)
+    if error in {32, 33}:
+        return True
+    if error != 5:
+        return False
+    return _windows_delete_share_conflict(destination) or (
+        _windows_delete_share_conflict(source)
+    )
 
 
 def _try_system_lock(handle: Any) -> bool:
@@ -988,7 +1048,11 @@ def _replace_retry(source: Path, destination: Path, *, timeout: float) -> None:
             os.replace(source, destination)
             return
         except OSError as exc:
-            if not _windows_platform() or not _pointer_replace_conflict(exc):
+            if not _windows_platform() or not _pointer_replace_conflict(
+                exc,
+                source=source,
+                destination=destination,
+            ):
                 raise
             remaining = deadline - time.monotonic()
             if remaining <= 0:
