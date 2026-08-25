@@ -15,6 +15,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -101,6 +102,15 @@ class CandidateStatus(str, Enum):
     WINDOW_OPEN = "window_open"
     STATE_CHANGED = "state_changed"
 
+    @property
+    def error_code(self) -> str | None:
+        """Return the normative public error for a preserved candidate."""
+        return {
+            CandidateStatus.REFERENCED: "retention_referenced",
+            CandidateStatus.WINDOW_OPEN: "retention_window_open",
+            CandidateStatus.STATE_CHANGED: "retention_state_changed",
+        }.get(self)
+
 
 @dataclass(frozen=True, slots=True)
 class NodeKey:
@@ -117,15 +127,60 @@ class SweepResult:
     deleted: tuple[NodeKey, ...]
     preserved: tuple[tuple[NodeKey, CandidateStatus], ...]
 
+    @property
+    def error_codes(self) -> tuple[tuple[NodeKey, str], ...]:
+        """Expose only the closed normative errors for preserved objects."""
+        result: list[tuple[NodeKey, str]] = []
+        for key, status in self.preserved:
+            code = status.error_code
+            if code is None:
+                raise RetentionError("retention_partial", "invalid preserved status")
+            result.append((key, code))
+        return tuple(result)
 
-@dataclass(frozen=True, slots=True)
+
+_GENERATION_GUARD_SEAL = object()
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class GenerationDeletionGuard:
-    """Proof passed only by the collector to a generation delete callback."""
+    """Collector-issued observation, never an owner deletion authority.
+
+    The future productive owner must revalidate all four facts against its own
+    authoritative store.  Requiring the module-private seal prevents an
+    embedding caller from manufacturing this observation through the public
+    constructor and accidentally treating booleans as authority.
+    """
     noncurrent: bool
     no_retirement_requirement: bool
     not_rollbackable: bool
     unreferenced: bool
     observed_version: int
+
+    def __init__(self, *, noncurrent: bool, no_retirement_requirement: bool,
+                 not_rollbackable: bool, unreferenced: bool,
+                 observed_version: int, _seal: object) -> None:
+        if _seal is not _GENERATION_GUARD_SEAL:
+            raise RetentionError("retention_invalid", "generation guard seal")
+        if (noncurrent, no_retirement_requirement, not_rollbackable,
+                unreferenced) != (True, True, True, True):
+            raise RetentionError("retention_invalid", "generation guard facts")
+        if isinstance(observed_version, bool) or not isinstance(observed_version, int) \
+                or observed_version < 1:
+            raise RetentionError("retention_invalid", "generation guard version")
+        object.__setattr__(self, "noncurrent", True)
+        object.__setattr__(self, "no_retirement_requirement", True)
+        object.__setattr__(self, "not_rollbackable", True)
+        object.__setattr__(self, "unreferenced", True)
+        object.__setattr__(self, "observed_version", observed_version)
+
+
+def _generation_deletion_guard(observed_version: int) -> GenerationDeletionGuard:
+    return GenerationDeletionGuard(
+        noncurrent=True, no_retirement_requirement=True, not_rollbackable=True,
+        unreferenced=True, observed_version=observed_version,
+        _seal=_GENERATION_GUARD_SEAL,
+    )
 
 
 _SCHEMA = """
@@ -190,6 +245,25 @@ BEFORE INSERT ON retention_edges WHEN EXISTS (
 ) BEGIN SELECT RAISE(ABORT,'retention_deleting'); END;
 """
 
+_SCHEMA_VERSION = 1
+_SCHEMA_TABLE_COLUMNS = {
+    "retention_meta": ("singleton", "graph_version", "root_version"),
+    "retention_nodes": ("node_type", "node_id", "object_version", "state",
+                        "created_at", "closed_at", "eligible_after"),
+    "retention_edges": ("source_type", "source_id", "edge_type", "target_type",
+                        "target_id", "state", "edge_version", "created_at", "closed_at"),
+    "retention_roots": ("root_kind", "node_type", "node_id", "root_version"),
+    "retention_runs": ("run_id", "graph_version", "root_version", "started_at", "state"),
+    "retention_candidates": ("run_id", "node_type", "node_id", "observed_version",
+                             "eligible_after", "status"),
+    "retention_receipts": ("run_id", "node_type", "node_id", "object_version",
+                           "deleted_at", "authentication"),
+}
+_SCHEMA_TRIGGERS = {
+    "retention_no_root_while_deleting",
+    "retention_no_edge_while_deleting",
+}
+
 
 def _timestamp(value: str) -> str:
     try:
@@ -207,13 +281,88 @@ def _text(value: str, field: str) -> str:
     return value
 
 
+def _retention_objects(connection: sqlite3.Connection) -> set[tuple[str, str]]:
+    return {(str(row[0]), str(row[1])) for row in connection.execute(
+        "SELECT type,name FROM sqlite_master WHERE substr(name,1,10)='retention_' "
+        "AND type IN ('table','index','trigger','view')"
+    )}
+
+
+def _normalized_schema_sql(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RetentionError("retention_schema_mismatch", "empty definition")
+    return " ".join(value.split()).lower()
+
+
+def _schema_fingerprint(connection: sqlite3.Connection) -> tuple[tuple[str, str, str], ...]:
+    return tuple(sorted(
+        (str(row[0]), str(row[1]), _normalized_schema_sql(row[2]))
+        for row in connection.execute(
+            "SELECT type,name,sql FROM sqlite_master "
+            "WHERE substr(name,1,10)='retention_' "
+            "AND type IN ('table','index','trigger','view')"
+        )
+    ))
+
+
+@lru_cache(maxsize=1)
+def _expected_schema_fingerprint() -> tuple[tuple[str, str, str], ...]:
+    reference = sqlite3.connect(":memory:", isolation_level=None)
+    try:
+        reference.execute("PRAGMA foreign_keys=ON")
+        reference.executescript(_SCHEMA)
+        return _schema_fingerprint(reference)
+    finally:
+        reference.close()
+
+
+def _validate_schema(connection: sqlite3.Connection) -> None:
+    expected = {("table", name) for name in _SCHEMA_TABLE_COLUMNS}
+    expected |= {("trigger", name) for name in _SCHEMA_TRIGGERS}
+    objects = _retention_objects(connection)
+    if objects != expected:
+        raise RetentionError("retention_schema_mismatch", "objects")
+    if _schema_fingerprint(connection) != _expected_schema_fingerprint():
+        raise RetentionError("retention_schema_mismatch", "definition")
+    for table, columns in _SCHEMA_TABLE_COLUMNS.items():
+        actual = tuple(str(row[1]) for row in connection.execute(
+            f'PRAGMA table_info("{table}")'))
+        if actual != columns:
+            raise RetentionError("retention_schema_mismatch", table)
+    foreign_keys = tuple(connection.execute("PRAGMA foreign_key_check"))
+    if foreign_keys:
+        raise RetentionError("retention_schema_mismatch", "foreign keys")
+
+
+def _initialize_or_validate_schema(connection: sqlite3.Connection) -> None:
+    version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    objects = _retention_objects(connection)
+    if version == 0:
+        # F6 has never been productive.  Silently adopting an unversioned
+        # lookalike database would turn arbitrary local rows into retention
+        # authority, so V0 is migratable only when it contains no F6 objects.
+        if objects:
+            raise RetentionError("retention_schema_version", "unversioned")
+        connection.executescript(
+            "BEGIN IMMEDIATE;\n" + _SCHEMA
+            + f"\nPRAGMA user_version={_SCHEMA_VERSION};\nCOMMIT;"
+        )
+    elif version != _SCHEMA_VERSION:
+        raise RetentionError("retention_schema_version", str(version))
+    _validate_schema(connection)
+
+
 def _open(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(path), isolation_level=None, timeout=5)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
     connection.execute("PRAGMA synchronous=FULL")
-    connection.executescript(_SCHEMA)
-    return connection
+    try:
+        _initialize_or_validate_schema(connection)
+        return connection
+    except Exception:
+        connection.close()
+        raise
 
 
 def put_node(key: NodeKey, *, state: NodeState, created_at: str,
@@ -629,8 +778,8 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
                     }
                     if roots & forbidden or references is not None:
                         raise RetentionError("retention_referenced", "generation safeguard")
-                    guard = GenerationDeletionGuard(True, True, True, True,
-                                                    int(marked["observed_version"]))
+                    guard = _generation_deletion_guard(
+                        int(marked["observed_version"]))
                 try:
                     delete_object(key, guard)
                 except Exception as exc:
@@ -683,11 +832,12 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
     return SweepResult(tuple(deleted), tuple(preserved))
 
 
-def historical_generation_selectable(key: NodeKey, *, db_path: Path) -> bool:
-    """History is inert unless linked to a closed admission receipt.
+def diagnostic_has_admission_edge(key: NodeKey, *, db_path: Path) -> bool:
+    """Report a graph edge without making any selection or authority claim.
 
-    The collector only observes this proof.  It never creates the link or the
-    receipt, so scanning old history cannot accidentally re-admit it.
+    Retention edges are bookkeeping, not authenticated RM-0007 or Birth
+    records.  Productive rollbackability must be established by the owning
+    stores and must never use this diagnostic as a gate.
     """
     if key.node_type is not NodeType.GENERATION:
         raise RetentionError("retention_invalid", "generation key")

@@ -7,8 +7,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from executor_birth_retention import (
     CandidateStatus, EdgeState, EdgeType, NodeKey, NodeState, NodeType,
-    RetentionError, RootKind,
-    add_edge, add_root, close_edge, historical_generation_selectable, mark,
+    GenerationDeletionGuard, RetentionError, RootKind, SweepResult,
+    add_edge, add_root, close_edge, diagnostic_has_admission_edge, mark,
     put_node, remove_root, sweep, verify_minimal_receipt,
 )
 
@@ -157,18 +157,18 @@ def test_missing_edge_endpoint_is_rejected_atomically(tmp_path):
                  state=EdgeState.CLOSED, created_at=OLD, db_path=db)
 
 
-def test_unattested_history_stays_unselectable_and_collector_does_not_admit(tmp_path):
+def test_unattested_history_has_no_diagnostic_admission_edge(tmp_path):
     db = tmp_path / "retention.sqlite"
     generation = node(NodeType.GENERATION, "historic-generation")
     closed(db, generation)
-    assert historical_generation_selectable(generation, db_path=db) is False
+    assert diagnostic_has_admission_edge(generation, db_path=db) is False
     mark(run_id="history", observed_at=NOW, db_path=db)
     run_sweep(run_id="history", observed_at=NOW, db_path=db,
               delete_object=lambda _key, _guard: None)
-    assert historical_generation_selectable(generation, db_path=db) is False
+    assert diagnostic_has_admission_edge(generation, db_path=db) is False
 
 
-def test_only_explicit_admission_edge_makes_history_selectable(tmp_path):
+def test_admission_edge_diagnostic_does_not_claim_selectability(tmp_path):
     db = tmp_path / "retention.sqlite"
     generation = node(NodeType.GENERATION, "historic-generation")
     receipt = node(NodeType.ADMISSION_RECEIPT, "admission")
@@ -176,7 +176,7 @@ def test_only_explicit_admission_edge_makes_history_selectable(tmp_path):
     closed(db, receipt)
     add_edge(receipt, generation, edge_type=EdgeType.ADMITS, state=EdgeState.CLOSED,
              created_at=OLD, db_path=db)
-    assert historical_generation_selectable(generation, db_path=db) is True
+    assert diagnostic_has_admission_edge(generation, db_path=db) is True
 
 
 def test_closed_taxonomy_covers_every_normative_graph_artifact_and_relation():
@@ -317,6 +317,68 @@ def test_generation_callback_receives_strict_guard_and_is_mandatory(tmp_path):
     assert guard is not None
     assert (guard.noncurrent, guard.no_retirement_requirement,
             guard.not_rollbackable, guard.unreferenced) == (True, True, True, True)
+
+
+def test_generation_guard_cannot_be_constructed_by_an_embedding_caller():
+    with pytest.raises(TypeError):
+        GenerationDeletionGuard(  # type: ignore[call-arg]
+            noncurrent=True, no_retirement_requirement=True,
+            not_rollbackable=True, unreferenced=True, observed_version=1,
+        )
+    with pytest.raises(RetentionError, match="generation guard seal"):
+        GenerationDeletionGuard(
+            noncurrent=True, no_retirement_requirement=True,
+            not_rollbackable=True, unreferenced=True, observed_version=1,
+            _seal=object(),
+        )
+
+
+def test_preservation_statuses_expose_exact_normative_error_codes():
+    assert CandidateStatus.REFERENCED.error_code == "retention_referenced"
+    assert CandidateStatus.WINDOW_OPEN.error_code == "retention_window_open"
+    assert CandidateStatus.STATE_CHANGED.error_code == "retention_state_changed"
+    assert CandidateStatus.DELETED.error_code is None
+
+    key = node(NodeType.EVIDENCE, "preserved")
+    result = SweepResult((), ((key, CandidateStatus.WINDOW_OPEN),))
+    assert result.error_codes == ((key, "retention_window_open"),)
+
+
+def test_new_database_has_explicit_schema_version(tmp_path):
+    db = tmp_path / "retention.sqlite"
+    closed(db, node(NodeType.EVIDENCE, "versioned"))
+    connection = sqlite3.connect(db)
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    connection.close()
+
+
+def test_unversioned_lookalike_database_is_rejected_without_adoption(tmp_path):
+    db = tmp_path / "retention.sqlite"
+    connection = sqlite3.connect(db)
+    connection.execute("CREATE TABLE retention_nodes(node_type TEXT)")
+    connection.commit()
+    connection.close()
+    with pytest.raises(RetentionError, match="retention_schema_version: unversioned"):
+        closed(db, node(NodeType.EVIDENCE, "unversioned"))
+
+
+def test_unknown_and_tampered_v1_schemas_are_rejected(tmp_path):
+    unknown = tmp_path / "unknown.sqlite"
+    connection = sqlite3.connect(unknown)
+    connection.execute("PRAGMA user_version=99")
+    connection.commit()
+    connection.close()
+    with pytest.raises(RetentionError, match="retention_schema_version: 99"):
+        closed(unknown, node(NodeType.EVIDENCE, "unknown"))
+
+    damaged = tmp_path / "damaged.sqlite"
+    closed(damaged, node(NodeType.EVIDENCE, "damaged"))
+    connection = sqlite3.connect(damaged)
+    connection.execute("DROP TRIGGER retention_no_edge_while_deleting")
+    connection.commit()
+    connection.close()
+    with pytest.raises(RetentionError, match="retention_schema_mismatch: objects"):
+        mark(run_id="damaged", observed_at=NOW, db_path=damaged)
 
 
 def test_generation_with_any_closed_reference_is_never_given_to_callback(tmp_path):
