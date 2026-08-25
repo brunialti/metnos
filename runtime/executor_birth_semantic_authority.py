@@ -197,12 +197,7 @@ def _secure_file_bytes(path: Path, *, maximum: int, error: str) -> bytes:
                 attributes & 0x00000400 or directory or delete_pending
                 or links != 1 or size < 0 or size > maximum
             ):
-                raise ValueError(
-                    "unsafe file metadata "
-                    f"attributes=0x{attributes:08x},size={size},links={links},"
-                    f"delete_pending={int(delete_pending)},directory={int(directory)},"
-                    f"maximum={maximum}"
-                )
+                raise ValueError("unsafe file")
             if _win_final_path(handle) != os.path.normcase(os.path.abspath(path)):
                 raise ValueError("unexpected final path")
             raw = _win_read(handle, maximum)

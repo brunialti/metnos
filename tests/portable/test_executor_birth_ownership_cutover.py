@@ -8,6 +8,7 @@ import os
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+import executor_birth_ownership_cutover as cutover_module
 from executor_birth_cutover import CurrentReceiptProof
 from executor_birth_ownership_cutover import (
     CUTOVER_ID_DOMAIN, PAYLOAD_BASENAME, PURPOSE, SIGNATURE_BASENAME,
@@ -160,6 +161,50 @@ def test_no_replace_store_exact_retry_and_orphan_signature_resume(tmp_path, auth
         orphan, encoded, signature, registry=authority[2], expected_proof=proof,
     )
     assert resumed.cutover_id == first.cutover_id
+
+
+def test_temporary_write_round_trips_every_byte_value(tmp_path):
+    payload = bytes(range(256))
+    destination = tmp_path / "all-bytes.tmp"
+
+    cutover_module._write_temporary(destination, payload)
+
+    assert destination.read_bytes() == payload
+    assert destination.stat().st_size == len(payload)
+
+
+def test_temporary_write_requests_binary_mode(monkeypatch, tmp_path):
+    """The Windows CRT must not expand an LF byte to CRLF."""
+    binary_flag = 0x8000
+    observed_flags: list[int] = []
+    written = bytearray()
+
+    def fake_open(_path, flags, _mode):
+        observed_flags.append(flags)
+        return 73
+
+    def fake_write(_fd, payload):
+        written.extend(payload)
+        return len(payload)
+
+    monkeypatch.setattr(cutover_module.os, "O_BINARY", binary_flag, raising=False)
+    monkeypatch.setattr(cutover_module.os, "open", fake_open)
+    monkeypatch.setattr(cutover_module.os, "write", fake_write)
+    monkeypatch.setattr(cutover_module.os, "fsync", lambda _fd: None)
+    monkeypatch.setattr(cutover_module.os, "fchmod", lambda _fd, _mode: None, raising=False)
+    monkeypatch.setattr(cutover_module.os, "close", lambda _fd: None)
+
+    signature = b"prefix\nsuffix\x00"
+    cutover_module._write_temporary(tmp_path / "signature.tmp", signature)
+
+    assert observed_flags == [
+        cutover_module.os.O_WRONLY
+        | cutover_module.os.O_CREAT
+        | cutover_module.os.O_EXCL
+        | getattr(cutover_module.os, "O_CLOEXEC", 0)
+        | binary_flag
+    ]
+    assert bytes(written) == signature
 
 
 def test_partial_pair_conflict_and_hardlink_are_never_trusted(tmp_path, authority):
