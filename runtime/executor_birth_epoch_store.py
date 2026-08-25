@@ -6,6 +6,7 @@ real-admission threshold in RM-0008 section 10 has been certified.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -19,6 +20,13 @@ from executor_birth_feedback import QuarantineCAS
 
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+# RM-0008 section 11 fixes the original epoch schema as version 1.  Version 2
+# is the explicit local extension that adds lifecycle/cache state and the
+# evidence tables needed to certify the one-time name-only migration.  There
+# is intentionally no implicit adoption of an unversioned/unknown epoch store.
+EPOCH_STORE_NORMATIVE_SCHEMA_VERSION = 1
+EPOCH_STORE_SCHEMA_VERSION = 2
+_LEGACY_DIGEST_DOMAIN = b"metnos.executor-birth.legacy-epoch-migration/v1\0"
 
 
 class EpochStoreError(RuntimeError):
@@ -148,8 +156,23 @@ CREATE TABLE IF NOT EXISTS executor_legacy_state (
     CHECK(resolution IN ('unresolved','attested','discarded')),
   migrated_at TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_executor_legacy_exact
-  ON executor_legacy_state(legacy_table,legacy_name,legacy_row_json);
+CREATE TABLE IF NOT EXISTS executor_legacy_migrations (
+  migration_id TEXT PRIMARY KEY,
+  legacy_table TEXT NOT NULL UNIQUE,
+  source_count INTEGER NOT NULL CHECK(source_count>=0),
+  source_digest TEXT NOT NULL,
+  migrated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS executor_legacy_migration_rows (
+  migration_id TEXT NOT NULL,
+  source_ordinal INTEGER NOT NULL CHECK(source_ordinal>=0),
+  legacy_id INTEGER NOT NULL UNIQUE,
+  PRIMARY KEY(migration_id,source_ordinal),
+  FOREIGN KEY(migration_id) REFERENCES executor_legacy_migrations(migration_id)
+    ON DELETE RESTRICT,
+  FOREIGN KEY(legacy_id) REFERENCES executor_legacy_state(legacy_id)
+    ON DELETE RESTRICT
+);
 CREATE TABLE IF NOT EXISTS executor_preexercise_cache (
   contract_id TEXT NOT NULL, generation_id TEXT NOT NULL,
   lifecycle TEXT NOT NULL CHECK(lifecycle IN
@@ -160,6 +183,118 @@ CREATE TABLE IF NOT EXISTS executor_preexercise_cache (
     REFERENCES executor_epochs(contract_id,generation_id) ON DELETE RESTRICT
 );
 """
+
+_REQUIRED_COLUMNS = {
+    "executor_epochs": frozenset({
+        "contract_id", "generation_id", "name", "source", "state", "lifecycle",
+        "first_seen_at", "last_used_at", "total_calls", "successful_calls",
+        "failed_calls", "positive_feedback", "negative_feedback", "last_call_ok",
+        "inactivity_since", "lifecycle_override", "override_reason",
+        "historic_epoch_ref", "state_version", "created_at", "updated_at",
+    }),
+    "executor_epoch_history": frozenset({
+        "id", "contract_id", "generation_id", "event_seq", "ts", "event_kind",
+        "source", "prior_state_version", "new_state_version", "detail_json",
+    }),
+    "executor_legacy_state": frozenset({
+        "legacy_id", "legacy_name", "legacy_table", "legacy_row_json", "resolution",
+        "migrated_at",
+    }),
+    "executor_legacy_migrations": frozenset({
+        "migration_id", "legacy_table", "source_count", "source_digest", "migrated_at",
+    }),
+    "executor_legacy_migration_rows": frozenset({
+        "migration_id", "source_ordinal", "legacy_id",
+    }),
+    "executor_preexercise_cache": frozenset({
+        "contract_id", "generation_id", "lifecycle", "payload", "created_at",
+    }),
+}
+_REQUIRED_INDEXES = frozenset({
+    "idx_epochs_name_state", "idx_epochs_state_used", "idx_epochs_source_state",
+    "idx_epochs_single_current",
+})
+_EXPECTED_SCHEMA_FINGERPRINT: tuple[tuple[str, str, str], ...] | None = None
+
+
+def _execute_schema(connection: sqlite3.Connection) -> None:
+    # sqlite3.executescript commits implicitly; executing statements separately
+    # keeps schema creation and PRAGMA user_version inside BEGIN IMMEDIATE.
+    for statement in _SCHEMA.split(";"):
+        if statement.strip():
+            connection.execute(statement)
+
+
+def _schema_fingerprint(connection: sqlite3.Connection) -> tuple[tuple[str, str, str], ...]:
+    names = tuple(_REQUIRED_COLUMNS) + tuple(sorted(_REQUIRED_INDEXES))
+    placeholders = ",".join("?" for _ in names)
+    rows = connection.execute(
+        f"SELECT type,name,sql FROM sqlite_master WHERE name IN ({placeholders}) "
+        "ORDER BY type,name", names,
+    ).fetchall()
+    return tuple(
+        (row[0], row[1], " ".join((row[2] or "").split()))
+        for row in rows
+    )
+
+
+def _expected_schema_fingerprint() -> tuple[tuple[str, str, str], ...]:
+    global _EXPECTED_SCHEMA_FINGERPRINT
+    if _EXPECTED_SCHEMA_FINGERPRINT is None:
+        reference = sqlite3.connect(":memory:")
+        try:
+            _execute_schema(reference)
+            _EXPECTED_SCHEMA_FINGERPRINT = _schema_fingerprint(reference)
+        finally:
+            reference.close()
+    return _EXPECTED_SCHEMA_FINGERPRINT
+
+
+def _validate_schema(connection: sqlite3.Connection) -> None:
+    for table, expected in _REQUIRED_COLUMNS.items():
+        actual = frozenset(row[1] for row in connection.execute(
+            f'PRAGMA table_info("{table}")'
+        ).fetchall())
+        if actual != expected:
+            raise EpochStoreError("epoch_schema_mismatch", table)
+    indexes = frozenset(row[0] for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_autoindex_%'"
+    ).fetchall())
+    if not _REQUIRED_INDEXES.issubset(indexes):
+        raise EpochStoreError("epoch_schema_mismatch", "indexes")
+    single_current = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_epochs_single_current'"
+    ).fetchone()
+    if single_current is None or "WHERE state='current'" not in (single_current[0] or ""):
+        raise EpochStoreError("epoch_schema_mismatch", "idx_epochs_single_current")
+    if _schema_fingerprint(connection) != _expected_schema_fingerprint():
+        raise EpochStoreError("epoch_schema_mismatch", "definition")
+
+
+def _ensure_schema(connection: sqlite3.Connection) -> None:
+    version = int(connection.execute("PRAGMA user_version").fetchone()[0])
+    if version == EPOCH_STORE_SCHEMA_VERSION:
+        _validate_schema(connection)
+        return
+    if version != 0:
+        raise EpochStoreError("epoch_schema_version", str(version))
+    owned_names = tuple(_REQUIRED_COLUMNS)
+    placeholders = ",".join("?" for _ in owned_names)
+    owned = connection.execute(
+        f"SELECT 1 FROM sqlite_master WHERE name IN ({placeholders}) LIMIT 1",
+        owned_names,
+    ).fetchone()
+    if owned is not None:
+        raise EpochStoreError("epoch_schema_version", "unversioned")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        _execute_schema(connection)
+        connection.execute(f"PRAGMA user_version={EPOCH_STORE_SCHEMA_VERSION}")
+        _validate_schema(connection)
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
 
 
 def _contract(value: object) -> str:
@@ -180,12 +315,65 @@ def _text(value: object, field: str) -> str:
     return value
 
 
+def _canonical_legacy_value(value: object) -> object:
+    if value is None or type(value) in {bool, int, str}:
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_canonical_legacy_value(item) for item in value]
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise EpochStoreError("legacy_migration_invalid", "non_string_key")
+        return {
+            key: _canonical_legacy_value(value[key])
+            for key in sorted(value)
+        }
+    # Floats (including NaN and signed zero) and implicit repr conversions are
+    # deliberately excluded from the v1 canonical form.
+    raise EpochStoreError("legacy_migration_invalid", "non_canonical_value")
+
+
+def _encode_legacy_rows(
+    rows: tuple[Mapping[str, object], ...],
+) -> tuple[tuple[str, str], ...]:
+    if not isinstance(rows, tuple):
+        raise EpochStoreError("legacy_migration_invalid", "rows")
+    encoded: list[tuple[str, str]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise EpochStoreError("legacy_migration_invalid", "row")
+        name = _text(row.get("name"), "legacy_name")
+        canonical = _canonical_legacy_value(row)
+        body = json.dumps(canonical, sort_keys=True, separators=(",", ":"),
+                          ensure_ascii=False, allow_nan=False)
+        encoded.append((name, body))
+    # A table scan has no portable implicit order.  Sorting the full canonical
+    # rows makes the digest and source ordinals repeatable while preserving
+    # duplicate multiplicity.
+    return tuple(sorted(encoded, key=lambda item: (item[1].encode("utf-8"), item[0])))
+
+
+def _legacy_digest_from_bodies(bodies: tuple[str, ...]) -> str:
+    payload = json.dumps(sorted(bodies), ensure_ascii=False,
+                         separators=(",", ":")).encode("utf-8")
+    return "sha256:" + hashlib.sha256(_LEGACY_DIGEST_DOMAIN + payload).hexdigest()
+
+
+def legacy_rows_digest(rows: tuple[Mapping[str, object], ...]) -> str:
+    """Return the domain-separated canonical digest required by migration."""
+    encoded = _encode_legacy_rows(rows)
+    return _legacy_digest_from_bodies(tuple(body for _, body in encoded))
+
+
 def _open(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(path), isolation_level=None, timeout=5)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
-    connection.executescript(_SCHEMA)
-    return connection
+    try:
+        _ensure_schema(connection)
+        return connection
+    except BaseException:
+        connection.close()
+        raise
 
 
 def open_epoch(*, contract_id: ContractId, generation_id: str, name: str,
@@ -490,31 +678,106 @@ def preserve_legacy_rows(
     Rows remain ``unresolved`` until a separate attestation binds them to a
     Birth generation. Exact retries are idempotent.
     """
-    table, ts = _text(legacy_table, "legacy_table"), _text(migrated_at, "migrated_at")
-    if not isinstance(rows, tuple):
-        raise EpochStoreError("legacy_migration_invalid", "rows")
-    encoded: list[tuple[str, str]] = []
-    for row in rows:
-        if not isinstance(row, Mapping):
-            raise EpochStoreError("legacy_migration_invalid", "row")
-        name = _text(row.get("name"), "legacy_name")
-        try:
-            body = json.dumps(dict(row), sort_keys=True, separators=(",", ":"),
-                              ensure_ascii=False, allow_nan=False)
-        except (TypeError, ValueError) as exc:
-            raise EpochStoreError("legacy_migration_invalid", "json") from exc
-        encoded.append((name, body))
+    digest = legacy_rows_digest(rows)
+    return migrate_legacy_rows(
+        legacy_table=legacy_table, rows=rows, expected_count=len(rows),
+        expected_digest=digest, migrated_at=migrated_at, db_path=db_path,
+    )
+
+
+def _insert_legacy_row(
+    connection: sqlite3.Connection, *, migration_id: str, ordinal: int,
+    name: str, table: str, body: str, migrated_at: str,
+) -> None:
+    inserted = connection.execute(
+        "INSERT INTO executor_legacy_state(legacy_name,legacy_table,legacy_row_json,"
+        "resolution,migrated_at) VALUES(?,?,?,'unresolved',?)",
+        (name, table, body, migrated_at),
+    )
+    connection.execute(
+        "INSERT INTO executor_legacy_migration_rows(migration_id,source_ordinal,legacy_id) "
+        "VALUES(?,?,?)", (migration_id, ordinal, int(inserted.lastrowid)),
+    )
+
+
+def _verify_legacy_migration(
+    connection: sqlite3.Connection, *, migration_id: str,
+    expected_count: int, expected_digest: str,
+) -> None:
+    rows = connection.execute(
+        "SELECT s.legacy_row_json,s.resolution FROM executor_legacy_migration_rows r "
+        "JOIN executor_legacy_state s ON s.legacy_id=r.legacy_id "
+        "WHERE r.migration_id=? ORDER BY r.source_ordinal", (migration_id,),
+    ).fetchall()
+    if len(rows) != expected_count:
+        raise EpochStoreError("legacy_migration_count_mismatch", "target")
+    if any(row[1] != "unresolved" for row in rows):
+        raise EpochStoreError("legacy_migration_schema_mismatch", "resolution")
+    actual = _legacy_digest_from_bodies(tuple(row[0] for row in rows))
+    if actual != expected_digest:
+        raise EpochStoreError("legacy_migration_digest_mismatch", "target")
+
+
+def migrate_legacy_rows(
+    *, legacy_table: str, rows: tuple[Mapping[str, object], ...],
+    expected_count: int, expected_digest: str, migrated_at: str, db_path: Path,
+) -> int:
+    """Copy one complete name-only source into unresolved storage atomically.
+
+    The caller must supply the independently observed count and canonical
+    digest.  A completed exact retry verifies persisted evidence and performs
+    no writes; any changed source, partial target, unsupported schema/version,
+    or digest/count discrepancy fails closed.
+    """
+    table = _text(legacy_table, "legacy_table")
+    ts = _text(migrated_at, "migrated_at")
+    if type(expected_count) is not int or expected_count < 0:
+        raise EpochStoreError("legacy_migration_invalid", "expected_count")
+    if not isinstance(expected_digest, str) or _DIGEST.fullmatch(expected_digest) is None:
+        raise EpochStoreError("legacy_migration_invalid", "expected_digest")
+    encoded = _encode_legacy_rows(rows)
+    if len(encoded) != expected_count:
+        raise EpochStoreError("legacy_migration_count_mismatch", "source")
+    actual_digest = _legacy_digest_from_bodies(tuple(body for _, body in encoded))
+    if actual_digest != expected_digest:
+        raise EpochStoreError("legacy_migration_digest_mismatch", "source")
+    migration_id = "sha256:" + hashlib.sha256(
+        b"metnos.executor-birth.legacy-migration-id/v1\0"
+        + table.encode("utf-8") + b"\0" + expected_digest.encode("ascii")
+    ).hexdigest()
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")
-        before = connection.total_changes
-        for name, body in encoded:
-            connection.execute(
-                "INSERT OR IGNORE INTO executor_legacy_state(legacy_name,legacy_table,"
-                "legacy_row_json,migrated_at) VALUES(?,?,?,?)", (name, table, body, ts))
-        count = connection.total_changes - before
+        prior = connection.execute(
+            "SELECT migration_id,source_count,source_digest FROM executor_legacy_migrations "
+            "WHERE legacy_table=?", (table,),
+        ).fetchone()
+        if prior is not None:
+            if (prior[0] != migration_id or int(prior[1]) != expected_count
+                    or prior[2] != expected_digest):
+                raise EpochStoreError("legacy_migration_source_mismatch", table)
+            _verify_legacy_migration(
+                connection, migration_id=migration_id,
+                expected_count=expected_count, expected_digest=expected_digest,
+            )
+            connection.commit()
+            return 0
+        connection.execute(
+            "INSERT INTO executor_legacy_migrations(migration_id,legacy_table,source_count,"
+            "source_digest,migrated_at) VALUES(?,?,?,?,?)",
+            (migration_id, table, expected_count, expected_digest, ts),
+        )
+        for ordinal, (name, body) in enumerate(encoded):
+            _insert_legacy_row(
+                connection, migration_id=migration_id, ordinal=ordinal,
+                name=name, table=table, body=body, migrated_at=ts,
+            )
+        _verify_legacy_migration(
+            connection, migration_id=migration_id,
+            expected_count=expected_count, expected_digest=expected_digest,
+        )
         connection.commit()
-        return count
+        return expected_count
     finally:
         if connection.in_transaction:
             connection.rollback()
