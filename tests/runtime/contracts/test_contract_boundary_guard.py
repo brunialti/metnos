@@ -7,6 +7,7 @@ from contract_boundary_guard import (
     SCAN_ROOTS,
     SCHEMA,
     ScopeFacts,
+    birth_migration_findings,
     check,
     discover,
     render_inventory,
@@ -242,6 +243,105 @@ def test_operational_authoring_can_use_the_single_technical_publisher(
     inventory = _inventory(facts, {"install": "operational_producer"})
 
     assert check(facts, inventory) == []
+
+
+def test_shadow_inventory_reports_direct_technical_publication_as_birth_debt(
+    tmp_path: Path,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "from contract_store import publish_technical_update\n"
+        "def install(ref, draft):\n"
+        "    return publish_technical_update(ref, draft=draft)\n",
+    )
+    inventory = _inventory(facts, {"install": "operational_producer"})
+
+    findings = birth_migration_findings(facts, inventory)
+
+    assert [(item.code, item.scope) for item in findings] == [
+        ("birth_migration_required", "runtime/sample.py:install"),
+    ]
+
+
+def test_operational_producer_may_use_only_the_public_birth_boundary(
+    tmp_path: Path,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "from pathlib import Path\n"
+        "from executor_birth import birth_executor\n"
+        "def install(manifest_path: Path, request):\n"
+        "    manifest_path.write_text('candidate', encoding='utf-8')\n"
+        "    return birth_executor(request)\n",
+    )
+    inventory = _inventory(facts, {"install": "operational_producer"})
+
+    assert _fact(facts, "install").capabilities == ("authoring_write", "birth")
+    assert check(facts, inventory) == []
+    assert birth_migration_findings(facts, inventory) == []
+
+
+def test_migrated_producer_cannot_keep_low_level_publication_authority(
+    tmp_path: Path,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "from executor_birth import birth_executor\n"
+        "from contract_store import publish_technical_update\n"
+        "def install(request, ref, draft):\n"
+        "    birth_executor(request)\n"
+        "    return publish_technical_update(ref, draft=draft)\n",
+    )
+    inventory = _inventory(facts, {"install": "operational_producer"})
+
+    assert "operational_birth_mixed_authority" in _codes(check(facts, inventory))
+
+
+def test_birth_owner_is_path_restricted_and_cannot_absorb_other_boundaries(
+    tmp_path: Path,
+) -> None:
+    wrong_path = _scan(
+        tmp_path / "wrong",
+        "from contract_store import publish_technical_update\n"
+        "def commit(ref, draft): return publish_technical_update(ref, draft=draft)\n",
+    )
+    wrong_inventory = _inventory(wrong_path, {"commit": "birth_owner"})
+    assert "birth_owner_invalid" in _codes(check(wrong_path, wrong_inventory))
+
+    mixed = _scan(
+        tmp_path / "mixed",
+        "from contract_store import publish_technical_update, publish_localization\n"
+        "def commit(ref, draft):\n"
+        "    publish_localization(ref)\n"
+        "    return publish_technical_update(ref, draft=draft)\n",
+        relative="runtime/executor_birth.py",
+    )
+    mixed_inventory = _inventory(mixed, {"commit": "birth_owner"})
+    assert "birth_owner_invalid" in _codes(check(mixed, mixed_inventory))
+
+
+def test_birth_shadow_debt_excludes_dedicated_and_migration_boundaries(
+    tmp_path: Path,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "from contract_store import publish_localization, retire, rollback, publish_signed_source\n"
+        "def localize(ref): return publish_localization(ref)\n"
+        "def remove(ref): return retire(ref)\n"
+        "def restore(ref): return rollback(ref)\n"
+        "def bootstrap(ref): return publish_signed_source(ref)\n",
+    )
+    inventory = _inventory(
+        facts,
+        {
+            "localize": "operational_producer",
+            "remove": "operational_producer",
+            "restore": "operational_producer",
+            "bootstrap": "migration_boundary",
+        },
+    )
+
+    assert birth_migration_findings(facts, inventory) == []
 
 
 def test_same_leaf_module_cannot_impersonate_the_publisher(tmp_path: Path) -> None:
@@ -603,3 +703,41 @@ def test_repository_boundary_inventory_is_current() -> None:
     findings = check(discover(root), inventory)
 
     assert findings == [], "\n".join(str(finding) for finding in findings)
+
+
+def test_repository_birth_migration_debt_is_exact() -> None:
+    root = Path(__file__).resolve().parents[3]
+    inventory_path = root / "internal/reports/rm0007-m4-boundary-inventory.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
+
+    scopes = {
+        finding.scope
+        for finding in birth_migration_findings(discover(root), inventory)
+    }
+
+    assert scopes == {
+        "install/phases/phase3_code.py:_publish_active_authoring_contracts",
+        "runtime/change_applier_extend.py:extend_executor_manifest",
+        "runtime/change_rollback.py:_rollback_extend_executor",
+        "runtime/cli/skills_cli.py:_cmd_import",
+        "runtime/cli/skills_cli.py:_try_publish_authoring_update",
+        "runtime/jobs/promoter_promote.py:promote_to_catalog",
+        "runtime/sign.py:<module>",
+        "runtime/sign.py:main",
+        "runtime/sign.py:publish_authoring_update",
+        "runtime/sign.py:publish_executor",
+        "runtime/sign.py:reactivate_executor_contract",
+        "runtime/stack_reconcile.py:<module>",
+        "runtime/stack_reconcile.py:StackReconciler.restart",
+        "runtime/stack_reconcile.py:StackReconciler.watchdog",
+        "runtime/stack_reconcile.py:main",
+        "runtime/stack_reconcile.py:verify_named_executors",
+        "runtime/synt.py:<module>",
+        "runtime/synt.py:Synt.approve_proposal",
+        "runtime/synt.py:Synt.specialize",
+        "runtime/synt.py:_cli",
+        "runtime/synth_request.py:_install_synthesized",
+        "runtime/synth_request.py:handle_synth_request",
+        "scripts/generate_builtin_executor_contracts.py:<module>",
+        "scripts/generate_builtin_executor_contracts.py:main",
+    }

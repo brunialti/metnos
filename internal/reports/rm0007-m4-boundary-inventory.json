@@ -2177,6 +2177,16 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/synth_orphan_cleanup.py",
+      "scope": "_default_admitted_names",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/system/admin.py",
       "scope": "_executor_name_in_argv",
       "role": "live_reader",
