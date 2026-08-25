@@ -425,7 +425,12 @@ def _diagnose_r6_cached_handle(parent: Path, service_sid: str) -> dict[str, obje
     )
     denied = False
     with secure_fs._adopt_authenticated_root(_descriptor(root, service_sid)) as session:
-        session.open_directory(("source",), exact_private=True)
+        with patch.object(secure_fs, "_win_verify_security") as bypass:
+            session.open_directory(("source",), exact_private=True)
+        _require(
+            bypass.call_count == 1,
+            "the R5 setup bypass did not cover exactly one cached-directory check",
+        )
         try:
             session.rename_no_replace(
                 ("source",), ("destination",), directory=True
@@ -532,10 +537,15 @@ def _diagnose_r7_inventory(parent: Path, service_sid: str) -> dict[str, object]:
         with secure_fs._adopt_authenticated_root(
             _descriptor(root, service_sid)
         ) as session:
-            with patch.object(
-                secure_fs, "_win_inventory", mutate_between_scans
-            ):
-                entries = session._inventory_state(("parent",))
+            with patch.object(secure_fs, "_win_verify_security") as bypass:
+                with patch.object(
+                    secure_fs, "_win_inventory", mutate_between_scans
+                ):
+                    entries = session._inventory_state(("parent",))
+            _require(
+                bypass.call_count == 1,
+                "the R5 setup bypass did not cover exactly one inventory parent check",
+            )
         by_name = {entry.name: entry for entry in entries}
         links_after, _ = _independent_shape(item, directory=False)
         _require(
