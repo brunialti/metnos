@@ -7,9 +7,9 @@ code via LLM (workload ``synt.semantic_verify`` → ``wise``) e rifiuta
 i misalignments.
 
 Determinismo §7.9: solo JSON parsing strict, retry 1x su malformed,
-fallback `aligned=False` (fail-safe — meglio rifiutare un buon synth che
-ammettere uno fasullo). Multi-model consensus optional via env
-`LLM_VERIFY_MODELS=model1,model2,...`.
+un payload malformato o un servizio indisponibile sollevano un errore tipizzato
+e il chiamante rifiuta il candidato. Un eventuale consenso multi-modello viene
+iniettato dalla politica versionata, mai dall'ambiente.
 
 Audit append a `~/.local/share/metnos/synth_audit/verify_<ts>_<hash>.jsonl`.
 
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from pathlib import Path
 from typing import Callable
@@ -30,6 +29,31 @@ import config as _C  # §7.11
 from llm_workloads import tier_for
 
 VERIFY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
+_VERDICT_KEYS = frozenset({"aligned", "mismatch"})
+_VERDICT_ENVELOPE_KEYS = _VERDICT_KEYS | {"model", "raw"}
+
+
+class SemanticVerdictInvalid(ValueError):
+    """Il payload del revisore non rispetta il contratto tipizzato."""
+
+
+def validate_stage6_verdict(value: object) -> dict:
+    """Valida il payload autorevole legacy di Stage 6 senza coercizioni."""
+    if not isinstance(value, dict) or not _VERDICT_KEYS.issubset(value):
+        raise SemanticVerdictInvalid("keys")
+    if not set(value).issubset(_VERDICT_ENVELOPE_KEYS):
+        raise SemanticVerdictInvalid("extra_keys")
+    aligned = value["aligned"]
+    mismatch = value["mismatch"]
+    if type(aligned) is not bool or not isinstance(mismatch, str):
+        raise SemanticVerdictInvalid("types")
+    if "\x00" in mismatch or len(mismatch.encode("utf-8")) > 200:
+        raise SemanticVerdictInvalid("mismatch_length")
+    if aligned and mismatch:
+        raise SemanticVerdictInvalid("aligned_with_mismatch")
+    if not aligned and not mismatch.strip():
+        raise SemanticVerdictInvalid("misaligned_without_reason")
+    return {"aligned": aligned, "mismatch": mismatch}
 
 VERIFY_PROMPT_TEMPLATE = """Sei un revisore stretto di executor Metnos. Confronta DESCRIPTION e CODE.
 
@@ -70,11 +94,7 @@ def _parse_verify_json(text: str) -> dict | None:
 def _normalize_verdict(parsed: dict | None) -> dict:
     """Canonicalizza l'output del LLM. Fallback fail-safe (aligned=False)
     se parsed e' None o malformato."""
-    if not isinstance(parsed, dict):
-        return {"aligned": False, "mismatch": "parser fallback (malformed JSON)"}
-    aligned = bool(parsed.get("aligned", False))
-    mismatch = str(parsed.get("mismatch") or "")[:200]
-    return {"aligned": aligned, "mismatch": mismatch}
+    return validate_stage6_verdict(parsed)
 
 
 def _audit_path(name_hint: str) -> Path:
@@ -125,6 +145,7 @@ def verify_semantic_alignment(
     timeout_s: float = 5.0,
     llm_call: Callable[[str, str], dict] | None = None,
     name_hint: str = "verify",
+    models: tuple[str, ...] | None = None,
 ) -> dict:
     """Verifica che il `code_body` esegua quello che `description` dichiara.
 
@@ -145,10 +166,10 @@ def verify_semantic_alignment(
         }
 
     Behavior:
-        - Single-model di default. Multi-model consensus se env
-          LLM_VERIFY_MODELS impostato (lista comma-separata): majority wins.
+        - Un solo modello dal router per default; una tupla esplicita e
+          versionata può richiedere consenso multi-modello.
         - Retry 1x su malformed JSON.
-        - Fallback fail-safe `aligned=False` se 2x parse fail.
+        - Dopo due payload malformati solleva `SemanticVerdictInvalid`.
         - Audit append per ogni verify call (PROMPT + RESPONSE + parsed).
     """
     prompt = VERIFY_PROMPT_TEMPLATE.format(
@@ -158,15 +179,16 @@ def verify_semantic_alignment(
     if llm_call is None:
         llm_call = _default_llm_call
 
-    models_env = os.environ.get("LLM_VERIFY_MODELS", "").strip()
-    models: list[str] = (
-        [m.strip() for m in models_env.split(",") if m.strip()]
-        if models_env else [tier_for("synt.semantic_verify")]
-    )
+    selected_models = models or (tier_for("synt.semantic_verify"),)
+    if not selected_models or any(
+        not isinstance(model, str) or not model.strip()
+        for model in selected_models
+    ):
+        raise ValueError("models must be a non-empty tuple of non-empty strings")
 
     # Single model path (default)
-    if len(models) == 1:
-        model = models[0]
+    if len(selected_models) == 1:
+        model = selected_models[0]
         verdict, raw_text = _single_verify(prompt, model, llm_call)
         out = {**verdict, "model": _request_label(model),
                "raw": _parse_verify_json(raw_text or "")}
@@ -175,7 +197,7 @@ def verify_semantic_alignment(
 
     # Multi-model consensus path
     verdicts: list[tuple[str, dict, str]] = []  # (model, verdict, raw_text)
-    for m in models:
+    for m in selected_models:
         v, raw_text = _single_verify(prompt, m, llm_call)
         verdicts.append((m, v, raw_text))
     # Majority wins on `aligned` field; tie → False (fail-safe).
@@ -190,7 +212,7 @@ def verify_semantic_alignment(
     out = {
         "aligned": final_aligned,
         "mismatch": mismatch[:200],
-        "model": f"consensus:{len(models)}",
+        "model": f"consensus:{len(selected_models)}",
         "raw": [{"model": m, "verdict": v} for m, v, _ in verdicts],
     }
     _write_audit(name_hint, prompt, "\n---\n".join(rt for _, _, rt in verdicts),
@@ -211,9 +233,12 @@ def _single_verify(prompt: str, model: str, llm_call: Callable) -> tuple[dict, s
         raw_text = (res or {}).get("text") or ""
         parsed = _parse_verify_json(raw_text)
         if parsed is not None:
-            return _normalize_verdict(parsed), raw_text
+            try:
+                return _normalize_verdict(parsed), raw_text
+            except SemanticVerdictInvalid:
+                continue
     # 2x fail → fail-safe: aligned=False
-    return {"aligned": False, "mismatch": "parser fallback (malformed JSON)"}, raw_text
+    raise SemanticVerdictInvalid("malformed_or_invalid_after_retry")
 
 
 def _write_audit(name_hint: str, prompt: str, response: str | None,

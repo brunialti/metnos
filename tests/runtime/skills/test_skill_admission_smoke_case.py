@@ -232,9 +232,6 @@ class TestRunSmokeForPlanADR0159:
                     "actual_first": "other_tool"}
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion", _mock_runner)
-        # Disabilita L6 per test isolato.
-        monkeypatch.setenv("METNOS_SYNT_STAGE6_DISABLED", "1")
-
         class _FakeParsed:
             name = "test-skill-l5-fail"
             source_sha256 = "abc"
@@ -245,6 +242,7 @@ class TestRunSmokeForPlanADR0159:
             _FakeParsed(), [plan],
             executor_dir=tmp_path,
             skip_l2=True,  # L2 needs codegen, isoliamo L5
+            skip_l6=True,
             skip_binding_check=True,
             audit_log=False,
         )
@@ -262,7 +260,6 @@ class TestRunSmokeForPlanADR0159:
             raise RuntimeError("should not be called when skip_l5_exec=True")
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion", _bad_runner)
-        monkeypatch.setenv("METNOS_SYNT_STAGE6_DISABLED", "1")
 
         class _FakeParsed:
             name = "test-skill-l5-skip"
@@ -271,9 +268,9 @@ class TestRunSmokeForPlanADR0159:
         plan = _FakePlan("read", "events", name="read_events_test_skill_l5_skip")
         report = admit_skill_import(
             _FakeParsed(), [plan],
-            executor_dir=tmp_path,
             skip_l2=True,
             skip_l5_exec=True,
+            skip_l6=True,
             skip_binding_check=True,
             audit_log=False,
         )
@@ -282,10 +279,10 @@ class TestRunSmokeForPlanADR0159:
         v = report.accepted[0]
         assert "L5_smoke_exec" not in v.layer_results
 
-    def test_legacy_env_metnos_smoke_at_import_off_disables_gate(
+    def test_legacy_env_metnos_smoke_at_import_off_does_not_disable_gate(
         self, monkeypatch, tmp_path,
     ):
-        """`METNOS_SMOKE_AT_IMPORT=0` legacy kill-switch."""
+        """L'ambiente non può disattivare il controllo smoke."""
         from skill_admission import admit_skill_import
         import smoke
 
@@ -293,7 +290,6 @@ class TestRunSmokeForPlanADR0159:
             raise RuntimeError("should not be called")
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion", _bad_runner)
-        monkeypatch.setenv("METNOS_SYNT_STAGE6_DISABLED", "1")
         monkeypatch.setenv("METNOS_SMOKE_AT_IMPORT", "0")
 
         class _FakeParsed:
@@ -303,12 +299,12 @@ class TestRunSmokeForPlanADR0159:
         plan = _FakePlan("read", "events", name="read_events_test_skill_legacy_smoke_off")
         report = admit_skill_import(
             _FakeParsed(), [plan],
-            executor_dir=tmp_path,
             skip_l2=True,
+            skip_l6=True,
             skip_binding_check=True,
             audit_log=False,
         )
-        assert len(report.accepted) == 1
+        assert len(report.rejected) == 1
 
 
 # ── ADR 0159: L6 default-ON for imported ─────────────────────────────────
@@ -332,13 +328,6 @@ class TestL6DefaultOnADR0159:
             called["n"] += 1
             return {"aligned": True, "mismatch": ""}
 
-        monkeypatch.setenv("METNOS_STAGE6_VERIFY_FAKE",
-                           f"{_mock_verify.__module__}.test_l6_verifier_fn")
-        # Garbage in env path won't be importable; patch direct via stage6 fn.
-        import skill_admission as sa
-        monkeypatch.setattr(sa, "_stage6_verify_callable",
-                            lambda: _mock_verify)
-
         class _FakeParsed:
             name = "test-skill-l6-on"
             source_sha256 = "abc"
@@ -357,14 +346,14 @@ class TestL6DefaultOnADR0159:
             skip_l5_exec=True,
             skip_binding_check=True,
             audit_log=False,
+            semantic_verifier=_mock_verify,
         )
         assert called["n"] == 1, "L6 must run by default for imported (ADR 0159)"
 
-    def test_l6_legacy_env_off_disables(self, monkeypatch, tmp_path):
-        """`METNOS_STAGE6_VERIFY_IMPORTED=0` legacy kill-switch."""
+    def test_l6_legacy_env_off_does_not_disable(self, monkeypatch, tmp_path):
+        """L'ambiente legacy non può disattivare L6."""
         from skill_admission import admit_skill_import
         import smoke
-        import skill_admission as sa
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion",
                             lambda c, catalog=None: {"ok": True, "skip": True,
@@ -375,31 +364,28 @@ class TestL6DefaultOnADR0159:
             called["n"] += 1
             return {"aligned": False, "mismatch": "should not be called"}
 
-        monkeypatch.setattr(sa, "_stage6_verify_callable",
-                            lambda: _mock_verify)
         monkeypatch.setenv("METNOS_STAGE6_VERIFY_IMPORTED", "0")
 
         class _FakeParsed:
             name = "test-skill-l6-legacy-off"
             source_sha256 = "abc"
 
-        plan = _FakePlan("read", "events", name="read_events_test_skill_l6_legacy_off")
+        plan = _FakePlan("read", "events", name="read_events")
         report = admit_skill_import(
             _FakeParsed(), [plan],
-            executor_dir=tmp_path,
             skip_l2=True,
             skip_l5_exec=True,
             skip_binding_check=True,
             audit_log=False,
+            semantic_verifier=_mock_verify,
         )
-        assert called["n"] == 0
-        assert len(report.accepted) == 1
+        assert called["n"] == 1
+        assert len(report.rejected) == 1
 
-    def test_l6_global_disable_env(self, monkeypatch, tmp_path):
-        """`METNOS_SYNT_STAGE6_DISABLED=1` global kill-switch."""
+    def test_l6_global_disable_env_is_ignored(self, monkeypatch, tmp_path):
+        """La variabile globale ritirata non può disattivare L6."""
         from skill_admission import admit_skill_import
         import smoke
-        import skill_admission as sa
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion",
                             lambda c, catalog=None: {"ok": True, "skip": True,
@@ -410,24 +396,23 @@ class TestL6DefaultOnADR0159:
             called["n"] += 1
             return {"aligned": False, "mismatch": "should not be called"}
 
-        monkeypatch.setattr(sa, "_stage6_verify_callable",
-                            lambda: _mock_verify)
         monkeypatch.setenv("METNOS_SYNT_STAGE6_DISABLED", "1")
 
         class _FakeParsed:
             name = "test-skill-l6-global-off"
             source_sha256 = "abc"
 
-        plan = _FakePlan("read", "events", name="read_events_test_skill_l6_global_off")
-        admit_skill_import(
+        plan = _FakePlan("read", "events", name="read_events")
+        report = admit_skill_import(
             _FakeParsed(), [plan],
-            executor_dir=tmp_path,
             skip_l2=True,
             skip_l5_exec=True,
             skip_binding_check=True,
             audit_log=False,
+            semantic_verifier=_mock_verify,
         )
-        assert called["n"] == 0
+        assert called["n"] == 1
+        assert len(report.rejected) == 1
 
 
 # ── ADR 0159: L2 SoT in loader ────────────────────────────────────────────

@@ -10,6 +10,7 @@ Determinismo §7.9: tutti i test mockano il LLM (no live call).
 from __future__ import annotations
 
 import json
+import pytest
 import sys
 from pathlib import Path
 
@@ -72,36 +73,34 @@ class TestMisalignedDescriptionRejected:
         assert "description promette web" in result["mismatch"]
 
 
-class TestMalformedJsonFallsBackToAlignedFalse:
-    """JSON malformato 2x → fail-safe `aligned=False`."""
+class TestMalformedJsonIsUnavailable:
+    """JSON malformato o servizio assente non diventano un verdetto."""
 
-    def test_malformed_json_returns_aligned_false(self, tmp_path, monkeypatch):
-        from synt_stage6_verify import verify_semantic_alignment
+    def test_malformed_json_is_invalid(self, tmp_path, monkeypatch):
+        from synt_stage6_verify import SemanticVerdictInvalid, verify_semantic_alignment
         import synt_stage6_verify as s6
         monkeypatch.setattr(s6, "VERIFY_AUDIT_DIR", tmp_path / "audit")
         llm = _make_llm_returning("Wait, this is not JSON at all, just preamble.")
-        result = verify_semantic_alignment(
-            description="Foo bar",
-            code_body="def invoke(args): pass",
-            llm_call=llm,
-            name_hint="malformed_test",
-        )
-        assert result["aligned"] is False
-        assert "fallback" in result["mismatch"].lower()
+        with pytest.raises(SemanticVerdictInvalid):
+            verify_semantic_alignment(
+                description="Foo bar",
+                code_body="def invoke(args): pass",
+                llm_call=llm,
+                name_hint="malformed_test",
+            )
 
-    def test_llm_raising_returns_aligned_false(self, tmp_path, monkeypatch):
-        """Se il LLM stesso solleva, fail-safe."""
-        from synt_stage6_verify import verify_semantic_alignment
+    def test_llm_raising_is_unavailable(self, tmp_path, monkeypatch):
+        from synt_stage6_verify import SemanticVerdictInvalid, verify_semantic_alignment
         import synt_stage6_verify as s6
         monkeypatch.setattr(s6, "VERIFY_AUDIT_DIR", tmp_path / "audit")
         llm = _make_llm_raising()
-        result = verify_semantic_alignment(
-            description="X",
-            code_body="def invoke(args): pass",
-            llm_call=llm,
-            name_hint="raising_test",
-        )
-        assert result["aligned"] is False
+        with pytest.raises(SemanticVerdictInvalid):
+            verify_semantic_alignment(
+                description="X",
+                code_body="def invoke(args): pass",
+                llm_call=llm,
+                name_hint="raising_test",
+            )
 
 
 class TestAuditLogWritten:
@@ -137,7 +136,6 @@ class TestMultiModelConsensus:
         from synt_stage6_verify import verify_semantic_alignment
         import synt_stage6_verify as s6
         monkeypatch.setattr(s6, "VERIFY_AUDIT_DIR", tmp_path / "audit")
-        monkeypatch.setenv("LLM_VERIFY_MODELS", "m1,m2,m3")
         # Mock: m1 e m2 dicono aligned=True; m3 dice aligned=False
         responses = {
             "m1": '{"aligned": true, "mismatch": ""}',
@@ -151,6 +149,7 @@ class TestMultiModelConsensus:
             code_body="def invoke(args): pass",
             llm_call=fake_call,
             name_hint="consensus_test",
+            models=("m1", "m2", "m3"),
         )
         # 2/3 aligned → aligned True
         assert result["aligned"] is True
@@ -160,7 +159,6 @@ class TestMultiModelConsensus:
         from synt_stage6_verify import verify_semantic_alignment
         import synt_stage6_verify as s6
         monkeypatch.setattr(s6, "VERIFY_AUDIT_DIR", tmp_path / "audit")
-        monkeypatch.setenv("LLM_VERIFY_MODELS", "m1,m2,m3")
         responses = {
             "m1": '{"aligned": false, "mismatch": "code does X not Y"}',
             "m2": '{"aligned": false, "mismatch": "missing feature"}',
@@ -173,6 +171,7 @@ class TestMultiModelConsensus:
             code_body="def invoke(args): pass",
             llm_call=fake_call,
             name_hint="consensus_misaligned",
+            models=("m1", "m2", "m3"),
         )
         # 2/3 misaligned → aligned False
         assert result["aligned"] is False
@@ -200,6 +199,32 @@ class TestParseVerifyJson:
         from synt_stage6_verify import _parse_verify_json
         assert _parse_verify_json("") is None
         assert _parse_verify_json("   ") is None
+
+
+class TestStrictVerdictSchema:
+    @pytest.mark.parametrize("payload", [
+        None, [], {},
+        {"aligned": None, "mismatch": "x"},
+        {"aligned": "false", "mismatch": "x"},
+        {"aligned": 1, "mismatch": ""},
+        {"aligned": True, "mismatch": 3},
+        {"aligned": True, "mismatch": "unexpected"},
+        {"aligned": False, "mismatch": ""},
+        {"aligned": True, "mismatch": "", "authority": True},
+    ])
+    def test_invalid_payload_is_rejected(self, payload):
+        from synt_stage6_verify import SemanticVerdictInvalid, validate_stage6_verdict
+        with pytest.raises(SemanticVerdictInvalid):
+            validate_stage6_verdict(payload)
+
+    def test_valid_payloads_are_not_coerced(self):
+        from synt_stage6_verify import validate_stage6_verdict
+        assert validate_stage6_verdict(
+            {"aligned": True, "mismatch": ""}
+        ) == {"aligned": True, "mismatch": ""}
+        assert validate_stage6_verdict(
+            {"aligned": False, "mismatch": "effetto non dichiarato"}
+        )["aligned"] is False
 
 
 class TestStage6WiredInRunFull:
@@ -302,8 +327,8 @@ class TestStage6WiredInRunFull:
         assert run.semantic_verdict is not None
         assert run.semantic_verdict["aligned"] is True
 
-    def test_stage6_disabled_env_skips_verify(self, tmp_path, monkeypatch):
-        """`METNOS_SYNT_STAGE6_DISABLED=1` → stage 6 non viene chiamato."""
+    def test_stage6_disabled_env_is_ignored(self, tmp_path, monkeypatch):
+        """La variabile ritirata non può evitare lo stage 6."""
         import synt_stage6_verify as s6
         monkeypatch.setattr(s6, "VERIFY_AUDIT_DIR", tmp_path / "audit")
         monkeypatch.setenv("METNOS_SYNT_STAGE6_DISABLED", "1")
@@ -312,16 +337,16 @@ class TestStage6WiredInRunFull:
             code_text="def invoke(args):\n    return {'ok': True}",
             description="qualunque",
         )
-        # llm_call_wise NON dovrebbe essere chiamato per stage 6
+        # Il verificatore deve essere chiamato nonostante l'ambiente.
         wise_call_count = {"n": 0}
         def llm_call_wise(*a, **k):
             wise_call_count["n"] += 1
-            return {"text": "X", "in_tokens": 0, "out_tokens": 0, "latency_ms": 1}
+            return {"text": '{"aligned": true, "mismatch": ""}',
+                    "in_tokens": 0, "out_tokens": 0, "latency_ms": 1}
         def llm_call_middle(*a, **k):
             return {"text": "{}", "in_tokens": 0, "out_tokens": 0, "latency_ms": 1}
         from synt_multistage import run_full
         run = run_full("dummy", llm_call_middle, llm_call_wise)
-        # Stage 5 e' patchato → wise non chiamato, e stage 6 disabled
         assert run.final_state == "synthesized"
-        assert wise_call_count["n"] == 0
-        assert run.semantic_verdict is None
+        assert wise_call_count["n"] == 1
+        assert run.semantic_verdict["aligned"] is True
