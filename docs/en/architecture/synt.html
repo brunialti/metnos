@@ -146,11 +146,10 @@ the code cannot silently redefine the name, arguments, or undo semantics.</p>
  cases; any failure removes the quarantined copy.</li>
 </ol>
 
-<p>A mismatch reported by the semantic judge rejects the candidate. If the judge
-itself is unavailable because of an infrastructure failure, that fact is recorded
-but does not block synthesis by itself: lint, contract validation, compilation,
-tests, and the downstream evaluator remain mandatory. This is explicit
-degradation, not certification of consistency.</p>
+<p>A mismatch, an untyped payload, or unavailability of the semantic judge
+rejects the candidate. Environment variables cannot disable the linter or the
+judge. An infrastructure failure is recorded as unavailability; it is never
+converted into certification of semantic consistency.</p>
 
 <h1 id="cap6">6. Quarantine and promotion</h1>
 

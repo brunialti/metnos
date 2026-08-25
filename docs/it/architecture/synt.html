@@ -147,11 +147,11 @@ il codice non pu&ograve; ridefinire in silenzio nome, argomenti o annullabilit&a
  dichiarati; se uno fallisce, la copia in quarantena viene rimossa.</li>
 </ol>
 
-<p>Se il giudice semantico segnala una discordanza, il candidato viene rifiutato.
-Se invece il giudice non &egrave; raggiungibile per un errore infrastrutturale, il fatto
-viene registrato ma non blocca da solo la sintesi: lint, contratto, compilazione,
-prove e valutatore successivo restano obbligatori. &Egrave; una degradazione esplicita,
-non una certificazione di coerenza.</p>
+<p>Se il giudice semantico segnala una discordanza, restituisce un payload non
+tipizzato o non &egrave; disponibile, il candidato viene rifiutato. Linter e
+giudice non sono disattivabili tramite variabili d'ambiente. Un errore
+infrastrutturale viene registrato come indisponibilit&agrave;, non trasformato in
+una certificazione di coerenza.</p>
 
 <h1 id="cap6">6. Quarantena e promozione</h1>
 
