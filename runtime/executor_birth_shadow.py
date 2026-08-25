@@ -9,13 +9,24 @@ from __future__ import annotations
 
 import hashlib
 import re
+import tomllib
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-from typing import Callable, Iterable
+from types import MappingProxyType
+from typing import Callable, Iterable, Mapping
 
 from executor_birth import ObservedCandidate, observe_candidate
 from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, RevisionAuthor
 from manifest_inventory import ContractId
+from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash, validate_approval
+from executor_birth_properties import PropertyStatus
+from executor_birth_property_runner import PropertyCandidateProfile, PropertyRunner, run_applicable_properties
+from executor_birth_semantic_review import (
+    IndependentEvidence, ReviewPolicyV1, ReviewRiskFacts, SemanticReviewRequest,
+    SemanticVerdict, review_candidate_semantics,
+)
+from executor_standard import validate_for_lifecycle
 
 
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -176,6 +187,166 @@ class BirthReport:
 Observer = Callable[..., ObservedCandidate]
 
 
+_DEPENDENCY_SEAL = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _BirthDependencies:
+    """Trusted runtime services. Construction is guarded by the module seal."""
+    observer: Observer
+    property_runner: PropertyRunner | None
+    semantic_policy: ReviewPolicyV1 | None
+    semantic_risk: ReviewRiskFacts | None
+    independent_evidence: tuple[IndependentEvidence, ...]
+    approval_subject: ApprovalSubject | None
+    approval_evidence: ApprovalEvidence | None
+    now: datetime | None
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _DEPENDENCY_SEAL:
+            raise ValueError("birth_dependencies_untrusted")
+
+
+def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
+    """Internal test seam; production callers never provide a check catalog."""
+    values: dict[str, object] = {
+        "observer": observe_candidate, "property_runner": None,
+        "semantic_policy": None, "semantic_risk": None,
+        "independent_evidence": (), "approval_subject": None,
+        "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
+    }
+    if set(overrides) - set(values):
+        raise ValueError("birth_dependencies_invalid")
+    values.update(overrides)
+    return _BirthDependencies(**values)  # type: ignore[arg-type]
+
+
+class _CorePropertyRunner:
+    """Productive adapter: absence of the isolated case executor is explicit."""
+
+    def run(self, *_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("isolated_property_case_executor_unavailable")
+
+
+def _assemble_production_dependencies() -> _BirthDependencies:
+    """Single core-owned assembler; it cannot alter the fixed check catalog."""
+    return _sealed_dependencies_for_test(property_runner=_CorePropertyRunner())
+
+
+_PRODUCTION_DEPENDENCIES = _assemble_production_dependencies()
+
+
+def _manifest(observed: ObservedCandidate) -> dict[str, object]:
+    value = tomllib.loads(observed.snapshot.manifest_bytes.decode("utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("manifest_root_invalid")
+    return value
+
+
+def _profile(manifest: Mapping[str, object]) -> PropertyCandidateProfile:
+    output = manifest.get("output")
+    output_map = output if isinstance(output, Mapping) else {}
+    properties = output_map.get("properties")
+    schema: list[tuple[str, str]] = []
+    if isinstance(properties, Mapping):
+        for key, declaration in sorted(properties.items()):
+            if isinstance(key, str) and isinstance(declaration, Mapping) and isinstance(declaration.get("type"), str):
+                schema.append((key, declaration["type"]))
+    args = manifest.get("args")
+    args_map = args if isinstance(args, Mapping) else {}
+    arg_properties = args_map.get("properties")
+    arg_properties = arg_properties if isinstance(arg_properties, Mapping) else {}
+    execution = manifest.get("execution")
+    execution = execution if isinstance(execution, Mapping) else {}
+    names = {name for name, _ in schema}
+    return PropertyCandidateProfile(
+        output_schema=tuple(schema), collection_output=bool(names & {"entries", "results"}),
+        limit_input="limit" in arg_properties, truncation_declared="truncated" in names,
+        revertible=manifest.get("revertible") is True or manifest.get("reversible") is True,
+        destructive_with_undo=(manifest.get("revertible") is True and execution.get("effect") == "mutating"),
+        entries_and_results={"entries", "results"}.issubset(names),
+    )
+
+
+def _standard_check(observed: ObservedCandidate, _decision: RevisionDecision, _deps: _BirthDependencies) -> CheckResult:
+    findings = validate_for_lifecycle(_manifest(observed), require_declaration=True)
+    evidence = _shadow_evidence("manifest-standard", observed.identities.candidate_id,
+                                *(f"{item.code}:{item.message}" for item in findings))
+    if findings:
+        return CheckResult("manifest_standard", "v1", CheckStatus.FAILED,
+                           "contract_nonconformant", evidence, findings[0].code)
+    return CheckResult("manifest_standard", "v1", CheckStatus.PASSED, None, evidence, "valid")
+
+
+def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.property_runner is None:
+        raise RuntimeError("property_runner_unavailable")
+    evidence = run_applicable_properties(_profile(_manifest(observed)), _runner=deps.property_runner)
+    digest = _shadow_evidence("properties", observed.identities.candidate_id,
+                              *(f"{item.property_id}:{item.case_id}:{item.status.value}:{item.output_hash}" for item in evidence))
+    failed = next((item for item in evidence if item.status in {PropertyStatus.FAILED, PropertyStatus.UNAVAILABLE}), None)
+    if failed:
+        return CheckResult("properties", "v1", CheckStatus.FAILED, failed.error_code, digest, failed.property_id)
+    return CheckResult("properties", "v1", CheckStatus.PASSED, None, digest, f"{len(evidence)} cases")
+
+
+def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.semantic_policy is None or deps.semantic_risk is None:
+        raise RuntimeError("semantic_review_unavailable")
+    request = SemanticReviewRequest(
+        observed.identities.candidate_id, observed.identities.admission_context_id,
+        f"{observed.executor_origin.value}.{observed.revision_authorship.value}",
+        observed.snapshot.manifest_bytes, observed.snapshot.language_state_bytes,
+        MappingProxyType(dict(observed.snapshot.code_files)),
+    )
+    review = review_candidate_semantics(request, independent_evidence=deps.independent_evidence,
+                                        policy=deps.semantic_policy, risk_facts=deps.semantic_risk)
+    if review.operational_verdict is SemanticVerdict.ALIGNED:
+        return CheckResult("semantic_review", "v1", CheckStatus.PASSED, None,
+                           review.review_evidence_hash, "aligned")
+    code = "semantic_review_uncertain" if review.operational_verdict is SemanticVerdict.UNCERTAIN else "semantic_misaligned"
+    return CheckResult("semantic_review", "v1", CheckStatus.FAILED, code,
+                       review.review_evidence_hash, review.operational_verdict.value)
+
+
+def _approval_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
+    if deps.approval_subject is None or deps.approval_evidence is None or deps.now is None:
+        return CheckResult("approval", "v1", CheckStatus.FAILED, "approval_required",
+                           _shadow_evidence("approval", observed.identities.candidate_id), "missing")
+    subject = deps.approval_subject
+    if (subject.candidate_id, subject.semantic_core_id, subject.admission_context_id) != (
+        observed.identities.candidate_id, observed.identities.semantic_core_id,
+        observed.identities.admission_context_id,
+    ):
+        raise ValueError("approval_subject_mismatch")
+    validate_approval(subject, deps.approval_evidence, now=deps.now)
+    return CheckResult("approval", "v1", CheckStatus.PASSED, None,
+                       approval_evidence_hash(deps.approval_evidence), "approved")
+
+
+def _always(_decision: RevisionDecision, _observed: ObservedCandidate) -> bool:
+    return True
+
+
+def _semantic_applies(_decision: RevisionDecision, observed: ObservedCandidate) -> bool:
+    return observed.revision_authorship is RevisionAuthor.MODEL or observed.executor_origin is ExecutorOrigin.IMPORTED
+
+
+def _approval_applies(decision: RevisionDecision, _observed: ObservedCandidate) -> bool:
+    return _observed.executor_origin is ExecutorOrigin.SYNTHESIZED or decision.revision_class in {
+        RevisionClass.AUTHORITY, RevisionClass.PROMOTION, RevisionClass.REACTIVATION,
+    }
+
+
+_CHECK_CATALOG_V1 = (
+    ("manifest_standard", "v1", True, _always, _standard_check),
+    ("properties", "v1", True, _always, _property_check),
+    ("semantic_review", "v1", True, _semantic_applies, _semantic_check),
+    ("approval", "v1", True, _approval_applies, _approval_check),
+)
+
+
 def _shadow_evidence(*parts: str) -> str:
     framed = b"".join(len(part.encode("utf-8")).to_bytes(8, "big") + part.encode("utf-8")
                       for part in parts)
@@ -205,7 +376,7 @@ def _outcome(results: Iterable[tuple[CheckSpec, CheckResult]], origin: ExecutorO
     return BirthOutcome.ADMITTED, None
 
 
-def observe_birth(
+def _observe_birth(
     source_root: object,
     *,
     contract_id: ContractId,
@@ -214,19 +385,20 @@ def observe_birth(
     objective_hash: str,
     admission_context: AdmissionContextV1,
     revision_facts: RevisionFacts,
-    check_specs: Iterable[CheckSpec],
     private_parent: object | None = None,
-    observer: Observer = observe_candidate,
+    _dependencies: _BirthDependencies,
 ) -> BirthReport:
     """Run an F3 shadow decision.  There is intentionally no publisher hook."""
     decision = classify_revision(revision_facts)
-    specs = tuple(check_specs)
-    if len({spec.check_id for spec in specs}) != len(specs):
-        raise ValueError("check_spec_duplicate")
+    if not isinstance(_dependencies, _BirthDependencies) or _dependencies._seal is not _DEPENDENCY_SEAL:
+        raise ValueError("birth_dependencies_untrusted")
+    specs = tuple(CheckSpec(check_id, version, mandatory, applicable,
+                            lambda observed, decision, runner=runner: runner(observed, decision, _dependencies))
+                  for check_id, version, mandatory, applicable, runner in _CHECK_CATALOG_V1)
     observed: ObservedCandidate | None = None
     results: list[tuple[CheckSpec, CheckResult]] = []
     try:
-        observed = observer(
+        observed = _dependencies.observer(
             source_root,
             contract_id=contract_id,
             executor_origin=executor_origin,
@@ -276,3 +448,30 @@ def observe_birth(
     finally:
         if observed is not None:
             observed.close()
+
+
+def observe_birth(
+    source_root: object,
+    *,
+    contract_id: ContractId,
+    executor_origin: ExecutorOrigin,
+    revision_authorship: RevisionAuthor,
+    objective_hash: str,
+    admission_context: AdmissionContextV1,
+    revision_facts: RevisionFacts,
+    private_parent: object | None = None,
+) -> BirthReport:
+    """Run the fixed productive V1 catalog with core-owned dependencies."""
+    return _observe_birth(
+        source_root, contract_id=contract_id, executor_origin=executor_origin,
+        revision_authorship=revision_authorship, objective_hash=objective_hash,
+        admission_context=admission_context, revision_facts=revision_facts,
+        private_parent=private_parent, _dependencies=_PRODUCTION_DEPENDENCIES,
+    )
+
+
+def _observe_birth_for_test(
+    source_root: object, *, _dependencies: _BirthDependencies, **request: object,
+) -> BirthReport:
+    """Internal sealed entry point for fault injection and adapter tests."""
+    return _observe_birth(source_root, _dependencies=_dependencies, **request)  # type: ignore[arg-type]
