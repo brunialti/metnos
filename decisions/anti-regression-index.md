@@ -124,7 +124,7 @@
 - **Vaglio safe-verb shortcut** (ADR 0107): `vocab.SAFE_VERBS` 11 verbi → `Verdict(judge_kind="safe-verb-shortcut")`.
 
 **Synth admission / sandbox / skill importer**
-- **Synth admission 4 layers** (ADR 0114): L2 affinity Jaccard ≥0.5 (`loader._check_affinity_overlap`); L3 ager (`executor_aging.py`, handcrafted mai demoted); L5 smoke; L6 LLM verifier (`synt_stage6_verify.py`).
+- **Synth admission 4 layers** (ADR 0114): L2 affinity Jaccard ≥0.5 (`loader._check_affinity_overlap`); L3 ager (`executor_aging.py`, handcrafted mai demoted); L5 smoke fail-closed; L6 LLM verifier con schema tipizzato (`synt_stage6_verify.validate_stage6_verdict`). Linter, smoke e revisore non sono disattivabili tramite ambiente; test di regressione in `test_synth_stage6_verify.py` e `test_skill_admission_smoke_case.py`.
 - **Safety net 7-layer skill imported** (ADR 0159): L1 sign + L2 Jaccard ≥0.5 (≥0.85 binding) + L3 ager + L4 sandbox (planned) + L5 smoke + L6 LLM verifier + audit JSONL sharded.
 - **Skill importer 5-stage + R1+R2+R3** (ADR 0123+0159 wiring): CLI `metnos-skills`. Mapping `runtime/skill_vocab_map.json`. R1 `skill_description_llm` pre-codegen; R2 `importer_verb_verify.check_plan` gate; R3 zero-fallback su `vocab.*`.
 - **Locale-aware skill bundle + rename → skills/** (ADR 0160): pattern bundle-per-locale `executors/skills/<locale>/`. Helper `runtime/skills_paths.py` dual-root scan. SKILL.md fields: `lang/trust/auto_enable/distribution/feature_modules`.

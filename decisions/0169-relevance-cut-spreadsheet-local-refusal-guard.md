@@ -75,7 +75,7 @@ Sbloccato lo step spreadsheet, il foglio reale conteneva **placeholder letterali
 
 **Severita'**: `error` (difetti genuini: pattern_args, resolved_hidden) blocca i synth; `warn` (smell: budget, output_shape, chapters, affinity) solo logga (§2.5 vieta il refactor di massa dei legacy).
 
-**Wiring synt** (`synt_multistage` "stage 5.5", PRE-stage6, §7.9 deterministico-prima-dell'LLM): assembla il manifest dagli stage output (name/args/description/affinity) → lint → su `error` `rejected_lint_structural`. Disable `METNOS_SYNT_LINT_DISABLED=1`.
+**Wiring synt** (`synt_multistage` "stage 5.5", PRE-stage6, §7.9 deterministico-prima-dell'LLM): assembla il manifest dagli stage output (name/args/description/affinity) → lint → su `error` `rejected_lint_structural`. Il linter non è disattivabile tramite ambiente; se non è disponibile il candidato viene rifiutato.
 
 **Lezione (falsi positivi al 1° run su 72 manifest)**: i 4 ERROR iniziali erano del LINTER, non dei manifest — events «OMETTI client» (gestione corretta, non trappola) e write_files `default=` nella prosa ARGS (non in una chiamata). Fix del CHECKER (§8.2): `_pattern_call_args` estrae solo dalle chiamate `name(...)`; `resolved_hidden` esclude il contesto di omissione. Baseline finale: **0 error / 70 warn** sul catalog (i warn = legacy non-CAPITOLI).
 

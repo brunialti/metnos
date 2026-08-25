@@ -112,8 +112,8 @@ Per imported: eseguito at-import via `skill_admission._run_smoke_for_plan`
 PRIMA di `final accepted`. Reject se fail. Skip gracefully se il pattern
 (verb, obj) non e' in mappa (`_no_smoke=True`).
 
-Bypass: flag `--skip-l5-exec` (CI veloce, dev) o env
-`METNOS_SMOKE_AT_IMPORT=0` (legacy kill-switch).
+Il flusso ordinario non può disattivare il controllo tramite ambiente. Le prove
+isolate sostituiscono esplicitamente la dipendenza.
 
 NB: il smoke battery file (`smoke.py::BATTERY`) contiene case curati a
 mano per il catalog builtin; gli imported popolano
@@ -130,9 +130,10 @@ continua post-import — NON come gate.
 Domanda chiusa: "la description e' coerente col codice? JSON
 `{ok:bool, reason:str}`". Reject se `aligned=false` (mandatory).
 
-Default per imported: ON (ADR 0159). Bypass via flag `--skip-l6` (escape
-hatch dev), legacy env `METNOS_STAGE6_VERIFY_IMPORTED=0` (kill-switch
-pre-0159), o env globale `METNOS_SYNT_STAGE6_DISABLED=1` (CI veloce).
+Default per imported: ON (ADR 0159). Le variabili storiche
+`METNOS_STAGE6_VERIFY_IMPORTED` e `METNOS_SYNT_STAGE6_DISABLED` sono ritirate e
+non modificano l'esito. Un payload non tipizzato o un verificatore indisponibile
+respinge il piano.
 
 ### Runtime judge (`vaglio.judge`)
 

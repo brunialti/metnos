@@ -90,15 +90,17 @@ health regression), find_urls (anti `find_texts` hijack regression).
 
 In `runtime/synt_stage6_verify.py::verify_semantic_alignment(description,
 code_body, ...)`. Usa LLM tier wise (Gemma 4 26B locale) con prompt strict
-JSON: `{"aligned": bool, "mismatch": "..."}`. Multi-model consensus
-optional via env `LLM_VERIFY_MODELS=m1,m2,m3` (majority wins, tie =
-fail-safe). Audit JSONL in `~/.local/share/metnos/synth_audit/verify_*.jsonl`.
+JSON: `{"aligned": bool, "mismatch": "..."}`. Il payload viene validato
+senza coercizioni; schema malformato o servizio indisponibile bloccano
+l'ammissione. Un eventuale consenso multi-modello è iniettato dalla politica
+versionata, mai dall'ambiente. Audit JSONL in
+`~/.local/share/metnos/synth_audit/verify_*.jsonl`.
 
 Wired in `runtime/synt_multistage.py::run_full` dopo stage 5 (code) e
 prima del sign + insert in catalog. Misalignment → `final_state =
-"rejected_semantic_drift"`, log audit, niente sign. Disabilita via
-`METNOS_SYNT_STAGE6_DISABLED=1` (test/dev). Determinismo §7.9: solo
-JSON parsing, retry 1x, fallback `aligned=False` (fail-safe).
+"rejected_semantic_drift"`, log audit, niente sign. Non esiste un interruttore
+d'ambiente. I test iniettano dipendenze esplicite. Determinismo §7.9: parsing
+JSON rigoroso, un solo nuovo tentativo, poi rifiuto tipizzato.
 
 ## Alternatives considered
 
