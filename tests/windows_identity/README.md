@@ -21,3 +21,11 @@ ACL support, privilege use, cleanup, or any expected access result is absent.
 This calibration does not certify the product implementation. Future product
 acceptance tests may use the calibrated controller and oracle only after this
 job is green on the public `windows-2022` runner.
+
+`rm0008_increment_2a_windows_diagnostics.py` is a separate historical
+reproducer. The local pytest hook executes it only after a successful identity
+calibration in a manually dispatched workflow; normal pushes do not run it and
+it adds no pytest node to the mandatory collection. Success means that the
+frozen prototype defects R5-R7 were observed, not that the product is
+conformant. The mandatory acceptance tests will assert the opposite invariants
+after the diagnostic phase.
