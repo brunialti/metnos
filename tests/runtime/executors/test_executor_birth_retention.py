@@ -348,7 +348,7 @@ def test_new_database_has_explicit_schema_version(tmp_path):
     db = tmp_path / "retention.sqlite"
     closed(db, node(NodeType.EVIDENCE, "versioned"))
     connection = sqlite3.connect(db)
-    assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
     connection.close()
 
 
