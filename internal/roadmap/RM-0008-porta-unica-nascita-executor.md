@@ -634,7 +634,7 @@ del primo cutover: non sono lo store degli upgrade. Gli aggiornamenti usano:
 builds-v1/<closed_build_id>.json|.sig
 cutovers-v1/<cutover_id>.json|.sig
 heads-v1/{release_sequence:020d}-{cutover_id}.json|.sig
-required-head-v1.json|.sig
+required-head-v1.bin
 ```
 
 Build, cutover e head sono append-only e pubblicati con temporanei esclusivi,
@@ -648,8 +648,16 @@ esattamente predecessore, build e cutover e incrementa la sequenza di uno.
 
 Il preflight non sceglie il file col numero maggiore e non ripiega. Parte
 dall'ancora, verifica una catena contigua e unica e richiede che l'ultima testa
-coincida con `required-head-v1`, pubblicato per ultimo dal coordinatore
-root-owned e coperto dal descriptor di deployment. Assenza, buco, fork,
+coincida con `required-head-v1.bin`, pubblicato per ultimo dal coordinatore
+root-owned e coperto dal descriptor di deployment. Questo selettore è un solo
+file con framing esatto
+`metnos-ownership-required-head-v1\0 || u32be(payload_length) || payload_json || signature_64`:
+`payload_json` è il JSON canonico completo del record head, la firma è la stessa
+firma `ownership-head/v1`, non sono ammessi byte finali e la dimensione è
+limitata prima dell'allocazione. La sostituzione atomica del singolo file,
+seguita da fsync della directory, lascia quindi osservabile sempre o la testa
+vecchia completa o quella nuova completa; non esiste una coppia
+payload/firma che possa lacerarsi durante un upgrade. Assenza, buco, fork,
 predecessore errato, oggetti mancanti o una testa precedente producono
 `birth_ownership_downgrade` o `birth_ownership_recovery_required`. Prima della
 sostituzione atomica di `required-head-v1` resta avviabile soltanto la vecchia

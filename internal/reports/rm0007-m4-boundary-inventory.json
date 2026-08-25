@@ -1276,6 +1276,96 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore._append_pair",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore._update_required_head_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore.append_authenticated_build",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore.append_cutover",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore.append_head",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore.initialize",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "OwnershipChainStore.update_required_head",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "_replace_required_pointer",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_ownership_chain.py",
+      "scope": "_required_head_lock",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "root-owned one-time ownership-head coordinator",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_intent.py",
       "scope": "submit_builtin_generation_birth",
       "role": "administrative_tool",

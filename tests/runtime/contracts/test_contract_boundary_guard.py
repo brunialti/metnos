@@ -5,6 +5,7 @@ from pathlib import Path
 
 from contract_boundary_guard import (
     BIRTH_CLOSED_GUARD_VERSION,
+    BIRTH_CLOSED_COORDINATOR_STORE_OWNERS,
     BIRTH_CLOSED_EXCEPTION_SCOPES,
     BIRTH_CLOSED_OWNER,
     BIRTH_CLOSED_SCHEMA,
@@ -61,6 +62,8 @@ def _closed_inventory(
         key = f"{entry['path']}:{entry['scope']}"
         compiled = BIRTH_CLOSED_EXCEPTION_SCOPES.get(key)
         entry["role"] = "birth_owner" if key == BIRTH_CLOSED_OWNER else (
+            "store_owner" if key in BIRTH_CLOSED_COORDINATOR_STORE_OWNERS
+            else
             "offline_authoring" if compiled == "offline_nonproductive_authoring"
             else "operational_producer" if compiled is not None
             else "offline_authoring" if key in exceptions
@@ -75,6 +78,7 @@ def _closed_inventory(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [
             {"scope": scope, "exception": exception}
@@ -865,6 +869,30 @@ def _closed_facts(
     )
     if extra_source:
         _scan(tmp_path, extra_source, relative=relative)
+    _scan(
+        tmp_path,
+        "from pathlib import Path\n"
+        "def _required_head_lock(path):\n"
+        "    Path('x').write_bytes(b'x')\n"
+        "def _replace_required_pointer(path):\n"
+        "    Path('x').write_bytes(b'x')\n"
+        "class OwnershipChainStore:\n"
+        "    def initialize(self, path):\n"
+        "        Path('x').write_bytes(b'x')\n"
+        "    def _append_pair(self, path):\n"
+        "        Path('x').write_bytes(b'x')\n"
+        "    def append_authenticated_build(self, path):\n"
+        "        Path('x').write_bytes(b'x')\n"
+        "    def append_cutover(self, path):\n"
+        "        Path('x').write_bytes(b'x')\n"
+        "    def append_head(self, path):\n"
+        "        Path('x').write_bytes(b'x')\n"
+        "    def update_required_head(self, path):\n"
+        "        Path('x').write_bytes(b'x')\n"
+        "    def _update_required_head_locked(self, path):\n"
+        "        Path('x').write_bytes(b'x')\n",
+        relative="runtime/executor_birth_ownership_chain.py",
+    )
     facts = discover(tmp_path)
     present = {fact.key for fact in facts}
     for key, exception in BIRTH_CLOSED_EXCEPTION_SCOPES.items():
@@ -989,6 +1017,7 @@ def test_birth_closed_render_binds_policy_without_inventing_exceptions(
         "schema": BIRTH_CLOSED_SCHEMA,
         "guard_version": BIRTH_CLOSED_GUARD_VERSION,
         "owner": BIRTH_CLOSED_OWNER,
+        "coordinator_store_owners": sorted(BIRTH_CLOSED_COORDINATOR_STORE_OWNERS),
         "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
         "exceptions": [
             {"scope": scope, "exception": exception}
