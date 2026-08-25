@@ -57,7 +57,7 @@ def test_cache_key_deterministic():
     a = [_MockExec("a", ["x", "y"]), _MockExec("b", ["z"])]
     k1 = asm._cache_key(a)
     k2 = asm._cache_key(a)
-    assert k1 == k2 and len(k1) == 16
+    assert k1 == k2 and k1.startswith("sem2-") and len(k1) == 21
 
 
 def test_cache_key_changes_with_affinity():
