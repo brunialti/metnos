@@ -1,9 +1,9 @@
 # RM-0007 — Pubblicazione verificata delle varianti linguistiche dei contratti
 
-> `RM-0007` · stato `in_progress` · definita `2026-08-24` · specifica KISS
-> consolidata `2026-08-25` · controrevisioni conservate nel rapporto collegato
-> e risolte dalla matrice §17 · ADR 0223 ancora `proposed` fino a M4 · documento
-> interno
+> `RM-0007` · stato `closed` · definita `2026-08-24` · specifica KISS
+> consolidata `2026-08-25` · M0-M4 implementate, certificate e distribuite
+> `2026-08-25` · controrevisioni risolte dalla matrice §17 · ADR 0223
+> `accepted` · documento interno
 
 ## 1. Esigenza
 
@@ -11,7 +11,9 @@ RM-0007 impedisce che una traduzione di un contratto executor diventi, di
 fatto, un aggiornamento tecnico non autorizzato o lasci sul disco una
 combinazione incoerente di manifest, firma e stato linguistico.
 
-Il percorso corrente presenta difetti concreti:
+All'apertura di RM-0007 il percorso legacy presentava difetti concreti; questo
+elenco definisce i guasti che la specifica e i gate M0-M4 devono chiudere, non
+descrive il codice M4 corrente:
 
 1. `_promote_contracts()` modifica il manifest vivo prima che l'attivazione
    abbia concluso tutti i controlli;
@@ -54,21 +56,29 @@ rispondeva a tre problemi distinti:
 - deploy tecnico atomico di manifest e codice;
 - identità dei byte eseguiti fino al momento dell'invocazione.
 
-RM-0007 conserva soltanto il primo. La versione normativa usa:
+RM-0007 conserva il primo problema e le sole operazioni di ciclo di vita
+necessarie a non riattivare per errore un contratto rimosso. La versione
+normativa usa:
 
 1. una fotografia immutabile dei byte verificati;
 2. firma e verifica come operazioni pure in memoria;
-3. una generazione immutabile contenente tre file;
-4. un solo puntatore atomico alla generazione corrente;
-5. un blocco per contratto e il confronto della generazione attesa;
+3. una revisione immutabile: generazione attiva di tre file oppure tombstone di
+   ritiro di due file, senza copie del codice;
+4. un solo puntatore atomico alla revisione corrente;
+5. un piccolo blocco globale per ammissione e appartenenza al catalogo, seguito
+   dal blocco del singolo contratto e dal confronto della generazione attesa;
 6. una sola API per la pubblicazione linguistica;
-7. un importatore semplice di sorgenti tecniche già firmate e ammesse.
+7. un importatore semplice di sorgenti tecniche già firmate e pubblicabili;
+8. ritiro firmato e riattivazione esplicita, entrambi sullo stesso puntatore;
+9. un solo ordine di acquisizione dei blocchi, condiviso anche con cutover e
+   gestione del ciclo di vita dei servizi.
 
 Non aggiunge un database autorevole: il problema e il formato pubblico sono
 file-oriented e un secondo registro transazionale introdurrebbe un'autorità
-nuova. Non aggiunge una seconda firma: la firma del manifest autentica il
-contratto e il suo digest; l'hash della generazione impedisce di mescolare per
-errore i tre file.
+nuova. Non aggiunge una seconda firma alle generazioni attive: la firma del
+manifest autentica il contratto e il suo digest; l'hash della generazione
+impedisce di mescolare per errore i tre file. La tombstone, che non contiene un
+manifest, usa la stessa autorità Ed25519 con un dominio distinto e chiuso.
 
 ## 3. Confine e proprietà
 
@@ -76,13 +86,16 @@ errore i tre file.
 
 - manifest, firma e `manifest.lang_state.json`;
 - varianti linguistiche prodotte dalla pipeline RM-0005;
-- sorgenti tecniche già firmate prodotte da installer, generatori o
-  importatori esistenti;
+- sorgenti tecniche già firmate e pubblicabili prodotte da installer,
+  generatori o importatori esistenti;
 - fotografia verificata consumata dal loader;
 - concorrenza fra scrittori Metnos cooperanti;
 - arresto del processo durante la pubblicazione;
-- Linux su filesystem locale e Windows su NTFS locale;
-- migrazione senza doppia scrittura del contratto vivo.
+- primitive del deposito per contratto su filesystem Linux locale e su NTFS
+  locale;
+- installer, server gestito e cutover produttivo M4 su Linux con systemd;
+- migrazione senza doppia scrittura del contratto vivo;
+- ritiro esplicito, conservazione della prova e riattivazione auditata.
 
 ### 3.2 Escluso
 
@@ -95,6 +108,8 @@ errore i tre file.
   contratti; il solo marker globale di migrazione di §4.3 resta compreso;
 - protezione da un processo arbitrario eseguito come lo stesso utente Metnos;
 - filesystem di rete, FAT e supporti non certificati;
+- installazione del server Metnos e cutover del catalogo su Windows; Windows
+  resta una piattaforma del client remoto, non un secondo server Metnos;
 - raccolta automatica delle generazioni non referenziate;
 - regole linguistiche, qualità semantica e localizzazione di `affinity`.
 
@@ -111,6 +126,13 @@ censimento delle dipendenze, codice content-addressed o binding della release e
 modifica dei runner. Questo lavoro è separato in `EXEC-BIND-001`; attribuirlo a
 RM-0007 renderebbe falsa la qualificazione KISS.
 
+Inoltre la cache del catalogo è invalidata dall'identità della revisione, non
+dagli `mtime` dell'authoring: una modifica esterna del solo codice non crea una
+nuova revisione e non è una pubblicazione. Le verifiche che riaprono il codice
+la rifiutano per digest, ma RM-0007 non promette che un modulo o un processo già
+caricato sia automaticamente sostituito. Anche questa finestra appartiene a
+`EXEC-BIND-001`, non viene nascosta dentro il cutover.
+
 Su Windows/NTFS la sostituzione atomica di un file chiuso protegge dal crash
 del processo, ma la libreria standard non offre una barriera di durabilità per
 la directory equivalente a quella disponibile sui filesystem Linux ammessi.
@@ -119,16 +141,12 @@ non promette che l'ultimo puntatore sopravviva a una perdita improvvisa di
 alimentazione. Il lettore apre, legge e chiude subito `current`; il publisher
 riprova per un tempo finito le sole violazioni di condivisione transitorie.
 
-Il confine una-tantum di cutover è più restrittivo. Su Linux M4 scrive il
+Il confine una-tantum di cutover è invece parte del server gestito e viene
+eseguito soltanto sull'installazione Linux/systemd supportata. M4 scrive il
 marker temporaneo, esegue `fsync` sul file, lo rinomina e sincronizza la
-directory padre; dopo lo swap sincronizza di nuovo la directory padre. Su
-Windows apre il marker definitivo con `CreateFileW(FILE_FLAG_WRITE_THROUGH)`,
-scrive `v1\n`, chiama `FlushFileBuffers()` sullo stesso handle e lo chiude;
-sposta poi la directory shadow, già completa e sullo stesso volume, verso il
-nome produttivo assente con `MoveFileExW(MOVEFILE_WRITE_THROUGH)`. Ogni errore
-delle primitive native interrompe il cutover senza dichiararlo concluso.
-Questo requisito non trasforma ogni publish ordinario in una transazione
-contro perdita di alimentazione.
+directory padre; dopo lo swap sincronizza di nuovo la directory padre. Le
+garanzie NTFS precedenti riguardano le primitive portabili del deposito, non
+un installer o un server Windows che il progetto non offre.
 
 ### 3.4 Invarianti non negoziabili
 
@@ -159,13 +177,31 @@ contro perdita di alimentazione.
 15. Ogni lettore vivo e ogni scrittore cooperante del contratto passa dal
     confine censito in §8; nessun percorso alternativo può diventare vivo per
     semplice scrittura o firma.
-16. Dopo che esiste il marker o la radice produttiva, nessuna loro assenza o
-    corruzione può riattivare automaticamente il layout legacy.
+16. Dopo che esiste il marker o il contenitore produttivo, nessuna loro assenza
+    o corruzione può riattivare automaticamente il layout legacy.
 17. Dopo il cutover l'inventario fornisce soltanto binding strutturali; non
     legge manifest di authoring per decidere contenuto, nome o lifecycle vivi.
 18. Ogni pubblicazione tecnica acquisisce il writer lock una sola volta nel
     publisher; firma offline, lock annidati e sequenze sign-then-publish non
     costituiscono il flusso operativo.
+19. `current` seleziona una sola revisione autenticata: una generazione attiva
+    oppure un ritiro firmato. Un ritiro non può essere superato da un publish
+    ordinario, ma soltanto dalla riattivazione esplicita e auditata.
+20. `DISABLED` regola la visibilità esterna di un contratto installato e non ne
+    cancella la pubblicabilità; una sorgente `RETIRED` non è pubblicabile.
+21. Il nome di un executor resta riservato al suo `ContractId` anche quando il
+    contratto è disabilitato o ritirato; per una tombstone il nome si ricava
+    dalla generazione precedente autenticata, non da dati non firmati.
+22. L'ordine dei blocchi è unico: catalogo produttivo → eventuale catalogo
+    shadow → writer dei contratti in ordine canonico. Le operazioni sul ciclo
+    di vita dei servizi usano invece catalogo produttivo → reconcile. Nessun
+    percorso acquisisce questi blocchi nell'ordine inverso.
+23. Il confine amministrativo di attivazione mantiene l'esclusione del
+    catalogo dalla verifica finale del report fino alla riconciliazione del
+    registro i18n. La verifica è in sola lettura e precede sempre il marker.
+24. Dopo lo swap, il deposito produttivo e le tombstone correnti sono
+    autorevoli. Un retry non richiede né ricostruisce la shadow e non usa il
+    catalogo del report come fotografia viva.
 
 ## 4. Modello persistente minimo
 
@@ -186,12 +222,35 @@ PATH_USER_STATE/
           manifest.toml
           manifest.toml.sig
           manifest.lang_state.json
+        <retirement-id>/
+          retirement.json
+          retirement.json.sig
 ```
 
 La radice shadow è distinta dalla radice produttiva e non viene mai consultata
 dal loader. Dentro una singola pubblicazione si usa inoltre una directory
 temporanea non autorevole nella stessa directory `generations/`. Non serve un
 journal persistente né una procedura automatica di raccolta.
+
+Una directory riservata `.generation-<suffisso>` lasciata da un arresto viene
+recuperata soltanto sotto il writer lock oppure durante il cutover quiescente.
+Deve essere una directory regolare con suffisso non vuoto e contenere soltanto
+file regolari che formino un sottoinsieme coerente dei tre payload di una
+generazione **oppure** dei due payload di un ritiro. In questo solo caso viene
+rimossa e `generations/` viene sincronizzata. Link, directory annidate, nomi
+sconosciuti o un misto dei due tipi sono `staging_invalid`, restano intatti e
+bloccano l'operazione. Nessuna staging diventa mai una revisione autorevole.
+
+La stessa regola copre i temporanei sibling usati per `binding.json` e
+`current`, con nomi appartenenti a una grammatica chiusa generata dal processo.
+Un binding temporaneo è eliminabile soltanto se contiene esattamente il
+`ContractId` canonico della directory; un puntatore temporaneo soltanto se
+indica una revisione immutabile già presente e autenticata. Prima della prima
+cancellazione vengono validati **tutti** i temporanei diretti e tutte le
+directory `.generation-*` del contratto. Un nome malformato, un link, byte non
+autenticabili o un residuo estraneo bloccano quindi l'intero recupero senza
+pulizia parziale. Il recupero elimina questi residui riconosciuti: non promuove
+mai un binding, un puntatore o una generazione incompleta.
 
 `contract-key` deriva dall'identità canonica restituita dall'inventario comune
 di RM-0002. Il registro i18n fornisce un'identità di risorsa, mai un path di
@@ -215,8 +274,13 @@ deterministico `source_root`, `manifest_path` e `allowed_code_roots`, senza
 aprire il manifest di authoring; nome, lifecycle, schema e ogni altro contenuto
 vivo provengono esclusivamente dalla generazione verificata. L'eventuale stato
 abilitato/disabilitato continua a provenire dal registro operativo generale
-delle skill, usando l'identità strutturale, non dal manifest sorgente. Non
-esiste un indice globale dei binding.
+delle skill, usando l'identità strutturale, non dal manifest sorgente. In
+particolare `ManifestStatus.DISABLED` nasconde un contratto installato ma non
+gli impedisce di essere pubblicato o aggiornato; `ManifestStatus.RETIRED`
+blocca i publisher ordinari. Una nuova sorgente di authoring può superare una
+tombstone soltanto con `reactivate_technical_update()`, attore e motivo
+espliciti; il rollback tecnico auditato resta l'operazione distinta descritta
+in §7.3. Non esiste un indice globale dei binding.
 
 Nel disegno precedente `<generation-id>` indicava anche la forma logica. Sul
 filesystem il nome della directory è invece **soltanto il digest esadecimale
@@ -229,10 +293,10 @@ sha256:<64 cifre esadecimali>
 
 Non contiene JSON, path, lingua, nome executor o duplicati dello stesso dato.
 
-### 4.2 Identificatore della generazione
+### 4.2 Identificatore e tipi di revisione
 
-L'identificatore è il digest dei tre file in ordine fisso. Per evitare
-ambiguità di concatenazione:
+L'identificatore di una generazione attiva è il digest dei tre file in ordine
+fisso. Per evitare ambiguità di concatenazione:
 
 ```python
 def generation_id(files: Mapping[str, bytes]) -> str:
@@ -264,39 +328,115 @@ directory prima di procedere al puntatore; se differiscono o la struttura non
 è valida, restituisce `generation_corrupt`. Non viene mai eseguito
 `os.replace()` fra directory di generazione.
 
+`current` può indicare anche una tombstone di ritiro immutabile. Questa
+revisione contiene esattamente `retirement.json` e `retirement.json.sig`.
+Il JSON canonico dichiara schema e versione, `ContractId`, generazione attiva
+precedente, attore e motivo; la firma Ed25519 copre il prefisso di dominio
+`metnos.contract-retirement/v1\0` seguito dai byte JSON. Il `retirement_id` è
+calcolato con lo stesso framing length-delimited, ma sui due file della
+tombstone: non può essere confuso con l'identità di una generazione e non
+introduce un secondo envelope generale.
+
+Il ritiro conserva e autentica nella tombstone l'identificatore della
+generazione precedente. I relativi payload vengono verificati quando quella
+generazione è scelta come base di policy o bersaglio di ripristino. Un publish
+ordinario vede `contract_retired` e non la supera. La riattivazione esplicita
+usa la tombstone come base CAS, la generazione precedente come base di policy,
+registra un'autorizzazione idempotente e crea una nuova generazione attiva; non
+modifica né cancella revisioni esistenti.
+
+Il ritiro elimina l'autorità di esecuzione, non l'identità pubblica. Il nome
+dell'executor nella generazione precedente autenticata resta quindi riservato
+allo stesso `ContractId`, come accade per un contratto `DISABLED`. Ogni
+publisher controlla l'unicità sull'intero insieme installato prima di cambiare
+`current`; un altro `ContractId` non può riusare quel nome e appropriarsi delle
+identità di risorsa i18n storiche.
+
 ### 4.3 Confine globale di cutover
 
 `contract-publications.ACTIVE` contiene esattamente `v1\n`. È un confine di
 migrazione irreversibile per il bootstrap, non seleziona una generazione e non
 autorizza contenuti. Il loader applica queste regole in ordine:
 
-1. radice produttiva e marker entrambi assenti: layout legacy;
-2. radice produttiva presente: layout solo-deposito, anche se il marker manca;
-3. marker presente e radice produttiva assente o incompleta: fail-closed,
-   cutover da riprendere;
-4. in nessun altro caso è ammesso il fallback legacy.
+1. contenitore produttivo e marker entrambi assenti: layout legacy;
+2. contenitore e radice `v1` completi, non vuoti e senza marker: layout
+   solo-deposito;
+3. gli stessi contenitore e radice, con marker valido: layout attivo;
+4. marker o contenitore presenti con struttura superiore mancante, incompleta,
+   vuota o estranea: `RECOVERY_REQUIRED`, senza ripiego sul legacy.
 
 La perdita o l'assenza del solo marker non può quindi riattivare il layout
 legacy dopo lo swap. La radice shadow, collocata fuori dalla radice produttiva,
 non influisce sul bootstrap. Il marker viene reso durevole **prima** dello
 swap con le primitive precise di §3.3 e resta poi permanente. La directory
 shadow completa viene rinominata globalmente in `contract-publications` sullo
-stesso volume: Linux usa `rename()` seguito da `fsync` della directory padre;
-Windows richiede destinazione assente e usa
-`MoveFileExW(MOVEFILE_WRITE_THROUGH)`. Un arresto prima del marker lascia il
+stesso volume con `rename()` seguito da `fsync` della directory padre. Il
+cutover rifiuta piattaforme diverse dal server Linux/systemd supportato. Un
+arresto prima del marker lascia il
 legacy; dopo il marker lascia il sistema fail-closed o store-only, mai di
 nuovo legacy. La v1 non introduce una modalità ibrida per contratto né una
 seconda autorità sul contenuto.
 
+Qui “completo” significa che il contenitore contiene soltanto `v1`, che `v1`
+è una directory regolare non vuota e che ogni sua voce è una directory
+`<contract-key>` regolare. La completezza interna di ciascun contratto viene
+verificata separatamente dal loader e dal cutover: ciò consente al publisher
+sotto lock di riprendere la prima pubblicazione di un nuovo contratto lasciata
+dopo il binding ma prima di `current`, senza trasformare una radice superiore
+vuota in `ACTIVE`.
+
+Un marker presente ma non regolare, collegato o con contenuto diverso da
+`v1\n` produce invece l'errore fail-closed `active_marker_invalid`: non viene
+trattato come marker assente né come stato recuperabile automaticamente. Se è
+il path del contenitore a essere un collegamento o a non essere una directory,
+l'errore è `production_store_invalid`; `RECOVERY_REQUIRED` riguarda il
+contenitore assente dopo il marker oppure regolare ma vuoto, incompleto o con
+voci estranee.
+
 Il cutover è una breve operazione di manutenzione quiescente. Il gate blocca
 nuovi turni, scheduler e publisher, attende la fine dei turni già ammessi e
-disabilita reload e watcher del catalogo. Il processo di migrazione diventa
-l'unico writer, rigenera l'inventario, confronta l'insieme esatto dei
-`ContractId` e riverifica binding, firme e digest sul codice corrente. Dopo il
-marker e lo swap esegue, con gli ingressi ancora chiusi, un caricamento
-store-only completo e un restart/swap globale controllato. Solo se entrambi
-sono verdi riabilita reload, scheduler, publisher e nuovi turni. Non si
-introduce un lock globale nel percorso ordinario.
+disabilita reload e watcher del catalogo. La quiescenza non sostituisce i
+blocchi del filesystem: il confine gestito acquisisce prima il blocco globale
+di ammissione del catalogo produttivo e poi il blocco `reconcile` dei servizi,
+e li mantiene fino al primo load store-only riuscito. `activate_store()`
+riacquisisce in modo rientrante il blocco produttivo e, soltanto finché la
+shadow può ancora essere consumata, acquisisce nell'ordine il blocco globale
+della shadow e i writer lock dei contratti ordinati per `ContractId`. L'ordine
+completo è quindi produttivo → shadow → writer; il ramo servizi è produttivo →
+reconcile.
+
+Anche gli scrittori ordinari usano il blocco globale di ammissione: firma e
+migrazione dell'authoring, pubblicazione, ritiro, riattivazione, rollback,
+installazione/rimozione e cambiamenti di visibilità non possono osservare
+insiemi di nomi differenti durante la stessa decisione. Nel caso ordinario il
+blocco globale precede sempre il writer lock del contratto o il lock della
+policy di visibilità. Il writer per contratto conserva il suo compito distinto:
+serializza `current` e applica il CAS della generazione attesa.
+
+Il confine preparato mantiene il blocco produttivo per una sequenza unica:
+preflight esatto → attivazione → rilettura produttiva → riconciliazione del
+registro. Prima del marker valida schema e cardinalità del report, inventario
+authoring completo, byte esatti di manifest/firma/stato contro gli ID del
+report, gli stessi ID e payload autenticati nella shadow e, in sola lettura,
+l'assenza di conflitti di proprietà nel registro i18n, comprese le righe
+storiche o `stale`. Un registro assente non viene creato dal preflight. Questa
+è atomicità per esclusione fra scrittori cooperanti, non un rollback del
+filesystem o del database dopo che il puntatore globale è diventato visibile.
+
+Dopo il marker e lo swap, un retry non pretende più la shadow e non confronta
+la produzione con gli ID ormai storici del report. Enumera e autentica il
+deposito produttivo corrente, comprese le tombstone, ripara se necessario il
+solo marker in modalità store-only e riconcilia il registro da una nuova
+lettura di ciascuna revisione. In questo modo una pubblicazione o un ritiro
+legittimo successivo allo swap non viene sovrascritto da una fotografia
+pre-cutover. Il confine mantiene i blocchi di catalogo e ciclo di vita, e lascia
+i servizi fermi, fino al caricamento store-only completo. Solo dopo quel
+controllo rilascia i blocchi e avvia il target; le sonde di salute verificano
+subito l'esito. Le singole unità diventano raggiungibili secondo il normale
+avvio systemd: M4 non introduce un secondo cancello di manutenzione comune fra
+l'avvio delle unità e il rapporto finale di readiness. Nessuna unità può però
+osservare un catalogo parziale, perché il caricamento autenticato precede ogni
+avvio.
 
 ### 4.4 Autorità dello stato linguistico
 
@@ -372,9 +512,13 @@ hash con il candidato e completa la riconciliazione in modo idempotente.
 
 ## 5. Contratti Python minimi
 
-Tutto il deposito appartiene a un solo nuovo modulo,
-`runtime/contract_store.py`. Non creare moduli distinti per snapshot, lock,
-recovery, envelope o receipt.
+Il nucleo file-oriented del deposito appartiene a
+`runtime/contract_store.py`: binding, revisione, puntatore, verifica, recupero
+e primitive di blocco restano coesi. I confini già esistenti di inventario,
+registro i18n, installer e gestione dei servizi lo chiamano senza duplicarne le
+regole. Non creare micro-moduli distinti per snapshot, lock, recovery, envelope
+o receipt, ma non concentrare artificialmente nel deposito la logica operativa
+che appartiene a quei confini.
 
 ### 5.1 Fotografia verificata
 
@@ -396,6 +540,14 @@ class VerifiedManifest:
     declared_code_digest: str
     verified_code_digest: str
 ```
+
+Il tipo di lettura completo è
+`ContractRevision = VerifiedManifest | ContractRetirement`.
+`ContractRetirement` conserva `ContractId`, `retirement_id`, identificatore
+della generazione precedente, attore, motivo, byte e firma della tombstone e
+identità del firmatario. `current_contract()` restituisce l'unione autenticata;
+`current_manifest()` restituisce soltanto `VerifiedManifest` e segnala
+`contract_retired` quando `current` indica una tombstone.
 
 La funzione di verifica:
 
@@ -459,6 +611,12 @@ def current_manifest(
     trusted_publics: Iterable[TrustedPublic],
 ) -> VerifiedManifest: ...
 
+def current_contract(
+    ref: ManifestRef,
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+) -> ContractRevision: ...
+
 def publish_localization(
     ref: ManifestRef,
     *,
@@ -468,6 +626,7 @@ def publish_localization(
     patches: tuple[LocalizationPatch, ...],
     private_key: Ed25519PrivateKey,
     trusted_publics: Iterable[TrustedPublic],
+    registry_reconciler: RegistryReconciler | None = None,
 ) -> PublicationResult: ...
 
 def publish_technical_update(
@@ -478,6 +637,8 @@ def publish_technical_update(
     private_key: Ed25519PrivateKey,
     trusted_publics: Iterable[TrustedPublic],
     removal: SurfaceRemoval | None = None,
+    removal_audit: Callable[[Mapping[str, object]], None] | None = None,
+    registry_reconciler: RegistryReconciler | None = None,
 ) -> PublicationResult: ...
 
 def publish_signed_source(
@@ -486,6 +647,8 @@ def publish_signed_source(
     expected_generation_id: str | None,
     trusted_publics: Iterable[TrustedPublic],
     removal: SurfaceRemoval | None = None,
+    removal_audit: Callable[[Mapping[str, object]], None] | None = None,
+    registry_reconciler: RegistryReconciler | None = None,
 ) -> PublicationResult: ...
 
 def activate_store(
@@ -493,7 +656,35 @@ def activate_store(
     *,
     shadow_root: Path,
     trusted_publics: Iterable[TrustedPublic],
+    quiescence_guard: QuiescenceProof | None = None,
 ) -> None: ...
+
+def retire(
+    ref: ManifestRef,
+    *,
+    expected_generation_id: str,
+    actor: str,
+    reason: str,
+    private_key: Ed25519PrivateKey,
+    trusted_publics: Iterable[TrustedPublic],
+    audit_sink: Callable[[Mapping[str, object]], None] | None = None,
+    removal: SurfaceRemoval | None = None,
+    removal_audit: Callable[[Mapping[str, object]], None] | None = None,
+    registry_reconciler: RegistryReconciler | None = None,
+) -> PublicationResult: ...
+
+def reactivate_technical_update(
+    ref: ManifestRef,
+    *,
+    expected_retirement_id: str,
+    draft: TechnicalDraft,
+    actor: str,
+    reason: str,
+    private_key: Ed25519PrivateKey,
+    trusted_publics: Iterable[TrustedPublic],
+    audit_sink: Callable[[Mapping[str, object]], None] | None = None,
+    registry_reconciler: RegistryReconciler | None = None,
+) -> PublicationResult: ...
 
 def rollback(
     ref: ManifestRef,
@@ -503,31 +694,63 @@ def rollback(
     actor: str,
     reason: str,
     trusted_publics: Iterable[TrustedPublic],
+    audit_sink: Callable[[Mapping[str, object]], None] | None = None,
+    registry_reconciler: RegistryReconciler | None = None,
 ) -> PublicationResult: ...
 ```
+
+Le API espongono inoltre radice isolata e timeout portabili con default
+conservativi, omessi qui perché non cambiano il contratto. Nel percorso
+produttivo ogni writer richiede un `registry_reconciler`; ritiro,
+riattivazione e rollback richiedono sempre anche un `audit_sink` idempotente.
+Il `None` dichiarato dalla firma Python produce un errore stabile quando il
+confine richiede il callback; non è un bypass produttivo. Analogamente
+`activate_store()` procede soltanto se `quiescence_guard` è chiamabile e
+restituisce esattamente `True`.
 
 `TechnicalDraft` contiene i byte proposti di manifest e stato e gli hash della
 fotografia di authoring da cui derivano; non contiene chiavi, path concessi o
 codice copiato. `SurfaceRemoval` contiene soltanto l'insieme canonico e non
 vuoto dei selettori rimossi, `actor` e `reason` non vuoti. Non è una scorciatoia
 per cambiare testi: autorizza soltanto rimozioni che corrispondono esattamente
-alla differenza strutturale verificata dello schema.
+alla differenza strutturale verificata dello schema. Quando `removal` è
+presente, anche `removal_audit` è obbligatorio e deve essere idempotente.
 
-`activate_store()` confronta l'insieme esatto dei contratti ammessi
-dall'inventario con `expected_catalog`, riverifica binding, `current` e
+Prima dello swap, `activate_store()` confronta l'insieme esatto dei contratti
+ammessi dall'inventario con `expected_catalog`, riverifica binding, `current` e
 generazioni nella radice shadow e applica il protocollo quiescente di §4.3:
 marker durevole prima, swap globale della radice poi. Non accetta sottoinsiemi
-e non modifica manifest, firma o stato. È idempotente soltanto per stati
-completi verificati: marker + radice valida restituiscono `repeated`; marker
-senza radice riprende dallo shadow verificato; radice valida senza marker resta
-store-only e consente di ripristinare il marker in manutenzione. Non cancella
-mai marker o radice e rifiuta una radice preesistente incoerente.
+e non modifica manifest, firma o stato. Si conclude idempotentemente soltanto
+per stati completi verificati: marker + radice valida terminano senza un nuovo
+swap; marker senza contenitore riprende dallo shadow verificato; contenitore e
+radice validi senza marker restano store-only e consentono di ripristinare il
+marker in manutenzione. Non cancella
+mai marker o radice e rifiuta una radice preesistente incoerente. Prima della
+verifica può eliminare soltanto le staging riservate riconoscibili definite in
+§4.1; i residui estranei non vengono assimilati né cancellati.
+
+L'API amministrativa `activate_prepared_contract_store()` è il confine più
+ampio usato da installer e cutover. Mantiene il blocco globale produttivo
+durante la validazione finale del report e delle sorgenti, la verifica esatta
+della shadow, il preflight read-only del registro, la chiamata rientrante ad
+`activate_store()` e la riconciliazione conclusiva. Se la produzione è già
+`ACTIVE` o `STORE_ONLY`, non riusa la shadow: ricostruisce l'inventario dai
+binding produttivi, autentica `current` come generazione o tombstone e usa
+quelle revisioni sia per l'eventuale ripristino del marker sia per la
+riconciliazione. Questa regola rende sicuro il retry dopo lo swap anche quando
+la shadow è stata consumata e l'authoring è avanzato.
 
 `publish_signed_source()` non genera codice, non lo copia e non ricalcola il
 digest nel manifest. Importa nel deposito una sorgente già firmata, conforme e
 con digest verificato. Consente a installer, generatori e importatori di
 continuare a produrre file di authoring committabili su Git senza farli leggere
 come contratto vivo dopo il cutover.
+
+I publisher di manifest accettano contratti installati `ADMITTED` o
+`DISABLED`: l'abilitazione è una policy di esposizione esterna. Rifiutano una
+sorgente `RETIRED`; una tombstone corrente richiede sempre
+`reactivate_technical_update()` e non può essere superata per errore da un
+reinstall o da un normale publish.
 
 Il flusso operativo canonico dopo il cutover è un solo comando fail-loud:
 
@@ -560,8 +783,9 @@ Traduzione e revisione semantica avvengono prima. Il publisher non invoca LLM.
 1. normalizzare le lingue con `i18n_registry.normalize_language()`;
 2. risolvere `ContractId`, `ManifestRef.manifest_dir` e radici ammesse tramite
    l'inventario comune;
-3. acquisire, nello stesso ordine in ogni API, il mutex di processo del
-   contratto e poi `writer.lock`, entrambi con timeout finito;
+3. acquisire il blocco globale del catalogo e poi, nello stesso ordine in ogni
+   API, il mutex di processo del contratto e `writer.lock`, tutti con timeout
+   finito;
 4. leggere `current` una volta e caricare e verificare integralmente la
    generazione indicata **prima** di valutare conflitto o idempotenza;
 5. caricare e verificare la generazione immutabile
@@ -606,7 +830,8 @@ Traduzione e revisione semantica avvengono prima. Il publisher non invoca LLM.
     della generazione corrente, usando file temporanei e sostituzioni atomiche
     per ciascun file, e riverificarli; M3 usa solo fixture isolate e non tocca
     authoring produttivo;
-20. rilasciare prima `writer.lock` e poi il mutex di processo;
+20. rilasciare `writer.lock` e mutex di processo, quindi il blocco globale del
+    catalogo;
 21. anche nel ramo `repeated=True`, rileggere e riverificare `current` dopo il
     rilascio e, soltanto quando M4 ha abilitato il percorso vivo, riconciliare
     il registro RM-0005 dalla fotografia appena letta, mai dal candidato
@@ -637,27 +862,39 @@ Il lock è implementato nello stesso `contract_store.py`:
 - nessun lock basato sulla sola esistenza del file.
 
 Tutti gli scrittori Metnos che possono cambiare la sorgente tecnica dello stesso
-contratto passano da un'API di pubblicazione che acquisisce il medesimo lock.
-Un chiamante non acquisisce il lock prima di invocarla. Il lock serializza gli
-scrittori cooperanti; `expected_generation_id` impedisce di usare un candidato
-preparato prima dell'acquisizione e ormai obsoleto.
+contratto passano da un'API di pubblicazione che acquisisce prima il blocco
+globale di ammissione e poi il medesimo lock per contratto. Il primo protegge
+appartenenza, nomi e sorgenti condivise dell'intero catalogo; il secondo
+serializza il puntatore del contratto. Un chiamante non pre-acquisisce il writer
+lock prima di invocare il publisher pubblico. `expected_generation_id`
+impedisce comunque di usare un candidato preparato prima dell'acquisizione e
+ormai obsoleto.
+
+Il blocco globale è rientrante nello stesso thread e ripristina la propria
+contabilità dopo `fork`; la mutua esclusione reale resta affidata al file lock.
+Questo consente ai confini amministrativi di mantenere una sola esclusione
+esterna senza saltare i controlli interni e senza scambiare una copia della
+memoria del processo per un lock acquisito dal figlio.
 
 ### 6.2 Pubblicazione tecnica
 
 `publish_technical_update()` è il percorso del comando `sign.py publish` e
 possiede l'intera transazione:
 
-1. acquisisce una sola volta mutex e `writer.lock`; nessun chiamante e nessun
-   helper interno li acquisisce di nuovo;
+1. acquisisce il blocco globale del catalogo e una sola volta mutex e
+   `writer.lock`; nessun chiamante e nessun helper interno pre-acquisisce o
+   duplica il writer lock;
 2. rilegge e autentica integralmente i byte persistiti di `current` prima di
    confronto o idempotenza: struttura, firma, stato e generation digest devono
    essere validi. Non confronta però il vecchio digest dichiarato col codice
    che l'aggiornamento sta intenzionalmente sostituendo; il candidato viene
    invece verificato contro il codice corrente. Per un contratto nuovo ammette
    `expected_generation_id=None`
-   soltanto se `current` e cronologia non esistono; crea quindi il binding
+   soltanto se `current` non esiste e, dopo il recupero delle staging di §4.1,
+   non esiste cronologia autorevole oppure esiste soltanto la directory finale
+   esatta del candidato lasciata fra rename e puntatore; crea quindi il binding
    immutabile prima della prima generazione o riusa un binding byte-identico
-   lasciato da un tentativo interrotto. Una cronologia senza
+   lasciato da un tentativo interrotto. Qualunque altra cronologia senza
    `current` è corruzione, non inizializzazione;
 3. richiede che gli hash di authoring contenuti nel draft coincidano ancora
    con i file sorgente, così il mirror non sovrascrive un edit concorrente;
@@ -665,19 +902,21 @@ possiede l'intera transazione:
    §6.3 e verifica la differenza tecnica completa;
 5. calcola il digest dal codice corrente usando base sorgente e containment,
    aggiorna soltanto `[code].digest` nei byte in memoria e riverifica standard,
-   ammissione e controlli RM-0002 richiesti;
+   pubblicabilità (`ADMITTED` o `DISABLED`, mai `RETIRED`) e controlli RM-0002
+   richiesti;
 6. firma i byte in memoria con l'oggetto chiave ricevuto, riverifica subito la
    firma e costruisce lo stato canonico;
 7. applica postcondizione, idempotenza, generazione e puntatore con lo stesso
    algoritmo di §6;
 8. soltanto nel percorso produttivo abilitato da M4, riconcilia authoring sotto
-   lo stesso lock; dopo il rilascio rilegge `current` e riconcilia il registro.
+   lo stesso confine globale→writer; dopo il rilascio rilegge `current` e
+   riconcilia il registro.
 
 `publish_signed_source()` resta il confine per una sorgente importata già
-firmata. Possiede a sua volta un solo lock, non chiama
-`publish_technical_update()` e non rifirma: verifica gli stessi vincoli di
-base, codice, lingua, rimozione e postcondizione prima di delegare agli helper
-`_locked`. Installer e generatori locali usano invece
+firmata. Possiede a sua volta un solo writer lock, dopo il blocco globale, non
+chiama `publish_technical_update()` e non rifirma: verifica gli stessi vincoli
+di base, codice, lingua, rimozione e postcondizione prima di delegare agli
+helper `_locked`. Installer e generatori locali usano invece
 `publish_technical_update()`.
 
 ### 6.3 Politica generale degli aggiornamenti tecnici
@@ -706,12 +945,28 @@ aggiungono inoltre un nuovo argomento multilingue valido, rifiutano una nuova
 superficie incompleta e distinguono la rimozione ordinaria da quella esplicita
 e auditata.
 
+### 6.4 Ritiro e riattivazione
+
+`retire()` richiede che la generazione attesa sia ancora corrente e verificata,
+che sorgente e codice esistano fino al commit, e che attore, motivo e audit
+idempotente siano presenti. Sotto lo stesso lock crea e autentica la tombstone
+di §4.2, registra l'autorizzazione con `event_id` stabile e sostituisce soltanto
+`current`. Dopo il commit il registro i18n invalida atomicamente le righe di
+quel `ContractId`; il chiamante può poi rimuovere la sorgente.
+
+`reactivate_technical_update()` è un'operazione distinta. Richiede l'esatto
+`retirement_id`, una nuova sorgente pubblicabile, attore, motivo e audit; usa la
+generazione precedente indicata dalla tombstone come base linguistica e di
+schema, verifica il nuovo codice e pubblica una normale generazione. Un
+reinstall, `publish_signed_source()` o `publish_technical_update()` ordinario
+non riattiva mai implicitamente il contratto.
+
 ## 7. Lettura, sorgenti e ripristino
 
 ### 7.1 Loader
 
 Il bootstrap applica la matrice di §4.3: usa il catalogo legacy soltanto quando
-marker e radice produttiva sono entrambi assenti. In modalità deposito:
+marker e contenitore produttivo sono entrambi assenti. In modalità deposito:
 
 1. enumera le directory `<contract-key>` e legge soltanto `binding.json`;
 2. verifica versione, `ContractId`, corrispondenza dello storage key e unicità;
@@ -725,8 +980,9 @@ marker e radice produttiva sono entrambi assenti. In modalità deposito:
 Un avvio a freddo con puntatore malformato, generazione assente o firma non
 valida rifiuta quel contratto. Non sceglie “la directory più recente” e non
 ripiega silenziosamente sulla sorgente di authoring. Marker presente con
-radice mancante blocca l'intero bootstrap; radice presente con marker mancante
-resta store-only e segnala il marker da ripristinare in manutenzione.
+radice mancante o struttura superiore incompleta blocca l'intero bootstrap;
+soltanto una radice completa e non vuota con marker mancante resta store-only e
+segnala il marker da ripristinare in manutenzione.
 
 ### 7.2 Sorgenti tecniche
 
@@ -746,30 +1002,43 @@ preparare artefatti.
 
 ### 7.3 Ripristino
 
-`rollback()` acquisisce il lock, verifica che `current` coincida con la
-generazione attesa, verifica integralmente la generazione scelta e sostituisce
-atomicamente il puntatore. Registra attore e motivo nel normale audit operativo.
-Non modifica né duplica alcuna generazione. Prima di rilasciare il lock
-riconcilia i tre file di authoring con quella scelta soltanto nel percorso vivo
-abilitato da M4; dopo il rilascio rilegge `current` e, nello stesso caso,
-riconcilia il registro come in §6. Se un writer è intervenuto nel frattempo,
-prevale sempre la fotografia appena riletta.
+`rollback()` acquisisce il lock e autentica la revisione indicata da `current`
+come base CAS: struttura, firma, stato e identificatore devono essere validi,
+ma il digest dichiarato dalla generazione corrente non viene confrontato con
+il codice di authoring che il chiamante ha già ripristinato. Verifica invece
+integralmente la generazione bersaglio **contro quel codice ripristinato** e
+solo allora sostituisce atomicamente il puntatore. Registra attore e motivo nel
+normale audit operativo e non copia, modifica o duplica codice o revisioni.
+Se la base CAS è una tombstone, il rollback può ripristinare esplicitamente
+una generazione già esistente attraverso lo stesso confine auditato; non può
+importare una nuova sorgente né creare una generazione.
 
-Staging incompleti e generazioni complete non referenziate vengono segnalati da
-una diagnostica in sola lettura. La prima versione non li elimina.
+Prima di rilasciare il lock riconcilia i tre file di authoring con il bersaglio
+soltanto nel percorso vivo abilitato da M4; dopo il rilascio rilegge `current`
+e, nello stesso caso, riconcilia il registro come in §6. Se un writer è
+intervenuto nel frattempo, prevale sempre la fotografia appena riletta.
+
+La diagnostica è in sola lettura. Segnala staging, revisioni complete non
+raggiungibili e soglie di crescita, ma non esegue GC. Quando `current` indica
+una tombstone, sia il ritiro sia la generazione precedente autenticata dalla
+tombstone sono raggiungibili e non sono orfani. Il solo recupero mutante è
+quello ristretto alle staging riservate e riconoscibili di §4.1, durante publish
+o cutover; residui estranei e revisioni autorevoli non vengono eliminati.
 
 ## 8. Modifiche file per file
 
 | File | Modifica obbligatoria | Vietato |
 |---|---|---|
-| `runtime/contract_store.py` | unico nuovo modulo: binding, snapshot, lock, generazioni, publisher linguistico/tecnico e cutover | framework di plugin, DB, seconda firma o lock annidati |
-| `runtime/sign.py` | primitive pure; comando `publish` che prepara il draft e delega l'unico lock al deposito; avviso fail-loud per `sign` | sign-then-publish o lock proprio del comando |
+| `runtime/contract_store.py` | nucleo coeso di binding, revisioni, recupero, blocco globale, writer lock, publisher, ritiro e attivazione | framework di plugin, DB, envelope/seconda firma delle generazioni o ordine dei lock alternativo |
+| `runtime/sign.py` | primitive pure; comando `publish` che prepara il draft e delega al deposito il confine globale→writer; avviso fail-loud per `sign` | sign-then-publish o lock proprio del comando |
 | `runtime/loader.py` | matrice bootstrap marker/radice, binding strutturali e snapshot verificato | leggere authoring post-cutover, modalità ibrida o ripiego silenzioso |
-| `runtime/i18n_pipeline.py` | M3 integrazione isolata/flag off; M4 chiamata viva a `publish_localization()` | scrivere manifest o firma vivi prima del cutover |
+| `runtime/i18n_pipeline.py`, `runtime/i18n_registry.py` | M4 chiamata viva a `publish_localization()`, identità di registro condivisa, preflight read-only e riconciliazione da revisione riletta | scrivere manifest o firma vivi, creare il DB durante il preflight o ignorare proprietari storici |
 | `runtime/i18n_materializer.py` | unica enumerazione dei selettori e unico decoder/encoder canonico dello stato manifest | copie locali dello schema JSON |
 | `runtime/i18n_activation.py` | validatore reale sulla lingua e sullo snapshot | validatore sempre positivo nel test completo |
 | `runtime/i18n_translator.py` | allineatore ritirato o delegato | secondo publisher linguistico |
-| `runtime/synth_request.py`, `runtime/migrate_manifest_descriptions.py`, `runtime/admin/i18n_migrate_manifests.py` | produrre soltanto selettori e byte-state canonici | forma legacy `args.<name>.description` |
+| `runtime/synth_request.py`, `runtime/migrate_manifest_descriptions.py` | produrre soltanto selettori e byte-state canonici | forma legacy `args.<name>.description` |
+| `runtime/admin/i18n_migrate_manifests.py` | preparazione su fotografia globale stabile; preflight esatto report→source→shadow→registro; retry post-swap dalla produzione | riconciliare dal candidato shadow dopo lo swap o mutare il registro nel preflight |
+| `runtime/stack_reconcile.py`, `runtime/stack_migration.py`, `runtime/contract_cutover_guard.py` | ordine catalogo produttivo→reconcile mantenuto attraverso quiescenza, attivazione e primo load store-only | acquisizione inversa o rilascio prima della verifica a freddo |
 | installer e generatori locali | `publish_technical_update()` dopo ammissione | firma offline seguita da secondo publish |
 | importatori di artefatti già firmati | `publish_signed_source()` con gli stessi controlli tecnici e linguistici | bypass per provenienza esterna |
 | `runtime/manifest_inventory.py` | prima del cutover inventario completo; dopo, `ManifestRef` strutturali da binding + mappa origin | parsificare authoring come contenuto vivo o indice globale duplicato |
@@ -788,16 +1057,17 @@ Il rapporto non usa un elenco numerico cablato: una guardia rigenerabile
 fallisce quando compare un callsite non classificato. M1 non inizia finché
 ogni voce è classificata; M4 non crea `ACTIVE` finché ogni lettore vivo usa
 `current_manifest(ref, ...)` e ogni scrittore vivo usa `publish_localization()`,
-`publish_technical_update()`, `publish_signed_source()` o `rollback()`. Gli
+`publish_technical_update()`, `publish_signed_source()`, `retire()`,
+`reactivate_technical_update()` o `rollback()`. Gli
 strumenti che modificano in posto una sorgente ammessa passano dal publisher;
 i generatori di directory nuove entrano nel lock soltanto al publish.
 
 ## 9. Ordine di implementazione
 
-Ogni fase corrisponde a un commit autonomo. Nessuna implementazione deve
-saltare il gate della precedente. La controrevisione è risolta e RM-0007 è
-`ready`; M0 parte soltanto dopo la consegna di RM-0002 L2, così `ContractId`
-resta proprietà dell'inventario comune e la dipendenza non si inverte.
+Ogni fase corrisponde a un commit autonomo e non può saltare il gate della
+precedente. M0-M4 risultano implementate e certificate. Il cutover produttivo,
+il gate condiviso e i due cicli post-cutover sono registrati nel rapporto
+`internal/reports/rm0007-final-certification-20260825.md`.
 
 ### M0 — Caratterizzazione e inventario
 
@@ -885,10 +1155,18 @@ restano identici. Nessun authoring o registro produttivo è stato modificato.
 - confrontare catalogo legacy e versionato in modalità ombra;
 - migrare i callsite censiti a `publish_technical_update()` oppure, solo per
   import già firmati, `publish_signed_source()`, e al comando canonico
-  `sign.py publish`;
+  `sign.py publish`; rimozioni e reinstallazioni passano rispettivamente da
+  `retire()` e `reactivate_technical_update()`, non da eccezioni locali;
 - collegare realmente la pipeline RM-0005, attivare la riconciliazione
   authoring sotto lock e quella del registro da una nuova lettura, quindi
   delegare o ritirare l'allineatore legacy;
+- estendere il blocco globale di ammissione a firma/migrazione, publisher,
+  lifecycle, loader e cambiamenti di visibilità; fissare e provare gli ordini
+  produttivo→writer, produttivo→shadow→writer e produttivo→reconcile;
+- nel confine preparato, sotto la stessa esclusione produttiva, validare
+  esattamente report, inventario e byte sorgente, generazioni shadow e
+  proprietà storiche del registro **prima** del marker; dopo lo swap rileggere
+  soltanto produzione e tombstone correnti per ogni retry;
 - entrare in manutenzione quiescente, rigenerare l'inventario e riverificare
   l'intero deposito contro il codice corrente;
 - creare e rendere durevole `ACTIVE`, eseguire lo swap globale shadow→radice
@@ -901,11 +1179,18 @@ restano identici. Nessun authoring o registro produttivo è stato modificato.
 - provare ripristino, modifica solo tecnica dopo localizzazione, aggiornamento
   e riavvio.
 
-**Gate:** legacy soltanto con marker e radice entrambi assenti; la presenza di
-uno dei due vieta ogni fallback; binding completi; nessun secondo publisher
+**Gate:** legacy soltanto con marker e contenitore entrambi assenti; la presenza
+di uno dei due vieta ogni fallback; binding completi; preflight esatto e
+read-only prima del marker; ordine dei lock unico e provato; retry post-swap
+indipendente dalla shadow e fedele alle tombstone; nessun secondo publisher
 linguistico; nessun executor scompare; `CLAUDE.md` descrive il comportamento
-vivo; ingressi riaperti solo dopo load/restart globale verde; due cicli completi
-verdi. ADR 0223 resta `proposed` fino al superamento di questo gate.
+vivo; servizi fermi fino al load store-only verde, seguito da avvio controllato
+e verifica immediata della readiness; due cicli completi verdi. Il superamento
+di questo gate consente l'accettazione di ADR 0223.
+
+Il confine è unico e condiviso da loader, publisher, installer, pipeline i18n
+e strumenti operativi. Censimento, migrazione produttiva, restart e due cicli
+sono verdi; M4 è conclusa e ADR 0223 è accettata.
 
 ## 10. Prove obbligatorie
 
@@ -937,6 +1222,13 @@ verdi. ADR 0223 resta `proposed` fino al superamento di questo gate.
 - manifest parsificato dagli stessi byte firmati;
 - arresto dopo il binding e prima della prima generazione: retry con binding
   identico completa; binding differente blocca;
+- staging vuota o con sottoinsieme coerente di un solo tipo viene recuperata
+  sotto lock; file sconosciuto, link, directory annidata o misto
+  generazione/ritiro blocca senza cancellazione parziale;
+- temporanei `binding.json` e `current` conformi vengono eliminati soltanto
+  dopo la validazione dell'intero piano; binding non canonico, puntatore verso
+  revisione assente/non autenticata o qualunque altro residuo bloccano senza
+  cancellazioni parziali;
 - file mancante, aggiunto o modificato nella generazione;
 - due promotori dalla stessa generazione: uno solo riesce;
 - stesso candidato ripetuto dopo il commit: successo idempotente;
@@ -948,11 +1240,20 @@ verdi. ADR 0223 resta `proposed` fino al superamento di questo gate.
 - loader continuo: soltanto generazione vecchia o nuova;
 - scrittore tecnico cooperante contro publisher linguistico;
 - due thread nello stesso processo e due processi distinti serializzati;
+- l'ammissione di due contratti con lo stesso nome è serializzata dal blocco
+  globale e soltanto un `ContractId` può riuscire; il nome resta occupato anche
+  quando il primo contratto è `DISABLED` o ha una tombstone corrente;
+- prove strumentate osservano esattamente produttivo→writer,
+  produttivo→shadow→writer e produttivo→reconcile, con rilascio inverso e
+  contabilità dei lock azzerata nel figlio dopo `fork`;
 - `current` corrotto o non verificabile non può produrre `repeated=True`;
 - writer A seguito da writer B: la riconciliazione fuori lock rilegge B e non
   ripristina nel registro lo stato di A;
 - `sign.py publish` produce una sola acquisizione del writer lock; un helper che
-  tenta di riacquisirlo fa fallire la prova, non viene tollerato dal timeout.
+  tenta di riacquisirlo fa fallire la prova, non viene tollerato dal timeout;
+- ritiro concorrente, retry dello stesso ritiro e riattivazione esplicita
+  rispettano CAS, firma con dominio e audit idempotente; il publish ordinario
+  non supera una tombstone.
 
 ### 10.3 Arresti e piattaforme
 
@@ -964,16 +1265,19 @@ Terminare un processo reale:
 4. dopo `os.replace()` e prima della riconciliazione.
 
 Dopo il riavvio, `current` indica la vecchia o la nuova generazione completa.
-Le prove vengono eseguite su Linux locale e Windows NTFS reale, non soltanto
-con mock. Il rapporto distingue crash del processo da garanzia contro perdita
-di alimentazione.
+Le primitive portabili del deposito vengono provate su Linux locale e Windows
+NTFS reale, non soltanto con mock. Il cutover M4 del server viene provato
+sull'installazione Linux/systemd di riferimento. Il rapporto distingue crash
+del processo da garanzia contro perdita di alimentazione e non confonde il
+client Windows con un server Metnos.
 
 Su Windows le prove reali comprendono inoltre: lock e unlock del primo byte
 sullo stesso handle; contesa fra processi con timeout monotono; riuso della
 directory `<64hex>`; assenza di `:` nei nomi; lettore che chiude subito
 `current`; violazione di condivisione transitoria durante `os.replace()` con
 retry finito; nessuna cancellazione preventiva del puntatore. Un mock Windows
-su Linux non soddisfa il gate M2/M4.
+su Linux non soddisfa il gate delle primitive portabili M2; marker, quiescenza,
+swap e restart M4 appartengono invece al gate server Linux.
 
 ### 10.4 Integrazione
 
@@ -983,25 +1287,49 @@ su Linux non soddisfa il gate M2/M4.
 - sorgente tecnica modificata non diventa viva senza pubblicazione;
 - generazione iniziale rifiutata se la sorgente non è valida;
 - rollback solo verso generazione verificata;
+- rollback tecnico reale codice A → pubblicazione B → ripristino authoring A →
+  rollback ad A: la base B è autenticata senza confrontarla col codice A e il
+  bersaglio A viene invece verificato contro quel codice;
 - registro riconciliato dopo arresto post-commit;
 - cache invalidata da `generation_id`, non dalla combinazione di `mtime`;
+- report con schema/cardinalità errati, inventario authoring cambiato, sorgente
+  rifirmata o stato cambiato a parità di manifest, ID shadow diverso e
+  collisione di proprietà i18n storica falliscono tutti prima del marker; il
+  preflight di un registro assente non crea alcun file;
 - marker assente con deposito shadow completo: loader solo legacy;
-- marker e radice produttiva entrambi assenti: loader legacy; ciascuna loro
-  presenza separata vieta il fallback;
+- marker e contenitore produttivo entrambi assenti: loader legacy; ciascuna
+  loro presenza separata vieta il fallback;
+- matrice marker/contenitore/radice: contenitore o radice superiore mancanti,
+  vuoti o con residui estranei producono `RECOVERY_REQUIRED`, mai `ACTIVE`,
+  `STORE_ONLY` o legacy;
 - arresto dopo il marker durevole e prima dello swap: bootstrap fail-closed e
-  ripresa del cutover; perdita del marker con radice presente: store-only;
-- retry di cutover con marker + radice valida: `repeated`; radice incoerente:
-  rifiuto senza cancellazione; radice valida senza marker: ripristino soltanto
-  in manutenzione;
+  ripresa del cutover; perdita del marker con contenitore e radice completi:
+  store-only;
+- retry di cutover con marker + radice valida: conclusione idempotente; radice
+  incoerente: rifiuto senza cancellazione; radice valida senza marker:
+  ripristino soltanto in manutenzione;
+- retry successivo allo swap con shadow assente: inventario, generazioni e
+  tombstone vengono riletti dalla produzione; un publish o ritiro successivo
+  non viene riportato all'ID contenuto nel report originario e la
+  riconciliazione del registro usa la revisione appena riletta;
 - creazione di `ACTIVE` impossibile se binding o generazione iniziale non sono
   validi;
 - cutover rifiutato senza quiescenza dimostrata e inventario rigenerato subito
   prima del marker; nuovi turni, scheduler, publisher, reload e watcher restano
-  bloccati fino a load store-only e restart/swap globale completi e verdi;
+  fermi fino al load store-only verde; il successivo avvio systemd e la
+  readiness vengono verificati separatamente e non possono riaprire il layout
+  authoring;
 - marker presente con `current` mancante: rifiuto fail-closed e nessun fallback;
 - nuova sorgente authoring dopo `ACTIVE`: resta invisibile finché
   `sign.py publish` crea binding e prima generazione; `current` mancante con
-  cronologia preesistente resta corruzione e non viene reinizializzato;
+  binding soltanto o con l'esatta generazione candidata completa il retry,
+  mentre ogni altra cronologia preesistente resta corruzione e non viene
+  reinizializzata;
+- un contratto `DISABLED` può essere pubblicato senza diventare visibile; una
+  sorgente `RETIRED` viene rifiutata e richiede riattivazione esplicita;
+- la diagnostica non classifica come orfana la generazione precedente
+  autenticata dalla tombstone corrente, ma segnala le altre revisioni non
+  raggiungibili;
 - traduzione pubblicata → modifica solo tecnica → `sign.py publish`: traduzione
   e provenienza conservate; sorgente stale equivalente rifiutata;
 - nuovo selettore e nuova lingua completi ammessi soltanto dopo linter locale e
@@ -1026,16 +1354,24 @@ su Linux non soddisfa il gate M2/M4.
 | verificato A, caricato B | bloccante | fotografia unica |
 | manifest, firma e stato incoerenti | bloccante | generazione immutabile e puntatore unico |
 | aggiornamento perso | alta | lock e generazione attesa |
+| due contratti acquisiscono lo stesso nome | bloccante | blocco globale di ammissione + unicità su attivi, disabilitati e tombstone |
+| deadlock fra pubblicazione, cutover e servizi | bloccante | ordine unico produttivo→shadow→writer e produttivo→reconcile |
 | path del registro diventa autorità | alta | `ContractId` dall'inventario |
 | digest risolto dalla generazione o fuori radice | bloccante | base sorgente censita + containment dopo `resolve()` |
 | retry confonde patch presenti con commit completo | alta | riverifica `current` + uguaglianza del `generation_id` desiderato |
 | pubblicazione tecnica cancella o bypassa traduzioni | bloccante | politica §6.3 + controlli RM-0002 + rimozione esplicita auditata |
 | writer legacy resta vivo | alta | cutover e guardia statica mirata |
-| catalogo ibrido o ritorno implicito al legacy | bloccante | shadow separata; marker durevole prima dello swap; root o marker vietano fallback |
+| catalogo ibrido o ritorno implicito al legacy | bloccante | shadow separata; marker durevole prima dello swap; contenitore o marker vietano fallback |
+| report o shadow diventano obsoleti durante il cutover | bloccante | esclusione produttiva continua + preflight esatto prima del marker |
+| retry post-swap ripristina una revisione vecchia | bloccante | produzione/tombstone autorevoli + nuova lettura prima del registro |
 | authoring torna contenuto vivo post-cutover | bloccante | binding minimo + `current_manifest(ref)` + `VerifiedManifest.parsed` |
 | puntatore corrotto al cold boot | alta | rifiuto del contratto, nessuna scelta euristica |
+| ritiro aggirato da reinstall o publish | bloccante | tombstone firmata + API distinta di riattivazione auditata |
+| staging di crash confusa con una revisione | alta | namespace riservato, struttura chiusa e recupero solo sotto il confine comune |
+| recupero elimina metà dei residui prima di trovare corruzione | alta | piano completo validato prima della prima cancellazione |
+| predecessore di una tombstone trattato come orfano | alta | reachability esplicita ritiro → generazione precedente |
 | codice cambia dopo la verifica | alta, residua | digest rifiutato al load; EXEC-BIND-001 per garanzia forte |
-| semantica Windows diversa | alta | prova NTFS reale |
+| semantica NTFS diversa per le primitive portabili | alta | prova NTFS reale; cutover server esclusivamente Linux/systemd |
 | crescita dello spazio | bassa | circa 7,5 KB per generazione misurati; rapporto, nessuna GC prematura |
 
 ## 12. Criteri di completamento
@@ -1046,8 +1382,13 @@ RM-0007 passa a `implemented` soltanto quando:
 - la base viene verificata prima della modifica e nuovamente sotto lock;
 - il loader interpreta gli stessi byte verificati;
 - manifest, firma e stato diventano visibili come una generazione;
+- `current` distingue generazione attiva e tombstone firmata; ritiro e
+  riattivazione sono espliciti, CAS e auditati;
 - un candidato obsoleto non cambia il puntatore;
 - due scrittori non perdono aggiornamenti;
+- il blocco globale impedisce collisioni di nome e usa lo stesso ordine con
+  writer, shadow, policy di visibilità e reconcile;
+- un nome resta riservato allo stesso `ContractId` anche dietro una tombstone;
 - il registro i18n non concede path;
 - il digest usa la directory sorgente e non può uscire dalle radici ammesse;
 - selettori e byte dello stato linguistico rispettano l'unico formato canonico;
@@ -1058,24 +1399,33 @@ RM-0007 passa a `implemented` soltanto quando:
 - una pubblicazione tecnica conserva testi/stato esistenti, controlla ogni
   aggiunta e rende esplicita ogni rimozione;
 - il retry riusa soltanto una generazione integralmente identica e verificata;
+- staging di crash riconoscibili sono recuperabili senza accettare residui
+  estranei;
+- temporanei di binding e puntatore vengono prima validati come insieme e poi
+  rimossi, senza promozione o pulizia parziale;
 - authoring e registro vengono riconciliati anche nel ramo idempotente;
-- crash e concorrenza sono provati su Linux e Windows;
+- crash e concorrenza delle primitive portabili sono provati su Linux e
+  Windows/NTFS; il cutover server è provato su Linux/systemd;
 - una pubblicazione fallita non rende indisponibile la generazione precedente;
 - non esistono eccezioni per executor o lingua;
-- marker/radice effettuano un unico cutover globale che non torna implicitamente
-  al legacy;
+- marker/contenitore effettuano un unico cutover globale che non torna
+  implicitamente al legacy;
+- il confine preparato prova report, source, shadow e proprietà del registro
+  prima del marker e, dopo lo swap, riparte dalla sola produzione corrente;
 - il loader post-cutover enumera binding e usa solo
   `VerifiedManifest.parsed`, senza parsificare authoring;
+- `DISABLED` resta una policy di visibilità e non impedisce la pubblicazione;
+  `RETIRED` non passa dai publisher ordinari;
 - M3 resta non produttivo e mirror/registro entrano soltanto con M4;
-- `sign.py publish` ha un solo proprietario del lock e firma dentro la stessa
-  transazione;
+- `sign.py publish` delega allo store il blocco globale e l'unica acquisizione
+  del writer lock, e firma dentro la stessa transazione;
 - il comando operativo e `CLAUDE.md` §7.10 descrivono lo stesso flusso vivo;
 - il censimento non contiene callsite vivi non migrati.
 
 Passa a `closed` dopo cutover sull'installazione di riferimento,
-documentazione operativa e rapporto finale. La controrevisione è risolta e lo
-sviluppo può iniziare nell'ordine M0-M4. ADR 0223 resta `proposed` e passa ad
-`accepted` soltanto insieme al gate M4 verde.
+documentazione operativa e rapporto finale. Queste condizioni sono soddisfatte
+dal rapporto `internal/reports/rm0007-final-certification-20260825.md`; la
+roadmap è chiusa e ADR 0223 è `accepted`.
 
 ## 13. Rinviato esplicitamente
 
@@ -1085,7 +1435,7 @@ Non appartengono a RM-0007:
 - nuovo runner locale o protocollo dei bundle remoti;
 - binding dell'intera release dei builtin;
 - pubblicazione tecnica atomica di manifest e codice;
-- envelope e seconda firma;
+- envelope o seconda firma sulle generazioni attive;
 - ricevute crittografiche;
 - database come puntatore autorevole;
 - rollback mediante duplicazione della generazione;
@@ -1109,8 +1459,8 @@ esso, una delle invarianti di §3.4 non può essere soddisfatta.
 8. Non mantenere due publisher linguistici.
 9. Non invocare LLM mentre il lock è acquisito.
 10. Non riaprire il manifest dopo avere costruito `VerifiedManifest`.
-11. Se esiste `ACTIVE` **oppure** la radice produttiva, non usare il ripiego
-    legacy per alcun contratto.
+11. Se esiste `ACTIVE` **oppure** il contenitore produttivo, non usare il
+    ripiego legacy per alcun contratto.
 12. Fermarsi se una fase richiede di allentare firma, digest, contenimento o
     confronto della generazione attesa.
 13. Registrare per ogni fase commit, prove e risultato.
@@ -1122,12 +1472,15 @@ esso, una delle invarianti di §3.4 non può essere soddisfatta.
 16. Su Windows usare un file di lock permanente di almeno un byte, lo stesso
     handle e retry monotoni finiti; non cancellare mai `current` per facilitare
     `os.replace()`.
-17. Il lock appartiene all'API di pubblicazione: nessun comando o helper lo
-    acquisisce prima di chiamarla e nessun publisher pubblico ne chiama un
-    altro.
-18. Tenere lo shadow fuori dalla radice produttiva; dopo la verifica creare e
+17. Il writer lock per contratto appartiene all'API di pubblicazione: nessun
+    comando o helper lo acquisisce prima di chiamarla e nessun publisher
+    pubblico ne chiama un altro. Il blocco globale può invece essere mantenuto
+    da un confine amministrativo e riacquisito in modo rientrante.
+18. Tenere lo shadow fuori dalla radice produttiva; sul server Linux/systemd
+    supportato, dopo la verifica creare e
     rendere durevole `ACTIVE`, poi fare un solo swap globale. Non cancellare il
-    marker e non interpretarne l'assenza come legacy quando la radice esiste.
+    marker e non interpretarne l'assenza come legacy quando il contenitore
+    esiste.
 19. Modificare `CLAUDE.md` §7.10 soltanto nel commit del cutover M4 e insieme al
     comando `sign.py publish` funzionante e provato.
 20. Dopo una pubblicazione linguistica, provare sempre il successivo publish
@@ -1137,6 +1490,28 @@ esso, una delle invarianti di §3.4 non può essere soddisfatta.
     non parsificare authoring per ricavare contenuto vivo.
 22. In M3 mantenere spento il collegamento produttivo e non eseguire mirror;
     abilitarli soltanto dentro il cutover M4 quiescente.
+23. Trattare `current` come puntatore a `ContractRevision`: generazione a tre
+    file o ritiro a due file firmato con dominio. Non aggiungere envelope o
+    copie del codice.
+24. Recuperare soltanto `.generation-*` strutturalmente riconoscibili, sotto
+    lock o cutover; non cancellare residui estranei, revisioni non correnti o
+    sorgenti.
+25. Nel rollback tecnico autenticare strutturalmente la revisione corrente e
+    verificare la generazione bersaglio contro l'authoring già ripristinato.
+26. Non confondere stato `DISABLED` e ritiro: il primo è visibilità esterna, il
+    secondo richiede tombstone e riattivazione esplicita.
+27. Acquisire sempre il blocco del catalogo produttivo per primo. Se serve la
+    shadow, acquisirla per seconda e i writer dei contratti per ultimi, in
+    ordine canonico. Per servizi e lifecycle usare produttivo→reconcile.
+28. Prima del marker, validare nello stesso confine report, inventario, byte
+    sorgente, shadow e proprietà storiche del registro. Il preflight del
+    registro deve restare read-only e non creare il DB mancante.
+29. Dopo lo swap non richiedere la shadow e non riconciliare dal report:
+    rileggere generazioni e tombstone dalla produzione, quindi aggiornare il
+    registro dalla revisione appena autenticata.
+30. Per `.generation-*` e temporanei sibling di binding/puntatore, costruire e
+    validare l'intero piano di recupero prima della prima cancellazione; non
+    promuovere mai i temporanei.
 
 ## 15. Mandato per la controrevisione esterna
 
@@ -1184,9 +1559,11 @@ riferita a un perimetro diverso.
 | 2026-08-25 | `active` | perimetro ridotto alla pubblicazione linguistica; specifica KISS candidata alla controrevisione esterna |
 | 2026-08-25 | `active` | controrevisione esterna eseguita (§17): approvabile con 4 rilievi bloccanti di specifica, 3 rischi quantificati, 3 irrobustimenti; stima 12-19 giorni in tre blocchi |
 | 2026-08-25 | `ready` | B1-B4 e irrobustimenti integrati nei §§3-14; aggiunto cutover globale fail-closed; autorizzato l'aggiornamento coordinato di `CLAUDE.md` in M4 |
-| 2026-08-25 | `ready` | seconda revisione avversariale integrata: boundary irreversibile, binding strutturali, M3 non produttiva, singolo lock tecnico, quiescenza completa e politica evolutiva; ADR resta `proposed` fino a M4 |
+| 2026-08-25 | `ready` | seconda revisione avversariale integrata: boundary irreversibile, binding strutturali, M3 non produttiva, singolo owner del writer lock tecnico, quiescenza completa e politica evolutiva; ADR resta `proposed` fino a M4 |
 | 2026-08-25 | `in_progress` | M0 e M1 implementate e provate; M2 avviata sulla specifica consolidata |
 | 2026-08-25 | `in_progress` | M2 certificata su Linux e Windows/NTFS; M3 implementata, controrevisionata e confinata a depositi isolati; M4 avviabile |
+| 2026-08-25 | `in_progress` | specifica M4 riallineata al confine implementato: blocco globale e ordini canonici, preflight preparato esatto, recupero dei temporanei diretti e retry post-swap autorevole dalla produzione; nessuna evidenza di cutover ancora dichiarata |
+| 2026-08-25 | `closed` | cutover produttivo 122/122, due cicli operativi, readiness, suite completa, prove portabili e client Windows verdi; ADR 0223 accettata e distribuzione conclusa |
 
 ## 17. Controrevisioni — tracciabilità
 
@@ -1200,14 +1577,14 @@ storico e non normativo; prevalgono sempre i §§1-14 di questa roadmap.
 | B2 · selettore/stato canonico | percorsi completi dello schema `args`, encoder unico e migrazione data-led con report (§4.4) | M2-M4 |
 | B3 · retry dopo rename | verifica/riuso esatto della generazione e barriera ripetuta (§§4.2, 6) | M2 |
 | B4 · workflow operativo | `sign.py publish` e `CLAUDE.md` §7.10 nello stesso cutover (§§5.3, 9) | M4 |
-| C1 · ritorno implicito al legacy | shadow separata; marker durevole prima dello swap; marker **o** radice vietano fallback (§4.3) | M4 |
+| C1 · ritorno implicito al legacy | shadow separata; marker durevole prima dello swap; marker **o** contenitore vietano fallback (§4.3) | M4 |
 | C2 · authoring letto post-cutover | `binding.json` minimo, `ManifestRef` strutturale e contenuto solo da `VerifiedManifest.parsed` (§§4.1, 5.1, 7.1) | M2-M4 |
 | C3 · mirror anticipato | M3 isolata/flag off; mirror e registro produttivi soltanto in M4 (§9) | M3-M4 |
 | C4 · lock annidato nel publish tecnico | un solo owner del lock; draft, verifica, firma, publish e mirror nella stessa transazione (§§5.3, 6.2) | M3 |
-| C5 · quiescenza incompleta | blocco di turni, scheduler, publisher, reload e watcher fino a load/restart store-only verde (§4.3) | M4 |
+| C5 · quiescenza incompleta | servizi e produttori fermi fino al primo load store-only autenticato; poi avvio systemd controllato e readiness immediata, senza sovradichiarare un gate comune durante lo startup (§4.3) | M4 |
 | C6 · evoluzione tecnica delle superfici | coppie esistenti immutate; aggiunte sotto RM-0002; rimozioni esplicite e auditate (§6.3) | M3-M4 |
 | C7 · stato ADR prematuro | ADR 0223 resta `proposed` fino al gate M4 verde (§12) | M4 |
 
-RM-0007 è `in_progress`: M0-M3 sono implementate e certificate. Restano M4,
-il cutover produttivo, la ricertificazione completa e l'accettazione finale
-dell'ADR 0223.
+RM-0007 è `closed`: M0-M4, cutover produttivo, ricertificazione completa,
+documentazione operativa, distribuzione e accettazione dell'ADR 0223 sono
+conclusi. Non restano attività in questa roadmap.
