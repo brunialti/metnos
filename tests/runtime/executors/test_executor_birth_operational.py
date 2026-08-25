@@ -12,10 +12,14 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from contract_store import PublicationResult
+from contract_store import ContractStoreError, PublicationResult
 from executor_birth import observe_candidate
 from executor_birth_identity import (
     AdmissionContextV1, ContextComponent, ExecutorOrigin, RevisionAuthor,
+    admission_context_id,
+)
+from executor_birth_predecessor import (
+    AdmissionContextPin, predecessor_snapshot, revision_facts_id,
 )
 from executor_birth_operational import (
     BirthRequest, _assemble_birth_runtime_bundle, _birth_executor_for_test,
@@ -90,8 +94,13 @@ def _fixture(tmp_path: Path, publisher):
     shadow = _assemble_production_dependencies()
     core = _sealed_core_for_test(
         producer_registry=registry, producer_db=db,
-        context_resolver=lambda _request: context,
-        facts_resolver=lambda _request: RevisionFacts(first_birth=True),
+        context_resolver=lambda _request: (
+            context, AdmissionContextPin(admission_context_id(context), D),
+        ),
+        predecessor_resolver=lambda _request: (
+            predecessor_snapshot(None, "absent", None), None,
+        ),
+        context_epoch_resolver=lambda: D,
         shadow_dependencies=shadow, admission_private_key=admission_private,
         admission_public_key=admission_private.public_key(),
         admission_key_id="birth-1", policy_version="birth-policy-v1",
@@ -102,14 +111,17 @@ def _fixture(tmp_path: Path, publisher):
         candidate, candidate / "manifest.toml", "demo/manifest.toml", (candidate,),
     )
     request = BirthRequest(
-        REQUEST_ID, ref, None, encoded, "operator", "first birth", (),
+        REQUEST_ID, ref, encoded, "operator", "first birth", (),
         "create", candidate,
     )
     return request, core
 
 
 def test_public_request_cannot_supply_trust_or_publication_authorities():
-    assert {"checks", "issuer", "verifier", "publisher", "registry"}.isdisjoint(
+    assert {
+        "checks", "issuer", "verifier", "publisher", "registry",
+        "expected_revision_id", "predecessor_snapshot",
+    }.isdisjoint(
         inspect.signature(BirthRequest).parameters
     )
     assert "_core" not in inspect.signature(birth_executor).parameters
@@ -121,6 +133,16 @@ def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tm
     def publisher(ref, *, expected_generation_id, snapshot, request_id,
                   birth_authorization, **_options):
         calls.append(snapshot)
+        assert expected_generation_id is None
+        assert birth_authorization.predecessor_id is None
+        assert birth_authorization.predecessor_snapshot_id == predecessor_snapshot(
+            None, "absent", None,
+        ).snapshot_id
+        assert birth_authorization.revision_facts_id == revision_facts_id(
+            RevisionFacts(first_birth=True),
+        )
+        assert birth_authorization.context_epoch == D
+        assert birth_authorization.context_epoch_resolver() == D
         generation = "sha256:" + "3" * 64
         journal = "sha256:" + "4" * 64
         encoded = birth_authorization.issuer(generation, {}, request_id, journal)
@@ -143,6 +165,38 @@ def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tm
     assert replay.publication is not None
     assert replay.report.outcome is BirthOutcome.ADMITTED
     assert len(calls) == 1
+
+
+def test_complete_pipeline_rejects_context_epoch_toctou(tmp_path):
+    epoch = {"value": D}
+
+    def publisher(_ref, *, birth_authorization, **_kwargs):
+        epoch["value"] = "sha256:" + "9" * 64
+        if birth_authorization.context_epoch_resolver() != birth_authorization.context_epoch:
+            raise ContractStoreError("birth_context_changed")
+        raise AssertionError("changed epoch accepted")
+
+    request, core = _fixture(tmp_path, publisher)
+    core = replace(core, context_epoch_resolver=lambda: epoch["value"])
+    result = _birth_executor_for_test(request, _core=core)
+    assert result.publication is None
+    assert result.error_code == "birth_context_changed"
+
+
+def test_complete_pipeline_forwards_predecessor_pin_for_pointer_toctou(tmp_path):
+    expected_pin = predecessor_snapshot(None, "absent", None).snapshot_id
+
+    def publisher(_ref, *, birth_authorization, **_kwargs):
+        assert birth_authorization.predecessor_id is None
+        assert birth_authorization.predecessor_snapshot_id == expected_pin
+        # This is the failure emitted by the productive publisher when its
+        # locked reconstruction observes a pointer different from this pin.
+        raise ContractStoreError("birth_predecessor_changed")
+
+    request, core = _fixture(tmp_path, publisher)
+    result = _birth_executor_for_test(request, _core=core)
+    assert result.publication is None
+    assert result.error_code == "birth_predecessor_changed"
 
 
 def test_terminal_replay_survives_signing_key_rotation(tmp_path):
