@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Iterator, Mapping
+from typing import Iterator, Mapping, Protocol
 
 
 TREE_DOMAIN = b"metnos.executor-birth.authoring-tree/v1\0"
@@ -34,6 +34,13 @@ class AuthoringInstallError(RuntimeError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
+
+
+class AuthoringManifestRef(Protocol):
+    """Narrow structural input for the sole versioned authoring reader."""
+
+    manifest_dir: Path
+    contract_id: object
 
 
 def _canonical(value: object) -> bytes:
@@ -474,6 +481,12 @@ def read_version(paths: AuthoringPaths, contract_id: str) -> AuthoringVersionV1 
 
 def advance_version(paths: AuthoringPaths, contract_id: str, tree_id: str) -> AuthoringVersionV1:
     current = read_version(paths, contract_id)
+    # Recovery may resume after the version file itself became durable but
+    # before the prepared journal was removed.  Advancing the same tree a
+    # second time would manufacture an observer-visible change that never
+    # happened.  Treat the exact tree as the durable idempotency key.
+    if current is not None and current.tree_id == tree_id:
+        return current
     result = AuthoringVersionV1(
         contract_id=contract_id,
         version=0 if current is None else current.version + 1,
@@ -638,3 +651,25 @@ def read_authoring_versioned(
         if before != after or authoring_tree_id(payloads) != before.tree_id:
             raise AuthoringInstallError("authoring_version_changed")
         return payloads
+
+
+def read_manifest_ref_versioned(
+    ref: AuthoringManifestRef,
+    relative_paths: tuple[str, ...],
+    *,
+    timeout: float,
+) -> Mapping[str, bytes]:
+    """Read a ``ManifestRef`` without exposing its authoring locator.
+
+    Ordinary callers must pass the reference as an opaque identity.  Resolving
+    ``manifest_dir`` and deriving the control directory remain confined to this
+    reader boundary, where the shared token and the before/after version check
+    cannot accidentally be omitted.
+    """
+    contract_id = getattr(ref.contract_id, "value", ref.contract_id)
+    if not isinstance(contract_id, str):
+        raise AuthoringInstallError("authoring_tree_invalid", "contract_id")
+    paths = authoring_paths(ref.manifest_dir, contract_id)
+    return read_authoring_versioned(
+        paths, contract_id, relative_paths, timeout=timeout,
+    )
