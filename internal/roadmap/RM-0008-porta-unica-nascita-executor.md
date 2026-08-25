@@ -4,7 +4,7 @@
 > persistente · 33 correzioni adversarial approvate da Roberto · rilievi sul
 > dossier risolti nel §21 · prove in
 > `internal/reports/rm0008-adversarial-evidence-20260825.md` · implementazione
-> autorizzata e iniziata: F0 completata, F1 successiva
+> autorizzata e iniziata: F0-F1 completate, F2 successiva
 
 ## 1. Obiettivo
 
@@ -623,7 +623,7 @@ Ogni fase produce un commit Git autonomo e inizia dopo i criteri della precedent
   rifiutare verdetti non tipizzati; ritirare le esclusioni d'ambiente convertendo
   i test all'iniezione. Completata quando inventario e ricevute sono completi,
   l'ambiente non cambia gli esiti e le prove interessate passano.
-- **F1, tipi e identità in osservazione:** implementare contratti, copia, identità
+- **F1, tipi e identità in osservazione — completata il 25 agosto 2026:** implementare contratti, copia, identità
   e ricevute senza pubblicare. Completata con prove unitarie verdi e zero chiamate
   al publisher.
 - **F2, runner e revisione:** implementare isolamento, terminazione, revisore,
@@ -802,3 +802,4 @@ sviluppo.
 | 2026-08-25 | `ready` | P1 e P2 risolti: riattestazione corrente prima della chiusura dei chiamanti in F4 e indice univoco dell'epoca corrente; analisi adversarial concordata. |
 | 2026-08-25 | `active` | Roberto autorizza lo sviluppo. F0 avviata: controlli Synt e importazione resi fail-closed, variabili d'ambiente ritirate e documentazione allineata; guardia Birth e quarantena firmata degli orfani ancora aperte. |
 | 2026-08-25 | `active` | F0 completata: la guardia congela 24 chiamanti da migrare; L5/L6 non espongono bypass; 12 residui non ammessi sono stati censiti, attestati con ricevute Ed25519 e spostati senza cancellazione nella quarantena sullo stesso filesystem. La verifica successiva trova zero residui. F1 è la fase successiva. |
+| 2026-08-25 | `active` | F1 completata: staging chiusa e snapshot privato anti-link/anti-race; codec tipizzato e vettori golden per le tre identità; contesto di ammissione chiuso; ricevute Producer e Admission autenticate come codec puri. Le prove strutturali e dinamiche confermano zero chiamate al publisher, nessun consumo e nessuna influenza sul loader. F2 è la fase successiva. |

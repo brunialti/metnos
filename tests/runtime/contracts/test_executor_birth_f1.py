@@ -81,6 +81,7 @@ def test_f1_modules_have_no_publication_or_low_level_signing_imports() -> None:
     for relative in (
         "runtime/executor_birth.py",
         "runtime/executor_birth_identity.py",
+        "runtime/executor_birth_receipts.py",
         "runtime/executor_birth_snapshot.py",
     ):
         tree = ast.parse((root / relative).read_text(encoding="utf-8"))
