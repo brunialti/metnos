@@ -14,6 +14,7 @@ from enum import Enum
 from pathlib import Path
 
 from manifest_inventory import ContractId
+from executor_birth_feedback import QuarantineCAS
 
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -297,4 +298,56 @@ def get_cache(key: EpochCacheKey, *, db_path: Path) -> bytes | None:
         ).fetchone()
         return None if row is None else bytes(row["payload"])
     finally:
+        connection.close()
+
+
+def quarantine_for_feedback(*, contract_id: ContractId, generation_id: str,
+                            occurred_at: str, db_path: Path) -> QuarantineCAS:
+    """CAS the exact invoked generation to quarantine, never a successor."""
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    ts = _text(occurred_at, "occurred_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT generation_id,lifecycle,state_version FROM executor_epochs "
+            "WHERE contract_id=? AND state='current'", (cid,),
+        ).fetchone()
+        if row is None or row["generation_id"] != gid:
+            connection.commit()
+            return QuarantineCAS.STALE
+        if row["lifecycle"] == BirthLifecycle.QUARANTINED.value:
+            connection.commit()
+            return QuarantineCAS.ALREADY_QUARANTINED
+        old = BirthLifecycle(row["lifecycle"])
+        if BirthLifecycle.QUARANTINED not in _LIFECYCLE_TRANSITIONS[old]:
+            raise EpochStoreError("epoch_transition_invalid", "feedback quarantine")
+        version = int(row["state_version"])
+        updated = connection.execute(
+            "UPDATE executor_epochs SET lifecycle='quarantined',state_version=state_version+1,"
+            "negative_feedback=negative_feedback+1,updated_at=? "
+            "WHERE contract_id=? AND generation_id=? AND state='current' "
+            "AND lifecycle=? AND state_version=?",
+            (ts, cid, gid, old.value, version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict")
+        connection.execute(
+            "DELETE FROM executor_preexercise_cache WHERE contract_id=? AND generation_id=?",
+            (cid, gid),
+        )
+        connection.execute(
+            "INSERT INTO executor_epoch_history(contract_id,generation_id,event_seq,ts,event_kind,"
+            "prior_state_version,new_state_version,detail_json) "
+            "SELECT ?,?,COALESCE(MAX(event_seq),0)+1,?,'negative_feedback_quarantine',?,?,? "
+            "FROM executor_epoch_history WHERE contract_id=? AND generation_id=?",
+            (cid, gid, ts, version, version + 1,
+             json.dumps({"lifecycle": "quarantined"}, sort_keys=True,
+                        separators=(",", ":")), cid, gid),
+        )
+        connection.commit()
+        return QuarantineCAS.APPLIED
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
         connection.close()

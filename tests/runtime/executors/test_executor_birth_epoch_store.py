@@ -5,7 +5,9 @@ import pytest
 from executor_birth_epoch_store import (
     BirthLifecycle, EpochCacheKey, EpochState, EpochStoreError,
     get_cache, open_epoch, put_cache, transition_epoch,
+    quarantine_for_feedback,
 )
+from executor_birth_feedback import QuarantineCAS
 from manifest_inventory import ContractId, ManifestOrigin
 
 
@@ -131,3 +133,40 @@ def test_no_legacy_or_untyped_cache_key_default(tmp_path):
         EpochCacheKey(CID.value, G1, BirthLifecycle.PREEXERCISE)  # type: ignore[arg-type]
     with pytest.raises(EpochStoreError, match="lifecycle"):
         EpochCacheKey(CID, G1, "preexercise")  # type: ignore[arg-type]
+
+
+def test_feedback_cas_never_quarantines_successor_b_for_receipt_a(tmp_path):
+    db = tmp_path / "epochs.sqlite"
+    _open(db, G1, BirthLifecycle.ACTIVE)
+    transition_epoch(
+        EpochCacheKey(CID, G1, BirthLifecycle.ACTIVE), expected_version=1,
+        new_state=EpochState.DEPRECATED, new_lifecycle=BirthLifecycle.DEPRECATED,
+        event_kind="superseded", occurred_at=NOW, db_path=db,
+    )
+    _open(db, G2, BirthLifecycle.ACTIVE)
+    assert quarantine_for_feedback(
+        contract_id=CID, generation_id=G1, occurred_at=NOW, db_path=db,
+    ) is QuarantineCAS.STALE
+    connection = sqlite3.connect(db)
+    assert connection.execute(
+        "SELECT lifecycle,negative_feedback FROM executor_epochs WHERE generation_id=?",
+        (G2,),
+    ).fetchone() == ("active", 0)
+    connection.close()
+
+
+def test_feedback_quarantine_is_repeatable_after_enqueue_failure(tmp_path):
+    db = tmp_path / "epochs.sqlite"
+    _open(db, G1, BirthLifecycle.ACTIVE)
+    assert quarantine_for_feedback(
+        contract_id=CID, generation_id=G1, occurred_at=NOW, db_path=db,
+    ) is QuarantineCAS.APPLIED
+    assert quarantine_for_feedback(
+        contract_id=CID, generation_id=G1, occurred_at=NOW, db_path=db,
+    ) is QuarantineCAS.ALREADY_QUARANTINED
+    connection = sqlite3.connect(db)
+    assert connection.execute(
+        "SELECT lifecycle,negative_feedback FROM executor_epochs WHERE generation_id=?",
+        (G1,),
+    ).fetchone() == ("quarantined", 1)
+    connection.close()

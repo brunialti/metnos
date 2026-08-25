@@ -47,6 +47,7 @@ from credential_intake import (
     is_password_label,
     scrub_sensitive_text as _scrub_credentials,
 )
+from executor_birth_feedback import ExecutionReceipt
 
 # Executor che PRODUCONO un file deliverable (consegna su ogni canale §7.3).
 _FILE_PRODUCER_PREFIXES = ("create_", "write_", "render_", "compress_")
@@ -3830,6 +3831,9 @@ class StepLog:
     # by-product del tool_call JSON (solo se METNOS_CANONICAL_QUERY=1).
     # Persistita per telemetria e riusata da mnestoma.canonical_query_log.
     canonical_query: str = ""
+    # RM-0008 F5 (inactive until its certified threshold): exact typed dispatch
+    # identity.  Legacy steps remain representable through the explicit None.
+    execution_receipt: ExecutionReceipt | None = None
 
 
 # Pentade ADR 0161 ext: pattern strutturale per intent count.
