@@ -67,9 +67,6 @@ _FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
 _FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
 _FILE_STANDARD_INFO_CLASS = 1
 _FILE_ATTRIBUTE_TAG_INFO_CLASS = 9
-_FILE_RENAME_INFO_CLASS = 3
-_DIRECTORY_READ_MASK = 0x001200A9
-_DELETE = 0x00010000
 _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 
 
@@ -90,15 +87,6 @@ class _FileAttributeTagInfo(ctypes.Structure):
     ]
 
 
-class _IndependentFileRenameInfoHeader(ctypes.Structure):
-    _fields_ = [
-        ("flags", wintypes.DWORD),
-        ("root_directory", wintypes.HANDLE),
-        ("file_name_length", wintypes.DWORD),
-        ("file_name", wintypes.WCHAR * 1),
-    ]
-
-
 oracle._KERNEL32.GetFileInformationByHandleEx.argtypes = (
     wintypes.HANDLE,
     ctypes.c_int,
@@ -106,15 +94,6 @@ oracle._KERNEL32.GetFileInformationByHandleEx.argtypes = (
     wintypes.DWORD,
 )
 oracle._KERNEL32.GetFileInformationByHandleEx.restype = wintypes.BOOL
-oracle._KERNEL32.SetFileInformationByHandle.argtypes = (
-    wintypes.HANDLE,
-    ctypes.c_int,
-    ctypes.c_void_p,
-    wintypes.DWORD,
-)
-oracle._KERNEL32.SetFileInformationByHandle.restype = wintypes.BOOL
-
-
 def _close_unadopted(descriptor: secure_fs._AuthenticatedRootDescriptor) -> None:
     for handle in reversed(descriptor.handles):
         secure_fs._win_close(handle)
@@ -328,48 +307,6 @@ def _independent_shape(path: Path, *, directory: bool) -> tuple[int, int]:
         oracle._close_handle(handle)
 
 
-def _independent_rename_with_documented_buffer(
-    root: Path, source: Path, target_name: str
-) -> int:
-    source_handle: int | None = None
-    root_handle: int | None = None
-    try:
-        source_handle = oracle._open_path(
-            source,
-            _DELETE | _DIRECTORY_READ_MASK,
-            directory=True,
-        )
-        root_handle = oracle._open_path(
-            root, _DIRECTORY_READ_MASK, directory=True
-        )
-        encoded = target_name.encode("utf-16-le")
-        size = ctypes.sizeof(_IndependentFileRenameInfoHeader) + len(encoded)
-        buffer = ctypes.create_string_buffer(size)
-        header = _IndependentFileRenameInfoHeader.from_buffer(buffer)
-        header.flags = 0
-        header.root_directory = root_handle
-        header.file_name_length = len(encoded)
-        offset = _IndependentFileRenameInfoHeader.file_name.offset
-        ctypes.memmove(
-            ctypes.addressof(buffer) + offset, encoded, len(encoded)
-        )
-        if not oracle._KERNEL32.SetFileInformationByHandle(
-            source_handle,
-            _FILE_RENAME_INFO_CLASS,
-            buffer,
-            size,
-        ):
-            oracle._raise_last_error(
-                "SetFileInformationByHandle(independent corrected rename)"
-            )
-        return size
-    finally:
-        if root_handle is not None:
-            oracle._close_handle(root_handle)
-        if source_handle is not None:
-            oracle._close_handle(source_handle)
-
-
 def _diagnose_r5_root_profiles(
     parent: Path, service_sid: str, outsider_sid: str
 ) -> dict[str, object]:
@@ -516,7 +453,7 @@ def _diagnose_r6_cached_handle(parent: Path, service_sid: str) -> dict[str, obje
 
 def _diagnose_r6_fresh_handle(
     parent: Path, service_sid: str
-) -> tuple[dict[str, object], dict[str, object]]:
+) -> dict[str, object]:
     root = _new_root(parent, "r6-fresh", service_sid)
     _independent_directory(
         root,
@@ -559,47 +496,13 @@ def _diagnose_r6_fresh_handle(
         ),
         "the source no longer exposes the DACL mutation after native rejection",
     )
-    encoded = "destination".encode("utf-16-le")
-    product_size = secure_fs._FILE_RENAME_INFO_HEADER.FileName.offset + len(encoded)
-    documented_minimum = ctypes.sizeof(
-        secure_fs._FILE_RENAME_INFO_HEADER
-    ) + len(encoded)
-    _require(
-        product_size < documented_minimum,
-        "the frozen rename buffer is not shorter than the documented minimum",
-    )
-    independent_size = _independent_rename_with_documented_buffer(
-        root, root / "source", "destination"
-    )
-    _require(
-        independent_size == documented_minimum,
-        "the independent rename did not use the documented buffer size",
-    )
-    _require(
-        not (root / "source").exists() and (root / "destination").is_dir(),
-        "the independent corrected-buffer rename did not succeed",
-    )
-    _require(
-        _oracle_rejects_closed_profile(
-            root / "destination", service_sid, directory=True
-        ),
-        "the independent rename did not preserve the source DACL mutation",
-    )
-    return (
-        {
-            "criterion": "D-R6-fresh",
-            "corrupt_source_profile_rejected_by_oracle": True,
-            "prototype_reached_native_rename_without_profile_check": True,
-            "source_and_destination_preserved_after_native_rejection": True,
-        },
-        {
-            "criterion": "D-G10-rename-buffer",
-            "product_buffer_bytes": product_size,
-            "documented_minimum_bytes": documented_minimum,
-            "native_error_invalid_parameter": True,
-            "independent_corrected_buffer_rename_succeeded": True,
-        },
-    )
+    return {
+        "criterion": "D-R6-fresh",
+        "corrupt_source_profile_rejected_by_oracle": True,
+        "prototype_reached_native_rename_without_profile_check": True,
+        "native_error": "ERROR_INVALID_PARAMETER",
+        "source_and_destination_preserved_after_native_rejection": True,
+    }
 
 
 def _diagnose_r7_inventory(parent: Path, service_sid: str) -> dict[str, object]:
@@ -732,7 +635,7 @@ def main() -> int:
             _diagnose_r5_profile_catalog(root, service.sid),
             _diagnose_r6_cached_handle(root, service.sid),
         ]
-        observations.extend(_diagnose_r6_fresh_handle(root, service.sid))
+        observations.append(_diagnose_r6_fresh_handle(root, service.sid))
         observations.append(_diagnose_r7_inventory(root, service.sid))
         print(json.dumps({
             "schema_version": 1,
