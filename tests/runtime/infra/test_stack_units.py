@@ -80,6 +80,14 @@ def test_service_templates_are_owned_by_target_not_default_individually():
         assert "WantedBy=default.target" not in unit
 
 
+def test_http_service_delegates_service_scoped_birth_cgroups():
+    unit = _read("metnos-http.service.tmpl")
+    assert "Delegate=yes" in unit
+    assert "DelegateSubgroup=metnos-birth-host" in unit
+    assert "MemoryAccounting=yes" in unit
+    assert "TasksAccounting=yes" in unit
+
+
 def test_durable_worker_is_a_bounded_supervised_target_component():
     unit = _read("metnos-durable-worker.service.tmpl")
     assert "-m durable_workloads.service" in unit

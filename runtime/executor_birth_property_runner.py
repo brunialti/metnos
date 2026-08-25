@@ -66,7 +66,8 @@ def _attestation_hash(result: object, *, candidate_id: str, case_id: str,
 _HARNESS_PATH = "_metnos_birth_property_harness_v1.py"
 _HARNESS_SOURCE = r'''
 import hashlib, json, pathlib, subprocess, sys
-entrypoint = sys.argv[1]
+harness_dir = pathlib.Path(__file__).resolve().parent
+entrypoint = str(harness_dir.joinpath(*pathlib.PurePosixPath(sys.argv[1]).parts))
 request = json.loads(pathlib.Path('request.json').read_text())
 fixture = pathlib.Path('fixture')
 def tree_hash():
@@ -176,10 +177,10 @@ class ObservedPropertyRunner:
             raise PropertyContractError("property_candidate_invalid", "reserved_harness_path")
         candidate_files[_HARNESS_PATH] = _HARNESS_SOURCE
         command = (
-            (_HARNESS_PATH, "candidate/" + entrypoint)
+            (_HARNESS_PATH, entrypoint)
             if sys.platform == "win32"
             else (sys.executable, "-I", "candidate/" + _HARNESS_PATH,
-                  "candidate/" + entrypoint)
+                  entrypoint)
         )
         result = run_birth_phase(
             command,

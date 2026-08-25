@@ -53,7 +53,11 @@ SANDBOX_ENV: Mapping[str, str] = {
     "TZ": "UTC",
 }
 
-_CGROUP_DELEGATE = Path("/sys/fs/cgroup/metnos-birth")
+_CGROUP_V2_MOUNT = Path("/sys/fs/cgroup")
+# systemd's DelegateSubgroup= keeps the long-lived HTTP process in this leaf,
+# leaving the service cgroup itself available for short-lived Birth scopes.
+# This name is part of the install/runtime contract, not an environment knob.
+_CGROUP_HOST_SUBGROUP = "metnos-birth-host"
 
 
 class FixtureOpKind(str, Enum):
@@ -326,15 +330,53 @@ def _read_setup_handshake(path: Path) -> tuple[bool, int | None]:
     return True, exit_code
 
 
+def _current_unified_cgroup(
+    proc_self_cgroup: Path = Path("/proc/self/cgroup"),
+) -> PurePosixPath | None:
+    """Return the kernel-reported unified cgroup, rejecting ambiguous input."""
+    try:
+        lines = proc_self_cgroup.read_text(encoding="ascii").splitlines()
+    except OSError:
+        return None
+    unified = [line[3:] for line in lines if line.startswith("0::")]
+    if len(unified) != 1:
+        return None
+    path = PurePosixPath(unified[0])
+    if not path.is_absolute() or ".." in path.parts:
+        return None
+    return path
+
+
 def _cgroup_v2_delegate() -> tuple[Path | None, str | None]:
-    if not Path("/sys/fs/cgroup/cgroup.controllers").is_file():
+    if not (_CGROUP_V2_MOUNT / "cgroup.controllers").is_file():
         return None, "cgroup_v2_unavailable"
-    delegate = _CGROUP_DELEGATE
+    current = _current_unified_cgroup()
+    if current is None:
+        return None, "cgroup_membership_unavailable"
+    if (current.name != _CGROUP_HOST_SUBGROUP
+            or not current.parent.name.endswith(".service")):
+        return None, "cgroup_delegate_subgroup_missing"
+    # The service process occupies DelegateSubgroup.  Its parent is systemd's
+    # delegated service boundary and is the only directory in which Birth may
+    # create sibling scopes.  No global cgroup path or administrator-created
+    # directory is trusted.
+    delegate = _CGROUP_V2_MOUNT.joinpath(*current.parent.parts[1:])
     if not delegate.is_dir():
         return None, "cgroup_delegate_missing"
-    required = ("cgroup.procs", "cgroup.events", "memory.max", "pids.max")
+    required = (
+        "cgroup.procs", "cgroup.events", "cgroup.subtree_control",
+        "memory.max", "pids.max",
+    )
     if any(not (delegate / name).exists() for name in required):
         return None, "cgroup_delegate_incomplete"
+    try:
+        enabled = set((delegate / "cgroup.subtree_control").read_text(
+            encoding="ascii",
+        ).split())
+    except OSError:
+        return None, "cgroup_delegate_incomplete"
+    if not {"memory", "pids"}.issubset(enabled):
+        return None, "cgroup_controllers_not_delegated"
     if not os.access(delegate, os.W_OK):
         return None, "cgroup_delegate_not_writable"
     return delegate, None

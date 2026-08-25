@@ -133,6 +133,65 @@ def test_linux_without_delegated_cgroup_never_falls_back(monkeypatch):
     assert called is False
 
 
+def test_unified_cgroup_parser_requires_one_absolute_kernel_entry(tmp_path):
+    membership = tmp_path / "cgroup"
+    membership.write_text(
+        "0::/user.slice/user-1000.slice/metnos-http.service/metnos-birth-host\n",
+        encoding="ascii",
+    )
+    assert runner._current_unified_cgroup(membership) == runner.PurePosixPath(
+        "/user.slice/user-1000.slice/metnos-http.service/metnos-birth-host"
+    )
+    membership.write_text("0::relative\n", encoding="ascii")
+    assert runner._current_unified_cgroup(membership) is None
+    membership.write_text("0::/first\n0::/second\n", encoding="ascii")
+    assert runner._current_unified_cgroup(membership) is None
+
+
+def test_delegate_is_service_scoped_and_requires_controllers(
+    monkeypatch, tmp_path,
+):
+    mount = tmp_path / "cgroup"
+    delegate = mount / "user.slice" / "metnos-http.service"
+    host = delegate / runner._CGROUP_HOST_SUBGROUP
+    host.mkdir(parents=True)
+    (mount / "cgroup.controllers").write_text("memory pids", encoding="ascii")
+    for name in ("cgroup.procs", "cgroup.events", "memory.max", "pids.max"):
+        (delegate / name).write_text("", encoding="ascii")
+    (delegate / "cgroup.subtree_control").write_text(
+        "memory pids", encoding="ascii",
+    )
+    monkeypatch.setattr(runner, "_CGROUP_V2_MOUNT", mount)
+    monkeypatch.setattr(
+        runner, "_current_unified_cgroup",
+        lambda: runner.PurePosixPath(
+            "/user.slice/metnos-http.service/metnos-birth-host"
+        ),
+    )
+    assert runner._cgroup_v2_delegate() == (delegate, None)
+
+    (delegate / "cgroup.subtree_control").write_text("memory", encoding="ascii")
+    assert runner._cgroup_v2_delegate() == (
+        None, "cgroup_controllers_not_delegated",
+    )
+
+
+def test_delegate_rejects_process_outside_fixed_host_subgroup(
+    monkeypatch, tmp_path,
+):
+    mount = tmp_path / "cgroup"
+    (mount / "cgroup.controllers").parent.mkdir(parents=True)
+    (mount / "cgroup.controllers").write_text("memory pids", encoding="ascii")
+    monkeypatch.setattr(runner, "_CGROUP_V2_MOUNT", mount)
+    monkeypatch.setattr(
+        runner, "_current_unified_cgroup",
+        lambda: runner.PurePosixPath("/user.slice/arbitrary.scope"),
+    )
+    assert runner._cgroup_v2_delegate() == (
+        None, "cgroup_delegate_subgroup_missing",
+    )
+
+
 def test_windows_backend_is_explicitly_unavailable(monkeypatch):
     monkeypatch.setattr(runner.os, "name", "nt")
     result = runner.run_birth_phase(("python.exe", "-V"))

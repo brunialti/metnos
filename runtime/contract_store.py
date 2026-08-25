@@ -496,6 +496,94 @@ def _read_regular_file(path: Path, *, code: str) -> bytes:
         raise ContractStoreError(code, f"{path}: {exc}") from exc
 
 
+def _read_windows_shared_regular_file(
+    path: Path, *, code: str, maximum_bytes: int,
+) -> bytes:
+    """Read a bounded regular file without pinning its NTFS directory entry."""
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    class BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("dwFileAttributes", wintypes.DWORD),
+            ("ftCreationTime", wintypes.FILETIME),
+            ("ftLastAccessTime", wintypes.FILETIME),
+            ("ftLastWriteTime", wintypes.FILETIME),
+            ("dwVolumeSerialNumber", wintypes.DWORD),
+            ("nFileSizeHigh", wintypes.DWORD),
+            ("nFileSizeLow", wintypes.DWORD),
+            ("nNumberOfLinks", wintypes.DWORD),
+            ("nFileIndexHigh", wintypes.DWORD),
+            ("nFileIndexLow", wintypes.DWORD),
+        ]
+
+    kernel32.CreateFileW.argtypes = (
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    )
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.GetFileInformationByHandle.argtypes = (
+        wintypes.HANDLE, ctypes.POINTER(BY_HANDLE_FILE_INFORMATION),
+    )
+    kernel32.GetFileInformationByHandle.restype = wintypes.BOOL
+    kernel32.ReadFile.argtypes = (
+        wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p,
+    )
+    kernel32.ReadFile.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    handle = kernel32.CreateFileW(
+        str(path), 0x80000000,  # GENERIC_READ
+        0x00000001 | 0x00000002 | 0x00000004,  # share read/write/delete
+        None, 3, 0x00200000 | 0x08000000, None,  # OPEN_EXISTING, no reparse
+    )
+    invalid = ctypes.c_void_p(-1).value
+    if handle in {None, invalid}:
+        error = ctypes.get_last_error()
+        raise ContractStoreError(code, f"{path}: winerror {error}")
+    try:
+        def information() -> tuple[int, ...]:
+            value = BY_HANDLE_FILE_INFORMATION()
+            if not kernel32.GetFileInformationByHandle(handle, ctypes.byref(value)):
+                error = ctypes.get_last_error()
+                raise ContractStoreError(code, f"{path}: winerror {error}")
+            return (
+                value.dwFileAttributes,
+                value.ftLastWriteTime.dwHighDateTime,
+                value.ftLastWriteTime.dwLowDateTime,
+                value.dwVolumeSerialNumber,
+                value.nFileSizeHigh,
+                value.nFileSizeLow,
+                value.nNumberOfLinks,
+                value.nFileIndexHigh,
+                value.nFileIndexLow,
+            )
+
+        before = information()
+        attributes, _, _, _, size_high, size_low, links, _, _ = before
+        if attributes & (0x00000010 | 0x00000400) or links != 1:
+            raise ContractStoreError(code, str(path))
+        size = (size_high << 32) | size_low
+        if size > maximum_bytes:
+            raise ContractStoreError(code, str(path))
+        buffer = ctypes.create_string_buffer(maximum_bytes + 1)
+        read = wintypes.DWORD()
+        if not kernel32.ReadFile(
+            handle, buffer, maximum_bytes + 1, ctypes.byref(read), None,
+        ):
+            error = ctypes.get_last_error()
+            raise ContractStoreError(code, f"{path}: winerror {error}")
+        if (read.value != size or read.value > maximum_bytes
+                or information() != before):
+            raise ContractStoreError(code, str(path))
+        return buffer.raw[:read.value]
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def read_binding(contract_dir: Path | str) -> ContractBinding:
     """Read and validate the immutable structural locator for a contract."""
     directory = Path(contract_dir)
@@ -1565,7 +1653,13 @@ def _read_current_optional(contract_dir: Path) -> str | None:
         raise ContractStoreError("current_invalid", str(current))
     if not current.exists():
         return None
-    value = _read_regular_file(current, code="current_invalid")
+    value = (
+        _read_windows_shared_regular_file(
+            current, code="current_invalid", maximum_bytes=65,
+        )
+        if _windows_platform()
+        else _read_regular_file(current, code="current_invalid")
+    )
     try:
         text = value.decode("ascii")
     except UnicodeDecodeError as exc:
