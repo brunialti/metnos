@@ -180,6 +180,31 @@ def test_admission_round_trip_preserves_null_and_closed_checks(key: Ed25519Priva
     assert receipt.check_results["manifest"].status is AdmittedCheckStatus.PASSED
 
 
+def test_admission_keyring_verifies_history_and_rejects_unknown_or_revoked_keys(
+    key: Ed25519PrivateKey,
+) -> None:
+    successor = Ed25519PrivateKey.generate()
+    historical = _admission(key, key_id="birth-old")
+    current = _admission(successor, key_id="birth-current")
+    keyring = {
+        "birth-old": key.public_key(),
+        "birth-current": successor.public_key(),
+    }
+    assert verify_admission_receipt(
+        historical, verifier_keys=keyring,
+    ).authentication.key_id == "birth-old"
+    assert verify_admission_receipt(
+        current, verifier_keys=keyring,
+    ).authentication.key_id == "birth-current"
+    with pytest.raises(ReceiptError, match="admission key"):
+        verify_admission_receipt(historical, verifier_keys={
+            "birth-current": successor.public_key(),
+        })
+    unknown = _admission(Ed25519PrivateKey.generate(), key_id="birth-unknown")
+    with pytest.raises(ReceiptError, match="admission key"):
+        verify_admission_receipt(unknown, verifier_keys=keyring)
+
+
 def test_admission_check_order_has_one_canonical_encoding(key: Ed25519PrivateKey) -> None:
     first = AdmissionCheck("v1", AdmittedCheckStatus.PASSED, D1)
     second = AdmissionCheck("v2", AdmittedCheckStatus.NOT_APPLICABLE, D2)

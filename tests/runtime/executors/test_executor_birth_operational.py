@@ -145,6 +145,81 @@ def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tm
     assert len(calls) == 1
 
 
+def test_terminal_replay_survives_signing_key_rotation(tmp_path):
+    calls = []
+
+    def publisher(ref, *, expected_generation_id, **_kwargs):
+        calls.append(1)
+        return PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", False,
+        )
+
+    request, old_core = _fixture(tmp_path, publisher)
+    assert _birth_executor_for_test(request, _core=old_core).error_code is None
+    new_private = Ed25519PrivateKey.generate()
+    rotated_core = replace(
+        old_core, admission_private_key=new_private, admission_key_id="birth-2",
+        admission_verifier_keys={
+            "birth-1": old_core.admission_verifier_keys["birth-1"],
+            "birth-2": new_private.public_key(),
+        },
+    )
+    replay = _birth_executor_for_test(request, _core=rotated_core)
+    assert replay.error_code is None
+    assert replay.publication is not None
+    assert calls == [1]
+
+
+def test_rotation_issues_new_terminal_and_admission_signatures_only_with_active_key(tmp_path):
+    admission_key_ids = []
+
+    def publisher(ref, *, expected_generation_id, request_id,
+                  birth_authorization, **_kwargs):
+        encoded = birth_authorization.issuer(
+            "sha256:" + "3" * 64, {}, request_id, "sha256:" + "4" * 64,
+        )
+        admission_key_ids.append(birth_authorization.verifier(encoded).authentication.key_id)
+        return PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", False,
+        )
+
+    request, old_core = _fixture(tmp_path, publisher)
+    old_public = old_core.admission_verifier_keys["birth-1"]
+    new_private = Ed25519PrivateKey.generate()
+    rotated_core = replace(
+        old_core, admission_private_key=new_private, admission_key_id="birth-2",
+        admission_verifier_keys={"birth-1": old_public, "birth-2": new_private.public_key()},
+    )
+    assert _birth_executor_for_test(request, _core=rotated_core).error_code is None
+    assert admission_key_ids == ["birth-2"]
+    with sqlite3.connect(rotated_core.producer_db) as db:
+        encoded = bytes(db.execute(
+            "SELECT terminal_envelope FROM birth_producer_receipts"
+        ).fetchone()[0])
+    assert b'"signing_key_id":"birth-2"' in encoded
+    with pytest.raises(TypeError):
+        rotated_core.admission_verifier_keys["birth-3"] = new_private.public_key()  # type: ignore[index]
+
+
+def test_terminal_replay_rejects_revoked_historical_key(tmp_path):
+    request, old_core = _fixture(
+        tmp_path,
+        lambda ref, *, expected_generation_id, **_kwargs: PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", False,
+        ),
+    )
+    assert _birth_executor_for_test(request, _core=old_core).error_code is None
+    new_private = Ed25519PrivateKey.generate()
+    revoked_core = replace(
+        old_core, admission_private_key=new_private, admission_key_id="birth-2",
+        admission_verifier_keys={"birth-2": new_private.public_key()},
+    )
+    assert _birth_executor_for_test(request, _core=revoked_core).error_code == "birth_unavailable"
+
+
 def test_terminal_envelope_tampering_fails_closed_before_checks_or_publish(monkeypatch, tmp_path):
     calls = []
     def publisher(ref, *, expected_generation_id, **_kwargs):
