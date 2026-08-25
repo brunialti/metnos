@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 from unittest.mock import patch
@@ -49,6 +50,7 @@ def _verify_frozen_inputs() -> dict[str, str]:
 
 # Verify bytes before importing either the product or its independent oracle.
 _FROZEN_OBSERVED = _verify_frozen_inputs()
+sys.path.insert(0, str(REPOSITORY / "runtime"))
 
 from ctypes import wintypes
 

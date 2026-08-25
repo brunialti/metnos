@@ -23,8 +23,9 @@ acceptance tests may use the calibrated controller and oracle only after this
 job is green on the public `windows-2022` runner.
 
 `rm0008_increment_2a_windows_diagnostics.py` is a separate historical
-reproducer. It is executed only when the workflow is started manually with
-`rm0008_windows_diagnostics=true`; normal pushes do not run it. Success means
-that the frozen prototype defects R5-R7 were observed, not that the product is
+reproducer. The local pytest hook executes it only after a successful identity
+calibration in a manually dispatched workflow; normal pushes do not run it and
+it adds no pytest node to the mandatory collection. Success means that the
+frozen prototype defects R5-R7 were observed, not that the product is
 conformant. The mandatory acceptance tests will assert the opposite invariants
 after the diagnostic phase.
