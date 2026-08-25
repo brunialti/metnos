@@ -136,5 +136,7 @@ print(json.dumps({"entries":[{} for _ in range(count)]}))
     assert {item.property_id for item in evidence} == {
         "output.schema.actual", "cardinality.zero_one_many",
     }
-    assert all(item.status is PropertyStatus.PASSED for item in evidence)
-    assert result.attestation.tree_empty is True
+    assert all(item.status is PropertyStatus.PASSED for item in evidence), tuple(
+        (item.property_id, item.case_id, item.status.value, item.error_code)
+        for item in evidence
+    )

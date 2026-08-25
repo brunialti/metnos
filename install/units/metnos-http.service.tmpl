@@ -8,6 +8,14 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+# RM-0008 Birth tests create bounded, short-lived child cgroups.  Keep the
+# service process in a dedicated leaf so the delegated service cgroup remains
+# a valid cgroup-v2 domain parent; the runner derives that parent from the
+# kernel-reported /proc/self/cgroup path and never trusts an environment path.
+Delegate=yes
+DelegateSubgroup=metnos-birth-host
+MemoryAccounting=yes
+TasksAccounting=yes
 ExecStart=@VENV@/bin/python -m runtime.metnos_http_server --host ${METNOS_HTTP_HOST} --port ${METNOS_HTTP_PORT}
 WorkingDirectory=@REPO_DIR@
 Restart=on-failure
