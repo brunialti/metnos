@@ -14,19 +14,26 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from types import MappingProxyType
-from typing import Callable, Iterable, Mapping
+from typing import Callable, Iterable, Mapping, TYPE_CHECKING
 
 from executor_birth import ObservedCandidate, observe_candidate
 from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, RevisionAuthor
 from manifest_inventory import ContractId
 from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash, validate_approval
 from executor_birth_properties import PropertyStatus
-from executor_birth_property_runner import PropertyCandidateProfile, PropertyRunner, run_applicable_properties
+from executor_birth_property_runner import (
+    ObservedPropertyRunner, PropertyCandidateProfile, PropertyRunner,
+    run_applicable_properties,
+)
+from executor_birth_runner import WindowsSandboxRegistry
 from executor_birth_semantic_review import (
     IndependentEvidence, ReviewPolicyV1, ReviewRiskFacts, SemanticReviewRequest,
     SemanticVerdict, review_candidate_semantics,
 )
 from executor_standard import validate_for_lifecycle
+
+if TYPE_CHECKING:
+    from executor_birth_semantic_authority import SemanticAuthorityProvider
 
 
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -195,9 +202,11 @@ class _BirthDependencies:
     """Trusted runtime services. Construction is guarded by the module seal."""
     observer: Observer
     property_runner: PropertyRunner | None
+    windows_sandbox_registry: WindowsSandboxRegistry | None
     semantic_policy: ReviewPolicyV1 | None
     semantic_risk: ReviewRiskFacts | None
     independent_evidence: tuple[IndependentEvidence, ...]
+    semantic_authority: "SemanticAuthorityProvider | None"
     approval_subject: ApprovalSubject | None
     approval_evidence: ApprovalEvidence | None
     now: datetime | None
@@ -212,8 +221,9 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
     """Internal test seam; production callers never provide a check catalog."""
     values: dict[str, object] = {
         "observer": observe_candidate, "property_runner": None,
+        "windows_sandbox_registry": None,
         "semantic_policy": None, "semantic_risk": None,
-        "independent_evidence": (), "approval_subject": None,
+        "independent_evidence": (), "semantic_authority": None, "approval_subject": None,
         "approval_evidence": None, "now": None, "_seal": _DEPENDENCY_SEAL,
     }
     if set(overrides) - set(values):
@@ -222,16 +232,16 @@ def _sealed_dependencies_for_test(**overrides: object) -> _BirthDependencies:
     return _BirthDependencies(**values)  # type: ignore[arg-type]
 
 
-class _CorePropertyRunner:
-    """Productive adapter: absence of the isolated case executor is explicit."""
-
-    def run(self, *_args: object, **_kwargs: object) -> object:
-        raise RuntimeError("isolated_property_case_executor_unavailable")
-
-
-def _assemble_production_dependencies() -> _BirthDependencies:
+def _assemble_production_dependencies(*, semantic_authority=None,
+                                      windows_sandbox_registry=None) -> _BirthDependencies:
     """Single core-owned assembler; it cannot alter the fixed check catalog."""
-    return _sealed_dependencies_for_test(property_runner=_CorePropertyRunner())
+    # The runner is constructed only after Birth owns the observation.  Keeping
+    # it out of this process-global dependency object prevents an unbound or
+    # caller-selected runner from exercising different candidate bytes.
+    return _sealed_dependencies_for_test(
+        property_runner=None, semantic_authority=semantic_authority,
+        windows_sandbox_registry=windows_sandbox_registry,
+    )
 
 
 _PRODUCTION_DEPENDENCIES = _assemble_production_dependencies()
@@ -280,9 +290,10 @@ def _standard_check(observed: ObservedCandidate, _decision: RevisionDecision, _d
 
 
 def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
-    if deps.property_runner is None:
-        raise RuntimeError("property_runner_unavailable")
-    evidence = run_applicable_properties(_profile(_manifest(observed)), _runner=deps.property_runner)
+    runner = deps.property_runner or ObservedPropertyRunner(
+        observed, windows_registry=deps.windows_sandbox_registry,
+    )
+    evidence = run_applicable_properties(_profile(_manifest(observed)), _runner=runner)
     digest = _shadow_evidence("properties", observed.identities.candidate_id,
                               *(f"{item.property_id}:{item.case_id}:{item.status.value}:{item.output_hash}" for item in evidence))
     failed = next((item for item in evidence if item.status in {PropertyStatus.FAILED, PropertyStatus.UNAVAILABLE}), None)
@@ -292,16 +303,22 @@ def _property_check(observed: ObservedCandidate, _decision: RevisionDecision, de
 
 
 def _semantic_check(observed: ObservedCandidate, _decision: RevisionDecision, deps: _BirthDependencies) -> CheckResult:
-    if deps.semantic_policy is None or deps.semantic_risk is None:
-        raise RuntimeError("semantic_review_unavailable")
     request = SemanticReviewRequest(
         observed.identities.candidate_id, observed.identities.admission_context_id,
         f"{observed.executor_origin.value}.{observed.revision_authorship.value}",
         observed.snapshot.manifest_bytes, observed.snapshot.language_state_bytes,
         MappingProxyType(dict(observed.snapshot.code_files)),
     )
-    review = review_candidate_semantics(request, independent_evidence=deps.independent_evidence,
-                                        policy=deps.semantic_policy, risk_facts=deps.semantic_risk)
+    if deps.semantic_authority is not None:
+        policy, risk, evidence = deps.semantic_authority.inputs_for(request)
+    elif deps.semantic_policy is not None and deps.semantic_risk is not None:
+        # This branch is reachable only through the sealed unit-test seam.
+        policy, risk, evidence = deps.semantic_policy, deps.semantic_risk, deps.independent_evidence
+    else:
+        raise RuntimeError("semantic_review_unavailable")
+    review = review_candidate_semantics(
+        request, independent_evidence=evidence, policy=policy, risk_facts=risk,
+    )
     if review.operational_verdict is SemanticVerdict.ALIGNED:
         return CheckResult("semantic_review", "v1", CheckStatus.PASSED, None,
                            review.review_evidence_hash, "aligned")

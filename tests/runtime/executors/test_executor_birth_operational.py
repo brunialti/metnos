@@ -25,6 +25,7 @@ from executor_birth_operational import (
     BirthRequest, _assemble_birth_runtime_bundle, _birth_executor_for_test,
     _install_birth_runtime_bundle, _runtime_bundle_snapshot, _sealed_core_for_test,
     birth_executor, candidate_source_id,
+    approval_scope,
 )
 import executor_birth_operational as operational
 import executor_birth_intent as intent_api
@@ -34,13 +35,42 @@ from executor_birth_receipts import (
 )
 from executor_birth_shadow import (
     BirthOutcome, BirthReport, RevisionFacts, _assemble_production_dependencies,
+    _sealed_dependencies_for_test,
 )
+from executor_birth_property_runner import PropertyRunResult
 from manifest_inventory import ContractId, ManifestOrigin, ManifestRef, ManifestStatus
 
 
 NOW = datetime(2026, 8, 25, 12, 0, tzinfo=timezone.utc)
 D = "sha256:" + "1" * 64
 REQUEST_ID = "sha256:" + "2" * 64
+
+
+class _AttestedPropertyRunner:
+    """Closed unit-test oracle; no host sandbox/backend is involved."""
+
+    def run(self, case, *, fixture_id, isolation):
+        count = case.input_value.get("fixture_count", 0)
+        limit = case.input_value.get("limit", count)
+        size = min(count, limit)
+        output = {"entries": [{} for _ in range(size)]}
+        observations = {}
+        if "fixture_total" in case.expectation:
+            observations["fixture_total"] = case.expectation["fixture_total"]
+            output["truncated"] = True
+        if fixture_id == "private_mutable_state":
+            observations.update(
+                state_before_hash=D,
+                state_after_forward_hash="sha256:" + "8" * 64,
+                state_after_undo_hash=D,
+            )
+        if fixture_id == "private_deletion_tree":
+            observations.update(
+                filesystem_events=["copy", "delete"],
+                source_before_hash=D,
+                recovery_copy_hash=D,
+            )
+        return PropertyRunResult(output, observations, D)
 
 
 def _context() -> AdmissionContextV1:
@@ -91,7 +121,11 @@ def _fixture(tmp_path: Path, publisher):
     db = tmp_path / "producer.sqlite"
     register_producer_receipt(encoded, registry=registry, now=NOW, db_path=db)
     admission_private = Ed25519PrivateKey.generate()
-    shadow = _assemble_production_dependencies()
+    production = _assemble_production_dependencies()
+    shadow = _sealed_dependencies_for_test(
+        property_runner=_AttestedPropertyRunner(),
+        semantic_authority=production.semantic_authority,
+    )
     core = _sealed_core_for_test(
         producer_registry=registry, producer_db=db,
         context_resolver=lambda _request: (
@@ -125,6 +159,18 @@ def test_public_request_cannot_supply_trust_or_publication_authorities():
         inspect.signature(BirthRequest).parameters
     )
     assert "_core" not in inspect.signature(birth_executor).parameters
+
+
+def test_approval_is_resolved_from_observed_facts_per_request(tmp_path):
+    seen = []
+    request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
+    def resolver(actual_request, observed, revision, instant):
+        seen.append((actual_request.request_id, observed.identities.candidate_id,
+                     approval_scope(observed, revision), instant))
+        return None, None
+    core = replace(core, approval_resolver=resolver)
+    _birth_executor_for_test(request, _core=core)
+    assert seen == [(request.request_id, seen[0][1], None, NOW)]
 
 
 def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tmp_path):

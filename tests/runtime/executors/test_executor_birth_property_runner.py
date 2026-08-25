@@ -1,9 +1,17 @@
 import pytest
+from types import MappingProxyType, SimpleNamespace
 
+from executor_birth import ObservedCandidate
+from executor_birth_identity import ExecutorOrigin, RevisionAuthor
+from executor_birth_snapshot import CandidateSnapshot
+from manifest_inventory import ContractId, ManifestOrigin
 from executor_birth_properties import PropertyContractError, PropertyStatus
 from executor_birth_property_runner import (
-    PropertyCandidateProfile, PropertyRunResult, run_applicable_properties, run_property,
+    ObservedPropertyRunner, PropertyCandidateProfile, PropertyRunResult,
+    run_applicable_properties, run_property,
 )
+from executor_birth_runner import ProcessAttestation, RunnerResult, RunnerStatus
+from executor_birth_runner import WindowsSandboxRegistry
 
 
 D = "sha256:" + "1" * 64
@@ -141,3 +149,132 @@ def test_runner_contract_error_is_not_reported_as_transport_unavailability():
             PropertyCandidateProfile(output_schema=(("ok", "boolean"),)),
             _runner=ContractFailingRunner(),
         )
+
+
+def _observed_candidate(tmp_path):
+    manifest = b'[code]\nfiles=["candidate.py"]\n'
+    snapshot = CandidateSnapshot(
+        tmp_path, manifest, b"{}",
+        MappingProxyType({"candidate.py": b"print('{}')\n"}),
+    )
+    return ObservedCandidate(
+        ContractId(ManifestOrigin.USER, "x/manifest.toml"), snapshot,
+        SimpleNamespace(candidate_id=D), ExecutorOrigin.HUMAN,
+        RevisionAuthor.HUMAN, D,
+    )
+
+
+def test_observed_runner_executes_exact_snapshot_with_closed_fixture(monkeypatch, tmp_path):
+    observed = _observed_candidate(tmp_path)
+    captured = {}
+    attestation = ProcessAttestation(
+        "linux-bwrap-cgroup-v2", True, True, True, True, True, True,
+        True, "/scope", True, True,
+    )
+
+    def fake_run(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        return RunnerResult(RunnerStatus.PASSED, None, 0,
+                            '{"output":{"entries":[]},"observations":{}}',
+                            "", 0.1, attestation)
+
+    monkeypatch.setattr("executor_birth_property_runner.run_birth_phase", fake_run)
+    result = ObservedPropertyRunner(observed).run(
+        __import__("executor_birth_property_runner").PropertyCase(
+            "cardinality.0", {"fixture_count": 0}, {"count": 0}),
+        fixture_id="bounded_collection", isolation="private_read_only",
+    )
+    assert result.output == {"entries": []}
+    assert captured["candidate_id"] == D
+    assert captured["candidate_files"]["candidate.py"] == observed.snapshot.code_files["candidate.py"]
+    assert set(captured["candidate_files"]) == {
+        "candidate.py", "_metnos_birth_property_harness_v1.py",
+    }
+    request = next(op for op in captured["fixture_ops"] if op.path == "request.json")
+    assert request.payload["case_id"] == "cardinality.0"
+
+
+def test_observed_runner_ignores_candidate_self_attestation(monkeypatch, tmp_path):
+    observed = _observed_candidate(tmp_path)
+    attestation = ProcessAttestation(
+        "linux-bwrap-cgroup-v2", True, True, True, True, True, True,
+        True, "/scope", True, True,
+    )
+    forged = '{"output":{"entries":[],"fixture_total":999,"state_before_hash":"' + D + '"},"observations":{}}'
+    monkeypatch.setattr(
+        "executor_birth_property_runner.run_birth_phase",
+        lambda *a, **k: RunnerResult(RunnerStatus.PASSED, None, 0, forged, "", 0.1, attestation),
+    )
+    result = ObservedPropertyRunner(observed).run(
+        __import__("executor_birth_property_runner").PropertyCase(
+            "truncation.boundary", {}, {"fixture_total": 3}),
+        fixture_id="oversized_collection", isolation="private_read_only",
+    )
+    assert result.observations == {"fixture_total": 3}
+    assert "state_before_hash" not in result.observations
+
+
+def test_observed_runner_uses_relative_trusted_harness_protocol_on_windows(monkeypatch, tmp_path):
+    observed = _observed_candidate(tmp_path)
+    captured = {}
+    registry = WindowsSandboxRegistry(
+        tmp_path / "helper.exe", D, tmp_path / "helper.json", D, D,
+    )
+    attestation = ProcessAttestation(
+        "windows-appcontainer-job-v1", True, True, False, True, False, False,
+        False, None, True, True,
+    )
+    def fake_run(command, **kwargs):
+        captured.update(command=command, **kwargs)
+        return RunnerResult(
+            RunnerStatus.PASSED, None, 0,
+            '{"output":{"entries":[]},"observations":{}}', "", 0.1,
+            attestation,
+        )
+    monkeypatch.setattr("executor_birth_property_runner.sys.platform", "win32")
+    monkeypatch.setattr("executor_birth_property_runner.run_birth_phase", fake_run)
+    ObservedPropertyRunner(observed, windows_registry=registry).run(
+        __import__("executor_birth_property_runner").PropertyCase(
+            "cardinality.0", {"fixture_count": 0}, {"count": 0}),
+        fixture_id="bounded_collection", isolation="private_read_only",
+    )
+    assert captured["command"] == (
+        "_metnos_birth_property_harness_v1.py", "candidate/candidate.py",
+    )
+    assert captured["windows_registry"] is registry
+
+
+def test_real_linux_observed_runner_exercises_all_seven_groups_or_skips(tmp_path):
+    code = b'''import json, pathlib, shutil, sys
+r=json.load(sys.stdin); root=pathlib.Path(r["fixture_root"]); action=r["birth_property_action"]
+if r["fixture_id"] == "private_mutable_state":
+    (root/"state.json").write_text('{"value":"changed"}' if action == "forward" else '{"value":"before"}')
+if r["fixture_id"] == "private_deletion_tree" and action == "prepare_delete":
+    shutil.copyfile(root/"source.bin", root/"recovery.bin")
+if r["fixture_id"] == "private_deletion_tree" and action == "commit_delete":
+    (root/"source.bin").unlink()
+n=int(r["input"].get("fixture_count", r["input"].get("fixture_total", 0)))
+limit=r["input"].get("limit"); n=min(n, int(limit)) if limit is not None else n
+entries=[{"index":i} for i in range(n)]
+print(json.dumps({"entries":entries,"results":entries,"truncated":limit is not None and int(limit)<int(r["input"].get("fixture_total",n))}))
+'''
+    manifest = b'[code]\nfiles=["candidate.py"]\n'
+    observed = ObservedCandidate(
+        ContractId(ManifestOrigin.USER, "x/manifest.toml"),
+        CandidateSnapshot(tmp_path, manifest, b"{}", MappingProxyType({"candidate.py": code})),
+        SimpleNamespace(candidate_id=D), ExecutorOrigin.HUMAN, RevisionAuthor.HUMAN, D,
+    )
+    profile = PropertyCandidateProfile(
+        output_schema=(("entries", "array"), ("results", "array"), ("truncated", "boolean")),
+        collection_output=True, limit_input=True, truncation_declared=True,
+        revertible=True, destructive_with_undo=True, entries_and_results=True,
+    )
+    evidence = run_applicable_properties(profile, _runner=ObservedPropertyRunner(observed))
+    if evidence and evidence[0].status is PropertyStatus.UNAVAILABLE:
+        pytest.skip(evidence[0].error_code)
+    assert {item.property_id for item in evidence} == {
+        "output.schema.actual", "cardinality.zero_one_many", "limit.zero_and_below_total",
+        "truncation.contract", "undo.round_trip", "delete.copy_before_delete",
+        "entries.results.coherence",
+    }
+    assert all(item.status is PropertyStatus.PASSED for item in evidence)

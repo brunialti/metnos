@@ -84,7 +84,7 @@ def test_core_catalog_cannot_be_omitted_and_snapshot_is_closed():
     assert observed.snapshot.closed
 
 
-def test_core_assembler_does_not_make_ordinary_human_birth_unavailable():
+def test_core_assembler_rejects_non_owned_test_observation():
     observed, observer = _observer_holder()
     assembled = _assemble_production_dependencies()
     deps = _sealed_dependencies_for_test(
@@ -100,9 +100,9 @@ def test_core_assembler_does_not_make_ordinary_human_birth_unavailable():
         objective_hash=D, admission_context=object(), revision_facts=RevisionFacts(first_birth=True),
         _dependencies=deps,
     )
-    assert report.outcome is BirthOutcome.ADMITTED
+    assert report.outcome is BirthOutcome.REJECTED
     assert [item.status.value for item in report.checks] == [
-        "passed", "passed", "not_applicable", "not_applicable",
+        "passed", "unavailable",
     ]
     assert observed.snapshot.closed
 

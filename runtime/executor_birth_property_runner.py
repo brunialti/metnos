@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
+import sys
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Mapping, Protocol
 
 from executor_birth_identity import encode_framed_v1
@@ -14,6 +17,10 @@ from executor_birth_properties import (
     PropertyEvidence,
     PropertySpec,
     PropertyStatus,
+)
+from executor_birth_runner import (
+    FixtureOp, FixtureOpKind, RunnerStatus, WindowsSandboxRegistry,
+    run_birth_phase,
 )
 
 
@@ -33,6 +40,174 @@ class PropertyRunResult:
 
 class PropertyRunner(Protocol):
     def run(self, case: PropertyCase, *, fixture_id: str, isolation: str) -> PropertyRunResult: ...
+
+
+def _attestation_hash(result: object, *, candidate_id: str, case_id: str,
+                      fixture_id: str, isolation: str) -> str:
+    attestation = getattr(result, "attestation")
+    return _hash({
+        "candidate_id": candidate_id,
+        "case_id": case_id,
+        "fixture_id": fixture_id,
+        "isolation": isolation,
+        "backend": attestation.backend,
+        "sandboxed": attestation.sandboxed,
+        "network_unshared": attestation.network_unshared,
+        "pid_unshared": attestation.pid_unshared,
+        "user_unshared": attestation.user_unshared,
+        "ipc_unshared": attestation.ipc_unshared,
+        "uts_unshared": attestation.uts_unshared,
+        "cgroup_v2": attestation.cgroup_v2,
+        "tree_empty": attestation.tree_empty,
+        "termination_attested": attestation.termination_attested,
+    })
+
+
+_HARNESS_PATH = "_metnos_birth_property_harness_v1.py"
+_HARNESS_SOURCE = r'''
+import hashlib, json, pathlib, subprocess, sys
+entrypoint = sys.argv[1]
+request = json.loads(pathlib.Path('request.json').read_text())
+fixture = pathlib.Path('fixture')
+def tree_hash():
+    digest = hashlib.sha256(b'metnos.birth.fixture-tree/v1\0')
+    for path in sorted(fixture.rglob('*')):
+        relative = path.relative_to(fixture).as_posix().encode()
+        digest.update(len(relative).to_bytes(8, 'big')); digest.update(relative)
+        if path.is_file():
+            payload = path.read_bytes()
+            digest.update(b'f'); digest.update(len(payload).to_bytes(8, 'big')); digest.update(payload)
+        elif path.is_dir(): digest.update(b'd')
+        else: raise RuntimeError('fixture_node_invalid')
+    return 'sha256:' + digest.hexdigest()
+def file_hash(path):
+    return 'sha256:' + hashlib.sha256(path.read_bytes()).hexdigest()
+def invoke(action):
+    value = dict(request); value['birth_property_action'] = action
+    result = subprocess.run([sys.executable, entrypoint], input=json.dumps(value).encode(),
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if result.returncode:
+        sys.stderr.buffer.write(result.stderr); raise SystemExit(result.returncode)
+    parsed = json.loads(result.stdout)
+    if not isinstance(parsed, dict): raise RuntimeError('candidate_output_invalid')
+    return parsed
+before = tree_hash(); observations = {}
+if request['fixture_id'] == 'private_deletion_tree':
+    source = fixture / 'source.bin'; recovery = fixture / 'recovery.bin'
+    source_hash = file_hash(source)
+    output = invoke('prepare_delete')
+    if source.is_file() and recovery.is_file() and file_hash(recovery) == source_hash:
+        output = invoke('commit_delete')
+        if not source.exists() and recovery.is_file() and file_hash(recovery) == source_hash:
+            observations.update(filesystem_events=['copy', 'delete'],
+                                source_before_hash=source_hash,
+                                recovery_copy_hash=file_hash(recovery))
+    after = tree_hash()
+else:
+    output = invoke('forward'); after = tree_hash()
+if request['fixture_id'] == 'private_mutable_state':
+    invoke('undo'); restored = tree_hash()
+    observations.update(state_before_hash=before, state_after_forward_hash=after,
+                        state_after_undo_hash=restored)
+print(json.dumps({'output': output, 'observations': observations},
+                 sort_keys=True, separators=(',', ':')))
+'''.encode("utf-8")
+
+
+class ObservedPropertyRunner:
+    """Core-owned adapter bound to the exact private candidate observation.
+
+    The candidate receives a closed JSON request and may emit only its ordinary
+    JSON result.  Evidence about fixtures and isolation is reconstructed here;
+    candidate fields that resemble attestations are never trusted.
+    """
+
+    def __init__(self, observed: object, *,
+                 windows_registry: WindowsSandboxRegistry | None = None) -> None:
+        from executor_birth import ObservedCandidate
+        if not isinstance(observed, ObservedCandidate):
+            raise PropertyContractError("property_candidate_invalid", "observation")
+        self._observed = observed
+        self._windows_registry = windows_registry
+
+    def _entrypoint(self) -> str:
+        try:
+            manifest = __import__("tomllib").loads(self._observed.snapshot.manifest_bytes.decode("utf-8"))
+            files = manifest["code"]["files"]
+            entrypoint = files[0]
+        except (KeyError, IndexError, TypeError, UnicodeDecodeError, ValueError) as exc:
+            raise PropertyContractError("property_candidate_invalid", "entrypoint") from exc
+        if not isinstance(entrypoint, str) or PurePosixPath(entrypoint).is_absolute():
+            raise PropertyContractError("property_candidate_invalid", "entrypoint")
+        return entrypoint
+
+    @staticmethod
+    def _fixture(case: PropertyCase, fixture_id: str) -> tuple[FixtureOp, ...]:
+        count = case.input_value.get("fixture_count", case.expectation.get("fixture_total", 0))
+        count = count if type(count) is int and 0 <= count <= 16 else 0
+        request = {"case_id": case.case_id, "fixture_id": fixture_id,
+                   "input": dict(case.input_value), "fixture_root": "fixture"}
+        if fixture_id == "private_mutable_state":
+            request["state_path"] = "fixture/state.json"
+        if fixture_id == "private_deletion_tree":
+            request.update(source_path="fixture/source.bin",
+                           recovery_path="fixture/recovery.bin")
+        ops: list[FixtureOp] = [
+            FixtureOp(FixtureOpKind.MKDIR, "fixture"),
+            FixtureOp(FixtureOpKind.SEED_JSON, "request.json", request),
+        ]
+        if count:
+            ops.append(FixtureOp(FixtureOpKind.MKDIR, "fixture/entries"))
+            for index in range(count):
+                ops.append(FixtureOp(FixtureOpKind.SEED_JSON,
+                                     f"fixture/entries/{index}.json", {"index": index}))
+        if fixture_id == "private_mutable_state":
+            ops.append(FixtureOp(FixtureOpKind.SEED_JSON, "fixture/state.json", {"value": "before"}))
+        if fixture_id == "private_deletion_tree":
+            ops.append(FixtureOp(FixtureOpKind.WRITE_BYTES, "fixture/source.bin", b"birth-fixture-v1"))
+        return tuple(ops)
+
+    def run(self, case: PropertyCase, *, fixture_id: str, isolation: str) -> PropertyRunResult:
+        # A fixed core harness supplies stdin from the immutable request file;
+        # neither command nor candidate bytes come from the Birth caller.
+        entrypoint = self._entrypoint()
+        candidate_files = dict(self._observed.snapshot.code_files)
+        if _HARNESS_PATH in candidate_files:
+            raise PropertyContractError("property_candidate_invalid", "reserved_harness_path")
+        candidate_files[_HARNESS_PATH] = _HARNESS_SOURCE
+        command = (
+            (_HARNESS_PATH, "candidate/" + entrypoint)
+            if sys.platform == "win32"
+            else (sys.executable, "-I", "candidate/" + _HARNESS_PATH,
+                  "candidate/" + entrypoint)
+        )
+        result = run_birth_phase(
+            command,
+            fixture_ops=self._fixture(case, fixture_id),
+            candidate_id=self._observed.identities.candidate_id,
+            candidate_files=candidate_files,
+            windows_registry=self._windows_registry,
+        )
+        attestation_hash = _attestation_hash(
+            result, candidate_id=self._observed.identities.candidate_id,
+            case_id=case.case_id, fixture_id=fixture_id, isolation=isolation,
+        )
+        if result.status is not RunnerStatus.PASSED:
+            raise RuntimeError(result.error_code or "property_runner_unavailable")
+        try:
+            envelope = json.loads(result.stdout)
+        except (TypeError, ValueError) as exc:
+            raise PropertyContractError("property_runner_result_invalid", "json") from exc
+        if (not isinstance(envelope, Mapping) or set(envelope) != {"output", "observations"}
+                or not isinstance(envelope["output"], Mapping)
+                or not isinstance(envelope["observations"], Mapping)):
+            raise PropertyContractError("property_runner_result_invalid", "output")
+        output = dict(envelope["output"])
+        observations: dict[str, object] = dict(envelope["observations"])
+        fixture_total = case.expectation.get("fixture_total")
+        if type(fixture_total) is int:
+            observations["fixture_total"] = fixture_total
+        return PropertyRunResult(output, observations, attestation_hash)
 
 
 @dataclass(frozen=True, slots=True)

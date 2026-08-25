@@ -35,6 +35,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from .birth_bootstrap import provision_e2e_birth_bootstrap
+
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LIVE_USER_DATA = Path.home() / ".local/share/metnos"
@@ -361,6 +363,7 @@ class E2EServer:
 
         # Admin key: genera + scrive in user_config
         _seed_trusted_public_keys(user_config)
+        provision_e2e_birth_bootstrap(user_config)
         admin_key = secrets.token_hex(32)
         (user_config / "admin.key").write_text(admin_key)
         os.chmod(user_config / "admin.key", 0o600)

@@ -88,3 +88,55 @@ def test_exact_execution_binding_and_evidence_hash(monkeypatch):
             request(), consent_valid=True,
             _invoke_review=lambda *_a, **_k: encoded(generation_id="generation-2"),
         )
+
+
+def test_persistent_review_is_exactly_once_and_replayable(tmp_path):
+    calls = 0
+    def invoke(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return encoded()
+    db = tmp_path / "failure-reviews.sqlite"
+    first = subject.review_failure_once(request(), consent_valid=True, db_path=db,
+                                        _invoke_review=invoke)
+    replay = subject.review_failure_once(
+        request(), consent_valid=True, db_path=db,
+        _invoke_review=lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("retried")),
+    )
+    assert replay == first
+    assert calls == 1
+
+
+def test_failed_attempt_is_durably_consumed(tmp_path):
+    db = tmp_path / "failure-reviews.sqlite"
+    with pytest.raises(subject.FailureReviewError, match="unavailable"):
+        subject.review_failure_once(
+            request(), consent_valid=True, db_path=db,
+            _invoke_review=lambda *_a, **_k: (_ for _ in ()).throw(TimeoutError()),
+        )
+    with pytest.raises(subject.FailureReviewError, match="already_attempted"):
+        subject.review_failure_once(request(), consent_valid=True, db_path=db,
+                                    _invoke_review=lambda *_a, **_k: encoded())
+
+
+def test_missing_consent_does_not_consume_persistent_attempt(tmp_path):
+    db = tmp_path / "failure-reviews.sqlite"
+    with pytest.raises(subject.FailureReviewError, match="consent_required"):
+        subject.review_failure_once(request(), consent_valid=False, db_path=db,
+                                    _invoke_review=lambda *_a, **_k: encoded())
+    assert not db.exists()
+
+
+def test_persistent_review_rejects_changed_binding(tmp_path):
+    db = tmp_path / "failure-reviews.sqlite"
+    subject.review_failure_once(request(), consent_valid=True, db_path=db,
+                                _invoke_review=lambda *_a, **_k: encoded())
+    original = request()
+    changed = subject.FailureReviewRequest(
+        original.execution_receipt_id, original.execution_receipt_hash,
+        original.candidate_id, original.generation_id, D,
+        original.error_code, original.reduced_arguments, original.reduced_output,
+    )
+    with pytest.raises(subject.FailureReviewError, match="binding_invalid"):
+        subject.review_failure_once(changed, consent_valid=True, db_path=db,
+                                    _invoke_review=lambda *_a, **_k: encoded())

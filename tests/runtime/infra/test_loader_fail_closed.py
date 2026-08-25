@@ -102,7 +102,5 @@ def test_stage6_missing_verifier_never_self_approves(monkeypatch):
     import skill_admission
     monkeypatch.delenv("METNOS_STAGE6_VERIFY_FAKE", raising=False)
     monkeypatch.setitem(sys.modules, "synt_stage6_verify", None)
-    result = skill_admission._stage6_verify_callable()("manifest", "code")
-    assert result["aligned"] is False
-    assert result["mismatch"] == "semantic_verifier_unavailable"
-
+    with pytest.raises(RuntimeError, match="^semantic_verifier_unavailable$"):
+        skill_admission._stage6_verify_callable()("manifest", "code")

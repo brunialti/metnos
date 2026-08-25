@@ -183,10 +183,38 @@ def test_build_end_to_end_from_explicit_material_and_dedicated_keystores(monkeyp
     )
     context = {name: {"version": "v1", "files": [], "configuration": {"name": name}}
                for name in component_names}
+    semantic_key = Ed25519PrivateKey.generate()
+    (tmp_path / "semantic.pub").write_bytes(semantic_key.public_key().public_bytes_raw())
+    (tmp_path / "semantic.pub").chmod(0o600)
+    (tmp_path / "semantic-evidence").mkdir(mode=0o700)
+    evidence_kinds = ("deterministic_oracle", "human_case", "metamorphic_relation")
+    semantic_review = {
+        "evidence_dir": "semantic-evidence", "verifiers": {
+            "semantic-v1": {"path": "semantic.pub", "status": "active"}
+        },
+        "versions": {kind: ["v1"] for kind in evidence_kinds},
+        "owners": {kind: [f"owner:{kind}"] for kind in evidence_kinds},
+    }
+    approver_key = Ed25519PrivateKey.generate()
+    import base64
+    approval_registry = {
+        "schema_version": 1, "revision": 1,
+        "keys": {"approver-v1": base64.b64encode(
+            approver_key.public_key().public_bytes_raw()).decode()},
+        "actors": {"operator": {"key_ids": ["approver-v1"],
+                                  "scopes": ["synthesized"]}},
+    }
+    (tmp_path / "approval-authority.json").write_bytes(
+        json.dumps(approval_registry, sort_keys=True, separators=(",", ":")).encode()
+    )
+    (tmp_path / "approval-authority.json").chmod(0o600)
     value = {
         "schema_version": 1, "policy_version": "birth-policy-v1",
         "receipt_ttl_seconds": 3600, "admission": {"keystore": "admission"},
+        "approval": {"db_path": "approval.sqlite",
+                     "authority_registry": "approval-authority.json"},
         "producers": producers["producers"], "context": context,
+        "semantic_review": semantic_review,
     }
     config = tmp_path / "bootstrap.json"
     config.write_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())

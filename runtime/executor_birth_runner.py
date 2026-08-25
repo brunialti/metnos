@@ -455,6 +455,10 @@ def run_birth_phase(
         work = Path(temporary) / "work"
         handshake = Path(temporary) / "bwrap-status.json"
         work.mkdir(mode=0o700)
+        if candidate_files is not None:
+            candidate_root = work / "candidate"
+            candidate_root.mkdir(mode=0o700)
+            materialize_candidate_files(candidate_root, candidate_files)
         materialize_fixture(work, checked_ops)
         scope = delegate / f"phase-{uuid.uuid4().hex}"
         try:

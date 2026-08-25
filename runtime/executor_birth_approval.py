@@ -14,7 +14,13 @@ APPROVAL_DOMAIN_V1 = b"metnos.executor-birth.approval/v1\0"
 APPROVAL_SCHEMA_VERSION = 1
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _TIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-_LIFECYCLES = frozenset({"proposed", "synthesized", "preexercise", "active", "quarantined"})
+_LIFECYCLES = frozenset({
+    "proposed", "synthesized", "preexercise", "active", "quarantined",
+    # Productive approval scopes for changes to an existing executor.  These
+    # are deliberately distinct from lifecycle values: an approval for an
+    # authority change must not authorize promotion or reactivation.
+    "authority", "promotion", "reactivation",
+})
 
 
 class ApprovalDecision(str, Enum):
@@ -94,6 +100,8 @@ class ApprovalEvidence:
     decision: ApprovalDecision
     decided_at: str
     registry_token: str | None = None
+    key_id: str | None = None
+    signature: str | None = None
 
     def __post_init__(self) -> None:
         _text(self.approval_id, "approval_id")
@@ -104,6 +112,12 @@ class ApprovalEvidence:
         _instant(self.decided_at, "decided_at")
         if self.registry_token is not None:
             _text(self.registry_token, "registry_token")
+        if (self.key_id is None) != (self.signature is None):
+            raise BirthApprovalError("approval_invalid", "signature_envelope")
+        if self.key_id is not None:
+            _text(self.key_id, "key_id")
+            if not isinstance(self.signature, str) or not re.fullmatch(r"[0-9a-f]{128}", self.signature):
+                raise BirthApprovalError("approval_invalid", "signature")
 
 
 def validate_approval(
@@ -144,6 +158,11 @@ def approval_evidence_hash(evidence: ApprovalEvidence) -> str:
         "decided_at": evidence.decided_at,
         "registry_token": evidence.registry_token,
     }
+    # Preserve the V1 digest of non-registry/unit-test evidence. Productive
+    # store evidence always carries this signed extension.
+    if evidence.key_id is not None:
+        payload["key_id"] = evidence.key_id
+        payload["signature"] = evidence.signature
     return "sha256:" + hashlib.sha256(
         APPROVAL_DOMAIN_V1 + encode_framed_v1(payload)
     ).hexdigest()

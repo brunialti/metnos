@@ -866,12 +866,12 @@
     {
       "path": "runtime/contract_store.py",
       "scope": "authenticate_birth_predecessor",
-      "role": "administrative_tool",
+      "role": "store_owner",
       "capabilities": [
         "authoring_write",
         "store_write"
       ],
-      "destination": "reviewed administrative read-only or authoring scope",
+      "destination": "sole owner of authenticated predecessor reads under publication-store locks",
       "phase": "M4"
     },
     {
@@ -1104,23 +1104,23 @@
     {
       "path": "runtime/executor_birth_bootstrap.py",
       "scope": "_PostconditionAdapter.recover_authoring",
-      "role": "administrative_tool",
+      "role": "store_owner",
       "capabilities": [
         "authoring_read",
         "store_write",
         "verified_store_read"
       ],
-      "destination": "reviewed administrative read-only or authoring scope",
+      "destination": "reviewed startup owner of publication and authoring recovery",
       "phase": "M4"
     },
     {
       "path": "runtime/executor_birth_bootstrap.py",
       "scope": "_build",
-      "role": "administrative_tool",
+      "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
-      "destination": "reviewed administrative read-only or authoring scope",
+      "destination": "sealed bootstrap assembly that completes store recovery before workers",
       "phase": "M4"
     },
     {
@@ -1136,21 +1136,21 @@
     {
       "path": "runtime/executor_birth_bootstrap.py",
       "scope": "bootstrap_birth_runtime",
-      "role": "administrative_tool",
+      "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
-      "destination": "reviewed administrative read-only or authoring scope",
+      "destination": "sealed startup owner that installs the recovered Birth runtime",
       "phase": "M4"
     },
     {
       "path": "runtime/executor_birth_bootstrap.py",
       "scope": "require_birth_runtime_before_workers",
-      "role": "administrative_tool",
+      "role": "store_owner",
       "capabilities": [
         "store_write"
       ],
-      "destination": "reviewed administrative read-only or authoring scope",
+      "destination": "mandatory pre-worker gate for publication-store recovery",
       "phase": "M4"
     },
     {
@@ -1246,12 +1246,12 @@
     {
       "path": "runtime/executor_birth_postcondition.py",
       "scope": "verify_birth_postcondition",
-      "role": "administrative_tool",
+      "role": "store_owner",
       "capabilities": [
         "store_write",
         "verified_store_read"
       ],
-      "destination": "reviewed administrative read-only or authoring scope",
+      "destination": "sole authenticated postcondition reader under publication-store locks",
       "phase": "M4"
     },
     {
