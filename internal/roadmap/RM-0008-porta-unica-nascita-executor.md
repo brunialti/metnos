@@ -536,6 +536,148 @@ almeno gli hash di `contract_store.py`, `sign.py`,
 servizio e la versione del pacchetto. Il certificato non contiene tempi,
 percorsi personali o dati liberi dell'operatore.
 
+#### Manifest di distribuzione della build chiusa
+
+Una build F4 non costruisce mai un `ClosedBuildIdentity` da parametri del
+chiamante. L'unico produttore è il verificatore root-owned del manifest di
+distribuzione V1. Questo artefatto è distinto dai manifest degli executor, dal
+manifest dell'installer e dal certificato di cutover; non contiene chiavi,
+percorsi del trust store o opzioni di verifica selezionabili tramite ambiente,
+CLI, configurazione utente o richiesta.
+
+Il payload è JSON ASCII canonico, senza chiavi duplicate, campi extra, spazi o
+newline finale, con chiavi ordinate, separatori `,` e `:`, escaping ASCII e
+`allow_nan=false`. Il limite è 16 MiB; la firma Ed25519 separata è di 64 byte.
+Contiene esattamente:
+
+```text
+schema_version=1
+closed_build_id
+previous_closed_build_id
+release_sequence
+product_version
+platform
+architecture
+signing_key_id
+installation_root
+certificate_directory
+boundary_inventory_path
+boundary_inventory_hash
+boundary_guard_version
+preflight_entrypoint
+files
+```
+
+`previous_closed_build_id` è nullo soltanto per la prima build chiusa e negli
+upgrade coincide con la build dell'ultima testa accettata. `release_sequence` è
+un intero positivo, mai booleano, e cresce esattamente di uno. `product_version`
+è la SemVer della sorgente unica di versione. `platform` appartiene a
+`linux|windows`, `architecture` a `x86_64|aarch64`, e la coppia coincide con il
+processo verificatore. Linux V1 usa `/opt/metnos` e
+`/var/lib/metnos/executor-birth`; un percorso diverso richiede un nuovo
+artefatto firmato e un descriptor root-owned, mai una variabile del servizio.
+Windows accetta soltanto percorsi drive-absolute normalizzati e rifiuta UNC,
+device namespace, ADS e reparse point; certifica parser ed enforcement, non il
+cutover amministrato.
+
+`files` è non vuota, ordinata per byte UTF-8 di `path` e priva di duplicati.
+Ogni elemento contiene esattamente `path`, `size`, `content_hash` e `role`.
+`path` è relativo canonico NFC con `/`, senza segmenti vuoti, `.`, `..`,
+backslash o NUL. `size` è un intero non negativo, non booleano, e coincide con
+la lettura bounded dall'handle. `role` appartiene a
+`runtime_code|preflight|boundary_guard|boundary_inventory|service_unit|product_version|dependency_lock`.
+Il digest di ogni file è:
+
+```text
+sha256("metnos.executor-birth.closed-build-file/v1\0" ||
+       u64be(len(path_utf8)) || path_utf8 || u64be(size) || file_bytes)
+```
+
+La lettura non segue link o reparse point, richiede file regolare con un solo
+hard link e proprietà/modalità amministrative, controlla identità e metadati
+prima e dopo e rifiuta file mancanti o mutati. Nel sottoinsieme sigillato sono
+vietati file extra caricabili, `.pyc`, `__pycache__`, namespace sovrapposti o un
+diverso `sys.path`.
+
+La release include almeno `contract_store.py`, `sign.py`, la guardia, tutti i
+moduli `executor_birth*.py`, la sorgente unica di versione, verificatore e
+preflight, inventario chiuso installabile, lock delle dipendenze e unità/drop-in
+effettivamente avviata. La lista nominale non basta: il compilatore include la
+chiusura transitiva dei moduli importabili dal proprietario Birth e dalle
+eccezioni chiuse, più ogni configurazione amministrativa che può cambiare
+interprete, root o avvio. Un import produttivo non risolto in un file firmato,
+nella libreria standard o nel lock delle dipendenze blocca la build.
+
+L'inventario chiuso è materializzato fuori da `internal/`, in un percorso
+installato firmato. Il suo hash è
+`sha256("metnos.executor-birth.boundary-inventory/v1\0" || inventory_bytes)`;
+deve superare `--birth-closed` e coincidere con schema, versione guardia, unico
+owner ed eccezioni compilate. Manifest, certificato e inventario non possono
+ridefinire la politica.
+
+`closed_build_id` è il digest del JSON canonico senza il solo campo omonimo,
+preceduto dal dominio `metnos.executor-birth.closed-build-id/v1\0`. La firma
+copre il payload completo con dominio
+`metnos.executor-birth.closed-build/v1\0`. Il registro storico core-owned è
+separato dal manifest; l'identificativo della chiave è
+`distribution-ed25519-v1-sha256-<sha256(raw_public_key)>` e lo scopo esclusivo è
+`closed_distribution_v1`. Scopi di cutover, ammissione o firma executor non lo
+implicano. Il verificatore controlla identificativo, scopo, revoca ed epoca e,
+soltanto dopo firma e file, crea in memoria il `ClosedBuildIdentity` sigillato.
+
+#### Catena append-only, anti-downgrade e recupero
+
+I nomi fissi `ownership-cutover-v1.json` e `.sig` restano l'ancora immutabile
+del primo cutover: non sono lo store degli upgrade. Gli aggiornamenti usano:
+
+```text
+builds-v1/<closed_build_id>.json|.sig
+cutovers-v1/<cutover_id>.json|.sig
+heads-v1/{release_sequence:020d}-{cutover_id}.json|.sig
+required-head-v1.json|.sig
+```
+
+Build, cutover e head sono append-only e pubblicati con temporanei esclusivi,
+rename no-replace e fsync. Il record head contiene esattamente
+`schema_version`, `release_sequence`, `cutover_id`, `closed_build_id`,
+`previous_head_id`, `head_id` e `signing_key_id`. `head_id` usa il dominio
+`metnos.executor-birth.ownership-head-id/v1\0` sul payload senza `head_id`; la
+firma usa `metnos.executor-birth.ownership-head/v1\0` e una chiave con scopo
+separato `ownership_head_v1`. Il primo head lega l'ancora; ogni successivo lega
+esattamente predecessore, build e cutover e incrementa la sequenza di uno.
+
+Il preflight non sceglie il file col numero maggiore e non ripiega. Parte
+dall'ancora, verifica una catena contigua e unica e richiede che l'ultima testa
+coincida con `required-head-v1`, pubblicato per ultimo dal coordinatore
+root-owned e coperto dal descriptor di deployment. Assenza, buco, fork,
+predecessore errato, oggetti mancanti o una testa precedente producono
+`birth_ownership_downgrade` o `birth_ownership_recovery_required`. Prima della
+sostituzione atomica di `required-head-v1` resta avviabile soltanto la vecchia
+build; dopo, soltanto la nuova. Un crash successivo lascia lo stack fermo e il
+recovery completa byte per byte quella testa, senza fallback.
+
+Il journal amministrativo distingue temporanei, coppie orfane e punto di non
+ritorno. Gli orfani non referenziati anteriori possono essere conservati o
+rimossi soltanto con journal concordante e non sono selezionabili. Dopo il
+punto di non ritorno non si cancella alcuna autorità e un ripristino richiede
+una nuova build e un nuovo head con sequenza superiore. Un retry accetta solo
+byte, firme e identità identici.
+
+Il protocollo protegge da servizio, chiamanti, installer non autorizzato, crash
+e cancellazioni parziali. Un amministratore root ostile capace di ripristinare
+insieme filesystem, unità e trust anchor richiede secure boot e contatore
+monotono TPM; tale modello è fuori da V1 e non viene implicitamente dichiarato.
+
+Gli errori aggiuntivi sono `birth_ownership_distribution_missing`,
+`birth_ownership_distribution_invalid`,
+`birth_ownership_distribution_key_unauthorized`,
+`birth_ownership_distribution_file_mismatch`,
+`birth_ownership_distribution_extra_file`,
+`birth_ownership_distribution_platform_mismatch`,
+`birth_ownership_distribution_chain_invalid`, `birth_ownership_downgrade` e
+`birth_ownership_distribution_recovery_required`. I dettagli esterni non
+espongono percorsi arbitrari, byte, chiavi o digest osservati.
+
 `maintenance_evidence_hash` usa il dominio
 `metnos.executor-birth.maintenance-proof/v1\0` sul documento canonico
 `{schema_version:1,source,units}`. `source` appartiene all'enum chiuso del
