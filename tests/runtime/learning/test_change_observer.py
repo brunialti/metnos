@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
@@ -187,6 +188,9 @@ class TestRollback(unittest.TestCase):
         C.PATH_USER_STATE = self.tmpdir / "state"
         C.PATH_USER_DATA.mkdir(parents=True)
         C.PATH_USER_STATE.mkdir(parents=True)
+        C.PATH_EXECUTORS = self.tmpdir / "executors"
+        C.PATH_EXECUTORS.mkdir()
+        C.PATH_SYNTH_EXECUTORS = C.PATH_USER_DATA / "executors"
         C.DB_MULTI_TOOL_PATHS = C.PATH_USER_DATA / "multi_tool_paths.sqlite"
         cn = sqlite3.connect(str(C.DB_MULTI_TOOL_PATHS))
         cn.execute("""CREATE TABLE multi_tool_paths (
@@ -206,6 +210,44 @@ class TestRollback(unittest.TestCase):
         self.ci_mod = ci_mod
         self.cr = cr
 
+    def _extend_rollback_fixture(self):
+        name = "find_things"
+        mdir = __import__("config").PATH_EXECUTORS / name
+        mdir.mkdir()
+        manifest = mdir / "manifest.toml"
+        changed = "name = 'changed'\n[code]\nfiles = ['tool.py']\n"
+        original = "name = 'original'\n[code]\nfiles = ['tool.py']\n"
+        manifest.write_text(changed, encoding="utf-8")
+        (mdir / "manifest.lang_state.json").write_text("{}")
+        (mdir / "tool.py").write_text("def invoke(): return {}\n")
+        blob = self.tmpdir / "original.toml"
+        blob.write_text(original, encoding="utf-8")
+        ci = self.ci_mod.ChangeIntent.new(
+            origin_family="u", origin_module="t",
+            intent_kind=self.ci_mod.KIND_EXTEND_EXECUTOR,
+            intent_target=name, intent_summary="rollback", intent_body={},
+        )
+        ci.applied_effect = {
+            "executor_name": name, "rollback_blob_path": str(blob),
+        }
+        from manifest_inventory import ContractId, ManifestOrigin
+        contract_id = ContractId(
+            ManifestOrigin.BUILTIN, f"{name}/manifest.toml",
+        )
+        return ci, manifest, contract_id, changed, original
+
+    @staticmethod
+    def _birth_result(contract_id, *, error=None):
+        from contract_store import PublicationResult
+        publication = None if error else PublicationResult(
+            contract_id, "sha256:" + "4" * 64,
+            "sha256:" + "5" * 64, "commit_birth_snapshot", False,
+        )
+        return mock.Mock(
+            request_id="sha256:" + "3" * 64,
+            publication=publication, error_code=error,
+        )
+
     def tearDown(self):
         self.tmp.cleanup()
 
@@ -224,6 +266,48 @@ class TestRollback(unittest.TestCase):
         self.assertTrue(effect["alias_removed"])
         aliases = json.loads(aliases_path.read_text())
         self.assertNotIn("b", aliases)
+
+    def test_extend_rollback_fails_closed_before_restore_without_birth_request(self):
+        ci, manifest, contract_id, changed, _original = self._extend_rollback_fixture()
+        with mock.patch(
+            "change_rollback.require_birth_intent_adapter",
+            side_effect=RuntimeError("birth_intent_adapter_unavailable"),
+        ):
+            effect = self.cr.rollback_for_kind(ci)
+        self.assertIn("birth intent unavailable", effect["error"])
+        self.assertEqual(manifest.read_text(encoding="utf-8"), changed)
+
+    def test_extend_rollback_publishes_only_through_birth(self):
+        ci, manifest, contract_id, _changed, original = self._extend_rollback_fixture()
+        def submit(intent):
+            manifest.write_bytes(
+                (intent.candidate_source_root / "manifest.toml").read_bytes())
+            return self._birth_result(contract_id)
+        with mock.patch("change_rollback.require_birth_intent_adapter"), \
+                mock.patch("change_applier_extend._contract_id",
+                           return_value=contract_id), \
+                mock.patch("change_rollback.submit_birth_intent",
+                           side_effect=submit) as birth:
+            effect = self.cr.rollback_for_kind(ci)
+        self.assertEqual(manifest.read_text(encoding="utf-8"), original)
+        self.assertEqual(effect["birth_request_id"], "sha256:" + "3" * 64)
+        self.assertIn("new_generation_id", effect)
+        birth.assert_called_once()
+
+    def test_extend_rollback_replay_is_rejected_without_false_success(self):
+        ci, manifest, contract_id, changed, _original = self._extend_rollback_fixture()
+        with mock.patch("change_rollback.require_birth_intent_adapter"), \
+                mock.patch("change_applier_extend._contract_id",
+                           return_value=contract_id), \
+                mock.patch(
+                    "change_rollback.submit_birth_intent",
+                    return_value=self._birth_result(
+                        contract_id, error="producer_receipt_replay"),
+                ):
+            effect = self.cr.rollback_for_kind(ci)
+        self.assertIn("producer_receipt_replay", effect["re_sign_error"])
+        self.assertNotIn("new_generation_id", effect)
+        self.assertEqual(manifest.read_text(encoding="utf-8"), changed)
 
     def test_rollback_pipeline_sets_demoted(self):
         import config as C

@@ -8,48 +8,58 @@ from types import SimpleNamespace
 from cli import skills_cli
 
 
-def test_import_admission_reports_legacy_signing(monkeypatch, tmp_path: Path) -> None:
-    import sign
+def _contract_id():
+    from manifest_inventory import ContractId, ManifestOrigin
+    return ContractId(ManifestOrigin.USER_SKILL, "sample/tool/manifest.toml")
 
+
+def test_import_admission_fails_closed_without_birth_bootstrap(monkeypatch, tmp_path: Path) -> None:
+    import executor_birth_intent
     monkeypatch.delenv("METNOS_SKILLS_NO_SIGN", raising=False)
     monkeypatch.setattr(
-        sign,
-        "publish_authoring_update",
-        lambda _path: ("sha256:legacy", tmp_path / "manifest.toml.sig", None),
+        executor_birth_intent, "submit_birth_intent",
+        lambda _intent: (_ for _ in ()).throw(RuntimeError("adapter unavailable")),
     )
-
-    assert skills_cli._try_publish_authoring_update(tmp_path) == "signed"
+    assert skills_cli._try_submit_birth(
+        tmp_path, contract_id=_contract_id(),
+    ) == (
+        "birth_failed: adapter unavailable"
+    )
 
 
 def test_import_admission_reports_store_publication(monkeypatch, tmp_path: Path) -> None:
-    import sign
+    import executor_birth_intent
 
     monkeypatch.delenv("METNOS_SKILLS_NO_SIGN", raising=False)
     monkeypatch.setattr(
-        sign,
-        "publish_authoring_update",
-        lambda _path: (
-            "sha256:store",
-            tmp_path / "manifest.toml.sig",
-            SimpleNamespace(current_generation_id="sha256:generation"),
+        executor_birth_intent, "submit_birth_intent",
+        lambda _intent: SimpleNamespace(
+            error_code=None,
+            publication=SimpleNamespace(
+                operation="publish",
+                current_generation_id="sha256:generation",
+            ),
         ),
     )
 
-    assert skills_cli._try_publish_authoring_update(tmp_path) == "published"
+    assert skills_cli._try_submit_birth(
+        tmp_path, contract_id=_contract_id(),
+    ) == "published"
 
 
 def test_import_admission_keeps_failure_explicit(monkeypatch, tmp_path: Path) -> None:
-    import sign
+    import executor_birth_intent
 
     monkeypatch.delenv("METNOS_SKILLS_NO_SIGN", raising=False)
     monkeypatch.setattr(
-        sign,
-        "publish_authoring_update",
-        lambda _path: (_ for _ in ()).throw(RuntimeError("commit ambiguous")),
+        executor_birth_intent, "submit_birth_intent",
+        lambda _intent: (_ for _ in ()).throw(RuntimeError("commit ambiguous")),
     )
 
-    assert skills_cli._try_publish_authoring_update(tmp_path) == (
-        "sign_failed: commit ambiguous"
+    assert skills_cli._try_submit_birth(
+        tmp_path, contract_id=_contract_id(),
+    ) == (
+        "birth_failed: commit ambiguous"
     )
 
 
@@ -57,31 +67,24 @@ def test_import_reactivates_only_after_authenticated_retirement(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    import contract_store
-    import sign
+    import executor_birth_intent
 
     monkeypatch.delenv("METNOS_SKILLS_NO_SIGN", raising=False)
-    monkeypatch.setattr(
-        sign,
-        "publish_authoring_update",
-        lambda _path: (_ for _ in ()).throw(
-            contract_store.ContractStoreError(
-                "contract_retired", "sha256:" + "1" * 64,
-            )
-        ),
-    )
-    calls = []
-    monkeypatch.setattr(
-        sign,
-        "reactivate_executor_contract",
-        lambda path, **kwargs: calls.append((path, kwargs)),
-    )
+    intents = []
+    def submit(intent):
+        intents.append(intent)
+        return SimpleNamespace(
+            error_code=None,
+            publication=SimpleNamespace(operation="reactivate"),
+        )
+    monkeypatch.setattr(executor_birth_intent, "submit_birth_intent", submit)
 
-    assert skills_cli._try_publish_authoring_update(tmp_path) == "reactivated"
-    assert calls == [(str(tmp_path), {
-        "actor": "skills_cli",
-        "reason": "reinstall imported executor contract",
-    })]
+    assert skills_cli._try_submit_birth(
+        tmp_path, contract_id=_contract_id(),
+    ) == "reactivated"
+    assert len(intents) == 1
+    assert intents[0].actor == "skills_cli"
+    assert intents[0].operation == "skill_import_or_reactivation"
 
 
 def _skill_contracts(tmp_path: Path) -> Path:

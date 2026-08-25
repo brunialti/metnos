@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import sys
 import tomllib
 from pathlib import Path
@@ -67,18 +68,29 @@ def test_reactive_synth_is_signed_as_quarantined_standard_candidate(
         tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(synth_request, "SYNTHESIZED_EXECUTORS_DIR", tmp_path)
     admitted = []
+    admitted_manifests = []
+    monkeypatch.setattr(synth_request, "require_synth_birth_service", lambda: None)
     monkeypatch.setattr(
         synth_request,
-        "publish_authoring_update",
-        lambda path: admitted.append(path),
+        "submit_synth_birth",
+        lambda data: admitted.append(data) or admitted_manifests.append(
+            tomllib.loads((data.candidate_root / "manifest.toml").read_text())
+        ) or SimpleNamespace(
+            publication=SimpleNamespace(generation_id="sha256:" + "1" * 64),
+            error_code=None,
+        ),
     )
 
     output_dir = synth_request._install_synthesized(
         _candidate_run(), "trova file", "trova file",
     )
-    manifest = tomllib.loads((output_dir / "manifest.toml").read_text(encoding="utf-8"))
+    manifest = admitted_manifests[0]
 
-    assert admitted == [output_dir]
+    assert output_dir == tmp_path / "find_files"
+    assert not output_dir.exists()
+    assert len(admitted) == 1
+    assert admitted[0].producer == "synt_multistage"
+    assert admitted[0].operation == "create"
     assert manifest["executor_standard"] == STANDARD_ID
     assert manifest["lifecycle"] == "synthesized"
     assert manifest["execution"]["parallelism_class"] == 0
@@ -86,6 +98,70 @@ def test_reactive_synth_is_signed_as_quarantined_standard_candidate(
     assert len(manifest["tests"]) == 3
     assert manifest["output"]["schema_inline"]
     assert validate_for_lifecycle(manifest) == []
+
+
+def test_rejected_reactive_birth_leaves_authoring_byte_identical(
+        tmp_path: Path, monkeypatch) -> None:
+    target = tmp_path / "find_files"
+    target.mkdir()
+    sentinel = target / "manifest.toml"
+    sentinel.write_bytes(b"existing-authoring-bytes\n")
+    before = sentinel.read_bytes()
+    monkeypatch.setattr(synth_request, "SYNTHESIZED_EXECUTORS_DIR", tmp_path)
+    monkeypatch.setattr(synth_request, "require_synth_birth_service", lambda: None)
+    monkeypatch.setattr(
+        synth_request, "submit_synth_birth",
+        lambda _data: SimpleNamespace(
+            publication=None, error_code="semantic_review_rejected",
+        ),
+    )
+
+    import pytest
+    with pytest.raises(RuntimeError, match="semantic_review_rejected"):
+        synth_request._install_synthesized(
+            _candidate_run(), "trova file", "trova file",
+        )
+
+    assert sentinel.read_bytes() == before
+    assert sorted(path.name for path in target.iterdir()) == ["manifest.toml"]
+
+
+def test_rejected_synt_approval_leaves_authoring_byte_identical(
+        tmp_path: Path, monkeypatch) -> None:
+    proposals = tmp_path / "proposals"
+    proposal = proposals / "proposal-9"
+    proposal.mkdir(parents=True)
+    (proposal / "proposal.json").write_text(json.dumps({
+        "name": "find_files", "request_id": "request-9",
+        "birth_test_results": {"all_passed": True},
+    }))
+    (proposal / "manifest.toml").write_text("name = 'find_files'\n")
+    (proposal / "manifest.lang_state.json").write_bytes(b"{}")
+    (proposal / "find_files.py").write_text("def invoke(args): return {'ok': True}\n")
+    authoring = tmp_path / "executors" / "find_files"
+    authoring.mkdir(parents=True)
+    sentinel = authoring / "manifest.toml"
+    sentinel.write_bytes(b"unrelated-existing-contract\n")
+    monkeypatch.setattr("synt.require_synth_birth_service", lambda: None)
+    monkeypatch.setattr(
+        "synt.submit_synth_birth",
+        lambda _data: SimpleNamespace(
+            publication=None, error_code="producer_receipt_replay",
+        ),
+    )
+    instance = Synt(
+        proposals_dir=proposals,
+        audit=SimpleNamespace(log=lambda _entry: None),
+        mnestoma=SimpleNamespace(), locks=SimpleNamespace(),
+    )
+
+    result = instance.approve_proposal(
+        "proposal-9", executors_dir=tmp_path / "executors",
+    )
+
+    assert result["ok"] is False
+    assert sentinel.read_bytes() == b"unrelated-existing-contract\n"
+    assert proposal.exists()
 
 
 def test_existing_candidate_is_not_regenerated_or_exposed(
@@ -171,8 +247,11 @@ def test_existing_store_candidate_reconciles_through_idempotent_publisher(
     published = []
     monkeypatch.setattr(
         synth_request,
-        "publish_authoring_update",
-        lambda path: published.append(path),
+        "submit_synth_birth",
+        lambda data: published.append(data) or SimpleNamespace(
+            publication=SimpleNamespace(generation_id="sha256:" + "1" * 64),
+            error_code=None,
+        ),
     )
 
     result = synth_request.handle_synth_request(
@@ -181,7 +260,8 @@ def test_existing_store_candidate_reconciles_through_idempotent_publisher(
     )
 
     assert result["candidate_existing"] is True
-    assert published == [source.parent]
+    assert [item.candidate_root for item in published] == [source.parent]
+    assert published[0].operation == "replay"
     assert result["installed"] is False
     assert result["planner_visible"] is False
 

@@ -44,6 +44,10 @@ from generated_executor_contract import (  # noqa: E402
     generated_contract_context,
     validate_generated_manifest_text,
 )
+from executor_birth_synth import (  # noqa: E402
+    SynthBirthData, require_synth_birth_service, submit_synth_birth,
+)
+from manifest_inventory import ContractId, ManifestOrigin  # noqa: E402
 
 # --- Costanti dal microdesign synt.html cap. 6 e cap. 8 ------------------
 
@@ -1208,62 +1212,56 @@ class Synt:
                 rationale=f"parent contract cannot be specialized: {exc}",
             )
 
-        # Target dir under SYNTHESIZED_EXECUTORS_DIR
-        target_dir = SYNTHESIZED_EXECUTORS_DIR / target_name
-        target_preexisting = target_dir.exists()
-        code_path = target_dir / f"{target_name}.py"
-        manifest_path = target_dir / "manifest.toml"
-        if target_preexisting:
-            try:
-                expected_manifest = tomllib.loads(toml_text)
-                actual_manifest = tomllib.loads(
-                    manifest_path.read_text(encoding="utf-8"),
-                )
-                expected_manifest.get("code", {}).pop("digest", None)
-                actual_manifest.get("code", {}).pop("digest", None)
-                exact_retry = (
-                    expected_manifest == actual_manifest
-                    and code_path.read_text(encoding="utf-8") == py_code
-                )
-            except (OSError, UnicodeError, tomllib.TOMLDecodeError):
-                exact_retry = False
-            if not exact_retry:
-                return SynthProposal(
-                    request_id=rid, strategy="specialize",
-                    state="rejected", artefact={"reason": "target_already_exists"},
-                    reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
-                    rationale=f"target dir already exists: {target_dir}",
-                )
-        else:
-            target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write code
-        if not target_preexisting:
-            code_path.write_text(py_code, encoding="utf-8")
-
-        # Write manifest
-        if not target_preexisting:
-            manifest_path.write_text(toml_text, encoding="utf-8")
-            from i18n_materializer import migrate_language_state_bytes
-            (target_dir / "manifest.lang_state.json").write_bytes(
-                migrate_language_state_bytes(
-                    b"{}", manifest=tomllib.loads(toml_text),
-                ).state_bytes,
+        try:
+            require_synth_birth_service()
+        except Exception as exc:
+            return SynthProposal(
+                request_id=rid, strategy="specialize", state="rejected",
+                artefact={"retryable": True},
+                reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
+                rationale=f"Birth service unavailable: {exc}",
             )
 
-        # Admit with the synt key through the layout-aware boundary.
+        authoring_target = SYNTHESIZED_EXECUTORS_DIR / target_name
+        target_preexisting = authoring_target.exists()
+        import tempfile
+        staging_root = Path(tempfile.mkdtemp(prefix="metnos-specialize-birth-"))
+        target_dir = staging_root / target_name
+        target_dir.mkdir()
+        code_path = target_dir / f"{target_name}.py"
+        manifest_path = target_dir / "manifest.toml"
+        code_path.write_text(py_code, encoding="utf-8")
+        manifest_path.write_text(toml_text, encoding="utf-8")
+        from i18n_materializer import migrate_language_state_bytes
+        (target_dir / "manifest.lang_state.json").write_bytes(
+            migrate_language_state_bytes(
+                b"{}", manifest=tomllib.loads(toml_text),
+            ).state_bytes,
+        )
+
+        # Admit through the single operational Birth boundary.  Synth supplies
+        # no key, registry, check catalog or publisher authority.
         try:
-            from sign import publish_authoring_update
-            publish_authoring_update(target_dir, key_name="synt")
+            birth = submit_synth_birth(SynthBirthData(
+                candidate_root=target_dir,
+                contract_id=ContractId(
+                    ManifestOrigin.USER, f"{target_name}/manifest.toml",
+                ),
+                producer="synt_specialize",
+                operation="replay" if target_preexisting else "specialize",
+                reason=f"specialize {parent_name} as {target_name}",
+            ))
+            if birth.publication is None:
+                raise RuntimeError(birth.error_code or "synth_birth_rejected")
         except Exception as e:
-            if layout is ManifestLayout.AUTHORING:
-                _sh.rmtree(target_dir, ignore_errors=True)
             return SynthProposal(
                 request_id=rid, strategy="specialize",
                 state="rejected", artefact={"retryable": True},
                 reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
                 rationale=f"publication outcome requires retry: {e}",
             )
+        finally:
+            _sh.rmtree(staging_root, ignore_errors=True)
 
         # Verify
         try:
@@ -1273,10 +1271,8 @@ class Synt:
                 info = {"reason": "published executor not in live catalog"}
             else:
                 from sign import verify_executor
-                ok, info = verify_executor(target_dir)
+                ok, info = verify_executor(authoring_target)
             if not ok:
-                if layout is ManifestLayout.AUTHORING:
-                    _sh.rmtree(target_dir, ignore_errors=True)
                 return SynthProposal(
                     request_id=rid, strategy="specialize",
                     state="rejected", artefact={"verify_info": str(info)[:300]},
@@ -1284,8 +1280,6 @@ class Synt:
                     rationale="verify failed after admission",
                 )
         except Exception as exc:
-            if layout is ManifestLayout.AUTHORING:
-                _sh.rmtree(target_dir, ignore_errors=True)
             return SynthProposal(
                 request_id=rid, strategy="specialize",
                 state="rejected",
@@ -1321,8 +1315,8 @@ class Synt:
                 "parent_name": parent_name,
                 "arg_name": arg_name,
                 "dominant_value": dominant_value,
-                "manifest_path": str(manifest_path),
-                "code_path": str(code_path),
+                "manifest_path": str(authoring_target / "manifest.toml"),
+                "code_path": str(authoring_target / f"{target_name}.py"),
             },
             reward=RewardBreakdown(
                 det_pass_rate=1.0, judge_score=0.0, judge_reasoning="",
@@ -1613,78 +1607,36 @@ class Synt:
 
         name = meta["name"]
         target_dir = executors_dir / name
-        target_preexisting = target_dir.exists()
-        if target_preexisting:
-            # A publication may have advanced its pointer before a final
-            # registry callback failed. Accept only the exact target left by
-            # this proposal, so the caller can retry the same publication;
-            # never adopt an unrelated executor merely because names match.
-            import tomllib
-            try:
-                expected_manifest = tomllib.loads(
-                    (prop_dir / "manifest.toml").read_text(encoding="utf-8"),
-                )
-                actual_manifest = tomllib.loads(
-                    (target_dir / "manifest.toml").read_text(encoding="utf-8"),
-                )
-                expected_code = dict(expected_manifest.get("code") or {})
-                actual_code = dict(actual_manifest.get("code") or {})
-                expected_code.pop("digest", None)
-                actual_code.pop("digest", None)
-                expected_manifest["code"] = expected_code
-                actual_manifest["code"] = actual_code
-                exact_retry = expected_manifest == actual_manifest
-                for fname in (f"{name}.py", "args_schema.json"):
-                    source = prop_dir / fname
-                    target = target_dir / fname
-                    if source.exists() != target.exists() or (
-                        source.exists() and source.read_bytes() != target.read_bytes()
-                    ):
-                        exact_retry = False
-            except (OSError, UnicodeError, tomllib.TOMLDecodeError):
-                exact_retry = False
-            if not exact_retry:
-                return {
-                    "ok": False,
-                    "error": f"executor '{name}' gia' esistente in {target_dir}",
-                }
-
-        # Importa qui per evitare dipendenza al modulo se non si pubblica mai.
-        # Il confine sceglie una sola autorita': firma legacy oppure store.
-        sys.path.insert(0, str(Path(__file__).parent))
-        from sign import publish_authoring_update  # noqa: WPS433
-
-        import shutil
-        if not target_preexisting:
-            target_dir.mkdir(parents=True)
-            # Copia code + manifest + schema (non sandbox_profile e
-            # proposal.json, che restano nel proposal originale per audit).
-            for fname in (
-                f"{name}.py", "manifest.toml", "manifest.lang_state.json",
-                "args_schema.json",
-            ):
-                src = prop_dir / fname
-                if src.exists():
-                    shutil.copy2(src, target_dir / fname)
-            state_path = target_dir / "manifest.lang_state.json"
-            if not state_path.is_file():
-                # Backward compatibility for proposals created before the
-                # companion became part of their canonical artifact set.
-                import tomllib
-                from i18n_materializer import migrate_language_state_bytes
-                parsed = tomllib.loads(
-                    (target_dir / "manifest.toml").read_text(encoding="utf-8"),
-                )
-                state_path.write_bytes(
-                    migrate_language_state_bytes(
-                        b"{}", manifest=parsed,
-                    ).state_bytes,
-                )
-        # Firma nel layout legacy oppure pubblica atomicamente nello store.
         try:
-            digest, sig_path, _publication = publish_authoring_update(
-                target_dir, key_name=key_name,
+            require_synth_birth_service()
+        except Exception as exc:
+            return {"ok": False, "error": f"Birth service unavailable: {exc}"}
+        target_preexisting = target_dir.exists()
+        state_path = prop_dir / "manifest.lang_state.json"
+        if not state_path.is_file():
+            # Backward compatibility is materialized inside the private
+            # proposal, never in authoring.
+            import tomllib
+            from i18n_materializer import migrate_language_state_bytes
+            parsed = tomllib.loads(
+                (prop_dir / "manifest.toml").read_text(encoding="utf-8"),
             )
+            state_path.write_bytes(migrate_language_state_bytes(
+                b"{}", manifest=parsed,
+            ).state_bytes)
+        # Human approval is data bound to this Birth; it is not publication
+        # authority and cannot bypass the core-owned admission checks.
+        try:
+            birth = submit_synth_birth(SynthBirthData(
+                candidate_root=prop_dir,
+                contract_id=ContractId(ManifestOrigin.USER, f"{name}/manifest.toml"),
+                producer="synt_approve",
+                operation="replay" if target_preexisting else "approve",
+                reason=f"human approval of Synth proposal {proposal_id}",
+                approval_refs=(proposal_id,),
+            ))
+            if birth.publication is None:
+                raise RuntimeError(birth.error_code or "synth_birth_rejected")
         except Exception as exc:
             return {
                 "ok": False,
@@ -1696,6 +1648,7 @@ class Synt:
         # Sposta il proposal in archived/<id>
         archived_dir = self.proposals_dir.parent / "approved" / proposal_id
         archived_dir.parent.mkdir(parents=True, exist_ok=True)
+        import shutil
         shutil.move(str(prop_dir), str(archived_dir))
 
         # Audit
@@ -1705,8 +1658,7 @@ class Synt:
             "proposal_id": proposal_id,
             "executor_name": name,
             "executor_dir": str(target_dir),
-            "digest": digest,
-            "sig_path": str(sig_path),
+            "generation_id": birth.publication.generation_id,
             "archived_proposal_dir": str(archived_dir),
             "request_id": meta.get("request_id"),
         })
@@ -1714,8 +1666,7 @@ class Synt:
             "ok": True,
             "executor_name": name,
             "executor_dir": str(target_dir),
-            "digest": digest,
-            "sig_path": str(sig_path),
+            "generation_id": birth.publication.generation_id,
             "archived_proposal_dir": str(archived_dir),
         }
 

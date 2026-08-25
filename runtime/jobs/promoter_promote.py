@@ -27,13 +27,6 @@ from pathlib import Path
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
 
-# Publisher esplicito: viene patchato nei test via
-# `mock.patch("jobs.promoter_promote.publish_authoring_update")` quindi serve come
-# attribute risolvibile a livello modulo (no `from sign import` dentro la
-# funzione che bypasserebbe il monkeypatch).
-from sign import publish_authoring_update
-
-
 # Dir canoniche, env-overridable per i test.
 _DEFAULT_SYNTH_EXEC_DIR = _C.PATH_USER_DATA / "executors"
 _DEFAULT_BLOB_DIR = _C.PATH_USER_DATA / "promoter_blobs"
@@ -346,6 +339,15 @@ def promote_to_catalog(proposal: dict) -> dict:
                 "name": name,
             }
 
+    # Do not transition the authoring lifecycle unless the sealed operational
+    # Birth service is available to commit that exact candidate.
+    try:
+        from executor_birth_intent import require_birth_intent_adapter
+        require_birth_intent_adapter()
+    except Exception as ex:
+        return {"ok": False, "error": f"birth_unavailable: {ex}",
+                "proposal_id": proposal_id, "name": name}
+
     # Synt already created and admitted the candidate. Promotion is one state
     # transition of that exact artifact, never a second manifest generator.
     manifest_path = target_dir / "manifest.toml"
@@ -410,25 +412,44 @@ def promote_to_catalog(proposal: dict) -> dict:
     try:
         if not already_active:
             _write_rollback_blob(target_dir, blob_path)
-            _atomic_write(manifest_path, active_text)
         if layout is ManifestLayout.STORE_ONLY:
             prepromotion_generation_id = _rollback_blob_generation_id(blob_path)
     except (OSError, tarfile.TarError, ValueError) as ex:
         return {"ok": False, "error": f"transition_write_failed: {ex}",
                 "proposal_id": proposal_id, "name": name}
 
-    # Firma nel layout legacy o pubblica nello store. Errori restano fail-loud.
-    if publish_authoring_update is None:
-        return {"ok": False, "error": "publisher_unavailable",
-                "proposal_id": proposal_id, "name": name,
-                "path": str(target_dir)}
+    # Executor Birth is the only publication and reactivation boundary.
     publication = None
+    birth_staging = Path(tempfile.mkdtemp(
+        prefix=f".{name}.birth.", dir=str(target_dir.parent),
+    ))
     try:
-        _digest, _signature, publication = publish_authoring_update(target_dir)
+        for child in target_dir.iterdir():
+            destination = birth_staging / child.name
+            if child.is_dir():
+                shutil.copytree(child, destination)
+            else:
+                shutil.copy2(child, destination)
+        _atomic_write(birth_staging / "manifest.toml", active_text)
+        from executor_birth_intent import BirthIntent, submit_birth_intent
+        from manifest_inventory import ContractId, ManifestOrigin
+        birth = submit_birth_intent(BirthIntent(
+            candidate_source_root=birth_staging,
+            contract_id=ContractId(
+                ManifestOrigin.USER, f"{name}/manifest.toml",
+            ),
+            actor="promoter",
+            reason=f"promote synthesized proposal={proposal_id}",
+            operation="promote",
+            approval_refs=(str(proposal_id),),
+        ))
+        if birth.error_code or birth.publication is None:
+            raise RuntimeError(birth.error_code or "publication_missing")
+        publication = birth.publication
     except Exception as ex:
         if layout is ManifestLayout.AUTHORING:
             _restore_rollback_blob(target_dir, blob_path)
-            error = f"sign_failed: {ex}"
+            error = f"birth_failed: {ex}"
         else:
             # Il pointer puo' essere gia' avanzato. Conservare la sorgente
             # active consente al retry di riconciliare in modo idempotente.
@@ -436,6 +457,8 @@ def promote_to_catalog(proposal: dict) -> dict:
         return {"ok": False, "error": error,
                 "proposal_id": proposal_id, "name": name,
                 "path": str(target_dir)}
+    finally:
+        shutil.rmtree(birth_staging, ignore_errors=True)
     active_generation_id = None
     if layout is ManifestLayout.STORE_ONLY:
         if publication is None:

@@ -62,6 +62,7 @@ class TestExtendExecutor(unittest.TestCase):
         self.target_dir = self.exec_root / "find_things"
         self.target_dir.mkdir()
         (self.target_dir / "manifest.toml").write_text(_SAMPLE_MANIFEST)
+        (self.target_dir / "manifest.lang_state.json").write_text("{}")
         (self.target_dir / "find_things.py").write_text(_SAMPLE_CODE)
         C.PATH_EXECUTORS = self.exec_root
         C.PATH_USER_DATA = self.tmpdir / "share"
@@ -78,8 +79,20 @@ class TestExtendExecutor(unittest.TestCase):
         import change_intents as ci_mod
         ci_mod.init_db()
         self.ci_mod = ci_mod
+        from manifest_inventory import ContractId, ManifestOrigin
+        self.contract_id = ContractId(
+            ManifestOrigin.BUILTIN, "find_things/manifest.toml",
+        )
+        self.require_patch = mock.patch(
+            "change_applier_extend.require_birth_intent_adapter")
+        self.contract_patch = mock.patch(
+            "change_applier_extend._contract_id", return_value=self.contract_id)
+        self.require_patch.start()
+        self.contract_patch.start()
 
     def tearDown(self):
+        self.contract_patch.stop()
+        self.require_patch.stop()
         self.tmp.cleanup()
 
     def _make_ci(self, arg_name="kind", arg_type="string"):
@@ -96,11 +109,27 @@ class TestExtendExecutor(unittest.TestCase):
             score=0.5,
         )
 
+    def _birth_result(self, *, error=None):
+        from contract_store import PublicationResult
+        publication = None if error else PublicationResult(
+            self.contract_id, None, "sha256:" + "2" * 64,
+            "commit_birth_snapshot", False,
+        )
+        return mock.Mock(
+            request_id="sha256:" + "1" * 64,
+            publication=publication, error_code=error,
+        )
+
+    def _submit_success(self, intent):
+        staged = (intent.candidate_source_root / "manifest.toml").read_bytes()
+        (self.target_dir / "manifest.toml").write_bytes(staged)
+        return self._birth_result()
+
     def test_extend_appends_section_and_creates_rollback(self):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("kind", "string")
-        # mock sign_executor (richiede keys reali)
-        with mock.patch("sign.sign_executor", return_value=("sha256:fake", Path("/tmp/fake.sig"))):
+        with mock.patch("change_applier_extend.submit_birth_intent",
+                        side_effect=self._submit_success):
             effect = extend_executor_manifest(ci)
         self.assertEqual(effect["executor_name"], "find_things")
         self.assertEqual(effect["arg_added"], "kind")
@@ -120,7 +149,8 @@ class TestExtendExecutor(unittest.TestCase):
     def test_extend_idempotent(self):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("kind", "string")
-        with mock.patch("sign.sign_executor", return_value=("sha256:fake", Path("/tmp/fake.sig"))):
+        with mock.patch("change_applier_extend.submit_birth_intent",
+                        side_effect=self._submit_success):
             effect1 = extend_executor_manifest(ci)
             effect2 = extend_executor_manifest(ci)
         self.assertNotIn("already_extended", effect1)
@@ -153,7 +183,8 @@ class TestExtendExecutor(unittest.TestCase):
     def test_extend_boolean_type(self):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("recursive", "boolean")
-        with mock.patch("sign.sign_executor", return_value=("sha256:fake", Path("/tmp/fake.sig"))):
+        with mock.patch("change_applier_extend.submit_birth_intent",
+                        side_effect=self._submit_success):
             effect = extend_executor_manifest(ci)
         self.assertEqual(effect["arg_type"], "boolean")
         new_text = (self.target_dir / "manifest.toml").read_text()
@@ -165,36 +196,30 @@ class TestExtendExecutor(unittest.TestCase):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("kind", "string")
         original_text = (self.target_dir / "manifest.toml").read_text()
-        with mock.patch("sign.sign_executor", side_effect=RuntimeError("sign broke")):
+        with mock.patch("change_applier_extend.submit_birth_intent",
+                        return_value=self._birth_result(error="birth_unavailable")):
             with self.assertRaises(RuntimeError):
                 extend_executor_manifest(ci)
-        # Manifest restored
+        # Una rejection lascia l'authoring byte-identico.
         post_text = (self.target_dir / "manifest.toml").read_text()
         self.assertEqual(original_text, post_text)
 
     def test_store_publication_failure_retains_retryable_authoring(self):
         from change_applier_extend import extend_executor_manifest
-        from manifest_inventory import ManifestLayout
 
         ci = self._make_ci("kind", "string")
-        with mock.patch(
-            "manifest_inventory.resolve_manifest_layout",
-            return_value=ManifestLayout.STORE_ONLY,
-        ), mock.patch(
-            "sign.publish_authoring_update",
-            side_effect=RuntimeError("registry unavailable after commit"),
-        ):
+        with mock.patch("change_applier_extend.submit_birth_intent",
+                        return_value=self._birth_result(error="registry_unavailable")):
             with self.assertRaisesRegex(RuntimeError, "requires retry"):
                 extend_executor_manifest(ci)
 
-        self.assertIn(
+        self.assertNotIn(
             "[args.properties.kind]",
             (self.target_dir / "manifest.toml").read_text(),
         )
 
     def test_store_retry_reenters_publisher_when_section_already_exists(self):
         from change_applier_extend import extend_executor_manifest
-        from manifest_inventory import ManifestLayout
 
         ci = self._make_ci("kind", "string")
         manifest = self.target_dir / "manifest.toml"
@@ -202,17 +227,24 @@ class TestExtendExecutor(unittest.TestCase):
             manifest.read_text().rstrip()
             + '\n\n[args.properties.kind]\ntype = "string"\n',
         )
-        with mock.patch(
-            "manifest_inventory.resolve_manifest_layout",
-            return_value=ManifestLayout.STORE_ONLY,
-        ), mock.patch(
-            "sign.publish_authoring_update",
-            return_value=("sha256:fake", Path("/tmp/fake.sig"), mock.sentinel.publication),
-        ) as publisher:
-            effect = extend_executor_manifest(ci)
+        with mock.patch("change_applier_extend.submit_birth_intent",
+                        return_value=self._birth_result(error="producer_receipt_replay")) as publisher:
+            with self.assertRaisesRegex(RuntimeError, "producer_receipt_replay"):
+                extend_executor_manifest(ci)
 
-        self.assertTrue(effect["already_extended"])
-        publisher.assert_called_once_with(self.target_dir)
+        publisher.assert_called_once()
+
+    def test_missing_birth_request_fails_before_any_authoring_write(self):
+        from change_applier_extend import extend_executor_manifest
+        ci = self._make_ci("kind", "string")
+        original = (self.target_dir / "manifest.toml").read_bytes()
+        with mock.patch(
+            "change_applier_extend.require_birth_intent_adapter",
+            side_effect=RuntimeError("birth_intent_adapter_unavailable"),
+        ), self.assertRaisesRegex(RuntimeError, "birth_intent_adapter_unavailable"):
+            extend_executor_manifest(ci)
+        self.assertEqual((self.target_dir / "manifest.toml").read_bytes(), original)
+        self.assertFalse((self.tmpdir / "share" / "rollback_blobs").exists())
 
 
 if __name__ == "__main__":

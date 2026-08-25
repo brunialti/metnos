@@ -631,6 +631,7 @@ def test_named_executor_store_verification_uses_live_catalog(
     import loader
     import manifest_inventory
     import sign
+    import executor_birth_intent
 
     directory = tmp_path / "executors" / "read_files"
     directory.mkdir(parents=True)
@@ -643,9 +644,14 @@ def test_named_executor_store_verification_uses_live_catalog(
     )
     published = []
     monkeypatch.setattr(
-        sign,
-        "publish_authoring_update",
-        lambda path: published.append(path),
+        executor_birth_intent, "submit_birth_intent",
+        lambda intent: (
+            published.append(intent.candidate_source_root)
+            or SimpleNamespace(
+                error_code=None,
+                publication=SimpleNamespace(operation="publish"),
+            )
+        ),
     )
     monkeypatch.setattr(
         sign,
@@ -664,7 +670,8 @@ def test_named_executor_store_verification_uses_live_catalog(
 
     result = sr.verify_named_executors(["read_files"], sign_first=True)
 
-    assert published == [directory]
+    assert len(published) == 1
+    assert published[0] != directory
     assert result == [{
         "name": "read_files", "ok": True, "digest": "sha256:live",
     }]
@@ -674,6 +681,7 @@ def test_named_executor_legacy_verification_keeps_signature_boundary(
         monkeypatch, tmp_path):
     import manifest_inventory
     import sign
+    import executor_birth_intent
 
     directory = tmp_path / "executors" / "read_files"
     directory.mkdir(parents=True)
@@ -686,9 +694,14 @@ def test_named_executor_legacy_verification_keeps_signature_boundary(
     )
     published = []
     monkeypatch.setattr(
-        sign,
-        "publish_authoring_update",
-        lambda path: published.append(path),
+        executor_birth_intent, "submit_birth_intent",
+        lambda intent: (
+            published.append(intent.candidate_source_root)
+            or SimpleNamespace(
+                error_code=None,
+                publication=SimpleNamespace(operation="publish"),
+            )
+        ),
     )
     monkeypatch.setattr(
         sign,
@@ -698,7 +711,8 @@ def test_named_executor_legacy_verification_keeps_signature_boundary(
 
     result = sr.verify_named_executors(["read_files"], sign_first=True)
 
-    assert published == [directory]
+    assert len(published) == 1
+    assert published[0] != directory
     assert result == [{
         "name": "read_files", "ok": True, "digest": "sha256:read_files",
     }]

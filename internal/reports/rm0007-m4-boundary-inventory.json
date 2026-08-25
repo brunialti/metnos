@@ -353,6 +353,16 @@
     },
     {
       "path": "runtime/change_applier_extend.py",
+      "scope": "_contract_id",
+      "role": "unclassified",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "review-required",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/change_applier_extend.py",
       "scope": "_resolve_executor_dir",
       "role": "operational_producer",
       "capabilities": [
@@ -363,12 +373,22 @@
     },
     {
       "path": "runtime/change_applier_extend.py",
+      "scope": "_stage_candidate",
+      "role": "unclassified",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "review-required",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/change_applier_extend.py",
       "scope": "extend_executor_manifest",
       "role": "operational_producer",
       "capabilities": [
         "authoring_read",
-        "authoring_write",
-        "publish_technical"
+        "authoring_write"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -384,17 +404,6 @@
       "phase": "M4"
     },
     {
-      "path": "runtime/change_rollback.py",
-      "scope": "_rollback_extend_executor",
-      "role": "operational_producer",
-      "capabilities": [
-        "authoring_write",
-        "publish_technical"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
       "path": "runtime/channels/daemon.py",
       "scope": "ChannelDaemon._consume_approval_required",
       "role": "live_reader",
@@ -402,17 +411,6 @@
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/cli/skills_cli.py",
-      "scope": "_cmd_import",
-      "role": "operational_producer",
-      "capabilities": [
-        "publish_technical",
-        "reactivate"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
     },
     {
@@ -442,17 +440,6 @@
       "capabilities": [
         "authoring_read",
         "retire"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/cli/skills_cli.py",
-      "scope": "_try_publish_authoring_update",
-      "role": "operational_producer",
-      "capabilities": [
-        "publish_technical",
-        "reactivate"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -631,7 +618,7 @@
     },
     {
       "path": "runtime/contract_store.py",
-      "scope": "_pointer_replace_conflict",
+      "scope": "_persist_birth_receipt_locked",
       "role": "store_owner",
       "capabilities": [
         "store_write"
@@ -641,7 +628,7 @@
     },
     {
       "path": "runtime/contract_store.py",
-      "scope": "_persist_birth_receipt_locked",
+      "scope": "_pointer_replace_conflict",
       "role": "store_owner",
       "capabilities": [
         "store_write"
@@ -847,9 +834,12 @@
     },
     {
       "path": "runtime/contract_store.py",
-      "scope": "current_contract",
+      "scope": "commit_birth_snapshot",
       "role": "store_owner",
       "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write",
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
@@ -857,12 +847,9 @@
     },
     {
       "path": "runtime/contract_store.py",
-      "scope": "commit_birth_snapshot",
+      "scope": "current_contract",
       "role": "store_owner",
       "capabilities": [
-        "authoring_read",
-        "authoring_write",
-        "store_write",
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
@@ -1289,8 +1276,7 @@
       "role": "operational_producer",
       "capabilities": [
         "authoring_read",
-        "authoring_write",
-        "publish_technical"
+        "authoring_write"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -1339,6 +1325,17 @@
     },
     {
       "path": "runtime/loader.py",
+      "scope": "_load_catalog_under_catalog_lock",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "canonical dual-layout loader body; STORE_ONLY executes only under a stable global snapshot",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
       "scope": "_load_dir_into_catalog",
       "role": "offline_authoring",
       "capabilities": [
@@ -1356,17 +1353,6 @@
         "authoring_read"
       ],
       "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/loader.py",
-      "scope": "_load_catalog_under_catalog_lock",
-      "role": "administrative_tool",
-      "capabilities": [
-        "authoring_read",
-        "verified_store_read"
-      ],
-      "destination": "canonical dual-layout loader body; STORE_ONLY executes only under a stable global snapshot",
       "phase": "M4"
     },
     {
@@ -2027,50 +2013,10 @@
     },
     {
       "path": "runtime/stack_reconcile.py",
-      "scope": "<module>",
-      "role": "operational_producer",
-      "capabilities": [
-        "publish_technical"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/stack_reconcile.py",
-      "scope": "StackReconciler.restart",
-      "role": "operational_producer",
-      "capabilities": [
-        "publish_technical"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/stack_reconcile.py",
-      "scope": "StackReconciler.watchdog",
-      "role": "operational_producer",
-      "capabilities": [
-        "publish_technical"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/stack_reconcile.py",
       "scope": "_catalog_names",
       "role": "operational_producer",
       "capabilities": [
         "live_artifact_read"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/stack_reconcile.py",
-      "scope": "main",
-      "role": "operational_producer",
-      "capabilities": [
-        "publish_technical"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2082,8 +2028,7 @@
       "capabilities": [
         "authoring_read",
         "authoring_verify",
-        "live_artifact_read",
-        "publish_technical"
+        "live_artifact_read"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2093,8 +2038,7 @@
       "scope": "<module>",
       "role": "operational_producer",
       "capabilities": [
-        "authoring_write",
-        "publish_technical"
+        "authoring_write"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2125,8 +2069,7 @@
       "role": "operational_producer",
       "capabilities": [
         "authoring_read",
-        "authoring_write",
-        "publish_technical"
+        "authoring_write"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2159,8 +2102,7 @@
         "authoring_read",
         "authoring_verify",
         "authoring_write",
-        "live_artifact_read",
-        "publish_technical"
+        "live_artifact_read"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2170,10 +2112,19 @@
       "scope": "_cli",
       "role": "operational_producer",
       "capabilities": [
-        "authoring_write",
-        "publish_technical"
+        "authoring_write"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synth_orphan_cleanup.py",
+      "scope": "_default_admitted_names",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
       "phase": "M4"
     },
     {
@@ -2181,8 +2132,7 @@
       "scope": "_install_synthesized",
       "role": "operational_producer",
       "capabilities": [
-        "authoring_write",
-        "publish_technical"
+        "authoring_write"
       ],
       "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
@@ -2203,20 +2153,9 @@
       "role": "operational_producer",
       "capabilities": [
         "authoring_write",
-        "live_artifact_read",
-        "publish_technical"
-      ],
-      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/synth_orphan_cleanup.py",
-      "scope": "_default_admitted_names",
-      "role": "live_reader",
-      "capabilities": [
         "live_artifact_read"
       ],
-      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
       "phase": "M4"
     },
     {

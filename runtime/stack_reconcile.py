@@ -18,9 +18,11 @@ import json
 import os
 import pwd
 import signal
+import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -462,12 +464,12 @@ def _watched_service_ok(key: str, row: dict) -> bool:
 def verify_named_executors(names: list[str], *, sign_first: bool = False) -> list[dict]:
     """Admit/verify explicitly named direct children of ``executors/``.
 
-    ``sign_first`` is retained as the public compatibility flag.  Admission
-    is layout-aware: legacy signing before cutover, immutable publication
-    afterwards.
+    ``sign_first`` is retained as the public compatibility flag.  It now
+    means admission through the sealed Executor Birth service; it never
+    selects a technical publisher.
     """
     from manifest_inventory import ManifestLayout, resolve_manifest_layout
-    from sign import publish_authoring_update, verify_executor
+    from sign import verify_executor
 
     root = (_repo_root() / "executors").resolve()
     layout = resolve_manifest_layout()
@@ -484,7 +486,30 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
             raise StackFailure("unknown_executor", f"executor {name!r} is not installed")
         directories.append((name, directory))
         if sign_first:
-            publish_authoring_update(directory)
+            try:
+                from executor_birth_intent import BirthIntent, submit_birth_intent
+                from manifest_inventory import ContractId, ManifestOrigin
+                with tempfile.TemporaryDirectory(
+                    prefix=f"metnos-reconcile-{name}-birth-",
+                ) as raw_staging:
+                    staging = Path(raw_staging) / name
+                    shutil.copytree(directory, staging)
+                    birth = submit_birth_intent(BirthIntent(
+                        candidate_source_root=staging,
+                        contract_id=ContractId(
+                            ManifestOrigin.CORE, f"{name}/manifest.toml",
+                        ),
+                        actor="stack_reconcile",
+                        reason=f"restart admission executor={name}",
+                        operation="restart_sign_first",
+                    ))
+            except Exception as exc:
+                raise StackFailure("birth_unavailable", str(exc)) from exc
+            if birth.error_code or birth.publication is None:
+                raise StackFailure(
+                    "birth_admission_failed",
+                    birth.error_code or "publication_missing",
+                )
 
     results: list[dict] = []
     if layout is ManifestLayout.STORE_ONLY:

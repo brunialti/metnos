@@ -392,8 +392,8 @@ class TestAcceptVerdict(_BasePromoterTest):
         with mock.patch("proposal_evaluator.evaluate_proposal") as m, \
                  mock.patch("manifest_inventory.resolve_manifest_layout",
                             return_value=ManifestLayout.AUTHORING), \
-                 mock.patch("jobs.promoter_promote.publish_authoring_update",
-                            create=True) as sign_m, \
+                 mock.patch("executor_birth_intent.require_birth_intent_adapter"), \
+                 mock.patch("executor_birth_intent.submit_birth_intent") as birth_m, \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer2",
                             return_value=(True, "")), \
@@ -407,8 +407,9 @@ class TestAcceptVerdict(_BasePromoterTest):
                 "accept", score=5.0,
                 proposal_id="proptest_acc", name="find_packages",
             )
-            sign_m.return_value = (
-                "dummy_digest", Path("/tmp/dummy.sig"), None,
+            birth_m.return_value = mock.Mock(
+                error_code=None,
+                publication=mock.Mock(operation="publish"),
             )
             result = promoter.task_promoter()
         self.assertEqual(result["ok_count"], 1)
@@ -436,15 +437,16 @@ class TestAcceptVerdict(_BasePromoterTest):
             promote, "_dry_run_admission_layer5", return_value=(True, ""),
         ), mock.patch.object(
             promote, "_loader_admission", return_value=(True, ""),
-        ), mock.patch.object(
-            promote,
-            "publish_authoring_update",
+        ), mock.patch(
+            "executor_birth_intent.require_birth_intent_adapter",
+        ), mock.patch(
+            "executor_birth_intent.submit_birth_intent",
             side_effect=[
                 RuntimeError("registry unavailable after pointer commit"),
-                (
-                    "sha256:fake",
-                    Path("/tmp/fake.sig"),
-                    mock.Mock(
+                mock.Mock(
+                    error_code=None,
+                    publication=mock.Mock(
+                        operation="publish",
                         current_generation_id="sha256:" + "b" * 64,
                         previous_generation_id="sha256:" + "b" * 64,
                         repeated=True,
@@ -455,7 +457,7 @@ class TestAcceptVerdict(_BasePromoterTest):
             first = promote.promote_to_catalog(prop)
             self.assertIn("requires_retry", first["error"])
             self.assertIn(
-                'lifecycle = "active"',
+                'lifecycle = "synthesized"',
                 (target / "manifest.toml").read_text(encoding="utf-8"),
             )
             second = promote.promote_to_catalog(prop)
@@ -642,8 +644,8 @@ class TestRollbackRestores(_BasePromoterTest):
         with mock.patch("proposal_evaluator.evaluate_proposal") as m, \
                  mock.patch("manifest_inventory.resolve_manifest_layout",
                             return_value=ManifestLayout.AUTHORING), \
-                 mock.patch("jobs.promoter_promote.publish_authoring_update",
-                            create=True) as sign_m, \
+                 mock.patch("executor_birth_intent.require_birth_intent_adapter"), \
+                 mock.patch("executor_birth_intent.submit_birth_intent") as birth_m, \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer2",
                             return_value=(True, "")), \
@@ -656,7 +658,10 @@ class TestRollbackRestores(_BasePromoterTest):
                 "accept", score=5.0,
                 proposal_id="proptest_rb", name="find_packages",
             )
-            sign_m.return_value = ("digest", Path("/tmp/sig"), None)
+            birth_m.return_value = mock.Mock(
+                error_code=None,
+                publication=mock.Mock(operation="publish"),
+            )
             promoter.task_promoter()
         # Verifica setup
         row = state_mod.load_proposal_state("proptest_rb")

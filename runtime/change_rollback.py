@@ -32,6 +32,9 @@ from change_intents import (
     KIND_REJECT_PATTERN,
     ChangeIntent,
 )
+from executor_birth_intent import (
+    BirthIntent, require_birth_intent_adapter, submit_birth_intent,
+)
 
 
 def _iso_now() -> str:
@@ -111,29 +114,40 @@ def _rollback_extend_executor(ci: ChangeIntent) -> dict:
     mdir = _resolve_executor_dir(name)
     if mdir is None:
         return {"executor_name": name, "error": "manifest dir not found"}
-    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    manifest_path = mdir / "manifest.toml"
     try:
-        layout = resolve_manifest_layout()
+        require_birth_intent_adapter()
     except Exception as exc:
         return {"executor_name": name,
-                "error": f"publication layout invalid: {exc}"}
-    manifest_path = mdir / "manifest.toml"
-    # Restore
-    manifest_path.write_text(blob.read_text(encoding="utf-8"), encoding="utf-8")
-    # Ripubblica lo stato ripristinato attraverso lo stesso confine usato
-    # dalla modifica originaria (firma legacy o store immutabile).
+                "error": f"birth intent unavailable; authoring unchanged: {exc}"}
+    from change_applier_extend import _contract_id, _stage_candidate
     try:
-        from sign import publish_authoring_update
-        digest, sig_path, _publication = publish_authoring_update(mdir)
+        contract_id = _contract_id(manifest_path)
+        rollback_bytes = blob.read_bytes()
+    except Exception as exc:
+        return {"executor_name": name, "error": f"rollback candidate invalid: {exc}"}
+    # Birth riceve uno staging privato; soltanto commit_birth_snapshot può
+    # riconciliare l'authoring dopo l'ammissione.
+    try:
+        with _stage_candidate(mdir, rollback_bytes) as staging:
+            result = submit_birth_intent(BirthIntent(
+                candidate_source_root=staging, contract_id=contract_id,
+                actor="change_rollback",
+                reason=f"rollback extend_executor change_intent={ci.id}",
+                operation="rollback",
+                approval_refs=(ci.id,),
+            ))
+        if (getattr(result, "error_code", "invalid_result") is not None
+                or getattr(result, "publication", None) is None):
+            detail = getattr(result, "error_code", "invalid_result")
+            raise RuntimeError(f"birth rejected: {detail}")
         return {"executor_name": name,
                 "manifest_restored_from": str(blob),
-                "new_digest": digest, "sig_path": str(sig_path)}
+                "new_generation_id": result.publication.current_generation_id,
+                "birth_request_id": result.request_id,
+                "publication_repeated": result.publication.repeated}
     except Exception as exc:
-        detail = (
-            str(exc)
-            if layout is ManifestLayout.AUTHORING
-            else f"publication outcome requires retry: {exc}"
-        )
+        detail = f"birth publication requires retry: {exc}"
         return {"executor_name": name,
                 "manifest_restored_from": str(blob),
                 # Chiave storica preservata per i consumer del change log.
