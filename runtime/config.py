@@ -249,14 +249,51 @@ def localization_corpus_version() -> str:
     resources, deterministic catalogs, executor contracts and public sources.
     """
 
-    candidates: set[Path] = set()
-    roots_and_names = (
-        (PATH_RUNTIME / "prompts", {".j2", ".yaml"}),
-        (PATH_EXECUTORS, {"manifest.toml", "manifest.lang_state.json"}),
-        (PATH_RUNTIME / "builtin_executor_contracts",
-         {"manifest.toml", "manifest.lang_state.json"}),
-        (PATH_DOCS, {".html"}),
+    from manifest_inventory import (
+        ManifestLayout,
+        inventory_manifests,
+        resolve_manifest_layout,
     )
+
+    layout = resolve_manifest_layout()
+    candidates: set[Path] = set()
+    roots_and_names = [
+        (PATH_RUNTIME / "prompts", {".j2", ".yaml"}),
+        (PATH_DOCS, {".html"}),
+    ]
+    published_contracts: list[tuple[str, str]] = []
+    if layout is ManifestLayout.AUTHORING:
+        roots_and_names.extend((
+            (PATH_EXECUTORS, {"manifest.toml", "manifest.lang_state.json"}),
+            (PATH_RUNTIME / "builtin_executor_contracts",
+             {"manifest.toml", "manifest.lang_state.json"}),
+        ))
+    else:
+        from contract_store import ContractRetirement, current_contract
+        from sign import list_trusted_publics
+
+        trusted = tuple(list_trusted_publics())
+        if not trusted:
+            raise RuntimeError("no trusted contract signing keys")
+        structural = inventory_manifests()
+        if structural.problems:
+            detail = "; ".join(
+                f"{problem.code}:{problem.path}"
+                for problem in structural.problems[:8]
+            )
+            raise RuntimeError(f"contract inventory is not clean: {detail}")
+        for ref in structural.manifests:
+            revision = current_contract(ref, trusted_publics=trusted)
+            identifier = (
+                revision.retirement_id
+                if isinstance(revision, ContractRetirement)
+                else revision.generation_id
+            )
+            if not isinstance(identifier, str) or not identifier:
+                raise RuntimeError(
+                    f"contract revision identity missing: {ref.contract_id}",
+                )
+            published_contracts.append((str(ref.contract_id), identifier))
     for root, accepted in roots_and_names:
         if not root.is_dir():
             continue
@@ -273,6 +310,13 @@ def localization_corpus_version() -> str:
             candidates.add(path)
 
     digest = hashlib.sha256()
+    for contract_id, revision_id in sorted(published_contracts):
+        relative = f"contract:{contract_id}".encode("utf-8")
+        content = revision_id.encode("ascii")
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
     for path in sorted(candidates, key=lambda item: item.as_posix()):
         try:
             relative = path.relative_to(PATH_ROOT).as_posix().encode("utf-8")

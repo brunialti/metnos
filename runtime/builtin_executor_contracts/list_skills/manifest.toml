@@ -15,7 +15,7 @@ en = "SCOPO: Lists installed skills and their runtime state. PATTERN: natural re
 
 [code]
 files = ["../../skill_admin.py"]
-digest = "sha256:57fd4d34ed6343a4d3de803370a654e3cb2865f2787033e5c21c27b645b36184"
+digest = "sha256:28b73b52027343ac1c0018e97b0c8ed5fb89c14317ee0b31c805b4a599a38023"
 
 [args]
 type = "object"

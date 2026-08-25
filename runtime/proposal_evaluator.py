@@ -200,9 +200,11 @@ def _check_affinity_overlap(proposal: dict, *, catalog=None) -> tuple[bool, str,
         if not other_aff:
             continue
         # Skip altri synth piu' giovani della proposta corrente.
-        is_synth_other = False
+        is_synth_other = getattr(ex, "source", "") == "synthesized"
         try:
-            is_synth_other = str(SYNTHESIZED_EXECUTORS_DIR) in str(ex.manifest_path)
+            is_synth_other = is_synth_other or (
+                str(SYNTHESIZED_EXECUTORS_DIR) in str(ex.manifest_path)
+            )
         except Exception:
             pass
         if is_synth_other and proposal_ts > 0:

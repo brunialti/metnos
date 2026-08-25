@@ -347,20 +347,20 @@ _CATALOG: dict[str, dict[str, str]] = {
         "it": "albero dei sorgenti completo in {root}",
     },
     "p3_sign_no_env": {
-        "en": "METNOS_INSTALL_ROOT/METNOS_VENV non settati — salto la firma executor",
-        "it": "METNOS_INSTALL_ROOT/METNOS_VENV non settati — salto la firma executor",
+        "en": "METNOS_INSTALL_ROOT/METNOS_VENV are not set — contract publication cannot continue",
+        "it": "METNOS_INSTALL_ROOT/METNOS_VENV non sono impostate: la pubblicazione dei contratti non può continuare",
     },
     "p3_sign_failed": {
-        "en": "firma executor fallita: {err}",
-        "it": "firma executor fallita: {err}",
+        "en": "executor contract publication failed: {err}",
+        "it": "pubblicazione dei contratti executor non riuscita: {err}",
     },
     "p3_sign_rc": {
-        "en": "sign-all rc={rc}: {out}",
-        "it": "sign-all rc={rc}: {out}",
+        "en": "contract publication returned {rc}: {out}",
+        "it": "la pubblicazione dei contratti ha restituito {rc}: {out}",
     },
     "p3_sign_done": {
-        "en": "executor firmati",
-        "it": "executor firmati",
+        "en": "executor contracts published and verified",
+        "it": "contratti executor pubblicati e verificati",
     },
     "p3_banner_title": {
         "en": "Phase 3 — Metnos code & workspace",
@@ -383,8 +383,8 @@ _CATALOG: dict[str, dict[str, str]] = {
         "it": "Inizializzazione dell'archivio messaggi i18n",
     },
     "p3_step_sign": {
-        "en": "Signing executors with a local key (sign-all)",
-        "it": "Firma degli executor con una chiave locale (sign-all)",
+        "en": "Publishing and verifying executor contracts",
+        "it": "Pubblicazione e verifica dei contratti executor",
     },
 
     # ─── phase 4 (sensitive data) ────────────────────────────────

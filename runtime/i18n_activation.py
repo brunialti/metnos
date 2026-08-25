@@ -13,8 +13,13 @@ from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 import config as _C
-from i18n_materializer import LocalizationPaths, inventory, materialize
-from i18n_pipeline import _read_artifact, promote_candidates
+from i18n_materializer import InventoryItem, LocalizationPaths, inventory, materialize
+from i18n_pipeline import (
+    _read_artifact,
+    live_contract_context,
+    promote_candidates,
+    publish_versioned_contract_candidates,
+)
 from i18n_registry import LocalizationRegistry, RegistryError, ResourceRecord, normalize_language
 
 
@@ -82,6 +87,7 @@ def _new_sensitive_tokens(source: str, candidate: str) -> set[str]:
 def _validate_live_resource(
     record: ResourceRecord,
     *,
+    item: InventoryItem,
     paths: LocalizationPaths,
     target: str,
 ) -> str | None:
@@ -109,8 +115,17 @@ def _validate_live_resource(
             if (state.get(relative) or {}).get("status") != "admitted":
                 return "prompt language state is not admitted"
         elif record.layer == "contract":
-            path = Path(str(record.metadata["manifest_path"]))
-            manifest = tomllib.loads(path.read_text(encoding="utf-8"))
+            if item.contract_snapshot is not None:
+                snapshot = item.contract_snapshot
+                if snapshot.contract_id != item.contract_ref.contract_id:
+                    return "verified contract identity changed"
+                if snapshot.generation_id != record.basis_id:
+                    return "verified contract generation differs from registry basis"
+                manifest = snapshot.parsed
+            else:
+                # Legacy authoring remains authoritative only before cutover.
+                path = Path(str(record.metadata["manifest_path"]))
+                manifest = tomllib.loads(path.read_text(encoding="utf-8"))
             node: Any = manifest
             for part in str(record.metadata["selector"]).split("."):
                 node = node[part]
@@ -161,12 +176,17 @@ def gate(
     paths: LocalizationPaths | None = None,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
     require_admitted: bool = False,
+    contract_snapshot_provider=None,
 ) -> GateReport:
     """Evaluate complete, current, reviewed coverage without changing state."""
     paths = paths or LocalizationPaths()
     target = normalize_language(target_lang)
     source_items = {
-        item.resource_id: item for item in inventory(paths, source_lang=source_lang)
+        item.resource_id: item for item in inventory(
+            paths,
+            source_lang=source_lang,
+            contract_snapshot_provider=contract_snapshot_provider,
+        )
     }
     records = registry.resources(target)
     record_ids = {record.resource_id for record in records}
@@ -204,7 +224,7 @@ def gate(
             admitted += 1
             if require_admitted:
                 live_error = _validate_live_resource(
-                    record, paths=paths, target=target,
+                    record, item=item, paths=paths, target=target,
                 )
                 if live_error:
                     errors.append(f"{record.resource_id}: {live_error}")
@@ -350,54 +370,177 @@ def reconcile_device_catalog(
     return len(translated)
 
 
-def _extract_canonical(text: str) -> str:
-    match = re.search(
-        r'<link\b[^>]*\brel\s*=\s*["\']canonical["\'][^>]*\bhref\s*=\s*["\']([^"\']+)',
-        text, flags=re.I,
+@dataclass(frozen=True, slots=True)
+class _PublicLinks:
+    lang: str
+    canonical: str
+    alternates: Mapping[str, str]
+
+
+def _public_links(text: str) -> _PublicLinks:
+    # Use the deployment gate's parser so synchronization and publication
+    # interpret HTML identity with exactly the same rules.
+    from published_docs import _HeadParser
+
+    parser = _HeadParser()
+    try:
+        parser.feed(text)
+        parser.close()
+        head = parser.result()
+    except ValueError as exc:
+        raise ActivationBlocked(str(exc)) from exc
+    alternates: dict[str, str] = {}
+    for language, href in head.alternates:
+        if language in alternates:
+            raise ActivationBlocked(
+                f"public document has duplicate hreflang {language!r}"
+            )
+        alternates[language] = href
+    return _PublicLinks(
+        lang=head.lang,
+        canonical=head.canonical,
+        alternates=alternates,
     )
-    return match.group(1) if match else ""
+
+
+_LINK_TAG = re.compile(r"<link\b[^>]*>", flags=re.I)
+_HREF_ATTRIBUTE = re.compile(
+    r'''(\bhref\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s>]+)''',
+    flags=re.I,
+)
 
 
 def _ensure_alternate(text: str, lang: str, href: str) -> str:
     if not href or "</head>" not in text.lower():
         return text
-    pattern = (
-        r'(<link\b[^>]*\brel\s*=\s*["\']alternate["\'][^>]*\bhreflang\s*=\s*["\']'
-        + re.escape(lang) + r'["\'][^>]*\bhref\s*=\s*["\'])[^"\']+(["\'])'
-    )
-    if re.search(pattern, text, flags=re.I):
-        return re.sub(pattern, lambda match: match.group(1) + href + match.group(2), text, flags=re.I)
+    wanted = lang.casefold()
+    matches: list[re.Match[str]] = []
+    for match in _LINK_TAG.finditer(text):
+        if wanted in _public_links(match.group(0)).alternates:
+            matches.append(match)
+    if len(matches) > 1:
+        raise ActivationBlocked(f"public document has duplicate hreflang {lang!r}")
+    if matches:
+        match = matches[0]
+        tag = match.group(0)
+        if _HREF_ATTRIBUTE.search(tag):
+            updated_tag = _HREF_ATTRIBUTE.sub(
+                lambda attribute: attribute.group(1) + f'"{href}"',
+                tag,
+                count=1,
+            )
+        else:
+            updated_tag = f'<link rel="alternate" hreflang="{lang}" href="{href}">'
+        return text[:match.start()] + updated_tag + text[match.end():]
     link = f'  <link rel="alternate" hreflang="{lang}" href="{href}">\n'
     return re.sub(r"</head>", link + "</head>", text, count=1, flags=re.I)
 
 
 def synchronize_public_hreflang(target_lang: str, paths: LocalizationPaths) -> int:
-    """Add the admitted locale to every existing reciprocal document group."""
+    """Complete reciprocal families using declared public identity, not paths.
+
+    A translated filename is prose and may legitimately differ by language.
+    Canonical and non-default hreflang URLs already identify the logical
+    family, so they are the sole cross-language join key.  The complete update
+    is planned before any file is written and fails closed on ambiguous URLs,
+    missing members, or language mismatches.
+    """
     target = normalize_language(target_lang)
     target_root = paths.docs / target
-    changed = 0
     if not target_root.is_dir():
         return 0
     language_roots = sorted(
         path for path in paths.docs.iterdir()
         if path.is_dir() and not path.name.startswith(".")
     )
-    for target_path in sorted(target_root.rglob("*.html")):
-        relative = target_path.relative_to(target_root)
-        target_text = target_path.read_text(encoding="utf-8")
-        href = _extract_canonical(target_text)
-        if not href:
-            continue
-        for root in language_roots:
-            sibling = root / relative
-            if not sibling.is_file():
+    texts: dict[Path, str] = {}
+    links_by_path: dict[Path, _PublicLinks] = {}
+    path_by_canonical: dict[str, Path] = {}
+    for root in language_roots:
+        for path in sorted(root.rglob("*.html")):
+            text = path.read_text(encoding="utf-8")
+            links = _public_links(text)
+            texts[path] = text
+            links_by_path[path] = links
+            if not links.canonical:
                 continue
-            original = sibling.read_text(encoding="utf-8")
-            updated = _ensure_alternate(original, target, href)
-            if updated != original:
-                _write_public_text(sibling, updated)
-                changed += 1
-    return changed
+            previous = path_by_canonical.get(links.canonical)
+            if previous is not None and previous != path:
+                raise ActivationBlocked(
+                    "duplicate public canonical URL: " + links.canonical
+                )
+            path_by_canonical[links.canonical] = path
+
+    planned: dict[Path, str] = {}
+    visited: set[str] = set()
+    for target_path in sorted(target_root.rglob("*.html")):
+        target_links = links_by_path.get(target_path)
+        if target_links is None or not target_links.canonical:
+            continue
+        if target_links.lang != target:
+            raise ActivationBlocked(
+                f"target document language is {target_links.lang!r}, expected {target!r}: "
+                f"{target_path}"
+            )
+        if target_links.canonical in visited:
+            continue
+        family: dict[str, Path] = {}
+        by_language: dict[str, str] = {}
+        pending = [target_links.canonical]
+        while pending:
+            canonical = pending.pop()
+            if canonical in family:
+                continue
+            path = path_by_canonical.get(canonical)
+            if path is None:
+                raise ActivationBlocked(
+                    "hreflang is not a published document: " + canonical
+                )
+            family[canonical] = path
+            language = links_by_path[path].lang
+            if not language:
+                raise ActivationBlocked(f"public document has no language: {path}")
+            previous = by_language.get(language)
+            if previous is not None and previous != canonical:
+                raise ActivationBlocked(
+                    f"translation family has two {language!r} documents"
+                )
+            by_language[language] = canonical
+            for alternate_lang, alternate_url in links_by_path[path].alternates.items():
+                if alternate_lang == "x-default":
+                    continue
+                alternate_path = path_by_canonical.get(alternate_url)
+                if alternate_path is None:
+                    raise ActivationBlocked(
+                        f"hreflang {alternate_lang!r} is not a published document: "
+                        f"{alternate_url}"
+                    )
+                actual_lang = links_by_path[alternate_path].lang
+                if actual_lang != alternate_lang:
+                    raise ActivationBlocked(
+                        f"hreflang {alternate_lang!r} points to lang {actual_lang!r}"
+                    )
+                pending.append(alternate_url)
+        visited.update(family)
+
+        for path in family.values():
+            updated = planned.get(path, texts[path])
+            for language, alternate_url in sorted(by_language.items()):
+                updated = _ensure_alternate(updated, language, alternate_url)
+            projected = _public_links(updated)
+            if any(
+                projected.alternates.get(language) != alternate_url
+                for language, alternate_url in by_language.items()
+            ):
+                raise ActivationBlocked(
+                    f"cannot write a complete hreflang family: {path}"
+                )
+            planned[path] = updated
+
+    changed_paths = [path for path, text in planned.items() if text != texts[path]]
+    for path in sorted(changed_paths):
+        _write_public_text(path, planned[path])
+    return len(changed_paths)
 
 
 def _write_public_text(path: Path, text: str) -> None:
@@ -453,9 +596,59 @@ def validate_manifests(
     target_lang: str,
     *,
     registry: LocalizationRegistry,
+    paths: LocalizationPaths | None = None,
     validator: Callable[[Path, str], tuple[bool, str]] | None = None,
+    contract_snapshot_provider=None,
 ) -> None:
     target = normalize_language(target_lang)
+    if contract_snapshot_provider is not None:
+        from i18n_materializer import _manifest_sources
+        from manifest_inventory import inventory_manifests
+        from manifest_lint import lint_manifest
+
+        selected_paths = paths or LocalizationPaths()
+        manifest_inventory = inventory_manifests(
+            _manifest_sources(selected_paths.manifest_roots),
+        )
+        if manifest_inventory.problems:
+            raise ActivationBlocked("manifest inventory is not clean")
+        failures = []
+        evidence = hashlib.sha256()
+        count = 0
+        for ref in manifest_inventory.admitted():
+            snapshot = contract_snapshot_provider(ref)
+            from contract_store import ContractRetirement, VerifiedManifest
+
+            if isinstance(snapshot, ContractRetirement):
+                continue
+            if not isinstance(snapshot, VerifiedManifest):
+                raise ActivationBlocked(
+                    f"contract revision is not verified: {ref.contract_id}",
+                )
+            findings = [
+                finding for finding in lint_manifest(
+                    snapshot.parsed, language=target,
+                )
+                if finding.severity == "error"
+            ]
+            if findings:
+                failures.append(
+                    f"{ref.contract_id}: "
+                    + "; ".join(str(finding) for finding in findings[:3])
+                )
+            else:
+                evidence.update(snapshot.manifest_bytes)
+                count += 1
+        if failures:
+            raise ActivationBlocked(
+                "manifest admission failed: " + "; ".join(failures[:5]),
+            )
+        registry.record_check(
+            "manifest_admission", target, "passed",
+            evidence_hash=evidence.hexdigest(),
+            details={"manifests": count},
+        )
+        return
     if validator is None:
         from manifest_lint import lint_file
         from sign import verify_executor
@@ -506,25 +699,70 @@ def activate_language(
     registry: LocalizationRegistry | None = None,
     paths: LocalizationPaths | None = None,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
-    signer: Callable[[Path], Any] | None = None,
     manifest_validator: Callable[[Path, str], tuple[bool, str]] | None = None,
     tutor_compiler: Callable[[], tuple[str, set[str]]] | None = None,
     request_writer: Callable[..., tuple[Any, bool]] | None = None,
     restart: Callable[[], None] | None = None,
+    contract_snapshot_provider=None,
+    contract_publisher=None,
 ) -> ActivationReport:
     """Promote a complete locale, flip signed authority, then restart."""
     target = normalize_language(target_lang)
     paths = paths or LocalizationPaths()
     registry = registry or LocalizationRegistry()
-    materialize(target, registry=registry, paths=paths, source_lang=source_lang)
+    injected_versioned = (
+        contract_snapshot_provider is not None
+        or contract_publisher is not None
+    )
+    if injected_versioned and (
+        contract_snapshot_provider is None or contract_publisher is None
+    ):
+        raise ValueError(
+            "contract snapshot provider and publisher must be supplied together",
+        )
+    if injected_versioned:
+        store_only = True
+        snapshot_provider = contract_snapshot_provider
+        publisher = contract_publisher
+    else:
+        context = live_contract_context(registry, publication=True)
+        store_only = context.store_only
+        snapshot_provider = context.snapshot_provider
+        publisher = context.publisher
+    materialize(
+        target, registry=registry, paths=paths, source_lang=source_lang,
+        contract_snapshot_provider=snapshot_provider,
+    )
     before = gate(
         target, registry=registry, paths=paths, source_lang=source_lang,
         require_admitted=False,
+        contract_snapshot_provider=snapshot_provider,
     )
     if not before.ok:
         raise ActivationBlocked("pre-activation gate failed: " + "; ".join(before.errors[:8]))
+    versioned_promoted = 0
+    if store_only:
+        assert snapshot_provider is not None and publisher is not None
+        versioned = publish_versioned_contract_candidates(
+            target,
+            registry=registry,
+            paths=paths,
+            contract_snapshot_provider=snapshot_provider,
+            publisher=publisher,
+            source_lang=source_lang,
+        )
+        if versioned.errors:
+            raise ActivationBlocked(
+                "versioned contract publication failed: "
+                + "; ".join(
+                    f"{key}: {value}"
+                    for key, value in list(versioned.errors.items())[:5]
+                ),
+            )
+        versioned_promoted = versioned.published_resources
     promoted = promote_candidates(
-        target, registry=registry, paths=paths, signer=signer,
+        target, registry=registry, paths=paths,
+        versioned_contracts_published=store_only,
     )
     if promoted.errors:
         raise ActivationBlocked(
@@ -536,13 +774,20 @@ def activate_language(
     device_templates = reconcile_device_catalog(
         target, registry=registry, paths=paths, source_lang=source_lang,
     )
-    validate_manifests(target, registry=registry, validator=manifest_validator)
+    validate_manifests(
+        target,
+        registry=registry,
+        paths=paths,
+        validator=manifest_validator,
+        contract_snapshot_provider=snapshot_provider,
+    )
     tutor_digest = reconcile_tutor_catalog(
         target, registry=registry, compiler=tutor_compiler,
     )
     after = gate(
         target, registry=registry, paths=paths, source_lang=source_lang,
         require_admitted=True,
+        contract_snapshot_provider=snapshot_provider,
     )
     if not after.ok:
         raise ActivationBlocked("post-activation gate failed: " + "; ".join(after.errors[:8]))
@@ -556,7 +801,7 @@ def activate_language(
         restart()
         restarted = True
     return ActivationReport(
-        target_lang=target, promoted=promoted.admitted,
+        target_lang=target, promoted=promoted.admitted + versioned_promoted,
         exceptions=after.exceptions, device_templates=device_templates,
         tutor_digest=tutor_digest, configuration_changed=bool(changed),
         restarted=restarted,

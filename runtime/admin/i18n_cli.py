@@ -16,6 +16,7 @@ from i18n_activation import activate_language, gate, restart_http_service  # noq
 from i18n_materializer import materialize, materialize_requested  # noqa: E402
 from i18n_pipeline import (  # noqa: E402
     default_equivalence_judge,
+    live_contract_context,
     review_semantics,
     translate_pending,
 )
@@ -174,25 +175,46 @@ def _advance_requested(limit: int) -> dict:
 
 def _request(target: str) -> dict:
     normalized = normalize_language(target)
+    registry = LocalizationRegistry()
+    context = live_contract_context(registry)
     request, changed = _C.write_localization_request(
         instance_lang=_C.BOOTSTRAP_LANGUAGE,
         requested_lang=normalized,
         state="bootstrap_english",
         corpus_version=_C.localization_corpus_version(),
     )
-    report = materialize(normalized, registry=LocalizationRegistry())
+    report = materialize(
+        normalized,
+        registry=registry,
+        contract_snapshot_provider=context.snapshot_provider,
+    )
     return {"request": asdict(request), "changed": changed, "materialization": asdict(report)}
 
 
 def _advance(target: str, limit: int) -> dict:
     registry = LocalizationRegistry()
-    materialized = materialize(target, registry=registry)
-    translated = translate_pending(target, registry=registry, limit=limit)
+    context = live_contract_context(registry)
+    materialized = materialize(
+        target,
+        registry=registry,
+        contract_snapshot_provider=context.snapshot_provider,
+    )
+    translated = translate_pending(
+        target,
+        registry=registry,
+        limit=limit,
+        contract_snapshot_provider=context.snapshot_provider,
+    )
     reviewed = review_semantics(
         target, registry=registry, judge=default_equivalence_judge,
         limit=limit,
+        contract_snapshot_provider=context.snapshot_provider,
     )
-    readiness = gate(target, registry=registry)
+    readiness = gate(
+        target,
+        registry=registry,
+        contract_snapshot_provider=context.snapshot_provider,
+    )
     return {
         "materialization": asdict(materialized),
         "translation": asdict(translated),
@@ -272,16 +294,38 @@ def main(argv: list[str] | None = None) -> int:
         args.fn(args)
         return 0
     registry = LocalizationRegistry()
+    context = None
+
+    def selected_context(*, publication: bool = False):
+        nonlocal context
+        if context is None or (publication and context.publisher is None):
+            context = live_contract_context(registry, publication=publication)
+        return context
     try:
         if args.command == "request":
             _print(_request(args.target))
         elif args.command == "materialize":
-            _print(materialize(args.target, registry=registry))
+            live = selected_context()
+            _print(materialize(
+                args.target,
+                registry=registry,
+                contract_snapshot_provider=live.snapshot_provider,
+            ))
         elif args.command == "materialize-requested":
-            report = materialize_requested(registry=registry)
+            live = selected_context()
+            report = materialize_requested(
+                registry=registry,
+                contract_snapshot_provider=live.snapshot_provider,
+            )
             _print(asdict(report) if report else {"status": "no_pending_request"})
         elif args.command == "translate":
-            _print(translate_pending(args.target, registry=registry, limit=args.limit))
+            live = selected_context()
+            _print(translate_pending(
+                args.target,
+                registry=registry,
+                limit=args.limit,
+                contract_snapshot_provider=live.snapshot_provider,
+            ))
         elif args.command == "advance":
             _print(_advance(args.target, args.limit))
         elif args.command == "advance-requested":
@@ -291,15 +335,23 @@ def main(argv: list[str] | None = None) -> int:
             if target is None:
                 _print({"status": "no_target"})
                 return 0
+            live = selected_context()
             _print({
                 "coverage": asdict(registry.coverage(target)),
-                "gate": asdict(gate(target, registry=registry)),
+                "gate": asdict(gate(
+                    target,
+                    registry=registry,
+                    contract_snapshot_provider=live.snapshot_provider,
+                )),
                 "checks": registry.checks(target),
             })
         elif args.command == "activate":
+            live = selected_context(publication=True)
             _print(activate_language(
                 args.target, registry=registry,
                 restart=restart_http_service if args.restart else None,
+                contract_snapshot_provider=live.snapshot_provider,
+                contract_publisher=live.publisher,
             ))
         return 0
     except Exception as exc:

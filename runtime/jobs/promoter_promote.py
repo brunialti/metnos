@@ -4,9 +4,11 @@ Step:
 1. Verifica admission ADR 0114 dry-run (layer 2/3/5/6 pre-emptivo).
 2. Verifica il candidate standard gia' materializzato da Synt e ne salva una
    copia esatta per il rollback.
-3. Applica l'unica transizione ammessa `synthesized -> active` e firma Ed25519.
-4. Ammette l'artefatto con il loader verificato; su errore ripristina il
-   candidate byte per byte.
+3. Applica l'unica transizione ammessa `synthesized -> active` e attraversa
+   il confine di ammissione del layout corrente.
+4. Verifica l'artefatto con il loader autoritativo. Nel layout legacy un
+   errore ripristina il candidato; dopo il cutover non riscrive mai la
+   sorgente alle spalle della generazione pubblicata.
 
 §7.9 deterministico ovunque tranne layer 6 (LLM verifier, gia' chiuso in
 proposal_evaluator). §2.8 fail-loud: ogni admission fail ritorna esplicito
@@ -25,14 +27,11 @@ from pathlib import Path
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
 
-# Import lazy del firmatore: `sign_executor` viene patchato nei test via
-# `mock.patch("jobs.promoter_promote.sign_executor")` quindi serve come
+# Publisher esplicito: viene patchato nei test via
+# `mock.patch("jobs.promoter_promote.publish_authoring_update")` quindi serve come
 # attribute risolvibile a livello modulo (no `from sign import` dentro la
 # funzione che bypasserebbe il monkeypatch).
-try:
-    from sign import sign_executor  # type: ignore[import-not-found]
-except Exception:  # pragma: no cover
-    sign_executor = None  # type: ignore[assignment]
+from sign import publish_authoring_update
 
 
 # Dir canoniche, env-overridable per i test.
@@ -156,20 +155,54 @@ def _restore_rollback_blob(
             shutil.rmtree(staging, ignore_errors=True)
 
 
+def _rollback_blob_generation_id(blob_path: Path) -> str:
+    """Derive the immutable candidate ID from the exact rollback payload."""
+    from contract_store import GENERATION_FILES, generation_id
+
+    payloads: dict[str, bytes] = {}
+    with tarfile.open(str(blob_path), "r:gz") as archive:
+        for member in archive.getmembers():
+            path = Path(member.name)
+            if (
+                path.is_absolute()
+                or ".." in path.parts
+                or len(path.parts) != 1
+                or member.issym()
+                or member.islnk()
+            ):
+                raise ValueError("rollback blob contains an unsafe member")
+            if member.name not in GENERATION_FILES:
+                continue
+            if not member.isfile():
+                raise ValueError("rollback generation member is not a file")
+            stream = archive.extractfile(member)
+            if stream is None:
+                raise ValueError("rollback generation member is unreadable")
+            payloads[member.name] = stream.read()
+    if set(payloads) != set(GENERATION_FILES):
+        raise ValueError("rollback blob lacks the immutable generation payload")
+    return generation_id(payloads)
+
+
 def _loader_admission(executor_dir: Path, name: str) -> tuple[bool, str]:
-    """Exercise the real verified loader against only the promoted artifact."""
+    """Exercise the verified loader against the authoritative layout."""
 
-    from loader import Catalog, _load_dir_into_catalog
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    from loader import Catalog, _load_dir_into_catalog, load_catalog
 
-    with tempfile.TemporaryDirectory(prefix="metnos-promoter-admit-") as raw:
-        root = Path(raw)
-        os.symlink(str(executor_dir), str(root / executor_dir.name),
-                   target_is_directory=True)
-        catalog = Catalog()
-        _load_dir_into_catalog(
-            root, catalog, verify=True, is_synthesized=True,
-            current_lang="it",
-        )
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        catalog = load_catalog(include_synth=True, include_verb_unique=False)
+    else:
+        with tempfile.TemporaryDirectory(prefix="metnos-promoter-admit-") as raw:
+            root = Path(raw)
+            os.symlink(str(executor_dir), str(root / executor_dir.name),
+                       target_is_directory=True)
+            catalog = Catalog()
+            _load_dir_into_catalog(
+                root, catalog, verify=True, is_synthesized=True,
+                current_lang="it",
+            )
+
     if name not in catalog.executors:
         reason = next((reason for path, reason in catalog.rejected
                        if Path(path).name == executor_dir.name),
@@ -287,6 +320,14 @@ def promote_to_catalog(proposal: dict) -> dict:
         return {"ok": False, "error": "target_dir_inside_handcrafted",
                 "proposal_id": proposal_id, "target_dir": str(target_dir)}
 
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    try:
+        layout = resolve_manifest_layout()
+    except Exception as ex:
+        return {"ok": False, "error": "publication_layout_invalid",
+                "reason": str(ex)[:500], "proposal_id": proposal_id,
+                "name": name}
+
     # Admission dry-run prima di toccare il filesystem.
     for layer_name, fn in (
         ("layer_2", _dry_run_admission_layer2),
@@ -305,24 +346,47 @@ def promote_to_catalog(proposal: dict) -> dict:
                 "name": name,
             }
 
-    # Synt already created and signed the candidate. Promotion is one state
+    # Synt already created and admitted the candidate. Promotion is one state
     # transition of that exact artifact, never a second manifest generator.
     manifest_path = target_dir / "manifest.toml"
     if not manifest_path.is_file():
         return {"ok": False, "error": "candidate_not_found",
                 "proposal_id": proposal_id, "name": name}
+    blob_path = _blob_dir() / f"{proposal_id}.tar.gz"
     try:
         candidate_text = manifest_path.read_text(encoding="utf-8")
         from generated_executor_contract import (
-            GeneratedContractError, transition_generated_manifest_text,
+            GeneratedContractError,
+            transition_generated_manifest_text,
+            validate_generated_manifest_text,
         )
-        active_text, candidate_manifest = transition_generated_manifest_text(
-            candidate_text, expected_lifecycle="synthesized",
-            target_lifecycle="active")
-    except (OSError, GeneratedContractError) as ex:
+    except OSError as ex:
         return {"ok": False, "error": "candidate_not_conformant",
                 "reason": str(ex)[:500], "proposal_id": proposal_id,
                 "name": name}
+    already_active = False
+    try:
+        active_text, candidate_manifest = transition_generated_manifest_text(
+            candidate_text, expected_lifecycle="synthesized",
+            target_lifecycle="active")
+    except GeneratedContractError as transition_error:
+        # Store publication can commit before a final registry callback fails.
+        # In that case authoring is already reconciled to ``active`` and the
+        # next call must be an idempotent publication retry, not a dead end.
+        try:
+            candidate_manifest = validate_generated_manifest_text(
+                candidate_text, expected_lifecycle="active",
+            )
+        except GeneratedContractError:
+            return {"ok": False, "error": "candidate_not_conformant",
+                    "reason": str(transition_error)[:500],
+                    "proposal_id": proposal_id, "name": name}
+        if not blob_path.is_file():
+            return {"ok": False,
+                    "error": "active_candidate_without_rollback_blob",
+                    "proposal_id": proposal_id, "name": name}
+        active_text = candidate_text
+        already_active = True
     if str(candidate_manifest.get("name") or "") != name:
         return {"ok": False, "error": "candidate_identity_mismatch",
                 "proposal_id": proposal_id, "name": name}
@@ -342,30 +406,65 @@ def promote_to_catalog(proposal: dict) -> dict:
                 "proposal_id": proposal_id, "name": name}
 
     # Snapshot the exact quarantined state before the activation commit.
-    blob_path = _blob_dir() / f"{proposal_id}.tar.gz"
+    prepromotion_generation_id = None
     try:
-        _write_rollback_blob(target_dir, blob_path)
-        _atomic_write(manifest_path, active_text)
-    except OSError as ex:
+        if not already_active:
+            _write_rollback_blob(target_dir, blob_path)
+            _atomic_write(manifest_path, active_text)
+        if layout is ManifestLayout.STORE_ONLY:
+            prepromotion_generation_id = _rollback_blob_generation_id(blob_path)
+    except (OSError, tarfile.TarError, ValueError) as ex:
         return {"ok": False, "error": f"transition_write_failed: {ex}",
                 "proposal_id": proposal_id, "name": name}
 
-    # Sign (Ed25519). Errori qui sono fatal: senza firma il loader scarta.
-    if sign_executor is None:
-        return {"ok": False, "error": "sign_executor_unavailable",
+    # Firma nel layout legacy o pubblica nello store. Errori restano fail-loud.
+    if publish_authoring_update is None:
+        return {"ok": False, "error": "publisher_unavailable",
                 "proposal_id": proposal_id, "name": name,
                 "path": str(target_dir)}
+    publication = None
     try:
-        sign_executor(target_dir)
+        _digest, _signature, publication = publish_authoring_update(target_dir)
     except Exception as ex:
-        _restore_rollback_blob(target_dir, blob_path)
-        return {"ok": False, "error": f"sign_failed: {ex}",
+        if layout is ManifestLayout.AUTHORING:
+            _restore_rollback_blob(target_dir, blob_path)
+            error = f"sign_failed: {ex}"
+        else:
+            # Il pointer puo' essere gia' avanzato. Conservare la sorgente
+            # active consente al retry di riconciliare in modo idempotente.
+            error = f"publication_outcome_requires_retry: {ex}"
+        return {"ok": False, "error": error,
                 "proposal_id": proposal_id, "name": name,
                 "path": str(target_dir)}
+    active_generation_id = None
+    if layout is ManifestLayout.STORE_ONLY:
+        if publication is None:
+            return {"ok": False, "error": "publisher_returned_no_generation",
+                    "proposal_id": proposal_id, "name": name}
+        active_generation_id = str(publication.current_generation_id)
+        previous = publication.previous_generation_id
+        if (
+            not publication.repeated
+            and previous != prepromotion_generation_id
+        ):
+            return {
+                "ok": False,
+                "error": "prepromotion_generation_mismatch",
+                "expected": prepromotion_generation_id,
+                "observed": previous,
+                "proposal_id": proposal_id,
+                "name": name,
+            }
     admitted, admission_reason = _loader_admission(target_dir, name)
     if not admitted:
-        restored, restore_reason = _restore_rollback_blob(
-            target_dir, blob_path)
+        if layout is ManifestLayout.AUTHORING:
+            restored, restore_reason = _restore_rollback_blob(
+                target_dir, blob_path)
+        else:
+            # Non alterare authoring dopo una pubblicazione riuscita: sarebbe
+            # diverso dalla generazione viva. La diagnosi resta recuperabile
+            # e un rollback esplicito dovra' attraversare lo stesso publisher.
+            restored, restore_reason = False, "published_generation_retained"
         return {
             "ok": False,
             "error": "admission_failed_standard",
@@ -383,6 +482,8 @@ def promote_to_catalog(proposal: dict) -> dict:
         "proposal_id": proposal_id,
         "name": name,
         "promoted_at": time.time(),
+        "prepromotion_generation_id": prepromotion_generation_id,
+        "active_generation_id": active_generation_id,
     }
 
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import stat
 import tomllib
 from dataclasses import dataclass
 from enum import Enum
@@ -14,6 +15,14 @@ from pathlib import Path
 from typing import Callable, Iterable, Mapping
 
 import config as _C
+from contract_bootstrap import (
+    ACTIVE_BYTES,
+    ACTIVE_RELATIVE,
+    STORE_RELATIVE,
+    BootstrapStateError,
+    ProductionStoreMode,
+    classify_production_store,
+)
 
 
 class ManifestOrigin(str, Enum):
@@ -31,6 +40,20 @@ class ManifestStatus(str, Enum):
     ADMITTED = "admitted"
     DISABLED = "disabled"
     RETIRED = "retired"
+
+
+class ManifestLayout(str, Enum):
+    AUTHORING = "authoring"
+    STORE_ONLY = "store_only"
+
+
+class ManifestBootstrapError(RuntimeError):
+    """Fail-closed error at the irreversible publication boundary."""
+
+    def __init__(self, code: str, detail: str = "") -> None:
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{code}: {detail}" if detail else code)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -128,6 +151,37 @@ class ManifestInventory:
             if item.status is ManifestStatus.ADMITTED
         )
 
+    def installed(self) -> tuple[ManifestRef, ...]:
+        """Return contracts installed in this topology, enabled or disabled.
+
+        Enablement is external visibility policy.  Only an explicit retired
+        status removes a contract from the install/publish census.
+        """
+        return tuple(
+            item for item in self.manifests
+            if item.status is not ManifestStatus.RETIRED
+        )
+
+
+def manifest_name_collisions(
+    entries: Iterable[tuple[ContractId | str, str]],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return deterministic duplicate executor names across contract IDs.
+
+    The helper is deliberately independent from discovery and publication so
+    candidate-policy checks and the live loader apply exactly the same global
+    uniqueness rule.  Empty or malformed names are rejected by the caller's
+    schema/authentication boundary and are not silently normalized here.
+    """
+    by_name: dict[str, set[str]] = {}
+    for contract_id, name in entries:
+        by_name.setdefault(name, set()).add(str(contract_id))
+    return tuple(
+        (name, tuple(sorted(contract_ids)))
+        for name, contract_ids in sorted(by_name.items())
+        if len(contract_ids) > 1
+    )
+
 
 def default_manifest_sources() -> tuple[ManifestSource, ...]:
     """Return every known topology without granting runtime authority."""
@@ -172,6 +226,82 @@ def default_manifest_sources() -> tuple[ManifestSource, ...]:
     )
 
 
+def _publication_paths(
+    *,
+    store_root: Path | str | None,
+    active_marker: Path | str | None,
+) -> tuple[Path, Path]:
+    version_root = (
+        Path(store_root)
+        if store_root is not None
+        else _C.PATH_USER_STATE / STORE_RELATIVE
+    )
+    marker = (
+        Path(active_marker)
+        if active_marker is not None
+        else _C.PATH_USER_STATE / ACTIVE_RELATIVE
+    )
+    return version_root, marker
+
+
+def _has_reparse_flag(status: os.stat_result) -> bool:
+    return bool(
+        getattr(status, "st_file_attributes", 0)
+        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+    )
+
+
+def _require_plain_directory(path: Path, *, code: str) -> None:
+    try:
+        status = path.lstat()
+    except OSError as exc:
+        raise ManifestBootstrapError(code, f"{path}: {exc}") from exc
+    if (
+        _has_reparse_flag(status)
+        or stat.S_ISLNK(status.st_mode)
+        or not stat.S_ISDIR(status.st_mode)
+    ):
+        raise ManifestBootstrapError(code, str(path))
+
+
+def resolve_manifest_layout(
+    *,
+    store_root: Path | str | None = None,
+    active_marker: Path | str | None = None,
+) -> ManifestLayout:
+    """Apply the one-way bootstrap matrix without consulting authoring.
+
+    ``store_root`` is the version directory (``.../contract-publications/v1``).
+    Presence of its parent is the global production-root boundary.  Broken
+    links and wrong file types count as presence and therefore fail closed.
+    """
+    version_root, marker = _publication_paths(
+        store_root=store_root,
+        active_marker=active_marker,
+    )
+    try:
+        state = classify_production_store(
+            version_root=version_root,
+            active_marker=marker,
+            active_bytes=ACTIVE_BYTES,
+        )
+    except BootstrapStateError as exc:
+        code = (
+            "store_root_invalid"
+            if exc.code == "production_store_invalid"
+            else exc.code
+        )
+        raise ManifestBootstrapError(code, exc.detail) from exc
+    if state.mode is ProductionStoreMode.LEGACY:
+        return ManifestLayout.AUTHORING
+    if state.mode in {ProductionStoreMode.ACTIVE, ProductionStoreMode.STORE_ONLY}:
+        return ManifestLayout.STORE_ONLY
+    raise ManifestBootstrapError(
+        state.recovery_code or "production_store_incomplete",
+        state.detail,
+    )
+
+
 def _path_has_symlink(root: Path, path: Path) -> bool:
     current = root
     try:
@@ -210,12 +340,12 @@ def _default_skill_enabled(name: str) -> bool:
     return bool(is_skill_enabled(name))
 
 
-def inventory_manifests(
+def inventory_authoring_manifests(
     sources: Iterable[ManifestSource] | None = None,
     *,
     skill_enabled: Callable[[str], bool] | None = None,
 ) -> ManifestInventory:
-    """Enumerate manifests and report defects without changing any source."""
+    """Explicitly enumerate authoring manifests for lint/migration tools."""
     selected_sources = (
         default_manifest_sources() if sources is None else tuple(sources)
     )
@@ -329,18 +459,16 @@ def inventory_manifests(
             physical_paths[physical_key] = ref
             contract_ids[contract_id] = ref
 
-    by_name: dict[str, list[ManifestRef]] = {}
-    for ref in manifests:
-        if ref.status is ManifestStatus.ADMITTED:
-            assert ref.name is not None
-            by_name.setdefault(ref.name, []).append(ref)
-    for name, refs in sorted(by_name.items()):
-        if len(refs) < 2:
-            continue
+    installed_names = (
+        (ref.contract_id, ref.name)
+        for ref in manifests
+        if ref.status is not ManifestStatus.RETIRED and ref.name is not None
+    )
+    for name, contract_ids in manifest_name_collisions(installed_names):
         problems.append(InventoryProblem(
             "name_collision", name,
-            "multiple admitted manifests declare the same executor name",
-            contracts=tuple(sorted(str(ref.contract_id) for ref in refs)),
+            "multiple installed manifests declare the same executor name",
+            contracts=contract_ids,
         ))
 
     manifests.sort(key=lambda item: (item.origin.value, item.manifest_relative))
@@ -348,14 +476,213 @@ def inventory_manifests(
     return ManifestInventory(tuple(manifests), tuple(problems))
 
 
+def _structural_location(
+    source: ManifestSource,
+    contract_id: ContractId,
+) -> tuple[Path, Path, str | None, tuple[Path, ...]]:
+    relative = Path(contract_id.relative_manifest)
+    depth = len(relative.parts) - 1
+    if depth < source.min_depth or (
+        source.max_depth is not None and depth > source.max_depth
+    ):
+        raise ValueError("contract path is outside the origin topology")
+    root = Path(source.root)
+    skill_name = relative.parts[0] if source.skill_scoped else None
+    allowed_code_roots = tuple(
+        Path(item).resolve(strict=False) for item in source.allowed_code_roots
+    )
+    if source.skill_scoped:
+        allowed_code_roots = (
+            (root / relative.parts[0]).resolve(strict=False),
+        )
+    manifest_path = root / relative
+    if not allowed_code_roots:
+        allowed_code_roots = (manifest_path.parent.resolve(strict=False),)
+    return root, manifest_path, skill_name, allowed_code_roots
+
+
+def inventory_store_manifests(
+    sources: Iterable[ManifestSource] | None = None,
+    *,
+    store_root: Path | str | None = None,
+    skill_enabled: Callable[[str], bool] | None = None,
+    binding_reader: Callable[[Path], object] | None = None,
+) -> ManifestInventory:
+    """Build structural refs from immutable bindings and the origin map.
+
+    This path deliberately performs no existence, metadata or content read on
+    ``ManifestRef.manifest_path``.  The returned nullable authoring
+    observations remain empty; only ``current_manifest()`` may supply live
+    manifest content after cutover.
+    """
+    selected_sources = (
+        default_manifest_sources() if sources is None else tuple(sources)
+    )
+    if binding_reader is None:
+        from contract_store import read_binding as binding_reader
+
+    version_root, _marker = _publication_paths(
+        store_root=store_root,
+        active_marker=None,
+    )
+    _require_plain_directory(version_root, code="store_version_invalid")
+    enabled = skill_enabled or _default_skill_enabled
+    manifests: list[ManifestRef] = []
+    problems: list[InventoryProblem] = []
+
+    grouped_sources: dict[ManifestOrigin, list[ManifestSource]] = {}
+    for source in selected_sources:
+        grouped_sources.setdefault(source.origin, []).append(source)
+    source_map: dict[ManifestOrigin, ManifestSource] = {}
+    for origin, matches in sorted(grouped_sources.items(), key=lambda item: item[0].value):
+        if len(matches) != 1:
+            problems.append(InventoryProblem(
+                "origin_map_duplicate",
+                origin.value,
+                "origin map must contain exactly one source per origin",
+                origin,
+            ))
+            continue
+        source_map[origin] = matches[0]
+
+    seen_contracts: set[ContractId] = set()
+    try:
+        entries = tuple(sorted(version_root.iterdir(), key=lambda item: item.name))
+    except OSError as exc:
+        raise ManifestBootstrapError(
+            "store_version_unreadable", f"{version_root}: {exc}",
+        ) from exc
+    for contract_dir in entries:
+        try:
+            binding = binding_reader(contract_dir)
+            contract_id = getattr(binding, "contract_id")
+            if not isinstance(contract_id, ContractId):
+                raise TypeError("binding returned no ContractId")
+        except Exception as exc:
+            problems.append(InventoryProblem(
+                "binding_invalid",
+                str(contract_dir),
+                str(exc),
+            ))
+            continue
+        if contract_id in seen_contracts:
+            problems.append(InventoryProblem(
+                "duplicate_contract_id",
+                str(contract_dir),
+                "contract id appears in more than one binding",
+                contract_id.origin,
+                (str(contract_id),),
+            ))
+            continue
+        seen_contracts.add(contract_id)
+        source = source_map.get(contract_id.origin)
+        if source is None:
+            problems.append(InventoryProblem(
+                "origin_unknown",
+                str(contract_dir),
+                "binding origin is absent or ambiguous in the origin map",
+                contract_id.origin,
+                (str(contract_id),),
+            ))
+            continue
+        try:
+            root, manifest_path, skill_name, allowed_code_roots = (
+                _structural_location(source, contract_id)
+            )
+        except ValueError as exc:
+            problems.append(InventoryProblem(
+                "binding_invalid",
+                str(contract_dir),
+                str(exc),
+                contract_id.origin,
+                (str(contract_id),),
+            ))
+            continue
+
+        status = source.default_status
+        if skill_name is not None:
+            try:
+                if not enabled(skill_name):
+                    status = ManifestStatus.DISABLED
+            except Exception as exc:
+                status = ManifestStatus.DISABLED
+                problems.append(InventoryProblem(
+                    "skill_status_error",
+                    str(contract_dir),
+                    str(exc),
+                    contract_id.origin,
+                    (str(contract_id),),
+                ))
+        manifests.append(ManifestRef(
+            contract_id=contract_id,
+            origin=contract_id.origin,
+            status=status,
+            source_root=root,
+            manifest_path=manifest_path,
+            manifest_relative=contract_id.relative_manifest,
+            allowed_code_roots=allowed_code_roots,
+            skill_name=skill_name,
+        ))
+
+    manifests.sort(key=lambda item: (item.origin.value, item.manifest_relative))
+    problems.sort(key=lambda item: (item.code, item.path, item.detail))
+    return ManifestInventory(tuple(manifests), tuple(problems))
+
+
+def manifest_ref_for_source_path(
+    inventory: ManifestInventory,
+    manifest_path: Path | str,
+) -> ManifestRef:
+    """Resolve one exact structural source path without reading that path."""
+    wanted = os.path.normcase(os.path.abspath(os.fspath(manifest_path)))
+    matches = tuple(
+        ref for ref in inventory.manifests
+        if os.path.normcase(os.path.abspath(os.fspath(ref.manifest_path))) == wanted
+    )
+    if len(matches) != 1:
+        raise KeyError(f"manifest source path has {len(matches)} matches: {manifest_path}")
+    return matches[0]
+
+
+def inventory_manifests(
+    sources: Iterable[ManifestSource] | None = None,
+    *,
+    skill_enabled: Callable[[str], bool] | None = None,
+    store_root: Path | str | None = None,
+    active_marker: Path | str | None = None,
+) -> ManifestInventory:
+    """Return the live inventory selected by the irreversible matrix."""
+    layout = resolve_manifest_layout(
+        store_root=store_root,
+        active_marker=active_marker,
+    )
+    if layout is ManifestLayout.AUTHORING:
+        return inventory_authoring_manifests(
+            sources,
+            skill_enabled=skill_enabled,
+        )
+    return inventory_store_manifests(
+        sources,
+        store_root=store_root,
+        skill_enabled=skill_enabled,
+    )
+
+
 __all__ = [
     "ContractId",
     "InventoryProblem",
+    "ManifestBootstrapError",
     "ManifestInventory",
+    "ManifestLayout",
     "ManifestOrigin",
     "ManifestRef",
     "ManifestSource",
     "ManifestStatus",
     "default_manifest_sources",
+    "inventory_authoring_manifests",
     "inventory_manifests",
+    "inventory_store_manifests",
+    "manifest_name_collisions",
+    "manifest_ref_for_source_path",
+    "resolve_manifest_layout",
 ]

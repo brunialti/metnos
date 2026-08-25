@@ -303,36 +303,12 @@ def _migrate_args_descriptions(text: str, lang: str,
 
 
 def _state_from_parsed(parsed: dict) -> dict:
-    """Ricostruisce `manifest.lang_state.json` da un manifest gia' in schema
-    multilingua. Per ogni description (top-level + args.properties.<arg>),
-    salva `version_hash` per ciascuna lingua presente.
-    """
-    state: dict = {}
-    desc = parsed.get("description")
-    if isinstance(desc, dict):
-        for lang, val in desc.items():
-            if isinstance(val, str):
-                state.setdefault("description", {})[lang] = {
-                    "version_hash": _sha256_str(val),
-                    "source_lang": None,
-                    "source_hash": None,
-                }
-    props = (parsed.get("args") or {}).get("properties") or {}
-    for arg_name, arg_def in props.items():
-        if not isinstance(arg_def, dict):
-            continue
-        arg_desc = arg_def.get("description")
-        if not isinstance(arg_desc, dict):
-            continue
-        key = f"args.{arg_name}.description"
-        for lang, val in arg_desc.items():
-            if isinstance(val, str):
-                state.setdefault(key, {})[lang] = {
-                    "version_hash": _sha256_str(val),
-                    "source_lang": None,
-                    "source_hash": None,
-                }
-    return state
+    """Build canonical v1 state through the shared schema enumerator."""
+    from i18n_materializer import migrate_language_state_bytes
+
+    return json.loads(
+        migrate_language_state_bytes(b"{}", manifest=parsed).state_bytes,
+    )
 
 
 def migrate_one(manifest_path: Path, *, lang: str = "it",
@@ -344,6 +320,22 @@ def migrate_one(manifest_path: Path, *, lang: str = "it",
 
     `dry_run=True`: stampa il diff senza scrivere.
     """
+    # This one-shot migrator predates the immutable contract store.  Once the
+    # store is authoritative, editing and signing an authoring copy would look
+    # successful while leaving the live generation unchanged.  Keep diagnosis
+    # available, but fail before touching the source for every mutating use.
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if (
+        resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+        and not dry_run
+    ):
+        raise RuntimeError(
+            "migrate-manifest-descriptions cannot mutate authoring after "
+            "contract-store cutover; prepare a versioned contract candidate "
+            "and publish it (dry-run remains available for diagnosis)",
+        )
+
     manifest_dir = manifest_path.parent
     text_orig = manifest_path.read_text(encoding="utf-8")
 
@@ -371,9 +363,9 @@ def migrate_one(manifest_path: Path, *, lang: str = "it",
             state_path = manifest_dir / "manifest.lang_state.json"
             if not state_path.is_file() and not dry_run:
                 state = _state_from_parsed(parsed)
-                state_path.write_text(
-                    json.dumps(state, ensure_ascii=False, indent=2) + "\n",
-                    encoding="utf-8",
+                from i18n_materializer import encode_language_state
+                state_path.write_bytes(
+                    encode_language_state(state, manifest=parsed),
                 )
                 return {"ok": True, "path": str(manifest_path),
                         "status": "state_companion_written",
@@ -433,9 +425,18 @@ def migrate_one(manifest_path: Path, *, lang: str = "it",
     # Scrivi il nuovo manifest.
     manifest_path.write_text(text_new, encoding="utf-8")
 
-    # Scrivi manifest.lang_state.json
-    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n",
-                          encoding="utf-8")
+    # Canonicalize the legacy working map only after the completed manifest
+    # has been parsed.  Nested JSON-Schema selectors therefore use the same
+    # representation as the loader and publisher.
+    from i18n_materializer import migrate_language_state_bytes
+    legacy_state_bytes = (
+        json.dumps(state, ensure_ascii=False, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    state_path.write_bytes(
+        migrate_language_state_bytes(
+            legacy_state_bytes, manifest=re_parsed,
+        ).state_bytes,
+    )
 
     # Re-firma (digest dipende dal codice non dal manifest, ma la firma
     # e' sui bytes del manifest che e' cambiato).

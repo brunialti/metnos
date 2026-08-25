@@ -15,6 +15,7 @@ verificatore semantico e fallisce chiuso nel flusso ordinario.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import shutil
@@ -90,11 +91,11 @@ def _sign_keys_present(key_name: str = "author") -> tuple[bool, Optional[Path]]:
     return (priv.is_file() and pub.is_file()), priv
 
 
-def _try_sign_executor(manifest_dir: Path) -> Optional[str]:
-    """Wrapper di runtime/sign.py::sign_executor.
+def _try_publish_authoring_update(manifest_dir: Path) -> Optional[str]:
+    """Admit one generated executor through the layout-aware boundary.
 
-    Importa modulo da <install_root>/runtime/ se disponibile. Restituisce
-    il digest sha256 calcolato (str) o None se signer non disponibile.
+    It signs in the legacy layout and publishes exactly once in the
+    store-only layout.
     """
     canonical = Path(__file__).resolve().parents[1]  # ADR 0148 rename-resilient (cli/ → runtime/)
     if not canonical.exists():
@@ -105,13 +106,29 @@ def _try_sign_executor(manifest_dir: Path) -> Optional[str]:
         import sign as sign_mod  # type: ignore
     except Exception as e:
         return f"signer_import_failed: {e}"
-    # sign_executor richiede keys gia' presenti; in dry-run skippato.
+    # L'admission boundary richiede keys gia' presenti; in dry-run skippato.
     if os.environ.get("METNOS_SKILLS_NO_SIGN") == "1":
         return "skipped_by_env"
     try:
-        sign_mod.sign_executor(str(manifest_dir))
-        return "signed"
+        _digest, _signature, publication = sign_mod.publish_authoring_update(
+            str(manifest_dir),
+        )
+        return "signed" if publication is None else "published"
     except Exception as e:
+        # A tombstone is an authenticated, explicit lifecycle boundary.  A
+        # reinstall may cross it only through the separately audited
+        # reactivation primitive; every other publication error remains loud.
+        from contract_store import ContractStoreError
+        if isinstance(e, ContractStoreError) and e.code == "contract_retired":
+            try:
+                sign_mod.reactivate_executor_contract(
+                    str(manifest_dir),
+                    actor="skills_cli",
+                    reason="reinstall imported executor contract",
+                )
+                return "reactivated"
+            except Exception as reactivation_error:
+                return f"sign_failed: {reactivation_error}"
         return f"sign_failed: {e}"
 
 
@@ -284,15 +301,20 @@ def _cmd_import(args) -> int:
         if d.exists():
             shutil.rmtree(d)
 
+    admission_errors: list[tuple[str, str]] = []
     if args.no_sign or os.environ.get("METNOS_SKILLS_NO_SIGN") == "1":
         print("Signing: skipped (--no-sign or METNOS_SKILLS_NO_SIGN=1)")
     else:
-        print("Signing accepted executors with Ed25519...")
+        print("Admitting accepted executors with Ed25519...")
         for v in report.accepted:
             d = executors_dir / v.plan_name
             if d.exists():
-                status = _try_sign_executor(d)
+                status = _try_publish_authoring_update(d)
                 print(f"  {v.plan_name}: {status}")
+                if status not in {
+                    "signed", "published", "reactivated", "skipped_by_env",
+                }:
+                    admission_errors.append((v.plan_name, status or "unavailable"))
 
     # Gap 6 (10/5/2026): auto-add smoke routing assertion per ogni accepted.
     # NOTA: lo smoke runner canonico (`smoke.py`) carica BATTERY_IMPORTS via
@@ -317,6 +339,13 @@ def _cmd_import(args) -> int:
 
     print()
     print(f"Audit log: {report.audit_log_path}")
+    if admission_errors:
+        print(
+            "ERROR: admission failed for "
+            + ", ".join(name for name, _detail in admission_errors),
+            file=sys.stderr,
+        )
+        return 2
     return 0 if report.accepted else 1
 
 
@@ -517,18 +546,53 @@ def _cmd_uninstall(args) -> int:
         print(f"Not found: {args.skill}", file=sys.stderr)
         return 1
     n = sum(1 for _ in skill_dir.iterdir())
-    shutil.rmtree(skill_dir)
-    print(f"Removed {n} executors from {skill_dir}")
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    try:
+        layout = resolve_manifest_layout()
+    except Exception as exc:
+        print(f"Publication layout invalid: {exc}", file=sys.stderr)
+        return 2
+    boundary = contextlib.nullcontext()
+    if layout is ManifestLayout.STORE_ONLY:
+        from contract_store import catalog_admission_lock
 
-    if getattr(args, "purge_source", False):
-        sk = _skills_dir() / args.skill
-        if sk.exists():
-            shutil.rmtree(sk)
-            print(f"Removed skill source {sk}")
-    else:
-        sk = _skills_dir() / args.skill
-        if sk.exists():
-            print(f"Skill source preserved at {sk} (use --purge-source to remove)")
+        boundary = catalog_admission_lock()
+    with boundary:
+        if layout is ManifestLayout.STORE_ONLY:
+            # Keep the global boundary through both the tombstones and source
+            # removal.  A concurrent reinstall/reactivation cannot otherwise
+            # become live in the gap and then lose its code underneath it.
+            from sign import retire_executor_contract
+            executor_dirs = tuple(
+                child for child in sorted(skill_dir.iterdir())
+                if child.is_dir() and (child / "manifest.toml").is_file()
+            )
+            for executor_dir in executor_dirs:
+                try:
+                    retire_executor_contract(
+                        executor_dir,
+                        actor="skills_cli",
+                        reason=f"uninstall imported skill={args.skill}",
+                    )
+                except Exception as exc:
+                    print(
+                        f"Retirement failed for {executor_dir.name}; "
+                        f"retry uninstall: {exc}",
+                        file=sys.stderr,
+                    )
+                    return 2
+        shutil.rmtree(skill_dir)
+        print(f"Removed {n} executors from {skill_dir}")
+
+        if getattr(args, "purge_source", False):
+            sk = _skills_dir() / args.skill
+            if sk.exists():
+                shutil.rmtree(sk)
+                print(f"Removed skill source {sk}")
+        else:
+            sk = _skills_dir() / args.skill
+            if sk.exists():
+                print(f"Skill source preserved at {sk} (use --purge-source to remove)")
     return 0
 
 
@@ -611,22 +675,22 @@ def _cmd_evaluate(args) -> int:
 
 def _cmd_enable(args) -> int:
     import skill_registry as _sr
-    info = _sr.get_skill_info(args.skill)
-    if info is None:
-        print(f"Skill not found: {args.skill}", file=sys.stderr)
+    try:
+        _sr.set_skill_enabled_checked(args.skill, True)
+    except Exception as exc:
+        print(f"Skill enable rejected: {exc}", file=sys.stderr)
         return 1
-    _sr.set_skill_enabled(args.skill, True)
     print(f"Enabled: {args.skill}")
     return 0
 
 
 def _cmd_disable(args) -> int:
     import skill_registry as _sr
-    info = _sr.get_skill_info(args.skill)
-    if info is None:
-        print(f"Skill not found: {args.skill}", file=sys.stderr)
+    try:
+        _sr.set_skill_enabled_checked(args.skill, False)
+    except Exception as exc:
+        print(f"Skill disable rejected: {exc}", file=sys.stderr)
         return 1
-    _sr.set_skill_enabled(args.skill, False)
     print(f"Disabled: {args.skill}")
     return 0
 

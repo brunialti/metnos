@@ -34,38 +34,24 @@ type        = "array"
 default     = []
 
 [args.properties.filters.description]
-it = """Predicati `{attribute,op?,value}` in AND. Default [].
-attribute ∈ {pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}.
-op ∈ {=,!=,>,>=,<,<=,contains,startswith,endswith,regex,in} (default =).
-OK: [{attribute:"name",op:"contains",value:"python"}]."""
-en = """Predicates `{attribute,op?,value}` in AND. Default [].
-attribute ∈ {pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}.
-op ∈ {=,!=,>,>=,<,<=,contains,startswith,endswith,regex,in} (default =).
-OK: [{attribute:"name",op:"contains",value:"python"}]."""
+it = "Predicati `{attribute,op?,value}` in AND. Default [].\nattribute ∈ {pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}.\nop ∈ {=,!=,>,>=,<,<=,contains,startswith,endswith,regex,in} (default =).\nOK: [{attribute:\"name\",op:\"contains\",value:\"python\"}]."
+en = "Predicates `{attribute,op?,value}` in AND. Default [].\nattribute ∈ {pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}.\nop ∈ {=,!=,>,>=,<,<=,contains,startswith,endswith,regex,in} (default =).\nOK: [{attribute:\"name\",op:\"contains\",value:\"python\"}]."
 
 [args.properties.top]
 type        = "integer"
 minimum     = 1
 
 [args.properties.top.description]
-it = """int≥1, ordina per cpu_pct desc. Omesso → tutti.
-NON DEVI usare max_results/limit/n/count."""
-en = """int≥1, ordered by cpu_pct desc. Omitted → all.
-MUST NOT use max_results/limit/n/count."""
+it = "int≥1, ordina per cpu_pct desc. Omesso → tutti.\nNON DEVI usare max_results/limit/n/count."
+en = "int≥1, ordered by cpu_pct desc. Omitted → all.\nMUST NOT use max_results/limit/n/count."
 
 [args.properties.include_health]
 type        = "boolean"
 default     = false
 
 [args.properties.include_health.description]
-it = """bool. Se true aggiunge dict health.{load,memory,thermal,disk,network,services}.
-USO: stato/salute/uptime/carico/IP/rete/temperatura del server.
-Su Windows sensor_domains+sensor_types abilitano selettivamente il provider registrato; WMI e zone ACPI restano ripieghi locali per la temperatura. Una zona ACPI non viene presentata come temperatura CPU.
-NON DEVI usare health/with_health/system/status."""
-en = """bool. If true adds dict health.{load,memory,thermal,disk,network,services}.
-USE: status/health/uptime/load/IP/network/temperature of server.
-On Windows, sensor_domains+sensor_types selectively enable the registered provider; WMI and ACPI zones remain local temperature fallbacks. An ACPI zone is never presented as an attested CPU temperature.
-MUST NOT use health/with_health/system/status."""
+it = "bool. Se true aggiunge dict health.{load,memory,thermal,disk,network,services}.\nUSO: stato/salute/uptime/carico/IP/rete/temperatura del server.\nSu Windows sensor_domains+sensor_types abilitano selettivamente il provider registrato; WMI e zone ACPI restano ripieghi locali per la temperatura. Una zona ACPI non viene presentata come temperatura CPU.\nNON DEVI usare health/with_health/system/status."
+en = "bool. If true adds dict health.{load,memory,thermal,disk,network,services}.\nUSE: status/health/uptime/load/IP/network/temperature of server.\nOn Windows, sensor_domains+sensor_types selectively enable the registered provider; WMI and ACPI zones remain local temperature fallbacks. An ACPI zone is never presented as an attested CPU temperature.\nMUST NOT use health/with_health/system/status."
 
 [args.properties.sensor_domains]
 type        = "array"
@@ -94,10 +80,8 @@ type        = "array"
 default     = []
 
 [args.properties.services_extra.description]
-it = """Lista systemd --user unit aggiuntive in health.services. Default [].
-Solo se include_health=true. OK: ["llama-server","headscaled"]."""
-en = """List of extra systemd --user units in health.services. Default [].
-Only if include_health=true. OK: ["llama-server","headscaled"]."""
+it = "Lista systemd --user unit aggiuntive in health.services. Default [].\nSolo se include_health=true. OK: [\"llama-server\",\"headscaled\"]."
+en = "List of extra systemd --user units in health.services. Default [].\nOnly if include_health=true. OK: [\"llama-server\",\"headscaled\"]."
 
 [args.properties.scheduler_health]
 type            = "object"

@@ -149,6 +149,13 @@ def _is_handcrafted(name: str) -> bool:
     NON confondere con `loader.HANDCRAFTED_FAMILIES` (frozenset di nomi
     discovery primari curati).
     """
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        from loader import load_catalog
+
+        executor = load_catalog().get(name)
+        return executor is not None and executor.source == "handcrafted"
     for root in _HANDCRAFTED_DIRS:
         if (Path(root) / name / "manifest.toml").is_file():
             return True
@@ -157,6 +164,13 @@ def _is_handcrafted(name: str) -> bool:
 
 def _is_synth(name: str) -> bool:
     """True se `<name>` esiste come dir synth in _SYNTH_DIRS (escluso `_imports/`)."""
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        from loader import load_catalog
+
+        executor = load_catalog().get(name)
+        return executor is not None and executor.source == "synthesized"
     for root in _SYNTH_DIRS:
         candidate = Path(root) / name / "manifest.toml"
         if candidate.is_file():
@@ -167,6 +181,13 @@ def _is_synth(name: str) -> bool:
 def _is_imported(name: str) -> bool:
     """True se `<name>` esiste sotto `skills/<skill>/<name>/manifest.toml`
     (ADR 0160) o legacy `_imports/<skill>/<name>/manifest.toml` (ADR 0123)."""
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        from loader import load_catalog
+
+        executor = load_catalog().get(name)
+        return executor is not None and executor.is_imported
     from skills_paths import skill_roots as _sr
     for base in _sr():
         for skill_dir in base.iterdir():
@@ -193,7 +214,13 @@ def _read_affinity_from_manifest(manifest_path: Path) -> list:
 
 
 def _scan_existing_executors(roots) -> dict:
-    """Itera <root>/<name>/manifest.toml e ritorna {name: affinity_set}."""
+    """Scan legacy authoring roots before the irreversible cutover."""
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        raise RuntimeError(
+            "authoring executor scan is unavailable in store-only mode",
+        )
     out = {}
     for root in roots:
         rp = Path(root)
@@ -209,6 +236,30 @@ def _scan_existing_executors(roots) -> dict:
             if aff:
                 out[child.name] = set(t.lower() for t in aff if t)
     return out
+
+
+def _existing_affinity_sets() -> tuple[dict, dict]:
+    """Return admitted handcrafted/synth affinity from the live authority."""
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+        return (
+            _scan_existing_executors(_HANDCRAFTED_DIRS),
+            _scan_existing_executors(_SYNTH_DIRS),
+        )
+    from loader import load_catalog
+
+    handcrafted: dict[str, set[str]] = {}
+    synthesized: dict[str, set[str]] = {}
+    for executor in load_catalog().executors.values():
+        affinity = {str(token).lower() for token in executor.affinity if token}
+        if not affinity:
+            continue
+        if executor.source == "handcrafted":
+            handcrafted[executor.name] = affinity
+        elif executor.source == "synthesized":
+            synthesized[executor.name] = affinity
+    return handcrafted, synthesized
 
 
 def _affinity_overlap_check(plan, plan_affinity, scan_handcrafted, scan_synth,
@@ -469,8 +520,24 @@ def _existing_bindings() -> set:
     Razionale §7.3: l'invariante "binding unico cross-skill" e' uno
     stato di sistema corrente, non un fatto storico permanente.
     """
-    from skills_paths import existing_skill_names as _esn
-    return _esn()
+    from manifest_inventory import (
+        ManifestLayout,
+        ManifestStatus,
+        inventory_manifests,
+        resolve_manifest_layout,
+    )
+
+    if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+        from skills_paths import existing_skill_names as _esn
+        return _esn()
+    # Structural bindings, including disabled skills, are installed state.
+    # A policy toggle must not allow a second package to claim the same
+    # binding; retired contracts no longer reserve it.
+    return {
+        ref.skill_name
+        for ref in inventory_manifests().manifests
+        if ref.skill_name and ref.status is not ManifestStatus.RETIRED
+    }
 
 
 def _binding_uniqueness_check(parsed_skill, existing) -> tuple[bool, str]:
@@ -543,8 +610,7 @@ def admit_skill_import(parsed_skill, plans, *,
     fa stage6 sul testo della description plan-only).
     """
     verbs, objs, quals = _load_vocab()
-    handcrafted_aff = _scan_existing_executors(_HANDCRAFTED_DIRS)
-    synth_aff = _scan_existing_executors(_SYNTH_DIRS)
+    handcrafted_aff, synth_aff = _existing_affinity_sets()
     verifier = _stage6_verify_callable()
     # Existing bindings = catalog corrente ON-DISK, escludendo la skill che
     # stiamo importando (la pipeline codegen ha gia' creato la dir prima

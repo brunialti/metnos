@@ -23,7 +23,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Callable, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 # --- Normalizzazione flag booleani argparse (4/6/2026, §7.3 generale) --------
 # Gli executor skill generati dall'importer costruiscono argv col pattern
@@ -329,33 +329,96 @@ def _classify_error(returncode: int, stderr: str) -> str:
     return "unknown"
 
 
+def _thaw_oauth_value(value: Any) -> Any:
+    """Return an ordinary JSON-like copy of a verified immutable value."""
+    if isinstance(value, Mapping):
+        return {key: _thaw_oauth_value(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_thaw_oauth_value(item) for item in value]
+    return value
+
+
+def _oauth_config_fields(section) -> dict:
+    """Copy the public OAuth fields out of one verified manifest section."""
+    out: dict = {}
+    if not isinstance(section, dict) and not hasattr(section, "get"):
+        return out
+    for field in ("scopes_options", "mirror_paths",
+                  "client_secret_install_path"):
+        value = section.get(field)
+        if value:
+            # Verified manifests are recursively immutable.  Callers have
+            # historically received ordinary lists/dicts, so thaw only this
+            # small public surface rather than leaking store-owned objects.
+            out[field] = _thaw_oauth_value(value)
+    return out
+
+
+def _legacy_skill_oauth_config(manifest_path: Path) -> dict:
+    """Read an authoring manifest only in the pre-cutover layout."""
+    out: dict = {}
+    if manifest_path.is_file():
+        try:
+            import tomllib  # type: ignore
+            data = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+            out = _oauth_config_fields(data.get("oauth_provider") or {})
+        except Exception:
+            pass
+    return out
+
+
 def _get_skill_oauth_config(executor_file: str) -> dict:
-    """Legge la sezione `[oauth_provider]` dal manifest.toml dell'executor.
+    """Resolve `[oauth_provider]` from the active executor contract.
 
     `executor_file` e' tipicamente `__file__` passato dall'executor.
     Ritorna dict con keys `scopes_options`, `mirror_paths`,
     `client_secret_install_path` (omessi quando vuoti). Vuoto se la sezione
     manca: il caller decide se erroreare o usare defaults.
 
-    Cache module-level per evitare re-parse a ogni invocazione.
+    Before the irreversible cutover the authoring manifest remains the live
+    contract.  Afterwards its path is used only as a structural identity: the
+    configuration comes from the authenticated immutable generation and the
+    cache key includes that generation ID.
     """
     p = Path(executor_file).resolve().parent / "manifest.toml"
-    key = str(p)
+    from manifest_inventory import (
+        ManifestLayout,
+        inventory_manifests,
+        manifest_ref_for_source_path,
+        resolve_manifest_layout,
+    )
+
+    if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+        key = f"authoring::{p}"
+        cached = _OAUTH_CFG_CACHE.get(key)
+        if cached is None:
+            cached = _legacy_skill_oauth_config(p)
+            _OAUTH_CFG_CACHE[key] = cached
+        return cached
+
+    from contract_store import current_manifest, current_revision_id
+    from sign import list_trusted_publics
+
+    ref = manifest_ref_for_source_path(inventory_manifests(), p)
+    revision_id = current_revision_id(ref)
+    key = f"published::{ref.contract_id}::{revision_id}"
     cached = _OAUTH_CFG_CACHE.get(key)
     if cached is not None:
         return cached
-    out: dict = {}
-    if p.is_file():
-        try:
-            import tomllib  # type: ignore
-            data = tomllib.loads(p.read_text(encoding="utf-8"))
-            section = data.get("oauth_provider") or {}
-            for field in ("scopes_options", "mirror_paths",
-                          "client_secret_install_path"):
-                if field in section and section[field]:
-                    out[field] = section[field]
-        except Exception:
-            pass
+    snapshot = current_manifest(
+        ref,
+        trusted_publics=tuple(list_trusted_publics()),
+    )
+    if snapshot.generation_id != revision_id:
+        # A publication raced the lightweight lookup.  Do not cache data under
+        # the wrong identity; the next explicit invocation will retry against
+        # the new current pointer.
+        raise RuntimeError("executor contract changed while loading OAuth config")
+    out = _oauth_config_fields(snapshot.parsed.get("oauth_provider") or {})
+    prefix = f"published::{ref.contract_id}::"
+    for old_key in tuple(_OAUTH_CFG_CACHE):
+        if old_key.startswith(prefix) and old_key != key:
+            _OAUTH_CFG_CACHE.pop(old_key, None)
     _OAUTH_CFG_CACHE[key] = out
     return out
 

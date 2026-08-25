@@ -44,6 +44,7 @@ required = [
     "psutil",
     "python-dateutil",
     "tomli-w",
+    "tomlkit==0.15.0",
     "openpyxl==3.1.5",
     "pypdf==6.10.2",
     "pdfminer.six==20260107",
@@ -345,10 +346,10 @@ purpose = "Chiave principale per accesso amministrativo e derivazione della cifr
 name = "executor_author_keypair"
 private_path = "~/.config/metnos/keys/author_priv.bin"
 public_path = "~/.config/metnos/keys/author_pub.bin"
-generator = "runtime/sign.py sign-all"
+generator = "runtime/sign.py keygen author"
 private_mode = "0600"
 public_mode = "0644"
-purpose = "Firma locale degli executor ammessi e della richiesta di localizzazione dell’istanza."
+purpose = "Firma locale e pubblicazione immutabile dei contratti executor ammessi; firma della richiesta di localizzazione dell’istanza."
 
 [[external_services.entry]]
 name = "compatible_llm_endpoint"

@@ -58,7 +58,7 @@ credenziali o dati di Metnos. Se `.venv` esiste già, il controllo diretto è:
 |---:|---|---|
 | 1 | Preparazione | controlli preliminari, dipendenze Python e directory utente |
 | 2 | Infrastruttura AI | embedder BGE-M3, collegamenti dei livelli LLM e sidecar scelti |
-| 3 | Codice e cataloghi | verifica del sorgente, database iniziali, catalogo i18n, firma locale degli executor e catalogo Tutor verificato |
+| 3 | Codice e cataloghi | verifica del sorgente, database iniziali, catalogo i18n, pubblicazione immutabile di tutti i contratti executor installati e non ritirati, compresi quelli degli skill disattivati, e catalogo Tutor verificato |
 | 4 | Dati sensibili | chiave amministrativa e credenziali cifrate |
 | 5 | Servizi | unità systemd dell’utente, target integrato e controllo di salute HTTP |
 | 6 | Primo accesso | scelta delle capacità, collegamento amministrativo temporaneo e riepilogo |

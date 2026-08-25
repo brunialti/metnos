@@ -90,22 +90,7 @@ enum        = ["default", "research", "archive", "deep_search"]
 default     = "default"
 
 [args.properties.mode.description]
-it = """Asse: intento utente.
-
-DISCOVERY (esplora/riassumi/descrive cosa c'e' su un sito senza un target preciso):
-- 'default' (depth 2, cap_pages tier-based) — uso 95% dei casi: lista pagine + titoli + snippet, ordinabile per topic ma SENZA leggere il body.
-- 'research' (depth >= 4, richiede capability crawl.recursive) — discovery piu' aggressiva su siti grandi.
-- 'archive' (depth >= 6, time_window forzato a 'all') — snapshot esaustivo per audit/archiviazione.
-
-TARGETED SEARCH (so cosa cerco, voglio l'informazione):
-- 'deep_search' — pipeline content-aware (BFS + pre-rank ibrido BM25+embedding + lettura full-body top-K + ranking content). Aggiunge content_score, content_snippet, hit_terms alle entries top. RICHIEDE topic.
-
-USO CORRETTO: query 'cosa c'e' su X' / 'elenca articoli su X' → default. Query 'trova X su Y' / 'qual e' il numero X su Y' → deep_search.
-
-DEVI usare 'default' per 'cerca/trova informazioni|notizie su <tema>' senza un sito specifico.
-NON DEVI usare 'research'/'archive' salvo richiesta ESPLICITA di esplorare o archiviare un INTERO sito: fanno crawl profondo (minuti, fino a 900s) e bloccano il turno.
-OK: 'cerca informazioni sulle performance dei fondi ARK' → default.
-ERRORE: 'cerca informazioni sui fondi ARK' → research."""
+it = "Asse: intento utente.\n\nDISCOVERY (esplora/riassumi/descrive cosa c'e' su un sito senza un target preciso):\n- 'default' (depth 2, cap_pages tier-based) — uso 95% dei casi: lista pagine + titoli + snippet, ordinabile per topic ma SENZA leggere il body.\n- 'research' (depth >= 4, richiede capability crawl.recursive) — discovery piu' aggressiva su siti grandi.\n- 'archive' (depth >= 6, time_window forzato a 'all') — snapshot esaustivo per audit/archiviazione.\n\nTARGETED SEARCH (so cosa cerco, voglio l'informazione):\n- 'deep_search' — pipeline content-aware (BFS + pre-rank ibrido BM25+embedding + lettura full-body top-K + ranking content). Aggiunge content_score, content_snippet, hit_terms alle entries top. RICHIEDE topic.\n\nUSO CORRETTO: query 'cosa c'e' su X' / 'elenca articoli su X' → default. Query 'trova X su Y' / 'qual e' il numero X su Y' → deep_search.\n\nDEVI usare 'default' per 'cerca/trova informazioni|notizie su <tema>' senza un sito specifico.\nNON DEVI usare 'research'/'archive' salvo richiesta ESPLICITA di esplorare o archiviare un INTERO sito: fanno crawl profondo (minuti, fino a 900s) e bloccano il turno.\nOK: 'cerca informazioni sulle performance dei fondi ARK' → default.\nERRORE: 'cerca informazioni sui fondi ARK' → research."
 en = "Axis: user intent.  DISCOVERY (explore/summarize/describe what is on a site without a precise target): - 'default' (depth 2, cap_pages tier-based) — used in 95% of cases: lists pages + titles + snippets, sortable by topic but WITHOUT reading the body. - 'research' (depth >= 4, requires crawl.recursive capability) — more aggressive discovery on large sites. - 'archive' (depth >= 6, time_window forced to 'all') — exhaustive snapshot for audit/archiving.  TARGETED SEARCH (I know what I am looking for, I want the information): - 'deep_search' — content-aware pipeline (BFS + hybrid BM25+embedding pre-rank + top-K full-body reading + content ranking). Adds content_score, content_snippet, hit_terms to top entries. REQUIRES topic.  CORRECT USE: query 'what is on X' / 'list articles on X' → default. Query 'find X on Y' / 'what is the number X on Y' → deep_search.  MUST use 'default' for 'search/find information|news about <topic>' without a specific site. MUST NOT use 'research'/'archive' unless EXPLICITLY asked to explore or archive an ENTIRE site: they do deep crawls (minutes, up to 900s) and block the turn. OK: 'search information about ARK funds performance' → default. ERROR: 'search information about ARK funds' → research."
 
 [args.properties.trust]

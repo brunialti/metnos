@@ -26,8 +26,8 @@ scope = "server"
 device_ok = false
 
 [description]
-it = """SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text="mare"); name="nome"; min_face_pixels=40000. NON: EXIF di path noti -> get_files; file di una cartella per path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
-en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text="sea"); name="name"; min_face_pixels=40000. NON: EXIF of known paths -> get_files; files of a folder by path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
+it = "SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text=\"mare\"); name=\"nome\"; min_face_pixels=40000. NON: EXIF di path noti -> get_files; file di una cartella per path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."
+en = "SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text=\"sea\"); name=\"name\"; min_face_pixels=40000. NON: EXIF of known paths -> get_files; files of a folder by path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."
 
 [code]
 files  = ["find_images_indices.py"]

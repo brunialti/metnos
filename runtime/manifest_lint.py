@@ -55,16 +55,17 @@ except Exception:  # pragma: no cover - fallback se vocab non importabile
 # conservativo: oltre la media la visibilita' dipende dalla composizione pool.
 # SoT delle regole/dimensioni manifest: `manifest_rules` (il "DNA"). Stesso
 # modulo importato da proposer (render) e synt (generazione) → numeri allineati,
-# zero drift. Fallback ai default §2.5 se non importabile (CLI senza runtime).
-try:
-    from manifest_rules import (RENDER_BUDGET as PROPOSER_DESC_BUDGET,
-                                HEAD_MAX, DESC_MAX, ARG_DESC_MAX)
-except Exception:  # pragma: no cover
-    PROPOSER_DESC_BUDGET, HEAD_MAX, DESC_MAX, ARG_DESC_MAX = 260, 240, 320, 180
-
-# Arg "universali" di piping/runtime ammessi nel PATTERN anche se non sono
-# nelle properties dichiarate (il runtime li gestisce: §4.1).
-_UNIVERSAL_ARGS = frozenset({"from_step", "entries"})
+# zero drift. Il path runtime e' gia' reso importabile sopra: un secondo set di
+# default qui ricreerebbe proprio il drift che questo modulo deve impedire.
+from manifest_rules import (  # noqa: E402
+    ARG_DESC_MAX,
+    CHAPTERS,
+    DESC_MAX,
+    HEAD_MAX,
+    RENDER_BUDGET as PROPOSER_DESC_BUDGET,
+    UNIVERSAL_ARGS,
+    render_head,
+)
 
 # Soglia Jaccard sopra la quale due executor con VERBO diverso sono "troppo
 # simili" come affinity → l'LLM rischia di non disambiguare.
@@ -92,12 +93,6 @@ class Finding:
 # --------------------------------------------------------------------------
 # Parsing helper: estrae i 4 capitoli dalla lingua richiesta.
 # --------------------------------------------------------------------------
-_CHAPTERS = ("SCOPO:", "PATTERN:", "NON:", "OUT:")
-_LOCALIZABLE_FIELDS = frozenset({
-    "description", "summary", "title", "label", "help", "message",
-})
-
-
 def _localized_text(
     value: object, language: str, *, allow_flat: bool,
 ) -> str | None:
@@ -109,19 +104,11 @@ def _localized_text(
     return None
 
 
-def _localized_resource_tables(
-    node: Mapping[str, object], prefix: tuple[str, ...] = (),
-):
-    for key, value in node.items():
-        path = prefix + (str(key),)
-        if not isinstance(value, Mapping):
-            continue
-        if path[-1] in _LOCALIZABLE_FIELDS and any(
-            isinstance(item, str) for item in value.values()
-        ):
-            yield ".".join(path), value
-            continue
-        yield from _localized_resource_tables(value, path)
+def _localized_resource_tables(node: Mapping[str, object]):
+    """Compatibility iterator over the canonical contract selectors."""
+    from i18n_materializer import manifest_language_selectors
+
+    yield from manifest_language_selectors(node).items()
 
 
 def _without_pattern_chapter(desc: str) -> str:
@@ -135,10 +122,8 @@ def _without_pattern_chapter(desc: str) -> str:
 
 
 def _visible_to_llm(desc: str) -> str:
-    """Replica il taglio del Proposer: testo fino a 'OUT:' (escluso), cap 260."""
-    cut = desc.find("OUT:")
-    head = desc[:cut] if cut > 0 else desc
-    return head[:PROPOSER_DESC_BUDGET]
+    """Usa lo stesso renderer canonico che costruisce il pool del Proposer."""
+    return render_head(desc)
 
 
 def _chapter_span(desc: str, name: str) -> str:
@@ -148,7 +133,7 @@ def _chapter_span(desc: str, name: str) -> str:
         return ""
     start += len(name)
     end = len(desc)
-    for other in _CHAPTERS:
+    for other in CHAPTERS:
         if other == name:
             continue
         p = desc.find(other, start)
@@ -160,7 +145,7 @@ def _chapter_span(desc: str, name: str) -> str:
 def _chapter_problem(desc: str) -> tuple[str, Mapping[str, object]] | None:
     occurrences = {
         marker: tuple(match.start() for match in re.finditer(re.escape(marker), desc))
-        for marker in _CHAPTERS
+        for marker in CHAPTERS
     }
     invalid_counts = {
         marker: len(positions)
@@ -171,7 +156,7 @@ def _chapter_problem(desc: str) -> tuple[str, Mapping[str, object]] | None:
             "ogni capitolo SCOPO/PATTERN/NON/OUT deve comparire esattamente una volta",
             {"counts": invalid_counts},
         )
-    ordered_positions = [occurrences[marker][0] for marker in _CHAPTERS]
+    ordered_positions = [occurrences[marker][0] for marker in CHAPTERS]
     if ordered_positions != sorted(ordered_positions):
         return (
             "capitoli fuori ordine (atteso SCOPO -> PATTERN -> NON -> OUT)",
@@ -622,8 +607,8 @@ def lint_manifest(
             ))
 
     # C_PATTERN_ARGS — il PATTERN usa solo arg esistenti nello schema (+ universali).
-    if pattern_atoms is not None and props:
-        allowed = set(props.keys()) | _UNIVERSAL_ARGS
+    if pattern_atoms is not None:
+        allowed = set(props.keys()) | UNIVERSAL_ARGS
         pattern_arguments = [
             keyword
             for call in pattern_atoms.calls if call.callee == name
@@ -740,10 +725,10 @@ def lint_file(
 def _load_all_affinities() -> dict:
     """Compatibility view backed by the shared neutral inventory."""
     import tomllib
-    from manifest_inventory import inventory_manifests
+    from manifest_inventory import inventory_authoring_manifests
 
     out = {}
-    for ref in inventory_manifests().manifests:
+    for ref in inventory_authoring_manifests().manifests:
         try:
             with ref.manifest_path.open("rb") as handle:
                 m = tomllib.load(handle)
@@ -757,34 +742,57 @@ def _load_all_affinities() -> dict:
 
 def _load_catalog_names(affinities: dict | None = None) -> set[str]:
     """Compatibility view of names from the shared neutral inventory."""
-    from manifest_inventory import inventory_manifests
+    from manifest_inventory import inventory_authoring_manifests
 
     names = set((affinities or {}).keys())
-    names.update(ref.name for ref in inventory_manifests().manifests)
+    names.update(ref.name for ref in inventory_authoring_manifests().manifests)
     return names
 
 
 def main(argv=None):
-    argv = argv if argv is not None else sys.argv[1:]
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("path", nargs="?", help="manifest authoring esplicito")
+    parser.add_argument("-a", "--all", action="store_true",
+                        help="controlla tutto l'inventario authoring")
+    parser.add_argument("--language", metavar="BCP47",
+                        help="controlla soltanto questa lingua esplicita")
     # --strict: gate per NUOVI/TOCCATI — promuove ogni warn a error (CI / on-touch).
     # Senza, i warn restano advisory (legacy non bloccati, §2.5 no bonifica di massa).
-    strict = "--strict" in argv
-    argv = [a for a in argv if a != "--strict"]
+    parser.add_argument("--strict", action="store_true")
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    if args.all and args.path:
+        parser.error("path e --all sono alternativi")
+    requested_language: str | None = None
+    if args.language:
+        from i18n_registry import normalize_language
+
+        try:
+            requested_language = normalize_language(args.language)
+        except ValueError as exc:
+            parser.error(str(exc))
+
+    strict = args.strict
     from manifest_inventory import (
         ManifestOrigin,
         ManifestSource,
-        inventory_manifests,
+        inventory_authoring_manifests,
     )
 
-    if argv and argv[0] not in ("--all", "-a"):
-        explicit = Path(argv[0])
-        inventory = inventory_manifests((ManifestSource(
+    explicit_audit = args.path is not None
+    if explicit_audit:
+        explicit = Path(args.path)
+        inventory = inventory_authoring_manifests((ManifestSource(
             ManifestOrigin.EXPLICIT, explicit.parent,
             min_depth=0, max_depth=0,
             allowed_code_roots=(explicit.parent,),
         ),))
     else:
-        inventory = inventory_manifests()
+        # Questo comando e' un audit OFFLINE delle sorgenti di authoring. Non
+        # certifica il catalogo live post-cutover: quel confine deve consumare
+        # esclusivamente snapshot verificati dal contract store.
+        inventory = inventory_authoring_manifests()
     parsed_manifests = {}
     affinities: dict[str, set[str]] = {}
     names: set[str] = set()
@@ -804,19 +812,48 @@ def main(argv=None):
     for ref in inventory.manifests:
         manifest = parsed_manifests[ref.contract_id]
         description = manifest.get("description")
-        languages = sorted(
-            key for key, value in description.items()
-            if isinstance(description, Mapping) and isinstance(key, str)
-            and isinstance(value, str)
-        ) if isinstance(description, Mapping) else []
+        localized_tables = tuple(_localized_resource_tables(manifest))
+        flat_description = isinstance(description, str)
+        allow_flat = bool(
+            flat_description and explicit_audit and requested_language
+        )
+        if requested_language is not None and not (
+            flat_description and not explicit_audit
+        ):
+            languages = [requested_language]
+        elif not flat_description:
+            languages = sorted({
+                str(language)
+                for _, table in localized_tables
+                for language, value in table.items()
+                if isinstance(language, str) and isinstance(value, str)
+            })
+        else:
+            languages = []
+
         if not languages:
-            from config import INSTANCE_LANG
-            languages = [INSTANCE_LANG]
+            checked += 1
+            reason = (
+                "description flat priva di lingua: per un file esplicito usa "
+                "--language <BCP47>"
+                if flat_description else
+                "description senza alcuna variante linguistica esplicita"
+            )
+            finding = Finding(
+                "language_missing", "error", "local", reason,
+                resource="description",
+            )
+            total_err += 1
+            print(
+                f"{ref.name} [lingua non attribuita; {ref.origin.value}; "
+                f"{ref.status.value}]:"
+            )
+            print(finding)
         for index, language in enumerate(languages):
             checked += 1
             findings = lint_manifest(
                 manifest, language=language,
-                allow_flat_description=not isinstance(description, Mapping),
+                allow_flat_description=allow_flat,
                 catalog_names=names,
                 sibling_affinities=affinities if index == 0 else None,
             )
@@ -832,7 +869,7 @@ def main(argv=None):
                 for f in findings:
                     print(f)
         from itertools import combinations
-        for resource, table in _localized_resource_tables(manifest):
+        for resource, table in localized_tables:
             variants = sorted(
                 (str(language), text)
                 for language, text in table.items()
@@ -841,6 +878,11 @@ def main(argv=None):
             for (source_language, source), (target_language, target) in combinations(
                 variants, 2,
             ):
+                if (
+                    requested_language is not None
+                    and requested_language not in {source_language, target_language}
+                ):
+                    continue
                 parity = [
                     finding for finding in lint_contract_translation(
                         source, target, resource=resource,

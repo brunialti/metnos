@@ -5,7 +5,8 @@ Operazioni:
 2. Verifica state in ('promoted_grace', 'promoted_finalized').
 3. Estrai blob_path; se mancante → fail-loud §2.8 con `error: 'no_blob'`.
 4. Ripristina dal blob l'esatto candidato quarantinato precedente alla
-   promozione (mai la directory handcrafted).
+   promozione (mai la directory handcrafted). Dopo il cutover sposta il
+   binding fra le due identita' immutabili registrate al promote.
 5. Sposta blob in `~/.local/share/metnos/promoter_blobs/_rolled_back/<id>.tar.gz`.
 6. UPDATE state DB: state='rolled_back', rolled_back_at=now.
 7. Audit JSONL append.
@@ -69,11 +70,48 @@ def rollback_promotion(proposal_id: str) -> dict:
         return {"ok": False, "error": "target_dir_inside_handcrafted",
                 "proposal_id": proposal_id, "name": name,
                 "target_dir": str(target_dir)}
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    try:
+        layout = resolve_manifest_layout()
+    except Exception as ex:
+        return {"ok": False, "error": f"publication_layout_invalid: {ex}",
+                "proposal_id": proposal_id, "name": name}
+    prepromotion_generation_id = state.get("prepromotion_generation_id")
+    active_generation_id = state.get("active_generation_id")
+    if layout is ManifestLayout.STORE_ONLY and (
+        not prepromotion_generation_id or not active_generation_id
+    ):
+        return {
+            "ok": False,
+            "error": "promotion_generation_ids_missing",
+            "proposal_id": proposal_id,
+            "name": name,
+        }
     restored, restore_error = _restore_rollback_blob(target_dir, blob_path)
     if not restored:
         return {"ok": False, "error": restore_error,
                 "proposal_id": proposal_id, "name": name,
                 "target_dir": str(target_dir)}
+    if layout is ManifestLayout.STORE_ONLY:
+        try:
+            from sign import rollback_executor_contract
+            rollback_executor_contract(
+                target_dir,
+                expected_generation_id=str(active_generation_id),
+                target_generation_id=str(prepromotion_generation_id),
+                actor="promoter_rollback",
+                reason=f"rollback promotion proposal={proposal_id}",
+            )
+        except Exception as ex:
+            # The restored source is the code authenticated by the target
+            # generation. Keep it intact for an idempotent pointer retry.
+            return {
+                "ok": False,
+                "error": f"publication_rollback_requires_retry: {ex}",
+                "proposal_id": proposal_id,
+                "name": name,
+                "target_dir": str(target_dir),
+            }
 
     # Sposta blob in _rolled_back/.
     rolled_dir = _blob_dir() / "_rolled_back"

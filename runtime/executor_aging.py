@@ -20,6 +20,11 @@ Esclusi dal decay (sempre attivi):
 Il loader (`runtime/loader.py`) consulta `executor_stats` al boot:
   - deprecated_at non NULL → manifest.lifecycle override = 'deprecated'
   - archived_at non NULL → escluso dal catalog visibile (filter_for_visibility).
+
+Questo database e' una policy di VISIBILITA' esterna al contratto firmato: non
+pubblica, ritira o modifica manifest. Il loader verifica l'unicita' globale dei
+nomi autenticati prima di applicare gli override; anche l'unarchive manuale
+riusa esplicitamente quel preflight prima di rendere possibile la riapparizione.
 """
 from __future__ import annotations
 
@@ -459,6 +464,12 @@ def undeprecate(name: str) -> bool:
     Non riapre il file su disco: l'executor deve essere ancora presente
     sul filesystem. Ritorna True se uno stato e' stato cambiato.
     """
+    # Reappearance is a visibility change, not contract publication.  Prove
+    # the complete current policy first; the check includes archived contracts
+    # because aging overrides are applied only after authenticated admission.
+    from skill_registry import validate_current_skill_policy
+
+    validate_current_skill_policy()
     conn = _open()
     try:
         cur = conn.execute(

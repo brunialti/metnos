@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Misura il prefilter bag-of-words sul corpus congelato (233 query reali).
+"""Misura il prefilter bag-of-words sul corpus congelato di query reali.
 
 Perche' esiste (6/8/2026): `data/prefilter_corpus_snapshot.jsonl` era scritto
 da `build_prefilter_corpus.py` e non lo leggeva nessuno. Ogni volta che si

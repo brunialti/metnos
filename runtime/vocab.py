@@ -1104,6 +1104,46 @@ def _imports_signature(root_or_roots) -> tuple:
     return (max_mt, n)
 
 
+def _index_imported_names(names) -> dict[tuple[str, str], list[str]]:
+    """Build the deterministic L7 index from admitted executor identities."""
+    index: dict[tuple[str, str], list[str]] = {}
+    for name in sorted({str(value) for value in names if str(value)}):
+        parts = name.split("_", 2)
+        if len(parts) < 2:
+            continue
+        key = (parts[0].lower(), parts[1].lower())
+        index.setdefault(key, []).append(name)
+    return index
+
+
+def _legacy_imported_bindings_index() -> tuple[tuple, dict]:
+    """Scan authoring imports while that layout is still authoritative."""
+    import tomllib
+    roots = _imports_roots()
+    sig = _imports_signature(roots)
+    names: list[str] = []
+    skill_dirs = []
+    for root in roots:
+        if not root.exists():
+            continue
+        for skill_dir in sorted(root.iterdir()):
+            if skill_dir.is_dir():
+                skill_dirs.append(skill_dir)
+    for skill_dir in skill_dirs:
+        for executor_dir in sorted(skill_dir.iterdir()):
+            if not executor_dir.is_dir():
+                continue
+            manifest_path = executor_dir / "manifest.toml"
+            if not manifest_path.is_file():
+                continue
+            try:
+                doc = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, tomllib.TOMLDecodeError):
+                continue
+            names.append(str(doc.get("name") or executor_dir.name))
+    return ("authoring", *sig), _index_imported_names(names)
+
+
 def imported_bindings_index() -> dict[tuple[str, str], list[str]]:
     """Ritorna la mappa `(verb, object) -> [imported_executor_names]`.
 
@@ -1120,52 +1160,40 @@ def imported_bindings_index() -> dict[tuple[str, str], list[str]]:
     `lookup_imported_for_intent(verb, object_synonyms)` con sinonimi
     (appointments/events) per chiudere il loop.
 
-    Determinismo (§7.9): zero LLM, zero network, una sola scansione fs +
-    parse manifest.toml read-only (legge solo il campo `name`).
+    Determinismo (§7.9): zero LLM e zero network. Prima del cutover usa la
+    scansione authoring storica. Dopo il cutover usa esclusivamente il catalogo
+    autenticato e invalida la cache con gli ID delle generazioni ammesse.
 
     Returns:
         dict: chiave tuple (verb, object) lower-case → lista nomi imported.
               Vuoto se `_imports/` non esiste o nessun manifest valido.
     """
-    import tomllib
-    roots = _imports_roots()
-    sig = _imports_signature(roots)
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+        sig, index = _legacy_imported_bindings_index()
+    else:
+        from loader import load_catalog
+
+        imported = [
+            executor for executor in load_catalog().executors.values()
+            if executor.is_imported
+        ]
+        if any(not executor.generation_id for executor in imported):
+            raise RuntimeError(
+                "published imported executor has no generation identity",
+            )
+        sig = (
+            "store",
+            tuple(sorted(
+                (executor.name, str(executor.generation_id))
+                for executor in imported
+            )),
+        )
+        index = _index_imported_names(executor.name for executor in imported)
     cached = _IMPORTED_BINDINGS_CACHE.get("index")
     if cached is not None and cached[0] == sig:
         return cached[1]
-
-    index: dict[tuple[str, str], list[str]] = {}
-    if not roots:
-        _IMPORTED_BINDINGS_CACHE["index"] = (sig, index)
-        return index
-
-    skill_dirs = []
-    for r in roots:
-        if not r.exists():
-            continue
-        for sd in sorted(r.iterdir()):
-            if sd.is_dir():
-                skill_dirs.append(sd)
-    for skill_dir in skill_dirs:
-        for ex_dir in sorted(skill_dir.iterdir()):
-            if not ex_dir.is_dir():
-                continue
-            mf = ex_dir / "manifest.toml"
-            if not mf.is_file():
-                continue
-            try:
-                doc = tomllib.loads(mf.read_text(encoding="utf-8"))
-            except (OSError, tomllib.TOMLDecodeError):
-                continue
-            name = doc.get("name") or ex_dir.name
-            parts = name.split("_", 2)
-            if len(parts) < 2:
-                continue
-            verb = parts[0].lower()
-            obj = parts[1].lower()
-            key = (verb, obj)
-            index.setdefault(key, []).append(name)
-
     _IMPORTED_BINDINGS_CACHE["index"] = (sig, index)
     return index
 

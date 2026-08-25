@@ -9,7 +9,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::identity;
@@ -237,10 +237,7 @@ fn verify_cached(
 
     let manifest: toml::Value = toml::from_str(&String::from_utf8_lossy(&manifest_bytes))
         .context("parse manifest cache")?;
-    let declared = code_file_names(&manifest);
-    if declared.is_empty() {
-        bail!("manifest senza [code].files");
-    }
+    let declared = code_file_names(&manifest)?;
     let mut hasher = Sha256::new();
     for fname in &declared {
         let rel = code_rel_path(fname)?;
@@ -303,10 +300,7 @@ fn materialize(
 
     // 3. digest del codice = concatenazione dei file in ordine dichiarato.
     let manifest: toml::Value = toml::from_str(&String::from_utf8_lossy(&manifest_bytes))?;
-    let declared_files = code_file_names(&manifest);
-    if declared_files.is_empty() {
-        bail!("manifest senza [code].files");
-    }
+    let declared_files = code_file_names(&manifest)?;
     let mut hasher = Sha256::new();
     let mut decoded: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for fname in &declared_files {
@@ -424,7 +418,10 @@ fn shim_rel_path(fname: &str) -> Result<std::path::PathBuf> {
 
 #[cfg(test)]
 mod shim_tests {
-    use super::{code_rel_path, parse_managed_providers, shim_rel_path, validate_cache_key};
+    use super::{
+        code_rel_path, parse_managed_providers, shim_rel_path, validate_cache_key,
+        validate_code_file_names,
+    };
 
     #[test]
     fn flat_and_tree_ok() {
@@ -461,6 +458,59 @@ mod shim_tests {
         assert!(validate_cache_key("read_files", &hash, &hash).is_ok());
         assert!(validate_cache_key("../read", &hash, &hash).is_err());
         assert!(validate_cache_key("read", "abc", &hash).is_err());
+    }
+
+    #[derive(serde::Deserialize)]
+    struct PathVector {
+        path: String,
+        error: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct SetVector {
+        files: Vec<String>,
+        error: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct CodePathVectors {
+        single: Vec<PathVector>,
+        sets: Vec<SetVector>,
+    }
+
+    fn error_code<T>(result: anyhow::Result<T>) -> Option<String> {
+        result.err().map(|error| {
+            error
+                .to_string()
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .to_string()
+        })
+    }
+
+    #[test]
+    fn portable_code_path_vectors_match_python_boundary() {
+        let vectors: CodePathVectors = serde_json::from_str(include_str!(
+            "../../tests/fixtures/code_file_path_vectors.json"
+        ))
+        .unwrap();
+        for vector in vectors.single {
+            assert_eq!(
+                error_code(code_rel_path(&vector.path)),
+                vector.error,
+                "path {:?}",
+                vector.path,
+            );
+        }
+        for vector in vectors.sets {
+            assert_eq!(
+                error_code(validate_code_file_names(&vector.files)),
+                vector.error,
+                "files {:?}",
+                vector.files,
+            );
+        }
     }
 
     #[test]
@@ -524,36 +574,78 @@ mod shim_tests {
     }
 }
 
-fn code_file_names(manifest: &toml::Value) -> Vec<String> {
-    manifest
+fn code_file_names(manifest: &toml::Value) -> Result<Vec<String>> {
+    let rows = manifest
         .get("code")
         .and_then(|c| c.get("files"))
         .and_then(|f| f.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
+        .ok_or_else(|| anyhow!("code_files_shape"))?;
+    let files: Vec<String> = rows
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(String::from)
+                .ok_or_else(|| anyhow!("code_files_shape"))
         })
-        .unwrap_or_default()
+        .collect::<Result<_>>()?;
+    validate_code_file_names(&files)?;
+    Ok(files)
 }
 
 fn code_rel_path(fname: &str) -> Result<PathBuf> {
-    if fname.is_empty()
-        || fname.contains('\\')
-        || fname.contains(':')
-        || fname.starts_with('/')
-        || fname.ends_with('/')
-    {
-        bail!("nome file codice non sicuro: {}", fname);
+    if fname.is_empty() {
+        bail!("code_path_empty");
+    }
+    if !fname.is_ascii() {
+        bail!("code_path_non_ascii:{}", fname);
+    }
+    if fname.starts_with('/') {
+        bail!("code_path_absolute:{}", fname);
+    }
+    if fname.contains('\\') || fname.contains(':') {
+        bail!("code_path_separator:{}", fname);
     }
     let mut rel = PathBuf::new();
     for segment in fname.split('/') {
         if segment.is_empty() || segment == "." || segment == ".." {
-            bail!("segmento codice non sicuro in {}", fname);
+            bail!("code_path_segment:{}", fname);
+        }
+        if segment.ends_with('.') || segment.ends_with(' ') {
+            bail!("code_path_trailing:{}", fname);
+        }
+        if segment.bytes().any(|byte| {
+            byte < 32 || byte == 127 || matches!(byte, b'<' | b'>' | b'"' | b'|' | b'?' | b'*')
+        }) {
+            bail!("code_path_character:{}", fname);
+        }
+        let device_name = segment.split('.').next().unwrap_or("").to_ascii_lowercase();
+        let reserved = matches!(device_name.as_str(), "con" | "prn" | "aux" | "nul")
+            || ((device_name.starts_with("com") || device_name.starts_with("lpt"))
+                && device_name.len() == 4
+                && matches!(device_name.as_bytes()[3], b'1'..=b'9'));
+        if reserved {
+            bail!("code_path_reserved:{}", fname);
         }
         rel.push(segment);
     }
     Ok(rel)
+}
+
+fn validate_code_file_names(files: &[String]) -> Result<()> {
+    if files.is_empty() {
+        bail!("code_files_shape");
+    }
+    let mut folded = HashSet::with_capacity(files.len());
+    for fname in files {
+        code_rel_path(fname)?;
+        // The canonical wire grammar is ASCII, so lowercase and casefold are
+        // exactly equivalent in both the Python server and this Rust client.
+        if !folded.insert(fname.to_ascii_lowercase()) {
+            bail!("code_path_collision:{}", fname);
+        }
+    }
+    Ok(())
 }
 
 fn parse_capabilities(manifest: &toml::Value) -> Vec<Capability> {

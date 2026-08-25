@@ -388,6 +388,42 @@ async def heartbeat(request: web.Request) -> web.Response:
 _EXECUTOR_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,64}$")
 
 
+def _executor_bundle_payload(name: str) -> dict:
+    """Build a bundle from one self-consistent verified artifact."""
+    import base64
+    from code_file_paths import (
+        PortableCodePathError,
+        validate_portable_code_files,
+    )
+
+    artifact = invocations.load_executor_artifact(name)
+    try:
+        validate_portable_code_files(
+            tuple(fname for fname, _payload in artifact.code_files),
+        )
+    except PortableCodePathError as exc:
+        # Validate the complete namespace before constructing even an in-memory
+        # partial payload.  The public endpoint maps this stable invocation
+        # failure to its existing fail-closed 409 response.
+        raise invocations.InvocationError(
+            f"wire_code_files_invalid:{exc.code}",
+        ) from exc
+    files = {
+        fname: base64.b64encode(payload).decode("ascii")
+        for fname, payload in artifact.code_files
+    }
+    return {
+        "name": name,
+        "manifest_toml": base64.b64encode(
+            artifact.manifest_bytes
+        ).decode("ascii"),
+        "manifest_sig": base64.b64encode(
+            artifact.signature_bytes
+        ).decode("ascii"),
+        "files": files,
+    }
+
+
 async def executor_bundle(request: web.Request) -> web.Response:
     """GET /agent/executor/{name} — manifest+codice firmati per la cache device.
 
@@ -398,35 +434,15 @@ async def executor_bundle(request: web.Request) -> web.Response:
     name = request.match_info["name"]
     if not _EXECUTOR_NAME_RE.match(name):
         return _error(400, "invalid_name", "invalid executor name")
-    ex_dir = _C.PATH_EXECUTORS / name
-    manifest_path = ex_dir / "manifest.toml"
-    if not manifest_path.is_file():
-        return _error(404, "unknown_executor", "executor not found")
 
     loop = asyncio.get_running_loop()
 
-    def _load() -> dict:
-        import base64
-        import tomllib
-        from sign import verify_executor
-        ok, info = verify_executor(ex_dir)
-        if not ok:
-            raise RuntimeError(f"executor non verificato: {info.get('reason')}")
-        manifest_bytes = manifest_path.read_bytes()
-        sig_bytes = (ex_dir / "manifest.toml.sig").read_bytes()
-        manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
-        files = {}
-        for fname in manifest.get("code", {}).get("files", []):
-            files[fname] = base64.b64encode((ex_dir / fname).read_bytes()).decode("ascii")
-        return {
-            "name": name,
-            "manifest_toml": base64.b64encode(manifest_bytes).decode("ascii"),
-            "manifest_sig": base64.b64encode(sig_bytes).decode("ascii"),
-            "files": files,
-        }
-
     try:
-        bundle = await loop.run_in_executor(None, _load)
+        bundle = await loop.run_in_executor(
+            None, lambda: _executor_bundle_payload(name),
+        )
+    except invocations.UnknownExecutorError:
+        return _error(404, "unknown_executor", "executor not found")
     except Exception as e:
         log.warning("executor bundle %s rifiutato: %s", name, e)
         return _error(409, "unverified_executor", "executor failed verification")

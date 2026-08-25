@@ -11,6 +11,7 @@ Funzioni principali:
 CLI:
     python3 sign.py keygen <name>             genera keypair
     python3 sign.py sign <manifest_dir>       firma con chiave 'author'
+    python3 sign.py publish <manifest_dir>    firma e pubblica in un solo confine
     python3 sign.py verify <manifest_dir>     verifica con tutte le chiavi trusted
     python3 sign.py sign-all [name]           keygen-se-manca + firma TUTTI gli
                                               executor (usato dall'installer)
@@ -18,7 +19,9 @@ CLI:
 import hashlib
 import os
 import re
+import stat
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, TypeAlias
@@ -109,6 +112,12 @@ def ensure_keys_dir():
 
 
 def generate_keypair(name):
+    """Create a locally trusted Ed25519 pair with resumable file writes.
+
+    The private component is installed first.  If publication of the public
+    component is interrupted, the valid private bytes remain sufficient to
+    derive that public component on a later installer retry.
+    """
     ensure_keys_dir()
     priv = Ed25519PrivateKey.generate()
     priv_bytes = priv.private_bytes(
@@ -122,10 +131,18 @@ def generate_keypair(name):
     )
     priv_path = KEYS_DIR / f"{name}_priv.bin"
     pub_path = KEYS_DIR / f"{name}_pub.bin"
-    priv_path.write_bytes(priv_bytes)
-    os.chmod(priv_path, 0o600)
-    pub_path.write_bytes(pub_bytes)
-    os.chmod(pub_path, 0o644)
+    _atomic_replace_bytes(
+        priv_path,
+        priv_bytes,
+        new_mode=0o600,
+        preserve_existing_mode=False,
+    )
+    _atomic_replace_bytes(
+        pub_path,
+        pub_bytes,
+        new_mode=0o644,
+        preserve_existing_mode=False,
+    )
     return priv_path, pub_path
 
 
@@ -135,6 +152,23 @@ def load_private(name):
 
 def load_public(name):
     return Ed25519PublicKey.from_public_bytes((KEYS_DIR / f"{name}_pub.bin").read_bytes())
+
+
+def restore_public_key(name):
+    """Derive and atomically restore the public component of a private key."""
+    private_key = load_private(name)
+    public_bytes = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    public_path = KEYS_DIR / f"{name}_pub.bin"
+    _atomic_replace_bytes(
+        public_path,
+        public_bytes,
+        new_mode=0o644,
+        preserve_existing_mode=False,
+    )
+    return public_path
 
 
 def list_trusted_publics():
@@ -209,6 +243,80 @@ def _validate_capabilities_schema(manifest: dict, manifest_path: Path) -> None:
             )
 
 
+def _atomic_replace_bytes(
+    path: Path,
+    payload: bytes,
+    *,
+    new_mode: int = 0o600,
+    preserve_existing_mode: bool = True,
+) -> None:
+    """Durably replace one complete sibling file without truncating it.
+
+    The caller prepares and validates the complete payload first.  Existing
+    permissions survive by default; security-sensitive callers may require
+    the selected mode instead.  A failed replacement can leave only this
+    invocation's uniquely named temporary file, which the invocation removes
+    when control returns to Python.
+    """
+    path = Path(path)
+    if not isinstance(payload, bytes):
+        raise TypeError("atomic replacement payload must be bytes")
+    if not isinstance(new_mode, int) or new_mode < 0 or new_mode > 0o7777:
+        raise ValueError("new file mode must be a permission mask")
+    if not isinstance(preserve_existing_mode, bool):
+        raise TypeError("preserve_existing_mode must be boolean")
+    try:
+        current = path.lstat()
+    except FileNotFoundError:
+        mode = new_mode
+    else:
+        if not stat.S_ISREG(current.st_mode):
+            raise ValueError(f"atomic replacement target is not a regular file: {path}")
+        mode = (
+            stat.S_IMODE(current.st_mode)
+            if preserve_existing_mode
+            else new_mode
+        )
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    temporary = Path(temporary_name)
+    try:
+        try:
+            os.fchmod(descriptor, mode)
+        except (AttributeError, OSError):
+            # Windows may not implement the POSIX mode fully.  ``mkstemp`` is
+            # still private by default and the replacement remains atomic.
+            if os.name != "nt":
+                raise
+        handle = os.fdopen(descriptor, "wb")
+        descriptor = -1  # ownership transferred to ``handle``
+        with handle:
+            written = handle.write(payload)
+            if written != len(payload):  # pragma: no cover - buffered IO contract
+                raise OSError("short write while preparing atomic replacement")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        if sys.platform.startswith("linux"):
+            flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+            directory_descriptor = os.open(path.parent, flags)
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _ensure_lang_state_companion(manifest: dict, manifest_dir: Path) -> None:
     """Auto-genera `manifest.lang_state.json` se mancante e description e'
     in schema multilingua (ADR 0092). Evita drift quando un manifest viene
@@ -221,43 +329,31 @@ def _ensure_lang_state_companion(manifest: dict, manifest_dir: Path) -> None:
     state_path = manifest_dir / "manifest.lang_state.json"
     if state_path.is_file():
         return
-    import hashlib
-    import json as _json
+    from i18n_materializer import (
+        decode_language_state,
+        migrate_language_state_bytes,
+    )
 
-    def _h(s: str) -> str:
-        return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-    state: dict = {}
-    for lang, val in desc.items():
-        if isinstance(val, str):
-            state.setdefault("description", {})[lang] = {
-                "version_hash": _h(val),
-                "source_lang": None,
-                "source_hash": None,
-            }
-    props = (manifest.get("args") or {}).get("properties") or {}
-    for arg_name, arg_def in props.items():
-        if not isinstance(arg_def, dict):
-            continue
-        arg_desc = arg_def.get("description")
-        if not isinstance(arg_desc, dict):
-            continue
-        key = f"args.{arg_name}.description"
-        for lang, val in arg_desc.items():
-            if isinstance(val, str):
-                state.setdefault(key, {})[lang] = {
-                    "version_hash": _h(val),
-                    "source_lang": None,
-                    "source_hash": None,
-                }
-    state_path.write_text(
-        _json.dumps(state, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    # The empty legacy object is a convenient, schema-independent request to
+    # enumerate every localized surface and emit canonical v1 bytes.
+    state_bytes = migrate_language_state_bytes(
+        b"{}", manifest=manifest,
+    ).state_bytes
+    # Keep the validation explicit at the write boundary: no malformed or
+    # non-canonical state bytes may reach a final authoring path.
+    decode_language_state(state_bytes, manifest=manifest)
+    manifest_mode = stat.S_IMODE(
+        (manifest_dir / "manifest.toml").stat().st_mode,
+    )
+    _atomic_replace_bytes(
+        state_path,
+        state_bytes,
+        new_mode=manifest_mode,
     )
 
 
-def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
-    """Aggiorna digest e firma un manifest ammesso dal suo contratto.
+def _sign_executor_under_catalog_lock(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
+    """Implement the authoring write while the global catalog lock is held.
 
     I manifest legacy restano firmabili durante la migrazione. Chi dichiara
     l'Executor Standard, invece, deve superare il profilo deterministico legato
@@ -269,40 +365,61 @@ def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     sig_path = manifest_dir / "manifest.toml.sig"
 
     import tomllib
-    manifest = tomllib.loads(manifest_path.read_text())
+    original_manifest_bytes = manifest_path.read_bytes()
+    try:
+        original_manifest_text = original_manifest_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"manifest non UTF-8: {manifest_path}") from exc
+    manifest = tomllib.loads(original_manifest_text)
     code_files = manifest.get("code", {}).get("files", [])
     if not code_files:
         raise ValueError("manifest senza [code].files")
 
     _validate_capabilities_schema(manifest, manifest_path)
-    _ensure_lang_state_companion(manifest, manifest_dir)
-
     digest = compute_code_digest(manifest_dir, code_files)
 
-    # Aggiorna digest nel testo del manifest
-    text = manifest_path.read_text()
-    new_text = update_digest_in_text(text, digest)
-    if new_text != text:
-        manifest_path.write_text(new_text)
-
-    # Il digest finale fa parte del contratto active, quindi la validazione va
-    # eseguita dopo il suo aggiornamento e prima della firma dei bytes.
-    manifest = tomllib.loads(manifest_path.read_text())
-    if manifest.get("executor_standard") is not None:
+    # Costruisci e valida l'intero contratto finale in memoria.  Nessun file
+    # autorevole viene toccato finche' anche la firma e' pronta.
+    final_manifest_text = update_digest_in_text(original_manifest_text, digest)
+    final_manifest_bytes = final_manifest_text.encode("utf-8")
+    final_manifest = tomllib.loads(final_manifest_text)
+    if final_manifest.get("executor_standard") is not None:
         from executor_standard import validate_for_lifecycle
-        findings = validate_for_lifecycle(manifest, require_declaration=True)
+        findings = validate_for_lifecycle(
+            final_manifest,
+            require_declaration=True,
+        )
         if findings:
             summary = "; ".join(
                 f"{finding.code}:{finding.message}" for finding in findings[:8]
             )
             raise ValueError(f"executor standard admission failed: {summary}")
 
-    # Firma i bytes finali del manifest
-    manifest_bytes = manifest_path.read_bytes()
     priv = load_private(key_name)
-    signature = sign_manifest_bytes(manifest_bytes, private_key=priv)
-    sig_path.write_bytes(signature)
+    signature = sign_manifest_bytes(final_manifest_bytes, private_key=priv)
+
+    manifest_mode = stat.S_IMODE(manifest_path.stat().st_mode)
+    _ensure_lang_state_companion(final_manifest, manifest_dir)
+    if final_manifest_bytes != original_manifest_bytes:
+        _atomic_replace_bytes(
+            manifest_path,
+            final_manifest_bytes,
+            new_mode=manifest_mode,
+        )
+    _atomic_replace_bytes(sig_path, signature, new_mode=manifest_mode)
     return digest, sig_path
+
+
+def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
+    """Aggiorna digest e firma offline sotto l'esclusione globale del catalogo.
+
+    La firma non pubblica una revisione. Il lock impedisce però che un cutover
+    costruisca la propria fotografia mentre questi file sono a metà modifica.
+    """
+    from contract_store import catalog_admission_lock
+
+    with catalog_admission_lock():
+        return _sign_executor_under_catalog_lock(manifest_dir, key_name)
 
 
 def verify_executor(manifest_dir):
@@ -348,6 +465,268 @@ def verify_executor(manifest_dir):
     return True, {"signed_by": verified_by.name, "digest": actual}
 
 
+def _authoring_manifest_ref(
+    manifest_dir: str | Path,
+    *,
+    require_publishable: bool = True,
+):
+    """Resolve one authoring directory through the shared source inventory.
+
+    Publication identity is never inferred from the executor name or from a
+    caller-provided origin.  The explicit authoring inventory remains usable
+    after the runtime catalog has switched to immutable store bindings.
+    """
+
+    from manifest_inventory import (
+        ManifestStatus,
+        inventory_authoring_manifests,
+    )
+
+    target = (Path(manifest_dir) / "manifest.toml").resolve(strict=True)
+    inventory = inventory_authoring_manifests()
+    matches = tuple(
+        ref for ref in inventory.manifests
+        if ref.manifest_path.resolve(strict=True) == target
+    )
+    if len(matches) != 1:
+        raise ValueError(
+            f"authoring manifest must resolve to one inventoried contract: {target}"
+        )
+    ref = matches[0]
+    if require_publishable and ref.status not in {
+        ManifestStatus.ADMITTED,
+        ManifestStatus.DISABLED,
+    }:
+        raise ValueError(f"contract is not publishable: {ref.contract_id}")
+    return ref
+
+
+def publish_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
+    """Publish one technical authoring change through the live store.
+
+    This is deliberately not ``sign_executor()`` followed by an import.  The
+    publisher owns the sole contract lock, recomputes the code digest, signs
+    in memory, commits the immutable generation and reconciles authoring as
+    one conditional operation.
+    """
+
+    from contract_store import (
+        ContractStoreError,
+        current_revision_id,
+        prepare_technical_draft,
+        publish_technical_update,
+    )
+    from i18n_pipeline import reconcile_published_contract_registry
+
+    ref = _authoring_manifest_ref(manifest_dir)
+    private_key = load_private(key_name)
+    trusted = tuple(list_trusted_publics())
+    if not trusted:
+        raise ValueError("no trusted public keys are configured")
+    try:
+        # The live generation still declares the old code digest while the
+        # authoring tree already contains the proposed update. Reading it via
+        # ``current_manifest`` would therefore reject every real code change.
+        # The lightweight pointer is only the CAS selector; the publisher
+        # authenticates the complete old generation under its writer lock.
+        expected = current_revision_id(ref)
+    except ContractStoreError as exc:
+        # A new source has no directory; an interrupted first publication can
+        # already have its immutable binding (and possibly its exact final
+        # generation) but no pointer.  Passing ``None`` delegates both cases
+        # to the locked publisher, whose initial-history check accepts only a
+        # virgin store or that exact recoverable postcondition.  Unrelated
+        # history and every other defect remain fail-closed there.
+        if exc.code not in {"contract_directory_missing", "current_missing"}:
+            raise
+        expected = None
+    draft = prepare_technical_draft(ref)
+    return publish_technical_update(
+        ref,
+        expected_generation_id=expected,
+        draft=draft,
+        private_key=private_key,
+        trusted_publics=trusted,
+        registry_reconciler=reconcile_published_contract_registry,
+    )
+
+
+def publish_authoring_update(
+    manifest_dir,
+    key_name=DEFAULT_AUTHOR_KEY,
+):
+    """Make one local authoring update live in the active layout.
+
+    Before the global cutover, signing is the legacy admission boundary.  In
+    store-only mode :func:`publish_executor` signs in memory while owning the
+    sole writer lock.  The two branches are mutually exclusive: this helper
+    never implements a sign-then-publish sequence.
+    """
+
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+        digest, signature_path = sign_executor(manifest_dir, key_name)
+        return digest, signature_path, None
+    publication = publish_executor(manifest_dir, key_name)
+    manifest_dir = Path(manifest_dir)
+    import tomllib
+    manifest = tomllib.loads(
+        (manifest_dir / "manifest.toml").read_text(encoding="utf-8"),
+    )
+    digest = str((manifest.get("code") or {}).get("digest") or "")
+    signature_path = manifest_dir / "manifest.toml.sig"
+    return digest, signature_path, publication
+
+
+def retire_executor_contract(
+    manifest_dir,
+    *,
+    actor: str,
+    reason: str,
+    key_name=DEFAULT_AUTHOR_KEY,
+):
+    """Retire one live store contract before its source is removed.
+
+    The wrapper owns every productive boundary shared by operational callers:
+    structural source identity, key loading, full verification of the live
+    generation, durable idempotent audit and registry reconciliation.  An
+    exact retry of the same retirement is accepted; a different tombstone
+    remains retired and requires the explicit reactivation protocol.
+    """
+    from audit_jsonl import append_unique_jsonl
+    from contract_store import (
+        ContractRetirement,
+        ContractStoreError,
+        current_contract,
+        retire,
+    )
+    from i18n_pipeline import reconcile_published_contract_registry
+
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError("retirement actor is required")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("retirement reason is required")
+    actor = actor.strip()
+    reason = reason.strip()
+    ref = _authoring_manifest_ref(manifest_dir, require_publishable=False)
+    private_key = load_private(key_name)
+    trusted = tuple(list_trusted_publics())
+    if not trusted:
+        raise ValueError("no trusted public keys are configured")
+    current = current_contract(ref, trusted_publics=trusted)
+    if isinstance(current, ContractRetirement):
+        if current.actor != actor or current.reason != reason:
+            raise ContractStoreError("contract_retired", current.retirement_id)
+        expected = current.previous_generation_id
+    else:
+        expected = current.generation_id
+    if expected is None:  # pragma: no cover - impossible for store revisions
+        raise ContractStoreError("revision_id_missing", str(ref.contract_id))
+
+    audit_path = _C.PATH_USER_STATE / "contract-publications.audit.jsonl"
+    return retire(
+        ref,
+        expected_generation_id=expected,
+        actor=actor,
+        reason=reason,
+        private_key=private_key,
+        trusted_publics=trusted,
+        audit_sink=lambda event: append_unique_jsonl(audit_path, event),
+        registry_reconciler=reconcile_published_contract_registry,
+    )
+
+
+def reactivate_executor_contract(
+    manifest_dir,
+    *,
+    actor: str,
+    reason: str,
+    key_name=DEFAULT_AUTHOR_KEY,
+):
+    """Explicitly reactivate one authenticated retirement from authoring.
+
+    Ordinary publication never crosses a tombstone.  Reinstall flows call
+    this wrapper only after that boundary has reported ``contract_retired``;
+    the wrapper authenticates the current tombstone again under the store's
+    CAS protocol and records the authorization durably before committing.
+    """
+    from audit_jsonl import append_unique_jsonl
+    from contract_store import (
+        ContractRetirement,
+        ContractStoreError,
+        current_contract,
+        prepare_technical_draft,
+        reactivate_technical_update,
+    )
+    from i18n_pipeline import reconcile_published_contract_registry
+
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError("reactivation actor is required")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("reactivation reason is required")
+    actor = actor.strip()
+    reason = reason.strip()
+    ref = _authoring_manifest_ref(manifest_dir, require_publishable=False)
+    private_key = load_private(key_name)
+    trusted = tuple(list_trusted_publics())
+    if not trusted:
+        raise ValueError("no trusted public keys are configured")
+    current = current_contract(ref, trusted_publics=trusted)
+    if not isinstance(current, ContractRetirement):
+        raise ContractStoreError(
+            "contract_not_retired",
+            str(current.generation_id or ref.contract_id),
+        )
+    draft = prepare_technical_draft(ref)
+    audit_path = _C.PATH_USER_STATE / "contract-publications.audit.jsonl"
+    return reactivate_technical_update(
+        ref,
+        expected_retirement_id=current.retirement_id,
+        draft=draft,
+        actor=actor,
+        reason=reason,
+        private_key=private_key,
+        trusted_publics=trusted,
+        audit_sink=lambda event: append_unique_jsonl(audit_path, event),
+        registry_reconciler=reconcile_published_contract_registry,
+    )
+
+
+def rollback_executor_contract(
+    manifest_dir,
+    *,
+    expected_generation_id: str,
+    target_generation_id: str,
+    actor: str,
+    reason: str,
+):
+    """Move one live binding back to an authenticated immutable generation."""
+    from audit_jsonl import append_unique_jsonl
+    from contract_store import rollback
+    from i18n_pipeline import reconcile_published_contract_registry
+
+    if not isinstance(actor, str) or not actor.strip():
+        raise ValueError("rollback actor is required")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("rollback reason is required")
+    ref = _authoring_manifest_ref(manifest_dir)
+    trusted = tuple(list_trusted_publics())
+    if not trusted:
+        raise ValueError("no trusted public keys are configured")
+    audit_path = _C.PATH_USER_STATE / "contract-publications.audit.jsonl"
+    return rollback(
+        ref,
+        expected_generation_id=expected_generation_id,
+        target_generation_id=target_generation_id,
+        actor=actor.strip(),
+        reason=reason.strip(),
+        trusted_publics=trusted,
+        audit_sink=lambda event: append_unique_jsonl(audit_path, event),
+        registry_reconciler=reconcile_published_contract_registry,
+    )
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -365,7 +744,23 @@ def main():
         manifest_dir = sys.argv[2]
         key_name = sys.argv[3] if len(sys.argv) > 3 else DEFAULT_AUTHOR_KEY
         digest, sig_path = sign_executor(manifest_dir, key_name)
-        print(f"firmato: digest={digest} sig={sig_path}")
+        print(
+            f"firmato offline: digest={digest} sig={sig_path}; "
+            "la sorgente NON e' stata pubblicata e non e' viva"
+        )
+
+    elif cmd == "publish":
+        if len(sys.argv) < 3:
+            print("Usage: publish <manifest_dir> [key_name]"); sys.exit(2)
+        manifest_dir = sys.argv[2]
+        key_name = sys.argv[3] if len(sys.argv) > 3 else DEFAULT_AUTHOR_KEY
+        result = publish_executor(manifest_dir, key_name)
+        print(
+            "pubblicato: "
+            f"contract={result.contract_id} "
+            f"generation={result.current_generation_id} "
+            f"repeated={str(result.repeated).lower()}"
+        )
 
     elif cmd == "verify":
         if len(sys.argv) < 3:
