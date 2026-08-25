@@ -437,17 +437,31 @@ def _parse_admission(encoded: bytes) -> tuple[AdmissionReceipt, dict[str, object
 
 
 def verify_admission_receipt(
-    encoded: bytes, *, public_key: Ed25519PublicKey, expected_key_id: str,
+    encoded: bytes, *, verifier_keys: Mapping[str, Ed25519PublicKey] | None = None,
+    public_key: Ed25519PublicKey | None = None, expected_key_id: str | None = None,
 ) -> AdmissionReceipt:
+    """Verify against the immutable Birth verifier set.
+
+    ``public_key``/``expected_key_id`` remains only as a compatibility surface
+    for isolated callers and older tests.  Productive assembly supplies the
+    complete verifier keyring, so a receipt remains verifiable after rotation
+    while an identifier absent from that keyring fails closed.
+    """
     receipt, unsigned = _parse_admission(encoded)
-    if (
-        not isinstance(public_key, Ed25519PublicKey)
-        or not _text(expected_key_id)
-        or receipt.authentication.key_id != expected_key_id
-    ):
+    if verifier_keys is not None:
+        if public_key is not None or expected_key_id is not None or not isinstance(verifier_keys, Mapping):
+            raise ReceiptError("receipt_invalid", "admission keyring")
+        key = verifier_keys.get(receipt.authentication.key_id)
+        if not isinstance(key, Ed25519PublicKey):
+            raise ReceiptError("receipt_invalid", "admission key")
+    elif isinstance(public_key, Ed25519PublicKey) and _text(expected_key_id):
+        if receipt.authentication.key_id != expected_key_id:
+            raise ReceiptError("receipt_invalid", "admission key")
+        key = public_key
+    else:
         raise ReceiptError("receipt_invalid", "admission key")
     try:
-        public_key.verify(
+        key.verify(
             base64.b64decode(receipt.authentication.signature, validate=True),
             ADMISSION_SIGNATURE_DOMAIN + _canonical(unsigned),
         )

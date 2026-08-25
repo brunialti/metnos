@@ -15,6 +15,11 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Callable, Mapping
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey, Ed25519PublicKey,
+)
+
 if TYPE_CHECKING:
     from executor_birth_intent import BirthIntent, _ProducerCapability
 
@@ -98,7 +103,9 @@ class BirthResult:
     error_code: str | None
 
 
-def _terminal_envelope(result: BirthResult, admission_receipt: bytes | None = None) -> bytes:
+def _terminal_envelope(
+    core: "_BirthCore", result: BirthResult, admission_receipt: bytes | None = None,
+) -> bytes:
     report = result.report
     publication = result.publication
     value = {
@@ -124,18 +131,24 @@ def _terminal_envelope(result: BirthResult, admission_receipt: bytes | None = No
             "revision_class": report.revision_class.value if report.revision_class else None,
             "semantic_core_id": report.semantic_core_id,
         },
-        "request_id": result.request_id, "schema_version": 1,
+        # This identifier is emitted only by the sealed core.  It is signed as
+        # part of the canonical envelope and is never request/caller input.
+        "signing_key_id": core.admission_key_id,
+        "request_id": result.request_id, "schema_version": 2,
     }
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
 
 
-def _decode_terminal_envelope(encoded: bytes, request: BirthRequest) -> tuple[BirthResult, bytes | None]:
+def _decode_terminal_envelope(encoded: bytes, request: BirthRequest) -> tuple[BirthResult, bytes | None, str]:
     try:
         value = json.loads(encoded.decode("ascii"), object_pairs_hook=lambda pairs: _unique_object(pairs))
         if json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii") != encoded:
             raise ValueError("noncanonical")
-        if value["schema_version"] != 1 or value["request_id"] != request.request_id:
+        if value["schema_version"] != 2 or value["request_id"] != request.request_id:
             raise ValueError("binding")
+        signing_key_id = value["signing_key_id"]
+        if not isinstance(signing_key_id, str) or not signing_key_id or "\x00" in signing_key_id:
+            raise ValueError("signing key")
         item = value["report"]
         checks = tuple(CheckResult(
             check["check_id"], check["rule_version"], CheckStatus(check["status"]),
@@ -154,7 +167,8 @@ def _decode_terminal_envelope(encoded: bytes, request: BirthRequest) -> tuple[Bi
         )
         admission = (base64.b64decode(value["admission_receipt"], validate=True)
                      if value["admission_receipt"] is not None else None)
-        return BirthResult(request.request_id, report, publication, value["error_code"]), admission
+        return (BirthResult(request.request_id, report, publication, value["error_code"]),
+                admission, signing_key_id)
     except Exception as exc:
         raise ValueError("birth_terminal_envelope_invalid") from exc
 
@@ -173,6 +187,17 @@ def _sign_terminal(core: "_BirthCore", encoded: bytes) -> bytes:
     return core.admission_private_key.sign(b"metnos.executor-birth.terminal/v1\0" + encoded)
 
 
+def _verify_terminal(core: "_BirthCore", encoded: bytes, signature: bytes,
+                     request: BirthRequest) -> tuple[BirthResult, bytes | None]:
+    """Select a historical verifier only from the core-owned signed key id."""
+    result, admission, key_id = _decode_terminal_envelope(encoded, request)
+    verifier = core.admission_verifier_keys.get(key_id)
+    if verifier is None:
+        raise ValueError("birth_terminal_key_untrusted")
+    verifier.verify(signature, b"metnos.executor-birth.terminal/v1\0" + encoded)
+    return result, admission
+
+
 def _terminal_binding(encoded: bytes) -> str:
     return _digest(b"metnos.executor-birth.terminal-binding/v1\0", {"envelope": encoded})
 
@@ -182,10 +207,7 @@ def _replay_terminal(core: "_BirthCore", request: BirthRequest, claim: object) -
     signature = getattr(claim, "terminal_auth", None)
     if encoded is None or signature is None:
         raise ValueError("birth_terminal_envelope_missing")
-    # Verification is pinned to the admission public key in the same sealed
-    # core.  The envelope deliberately carries no key id or algorithm choice.
-    core.admission_public_key.verify(signature, b"metnos.executor-birth.terminal/v1\0" + encoded)
-    result, admission = _decode_terminal_envelope(encoded, request)
+    result, admission = _verify_terminal(core, encoded, signature, request)
     if result.publication is not None:
         _publication_binding(request, result.publication)
         verified, verified_admission = _verified_postcondition(
@@ -238,7 +260,7 @@ class _BirthCore:
     facts_resolver: FactsResolver
     shadow_dependencies: _BirthDependencies
     admission_private_key: object
-    admission_public_key: object
+    admission_verifier_keys: Mapping[str, object]
     admission_key_id: str
     policy_version: str
     now: Callable[[], datetime]
@@ -250,12 +272,33 @@ class _BirthCore:
     def __post_init__(self) -> None:
         if self._seal is not _CORE_SEAL:
             raise ValueError("birth_core_untrusted")
+        verifiers = dict(self.admission_verifier_keys)
+        if (not isinstance(self.admission_private_key, Ed25519PrivateKey)
+                or self.admission_key_id not in verifiers or any(
+            not isinstance(key_id, str) or not key_id
+            or not isinstance(verifier, Ed25519PublicKey)
+            for key_id, verifier in verifiers.items()
+        )):
+            raise ValueError("birth_core_admission_keyring_invalid")
+        active_public = self.admission_private_key.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+        )
+        configured_public = verifiers[self.admission_key_id].public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw,
+        )
+        if active_public != configured_public:
+            raise ValueError("birth_core_admission_keyring_invalid")
+        object.__setattr__(self, "admission_verifier_keys", MappingProxyType(verifiers))
         object.__setattr__(self, "publisher_options", MappingProxyType(dict(self.publisher_options)))
 
 
 def _sealed_core_for_test(**values: object) -> _BirthCore:
     """Test-only trust-core constructor; the public API never accepts it."""
     values.setdefault("postcondition_verifier", lambda _request, expected, _receipt: expected)
+    # Compatibility belongs exclusively to this explicitly test-only seam.
+    if "admission_verifier_keys" not in values and "admission_public_key" in values:
+        public = values.pop("admission_public_key")
+        values["admission_verifier_keys"] = {values["admission_key_id"]: public}
     values["_seal"] = _CORE_SEAL
     return _BirthCore(**values)  # type: ignore[arg-type]
 
@@ -264,7 +307,7 @@ def _assemble_birth_core(
     *, producer_registry: IssuerRegistry, producer_db: Path,
     context_resolver: ContextResolver, facts_resolver: FactsResolver,
     shadow_dependencies: _BirthDependencies, admission_private_key: object,
-    admission_public_key: object, admission_key_id: str, policy_version: str,
+    admission_verifier_keys: Mapping[str, object], admission_key_id: str, policy_version: str,
     now: Callable[[], datetime], publisher_options: Mapping[str, object],
     postcondition_verifier: PostconditionVerifier,
 ) -> _BirthCore:
@@ -272,7 +315,7 @@ def _assemble_birth_core(
     from contract_store import commit_birth_snapshot
     return _BirthCore(
         producer_registry, producer_db, context_resolver, facts_resolver,
-        shadow_dependencies, admission_private_key, admission_public_key,
+        shadow_dependencies, admission_private_key, admission_verifier_keys,
         admission_key_id, policy_version, now, commit_birth_snapshot, postcondition_verifier,
         publisher_options, _CORE_SEAL,
     )
@@ -380,10 +423,8 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         if claim.state == "committed":
             return _replay_terminal(core, request, claim)
         if claim.terminal_envelope is not None:
-            hinted, admission = _decode_terminal_envelope(claim.terminal_envelope, request)
-            core.admission_public_key.verify(
-                claim.terminal_auth,
-                b"metnos.executor-birth.terminal/v1\0" + claim.terminal_envelope,
+            hinted, admission = _verify_terminal(
+                core, claim.terminal_envelope, claim.terminal_auth, request,
             )
             reconciled, reconciled_admission = _verified_postcondition(
                 core.postcondition_verifier(request, None, admission)
@@ -391,7 +432,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             if reconciled is not None:
                 _publication_binding(request, reconciled)
                 recovered = BirthResult(request.request_id, hinted.report, reconciled, None)
-                envelope = _terminal_envelope(recovered, reconciled_admission or admission)
+                envelope = _terminal_envelope(core, recovered, reconciled_admission or admission)
                 auth = _sign_terminal(core, envelope)
                 finalize_producer_receipt(
                     request.producer_receipt, registry=core.producer_registry,
@@ -419,7 +460,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         )
         if report.outcome not in {BirthOutcome.ADMITTED, BirthOutcome.PREEXERCISE}:
             rejected_result = BirthResult(request.request_id, report, None, report.error_code)
-            envelope = _terminal_envelope(rejected_result)
+            envelope = _terminal_envelope(core, rejected_result)
             finalize_producer_receipt(
                 request.producer_receipt, registry=core.producer_registry,
                 binding=receipt_binding, request_id=request.request_id, now=instant,
@@ -466,13 +507,12 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             observed.identities.candidate_id, observed.identities.semantic_core_id,
             observed.identities.admission_context_id, predecessor, issuer,
             lambda encoded: verify_admission_receipt(
-                encoded, public_key=core.admission_public_key,
-                expected_key_id=core.admission_key_id,
+                encoded, verifier_keys=core.admission_verifier_keys,
             ),
         )
         # The signed admitted report is sufficient for a read-only recovery
         # verifier to reconcile a crash after the publisher's durable point.
-        hint = _terminal_envelope(BirthResult(request.request_id, report, None, None))
+        hint = _terminal_envelope(core, BirthResult(request.request_id, report, None, None))
         record_producer_receipt_terminal_hint(
             request.producer_receipt, registry=core.producer_registry,
             binding=receipt_binding, request_id=request.request_id, now=instant,
@@ -487,7 +527,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         )
         _publication_binding(request, publication)
         successful = BirthResult(request.request_id, report, publication, None)
-        envelope = _terminal_envelope(successful, issued_receipts[-1] if issued_receipts else None)
+        envelope = _terminal_envelope(core, successful, issued_receipts[-1] if issued_receipts else None)
         finalize_producer_receipt(
             request.producer_receipt, registry=core.producer_registry,
             binding=receipt_binding, request_id=request.request_id, now=instant,
@@ -516,7 +556,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         if claimed and not publication_started and receipt_binding is not None:
             try:
                 rejected_result = BirthResult(request.request_id, report, None, error_code)
-                envelope = _terminal_envelope(rejected_result)
+                envelope = _terminal_envelope(core, rejected_result)
                 finalize_producer_receipt(
                     request.producer_receipt, registry=core.producer_registry,
                     binding=receipt_binding, request_id=request.request_id,
