@@ -9,9 +9,16 @@ from functools import lru_cache
 from pathlib import Path
 
 import pytest
+from types import MappingProxyType, SimpleNamespace
 
 import executor_birth_runner as runner
+from executor_birth import ObservedCandidate
+from executor_birth_identity import ExecutorOrigin, RevisionAuthor
+from executor_birth_property_runner import ObservedPropertyRunner, PropertyCandidateProfile, run_applicable_properties
+from executor_birth_properties import PropertyStatus
+from executor_birth_snapshot import CandidateSnapshot
 from executor_birth_runner_windows_v1 import helper_binary_hash
+from manifest_inventory import ContractId, ManifestOrigin
 
 
 pytestmark = pytest.mark.skipif(os.name != "nt", reason="real Windows AppContainer required")
@@ -98,4 +105,36 @@ def test_real_appcontainer_kills_on_timeout(tmp_path):
     result = _run(tmp_path, "import time\ntime.sleep(60)\n")
     assert result.status is runner.RunnerStatus.FAILED
     assert result.error_code == "phase_timeout"
+
+
+def test_real_appcontainer_runs_property_harness_schema_and_cardinality(tmp_path):
+    source = r'''
+import json,sys
+request=json.load(sys.stdin)
+count=request.get("input",{}).get("fixture_count",0)
+print(json.dumps({"entries":[{} for _ in range(count)]}))
+'''
+    snapshot = CandidateSnapshot(
+        tmp_path,
+        b'[code]\nfiles=["main.py"]\n[output.properties.entries]\ntype="array"\n',
+        b"{}", MappingProxyType({"main.py": source.encode()}),
+    )
+    observed = ObservedCandidate(
+        ContractId(ManifestOrigin.USER, "portable/manifest.toml"), snapshot,
+        SimpleNamespace(candidate_id=CANDIDATE), ExecutorOrigin.HUMAN,
+        RevisionAuthor.HUMAN, CANDIDATE,
+    )
+    try:
+        evidence = run_applicable_properties(
+            PropertyCandidateProfile(
+                output_schema=(("entries", "array"),), collection_output=True,
+            ),
+            _runner=ObservedPropertyRunner(observed, windows_registry=_registry(tmp_path)),
+        )
+    finally:
+        observed.close()
+    assert {item.property_id for item in evidence} == {
+        "output.schema.actual", "cardinality.zero_one_many",
+    }
+    assert all(item.status is PropertyStatus.PASSED for item in evidence)
     assert result.attestation.tree_empty is True

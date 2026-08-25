@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Mapping
+from pathlib import Path
 
 from llm_workloads import tier_for
 
@@ -208,3 +210,113 @@ def review_failure(
                 "request": payload, "review": json.loads(raw_text)}
     digest = "sha256:" + hashlib.sha256(EVIDENCE_DOMAIN + _canonical(evidence)).hexdigest()
     return FailureReviewDecision(review, digest, WORKLOAD, str(tier_value))
+
+
+def review_failure_once(
+    request: FailureReviewRequest, *, consent_valid: bool, db_path: Path,
+    _invoke_review: Callable[..., str] = _invoke,
+) -> FailureReviewDecision:
+    """Durably consume the single review attempt for one exact execution.
+
+    A process crash after claiming the execution leaves it claimed rather than
+    silently granting a second model attempt. Completed decisions are replayed
+    only when the complete request hash is identical.
+    """
+    if type(consent_valid) is not bool or not consent_valid:
+        raise FailureReviewError("failure_review_consent_required")
+    payload = _request_payload(request)
+    request_hash = "sha256:" + hashlib.sha256(_canonical(payload)).hexdigest()
+    try:
+        db_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        connection = sqlite3.connect(db_path, timeout=30, isolation_level=None)
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        connection.execute("""
+            CREATE TABLE IF NOT EXISTS failure_reviews (
+                execution_receipt_id TEXT PRIMARY KEY,
+                request_hash TEXT NOT NULL,
+                state TEXT NOT NULL CHECK(state IN ('claimed','completed')),
+                decision_json BLOB
+            )
+        """)
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT request_hash,state,decision_json FROM failure_reviews WHERE execution_receipt_id=?",
+            (request.execution_receipt_id,),
+        ).fetchone()
+        if row is not None:
+            connection.execute("COMMIT")
+            if row[0] != request_hash:
+                raise FailureReviewError("failure_review_binding_invalid", "request_hash")
+            if row[1] != "completed" or row[2] is None:
+                raise FailureReviewError("failure_review_already_attempted")
+            return _decode_persisted_decision(bytes(row[2]), request)
+        connection.execute(
+            "INSERT INTO failure_reviews VALUES (?,?, 'claimed', NULL)",
+            (request.execution_receipt_id, request_hash),
+        )
+        connection.execute("COMMIT")
+    except FailureReviewError:
+        raise
+    except (OSError, sqlite3.Error) as exc:
+        raise FailureReviewError("failure_review_store_unavailable") from exc
+    finally:
+        if "connection" in locals():
+            connection.close()
+
+    decision = review_failure(
+        request, consent_valid=consent_valid, _invoke_review=_invoke_review,
+    )
+    encoded = _encode_persisted_decision(decision)
+    try:
+        with sqlite3.connect(db_path, timeout=30) as connection:
+            changed = connection.execute(
+                "UPDATE failure_reviews SET state='completed',decision_json=? "
+                "WHERE execution_receipt_id=? AND request_hash=? AND state='claimed'",
+                (encoded, request.execution_receipt_id, request_hash),
+            ).rowcount
+            if changed != 1:
+                raise FailureReviewError("failure_review_store_conflict")
+    except FailureReviewError:
+        raise
+    except sqlite3.Error as exc:
+        raise FailureReviewError("failure_review_store_unavailable") from exc
+    return decision
+
+
+def _encode_persisted_decision(decision: FailureReviewDecision) -> bytes:
+    review = decision.review
+    value = {
+        "evidence_hash": decision.evidence_hash, "tier": decision.tier,
+        "workload": decision.workload,
+        "review": {
+            "candidate_id": review.candidate_id, "confidence": review.confidence,
+            "execution_receipt_hash": review.execution_receipt_hash,
+            "execution_receipt_id": review.execution_receipt_id,
+            "failure_evidence_hash": review.failure_evidence_hash,
+            "generation_id": review.generation_id, "reason": review.reason,
+            "repair_objective": review.repair_objective, "verdict": review.verdict.value,
+        },
+    }
+    return _canonical(value)
+
+
+def _decode_persisted_decision(encoded: bytes, request: FailureReviewRequest) -> FailureReviewDecision:
+    try:
+        value = json.loads(encoded.decode("utf-8"))
+        review = validate_failure_review(_canonical(value["review"]))
+        decision = FailureReviewDecision(
+            review, value["evidence_hash"], value["workload"], value["tier"],
+        )
+        if value["workload"] != WORKLOAD or not _DIGEST.fullmatch(value["evidence_hash"]):
+            raise ValueError
+        for field in ("execution_receipt_id", "execution_receipt_hash", "candidate_id",
+                      "generation_id", "failure_evidence_hash"):
+            if getattr(review, field) != getattr(request, field):
+                raise ValueError
+        if _encode_persisted_decision(decision) != encoded:
+            raise ValueError
+        return decision
+    except (KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError,
+            FailureReviewError) as exc:
+        raise FailureReviewError("failure_review_store_corrupt") from exc

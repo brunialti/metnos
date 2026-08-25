@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import threading
 from dataclasses import dataclass
@@ -24,10 +25,12 @@ from executor_birth_intent import BirthIntent, _ProducerCapability, _producer_ca
 from executor_birth_operational import (
     BirthRequest, BirthRuntimeBundle, _assemble_birth_core,
     _assemble_birth_runtime_bundle, _install_birth_runtime_bundle,
-    _runtime_bundle_snapshot, candidate_source_id,
+    _runtime_bundle_snapshot, approval_scope, candidate_source_id,
 )
 from executor_birth_producer_store import get_or_issue_producer_receipt
 from executor_birth_receipts import IssuerKey, IssuerRegistry, issue_producer_receipt
+from executor_birth_runner import WindowsSandboxRegistry
+from executor_birth_runner_windows_v1 import helper_binary_hash
 from executor_birth_shadow import _assemble_production_dependencies
 from manifest_inventory import ManifestRef
 
@@ -105,6 +108,30 @@ def _secure_state_db(state_dir: Path) -> Path:
         raise
     except OSError as exc:
         raise BirthBootstrapError("birth_state_unavailable") from exc
+
+
+def _secure_approval_db(path: Path) -> Path:
+    """Validate the explicitly configured durable approval database path."""
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        parent = path.parent.stat()
+        if (not path.parent.is_dir() or path.parent.is_symlink()
+                or (os.name != "nt" and parent.st_mode & 0o077)):
+            raise BirthBootstrapError("birth_approval_store_permissions")
+        flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags, 0o600)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or (os.name != "nt" and info.st_mode & 0o077)):
+                raise BirthBootstrapError("birth_approval_store_permissions")
+        finally:
+            os.close(descriptor)
+        return path
+    except BirthBootstrapError:
+        raise
+    except OSError as exc:
+        raise BirthBootstrapError("birth_approval_store_unavailable") from exc
 
 
 def _resolve(config_dir: Path, value: object) -> Path:
@@ -273,6 +300,7 @@ class _PostconditionAdapter:
             cleanup_transaction, load_prepared_journal, observe_tree, rollback_prepared,
         )
         from contract_store import (
+            DEFAULT_LOCK_TIMEOUT,
             _birth_receipt_path, _publication_base_locked, _writer_lock,
             catalog_admission_lock,
         )
@@ -283,7 +311,9 @@ class _PostconditionAdapter:
         for ref in inventory.manifests:
             control = authoring_paths(ref.manifest_dir, ref.contract_id.value)
             with catalog_admission_lock(store_root=self.store_root):
-                with authoring_token(control.lock, exclusive=True):
+                with authoring_token(
+                    control.lock, exclusive=True, timeout=DEFAULT_LOCK_TIMEOUT,
+                ):
                     with _writer_lock(ref.contract_id, store_root=self.store_root):
                         pending = load_prepared_journal(control)
                         if pending is None:
@@ -328,7 +358,9 @@ class _PostconditionAdapter:
 
 def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthRuntimeBundle:
     value = _read_config(paths.config)
-    if set(value) != {"schema_version", "policy_version", "receipt_ttl_seconds", "admission", "producers", "context"} or value["schema_version"] != 1:
+    required = {"schema_version", "policy_version", "receipt_ttl_seconds", "admission", "approval", "producers", "context", "semantic_review"}
+    expected = required | ({"windows_sandbox"} if os.name == "nt" else set())
+    if set(value) != expected or value["schema_version"] != 1:
         raise BirthBootstrapError("birth_bootstrap_config_invalid")
     if not isinstance(value["policy_version"], str) or not value["policy_version"]:
         raise BirthBootstrapError("birth_bootstrap_config_invalid")
@@ -338,7 +370,34 @@ def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthR
     admission = value["admission"]
     if not isinstance(admission, dict) or set(admission) != {"keystore"}:
         raise BirthBootstrapError("birth_admission_keyring_invalid")
+    approval = value["approval"]
+    if not isinstance(approval, dict) or set(approval) != {"db_path", "authority_registry"}:
+        raise BirthBootstrapError("birth_approval_store_invalid")
     config_dir = paths.config.parent
+    windows_registry = None
+    if os.name == "nt":
+        sandbox = value["windows_sandbox"]
+        fields = {"helper_path", "helper_binary_hash", "config_path", "config_hash", "runtime_binary_hash"}
+        if not isinstance(sandbox, dict) or set(sandbox) != fields:
+            raise BirthBootstrapError("windows_sandbox_registry_invalid")
+        helper_path = _resolve(config_dir, sandbox["helper_path"]).resolve()
+        helper_config = _resolve(config_dir, sandbox["config_path"]).resolve()
+        digests = tuple(sandbox[name] for name in (
+            "helper_binary_hash", "config_hash", "runtime_binary_hash",
+        ))
+        if any(not isinstance(item, str) or not re.fullmatch(
+                r"sha256:[0-9a-f]{64}", item) for item in digests):
+            raise BirthBootstrapError("windows_sandbox_registry_invalid")
+        try:
+            if (helper_binary_hash(helper_path) != sandbox["helper_binary_hash"]
+                    or helper_binary_hash(helper_config) != sandbox["config_hash"]):
+                raise BirthBootstrapError("windows_sandbox_registry_invalid")
+        except OSError as exc:
+            raise BirthBootstrapError("windows_sandbox_registry_invalid") from exc
+        windows_registry = WindowsSandboxRegistry(
+            helper_path, sandbox["helper_binary_hash"], helper_config,
+            sandbox["config_hash"], sandbox["runtime_binary_hash"],
+        )
     from executor_birth_keystore import load_birth_keystore
     from sign import list_trusted_publics
     trusted_publics = tuple(list_trusted_publics())
@@ -355,14 +414,41 @@ def _build(paths: BirthBootstrapPaths, *, now: Callable[[], datetime]) -> BirthR
         forbidden_public_keys=(*author_keys, *tuple(verifiers.values())),
     )
     producer_db = _secure_state_db(paths.state_dir)
+    approval_db = _secure_approval_db(_resolve(config_dir, approval["db_path"]))
+    from executor_birth_approval_authority import load_approval_authority
+    try:
+        approval_authority = load_approval_authority(
+            _resolve(config_dir, approval["authority_registry"])
+        )
+    except Exception as exc:
+        raise BirthBootstrapError("birth_approval_authority_invalid") from exc
     verifier = _PostconditionAdapter(trusted_publics=trusted_publics, verifier_keys=verifiers)
     verifier.recover_authoring()
     context_builder = _context_builder(value["context"], config_dir)
+    try:
+        from executor_birth_semantic_authority import load_semantic_authority
+        semantic_authority = load_semantic_authority(value["semantic_review"], config_dir)
+    except Exception as exc:
+        raise BirthBootstrapError("semantic_review_unavailable") from exc
+    from executor_birth_approval_store import resolve_request_approval
+    def approval_resolver(request, observed, revision, instant):
+        return resolve_request_approval(
+            approval_refs=request.approval_refs, request_id=request.request_id,
+            candidate_id=observed.identities.candidate_id,
+            semantic_core_id=observed.identities.semantic_core_id,
+            admission_context_id=observed.identities.admission_context_id,
+            scope=approval_scope(observed, revision), now=instant, db_path=approval_db,
+            authority=approval_authority,
+        )
     core = _assemble_birth_core(
         producer_registry=registry, producer_db=producer_db,
         context_resolver=context_builder.resolve,
         context_epoch_resolver=context_builder.current_epoch,
-        shadow_dependencies=_assemble_production_dependencies(),
+        approval_resolver=approval_resolver,
+        shadow_dependencies=_assemble_production_dependencies(
+            semantic_authority=semantic_authority,
+            windows_sandbox_registry=windows_registry,
+        ),
         admission_private_key=admission_private, admission_verifier_keys=verifiers,
         admission_key_id=key_id, policy_version=value["policy_version"], now=now,
         publisher_options={"trusted_publics": trusted_publics},

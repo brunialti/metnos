@@ -28,12 +28,13 @@ from contract_store import (
     catalog_admission_lock,
 )
 from executor_birth import ObservedCandidate, observe_candidate
-from executor_birth_approval import approval_evidence_hash
-from executor_birth_identity import AdmissionContextV1, admission_context_id
+from executor_birth_approval import ApprovalEvidence, ApprovalSubject, approval_evidence_hash
+from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, admission_context_id
 from executor_birth_predecessor import (
     AdmissionContextPin, AuthenticatedPredecessorSnapshot,
     derive_revision_facts, revision_facts_id,
 )
+from executor_birth_property_runner import ObservedPropertyRunner
 from executor_birth_producer_store import (
     ProducerReceiptBinding, claim_producer_receipt,
     finalize_producer_receipt, producer_receipt_hash,
@@ -67,6 +68,20 @@ def candidate_source_id(observed: ObservedCandidate) -> str:
         **dict(observed.snapshot.code_files),
     }
     return _digest(b"metnos.executor-birth.candidate-source/v1\0", fields)
+
+
+def approval_scope(observed: ObservedCandidate, revision: RevisionClass) -> str | None:
+    """Derive the only permissible approval scope from observed core facts."""
+    if observed.executor_origin is ExecutorOrigin.SYNTHESIZED:
+        return "preexercise"
+    scopes = {
+        RevisionClass.AUTHORITY: "authority",
+        RevisionClass.PROMOTION: "promotion",
+        RevisionClass.REACTIVATION: "reactivation",
+    }
+    if revision in scopes:
+        return scopes[revision]
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +268,10 @@ PostconditionVerifier = Callable[
     [BirthRequest, PublicationResult | None, bytes | None],
     PublicationResult | tuple[PublicationResult, bytes | None] | None,
 ]
+ApprovalResolver = Callable[
+    [BirthRequest, ObservedCandidate, RevisionClass, datetime],
+    tuple[ApprovalSubject | None, ApprovalEvidence | None],
+]
 
 _CORE_SEAL = object()
 
@@ -264,6 +283,7 @@ class _BirthCore:
     context_resolver: ContextResolver
     predecessor_resolver: PredecessorResolver
     context_epoch_resolver: Callable[[], str]
+    approval_resolver: ApprovalResolver
     shadow_dependencies: _BirthDependencies
     admission_private_key: object
     admission_verifier_keys: Mapping[str, object]
@@ -278,6 +298,8 @@ class _BirthCore:
     def __post_init__(self) -> None:
         if self._seal is not _CORE_SEAL:
             raise ValueError("birth_core_untrusted")
+        if not callable(self.approval_resolver):
+            raise ValueError("birth_core_approval_resolver_invalid")
         verifiers = dict(self.admission_verifier_keys)
         if (not isinstance(self.admission_private_key, Ed25519PrivateKey)
                 or self.admission_key_id not in verifiers or any(
@@ -301,6 +323,7 @@ class _BirthCore:
 def _sealed_core_for_test(**values: object) -> _BirthCore:
     """Test-only trust-core constructor; the public API never accepts it."""
     values.setdefault("postcondition_verifier", lambda _request, expected, _receipt: expected)
+    values.setdefault("approval_resolver", lambda _request, _observed, _revision, _now: (None, None))
     # Compatibility belongs exclusively to this explicitly test-only seam.
     if "admission_verifier_keys" not in values and "admission_public_key" in values:
         public = values.pop("admission_public_key")
@@ -313,6 +336,7 @@ def _assemble_birth_core(
     *, producer_registry: IssuerRegistry, producer_db: Path,
     context_resolver: ContextResolver,
     context_epoch_resolver: Callable[[], str],
+    approval_resolver: ApprovalResolver,
     shadow_dependencies: _BirthDependencies, admission_private_key: object,
     admission_verifier_keys: Mapping[str, object], admission_key_id: str, policy_version: str,
     now: Callable[[], datetime], publisher_options: Mapping[str, object],
@@ -334,7 +358,7 @@ def _assemble_birth_core(
 
     return _BirthCore(
         producer_registry, producer_db, context_resolver, resolve_predecessor,
-        context_epoch_resolver,
+        context_epoch_resolver, approval_resolver,
         shadow_dependencies, admission_private_key, admission_verifier_keys,
         admission_key_id, policy_version, now, commit_birth_snapshot, postcondition_verifier,
         publisher_options, _CORE_SEAL,
@@ -475,14 +499,23 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         facts = derive_revision_facts(
             predecessor_snapshot, predecessor_payloads, observed.snapshot,
         )
+        revision = classify_revision(facts).revision_class
+        approval_subject, approval_evidence = core.approval_resolver(
+            request, observed, revision, instant,
+        )
         shadow = core.shadow_dependencies
+        property_runner = shadow.property_runner or ObservedPropertyRunner(
+            observed, windows_registry=shadow.windows_sandbox_registry,
+        )
         borrowed_dependencies = _BirthDependencies(
             observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
-            property_runner=shadow.property_runner, semantic_policy=shadow.semantic_policy,
+            property_runner=property_runner, semantic_policy=shadow.semantic_policy,
+            windows_sandbox_registry=shadow.windows_sandbox_registry,
             semantic_risk=shadow.semantic_risk,
             independent_evidence=shadow.independent_evidence,
-            approval_subject=shadow.approval_subject,
-            approval_evidence=shadow.approval_evidence, now=shadow.now,
+            semantic_authority=shadow.semantic_authority,
+            approval_subject=approval_subject,
+            approval_evidence=approval_evidence, now=instant,
             _seal=shadow._seal,
         )
         report = _observe_birth_for_test(
@@ -507,8 +540,8 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         checks = dict(_receipt_checks(report))
         semantic_hash = next((c.evidence_hash for c in report.checks if c.check_id == "semantic_review" and c.status is CheckStatus.PASSED), None)
         approval_hash = (
-            approval_evidence_hash(shadow.approval_evidence)
-            if shadow.approval_evidence is not None else None
+            approval_evidence_hash(approval_evidence)
+            if approval_evidence is not None else None
         )
         lifecycle = ApprovedLifecycle.PREEXERCISE if report.outcome is BirthOutcome.PREEXERCISE else ApprovedLifecycle.ACTIVE
         predecessor = predecessor_snapshot.revision_id
