@@ -174,6 +174,37 @@ ruolo e contesto del modello è obbligatorio, ma non crea indipendenza. Senza
 segnale indipendente l'esito operativo è `uncertain` anche se il modello scrive
 `aligned`.
 
+Il payload wire V1 di `SemanticReview` è JSON UTF-8 canonico senza chiavi
+duplicate, spazi esterni, preamboli o suffissi e contiene esattamente i sei
+campi precedenti. `verdict` è `aligned|misaligned|uncertain`; le due liste di
+effetti contengono al massimo 32 stringhe non vuote, senza NUL e di massimo 256
+byte UTF-8 ciascuna; `reason` è una stringa non vuota, senza NUL e di massimo
+2.000 byte UTF-8; `confidence` è un intero, distinto da booleano, tra 0 e 100.
+`tests` contiene al massimo 16 oggetti con esattamente `test_id`,
+`kind=example|metamorphic` e `description`; identificativo e descrizione sono
+stringhe non vuote senza NUL, rispettivamente di massimo 128 e 1.000 byte
+UTF-8, e `test_id` non può duplicarsi. Sono proposte non autorevoli e non
+contengono shell, fixture o autorità. `aligned` richiede almeno un effetto
+osservato, nessun effetto non dichiarato e una ragione non vuota.
+
+Il revisore riceve `candidate_id`, `admission_context_id`, manifest, stato
+linguistico e l'intera mappa ordinata dei file. Un solo secondo tentativo è
+ammesso esclusivamente dopo un payload malformato e usa lo stesso workload e
+lo stesso livello. Errori di trasporto, scadenza o indisponibilità non vengono
+ripetuti e producono `semantic_review_unavailable`.
+
+`IndependentEvidence` V1 contiene esattamente `evidence_id`, `evidence_version`,
+`kind=deterministic_oracle|human_case|metamorphic_relation`, `owner_id`,
+`candidate_id`, `admission_context_id`, `status` ed `evidence_hash`. Identità e
+hash sono digest SHA-256 canonici; versione e proprietario sono stringhe non
+vuote senza NUL. Lo stato è `passed|failed|unavailable|not_applicable`. Soltanto
+un'evidenza `passed`, legata allo stesso candidato e contesto, con versione
+presente nella politica di revisione e proprietario registrato non coincidente
+con il modello generatore soddisfa l'indipendenza. Assenza o non applicabilità
+rendono operativo il verdetto `uncertain`; un binding diverso produce
+`evidence_obsolete`. In F2 l'hash della revisione e dell'evidenza è obbligatorio
+in memoria; la persistenza diventa obbligatoria in F3/F4.
+
 `FailureReview` è legata all'esecuzione fallita esatta. `false_feedback` può
 soltanto proporre un ripristino umano tramite confronto-e-scambio; `repairable`
 produce una nuova `BirthRequest`; `misaligned` conserva la quarantena;

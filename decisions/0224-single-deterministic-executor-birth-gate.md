@@ -48,8 +48,9 @@ Certification is binary: every applicable mandatory check and test must pass.
 Origin and component labels help diagnosis but never permit a partial pass or
 reduce the effect of an error.
 
-Semantic alignment is required only for executors synthesized by Metnos. It is
-the only model-mediated check in that branch. A separate logical workload,
+Semantic alignment is required for every model-authored revision and every
+imported or otherwise untrusted candidate; directly trusted human revisions
+do not acquire this model-mediated check merely by crossing Birth. A separate logical workload,
 `executor.birth.semantic_review`, has a minimum tier of `wise` and may route
 to frontier. It reads purpose, contract and code and emits a typed opinion plus
 independent test cases. It has no signing or publication authority. Its
@@ -62,9 +63,10 @@ are never sufficient evidence.
 
 For a synthesized executor, human approval bound to the exact candidate digest
 is mandatory for new code, code changes, operational-contract changes and new
-or increased authority. Builtin, core, imported and directly human-authored
-executors retain their existing review and trust boundaries; they cross the
-same deterministic gate but do not enter the Synt review cycle.
+or increased authority. Builtin, core and directly human-authored executors
+retain their existing review and trust boundaries. Imported candidates receive
+the Birth semantic review required for untrusted input, but none of these
+origins enters the Synt pre-exercise, failure-review or repair cycle.
 
 An eligible, non-mutating synthesized executor may enter a bounded pre-exercise
 state after deterministic admission, semantic review and isolated tests. A
@@ -126,8 +128,9 @@ post-failure review; lower tiers may not be substituted silently.
 - Current fail-open Synt checks and direct publisher call sites must be
   removed or redirected.
 - Model-authored shell fixtures are retired for generated candidates.
-- Builtin, core, imported and directly human-authored executors are not
-  subjected to Synt semantic review, pre-exercise or frontier failure review.
+- Imported candidates receive Birth semantic review; builtin, core and directly
+  human-authored revisions do so only when model-authored. These origins are not
+  subjected to Synt pre-exercise, frontier failure review or automatic repair.
 - The static RM-0007 boundary inventory expands to recognize exactly one
   operational birth owner.
 - RM-0007 remains the commit mechanism and RM-0002 remains the linguistic
