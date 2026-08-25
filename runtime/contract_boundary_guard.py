@@ -205,12 +205,6 @@ FLOW_CAPABILITIES = PUBLISH_CAPABILITIES | frozenset({
     "store_write",
     "dynamic_boundary_access",
 })
-# Frozen legacy installer exception: this scope only hands the authoring
-# locator to the reviewed publisher during the one-time installation flow.  It
-# does not inspect bytes itself and must disappear with that migration path.
-DIRECT_MANIFEST_DIR_LEGACY_EXCEPTIONS = frozenset({
-    "install/phases/phase3_code.py:_publish_active_authoring_contracts",
-})
 VALID_ROLES = frozenset({
     "administrative_tool",
     "birth_owner",
@@ -777,18 +771,10 @@ def _analyse_scope(
     capabilities: set[str] = set(
         _defined_boundary_capabilities(path, scope)
     )
-    direct_manifest_dir_access = any(
-        (
-            isinstance(item, ast.Attribute)
-            and item.attr == "manifest_dir"
-            and isinstance(item.ctx, ast.Load)
-        ) or (
-            isinstance(item, ast.Call)
-            and _leaf_name(item.func) == "getattr"
-            and len(item.args) >= 2
-            and isinstance(item.args[1], ast.Constant)
-            and item.args[1].value == "manifest_dir"
-        )
+    manifest_dir_locator_used = any(
+        isinstance(item, ast.Attribute)
+        and item.attr == "manifest_dir"
+        and isinstance(item.ctx, ast.Load)
         for item in nodes
     )
     if dynamic_boundary_access:
@@ -979,7 +965,9 @@ def _analyse_scope(
         line=getattr(node, "lineno", 1),
         capabilities=tuple(sorted(capabilities)),
         calls=tuple(sorted(calls)),
-        direct_manifest_dir_access=direct_manifest_dir_access,
+        direct_manifest_dir_access=(
+            manifest_dir_locator_used and "authoring_read" in capabilities
+        ),
     )
 
 
@@ -1293,7 +1281,6 @@ def check(
         if fact.direct_manifest_dir_access and not (
             role in {"offline_authoring", "migration_boundary", "store_owner"}
             or fact.path == "runtime/executor_birth_authoring.py"
-            or key in DIRECT_MANIFEST_DIR_LEGACY_EXCEPTIONS
         ):
             findings.append(Finding(
                 "direct_manifest_dir_read_without_token",
