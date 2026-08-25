@@ -431,16 +431,14 @@ def promote_to_catalog(proposal: dict) -> dict:
             else:
                 shutil.copy2(child, destination)
         _atomic_write(birth_staging / "manifest.toml", active_text)
-        from executor_birth_intent import BirthIntent, submit_birth_intent
+        from executor_birth_intent import BirthIntent, submit_promote_birth
         from manifest_inventory import ContractId, ManifestOrigin
-        birth = submit_birth_intent(BirthIntent(
+        birth = submit_promote_birth(BirthIntent(
             candidate_source_root=birth_staging,
             contract_id=ContractId(
                 ManifestOrigin.USER, f"{name}/manifest.toml",
             ),
-            actor="promoter",
             reason=f"promote synthesized proposal={proposal_id}",
-            operation="promote",
             approval_refs=(str(proposal_id),),
         ))
         if birth.error_code or birth.publication is None:

@@ -6,11 +6,15 @@ receipt keys/verifiers and the publisher are assembled behind a module seal.
 from __future__ import annotations
 
 import hashlib
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
-from typing import Callable, Mapping
+from typing import TYPE_CHECKING, Callable, Mapping
+
+if TYPE_CHECKING:
+    from executor_birth_intent import BirthIntent, _ProducerCapability
 
 from contract_store import (
     BirthCommitAuthorization, ManifestRef, PublicationResult,
@@ -305,19 +309,91 @@ def _peek_receipt(core: _BirthCore, request: BirthRequest, instant: datetime):
     return verify_producer_receipt(request.producer_receipt, registry=core.producer_registry, now=instant)
 
 
-_PRODUCTION_CORE: _BirthCore | None = None
+@dataclass(frozen=True, slots=True)
+class BirthRuntimeBundle:
+    """One immutable publication unit for every productive Birth dependency."""
+
+    core: _BirthCore
+    producer_factories: Mapping[object, Callable[["BirthIntent"], BirthRequest]]
+    _seal: object
+
+    def __post_init__(self) -> None:
+        if self._seal is not _RUNTIME_SEAL or self.core._seal is not _CORE_SEAL:
+            raise ValueError("birth_runtime_bundle_untrusted")
+        factories = dict(self.producer_factories)
+        if not factories or any(not callable(value) for value in factories.values()):
+            raise ValueError("birth_runtime_bundle_invalid")
+        object.__setattr__(self, "producer_factories", MappingProxyType(factories))
+
+
+_RUNTIME_SEAL = object()
+_RUNTIME_LOCK = threading.Lock()
+_RUNTIME_BUNDLE: BirthRuntimeBundle | None = None
+
+
+def _assemble_birth_runtime_bundle(
+    core: _BirthCore,
+    producer_factories: Mapping["_ProducerCapability", Callable[["BirthIntent"], BirthRequest]],
+) -> BirthRuntimeBundle:
+    """Bootstrap primitive; its inputs must already be fully validated."""
+    from executor_birth_intent import _is_producer_capability
+    if not producer_factories or any(
+        not _is_producer_capability(capability) for capability in producer_factories
+    ):
+        raise ValueError("birth_producer_capability_untrusted")
+    return BirthRuntimeBundle(core, producer_factories, _RUNTIME_SEAL)
+
+
+def _install_birth_runtime_bundle(bundle: BirthRuntimeBundle) -> None:
+    """Publish the complete runtime exactly once, with no partial state."""
+    global _RUNTIME_BUNDLE
+    if not isinstance(bundle, BirthRuntimeBundle) or bundle._seal is not _RUNTIME_SEAL:
+        raise ValueError("birth_runtime_bundle_untrusted")
+    with _RUNTIME_LOCK:
+        if _RUNTIME_BUNDLE is not None:
+            raise ValueError("birth_runtime_bundle_already_installed")
+        _RUNTIME_BUNDLE = bundle
+
+
+def _runtime_bundle_snapshot() -> BirthRuntimeBundle | None:
+    # Assignment is atomic in supported CPython runtimes. The lock supplies a
+    # language-level happens-before edge for alternate Python implementations.
+    with _RUNTIME_LOCK:
+        return _RUNTIME_BUNDLE
+
+
+def _execute_intent_with_capability(
+    intent: "BirthIntent", capability: "_ProducerCapability",
+) -> BirthResult:
+    from executor_birth_intent import BirthIntent, _is_producer_capability
+    if not isinstance(intent, BirthIntent):
+        raise ValueError("birth_intent_invalid")
+    if not _is_producer_capability(capability):
+        raise ValueError("birth_producer_capability_untrusted")
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
+        raise RuntimeError("birth_runtime_bundle_unavailable")
+    factory = bundle.producer_factories.get(capability)
+    if factory is None:
+        raise ValueError("birth_producer_capability_unavailable")
+    request = factory(intent)
+    if not isinstance(request, BirthRequest):
+        raise ValueError("birth_request_invalid")
+    # Use the core from the same bundle snapshot as the producer factory.
+    return _execute(request, bundle.core)
 
 
 def birth_executor(request: BirthRequest) -> BirthResult:
     """Execute the sealed productive Birth pipeline."""
     if not isinstance(request, BirthRequest):
         raise ValueError("birth_request_invalid")
-    if _PRODUCTION_CORE is None:
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
         report = BirthReport(1, request.manifest_ref.contract_id, None, None, None,
                              None, (), (), BirthOutcome.REJECTED,
                              "birth_core_unavailable")
         return BirthResult(request.request_id, report, None, "birth_core_unavailable")
-    return _execute(request, _PRODUCTION_CORE)
+    return _execute(request, bundle.core)
 
 
 def _birth_executor_for_test(request: BirthRequest, *, _core: _BirthCore) -> BirthResult:

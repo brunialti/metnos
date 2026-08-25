@@ -105,7 +105,7 @@ def _try_submit_birth(
     if os.environ.get("METNOS_SKILLS_NO_SIGN") == "1":
         return "skipped_by_env"
     try:
-        from executor_birth_intent import BirthIntent, submit_birth_intent
+        from executor_birth_intent import BirthIntent, submit_skills_birth
         from manifest_inventory import ContractId, ManifestOrigin
         if contract_id is None:
             try:
@@ -116,12 +116,10 @@ def _try_submit_birth(
                 ManifestOrigin.USER_SKILL,
                 (relative / "manifest.toml").as_posix(),
             )
-        result = submit_birth_intent(BirthIntent(
+        result = submit_skills_birth(BirthIntent(
             candidate_source_root=Path(manifest_dir),
             contract_id=contract_id,
-            actor="skills_cli",
             reason="import or reinstall imported executor contract",
-            operation="skill_import_or_reactivation",
         ))
         if result.error_code or result.publication is None:
             return f"birth_failed: {result.error_code or 'publication_missing'}"

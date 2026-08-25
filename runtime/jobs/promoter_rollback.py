@@ -17,6 +17,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import tarfile
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from .promoter_promote import (
@@ -30,6 +33,28 @@ from .promoter_state import (
 
 
 from timefmt import now_iso_z as _now_iso
+
+
+@contextmanager
+def _staged_rollback_candidate(parent: Path, name: str, blob_path: Path):
+    """Expose a traversal-safe private rollback tree without touching authoring."""
+    staging = Path(tempfile.mkdtemp(prefix=f".{name}.rollback-birth.", dir=str(parent)))
+    try:
+        with tarfile.open(str(blob_path), "r:gz") as archive:
+            members = archive.getmembers()
+            if not members:
+                raise ValueError("rollback_blob_empty")
+            for member in members:
+                path = Path(member.name)
+                if (path.is_absolute() or ".." in path.parts or member.issym()
+                        or member.islnk() or not member.isfile()):
+                    raise ValueError("rollback_blob_unsafe_member")
+            archive.extractall(str(staging), members=members, filter="data")
+        if not (staging / "manifest.toml").is_file():
+            raise ValueError("rollback_manifest_missing")
+        yield staging
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def rollback_promotion(proposal_id: str) -> dict:
@@ -87,24 +112,28 @@ def rollback_promotion(proposal_id: str) -> dict:
             "proposal_id": proposal_id,
             "name": name,
         }
-    restored, restore_error = _restore_rollback_blob(target_dir, blob_path)
-    if not restored:
-        return {"ok": False, "error": restore_error,
-                "proposal_id": proposal_id, "name": name,
-                "target_dir": str(target_dir)}
     if layout is ManifestLayout.STORE_ONLY:
         try:
-            from sign import rollback_executor_contract
-            rollback_executor_contract(
-                target_dir,
-                expected_generation_id=str(active_generation_id),
-                target_generation_id=str(prepromotion_generation_id),
-                actor="promoter_rollback",
-                reason=f"rollback promotion proposal={proposal_id}",
+            from executor_birth_intent import (
+                BirthIntent, require_birth_intent_adapter,
+                submit_promoter_rollback_birth,
             )
+            from manifest_inventory import ContractId, ManifestOrigin
+            require_birth_intent_adapter()
+            with _staged_rollback_candidate(target_dir.parent, name, blob_path) as staging:
+                birth = submit_promoter_rollback_birth(BirthIntent(
+                    candidate_source_root=staging,
+                    contract_id=ContractId(
+                        ManifestOrigin.USER, f"{name}/manifest.toml",
+                    ),
+                    reason=f"rollback promotion proposal={proposal_id}",
+                    approval_refs=(proposal_id,),
+                ))
+            if birth.error_code or birth.publication is None:
+                raise RuntimeError(birth.error_code or "publication_missing")
+            if str(birth.publication.current_generation_id) != str(prepromotion_generation_id):
+                raise RuntimeError("rollback_generation_mismatch")
         except Exception as ex:
-            # The restored source is the code authenticated by the target
-            # generation. Keep it intact for an idempotent pointer retry.
             return {
                 "ok": False,
                 "error": f"publication_rollback_requires_retry: {ex}",
@@ -112,6 +141,12 @@ def rollback_promotion(proposal_id: str) -> dict:
                 "name": name,
                 "target_dir": str(target_dir),
             }
+    else:
+        restored, restore_error = _restore_rollback_blob(target_dir, blob_path)
+        if not restored:
+            return {"ok": False, "error": restore_error,
+                    "proposal_id": proposal_id, "name": name,
+                    "target_dir": str(target_dir)}
 
     # Sposta blob in _rolled_back/.
     rolled_dir = _blob_dir() / "_rolled_back"

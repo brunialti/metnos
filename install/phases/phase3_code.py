@@ -487,19 +487,32 @@ def _sign_and_verify_legacy_contracts() -> dict[str, Any]:
 
 
 def _publish_active_authoring_contracts() -> dict[str, Any]:
-    """Publish updates through the one layout-aware writer, never sign-all."""
+    """Submit every active-layout source through the operational Birth gate."""
 
     from contract_store import ContractStoreError
-    from sign import publish_authoring_update
+    from executor_birth_intent import (
+        BirthIntent, require_birth_intent_adapter, submit_installer_birth,
+    )
 
     refs = _clean_authoring_inventory()
+    require_birth_intent_adapter()
     repeated = 0
     retired_skipped = 0
     for ref in refs:
         try:
-            _digest, _signature_path, publication = publish_authoring_update(
-                ref.manifest_dir,
-            )
+            birth = submit_installer_birth(BirthIntent(
+                candidate_source_root=ref.manifest_dir,
+                contract_id=ref.contract_id,
+                reason="converge installed executor contract catalog",
+            ))
+            if birth.error_code == "contract_retired":
+                retired_skipped += 1
+                continue
+            if birth.error_code or birth.publication is None:
+                raise ContractCatalogInstallError(
+                    "contract_birth_rejected", birth.error_code or str(ref.contract_id),
+                )
+            publication = birth.publication
         except ContractStoreError as exc:
             # Retirement is a signed live revision, not an installation
             # failure and never an invitation to reactivate implicitly.  The
@@ -509,10 +522,6 @@ def _publish_active_authoring_contracts() -> dict[str, Any]:
                 raise
             retired_skipped += 1
             continue
-        if publication is None:
-            raise ContractCatalogInstallError(
-                "contract_publication_layout_changed", str(ref.contract_id),
-            )
         repeated += int(publication.repeated)
     return {
         "examined": len(refs),

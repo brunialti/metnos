@@ -36,6 +36,20 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     "executor_birth": {
         "birth_executor": ("birth",),
     },
+    "executor_birth_intent": {
+        "submit_builtin_generation_birth": ("birth",),
+        "submit_change_extend_birth": ("birth",),
+        "submit_change_rollback_birth": ("birth",),
+        "submit_installer_birth": ("birth",),
+        "submit_promote_birth": ("birth",),
+        "submit_promoter_rollback_birth": ("birth",),
+        "submit_skills_birth": ("birth",),
+        "submit_stack_reconcile_birth": ("birth",),
+        "submit_synth_producer_birth": ("birth",),
+    },
+    "executor_birth_operational": {
+        "birth_executor": ("birth",),
+    },
     "contract_store": {
         "verify_manifest_source": ("authoring_read", "authoring_verify"),
         "prepare_technical_draft": ("authoring_read", "authoring_verify"),
@@ -89,6 +103,12 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
+    "executor_birth_intent": frozenset({
+        "executor_birth_intent", "runtime.executor_birth_intent",
+    }),
+    "executor_birth_operational": frozenset({
+        "executor_birth_operational", "runtime.executor_birth_operational",
+    }),
     "contract_store": frozenset({"contract_store", "runtime.contract_store"}),
     "sign": frozenset({"sign", "runtime.sign"}),
     "loader": frozenset({"loader", "runtime.loader"}),
@@ -111,6 +131,8 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
+    "runtime/executor_birth_intent.py": "executor_birth_intent",
+    "runtime/executor_birth_operational.py": "executor_birth_operational",
     "runtime/contract_store.py": "contract_store",
     "runtime/sign.py": "sign",
     "runtime/loader.py": "loader",
@@ -1289,7 +1311,11 @@ def check(
                 "use read_manifest_ref_versioned()",
             ))
         if role == "birth_owner" and (
-            fact.path != "runtime/executor_birth.py"
+            fact.path not in {
+                "runtime/executor_birth.py",
+                "runtime/executor_birth_intent.py",
+                "runtime/executor_birth_operational.py",
+            }
             or bool(capabilities & {
                 "legacy_bootstrap", "publish_bootstrap", "publish_localization",
                 "retire", "rollback", "sign",
@@ -1298,7 +1324,7 @@ def check(
             findings.append(Finding(
                 "birth_owner_invalid",
                 key,
-                "birth ownership is restricted to runtime/executor_birth.py and "
+                "birth ownership is restricted to the sealed Executor Birth modules and "
                 "cannot absorb dedicated or migration boundaries",
             ))
         if role == "operational_producer" and "birth" in capabilities and (

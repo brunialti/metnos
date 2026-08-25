@@ -31,7 +31,7 @@ from pathlib import Path, PurePosixPath
 import config as C
 from change_intents import ChangeIntent
 from executor_birth_intent import (
-    BirthIntent, require_birth_intent_adapter, submit_birth_intent,
+    BirthIntent, require_birth_intent_adapter, submit_change_extend_birth,
 )
 
 
@@ -91,7 +91,7 @@ def _resolve_executor_dir(name: str) -> Path | None:
 
 
 def _run_birth(intent: BirthIntent):
-    result = submit_birth_intent(intent)
+    result = submit_change_extend_birth(intent)
     if (getattr(result, "error_code", "invalid_result") is not None
             or getattr(result, "publication", None) is None):
         detail = getattr(result, "error_code", "invalid_result")
@@ -187,9 +187,7 @@ def extend_executor_manifest(ci: ChangeIntent) -> dict:
         with _stage_candidate(mdir, text.encode("utf-8")) as staging:
             _run_birth(BirthIntent(
                 candidate_source_root=staging, contract_id=contract_id,
-                actor="change_applier",
                 reason=f"extend_executor retry change_intent={ci.id}",
-                operation="extend",
                 approval_refs=(ci.id,),
             ))
         return {
@@ -240,9 +238,7 @@ def extend_executor_manifest(ci: ChangeIntent) -> dict:
         with _stage_candidate(mdir, new_text.encode("utf-8")) as staging:
             result = _run_birth(BirthIntent(
                 candidate_source_root=staging, contract_id=contract_id,
-                actor="change_applier",
                 reason=f"extend_executor change_intent={ci.id}",
-                operation="extend",
                 approval_refs=(ci.id,),
             ))
     except Exception as exc:
