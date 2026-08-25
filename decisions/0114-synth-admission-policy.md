@@ -78,8 +78,9 @@ In `runtime/smoke.py::BATTERY[].expected_first_tool` + `expected_arg_keys`
 + `min_pass_rate`. Helper `_run_smoke_with_tool_assertion(case)`
 simula il PLANNER usando solo intent_extractor BoW deterministico +
 `prefilter.rank_with_intent` (NO LLM live se l'env non lo richiede).
-Asserisce: `ranked[0].name == case["expected_first_tool"]`. Skip
-gracefully se prefilter o catalog non sono disponibili.
+Asserisce: `ranked[0].name == case["expected_first_tool"]`. Prefilter o
+catalog non disponibili bloccano l'ammissione. È ammesso come non applicabile
+solo il marker canonico per un pattern privo di una query realistica.
 
 `run_smoke_routing_battery()` per cron. Tool families coperte: get_now,
 list_dirs, find_files, read_files, read_messages, get_location, get_urls,
@@ -92,8 +93,8 @@ In `runtime/synt_stage6_verify.py::verify_semantic_alignment(description,
 code_body, ...)`. Usa LLM tier wise (Gemma 4 26B locale) con prompt strict
 JSON: `{"aligned": bool, "mismatch": "..."}`. Il payload viene validato
 senza coercizioni; schema malformato o servizio indisponibile bloccano
-l'ammissione. Un eventuale consenso multi-modello è iniettato dalla politica
-versionata, mai dall'ambiente. Audit JSONL in
+l'ammissione. Il router seleziona l'unico tier autorevole previsto dalla
+politica versionata; API ed ambiente non consentono di sostituirlo. Audit JSONL in
 `~/.local/share/metnos/synth_audit/verify_*.jsonl`.
 
 Wired in `runtime/synt_multistage.py::run_full` dopo stage 5 (code) e
@@ -152,8 +153,9 @@ trascurabile.
 **Doors open.**
 - Layer 1 (vocab semantic gate) come step naturale successivo: dizionario
   canonico per i 22 verbi che il LLM pre-flight controlla.
-- Multi-model consensus L6: oggi default single-model (`wise`), abilitabile
-  via env per future audit critiche.
+- Evoluzioni della politica di revisione L6 richiedono una decisione
+  architetturale versionata e nuovi test di contratto; non sono attivabili
+  tramite parametri pubblici o variabili d'ambiente.
 
 ## References
 

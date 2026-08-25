@@ -155,22 +155,32 @@ class TestQueriesByPatternCoverage:
 class TestRunSmokeForPlanADR0159:
     """`_run_smoke_for_plan` (ADR 0159 L5): esegue smoke at-import, reject se fail."""
 
-    def test_no_smoke_case_passes_with_skip_reason(self):
+    def test_proven_not_applicable_case_passes(self):
         from skill_admission import _run_smoke_for_plan
         p = _FakePlan("compress", "files", qualifier="zip",
                       name="compress_files_zip")
-        case = {"_no_smoke": True, "_reason": "no mapping"}
+        case = {"_no_smoke": True,
+                "_reason": "no realistic query for pattern ('compress', 'files_zip')"}
         ok, reason = _run_smoke_for_plan(p, case)
         assert ok is True
-        assert "skip" in reason.lower()
+        assert reason.startswith("not_applicable:")
 
-    def test_empty_expected_first_tool_passes_skipped(self):
+    def test_empty_expected_first_tool_rejects(self):
         from skill_admission import _run_smoke_for_plan
         p = _FakePlan("read", "events", name="read_events")
         case = {"query": "x", "expected_first_tool": ""}
         ok, reason = _run_smoke_for_plan(p, case)
-        assert ok is True
-        assert "skip" in reason.lower()
+        assert ok is False
+        assert reason == "smoke_case_invalid"
+
+    def test_forged_not_applicable_rejects(self):
+        from skill_admission import _run_smoke_for_plan
+        p = _FakePlan("compress", "files", qualifier="zip",
+                      name="compress_files_zip")
+        ok, reason = _run_smoke_for_plan(
+            p, {"_no_smoke": True, "_reason": "caller says so"})
+        assert ok is False
+        assert reason == "smoke_case_invalid"
 
     def test_smoke_ok_passes(self, monkeypatch):
         """Mock smoke runner che ritorna ok=True → accept."""
@@ -183,6 +193,10 @@ class TestRunSmokeForPlanADR0159:
                     "actual_first": case["expected_first_tool"]}
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion", _mock_runner)
+        import skill_admission as sa
+        monkeypatch.setattr(sa, "_stage6_verify_callable", lambda: (
+            lambda *a, **k: {"aligned": True, "mismatch": ""}
+        ))
         p = _FakePlan("read", "events", name="read_events")
         case = {"query": "elenca appuntamenti", "expected_first_tool": "read_events"}
         ok, reason = _run_smoke_for_plan(p, case)
@@ -242,7 +256,6 @@ class TestRunSmokeForPlanADR0159:
             _FakeParsed(), [plan],
             executor_dir=tmp_path,
             skip_l2=True,  # L2 needs codegen, isoliamo L5
-            skip_l6=True,
             skip_binding_check=True,
             audit_log=False,
         )
@@ -251,33 +264,12 @@ class TestRunSmokeForPlanADR0159:
         assert v.layer_results.get("L5_smoke_exec") is False
         assert any("L5_smoke_exec" in r for r in v.reasons)
 
-    def test_admit_skill_import_skip_l5_exec_flag(self, monkeypatch, tmp_path):
-        """`skip_l5_exec=True` bypassa il smoke gate even on broken runner."""
+    def test_admission_api_has_no_l5_or_l6_skip(self):
+        import inspect
         from skill_admission import admit_skill_import
-        import smoke
-
-        def _bad_runner(case, *, catalog=None):
-            raise RuntimeError("should not be called when skip_l5_exec=True")
-
-        monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion", _bad_runner)
-
-        class _FakeParsed:
-            name = "test-skill-l5-skip"
-            source_sha256 = "abc"
-
-        plan = _FakePlan("read", "events", name="read_events_test_skill_l5_skip")
-        report = admit_skill_import(
-            _FakeParsed(), [plan],
-            skip_l2=True,
-            skip_l5_exec=True,
-            skip_l6=True,
-            skip_binding_check=True,
-            audit_log=False,
-        )
-        # smoke runner non chiamato → no rejection from L5.
-        assert len(report.accepted) == 1
-        v = report.accepted[0]
-        assert "L5_smoke_exec" not in v.layer_results
+        parameters = inspect.signature(admit_skill_import).parameters
+        assert "skip_l5_exec" not in parameters
+        assert "skip_l6" not in parameters
 
     def test_legacy_env_metnos_smoke_at_import_off_does_not_disable_gate(
         self, monkeypatch, tmp_path,
@@ -290,6 +282,10 @@ class TestRunSmokeForPlanADR0159:
             raise RuntimeError("should not be called")
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion", _bad_runner)
+        import skill_admission as sa
+        monkeypatch.setattr(sa, "_stage6_verify_callable", lambda: (
+            lambda *a, **k: {"aligned": True, "mismatch": ""}
+        ))
         monkeypatch.setenv("METNOS_SMOKE_AT_IMPORT", "0")
 
         class _FakeParsed:
@@ -300,7 +296,6 @@ class TestRunSmokeForPlanADR0159:
         report = admit_skill_import(
             _FakeParsed(), [plan],
             skip_l2=True,
-            skip_l6=True,
             skip_binding_check=True,
             audit_log=False,
         )
@@ -319,14 +314,15 @@ class TestL6DefaultOnADR0159:
 
         # Disable smoke L5 per isolare L6.
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion",
-                            lambda c, catalog=None: {"ok": True, "skip": True,
-                                                      "reason": "test"})
+                            lambda c, catalog=None: {"ok": True, "skip": False})
 
         called = {"n": 0}
 
         def _mock_verify(description, code_body, *, name_hint="", **kw):
             called["n"] += 1
             return {"aligned": True, "mismatch": ""}
+        import skill_admission as sa
+        monkeypatch.setattr(sa, "_stage6_verify_callable", lambda: _mock_verify)
 
         class _FakeParsed:
             name = "test-skill-l6-on"
@@ -343,10 +339,8 @@ class TestL6DefaultOnADR0159:
             _FakeParsed(), [plan],
             executor_dir=tmp_path,
             skip_l2=True,
-            skip_l5_exec=True,
             skip_binding_check=True,
             audit_log=False,
-            semantic_verifier=_mock_verify,
         )
         assert called["n"] == 1, "L6 must run by default for imported (ADR 0159)"
 
@@ -356,13 +350,14 @@ class TestL6DefaultOnADR0159:
         import smoke
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion",
-                            lambda c, catalog=None: {"ok": True, "skip": True,
-                                                      "reason": "test"})
+                            lambda c, catalog=None: {"ok": True, "skip": False})
         called = {"n": 0}
 
         def _mock_verify(*a, **kw):
             called["n"] += 1
             return {"aligned": False, "mismatch": "should not be called"}
+        import skill_admission as sa
+        monkeypatch.setattr(sa, "_stage6_verify_callable", lambda: _mock_verify)
 
         monkeypatch.setenv("METNOS_STAGE6_VERIFY_IMPORTED", "0")
 
@@ -374,10 +369,8 @@ class TestL6DefaultOnADR0159:
         report = admit_skill_import(
             _FakeParsed(), [plan],
             skip_l2=True,
-            skip_l5_exec=True,
             skip_binding_check=True,
             audit_log=False,
-            semantic_verifier=_mock_verify,
         )
         assert called["n"] == 1
         assert len(report.rejected) == 1
@@ -388,13 +381,14 @@ class TestL6DefaultOnADR0159:
         import smoke
 
         monkeypatch.setattr(smoke, "_run_smoke_with_tool_assertion",
-                            lambda c, catalog=None: {"ok": True, "skip": True,
-                                                      "reason": "test"})
+                            lambda c, catalog=None: {"ok": True, "skip": False})
         called = {"n": 0}
 
         def _mock_verify(*a, **kw):
             called["n"] += 1
             return {"aligned": False, "mismatch": "should not be called"}
+        import skill_admission as sa
+        monkeypatch.setattr(sa, "_stage6_verify_callable", lambda: _mock_verify)
 
         monkeypatch.setenv("METNOS_SYNT_STAGE6_DISABLED", "1")
 
@@ -406,10 +400,8 @@ class TestL6DefaultOnADR0159:
         report = admit_skill_import(
             _FakeParsed(), [plan],
             skip_l2=True,
-            skip_l5_exec=True,
             skip_binding_check=True,
             audit_log=False,
-            semantic_verifier=_mock_verify,
         )
         assert called["n"] == 1
         assert len(report.rejected) == 1

@@ -129,52 +129,11 @@ class TestAuditLogWritten:
         assert line["verdict"]["aligned"] is True
 
 
-class TestMultiModelConsensus:
-    """Con `LLM_VERIFY_MODELS=m1,m2,m3`, majority wins."""
-
-    def test_majority_aligned_wins(self, tmp_path, monkeypatch):
+class TestRouterOwnsModelSelection:
+    def test_public_api_does_not_accept_models(self):
+        import inspect
         from synt_stage6_verify import verify_semantic_alignment
-        import synt_stage6_verify as s6
-        monkeypatch.setattr(s6, "VERIFY_AUDIT_DIR", tmp_path / "audit")
-        # Mock: m1 e m2 dicono aligned=True; m3 dice aligned=False
-        responses = {
-            "m1": '{"aligned": true, "mismatch": ""}',
-            "m2": '{"aligned": true, "mismatch": ""}',
-            "m3": '{"aligned": false, "mismatch": "noise"}',
-        }
-        def fake_call(prompt, model):
-            return {"text": responses[model]}
-        result = verify_semantic_alignment(
-            description="test",
-            code_body="def invoke(args): pass",
-            llm_call=fake_call,
-            name_hint="consensus_test",
-            models=("m1", "m2", "m3"),
-        )
-        # 2/3 aligned → aligned True
-        assert result["aligned"] is True
-        assert result["model"] == "consensus:3"
-
-    def test_majority_misaligned_wins(self, tmp_path, monkeypatch):
-        from synt_stage6_verify import verify_semantic_alignment
-        import synt_stage6_verify as s6
-        monkeypatch.setattr(s6, "VERIFY_AUDIT_DIR", tmp_path / "audit")
-        responses = {
-            "m1": '{"aligned": false, "mismatch": "code does X not Y"}',
-            "m2": '{"aligned": false, "mismatch": "missing feature"}',
-            "m3": '{"aligned": true, "mismatch": ""}',
-        }
-        def fake_call(prompt, model):
-            return {"text": responses[model]}
-        result = verify_semantic_alignment(
-            description="test",
-            code_body="def invoke(args): pass",
-            llm_call=fake_call,
-            name_hint="consensus_misaligned",
-            models=("m1", "m2", "m3"),
-        )
-        # 2/3 misaligned → aligned False
-        assert result["aligned"] is False
+        assert "models" not in inspect.signature(verify_semantic_alignment).parameters
 
 
 class TestParseVerifyJson:

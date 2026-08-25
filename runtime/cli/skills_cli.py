@@ -289,8 +289,6 @@ def _cmd_import(args) -> int:
         executor_dir=executors_dir,
         skip_binding_check=skip_binding,
         skip_l2=bool(args.skip_l2),
-        skip_l5_exec=bool(args.skip_l5_exec),
-        skip_l6=bool(args.skip_l6),
     )
     print(f"  accepted: {len(report.accepted)}")
     print(f"  rejected: {len(report.rejected)}")
@@ -733,10 +731,6 @@ def main(argv=None) -> int:
                     help="re-import: skip binding uniqueness check")
     sp.add_argument("--no-sign", action="store_true", help="skip Ed25519 sign")
     sp.add_argument("--skip-l2", action="store_true", help="skip L2 affinity check (dev)")
-    sp.add_argument("--skip-l5-exec", action="store_true",
-                    help="skip L5 smoke at-import (dev / CI veloce, ADR 0159)")
-    sp.add_argument("--skip-l6", action="store_true",
-                    help="skip L6 semantic verifier (dev / CI veloce, ADR 0159)")
     sp.add_argument("--skip-smoke-battery", action="store_true",
                     help="skip auto-add to BATTERY_IMPORTS (dev/test)")
     sp.set_defaults(func=_cmd_import)

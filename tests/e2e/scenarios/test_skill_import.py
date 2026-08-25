@@ -75,7 +75,7 @@ async def test_skill_import_mock_roundtrip(driver, server):
 
     # Import
     r = _run_cli(["import", str(tmp_skills / "SKILL.md"),
-                   "--skip-l2", "--skip-l6",
+                   "--skip-l2",
                    "--skip-smoke-battery", "--no-sign"],
                   env=env, timeout_s=120)
     if r.returncode != 0:
@@ -125,7 +125,7 @@ async def test_skill_import_mock_roundtrip(driver, server):
     # Uninstall --purge-source
     # Re-import first (otherwise no skill_dir to purge)
     r = _run_cli(["import", str(tmp_skills / "SKILL.md"),
-                   "--skip-l2", "--skip-l6",
+                   "--skip-l2",
                    "--skip-smoke-battery", "--no-sign"],
                   env=env, timeout_s=120)
     assert r.returncode == 0, "re-import failed"
@@ -171,10 +171,11 @@ async def test_skill_import_google_workspace_real(driver, server):
 
     env = _server_env(server)
 
-    # Import (skip L6 perche' richiede LLM call ~30s per executor)
+    # Import con tutti i gate di ammissione obbligatori; si escludono soltanto
+    # controlli non appartenenti a L5/L6 e la firma del fixture temporaneo.
     r = _run_cli(
         ["import", str(tmp_google / "SKILL.md"),
-         "--skip-l2", "--skip-l6", "--skip-smoke-battery", "--no-sign"],
+         "--skip-l2", "--skip-smoke-battery", "--no-sign"],
         env=env, timeout_s=300,
     )
     imports_dir = server.user_data / "executors" / "skills" / "google-workspace"

@@ -80,7 +80,7 @@ def _import_google_skill(env: dict, tmp_root: Path) -> None:
     r = subprocess.run(
         [sys.executable, "-m", "runtime.cli.skills_cli", "import",
          str(target_skill / "SKILL.md"),
-         "--skip-l2", "--skip-l6", "--skip-smoke-battery", "--no-sign"],
+         "--skip-l2", "--skip-smoke-battery", "--no-sign"],
         cwd=str(_REPO_ROOT), env=env,
         capture_output=True, text=True, timeout=300,
     )

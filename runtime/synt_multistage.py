@@ -476,8 +476,7 @@ def _register_synth_keys(code: str) -> int:
 
 def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
              llm_call_creative=None, llm_call_fidelity=None,
-             progress=None, lint_manifest_fn=None,
-             semantic_verify_fn=None) -> MultistageRun:
+             progress=None) -> MultistageRun:
     """Orchestratore a 6 stadi, separato per contratto di workload.
 
     Stages 1-3 are procedural (middle), stage 4 is editorial (creative),
@@ -536,13 +535,10 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     # (PATTERN con arg inventato, arg runtime_resolved citato, output-shape) senza
     # spendere una call LLM. Rigetta solo su severity 'error' (difetti genuini);
     # i 'warn' (es. SCOPO lungo) sono loggati. La policy non è modificabile
-    # tramite ambiente; i test possono iniettare una funzione esplicita.
+    # tramite API o ambiente; i test isolati sostituiscono il simbolo interno.
     try:
         import config as _C_lint
-        if lint_manifest_fn is None:
-            from manifest_lint import lint_manifest as _lint
-        else:
-            _lint = lint_manifest_fn
+        from manifest_lint import lint_manifest as _lint
         _man = {
             "name": run.name or (s1.output.get("name") if s1.output else "") or "",
             "description": (s4.output.get("description") if s4.output else "") or "",
@@ -579,14 +575,11 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     # Stage 6 — semantic verification (ADR 0114 Layer 6, 8/5/2026).
     # Confronta description (s4) vs code (s5). Se misaligned → rejected.
     # Determinismo §7.9: LLM solo per il giudizio, mai per la decisione.
-    # La policy non è modificabile tramite ambiente; i test iniettano il
-    # verificatore quando devono isolare questo stadio.
+    # La policy non è modificabile tramite API o ambiente; i test isolati
+    # sostituiscono il simbolo interno quando devono separare questo stadio.
     try:
         from synt_stage6_verify import SemanticVerdictInvalid, validate_stage6_verdict
-        if semantic_verify_fn is None:
-            from synt_stage6_verify import verify_semantic_alignment
-        else:
-            verify_semantic_alignment = semantic_verify_fn
+        from synt_stage6_verify import verify_semantic_alignment
         description = (s4.output.get("description") or "") if s4 and s4.output else ""
         code_body = run.code_text or ""
         if not description or not code_body:

@@ -8,8 +8,9 @@ i misalignments.
 
 Determinismo §7.9: solo JSON parsing strict, retry 1x su malformed,
 un payload malformato o un servizio indisponibile sollevano un errore tipizzato
-e il chiamante rifiuta il candidato. Un eventuale consenso multi-modello viene
-iniettato dalla politica versionata, mai dall'ambiente.
+e il chiamante rifiuta il candidato. Il router seleziona l'unico tier
+autorevole previsto dalla politica versionata; il chiamante non può scegliere
+modelli alternativi.
 
 Audit append a `~/.local/share/metnos/synth_audit/verify_<ts>_<hash>.jsonl`.
 
@@ -145,7 +146,6 @@ def verify_semantic_alignment(
     timeout_s: float = 5.0,
     llm_call: Callable[[str, str], dict] | None = None,
     name_hint: str = "verify",
-    models: tuple[str, ...] | None = None,
 ) -> dict:
     """Verifica che il `code_body` esegua quello che `description` dichiara.
 
@@ -161,13 +161,12 @@ def verify_semantic_alignment(
         {
           "aligned": bool,
           "mismatch": str (spiegazione, max 200 char),
-          "model": str (modello consultato; "consensus:N" se multi-model),
+          "model": str (tier selezionato dal router),
           "raw": dict | None (raw output JSON parsed; None se malformato),
         }
 
     Behavior:
-        - Un solo modello dal router per default; una tupla esplicita e
-          versionata può richiedere consenso multi-modello.
+        - Un solo tier autorevole, selezionato dal router.
         - Retry 1x su malformed JSON.
         - Dopo due payload malformati solleva `SemanticVerdictInvalid`.
         - Audit append per ogni verify call (PROMPT + RESPONSE + parsed).
@@ -179,45 +178,12 @@ def verify_semantic_alignment(
     if llm_call is None:
         llm_call = _default_llm_call
 
-    selected_models = models or (tier_for("synt.semantic_verify"),)
-    if not selected_models or any(
-        not isinstance(model, str) or not model.strip()
-        for model in selected_models
-    ):
-        raise ValueError("models must be a non-empty tuple of non-empty strings")
-
-    # Single model path (default)
-    if len(selected_models) == 1:
-        model = selected_models[0]
-        verdict, raw_text = _single_verify(prompt, model, llm_call)
-        out = {**verdict, "model": _request_label(model),
-               "raw": _parse_verify_json(raw_text or "")}
-        _write_audit(name_hint, prompt, raw_text, verdict, [model])
-        return out
-
-    # Multi-model consensus path
-    verdicts: list[tuple[str, dict, str]] = []  # (model, verdict, raw_text)
-    for m in selected_models:
-        v, raw_text = _single_verify(prompt, m, llm_call)
-        verdicts.append((m, v, raw_text))
-    # Majority wins on `aligned` field; tie → False (fail-safe).
-    aligned_count = sum(1 for _, v, _ in verdicts if v.get("aligned"))
-    misaligned_count = len(verdicts) - aligned_count
-    final_aligned = aligned_count > misaligned_count
-    # Concatena mismatch reasons di chi disagrees con il vincitore
-    losers = [v for _, v, _ in verdicts
-              if v.get("aligned") != final_aligned]
-    mismatch = "; ".join(v.get("mismatch", "") for v in losers if v.get("mismatch")) \
-              or (verdicts[0][1].get("mismatch", "") if not final_aligned else "")
-    out = {
-        "aligned": final_aligned,
-        "mismatch": mismatch[:200],
-        "model": f"consensus:{len(selected_models)}",
-        "raw": [{"model": m, "verdict": v} for m, v, _ in verdicts],
-    }
-    _write_audit(name_hint, prompt, "\n---\n".join(rt for _, _, rt in verdicts),
-                 {"aligned": final_aligned, "mismatch": mismatch[:200]},
-                 [m for m, _, _ in verdicts])
+    model = tier_for("synt.semantic_verify")
+    verdict, raw_text = _single_verify(prompt, model, llm_call)
+    out = {**verdict, "model": _request_label(model),
+           "raw": _parse_verify_json(raw_text or "")}
+    validate_stage6_verdict(out)
+    _write_audit(name_hint, prompt, raw_text, verdict, [model])
     return out
 
 
