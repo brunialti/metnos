@@ -188,10 +188,12 @@ I domini byte sono rispettivamente
 Il codec V1 rappresenta ogni valore come tag di tipo di un byte, lunghezza del
 payload unsigned a 64 bit big-endian e payload. Mappe e array antepongono anche
 la cardinalità unsigned a 64 bit. I tag di null, stringa UTF-8, intero con
-segno, booleano, array e mappa sono distinti; il booleano non è un intero. Le
+segno in complemento a due minimo, booleano, array e mappa sono rispettivamente
+`n`, `s`, `i`, `b`, `a` e `m`; il booleano non è un intero. Le
 chiavi di mappa sono stringhe e si ordinano per byte UTF-8. I vettori golden del
-codec e delle tre identità sono normativi e un loro cambiamento richiede una
-nuova versione.
+codec e delle tre identità in
+`tests/runtime/executors/test_executor_birth_identity.py` sono normativi e un
+loro cambiamento richiede una nuova versione.
 
 `candidate_id` comprende `ContractId.value`, la proiezione TOML tipizzata del
 manifest priva del solo blocco runtime-owned `birth`, stato linguistico, tutti i
