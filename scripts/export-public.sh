@@ -79,7 +79,6 @@ tutor/cards/retired/|
 CLAUDE(\.mutabile)?\.md$|
 AGENTS\.md$|
 \.review_status\.md$|
-\.github/workflows/portable-executor-birth-runner\.yml$|
 report_llm_locale_vs_opus.*\.md$|
 bench_prefilter_new_rules\.py$|
 decisions/executor_requests\.jsonl$|
