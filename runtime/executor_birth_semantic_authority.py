@@ -53,6 +53,21 @@ if os.name == "nt":
             ("file_index_low", wintypes.DWORD),
         ]
 
+    class _WinFileStandardInfo(ctypes.Structure):
+        _fields_ = [
+            ("allocation_size", ctypes.c_longlong),
+            ("end_of_file", ctypes.c_longlong),
+            ("links", wintypes.DWORD),
+            ("delete_pending", ctypes.c_ubyte),
+            ("directory", ctypes.c_ubyte),
+        ]
+
+    class _WinFileAttributeTagInfo(ctypes.Structure):
+        _fields_ = [
+            ("attributes", wintypes.DWORD),
+            ("reparse_tag", wintypes.DWORD),
+        ]
+
     _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
     _KERNEL32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD,
         wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
@@ -61,6 +76,10 @@ if os.name == "nt":
     _KERNEL32.GetFileInformationByHandle.argtypes = (wintypes.HANDLE,
                                                       ctypes.POINTER(_WinFileInfo))
     _KERNEL32.GetFileInformationByHandle.restype = wintypes.BOOL
+    _KERNEL32.GetFileInformationByHandleEx.argtypes = (
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD,
+    )
+    _KERNEL32.GetFileInformationByHandleEx.restype = wintypes.BOOL
     _KERNEL32.GetFinalPathNameByHandleW.argtypes = (wintypes.HANDLE,
         wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD)
     _KERNEL32.GetFinalPathNameByHandleW.restype = wintypes.DWORD
@@ -95,6 +114,24 @@ def _win_info(handle: int) -> tuple[int, ...]:
     return (info.attributes, info.write_high, info.write_low, info.volume,
             info.size_high, info.size_low, info.links, info.file_index_high,
             info.file_index_low)
+
+
+def _win_file_shape(handle: int) -> tuple[int, int, int, bool, bool]:
+    """Return type/size/link state using the non-legacy Win32 layouts."""
+    standard = _WinFileStandardInfo()
+    if not _KERNEL32.GetFileInformationByHandleEx(
+        handle, 1, ctypes.byref(standard), ctypes.sizeof(standard),
+    ):
+        raise _win_error("GetFileInformationByHandleEx(FileStandardInfo)")
+    tagged = _WinFileAttributeTagInfo()
+    if not _KERNEL32.GetFileInformationByHandleEx(
+        handle, 9, ctypes.byref(tagged), ctypes.sizeof(tagged),
+    ):
+        raise _win_error("GetFileInformationByHandleEx(FileAttributeTagInfo)")
+    return (
+        int(tagged.attributes), int(standard.end_of_file), int(standard.links),
+        bool(standard.delete_pending), bool(standard.directory),
+    )
 
 
 def _win_final_path(handle: int) -> str:
@@ -154,14 +191,21 @@ def _secure_file_bytes(path: Path, *, maximum: int, error: str) -> bytes:
         try:
             handle = _win_open(path, directory=False)
             before = _win_info(handle)
-            attributes, _, _, _, high, low, links, _, _ = before
-            size = (high << 32) | low
-            if attributes & 0x00000400 or attributes & 0x00000010 or links != 1 or size > maximum:
+            shape_before = _win_file_shape(handle)
+            attributes, size, links, delete_pending, directory = shape_before
+            if (
+                attributes & 0x00000400 or directory or delete_pending
+                or links != 1 or size < 0 or size > maximum
+            ):
                 raise ValueError("unsafe file")
             if _win_final_path(handle) != os.path.normcase(os.path.abspath(path)):
                 raise ValueError("unexpected final path")
             raw = _win_read(handle, maximum)
-            if len(raw) > maximum or _win_info(handle) != before:
+            if (
+                len(raw) > maximum or len(raw) != size
+                or _win_info(handle) != before
+                or _win_file_shape(handle) != shape_before
+            ):
                 raise ValueError("file changed")
             return raw
         except (OSError, ValueError) as exc:
@@ -329,15 +373,22 @@ class PreprovisionedSemanticAuthority:
         try:
             handle = _win_open(self.evidence_dir / name, directory=False)
             before = _win_info(handle)
-            attributes, _, _, _, high, low, links, _, _ = before
-            size = (high << 32) | low
-            if attributes & (0x00000400 | 0x00000010) or links != 1 or size > _MAX_EVIDENCE_BYTES:
+            shape_before = _win_file_shape(handle)
+            attributes, size, links, delete_pending, directory = shape_before
+            if (
+                attributes & 0x00000400 or directory or delete_pending
+                or links != 1 or size < 0 or size > _MAX_EVIDENCE_BYTES
+            ):
                 raise ValueError("unsafe evidence")
             final = _win_final_path(handle)
             if os.path.dirname(final) != final_directory or os.path.basename(final) != os.path.normcase(name):
                 raise ValueError("unexpected evidence path")
             raw = _win_read(handle, _MAX_EVIDENCE_BYTES)
-            if len(raw) > _MAX_EVIDENCE_BYTES or _win_info(handle) != before:
+            if (
+                len(raw) > _MAX_EVIDENCE_BYTES or len(raw) != size
+                or _win_info(handle) != before
+                or _win_file_shape(handle) != shape_before
+            ):
                 raise ValueError("evidence changed")
             return self._decode_record(raw, name)
         except SemanticReviewError:
