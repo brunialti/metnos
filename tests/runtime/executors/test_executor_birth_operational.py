@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import inspect
 import shutil
+import sqlite3
 import threading
 import tomllib
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,7 +29,7 @@ from executor_birth_receipts import (
     IssuerKey, IssuerRegistry, issue_producer_receipt,
 )
 from executor_birth_shadow import (
-    BirthOutcome, RevisionFacts, _assemble_production_dependencies,
+    BirthOutcome, BirthReport, RevisionFacts, _assemble_production_dependencies,
 )
 from manifest_inventory import ContractId, ManifestOrigin, ManifestRef, ManifestStatus
 
@@ -113,7 +115,7 @@ def test_public_request_cannot_supply_trust_or_publication_authorities():
     assert "_core" not in inspect.signature(birth_executor).parameters
 
 
-def test_admitted_pipeline_consumes_receipt_issues_admission_and_publishes_once(tmp_path):
+def test_admitted_pipeline_commits_receipt_and_replays_verified_postcondition(tmp_path):
     calls = []
 
     def publisher(ref, *, expected_generation_id, snapshot, request_id,
@@ -138,9 +140,36 @@ def test_admitted_pipeline_consumes_receipt_issues_admission_and_publishes_once(
     assert not calls[0].private_root.exists()
 
     replay = _birth_executor_for_test(request, _core=core)
-    assert replay.publication is None
-    assert replay.report.outcome is BirthOutcome.REJECTED
+    assert replay.publication is not None
+    assert replay.report.outcome is BirthOutcome.ADMITTED
     assert len(calls) == 1
+
+
+def test_terminal_envelope_tampering_fails_closed_before_checks_or_publish(monkeypatch, tmp_path):
+    calls = []
+    def publisher(ref, *, expected_generation_id, **_kwargs):
+        calls.append(1)
+        return PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", False,
+        )
+    request, core = _fixture(tmp_path, publisher)
+    assert _birth_executor_for_test(request, _core=core).error_code is None
+    with sqlite3.connect(core.producer_db) as db:
+        envelope = db.execute(
+            "SELECT terminal_envelope FROM birth_producer_receipts"
+        ).fetchone()[0]
+        db.execute(
+            "UPDATE birth_producer_receipts SET terminal_envelope=?",
+            (bytes(envelope) + b" ",),
+        )
+    monkeypatch.setattr(
+        operational, "_observe_birth_for_test",
+        lambda *_args, **_kwargs: pytest.fail("tampered terminal reran checks"),
+    )
+    replay = _birth_executor_for_test(request, _core=core)
+    assert replay.error_code == "birth_unavailable"
+    assert calls == [1]
 
 
 def test_source_binding_rejection_reports_and_never_calls_publisher(tmp_path):
@@ -163,6 +192,136 @@ def test_publisher_failure_is_a_rejection_not_a_false_admission(tmp_path):
     assert result.report.outcome is BirthOutcome.REJECTED
     assert result.report.error_code == "birth_unavailable"
     assert result.publication is None
+
+
+def test_ambiguous_publisher_failure_keeps_claim_for_exact_retry(tmp_path):
+    calls = []
+
+    def publisher(ref, *, expected_generation_id, **_kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("lost response after possible commit")
+        return PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", True,
+        )
+
+    request, core = _fixture(tmp_path, publisher)
+    first = _birth_executor_for_test(request, _core=core)
+    assert first.error_code == "birth_unavailable"
+    retry = _birth_executor_for_test(request, _core=core)
+    assert retry.error_code is None
+    assert retry.publication is not None and retry.publication.repeated
+    replay = _birth_executor_for_test(request, _core=core)
+    assert replay.error_code is None
+    assert len(calls) == 2
+
+
+def test_crash_between_publisher_postcondition_and_finalize_is_retryable(
+    monkeypatch, tmp_path,
+):
+    publications = []
+
+    def publisher(ref, *, expected_generation_id, **_kwargs):
+        publications.append(1)
+        return PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", bool(len(publications) > 1),
+        )
+
+    request, core = _fixture(tmp_path, publisher)
+    reconciliations = []
+    def verify_postcondition(_request, expected, _receipt):
+        reconciliations.append(expected)
+        if expected is not None:
+            return expected
+        if publications:
+            return PublicationResult(
+                request.manifest_ref.contract_id, None, "sha256:" + "3" * 64,
+                "commit_birth_snapshot", True,
+            )
+        return None
+    core = replace(core, postcondition_verifier=verify_postcondition)
+    real_finalize = operational.finalize_producer_receipt
+    finalizations = []
+
+    def crash_once(*args, **kwargs):
+        finalizations.append(1)
+        if len(finalizations) == 1:
+            raise OSError("process lost before receipt finalization")
+        return real_finalize(*args, **kwargs)
+
+    monkeypatch.setattr(operational, "finalize_producer_receipt", crash_once)
+    first = _birth_executor_for_test(request, _core=core)
+    assert first.error_code == "birth_unavailable"
+    retry = _birth_executor_for_test(request, _core=core)
+    assert retry.error_code is None
+    assert retry.publication is not None and retry.publication.repeated
+    assert len(publications) == 1 and len(finalizations) == 2
+    assert reconciliations == [None]
+
+
+def test_non_admission_is_durably_rejected_and_replayed_without_checks_or_publish(
+    monkeypatch, tmp_path,
+):
+    calls = []
+    request, core = _fixture(tmp_path, lambda *_args, **_kwargs: calls.append(1))
+    rejected = BirthReport(
+        1, request.manifest_ref.contract_id, None, None, None, None, (), (),
+        BirthOutcome.REJECTED, "semantic_review_failed",
+    )
+    observations = []
+
+    def reject(*_args, **_kwargs):
+        observations.append(1)
+        return rejected
+
+    monkeypatch.setattr(operational, "_observe_birth_for_test", reject)
+    first = _birth_executor_for_test(request, _core=core)
+    assert first.error_code == "semantic_review_failed"
+    assert len(observations) == 1 and calls == []
+    monkeypatch.setattr(
+        operational, "_observe_birth_for_test",
+        lambda *_args, **_kwargs: pytest.fail("terminal rejection reran checks"),
+    )
+    replay = _birth_executor_for_test(request, _core=core)
+    assert replay.error_code == "semantic_review_failed"
+    assert replay.report.outcome is BirthOutcome.REJECTED
+    assert calls == []
+
+
+def test_concurrent_exact_retries_converge_on_one_committed_binding(tmp_path):
+    barrier = threading.Barrier(2)
+    lock = threading.Lock()
+    publications = []
+
+    def publisher(ref, *, expected_generation_id, **_kwargs):
+        barrier.wait(timeout=5)
+        result = PublicationResult(
+            ref.contract_id, expected_generation_id, "sha256:" + "3" * 64,
+            "commit_birth_snapshot", True,
+        )
+        with lock:
+            publications.append(result)
+        return result
+
+    request, core = _fixture(tmp_path, publisher)
+    results = []
+
+    def execute():
+        value = _birth_executor_for_test(request, _core=core)
+        with lock:
+            results.append(value)
+
+    threads = [threading.Thread(target=execute) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert not any(thread.is_alive() for thread in threads)
+    assert len(results) == 2
+    assert all(result.error_code is None for result in results)
+    assert len(publications) == 2
 
 
 def test_runtime_bundle_install_is_atomic_and_install_once(monkeypatch, tmp_path):

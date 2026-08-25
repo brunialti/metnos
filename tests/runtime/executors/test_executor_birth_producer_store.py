@@ -350,4 +350,4 @@ def test_v1_database_migrates_available_and_consumed_without_reopening_authority
                                     request_id=REQUEST, now=ISSUED, db_path=db)
     assert replay.state == "rejected" and replay.rejection_code == "legacy_terminal"
     with sqlite3.connect(db) as check:
-        assert check.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert check.execute("PRAGMA user_version").fetchone()[0] == 3
