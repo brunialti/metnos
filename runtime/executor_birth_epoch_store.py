@@ -12,6 +12,7 @@ import sqlite3
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Mapping
 
 from manifest_inventory import ContractId
 from executor_birth_feedback import QuarantineCAS
@@ -85,6 +86,25 @@ class EpochRecord:
     state_version: int
 
 
+@dataclass(frozen=True, slots=True)
+class ExecutionEpochAttestation:
+    """Exact lifecycle facts re-read for one execution attempt."""
+
+    contract_id: ContractId
+    generation_id: str
+    name: str
+    state: EpochState
+    lifecycle: BirthLifecycle
+    state_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class EpochReplacement:
+    closed_generation_id: str
+    closed_state_version: int
+    opened: EpochRecord
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS executor_epochs (
   contract_id TEXT NOT NULL, generation_id TEXT NOT NULL,
@@ -128,6 +148,8 @@ CREATE TABLE IF NOT EXISTS executor_legacy_state (
     CHECK(resolution IN ('unresolved','attested','discarded')),
   migrated_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_executor_legacy_exact
+  ON executor_legacy_state(legacy_table,legacy_name,legacy_row_json);
 CREATE TABLE IF NOT EXISTS executor_preexercise_cache (
   contract_id TEXT NOT NULL, generation_id TEXT NOT NULL,
   lifecycle TEXT NOT NULL CHECK(lifecycle IN
@@ -197,6 +219,133 @@ def open_epoch(*, contract_id: ContractId, generation_id: str, name: str,
             raise EpochStoreError("epoch_conflict", str(exc)) from exc
         connection.commit()
         return EpochRecord(cid, gid, values[0], values[1], EpochState.CURRENT, lifecycle, 1)
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def attest_execution_epoch(
+    *, contract_id: ContractId, generation_id: str, name: str, db_path: Path,
+) -> ExecutionEpochAttestation:
+    """Re-read an exact epoch without resolving by executor name.
+
+    The caller supplies all three immutable identities obtained from the
+    authenticated generation.  Legacy name-only rows and successor generations
+    therefore cannot satisfy this lookup.
+    """
+    cid, gid = _contract(contract_id), _generation(generation_id)
+    expected_name = _text(name, "name")
+    connection = _open(db_path)
+    try:
+        row = connection.execute(
+            "SELECT name,state,lifecycle,state_version FROM executor_epochs "
+            "WHERE contract_id=? AND generation_id=?",
+            (cid, gid),
+        ).fetchone()
+        if row is None:
+            raise EpochStoreError("execution.runner_absent")
+        if row["name"] != expected_name:
+            raise EpochStoreError("execution.runner_absent", "name_mismatch")
+        lifecycle = BirthLifecycle(row["lifecycle"])
+        state = EpochState(row["state"])
+        if lifecycle is BirthLifecycle.QUARANTINED:
+            raise EpochStoreError("execution.quarantined")
+        if lifecycle in {BirthLifecycle.DEPRECATED, BirthLifecycle.ARCHIVED} or state is not EpochState.CURRENT:
+            raise EpochStoreError("execution.retired")
+        if lifecycle is not BirthLifecycle.ACTIVE:
+            raise EpochStoreError("execution.dormant")
+        return ExecutionEpochAttestation(
+            contract_id, gid, expected_name, state, lifecycle,
+            int(row["state_version"]),
+        )
+    finally:
+        connection.close()
+
+
+def replace_current_epoch(
+    *, contract_id: ContractId, expected_generation_id: str,
+    expected_state_version: int, generation_id: str, name: str, source: str,
+    lifecycle: BirthLifecycle, observed_at: str, db_path: Path,
+    event_kind: str, historic_epoch_ref: str | None = None,
+) -> EpochReplacement:
+    """Atomically close an exact current epoch and open a clean successor.
+
+    The publication and authenticated reread must already have completed.  The
+    exact predecessor generation and version are nevertheless compared again,
+    preventing a late publisher or feedback event from replacing a newer
+    selection.  Counters are intentionally not copied to the new epoch.
+    """
+    cid = _contract(contract_id)
+    old_gid, new_gid = (_generation(expected_generation_id),
+                        _generation(generation_id))
+    if old_gid == new_gid:
+        raise EpochStoreError("epoch_invalid", "successor generation")
+    if type(expected_state_version) is not int or expected_state_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_state_version")
+    if not isinstance(lifecycle, BirthLifecycle):
+        raise EpochStoreError("epoch_invalid", "lifecycle")
+    clean_name = _text(name, "name")
+    clean_source = _text(source, "source")
+    ts = _text(observed_at, "observed_at")
+    event = _text(event_kind, "event_kind")
+    if historic_epoch_ref is not None:
+        _text(historic_epoch_ref, "historic_epoch_ref")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            "SELECT generation_id,state_version FROM executor_epochs "
+            "WHERE contract_id=? AND state='current'", (cid,),
+        ).fetchone()
+        if (current is None or current["generation_id"] != old_gid
+                or int(current["state_version"]) != expected_state_version):
+            raise EpochStoreError("epoch_conflict", "stale predecessor")
+        closed = connection.execute(
+            "UPDATE executor_epochs SET state='deprecated',lifecycle='deprecated',"
+            "state_version=state_version+1,updated_at=? WHERE contract_id=? "
+            "AND generation_id=? AND state='current' AND state_version=?",
+            (ts, cid, old_gid, expected_state_version),
+        )
+        if closed.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale predecessor")
+        connection.execute(
+            "DELETE FROM executor_preexercise_cache WHERE contract_id=? AND generation_id=?",
+            (cid, old_gid),
+        )
+        connection.execute(
+            "INSERT INTO executor_epoch_history(contract_id,generation_id,event_seq,ts,event_kind,"
+            "prior_state_version,new_state_version,detail_json) "
+            "SELECT ?,?,COALESCE(MAX(event_seq),0)+1,?,?,?,?,? FROM executor_epoch_history "
+            "WHERE contract_id=? AND generation_id=?",
+            (cid, old_gid, ts, event + "_predecessor_closed", expected_state_version,
+             expected_state_version + 1, json.dumps(
+                 {"state": "deprecated", "successor_generation_id": new_gid},
+                 sort_keys=True, separators=(",", ":")), cid, old_gid),
+        )
+        connection.execute(
+            "INSERT INTO executor_epochs(contract_id,generation_id,name,source,state,lifecycle,"
+            "first_seen_at,historic_epoch_ref,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (cid, new_gid, clean_name, clean_source, EpochState.CURRENT.value,
+             lifecycle.value, ts, historic_epoch_ref, ts, ts),
+        )
+        connection.execute(
+            "INSERT INTO executor_epoch_history(contract_id,generation_id,event_seq,ts,event_kind,"
+            "source,prior_state_version,new_state_version,detail_json) VALUES(?,?,?,?,?,?,?,?,?)",
+            (cid, new_gid, 1, ts, event, clean_source, None, 1, json.dumps({
+                "historic_epoch_ref": historic_epoch_ref,
+                "lifecycle": lifecycle.value,
+                "predecessor_generation_id": old_gid,
+            }, sort_keys=True, separators=(",", ":"))),
+        )
+        connection.commit()
+        return EpochReplacement(
+            old_gid, expected_state_version + 1,
+            EpochRecord(cid, new_gid, clean_name, clean_source,
+                        EpochState.CURRENT, lifecycle, 1),
+        )
+    except sqlite3.IntegrityError as exc:
+        raise EpochStoreError("epoch_conflict", str(exc)) from exc
     finally:
         if connection.in_transaction:
             connection.rollback()
@@ -298,6 +447,77 @@ def get_cache(key: EpochCacheKey, *, db_path: Path) -> bytes | None:
         ).fetchone()
         return None if row is None else bytes(row["payload"])
     finally:
+        connection.close()
+
+
+def record_execution(
+    key: EpochCacheKey, *, expected_version: int, successful: bool,
+    occurred_at: str, db_path: Path,
+) -> None:
+    """Count one invocation only against the exact selectable generation."""
+    if type(expected_version) is not int or expected_version < 1:
+        raise EpochStoreError("epoch_invalid", "expected_version")
+    if type(successful) is not bool:
+        raise EpochStoreError("epoch_invalid", "successful")
+    ts = _text(occurred_at, "occurred_at")
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        updated = connection.execute(
+            "UPDATE executor_epochs SET total_calls=total_calls+1,"
+            "successful_calls=successful_calls+?,failed_calls=failed_calls+?,"
+            "last_call_ok=?,last_used_at=?,updated_at=? WHERE contract_id=? "
+            "AND generation_id=? AND lifecycle=? AND state='current' AND state_version=?",
+            (1 if successful else 0, 0 if successful else 1, 1 if successful else 0,
+             ts, ts, key.contract_id.value, key.generation_id, key.lifecycle.value,
+             expected_version),
+        )
+        if updated.rowcount != 1:
+            raise EpochStoreError("epoch_conflict", "stale execution identity")
+        connection.commit()
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
+def preserve_legacy_rows(
+    *, legacy_table: str, rows: tuple[Mapping[str, object], ...],
+    migrated_at: str, db_path: Path,
+) -> int:
+    """Preserve legacy state without guessing an unauthenticated generation.
+
+    Rows remain ``unresolved`` until a separate attestation binds them to a
+    Birth generation. Exact retries are idempotent.
+    """
+    table, ts = _text(legacy_table, "legacy_table"), _text(migrated_at, "migrated_at")
+    if not isinstance(rows, tuple):
+        raise EpochStoreError("legacy_migration_invalid", "rows")
+    encoded: list[tuple[str, str]] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            raise EpochStoreError("legacy_migration_invalid", "row")
+        name = _text(row.get("name"), "legacy_name")
+        try:
+            body = json.dumps(dict(row), sort_keys=True, separators=(",", ":"),
+                              ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise EpochStoreError("legacy_migration_invalid", "json") from exc
+        encoded.append((name, body))
+    connection = _open(db_path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        before = connection.total_changes
+        for name, body in encoded:
+            connection.execute(
+                "INSERT OR IGNORE INTO executor_legacy_state(legacy_name,legacy_table,"
+                "legacy_row_json,migrated_at) VALUES(?,?,?,?)", (name, table, body, ts))
+        count = connection.total_changes - before
+        connection.commit()
+        return count
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
         connection.close()
 
 

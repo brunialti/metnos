@@ -277,6 +277,50 @@ def test_unknown_or_untrusted_executor_fails_closed():
         resolver.resolve("executor", "read_files_ocr")
 
 
+def test_preexercise_executor_never_persists_a_durable_revision_or_memo(tmp_path):
+    from durable_workloads.storage import DurableWorkloadStore
+
+    executor = SimpleNamespace(
+        name="read_files_ocr", signed_by="test-authority",
+        lifecycle="preexercise", dormant=False,
+        digest="sha256:" + "a" * 64, version="1.0.0",
+        args_schema={
+            "type": "object", "properties": {"paths": {"type": "array"}},
+        },
+        capabilities=(), placement={}, transport="local-subprocess",
+        intelligence="deterministic", execution_policy_declared=False,
+    )
+    resolver = VerifiedCatalogResolver(
+        catalog_loader=lambda **_kwargs: SimpleNamespace(get=lambda _name: executor),
+        durable_effects={"read_files_ocr": ("pure",)},
+        durable_output_schemas={"read_files_ocr": ("metnos.test-map/1",)},
+    )
+    with DurableWorkloadStore.open(tmp_path / "durable.sqlite") as store:
+        draft = store.create_draft(
+            "owner-preexercise", "preexercise-never-durable",
+            redacted_request={"summary": "fixture"},
+        )
+        with pytest.raises(CompilationError, match="not active"):
+            admit_candidate(
+                store, "owner-preexercise", draft.workload_id,
+                _pipeline(), inventory([source(0)]),
+                expected_version=draft.version, runners=resolver,
+                output_schemas=_schemas(),
+            )
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM revisions"
+        ).fetchone()[0] == 0
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM units"
+        ).fetchone()[0] == 0
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM attempts"
+        ).fetchone()[0] == 0
+        assert store._connection.execute(
+            "SELECT COUNT(*) FROM results"
+        ).fetchone()[0] == 0
+
+
 def test_verified_executor_scheduler_policy_is_frozen_into_its_contract():
     executor = SimpleNamespace(
         signed_by="test-authority",

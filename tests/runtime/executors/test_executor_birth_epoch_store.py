@@ -4,6 +4,7 @@ import pytest
 
 from executor_birth_epoch_store import (
     BirthLifecycle, EpochCacheKey, EpochState, EpochStoreError,
+    attest_execution_epoch,
     get_cache, open_epoch, put_cache, transition_epoch,
     quarantine_for_feedback,
 )
@@ -133,6 +134,61 @@ def test_no_legacy_or_untyped_cache_key_default(tmp_path):
         EpochCacheKey(CID.value, G1, BirthLifecycle.PREEXERCISE)  # type: ignore[arg-type]
     with pytest.raises(EpochStoreError, match="lifecycle"):
         EpochCacheKey(CID, G1, "preexercise")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(("lifecycle", "code"), [
+    (BirthLifecycle.PREEXERCISE, "execution.dormant"),
+    (BirthLifecycle.QUARANTINED, "execution.quarantined"),
+    (BirthLifecycle.DEPRECATED, "execution.retired"),
+    (BirthLifecycle.ARCHIVED, "execution.retired"),
+])
+def test_execution_epoch_rejects_each_non_active_lifecycle_exactly(
+    tmp_path, lifecycle, code,
+):
+    db = tmp_path / f"{lifecycle.value}.sqlite"
+    if lifecycle is BirthLifecycle.ARCHIVED:
+        _open(db, lifecycle=BirthLifecycle.ACTIVE)
+        version = transition_epoch(
+            EpochCacheKey(CID, G1, BirthLifecycle.ACTIVE), expected_version=1,
+            new_state=EpochState.DEPRECATED,
+            new_lifecycle=BirthLifecycle.DEPRECATED,
+            event_kind="retired", occurred_at=NOW, db_path=db,
+        )
+        transition_epoch(
+            EpochCacheKey(CID, G1, BirthLifecycle.DEPRECATED),
+            expected_version=version, new_state=EpochState.ARCHIVED,
+            new_lifecycle=BirthLifecycle.ARCHIVED,
+            event_kind="archived", occurred_at=NOW, db_path=db,
+        )
+    else:
+        _open(db, lifecycle=lifecycle)
+    with pytest.raises(EpochStoreError) as raised:
+        attest_execution_epoch(
+            contract_id=CID, generation_id=G1, name="demo", db_path=db,
+        )
+    assert raised.value.code == code
+
+
+def test_execution_epoch_requires_exact_contract_generation_and_name(tmp_path):
+    db = tmp_path / "epochs.sqlite"
+    _open(db, lifecycle=BirthLifecycle.ACTIVE)
+    attestation = attest_execution_epoch(
+        contract_id=CID, generation_id=G1, name="demo", db_path=db,
+    )
+    assert (attestation.contract_id, attestation.generation_id,
+            attestation.lifecycle, attestation.state_version) == (
+        CID, G1, BirthLifecycle.ACTIVE, 1,
+    )
+    with pytest.raises(EpochStoreError) as wrong_generation:
+        attest_execution_epoch(
+            contract_id=CID, generation_id=G2, name="demo", db_path=db,
+        )
+    assert wrong_generation.value.code == "execution.runner_absent"
+    with pytest.raises(EpochStoreError) as wrong_name:
+        attest_execution_epoch(
+            contract_id=CID, generation_id=G1, name="successor", db_path=db,
+        )
+    assert wrong_name.value.code == "execution.runner_absent"
 
 
 def test_feedback_cas_never_quarantines_successor_b_for_receipt_a(tmp_path):

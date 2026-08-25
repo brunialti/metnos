@@ -26,11 +26,11 @@ from durable_workloads.coordinator import (
     parse_instant,
 )
 from durable_workloads.execution import DurableExecutionBridge
-from durable_workloads.models import RunnerKind, UnitState, WorkloadState
+from durable_workloads.models import ExecutionContext, RunnerKind, UnitState, WorkloadState
 from durable_workloads.schema import MAX_SNAPSHOT_JSON_BYTES, digest_json
 from durable_workloads.service import DurableWorkerService
 from durable_workloads.storage import DurableStoreError, DurableWorkloadStore
-from durable_workloads.worker import DurableWorker, WorkerRunStatus
+from durable_workloads.worker import DurableWorker, ExecutionFailure, WorkerRunStatus
 from helpers import inventory, plan, source, source_resolution
 from llm_telemetry import (
     BoundedTransportUsageSink,
@@ -260,6 +260,95 @@ class _Resolver:
         if (kind, name) == ("workload", "entries.describe"):
             return self.reduce
         raise LookupError(name)
+
+
+class _ExactResolver(_Resolver):
+    def attest_executor(self, name, executor):
+        assert name == executor.name
+        return self.map
+
+
+def _strict_invoke(bridge, contract):
+    return bridge._invoke(
+        contract,
+        {"stage": {"effect_profile": "pure"}},
+        {},
+        ExecutionContext(
+            "owner", "workload", "revision", "stage", "unit", "attempt",
+            "normal", (), "2099-01-01T00:00:00Z",
+        ),
+        None,
+    )
+
+
+@pytest.mark.parametrize(("lifecycle", "dormant", "code"), [
+    ("preexercise", False, "execution.dormant"),
+    ("active", True, "execution.dormant"),
+    ("deprecated", False, "execution.retired"),
+    ("archived", False, "execution.retired"),
+    ("quarantined", False, "execution.quarantined"),
+])
+def test_strict_f5_attempt_rejects_lifecycle_before_guard_or_invocation(
+    lifecycle, dormant, code,
+):
+    resolver = _ExactResolver()
+    calls = []
+    executor = SimpleNamespace(
+        name="read_files_ocr", lifecycle=lifecycle, dormant=dormant,
+        contract_id="user:demo/manifest.toml",
+        generation_id="sha256:" + "1" * 64,
+    )
+    bridge = DurableExecutionBridge(
+        SimpleNamespace(), runners=resolver, output_schemas=_schemas(),
+        executor_loader=lambda _name: executor,
+        executor_invoker=lambda *_args: calls.append("invoked"),
+        executor_generation_attestor=lambda _executor: calls.append("guarded"),
+        require_generation_attestation=True,
+    )
+    with pytest.raises(ExecutionFailure) as raised:
+        _strict_invoke(bridge, resolver.map)
+    assert json.loads(raised.value.error.payload_json)["code"] == code
+    assert calls == []
+
+
+def test_strict_f5_guard_is_reexecuted_for_every_attempt_and_has_no_name_digest_fallback():
+    resolver = _ExactResolver()
+    counts = {"guard": 0, "invoke": 0}
+    executor = SimpleNamespace(
+        name="read_files_ocr", lifecycle="active", dormant=False,
+        contract_id="user:demo/manifest.toml",
+        generation_id="sha256:" + "1" * 64,
+    )
+
+    def guard(_executor):
+        counts["guard"] += 1
+
+    def invoke(*_args):
+        counts["invoke"] += 1
+        return {"ok": True}
+
+    bridge = DurableExecutionBridge(
+        SimpleNamespace(), runners=resolver, output_schemas=_schemas(),
+        executor_loader=lambda _name: executor, executor_invoker=invoke,
+        executor_generation_attestor=guard,
+        require_generation_attestation=True,
+    )
+    _strict_invoke(bridge, resolver.map)
+    _strict_invoke(bridge, resolver.map)
+    assert counts == {"guard": 2, "invoke": 2}
+
+    fallback = DurableExecutionBridge(
+        SimpleNamespace(), runners=_Resolver(), output_schemas=_schemas(),
+        executor_loader=lambda _name: executor,
+        executor_invoker=lambda *_args: pytest.fail("fallback invoked"),
+        executor_generation_attestor=lambda _executor: None,
+        require_generation_attestation=True,
+    )
+    with pytest.raises(ExecutionFailure) as raised:
+        _strict_invoke(fallback, resolver.map)
+    assert json.loads(raised.value.error.payload_json)["code"] == (
+        "execution.loaded_executor_changed"
+    )
 
 
 def _reduce_stage() -> dict:
