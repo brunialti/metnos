@@ -125,9 +125,16 @@ predicato è falso. Il publisher non viene chiamato.
 `candidate_source_id`, `issued_at`, `expires_at`, `nonce` e `authentication`.
 È autenticata, monouso e non derivabile dal manifest.
 
+`candidate_source_id` autentica l'insieme chiuso presente in una radice di
+staging dedicata. La radice locale non entra nella ricevuta e non conferisce
+autorità: serve soltanto a localizzare i byte attestati.
+
 `BirthRequest` contiene `request_id`, `manifest_ref`, `expected_revision_id`,
 `producer_receipt`, `actor`, `reason`, `approval_refs` e `operation_hint`.
-L'ultimo campo è informativo.
+Contiene inoltre `candidate_source_root`, percorso locale della staging root
+dedicata. Il percorso non entra in alcuna identità ed è valido soltanto se la
+copia chiusa produce il `candidate_source_id` della ricevuta. `operation_hint`
+è informativo.
 
 `CandidateSnapshot` contiene `private_root`, `ContractId`, `manifest_bytes`,
 `language_state_bytes`, la mappa completa `code_files[path, bytes]`,
@@ -173,16 +180,37 @@ un record incompleto produce `feedback_binding_invalid` senza quarantena.
 ## 6. Identità
 
 Le identità usano SHA-256, campi delimitati dalla lunghezza e domini versionati.
-`semantic_core_id` usa il dominio byte
-`metnos.executor-birth.semantic-core/v1\0`.
+I domini byte sono rispettivamente
+`metnos.executor-birth.candidate/v1\0`,
+`metnos.executor-birth.semantic-core/v1\0` e
+`metnos.executor-birth.admission-context/v1\0`.
 
-`candidate_id` comprende percorso e byte del manifest senza firma e campi Birth,
-stato linguistico, tutti i file di codice ordinati per percorso UTF-8, origine,
-autore e `objective_hash`. Esclude timestamp, percorsi assoluti, modello e audit.
+Il codec V1 rappresenta ogni valore come tag di tipo di un byte, lunghezza del
+payload unsigned a 64 bit big-endian e payload. Mappe e array antepongono anche
+la cardinalità unsigned a 64 bit. I tag di null, stringa UTF-8, intero con
+segno, booleano, array e mappa sono distinti; il booleano non è un intero. Le
+chiavi di mappa sono stringhe e si ordinano per byte UTF-8. I vettori golden del
+codec e delle tre identità sono normativi e un loro cambiamento richiede una
+nuova versione.
+
+`candidate_id` comprende `ContractId.value`, la proiezione TOML tipizzata del
+manifest priva del solo blocco runtime-owned `birth`, stato linguistico, tutti i
+file di codice ordinati per percorso UTF-8, origine, autore e `objective_hash`.
+Commenti, spazi e ordine TOML non cambiano l'identità; un cambiamento dei byte
+linguistici sì quando cambia il valore analizzato. Firma, predecessore,
+timestamp, percorsi assoluti, modello e audit sono esclusi. Il manifest sorgente
+non può dichiarare il blocco `birth`: soltanto Birth può produrlo durante il
+commit. La rimozione nella proiezione serve alla rilettura del risultato finale,
+non permette al produttore di fornirlo.
 
 Per `semantic_core_id`, Birth analizza TOML con il parser autorevole e costruisce
-una proiezione tipizzata. Rimuove soltanto le superfici linguistiche enumerate
-in `LINGUISTIC_SURFACE_PATHS_V1` e il blocco runtime-owned Birth. Nome, ciclo di
+una proiezione tipizzata. `MANIFEST_FIELD_GRAMMAR_V1` è una grammatica ricorsiva
+chiusa: enumera chiavi tecniche per ogni tabella, distingue mappe i cui nomi sono
+dati (`properties`, fixture e risultati attesi) e non accetta estensioni
+implicite. `LINGUISTIC_SURFACE_PATHS_V1` è il predicato versionato che seleziona
+la `description` radice e ogni `description` localizzata nei nodi JSON Schema
+ammessi sotto `args`; non è una lista derivata dal catalogo installato. La
+proiezione rimuove soltanto tali superfici e il blocco runtime-owned Birth. Nome, ciclo di
 vita, codice, schemi, capacità, ambito, effetti, undo, collocazione, piattaforma,
 sandbox, affinità, prove e campi tecnici restano inclusi. Un campo sconosciuto
 produce `semantic_core_unknown_field` e impedisce il trasporto dell'evidenza.
@@ -198,9 +226,12 @@ I percorsi di `code.files` sono relativi, POSIX, canonici e privi di `..`, link,
 duplicati o collisioni di maiuscole. Tutti i byte entrano nel digest. La versione
 della proiezione e della lista linguistica entra nel framing.
 
-`admission_context_id` comprende digest e versioni di Standard, linter,
-vocabolario, registri di autorità e sandbox, catalogo proprietà, runner,
-politica di revisione e liste ammesse di template, primitive e dipendenze.
+`admission_context_id` usa una struttura V1 chiusa con undici componenti
+obbligatori, ciascuno formato da versione non vuota e digest SHA-256 canonico:
+Standard, linter, vocabolario, registro di autorità, registro sandbox, catalogo
+proprietà, runner, politica di revisione e liste ammesse di template, primitive
+e dipendenze. La versione della struttura entra nel framing. Campi mancanti o
+aggiuntivi sono rifiutati.
 Qualunque modifica del contesto invalida revisione e approvazione: la prima
 versione non tenta di classificare cambiamenti come permissivi.
 
@@ -210,6 +241,15 @@ Sotto `catalog_admission_lock`, Birth autentica e consuma la ricevuta del
 produttore, verifica predecessore e unicità, copia l'insieme chiuso in una
 directory privata senza link e calcola le identità. Poi libera il blocco. Ogni
 controllo legge soltanto la copia.
+
+Ogni nuovo produttore consegna una staging root dedicata contenente esattamente
+`manifest.toml`, `manifest.lang_state.json`, i file dichiarati da `code.files` e
+le sole directory parent necessarie. Firma, file aggiuntivi, link simbolici,
+reparse point, hard link, device, FIFO e socket sono vietati. I riferimenti a
+codice condiviso esterno non sono ammessi nella staging: il produttore copia
+tutti i file dichiarati. Durante la migrazione, una sorgente legacy che non può
+provare questo envelope produce `candidate_envelope_unattested` e non ottiene un
+falso esito positivo.
 
 I controlli fuori blocco seguono questo ordine: identità e ciclo di vita; TOML,
 Standard e schemi; vocabolario; chiusura file, contenimento, AST, import ed entry
@@ -507,7 +547,8 @@ Input: `birth_request_invalid`, `producer_receipt_invalid|expired|replayed`,
 
 Copia/identità: `candidate_path_invalid`, `candidate_file_missing|extra`,
 `candidate_link_forbidden`, `candidate_changed`, `snapshot_unavailable`,
-`semantic_core_unknown_field`, `semantic_core_type_unsupported`.
+`candidate_envelope_unattested`, `semantic_core_unknown_field`,
+`semantic_core_type_unsupported`.
 
 Controlli: `revision_class_invalid`, `evidence_obsolete`,
 `evidence_transport_forbidden`, `admission_context_changed`,

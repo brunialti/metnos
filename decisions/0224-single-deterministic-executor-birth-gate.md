@@ -2,7 +2,7 @@
 id: 0224
 title: Single deterministic birth gate with a synthesized-executor review branch
 date: 2026-08-25
-status: proposed
+status: accepted
 area: executor | synt | signing | policy
 related:
   - 0114
@@ -85,8 +85,10 @@ one-time legacy cutover retain their dedicated, non-birth boundaries.
 
 The complete candidate specification is RM-0008,
 `internal/roadmap/RM-0008-porta-unica-nascita-executor.md`. It remains under
-analysis until adversarial review converges; this ADR does not authorize
-implementation.
+versioned adversarial review. Roberto approved the converged specification and
+authorized implementation on 25 August 2026. F1 also fixed the three identity
+domains, canonical framing, closed admission context and dedicated candidate
+staging envelope before their code was introduced.
 
 ## Alternatives considered
 
