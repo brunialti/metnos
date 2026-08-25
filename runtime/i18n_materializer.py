@@ -16,16 +16,20 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Iterator, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping
 
 import config as _C
 from i18n_registry import LocalizationRegistry, normalize_language
 from manifest_inventory import (
     ManifestOrigin,
+    ManifestRef,
     ManifestSource,
     default_manifest_sources,
     inventory_manifests,
 )
+
+if TYPE_CHECKING:
+    from contract_store import VerifiedManifest
 
 
 _HUMAN_REVIEW_DETECTION_KINDS = frozenset({"regex"})
@@ -148,14 +152,14 @@ def manifest_language_selectors(
             child = node.get(keyword)
             if isinstance(child, Mapping):
                 visit_schema(child, (*path, keyword))
-            elif isinstance(child, list):
+            elif isinstance(child, (list, tuple)):
                 for index, item in enumerate(child):
                     if isinstance(item, Mapping):
                         visit_schema(item, (*path, keyword, str(index)))
 
         for keyword in sorted(_SCHEMA_LIST_CHILDREN):
             children = node.get(keyword)
-            if not isinstance(children, list):
+            if not isinstance(children, (list, tuple)):
                 continue
             for index, child in enumerate(children):
                 if isinstance(child, Mapping):
@@ -497,6 +501,11 @@ class InventoryItem:
     source_text: str
     metadata: Mapping[str, Any] = field(default_factory=dict)
     manual_review: bool = False
+    basis_id: str | None = None
+    contract_ref: ManifestRef | None = None
+
+
+ContractSnapshotProvider = Callable[[ManifestRef], "VerifiedManifest"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,7 +583,11 @@ def _manifest_sources(roots: tuple[Path, ...]) -> tuple[ManifestSource, ...]:
     return tuple(selected)
 
 
-def _iter_contract_items(paths: LocalizationPaths, source_lang: str) -> Iterator[InventoryItem]:
+def _iter_contract_items(
+    paths: LocalizationPaths,
+    source_lang: str,
+    contract_snapshot_provider: ContractSnapshotProvider | None = None,
+) -> Iterator[InventoryItem]:
     manifest_inventory = inventory_manifests(
         _manifest_sources(paths.manifest_roots),
     )
@@ -584,24 +597,86 @@ def _iter_contract_items(paths: LocalizationPaths, source_lang: str) -> Iterator
             for problem in manifest_inventory.problems[:8]
         )
         raise ValueError(f"manifest inventory is not clean: {summary}")
-    for ref in manifest_inventory.manifests:
+    refs = (
+        manifest_inventory.manifests
+        if contract_snapshot_provider is None
+        else manifest_inventory.admitted()
+    )
+    for ref in refs:
         path = ref.manifest_path
-        raw = path.read_bytes()
-        manifest = tomllib.loads(raw.decode("utf-8"))
-        for selector, source in iter_localized_text_tables(manifest, source_lang):
+        basis_id: str | None = None
+        if contract_snapshot_provider is None:
+            raw = path.read_bytes()
+            manifest = tomllib.loads(raw.decode("utf-8"))
+            manifest_hash = sha256_bytes(raw)
+        else:
+            snapshot = contract_snapshot_provider(ref)
+            if snapshot.contract_id != ref.contract_id:
+                raise ValueError(
+                    "contract snapshot identity does not match inventory: "
+                    f"{ref.contract_id}"
+                )
+            basis_id = snapshot.generation_id
+            if (
+                not isinstance(basis_id, str)
+                or _CONTRACT_DIGEST_RE.fullmatch(basis_id) is None
+            ):
+                raise ValueError(
+                    f"verified generation unavailable: {ref.contract_id}"
+                )
+            if not isinstance(snapshot.parsed, Mapping):
+                raise ValueError(
+                    f"verified manifest unavailable: {ref.contract_id}"
+                )
+            manifest = snapshot.parsed
+            if (
+                not isinstance(snapshot.manifest_hash, str)
+                or _CONTRACT_DIGEST_RE.fullmatch(snapshot.manifest_hash) is None
+            ):
+                raise ValueError(
+                    f"verified manifest hash unavailable: {ref.contract_id}"
+                )
+            manifest_hash = snapshot.manifest_hash.removeprefix("sha256:")
+        name = manifest.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError(f"manifest name unavailable: {ref.contract_id}")
+        for selector, languages in manifest_language_selectors(manifest).items():
+            source = languages.get(source_lang)
+            if not isinstance(source, str):
+                if contract_snapshot_provider is not None:
+                    raise ValueError(
+                        "verified contract surface has no source language: "
+                        f"{ref.contract_id}:{selector}:{source_lang}"
+                    )
+                continue
+            language_hashes = {
+                str(language): "sha256:" + sha256_text(text)
+                for language, text in languages.items()
+                if isinstance(language, str) and isinstance(text, str)
+            }
+            metadata: dict[str, Any] = {
+                "manifest_relative": ref.manifest_relative,
+                "manifest_hash": manifest_hash,
+                "selector": selector,
+                "executor": name,
+                "contract_id": str(ref.contract_id),
+                "origin": ref.origin.value,
+                "status": ref.status.value,
+            }
+            # The legacy publisher still needs its authoring destination until
+            # M4.  A versioned candidate deliberately carries only structural
+            # identity; registry metadata cannot grant a destination path.
+            if basis_id is None:
+                metadata["manifest_path"] = str(path)
+            else:
+                metadata["language_hashes"] = language_hashes
             yield InventoryItem(
-                resource_id=f"contract:{ref.name}:{selector}",
+                resource_id=f"contract:{name}:{selector}",
                 layer="contract", source_lang=source_lang,
                 source_hash=sha256_text(source), source_text=source,
-                metadata={
-                    "manifest_path": str(path),
-                    "manifest_relative": ref.manifest_relative,
-                    "manifest_hash": sha256_bytes(raw), "selector": selector,
-                    "executor": ref.name,
-                    "contract_id": str(ref.contract_id),
-                    "origin": ref.origin.value,
-                    "status": ref.status.value,
-                },
+                metadata=metadata,
+                basis_id=basis_id,
+                contract_ref=ref,
             )
 
 
@@ -742,11 +817,12 @@ def inventory(
     paths: LocalizationPaths,
     *,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
+    contract_snapshot_provider: ContractSnapshotProvider | None = None,
 ) -> tuple[InventoryItem, ...]:
     source = normalize_language(source_lang)
     items = [
         *_iter_prompt_items(paths, source),
-        *_iter_contract_items(paths, source),
+        *_iter_contract_items(paths, source, contract_snapshot_provider),
         *_iter_message_items(paths, source),
         *_iter_detection_items(paths, source),
         *_iter_knowledge_items(paths, source),
@@ -872,6 +948,7 @@ def materialize(
     registry: LocalizationRegistry,
     paths: LocalizationPaths | None = None,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
+    contract_snapshot_provider: ContractSnapshotProvider | None = None,
 ) -> MaterializationReport:
     """Register the corpus and create idempotent target placeholders."""
     paths = paths or LocalizationPaths()
@@ -879,7 +956,11 @@ def materialize(
     target = normalize_language(target_lang)
     if source == target:
         raise ValueError("source and target language must differ")
-    items = inventory(paths, source_lang=source)
+    items = inventory(
+        paths,
+        source_lang=source,
+        contract_snapshot_provider=contract_snapshot_provider,
+    )
     target_root = paths.prompts / target
     (target_root / "_pending").mkdir(parents=True, exist_ok=True)
     prompt_state_path = target_root / ".lang_state.json"
@@ -896,6 +977,7 @@ def materialize(
     for item in items:
         registered = registry.register(
             item.resource_id, item.layer, source, target, item.source_hash,
+            basis_id=item.basis_id,
             metadata=item.metadata, manual_review=item.manual_review,
         )
         by_layer[item.layer] = by_layer.get(item.layer, 0) + 1
@@ -910,6 +992,10 @@ def materialize(
                 ),
             })
         elif item.layer == "contract":
+            if item.basis_id is not None:
+                # M3 versioned publication is deliberately dormant and never
+                # mirrors the authoring companion before the M4 cutover.
+                continue
             state_path = Path(str(item.metadata["manifest_path"])).with_name(
                 "manifest.lang_state.json"
             )

@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
+import tomllib
 from pathlib import Path
 
-from i18n_materializer import LocalizationPaths, inventory, materialize
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from contract_store import current_manifest, publish_signed_source
+from i18n_materializer import (
+    LocalizationPaths,
+    encode_language_state,
+    inventory,
+    manifest_language_selectors,
+    materialize,
+)
 from i18n_registry import LocalizationRegistry
+from manifest_inventory import (
+    ManifestOrigin,
+    ManifestSource,
+    inventory_manifests,
+)
+from sign import sign_manifest_bytes
 
 
 def _fixture(tmp_path: Path) -> LocalizationPaths:
@@ -25,7 +42,6 @@ def _fixture(tmp_path: Path) -> LocalizationPaths:
         '[output]\nschema_inline="{ok: bool}"\n',
         encoding="utf-8",
     )
-
     messages = tmp_path / "messages.sqlite"
     conn = sqlite3.connect(messages)
     conn.executescript(
@@ -58,6 +74,110 @@ def _fixture(tmp_path: Path) -> LocalizationPaths:
         public_messages_db=messages, docs=tmp_path / "docs",
         include_runtime_catalogs=False,
     )
+
+
+def _logical_text_hash(value: str) -> str:
+    return "sha256:" + hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _versioned_fixture(tmp_path: Path):
+    paths = _fixture(tmp_path)
+    directory = tmp_path / "executors" / "sample"
+    code = directory / "sample.py"
+    code.write_text(
+        "def invoke(args):\n    return {'ok': True}\n",
+        encoding="utf-8",
+    )
+    code_digest = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest()
+    manifest = directory / "manifest.toml"
+    manifest.write_text(
+        f'''manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+name = "read_files"
+version = "1.0.0"
+
+[description]
+en = "SCOPO: Read a file. PATTERN: sample(path=\\\"/tmp/example\\\"). NON: other operations. OUT: ok=true."
+it = "SCOPO: Leggere un file. PATTERN: sample(path=\\\"/tmp/example\\\"). NON: altre operazioni. OUT: ok=true."
+
+[code]
+files = ["sample.py"]
+digest = "{code_digest}"
+
+[args]
+type = "object"
+required = ["path"]
+
+[args.properties.path]
+type = "string"
+
+[args.properties.path.description]
+en = "File path {{ value }}"
+it = "Percorso del file {{ value }}"
+
+[output]
+schema_inline = "{{ok: bool}}"
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
+
+[[tests]]
+name = "sample"
+input = {{ path = "/tmp/example" }}
+expect = {{ ok = true }}
+''',
+        encoding="utf-8",
+    )
+    parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    state = {
+        "schema_version": 1,
+        "selectors": {
+            selector: {
+                language: {
+                    "version_hash": _logical_text_hash(text),
+                    "source_lang": None,
+                    "source_hash": None,
+                }
+                for language, text in languages.items()
+            }
+            for selector, languages in manifest_language_selectors(parsed).items()
+        },
+    }
+    (directory / "manifest.lang_state.json").write_bytes(
+        encode_language_state(state, manifest=parsed)
+    )
+    private_key = Ed25519PrivateKey.generate()
+    (directory / "manifest.toml.sig").write_bytes(
+        sign_manifest_bytes(manifest.read_bytes(), private_key=private_key)
+    )
+    source = ManifestSource(
+        ManifestOrigin.EXPLICIT,
+        paths.manifest_roots[0],
+        min_depth=1,
+        max_depth=1,
+        allowed_code_roots=(paths.manifest_roots[0],),
+    )
+    manifest_inventory = inventory_manifests((source,))
+    assert not manifest_inventory.problems
+    ref = manifest_inventory.admitted()[0]
+    trusted = (("test-author", private_key.public_key()),)
+    store = tmp_path / "contract-store-shadow"
+    publication = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    def snapshot_provider(current_ref):
+        return current_manifest(
+            current_ref,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    return paths, ref, private_key, trusted, store, publication, snapshot_provider
 
 
 def test_inventory_enumerates_all_supported_layers_without_schema_prose(tmp_path):
@@ -143,3 +263,55 @@ def test_materialization_migrates_legacy_detection_policy_schema(tmp_path):
     conn.close()
     assert "review_policy" in columns
     assert target == ("automatic",)
+
+
+def test_versioned_contract_materialization_uses_verified_generation_without_mirror(
+    tmp_path: Path,
+):
+    (
+        paths,
+        ref,
+        _private_key,
+        _trusted,
+        _store,
+        publication,
+        snapshot_provider,
+    ) = _versioned_fixture(tmp_path)
+    authoring = {
+        name: (ref.manifest_dir / name).read_bytes()
+        for name in (
+            "manifest.toml",
+            "manifest.toml.sig",
+            "manifest.lang_state.json",
+        )
+    }
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+
+    materialize(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+    )
+
+    records = [row for row in registry.resources("nl") if row.layer == "contract"]
+    assert records
+    assert {row.basis_id for row in records} == {publication.current_generation_id}
+    assert all("manifest_path" not in row.metadata for row in records)
+    assert all(row.metadata["contract_id"] == str(ref.contract_id) for row in records)
+    assert all("language_hashes" in row.metadata for row in records)
+    items = [
+        item
+        for item in inventory(
+            paths,
+            source_lang="en",
+            contract_snapshot_provider=snapshot_provider,
+        )
+        if item.layer == "contract"
+    ]
+    assert all(item.contract_ref == ref for item in items)
+    assert all(item.basis_id == publication.current_generation_id for item in items)
+    assert authoring == {
+        name: (ref.manifest_dir / name).read_bytes()
+        for name in authoring
+    }

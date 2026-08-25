@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from install import preflight
 from install import sidecar
-from install.phases import phase2_infra, phase3_code
+from install.phases import phase1_bootstrap, phase2_infra, phase3_code
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -55,6 +55,29 @@ def test_install_manifest_is_current_parseable_inventory() -> None:
     assert lre_config["mode"] == "0600"
     for stale_name in ("myclaw", "suprastructure", "giorgio2", "minilm"):
         assert stale_name not in text.lower()
+
+
+def test_tomlkit_runtime_dependency_has_one_exact_version() -> None:
+    dependency = "tomlkit==0.15.0"
+    with (ROOT / "install" / "manifest.toml").open("rb") as handle:
+        manifest_required = tomllib.load(handle)["runtime"]["python_packages"][
+            "required"
+        ]
+
+    for declarations in (
+        (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines(),
+        (ROOT / "tests" / "portable" / "requirements.txt").read_text(
+            encoding="utf-8",
+        ).splitlines(),
+        manifest_required,
+        phase1_bootstrap._RUNTIME_DEPS,
+    ):
+        matches = [
+            item.strip()
+            for item in declarations
+            if re.match(r"(?i)^tomlkit(?=$|[\s<>=!~;@\[])", item.strip())
+        ]
+        assert matches == [dependency]
 
 
 def test_every_manifest_service_source_exists() -> None:

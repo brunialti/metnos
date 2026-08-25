@@ -22,6 +22,7 @@ psutil
 python-dateutil
 tomli-w
 tomli; python_version < "3.11"
+tomlkit==0.15.0
 openpyxl==3.1.5
 pypdf==6.10.2
 pdfminer.six==20260107

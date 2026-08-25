@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import contextlib
 import errno
 import hashlib
 import json
 import multiprocessing
 import os
+import threading
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -21,6 +23,9 @@ from contract_store import (
     BINDING_FILE,
     GENERATION_FILES,
     ContractStoreError,
+    LocalizationPatch,
+    SurfaceRemoval,
+    TechnicalDraft,
     contract_storage_key,
     current_manifest,
     decode_binding,
@@ -28,7 +33,10 @@ from contract_store import (
     encode_binding,
     generation_directory_name,
     generation_id,
+    prepare_technical_draft,
+    publish_localization,
     publish_signed_source,
+    publish_technical_update,
     read_binding,
     verify_manifest_source,
 )
@@ -48,6 +56,7 @@ from manifest_inventory import (
 )
 from sign import sign_manifest_bytes
 import contract_store as contract_store_module
+from audit_jsonl import append_jsonl
 
 
 def _hash_text(value: str) -> str:
@@ -60,9 +69,11 @@ def _manifest_text(
     code_file: str,
     code_digest: str,
     it_text: str = "SCOPO: prova. PATTERN: sample(). NON: modifica. OUT: results=[].",
-    en_text: str = "SCOPE: test. PATTERN: sample(). NOT: modify. OUT: results=[].",
+    en_text: str = "SCOPO: test. PATTERN: sample(). NON: modify. OUT: results=[].",
 ) -> str:
-    return f'''name = "{name}"
+    return f'''manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+name = "{name}"
 version = "1.0.0"
 
 [description]
@@ -72,6 +83,18 @@ en = "{en_text}"
 [code]
 files = ["{code_file}"]
 digest = "{code_digest}"
+
+[output]
+schema_inline = "{{ ok: bool, results: list }}"
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
+
+[[tests]]
+name = "sample"
+input = {{}}
+expect = {{ ok = true }}
 
 [args]
 type = "object"
@@ -143,6 +166,20 @@ def test_nested_json_schema_descriptions_are_canonical_surfaces() -> None:
     )
 
 
+def test_every_admitted_contract_has_an_exact_editing_round_trip() -> None:
+    shared_inventory = inventory_manifests()
+    assert not shared_inventory.problems
+    manifests = shared_inventory.admitted()
+    assert manifests
+    failures: list[str] = []
+    for ref in manifests:
+        try:
+            contract_store_module._editable_manifest(ref.manifest_path.read_bytes())
+        except ContractStoreError as exc:
+            failures.append(f"{ref.contract_id}: {exc.code}")
+    assert not failures, "\n".join(failures)
+
+
 def _inventory_ref(
     root: Path,
     *,
@@ -164,12 +201,15 @@ def _inventory_ref(
 def _create_source(
     tmp_path: Path,
     *,
-    name: str = "sample",
+    name: str = "read_files",
 ) -> tuple[Path, ManifestRef, Ed25519PrivateKey, tuple[tuple[str, Any], ...]]:
     root = tmp_path / "sources"
-    directory = root / name
+    # Keep the storage slug independent from the manifest-owned canonical
+    # name: the contract identity is structural, while the executor name must
+    # obey the naming authority.
+    directory = root / ("sample" if name == "read_files" else name)
     directory.mkdir(parents=True)
-    code = directory / f"{name}.py"
+    code = directory / f"{directory.name}.py"
     code.write_text("def invoke(args):\n    return {'results': []}\n", encoding="utf-8")
     digest = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest()
     manifest = directory / "manifest.toml"
@@ -557,6 +597,24 @@ def test_trusted_publics_are_snapshotted_and_validated_completely(
         )
 
 
+def test_publication_cannot_bypass_standard_by_removing_its_declaration(
+    tmp_path: Path,
+) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    text = ref.manifest_path.read_text(encoding="utf-8")
+    ref.manifest_path.write_text(
+        text.replace('executor_standard = "metnos.executor/1.0"\n', "", 1),
+        encoding="utf-8",
+    )
+    (ref.manifest_dir / "manifest.toml.sig").write_bytes(sign_manifest_bytes(
+        ref.manifest_path.read_bytes(), private_key=private,
+    ))
+    refreshed = _inventory_ref(root, name="read_files")
+
+    with pytest.raises(ContractStoreError, match="standard_missing"):
+        verify_manifest_source(refreshed, trusted_publics=trusted)
+
+
 def test_source_snapshot_rejects_an_inventory_reference_made_stale(
     tmp_path: Path,
 ) -> None:
@@ -739,7 +797,7 @@ def test_signed_technical_update_authenticates_old_cas_without_old_code(
     (ref.manifest_dir / "manifest.toml.sig").write_bytes(sign_manifest_bytes(
         ref.manifest_path.read_bytes(), private_key=private,
     ))
-    refreshed = _inventory_ref(root, name="sample")
+    refreshed = _inventory_ref(root, name="read_files")
 
     second = publish_signed_source(
         refreshed,
@@ -783,7 +841,7 @@ def test_published_generation_accepts_a_structural_ref_without_authoring_facts(
     )
 
     assert snapshot.generation_id == published.current_generation_id
-    assert snapshot.parsed["name"] == "sample"
+    assert snapshot.parsed["name"] == "read_files"
 
 
 def test_existing_generation_is_reused_or_rejected_without_replacement(
@@ -1188,7 +1246,7 @@ def test_builtin_parent_paths_and_allowed_symlink_targets_are_general(
     digest = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest()
     manifest = directory / "manifest.toml"
     manifest.write_text(_manifest_text(
-        name="sample", code_file="../../shared.py", code_digest=digest,
+        name="read_files", code_file="../../shared.py", code_digest=digest,
     ), encoding="utf-8")
     parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
     (directory / "manifest.lang_state.json").write_bytes(
@@ -1200,7 +1258,7 @@ def test_builtin_parent_paths_and_allowed_symlink_targets_are_general(
     ))
     ref = _inventory_ref(
         contracts,
-        name="sample",
+        name="read_files",
         origin=ManifestOrigin.BUILTIN,
         allowed_code_roots=(runtime_root,),
     )
@@ -1214,7 +1272,7 @@ def test_builtin_parent_paths_and_allowed_symlink_targets_are_general(
     outside.write_text("VALUE = 2\n", encoding="utf-8")
     outside_digest = "sha256:" + hashlib.sha256(outside.read_bytes()).hexdigest()
     manifest.write_text(_manifest_text(
-        name="sample", code_file="../../../outside.py", code_digest=outside_digest,
+        name="read_files", code_file="../../../outside.py", code_digest=outside_digest,
     ), encoding="utf-8")
     parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
     (directory / "manifest.lang_state.json").write_bytes(
@@ -1225,7 +1283,7 @@ def test_builtin_parent_paths_and_allowed_symlink_targets_are_general(
     ))
     escaped_ref = _inventory_ref(
         contracts,
-        name="sample",
+        name="read_files",
         origin=ManifestOrigin.BUILTIN,
         allowed_code_roots=(runtime_root,),
     )
@@ -1251,7 +1309,7 @@ def test_code_symlink_requires_both_lexical_and_resolved_roots(tmp_path: Path) -
     digest = "sha256:" + hashlib.sha256(target.read_bytes()).hexdigest()
     manifest = directory / "manifest.toml"
     manifest.write_text(_manifest_text(
-        name="sample", code_file="shared.py", code_digest=digest,
+        name="read_files", code_file="shared.py", code_digest=digest,
     ), encoding="utf-8")
     parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
     (directory / "manifest.lang_state.json").write_bytes(
@@ -1264,7 +1322,7 @@ def test_code_symlink_requires_both_lexical_and_resolved_roots(tmp_path: Path) -
     trusted = (("author", private.public_key()),)
     allowed = _inventory_ref(
         executors,
-        name="sample",
+        name="read_files",
         origin=ManifestOrigin.CORE,
         allowed_code_roots=(executors, runtime),
     )
@@ -1272,7 +1330,7 @@ def test_code_symlink_requires_both_lexical_and_resolved_roots(tmp_path: Path) -
 
     denied = _inventory_ref(
         executors,
-        name="sample",
+        name="read_files",
         origin=ManifestOrigin.CORE,
         allowed_code_roots=(executors,),
     )
@@ -1313,3 +1371,907 @@ def test_diagnostics_are_read_only(tmp_path: Path) -> None:
     assert {item.code for item in diagnostics} >= {
         "generation_structure", "lock_file_missing", "orphan_threshold_exceeded",
     }
+
+
+def _localization_patch(
+    snapshot,
+    *,
+    selector: str,
+    source_language: str,
+    target_language: str,
+    candidate: str,
+) -> LocalizationPatch:
+    table = manifest_language_selectors(snapshot.parsed)[selector]
+    source = table[source_language]
+    previous = table.get(target_language)
+    return LocalizationPatch(
+        selector=selector,
+        source_hash=_hash_text(source),
+        previous_target_hash=(None if previous is None else _hash_text(previous)),
+        candidate_text=candidate,
+        candidate_hash=_hash_text(candidate),
+    )
+
+
+def _rewrite_authoring_state(ref: ManifestRef) -> ManifestRef:
+    parsed = tomllib.loads(ref.manifest_path.read_text(encoding="utf-8"))
+    (ref.manifest_dir / "manifest.lang_state.json").write_bytes(
+        encode_language_state(_state_for(parsed), manifest=parsed)
+    )
+    return _inventory_ref(Path(ref.source_root), name=str(parsed["name"]))
+
+
+def test_localization_publication_is_atomic_idempotent_and_does_not_mirror(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    before_authoring = _source_payloads(ref)
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    candidate = (
+        "SCOPO: test safely. PATTERN: sample(). "
+        "NON: modify. OUT: results=[]."
+    )
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=candidate,
+    )
+
+    published = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(patch,),
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    repeated = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(patch,),
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    assert not published.repeated
+    assert repeated.repeated
+    assert repeated.current_generation_id == published.current_generation_id
+    current = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    assert current.parsed["description"]["en"] == candidate
+    assert current.parsed["description"]["it"] == base.parsed["description"]["it"]
+    assert current.parsed["args"] == base.parsed["args"]
+    assert current.declared_code_digest == base.declared_code_digest
+    assert current.language_state["selectors"]["description"]["en"] == {
+        "version_hash": _hash_text(candidate),
+        "source_lang": "it",
+        "source_hash": patch.source_hash,
+    }
+    assert _source_payloads(ref) == before_authoring
+
+
+@pytest.mark.parametrize(
+    ("field", "expected_code"),
+    (
+        ("source_hash", "localization_source_changed"),
+        ("previous_target_hash", "localization_target_changed"),
+        ("candidate_hash", "localization_candidate_hash"),
+    ),
+)
+def test_localization_hash_mismatch_is_precommit(
+    tmp_path: Path,
+    field: str,
+    expected_code: str,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    candidate = "SCOPO: safe test. PATTERN: sample(). NON: modify. OUT: results=[]."
+    patch = _localization_patch(
+        base, selector="description", source_language="it",
+        target_language="en", candidate=candidate,
+    )
+    patch = replace(patch, **{field: "sha256:" + "f" * 64})
+
+    with pytest.raises(ContractStoreError, match=expected_code):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="en",
+            patches=(patch,),
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
+
+
+def test_localization_rejects_unknown_duplicate_and_lint_invalid_patches(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    valid = _localization_patch(
+        base, selector="description", source_language="it",
+        target_language="en",
+        candidate="SCOPO: safe. PATTERN: sample(). NON: modify. OUT: results=[].",
+    )
+    unknown = replace(valid, selector="args.properties.missing.description")
+    for patches, error in (
+        ((unknown,), "localization_selector_missing"),
+        ((valid, valid), "localization_patch_duplicate"),
+    ):
+        with pytest.raises(ContractStoreError, match=error):
+            publish_localization(
+                ref,
+                expected_generation_id=initial.current_generation_id,
+                source_language="it",
+                target_language="en",
+                patches=patches,
+                private_key=private,
+                trusted_publics=trusted,
+                store_root=store,
+            )
+
+    invalid = _localization_patch(
+        base, selector="description", source_language="it",
+        target_language="en", candidate="This removes every machine atom.",
+    )
+    with pytest.raises(ContractStoreError, match="contract_language_invalid"):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="en",
+            patches=(invalid,),
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
+
+
+def test_new_language_requires_complete_surface_coverage(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    only_top = _localization_patch(
+        base, selector="description", source_language="it", target_language="fr",
+        candidate="SCOPO: test. PATTERN: sample(). NON: modifier. OUT: results=[].",
+    )
+
+    with pytest.raises(ContractStoreError, match="language_coverage_incomplete"):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="fr",
+            patches=(only_top,),
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+
+def test_stale_localization_candidate_cannot_overwrite_a_newer_publication(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    first = _localization_patch(
+        base, selector="description", source_language="it", target_language="en",
+        candidate="SCOPO: first. PATTERN: sample(). NON: modify. OUT: results=[].",
+    )
+    stale = _localization_patch(
+        base, selector="description", source_language="it", target_language="en",
+        candidate="SCOPO: stale. PATTERN: sample(). NON: modify. OUT: results=[].",
+    )
+    winner = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(first,),
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    with pytest.raises(ContractStoreError, match="commit_conflict"):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="en",
+            patches=(stale,),
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == winner.current_generation_id
+
+
+def test_localization_is_inactive_without_an_explicit_isolated_store(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    patch = LocalizationPatch(
+        selector="description",
+        source_hash="sha256:" + "0" * 64,
+        previous_target_hash=None,
+        candidate_text="candidate",
+        candidate_hash=_hash_text("candidate"),
+    )
+    with pytest.raises(ContractStoreError, match="publication_not_active"):
+        publish_localization(
+            ref,
+            expected_generation_id="sha256:" + "1" * 64,
+            source_language="it",
+            target_language="en",
+            patches=(patch,),
+            private_key=private,
+            trusted_publics=trusted,
+        )
+
+
+def test_technical_publication_updates_code_without_regressing_localization(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    before = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    code = ref.manifest_dir / "sample.py"
+    code.write_text(
+        "def invoke(args):\n    return {'results': [], 'revision': 2}\n",
+        encoding="utf-8",
+    )
+    authoring_before = _source_payloads(ref)
+    draft = prepare_technical_draft(ref)
+
+    published = publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    repeated = publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    assert not published.repeated
+    assert repeated.repeated
+    current = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    assert current.declared_code_digest == draft.authoring_code_digest
+    assert current.verified_code_digest == draft.authoring_code_digest
+    assert current.parsed["description"] == before.parsed["description"]
+    assert current.language_state == before.language_state
+    assert _source_payloads(ref) == authoring_before
+
+
+def test_technical_publication_rebases_and_preserves_live_localization(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    translated_text = (
+        "SCOPO: test safely after translation. PATTERN: sample(). "
+        "NON: modify. OUT: results=[]."
+    )
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=translated_text,
+    )
+    localized = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(patch,),
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    localized_snapshot = current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    )
+    assert localized_snapshot.parsed["description"]["en"] == translated_text
+
+    code = ref.manifest_dir / "sample.py"
+    code.write_text(
+        "def invoke(args):\n    return {'results': [], 'revision': 3}\n",
+        encoding="utf-8",
+    )
+    authoring_before = _source_payloads(ref)
+    draft = prepare_technical_draft(ref)
+    published = publish_technical_update(
+        ref,
+        expected_generation_id=localized.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    repeated = publish_technical_update(
+        ref,
+        expected_generation_id=localized.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    assert published.repeated is False
+    assert repeated.repeated is True
+    current = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    assert current.generation_id == published.current_generation_id
+    assert current.declared_code_digest == draft.authoring_code_digest
+    assert current.parsed["description"] == localized_snapshot.parsed["description"]
+    assert current.language_state == localized_snapshot.language_state
+    assert _source_payloads(ref) == authoring_before
+
+
+def test_technical_and_localization_writers_share_one_cas_boundary(
+    tmp_path: Path,
+) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    candidate = (
+        "SCOPO: safely test concurrency. PATTERN: sample(). "
+        "NON: modify. OUT: results=[]."
+    )
+    patch = _localization_patch(
+        base, selector="description", source_language="it",
+        target_language="en", candidate=candidate,
+    )
+    ref.manifest_path.write_text(
+        ref.manifest_path.read_text(encoding="utf-8") + '''
+[args.properties.limit]
+type = "integer"
+
+[args.properties.limit.description]
+it = "Numero massimo di risultati."
+en = "Maximum number of results."
+''',
+        encoding="utf-8",
+    )
+    ref = _rewrite_authoring_state(ref)
+    draft = prepare_technical_draft(ref)
+    start = threading.Barrier(3)
+    outcomes: list[object] = []
+
+    def technical_writer() -> None:
+        start.wait()
+        try:
+            outcomes.append(publish_technical_update(
+                ref,
+                expected_generation_id=initial.current_generation_id,
+                draft=draft,
+                private_key=private,
+                trusted_publics=trusted,
+                store_root=store,
+            ))
+        except ContractStoreError as exc:
+            outcomes.append(exc)
+
+    def localization_writer() -> None:
+        start.wait()
+        try:
+            outcomes.append(publish_localization(
+                ref,
+                expected_generation_id=initial.current_generation_id,
+                source_language="it",
+                target_language="en",
+                patches=(patch,),
+                private_key=private,
+                trusted_publics=trusted,
+                store_root=store,
+            ))
+        except ContractStoreError as exc:
+            outcomes.append(exc)
+
+    threads = (
+        threading.Thread(target=technical_writer),
+        threading.Thread(target=localization_writer),
+    )
+    for thread in threads:
+        thread.start()
+    start.wait()
+    for thread in threads:
+        thread.join(timeout=10.0)
+        assert not thread.is_alive()
+
+    committed = [item for item in outcomes if not isinstance(item, Exception)]
+    rejected = [item for item in outcomes if isinstance(item, ContractStoreError)]
+    assert len(committed) == 1
+    assert len(rejected) == 1
+    assert rejected[0].code == "commit_conflict"
+    current = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    assert current.generation_id == committed[0].current_generation_id
+    assert current.generation_id != initial.current_generation_id
+    has_localization = current.parsed["description"]["en"] == candidate
+    has_technical = "limit" in current.parsed["args"]["properties"]
+    assert has_localization is not has_technical
+
+
+def test_new_unsigned_contract_is_signed_inside_the_technical_transaction(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    (ref.manifest_dir / "manifest.toml.sig").unlink()
+    draft = prepare_technical_draft(ref)
+    assert draft.authoring_signature_hash is None
+
+    result = publish_technical_update(
+        ref,
+        expected_generation_id=None,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=tmp_path / "store",
+    )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=tmp_path / "store",
+    ).generation_id == result.current_generation_id
+    assert not (ref.manifest_dir / "manifest.toml.sig").exists()
+
+
+def test_localization_selector_traverses_schema_arrays_without_special_cases(
+    tmp_path: Path,
+) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    ref.manifest_path.write_text(
+        ref.manifest_path.read_text(encoding="utf-8").replace(
+            "required = []\n",
+            'required = []\nprefixItems = [{ type = "string", '
+            'description = { it = "Elemento.", en = "Item." } }]\n',
+        ),
+        encoding="utf-8",
+    )
+    ref = _rewrite_authoring_state(ref)
+    (ref.manifest_dir / "manifest.toml.sig").write_bytes(sign_manifest_bytes(
+        ref.manifest_path.read_bytes(), private_key=private,
+    ))
+    ref = _inventory_ref(root, name="read_files")
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    selector = "args.prefixItems.0.description"
+    assert selector in manifest_language_selectors(base.parsed)
+    patch = _localization_patch(
+        base,
+        selector=selector,
+        source_language="it",
+        target_language="en",
+        candidate="Item to inspect.",
+    )
+    result = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(patch,),
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    assert manifest_language_selectors(current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).parsed)[selector]["en"] == "Item to inspect."
+    assert result.current_generation_id != initial.current_generation_id
+
+
+def test_technical_draft_staleness_is_detected_under_the_writer_lock(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    draft = prepare_technical_draft(ref)
+    (ref.manifest_dir / "manifest.toml.sig").write_bytes(b"concurrent edit")
+
+    with pytest.raises(ContractStoreError, match="technical_draft_stale"):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
+
+
+def test_technical_publication_rejects_existing_text_change(
+    tmp_path: Path,
+) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    changed = ref.manifest_path.read_text(encoding="utf-8").replace(
+        "Text to find.", "Different text.",
+    )
+    ref.manifest_path.write_text(changed, encoding="utf-8")
+    ref = _rewrite_authoring_state(ref)
+    assert Path(ref.source_root) == root
+    draft = prepare_technical_draft(ref)
+
+    with pytest.raises(ContractStoreError, match="existing_localization_changed"):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+
+def test_surface_removal_requires_exact_explicit_evidence(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    text = ref.manifest_path.read_text(encoding="utf-8")
+    start = text.index("\n[args.properties.query]\n")
+    ref.manifest_path.write_text(text[:start] + "\n", encoding="utf-8")
+    ref = _rewrite_authoring_state(ref)
+    draft = prepare_technical_draft(ref)
+
+    with pytest.raises(ContractStoreError, match="surface_removal_required"):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+    wrong = SurfaceRemoval(
+        selectors=("description",), actor="tester", reason="schema cleanup",
+    )
+    with pytest.raises(ContractStoreError, match="surface_removal_invalid"):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            removal=wrong,
+            store_root=store,
+        )
+    exact = SurfaceRemoval(
+        selectors=("args.properties.query.description",),
+        actor="tester",
+        reason="query was removed from the schema",
+    )
+    with pytest.raises(ContractStoreError, match="surface_removal_audit_required"):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            removal=exact,
+            store_root=store,
+        )
+    events: list[Mapping[str, object]] = []
+    audit_path = tmp_path / "audit" / "contract-removals.jsonl"
+
+    def record_removal(event: Mapping[str, object]) -> None:
+        events.append(event)
+        append_jsonl(audit_path, event, fsync=False)
+
+    published = publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        removal=exact,
+        removal_audit=record_removal,
+        store_root=store,
+    )
+    assert published.current_generation_id != initial.current_generation_id
+    assert len(events) == 1
+    assert events[0]["contract_id"] == ref.contract_id.value
+    assert events[0]["selectors"] == exact.selectors
+    assert events[0]["diff"] == {"removed_selectors": exact.selectors}
+    assert events[0]["candidate_generation_id"] == published.current_generation_id
+    persisted = [
+        json.loads(line)
+        for line in audit_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(persisted) == 1
+    assert persisted[0]["event"] == "contract_surface_removal_authorized"
+    assert persisted[0]["diff"] == {
+        "removed_selectors": list(exact.selectors),
+    }
+    repeated = publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        removal=exact,
+        removal_audit=record_removal,
+        store_root=store,
+    )
+    assert repeated.repeated is True
+    assert len(events) == 1
+    assert len(audit_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_surface_removal_cannot_delete_prose_from_an_existing_schema_node(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    text = ref.manifest_path.read_text(encoding="utf-8")
+    description = text.index("\n[args.properties.query.description]\n")
+    ref.manifest_path.write_text(text[:description] + "\n", encoding="utf-8")
+    ref = _rewrite_authoring_state(ref)
+    draft = prepare_technical_draft(ref)
+    removal = SurfaceRemoval(
+        selectors=("args.properties.query.description",),
+        actor="tester",
+        reason="attempted prose-only removal",
+    )
+
+    with pytest.raises(
+        ContractStoreError, match="surface_removal_still_applicable",
+    ):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            removal=removal,
+            removal_audit=lambda _event: None,
+            store_root=store,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
+
+
+def test_surface_removal_audit_cannot_invalidate_code_before_commit(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    text = ref.manifest_path.read_text(encoding="utf-8")
+    start = text.index("\n[args.properties.query]\n")
+    ref.manifest_path.write_text(text[:start] + "\n", encoding="utf-8")
+    ref = _rewrite_authoring_state(ref)
+    draft = prepare_technical_draft(ref)
+    removal = SurfaceRemoval(
+        selectors=("args.properties.query.description",),
+        actor="tester",
+        reason="query was removed from the schema",
+    )
+    code_path = ref.manifest_dir / "sample.py"
+    original_code = code_path.read_bytes()
+
+    def mutating_audit(_event: Mapping[str, object]) -> None:
+        code_path.write_text("VALUE = 'changed by faulty audit sink'\n", encoding="utf-8")
+
+    with pytest.raises(ContractStoreError, match="code_digest_mismatch"):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            removal=removal,
+            removal_audit=mutating_audit,
+            store_root=store,
+        )
+    code_path.write_bytes(original_code)
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
+
+
+def test_technical_publication_accepts_only_complete_new_surfaces(
+    tmp_path: Path,
+) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    addition = '''
+[args.properties.limit]
+type = "integer"
+
+[args.properties.limit.description]
+it = "Numero massimo di risultati."
+en = "Maximum number of results."
+'''
+    ref.manifest_path.write_text(
+        ref.manifest_path.read_text(encoding="utf-8") + addition,
+        encoding="utf-8",
+    )
+    ref = _rewrite_authoring_state(ref)
+    draft = prepare_technical_draft(ref)
+    published = publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    assert "args.properties.limit.description" in manifest_language_selectors(
+        current_manifest(ref, trusted_publics=trusted, store_root=store).parsed,
+    )
+    assert published.current_generation_id != initial.current_generation_id
+
+    # A fresh fixture proves that incompleteness is rejected before locking or
+    # signing, without relying on an executor-specific allowlist.
+    second_root, second_ref, _second_private, _second_trusted = _create_source(
+        tmp_path / "incomplete", name="read_events",
+    )
+    incomplete = '''
+[args.properties.limit]
+type = "integer"
+
+[args.properties.limit.description]
+it = "Numero massimo di risultati."
+'''
+    second_ref.manifest_path.write_text(
+        second_ref.manifest_path.read_text(encoding="utf-8") + incomplete,
+        encoding="utf-8",
+    )
+    second_ref = _rewrite_authoring_state(second_ref)
+    assert Path(second_ref.source_root) == second_root
+    with pytest.raises(ContractStoreError, match="language_coverage_incomplete"):
+        prepare_technical_draft(second_ref)
+
+
+def test_signed_import_obeys_the_same_localization_non_regression_policy(
+    tmp_path: Path,
+) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    ref.manifest_path.write_text(
+        ref.manifest_path.read_text(encoding="utf-8").replace(
+            "Text to find.", "Changed through signed import.",
+        ),
+        encoding="utf-8",
+    )
+    ref = _rewrite_authoring_state(ref)
+    (ref.manifest_dir / "manifest.toml.sig").write_bytes(sign_manifest_bytes(
+        ref.manifest_path.read_bytes(), private_key=private,
+    ))
+    ref = _inventory_ref(root, name="read_files")
+
+    with pytest.raises(ContractStoreError, match="existing_localization_changed"):
+        publish_signed_source(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+
+def test_technical_publisher_owns_exactly_one_writer_lock(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    )
+    draft = prepare_technical_draft(ref)
+    real_lock = contract_store_module._writer_lock
+    acquisitions = 0
+
+    @contextlib.contextmanager
+    def counted_lock(*args, **kwargs):
+        nonlocal acquisitions
+        acquisitions += 1
+        with real_lock(*args, **kwargs):
+            yield
+
+    monkeypatch.setattr(contract_store_module, "_writer_lock", counted_lock)
+    publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    assert acquisitions == 1

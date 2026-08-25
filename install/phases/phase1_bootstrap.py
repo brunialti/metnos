@@ -33,6 +33,7 @@ _RUNTIME_DEPS = [
     "MarkupSafe>=2.1",       # used by Jinja2
     "pydantic>=2.6",         # manifest validation, config
     "tomli>=2.0; python_version < '3.11'",
+    "tomlkit==0.15.0",       # byte-preserving contract publication
     "rich>=13.7",            # already installed by bootstrap, pinned here
     "cryptography>=42",      # Fernet for credentials store (ADR 0131)
     "onnxruntime>=1.17",     # BGE-M3 embedder (ADR 0117)
@@ -144,7 +145,10 @@ def run(args: Any) -> dict[str, Any]:
     ui.step("Verifying core imports")
     try:
         import importlib
-        for mod in ("aiohttp", "httpx", "jinja2", "pydantic", "onnxruntime", "PIL", "cryptography.fernet"):
+        for mod in (
+            "aiohttp", "httpx", "jinja2", "pydantic", "tomlkit",
+            "onnxruntime", "PIL", "cryptography.fernet",
+        ):
             importlib.import_module(mod)
         ui.ok("Core modules importable")
         notes["import_ok"] = True

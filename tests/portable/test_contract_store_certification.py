@@ -67,16 +67,31 @@ def _manifest_text(
     *,
     variant: str = "base",
 ) -> str:
-    return f'''name = "{name}"
+    return f'''manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+name = "{name}"
 version = "1.0.0"
+technical_variant = "{variant}"
 
 [description]
-en = "SCOPE: certify publication {variant}. PATTERN: {name}(). NOT: mutate. OUT: ok."
-it = "SCOPO: certificare la pubblicazione {variant}. PATTERN: {name}(). NON: modificare. OUT: ok."
+en = "SCOPO: certify publication. PATTERN: {name}(). NON: mutate. OUT: ok."
+it = "SCOPO: certificare la pubblicazione. PATTERN: {name}(). NON: modificare. OUT: ok."
 
 [code]
 files = ["{code_file}"]
 digest = "{code_digest}"
+
+[output]
+schema_inline = "{{ ok: bool, results: list }}"
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
+
+[[tests]]
+name = "portable"
+input = {{}}
+expect = {{ ok = true }}
 
 [args]
 type = "object"
@@ -128,7 +143,7 @@ def _make_source(
     code_digest = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest()
     manifest = manifest_dir / "manifest.toml"
     manifest.write_text(
-        _manifest_text(name, code.name, code_digest, variant=variant),
+        _manifest_text("read_files", code.name, code_digest, variant=variant),
         encoding="utf-8",
     )
     parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
@@ -147,7 +162,7 @@ def _make_source(
         allowed_code_roots=(root,),
     ),))
     assert not inventory.problems
-    ref = next(item for item in inventory.manifests if item.name == name)
+    ref = next(item for item in inventory.manifests if item.name == "read_files")
     return ref, private
 
 

@@ -17,23 +17,46 @@ import sqlite3
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
 import yaml
 import config as _C
 
 from i18n_materializer import (
+    ContractSnapshotProvider,
     InventoryItem,
     LocalizationPaths,
     inventory,
     iter_localized_text_tables,
     sha256_text,
 )
-from i18n_registry import LocalizationRegistry, RegistryError, ResourceRecord, normalize_language
+from i18n_registry import (
+    LocalizationRegistry,
+    RegistryError,
+    ResourceRecord,
+    TranslationLease,
+    normalize_language,
+)
+from manifest_inventory import ManifestRef
+
+if TYPE_CHECKING:
+    from contract_store import LocalizationPatch, PublicationResult
 
 
 Translator = Callable[[str, str, str, str], str]
 EquivalenceJudge = Callable[[str, str, str], bool]
+
+
+class VersionedContractPublisher(Protocol):
+    def __call__(
+        self,
+        ref: ManifestRef,
+        *,
+        expected_generation_id: str,
+        source_language: str,
+        target_language: str,
+        patches: tuple["LocalizationPatch", ...],
+    ) -> "PublicationResult": ...
 
 _PROMPT_PROSE_FIELDS = frozenset({
     "body", "description", "error", "header", "help", "instruction",
@@ -45,6 +68,22 @@ _JINJA_RE = re.compile(r"\{\{[-+]?.*?[-+]?\}\}|\{%[-+]?.*?[-+]?%\}", re.DOTALL)
 _FORMAT_RE = re.compile(r"(?<!\{)\{([A-Za-z_][A-Za-z0-9_.]*)(?:![rsa])?(?::[^{}]*)?\}(?!\})")
 _CODE_RE = re.compile(r"```[A-Za-z0-9_+\-]*\n.*?\n```|`[^`\n]+`", re.DOTALL)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
+_LOGICAL_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_BARE_SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+_CONTRACT_ARTIFACT_V2_FIELDS = frozenset({
+    "schema",
+    "resource_id",
+    "layer",
+    "contract_id",
+    "selector",
+    "expected_generation",
+    "source_lang",
+    "target_lang",
+    "source_hash",
+    "previous_target_hash",
+    "candidate_hash",
+    "translation",
+})
 
 
 class CandidateValidationError(ValueError):
@@ -73,6 +112,17 @@ class TranslationReport:
 class PromotionReport:
     target_lang: str
     admitted: int
+    skipped: int
+    errors: Mapping[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class VersionedContractPublicationReport:
+    """Outcome of the isolated M3 publisher; it never means activation."""
+
+    target_lang: str
+    published_contracts: int
+    published_resources: int
     skipped: int
     errors: Mapping[str, str]
 
@@ -127,15 +177,93 @@ def _candidate_path(
     target: str,
     registry: LocalizationRegistry,
     paths: LocalizationPaths,
+    *,
+    lease_token: str | None = None,
 ) -> Path:
     if item.layer == "prompt":
         relative = str(item.metadata["relative_path"])
         return paths.prompts / target / "_pending" / f"{relative}.candidate"
     digest = hashlib.sha256(item.resource_id.encode("utf-8")).hexdigest()
+    if item.layer == "contract" and item.basis_id is not None:
+        if not lease_token:
+            raise CandidateValidationError("versioned candidate lease is unavailable")
+        generation = _canonical_logical_hash(
+            item.basis_id,
+            field="expected_generation",
+        ).removeprefix("sha256:")
+        lease = hashlib.sha256(lease_token.encode("utf-8")).hexdigest()
+        return (
+            registry.path.parent
+            / "i18n_candidates"
+            / target
+            / item.layer
+            / generation
+            / f"{digest}.{lease}.json"
+        )
     return registry.path.parent / "i18n_candidates" / target / item.layer / f"{digest}.json"
 
 
+def _canonical_logical_hash(value: Any, *, field: str) -> str:
+    if not isinstance(value, str) or _LOGICAL_SHA256_RE.fullmatch(value) is None:
+        raise CandidateValidationError(f"{field} must be a canonical SHA-256 identifier")
+    return value
+
+
+def _contract_artifact_payload_v2(
+    item: InventoryItem,
+    target: str,
+    translation: Any,
+) -> str:
+    if not isinstance(translation, str) or not translation.strip():
+        raise CandidateValidationError("contract translation must be non-empty text")
+    contract_id = (
+        str(item.contract_ref.contract_id)
+        if item.contract_ref is not None
+        else None
+    )
+    selector = item.metadata.get("selector")
+    if not isinstance(contract_id, str) or not contract_id:
+        raise CandidateValidationError("contract identity is unavailable")
+    if not isinstance(selector, str) or not selector:
+        raise CandidateValidationError("contract selector is unavailable")
+    expected_generation = _canonical_logical_hash(
+        item.basis_id,
+        field="expected_generation",
+    )
+    if _BARE_SHA256_RE.fullmatch(item.source_hash) is None:
+        raise CandidateValidationError("source_hash must be a SHA-256 digest")
+    source_hash = "sha256:" + item.source_hash
+    language_hashes = item.metadata.get("language_hashes")
+    if not isinstance(language_hashes, Mapping):
+        raise CandidateValidationError("contract language hashes are unavailable")
+    if language_hashes.get(item.source_lang) != source_hash:
+        raise CandidateValidationError("contract source hash does not match its snapshot")
+    previous_target_hash = language_hashes.get(target)
+    if previous_target_hash is not None:
+        _canonical_logical_hash(
+            previous_target_hash,
+            field="previous_target_hash",
+        )
+    candidate_hash = "sha256:" + sha256_text(translation)
+    return json.dumps({
+        "schema": "metnos.localization-candidate/2",
+        "resource_id": item.resource_id,
+        "layer": item.layer,
+        "contract_id": contract_id,
+        "selector": selector,
+        "expected_generation": expected_generation,
+        "source_lang": item.source_lang,
+        "target_lang": target,
+        "source_hash": source_hash,
+        "previous_target_hash": previous_target_hash,
+        "candidate_hash": candidate_hash,
+        "translation": translation,
+    }, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
 def _artifact_payload(item: InventoryItem, target: str, translation: Any) -> str:
+    if item.layer == "contract" and item.basis_id is not None:
+        return _contract_artifact_payload_v2(item, target, translation)
     return json.dumps({
         "schema": "metnos.localization-candidate/1",
         "resource_id": item.resource_id,
@@ -147,7 +275,127 @@ def _artifact_payload(item: InventoryItem, target: str, translation: Any) -> str
     }, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
-def _read_artifact(record: ResourceRecord) -> Any:
+def _read_json_object(path: Path) -> dict[str, Any]:
+    def no_duplicates(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in items:
+            if key in result:
+                raise CandidateValidationError(f"candidate contains duplicate key: {key}")
+            result[key] = value
+        return result
+
+    try:
+        payload = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=no_duplicates,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CandidateValidationError(f"candidate artifact is invalid: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise CandidateValidationError("candidate artifact must be a JSON object")
+    return payload
+
+
+def _read_contract_artifact_v2(
+    record: ResourceRecord,
+    authoritative_item: InventoryItem,
+    *,
+    require_current_basis: bool = True,
+) -> Mapping[str, Any]:
+    if record.layer != "contract" or record.basis_id is None:
+        raise CandidateValidationError("versioned contract candidate is unavailable")
+    if not record.artifact_path:
+        raise RegistryError(f"candidate artifact unavailable: {record.resource_id}")
+    if require_current_basis:
+        _require_versioned_contract_item(record, authoritative_item)
+    else:
+        _require_versioned_contract_identity(record, authoritative_item)
+    payload = _read_json_object(Path(record.artifact_path))
+    if set(payload) != _CONTRACT_ARTIFACT_V2_FIELDS:
+        raise CandidateValidationError("versioned candidate schema fields do not match")
+    contract_id = (
+        str(authoritative_item.contract_ref.contract_id)
+        if authoritative_item.contract_ref is not None
+        else None
+    )
+    selector = authoritative_item.metadata.get("selector")
+    language_hashes = (
+        authoritative_item.metadata.get("language_hashes")
+        if require_current_basis
+        else record.metadata.get("language_hashes")
+    )
+    if (
+        not isinstance(contract_id, str)
+        or not contract_id
+        or not isinstance(selector, str)
+        or not selector
+        or not isinstance(language_hashes, Mapping)
+    ):
+        raise CandidateValidationError("versioned contract metadata is incomplete")
+    expected_generation = _canonical_logical_hash(
+        authoritative_item.basis_id if require_current_basis else record.basis_id,
+        field="expected_generation",
+    )
+    source_digest = (
+        authoritative_item.source_hash
+        if require_current_basis
+        else record.source_hash
+    )
+    source_language = (
+        authoritative_item.source_lang
+        if require_current_basis
+        else record.source_lang
+    )
+    if _BARE_SHA256_RE.fullmatch(source_digest) is None:
+        raise CandidateValidationError("registry source hash is invalid")
+    source_hash = "sha256:" + source_digest
+    if language_hashes.get(source_language) != source_hash:
+        raise CandidateValidationError("registry source hash does not match its snapshot")
+    previous_target_hash = language_hashes.get(record.target_lang)
+    if previous_target_hash is not None:
+        _canonical_logical_hash(
+            previous_target_hash,
+            field="previous_target_hash",
+        )
+    expected_identity = {
+        "schema": "metnos.localization-candidate/2",
+        "resource_id": authoritative_item.resource_id,
+        "layer": "contract",
+        "contract_id": contract_id,
+        "selector": selector,
+        "expected_generation": expected_generation,
+        "source_lang": source_language,
+        "target_lang": record.target_lang,
+        "source_hash": source_hash,
+        "previous_target_hash": previous_target_hash,
+    }
+    if any(payload.get(key) != value for key, value in expected_identity.items()):
+        raise CandidateValidationError("versioned candidate identity does not match the registry")
+    translation = payload.get("translation")
+    if not isinstance(translation, str) or not translation.strip():
+        raise CandidateValidationError("contract translation must be non-empty text")
+    candidate_hash = _canonical_logical_hash(
+        payload.get("candidate_hash"),
+        field="candidate_hash",
+    )
+    if candidate_hash != "sha256:" + sha256_text(translation):
+        raise CandidateValidationError("candidate text hash does not match")
+    encoded = json.dumps(
+        translation,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    if sha256_text(encoded) != record.translation_hash:
+        raise CandidateValidationError("candidate hash does not match the registry")
+    return payload
+
+
+def _read_artifact(
+    record: ResourceRecord,
+    *,
+    authoritative_item: InventoryItem | None = None,
+) -> Any:
     if not record.artifact_path:
         raise RegistryError(f"candidate artifact unavailable: {record.resource_id}")
     path = Path(record.artifact_path)
@@ -156,6 +404,12 @@ def _read_artifact(record: ResourceRecord) -> Any:
         if sha256_text(text) != record.translation_hash:
             raise CandidateValidationError("prompt candidate hash does not match the registry")
         return text
+    if record.layer == "contract" and record.basis_id is not None:
+        if authoritative_item is None:
+            raise CandidateValidationError(
+                "verified contract inventory item is required"
+            )
+        return _read_contract_artifact_v2(record, authoritative_item)["translation"]
     payload = json.loads(path.read_text(encoding="utf-8"))
     if (
         not isinstance(payload, dict)
@@ -447,6 +701,77 @@ def _translate_item(item: InventoryItem, target: str, translator: Translator) ->
     raise CandidateValidationError(f"derived layer {item.layer!r} has no translation payload")
 
 
+def _require_versioned_contract_identity(
+    record: ResourceRecord,
+    item: InventoryItem | None,
+) -> None:
+    """Resolve contract identity from fresh inventory, never registry paths."""
+    if (
+        record.layer != "contract"
+        or item is None
+        or item.layer != "contract"
+        or item.contract_ref is None
+        or item.resource_id != record.resource_id
+        or record.metadata.get("contract_id") != str(item.contract_ref.contract_id)
+        or record.metadata.get("selector") != item.metadata.get("selector")
+    ):
+        raise CandidateValidationError(
+            f"verified contract inventory item unavailable: {record.resource_id}"
+        )
+
+
+def _require_versioned_contract_item(
+    record: ResourceRecord,
+    item: InventoryItem | None,
+) -> None:
+    """Bind a workflow row to the same verified generation inventory item."""
+    if record.layer != "contract":
+        return
+    if record.basis_id is None:
+        if item is not None and item.basis_id is not None:
+            raise CandidateValidationError(
+                f"versioned contract has not been materialized: {record.resource_id}"
+            )
+        return
+    _require_versioned_contract_identity(record, item)
+    assert item is not None
+    if (
+        item.basis_id != record.basis_id
+        or item.source_hash != record.source_hash
+        or item.source_lang != record.source_lang
+        or item.metadata.get("language_hashes") != record.metadata.get("language_hashes")
+    ):
+        raise CandidateValidationError(
+            f"verified contract basis changed: {record.resource_id}"
+        )
+
+
+def _require_versioned_contract_lease(
+    lease: TranslationLease,
+    record: ResourceRecord,
+    item: InventoryItem,
+) -> None:
+    """Close the inventory-to-claim race for generation-bound work."""
+    if item.layer != "contract" or item.basis_id is None:
+        return
+    if (
+        lease.resource_id != item.resource_id
+        or lease.layer != item.layer
+        or lease.source_lang != item.source_lang
+        or lease.target_lang != record.target_lang
+        or lease.source_hash != item.source_hash
+        or lease.basis_id != item.basis_id
+        or lease.metadata.get("contract_id")
+        != str(item.contract_ref.contract_id if item.contract_ref else "")
+        or lease.metadata.get("selector") != item.metadata.get("selector")
+        or lease.metadata.get("language_hashes")
+        != item.metadata.get("language_hashes")
+    ):
+        raise CandidateValidationError(
+            f"verified contract lease changed: {record.resource_id}"
+        )
+
+
 def translate_pending(
     target_lang: str,
     *,
@@ -455,15 +780,33 @@ def translate_pending(
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
     translator: Translator | None = None,
     limit: int = 0,
+    contract_snapshot_provider: ContractSnapshotProvider | None = None,
 ) -> TranslationReport:
     paths = paths or LocalizationPaths()
     target = normalize_language(target_lang)
-    items = {item.resource_id: item for item in inventory(paths, source_lang=source_lang)}
+    records = registry.resources(target)
+    if (
+        contract_snapshot_provider is None
+        and any(record.layer == "contract" and record.basis_id is not None for record in records)
+    ):
+        raise CandidateValidationError(
+            "verified contract snapshot provider is required for versioned candidates"
+        )
+    items = {
+        item.resource_id: item
+        for item in inventory(
+            paths,
+            source_lang=source_lang,
+            contract_snapshot_provider=contract_snapshot_provider,
+        )
+    }
+    for record in records:
+        _require_versioned_contract_item(record, items.get(record.resource_id))
     provider = translator or _default_translator
     translated_count = failed = skipped = 0
     errors: dict[str, str] = {}
     processed = 0
-    for record in registry.resources(target):
+    for record in records:
         if limit > 0 and processed >= limit:
             break
         item = items.get(record.resource_id)
@@ -479,8 +822,15 @@ def translate_pending(
             continue
         processed += 1
         try:
+            _require_versioned_contract_lease(lease, record, item)
             translation = _translate_item(item, target, provider)
-            candidate = _candidate_path(item, target, registry, paths)
+            candidate = _candidate_path(
+                item,
+                target,
+                registry,
+                paths,
+                lease_token=lease.lease_token,
+            )
             if item.layer == "prompt":
                 _atomic_text(candidate, str(translation), mode=0o644)
                 digest_source = str(translation)
@@ -519,18 +869,36 @@ def review_semantics(
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
     judge: EquivalenceJudge,
     limit: int = 0,
+    contract_snapshot_provider: ContractSnapshotProvider | None = None,
 ) -> dict[str, bool]:
     """Review every translated prose surface with one equivalence contract."""
     paths = paths or LocalizationPaths()
     target = normalize_language(target_lang)
-    items = {item.resource_id: item for item in inventory(paths, source_lang=source_lang)}
+    records = registry.resources(target)
+    if (
+        contract_snapshot_provider is None
+        and any(record.layer == "contract" and record.basis_id is not None for record in records)
+    ):
+        raise CandidateValidationError(
+            "verified contract snapshot provider is required for versioned candidates"
+        )
+    items = {
+        item.resource_id: item
+        for item in inventory(
+            paths,
+            source_lang=source_lang,
+            contract_snapshot_provider=contract_snapshot_provider,
+        )
+    }
+    for record in records:
+        _require_versioned_contract_item(record, items.get(record.resource_id))
     results: dict[str, bool] = {}
     prompt_evidence: list[str] = []
     knowledge_evidence: list[str] = []
     contract_evidence: list[str] = []
     input_evidence: list[str] = []
     judged = 0
-    for record in registry.resources(target):
+    for record in records:
         if record.status != "translated" or record.layer not in {
             "prompt", "knowledge", "contract", "message", "input",
         }:
@@ -538,7 +906,7 @@ def review_semantics(
         item = items.get(record.resource_id)
         if item is None:
             continue
-        translated = _read_artifact(record)
+        translated = _read_artifact(record, authoritative_item=item)
         if record.quality == "reviewed":
             accepted = True
         elif limit > 0 and judged >= limit:
@@ -550,7 +918,10 @@ def review_semantics(
             judged += 1
         results[record.resource_id] = accepted
         if accepted and record.quality != "reviewed":
-            registry.review(record.resource_id, target, quality="reviewed")
+            if record.layer == "contract" and record.basis_id is not None:
+                registry.review_candidate(record, quality="reviewed")
+            else:
+                registry.review(record.resource_id, target, quality="reviewed")
         if accepted:
             evidence = sha256_text(item.source_hash + str(record.translation_hash))
             if record.layer == "prompt":
@@ -561,10 +932,11 @@ def review_semantics(
                 input_evidence.append(evidence)
             else:
                 contract_evidence.append(evidence)
-    prompt_records = [row for row in registry.resources(target) if row.layer == "prompt"]
+    records = registry.resources(target)
+    prompt_records = [row for row in records if row.layer == "prompt"]
     prompt_ok = bool(prompt_records) and all(
         row.status in {"translated", "admitted"} and row.quality == "reviewed"
-        for row in registry.resources(target) if row.layer == "prompt"
+        for row in records if row.layer == "prompt"
     )
     registry.record_check(
         "planner_proposer_equivalence", target,
@@ -572,10 +944,10 @@ def review_semantics(
         evidence_hash=sha256_text("\n".join(sorted(prompt_evidence))),
         details={"resources": len(prompt_records)},
     )
-    knowledge_records = [row for row in registry.resources(target) if row.layer == "knowledge"]
+    knowledge_records = [row for row in records if row.layer == "knowledge"]
     knowledge_ok = bool(knowledge_records) and all(
         row.status in {"translated", "admitted"} and row.quality == "reviewed"
-        for row in registry.resources(target) if row.layer == "knowledge"
+        for row in records if row.layer == "knowledge"
     )
     registry.record_check(
         "public_knowledge_review", target,
@@ -584,7 +956,7 @@ def review_semantics(
         details={"resources": len(knowledge_records)},
     )
     contract_records = [
-        row for row in registry.resources(target)
+        row for row in records
         if row.layer in {"contract", "message"}
     ]
     contract_ok = bool(contract_records) and all(
@@ -598,7 +970,7 @@ def review_semantics(
         details={"resources": len(contract_records)},
     )
     input_records = [
-        row for row in registry.resources(target)
+        row for row in records
         if row.layer == "input" and row.status != "manual_review"
     ]
     input_ok = bool(input_records) and all(
@@ -636,6 +1008,162 @@ def default_equivalence_judge(source: str, target: str, resource_id: str) -> boo
     except (TypeError, json.JSONDecodeError):
         return False
     return parsed.get("equivalent") is True
+
+
+def publish_versioned_contract_candidates(
+    target_lang: str,
+    *,
+    registry: LocalizationRegistry,
+    paths: LocalizationPaths,
+    contract_snapshot_provider: ContractSnapshotProvider,
+    publisher: VersionedContractPublisher,
+    source_lang: str = _C.BOOTSTRAP_LANGUAGE,
+) -> VersionedContractPublicationReport:
+    """Publish reviewed M3 candidates to an explicitly injected store.
+
+    ``publisher`` is normally a partial application of
+    :func:`contract_store.publish_localization`; it owns keys, trust and the
+    isolated store root.  Destination identity always comes from the fresh
+    manifest inventory carried by ``InventoryItem.contract_ref``.  Registry
+    metadata and candidate artifacts are evidence to verify, never path
+    authority.  Successful publication remains dormant and therefore does
+    not admit or activate any registry row.
+    """
+    if not callable(contract_snapshot_provider) or not callable(publisher):
+        raise ValueError("snapshot provider and publisher must be callable")
+    target = normalize_language(target_lang)
+    items = tuple(
+        item
+        for item in inventory(
+            paths,
+            source_lang=source_lang,
+            contract_snapshot_provider=contract_snapshot_provider,
+        )
+        if item.layer == "contract" and item.basis_id is not None
+    )
+    records = {
+        record.resource_id: record
+        for record in registry.resources(target)
+        if record.layer == "contract"
+    }
+    authoritative = {item.resource_id: item for item in items}
+    errors: dict[str, str] = {}
+    skipped = 0
+    grouped: dict[str, tuple[ManifestRef, list[InventoryItem]]] = {}
+
+    for item in items:
+        if item.contract_ref is None:
+            errors[item.resource_id] = "CandidateValidationError: contract reference is unavailable"
+            continue
+        key = str(item.contract_ref.contract_id)
+        if key not in grouped:
+            grouped[key] = (item.contract_ref, [])
+        grouped[key][1].append(item)
+
+    for record in records.values():
+        if record.basis_id is not None and record.resource_id not in authoritative:
+            errors[record.resource_id] = (
+                "CandidateValidationError: verified contract inventory item unavailable"
+            )
+
+    published_contracts = 0
+    published_resources = 0
+    from contract_store import LocalizationPatch, PublicationResult
+
+    for _contract_id, (ref, contract_items) in sorted(grouped.items()):
+        prepared: list[tuple[ResourceRecord, Mapping[str, Any]]] = []
+        observed: list[ResourceRecord] = []
+        group_failed = False
+        for item in sorted(
+            contract_items,
+            key=lambda candidate: str(candidate.metadata.get("selector") or ""),
+        ):
+            record = records.get(item.resource_id)
+            if record is None:
+                errors[item.resource_id] = (
+                    "CandidateValidationError: versioned workflow row is unavailable"
+                )
+                group_failed = True
+                continue
+            try:
+                _require_versioned_contract_identity(record, item)
+                if record.basis_id is None:
+                    raise CandidateValidationError(
+                        "versioned workflow row has no expected generation"
+                    )
+                observed.append(record)
+                if record.status != "translated":
+                    skipped += 1
+                    continue
+                if record.quality != "reviewed":
+                    raise CandidateValidationError("candidate has not passed semantic review")
+                payload = _read_contract_artifact_v2(
+                    record,
+                    item,
+                    require_current_basis=False,
+                )
+                prepared.append((record, payload))
+            except Exception as exc:
+                errors[item.resource_id] = f"{type(exc).__name__}: {exc}"
+                group_failed = True
+        if group_failed or not prepared:
+            continue
+
+        bases = {record.basis_id for record in observed}
+        sources = {record.source_lang for record, _payload in prepared}
+        selectors = [str(payload["selector"]) for _record, payload in prepared]
+        if len(bases) != 1 or None in bases or len(sources) != 1:
+            message = "CandidateValidationError: contract candidate group is inconsistent"
+            for record, _payload in prepared:
+                errors[record.resource_id] = message
+            continue
+        if len(selectors) != len(set(selectors)):
+            message = "CandidateValidationError: contract candidate selector is duplicated"
+            for record, _payload in prepared:
+                errors[record.resource_id] = message
+            continue
+
+        patches = tuple(
+            LocalizationPatch(
+                selector=str(payload["selector"]),
+                source_hash=str(payload["source_hash"]),
+                previous_target_hash=payload["previous_target_hash"],
+                candidate_text=str(payload["translation"]),
+                candidate_hash=str(payload["candidate_hash"]),
+            )
+            for _record, payload in prepared
+        )
+        try:
+            result = publisher(
+                ref,
+                expected_generation_id=next(iter(bases)),
+                source_language=next(iter(sources)),
+                target_language=target,
+                patches=patches,
+            )
+            if (
+                not isinstance(result, PublicationResult)
+                or result.contract_id != ref.contract_id
+                or result.operation != "publish_localization"
+                or _LOGICAL_SHA256_RE.fullmatch(result.current_generation_id) is None
+            ):
+                raise CandidateValidationError(
+                    "publisher returned an invalid publication result"
+                )
+            published_contracts += 1
+            published_resources += len(prepared)
+        except Exception as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            for record, _payload in prepared:
+                errors[record.resource_id] = message
+
+    return VersionedContractPublicationReport(
+        target_lang=target,
+        published_contracts=published_contracts,
+        published_resources=published_resources,
+        skipped=skipped,
+        errors=dict(sorted(errors.items())),
+    )
 
 
 def _replace_toml_language(text: str, selector: str, target: str, value: str) -> str:
@@ -760,6 +1288,13 @@ def promote_candidates(
         from sign import sign_executor
         signer = sign_executor
     records = list(registry.resources(target))
+    if any(
+        record.layer == "contract" and record.basis_id is not None
+        for record in records
+    ):
+        raise CandidateValidationError(
+            "versioned contract candidates require the explicit M3 publisher"
+        )
     contract_records = [record for record in records if record.layer == "contract" and record.status == "translated"]
     admitted, errors = _promote_contracts(contract_records, target, signer)
     for record in contract_records:

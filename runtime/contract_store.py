@@ -14,6 +14,7 @@ that the newest pointer survives sudden power loss on Windows.
 from __future__ import annotations
 
 import contextlib
+import copy
 import ctypes
 import errno
 import hashlib
@@ -27,23 +28,31 @@ import tempfile
 import threading
 import time
 import tomllib
+import tomlkit
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 from cryptography.hazmat.primitives import serialization
 
 import config as _C
 from i18n_materializer import (
     LanguageStateError,
     decode_language_state,
+    encode_language_state,
+    manifest_language_selectors,
 )
+from i18n_registry import normalize_language
 from manifest_inventory import ContractId, ManifestOrigin, ManifestRef, ManifestStatus
 from sign import (
     ManifestSignatureError,
     TrustedPublic,
+    sign_manifest_bytes,
     verify_manifest_bytes,
 )
 
@@ -105,6 +114,43 @@ class PublicationResult:
     current_generation_id: str
     operation: str
     repeated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class LocalizationPatch:
+    """One reviewed prose replacement bound to an immutable generation."""
+
+    selector: str
+    source_hash: str
+    previous_target_hash: str | None
+    candidate_text: str
+    candidate_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class TechnicalDraft:
+    """Immutable authoring observation prepared before the writer lock.
+
+    Code is deliberately represented only by its observed digest.  The
+    publisher reads and hashes the allowed source files again under its lock;
+    no copied code can become a second deployment authority.
+    """
+
+    manifest_bytes: bytes
+    language_state_bytes: bytes
+    authoring_manifest_hash: str
+    authoring_signature_hash: str | None
+    authoring_language_state_hash: str
+    authoring_code_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceRemoval:
+    """Explicit evidence for an intentional schema-surface removal."""
+
+    selectors: tuple[str, ...]
+    actor: str
+    reason: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,6 +540,200 @@ def generation_directory_name(identifier: str) -> str:
     return physical
 
 
+def _canonical_sha256(value: str, *, field: str) -> str:
+    if not isinstance(value, str) or not _DIGEST_RE.fullmatch(value):
+        raise ContractStoreError("publication_input_invalid", field)
+    return value
+
+
+def _canonical_optional_sha256(value: str | None, *, field: str) -> str | None:
+    if value is None:
+        return None
+    return _canonical_sha256(value, field=field)
+
+
+def _canonical_language(value: str, *, field: str) -> str:
+    try:
+        return normalize_language(value)
+    except (TypeError, ValueError) as exc:
+        raise ContractStoreError("language_tag_invalid", field) from exc
+
+
+def _validated_removal(removal: SurfaceRemoval | None) -> tuple[str, ...]:
+    if removal is None:
+        return ()
+    if not isinstance(removal, SurfaceRemoval):
+        raise ContractStoreError("surface_removal_invalid", "wrong type")
+    selectors = removal.selectors
+    if (
+        not isinstance(selectors, tuple)
+        or not selectors
+        or any(not isinstance(item, str) or not item for item in selectors)
+        or selectors != tuple(sorted(set(selectors)))
+    ):
+        raise ContractStoreError(
+            "surface_removal_invalid", "selectors must be non-empty, unique and sorted",
+        )
+    if not isinstance(removal.actor, str) or not removal.actor.strip():
+        raise ContractStoreError("surface_removal_invalid", "actor is required")
+    if not isinstance(removal.reason, str) or not removal.reason.strip():
+        raise ContractStoreError("surface_removal_invalid", "reason is required")
+    return selectors
+
+
+def _editable_manifest(manifest_bytes: bytes) -> Any:
+    """Parse a manifest only when a no-op round trip is byte-identical."""
+    try:
+        text = manifest_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ContractStoreError("manifest_utf8", str(exc)) from exc
+    try:
+        document = tomlkit.parse(text)
+        rendered = tomlkit.dumps(document).encode("utf-8")
+    except Exception as exc:
+        raise ContractStoreError("manifest_toml", str(exc)) from exc
+    if rendered != manifest_bytes:
+        raise ContractStoreError("manifest_roundtrip_changed")
+    return document
+
+
+def _selector_table(document: Mapping[str, Any], selector: str) -> Mapping[str, Any]:
+    if not isinstance(selector, str) or not selector:
+        raise ContractStoreError("localization_selector_invalid", str(selector))
+    parts = selector.split(".")
+    if any(not part for part in parts):
+        raise ContractStoreError("localization_selector_invalid", selector)
+    node: Any = document
+    for part in parts:
+        if isinstance(node, Mapping) and part in node:
+            node = node[part]
+            continue
+        if (
+            isinstance(node, list)
+            and part.isdecimal()
+            and str(int(part)) == part
+            and int(part) < len(node)
+        ):
+            node = node[int(part)]
+            continue
+        else:
+            raise ContractStoreError("localization_selector_missing", selector)
+    if not isinstance(node, Mapping):
+        raise ContractStoreError("localization_selector_invalid", selector)
+    return node
+
+
+def _selector_owner_exists(document: Mapping[str, Any], selector: str) -> bool:
+    """Return whether the schema node owning a localized surface still exists.
+
+    Selectors are structural paths emitted by ``manifest_language_selectors``.
+    The final segment names the localized table; its parent is the schema node
+    whose removal can justify deleting that surface.  A root-level surface has
+    the manifest itself as owner and therefore cannot be removed while the
+    contract still exists.
+    """
+    parts = selector.split(".")
+    if any(not part for part in parts):
+        raise ContractStoreError("localization_selector_invalid", selector)
+    node: Any = document
+    for part in parts[:-1]:
+        if isinstance(node, Mapping) and part in node:
+            node = node[part]
+            continue
+        if (
+            isinstance(node, (list, tuple))
+            and part.isdecimal()
+            and str(int(part)) == part
+            and int(part) < len(node)
+        ):
+            node = node[int(part)]
+            continue
+        return False
+    return isinstance(node, Mapping)
+
+
+def _manifest_from_document(document: Any) -> tuple[bytes, dict[str, Any]]:
+    try:
+        manifest_bytes = tomlkit.dumps(document).encode("utf-8")
+        parsed = tomllib.loads(manifest_bytes.decode("utf-8"))
+    except Exception as exc:
+        raise ContractStoreError("manifest_toml", str(exc)) from exc
+    return manifest_bytes, parsed
+
+
+def _linguistic_tables(
+    manifest: Mapping[str, Any],
+) -> dict[str, dict[str, str]]:
+    try:
+        raw = manifest_language_selectors(manifest)
+    except LanguageStateError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+    tables: dict[str, dict[str, str]] = {}
+    for selector, languages in raw.items():
+        normalized: dict[str, str] = {}
+        for language, text in languages.items():
+            if not isinstance(language, str) or not isinstance(text, str) or not text.strip():
+                raise ContractStoreError(
+                    "language_text_invalid", f"{selector}:{language}",
+                )
+            canonical = _canonical_language(language, field=language)
+            if canonical != language or canonical in normalized:
+                raise ContractStoreError("language_tag_noncanonical", language)
+            normalized[canonical] = text
+        if not normalized:
+            raise ContractStoreError("language_state_languages", selector)
+        tables[selector] = normalized
+    if not tables:
+        raise ContractStoreError("language_surfaces_missing")
+    return tables
+
+
+def _validate_linguistic_candidate(manifest: Mapping[str, Any]) -> None:
+    """Run RM-0002 local and pairwise checks over every declared language."""
+    tables = _linguistic_tables(manifest)
+    languages = set().union(*(set(table) for table in tables.values()))
+    incomplete = {
+        selector: sorted(languages - set(table))
+        for selector, table in tables.items()
+        if set(table) != languages
+    }
+    if incomplete:
+        raise ContractStoreError(
+            "language_coverage_incomplete",
+            json.dumps(incomplete, ensure_ascii=False, sort_keys=True),
+        )
+
+    from manifest_lint import lint_contract_translation, lint_manifest
+
+    errors: list[str] = []
+    for language in sorted(languages):
+        for finding in lint_manifest(manifest, language=language):
+            if finding.severity == "error":
+                errors.append(
+                    f"{finding.check}:{finding.resource}:{','.join(finding.languages)}"
+                )
+    for selector, table in sorted(tables.items()):
+        ordered = sorted(table.items())
+        for source_index, (source_language, source_text) in enumerate(ordered):
+            for target_language, target_text in ordered[source_index + 1:]:
+                for finding in lint_contract_translation(
+                    source_text,
+                    target_text,
+                    resource=selector,
+                    source_language=source_language,
+                    target_language=target_language,
+                ):
+                    if finding.severity == "error":
+                        errors.append(
+                            f"{finding.check}:{selector}:"
+                            f"{source_language},{target_language}"
+                        )
+    if errors:
+        raise ContractStoreError(
+            "contract_language_invalid", ";".join(sorted(set(errors))[:24]),
+        )
+
+
 def _inside(path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
@@ -598,15 +838,18 @@ def _authenticate_payloads(
     )
     if not isinstance(declared, str) or not _DIGEST_RE.fullmatch(declared):
         raise ContractStoreError("declared_code_digest_invalid")
-    if parsed.get("executor_standard") is not None:
-        from executor_standard import validate_for_lifecycle
+    # Publication is an admission boundary, not a compatibility reader.  The
+    # declaration must therefore be checked unconditionally: making the
+    # validator conditional on the field itself would let an update bypass the
+    # standard simply by deleting that field.
+    from executor_standard import validate_for_lifecycle
 
-        findings = validate_for_lifecycle(parsed, require_declaration=True)
-        if findings:
-            detail = "; ".join(
-                f"{finding.code}:{finding.message}" for finding in findings[:8]
-            )
-            raise ContractStoreError("executor_standard_invalid", detail)
+    findings = validate_for_lifecycle(parsed, require_declaration=True)
+    if findings:
+        detail = "; ".join(
+            f"{finding.code}:{finding.message}" for finding in findings[:8]
+        )
+        raise ContractStoreError("executor_standard_invalid", detail)
     try:
         language_state = decode_language_state(state_bytes, manifest=parsed)
     except LanguageStateError as exc:
@@ -691,6 +934,124 @@ def verify_manifest_source(
         identifier=None,
         require_inventory_hash=True,
     )
+
+
+def prepare_technical_draft(ref: ManifestRef) -> TechnicalDraft:
+    """Snapshot a proposed authoring change without signing or locking it."""
+    _validate_manifest_ref(ref)
+    if ref.status is not ManifestStatus.ADMITTED:
+        raise ContractStoreError("source_not_admitted", str(ref.contract_id))
+    _require_plain_directory(ref.manifest_dir, code="source_directory_invalid")
+    _require_no_link_components(ref.manifest_dir, code="source_directory_invalid")
+    manifest_bytes = _read_regular_file(
+        ref.manifest_dir / "manifest.toml", code="source_file_invalid",
+    )
+    state_bytes = _read_regular_file(
+        ref.manifest_dir / "manifest.lang_state.json", code="source_file_invalid",
+    )
+    signature_path = ref.manifest_dir / "manifest.toml.sig"
+    if _is_link_like(signature_path):
+        raise ContractStoreError("source_file_invalid", str(signature_path))
+    signature_bytes = (
+        _read_regular_file(signature_path, code="source_file_invalid")
+        if signature_path.exists()
+        else None
+    )
+    document = _editable_manifest(manifest_bytes)
+    _rendered, parsed = _manifest_from_document(document)
+    if ref.name is None or parsed.get("name") != ref.name:
+        raise ContractStoreError("contract_identity_mismatch", str(ref.contract_id))
+    try:
+        decode_language_state(
+            state_bytes, manifest=parsed,
+        )
+    except LanguageStateError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+    _validate_linguistic_candidate(parsed)
+    return TechnicalDraft(
+        manifest_bytes=manifest_bytes,
+        language_state_bytes=state_bytes,
+        authoring_manifest_hash=_sha256(manifest_bytes),
+        authoring_signature_hash=(
+            None if signature_bytes is None else _sha256(signature_bytes)
+        ),
+        authoring_language_state_hash=_sha256(state_bytes),
+        authoring_code_digest=_code_digest(ref, parsed),
+    )
+
+
+def _validate_technical_policy(
+    base_payloads: Mapping[str, bytes] | None,
+    candidate_manifest: Mapping[str, Any],
+    candidate_state: Mapping[str, Any],
+    *,
+    removal: SurfaceRemoval | None,
+) -> None:
+    requested_removals = set(_validated_removal(removal))
+    candidate_tables = _linguistic_tables(candidate_manifest)
+    _validate_linguistic_candidate(candidate_manifest)
+    if base_payloads is None:
+        if requested_removals:
+            raise ContractStoreError(
+                "surface_removal_invalid", "new contract has no surfaces to remove",
+            )
+        return
+
+    try:
+        base_manifest = tomllib.loads(
+            base_payloads["manifest.toml"].decode("utf-8"),
+        )
+        base_state = decode_language_state(
+            base_payloads["manifest.lang_state.json"], manifest=base_manifest,
+        )
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise ContractStoreError("generation_invalid", str(exc)) from exc
+    except LanguageStateError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+
+    if candidate_manifest.get("name") != base_manifest.get("name"):
+        raise ContractStoreError("contract_identity_changed", "name")
+    base_tables = _linguistic_tables(base_manifest)
+    removed = set(base_tables) - set(candidate_tables)
+    if removed != requested_removals:
+        code = "surface_removal_required" if removed and not removal else "surface_removal_invalid"
+        raise ContractStoreError(
+            code,
+            f"declared={sorted(requested_removals)} actual={sorted(removed)}",
+        )
+    still_applicable = sorted(
+        selector
+        for selector in removed
+        if _selector_owner_exists(candidate_manifest, selector)
+    )
+    if still_applicable:
+        raise ContractStoreError(
+            "surface_removal_still_applicable", ",".join(still_applicable),
+        )
+
+    candidate_state_selectors = candidate_state.get("selectors")
+    base_state_selectors = base_state.get("selectors")
+    if not isinstance(candidate_state_selectors, Mapping) or not isinstance(
+        base_state_selectors, Mapping,
+    ):
+        raise ContractStoreError("language_state_selectors")
+    for selector, old_languages in base_tables.items():
+        if selector in removed:
+            continue
+        new_languages = candidate_tables.get(selector)
+        if new_languages is None:
+            raise ContractStoreError("surface_removal_invalid", selector)
+        for language, old_text in old_languages.items():
+            if new_languages.get(language) != old_text:
+                raise ContractStoreError(
+                    "existing_localization_changed", f"{selector}:{language}",
+                )
+            old_entry = base_state_selectors[selector][language]
+            new_entry = candidate_state_selectors[selector][language]
+            if new_entry != old_entry:
+                raise ContractStoreError(
+                    "existing_localization_state_changed", f"{selector}:{language}",
+                )
 
 
 def _generation_payloads(path: Path) -> dict[str, bytes]:
@@ -1209,11 +1570,804 @@ def _snapshot_payloads(snapshot: VerifiedManifest) -> dict[str, bytes]:
     }
 
 
+def _publication_base_locked(
+    ref: ManifestRef,
+    *,
+    trusted_publics: tuple[TrustedPublic, ...],
+    store_root: Path,
+    technical_base: bool,
+) -> tuple[Path, Path, str | None, dict[str, bytes] | None]:
+    """Load one authenticated CAS base while the sole writer lock is held."""
+    contract_dir, generations = _ensure_store_directories(
+        ref.contract_id,
+        store_root=store_root,
+    )
+    _ensure_binding_locked(contract_dir, ref.contract_id)
+    previous = _read_current_optional(contract_dir)
+    current_payloads: dict[str, bytes] | None = None
+    if previous is not None:
+        if technical_base:
+            current_payloads = _load_generation_for_commit(
+                ref,
+                previous,
+                trusted_publics=trusted_publics,
+                store_root=store_root,
+            )
+        else:
+            current_payloads = _snapshot_payloads(_load_generation(
+                ref,
+                previous,
+                trusted_publics=trusted_publics,
+                store_root=store_root,
+            ))
+    return contract_dir, generations, previous, current_payloads
+
+
+def _technical_expected_base_locked(
+    ref: ManifestRef,
+    *,
+    expected_generation_id: str | None,
+    previous_generation_id: str | None,
+    current_payloads: Mapping[str, bytes] | None,
+    trusted_publics: tuple[TrustedPublic, ...],
+    store_root: Path,
+) -> Mapping[str, bytes] | None:
+    """Authenticate the CAS generation against which a draft was prepared."""
+    if expected_generation_id is None:
+        return None
+    if previous_generation_id == expected_generation_id:
+        if current_payloads is None:
+            raise ContractStoreError("current_missing")
+        return current_payloads
+    return _load_generation_for_commit(
+        ref,
+        expected_generation_id,
+        trusted_publics=trusted_publics,
+        store_root=store_root,
+    )
+
+
+def _technical_authoring_base_locked(
+    ref: ManifestRef,
+    draft: TechnicalDraft,
+    *,
+    current_payloads: Mapping[str, bytes] | None,
+    generations: Path,
+    trusted_publics: tuple[TrustedPublic, ...],
+    store_root: Path,
+) -> Mapping[str, bytes] | None:
+    """Resolve the signed generation from which the authoring draft diverged.
+
+    M3 deliberately does not mirror a linguistic publication back into the
+    authoring directory.  Its signature therefore remains a compact,
+    authenticated lineage pointer to the last authoring generation while the
+    live generation can contain newer translations.  The lookup is structural
+    and content-verified; directory timestamps and authoring paths never choose
+    a generation.
+    """
+    signature_hash = _canonical_optional_sha256(
+        draft.authoring_signature_hash,
+        field="authoring_signature_hash",
+    )
+    if current_payloads is None:
+        if signature_hash is not None:
+            raise ContractStoreError(
+                "technical_ancestor_invalid",
+                "new contract unexpectedly has an authoring signature",
+            )
+        return None
+    if signature_hash is None:
+        raise ContractStoreError(
+            "technical_ancestor_missing", "existing contract has no signature",
+        )
+    if _sha256(current_payloads["manifest.toml.sig"]) == signature_hash:
+        return current_payloads
+
+    matches: list[Mapping[str, bytes]] = []
+    try:
+        entries = tuple(generations.iterdir())
+    except OSError as exc:
+        raise ContractStoreError("generations_directory_invalid", str(exc)) from exc
+    for entry in entries:
+        if entry.name.startswith(".generation-"):
+            continue
+        if not entry.is_dir() or _PHYSICAL_ID_RE.fullmatch(entry.name) is None:
+            continue
+        signature_path = entry / "manifest.toml.sig"
+        try:
+            signature_bytes = _read_regular_file(
+                signature_path, code="generation_file_invalid",
+            )
+        except ContractStoreError:
+            continue
+        if _sha256(signature_bytes) != signature_hash:
+            continue
+        identifier = "sha256:" + entry.name
+        payloads = _load_generation_for_commit(
+            ref,
+            identifier,
+            trusted_publics=trusted_publics,
+            store_root=store_root,
+        )
+        if _sha256(payloads["manifest.toml.sig"]) == signature_hash:
+            matches.append(payloads)
+    if not matches:
+        raise ContractStoreError(
+            "technical_ancestor_missing", str(ref.contract_id),
+        )
+    distinct = {
+        generation_id(payloads): payloads
+        for payloads in matches
+    }
+    if len(distinct) != 1:
+        raise ContractStoreError(
+            "technical_ancestor_ambiguous", str(ref.contract_id),
+        )
+    return next(iter(distinct.values()))
+
+
+def _commit_payloads_locked(
+    ref: ManifestRef,
+    payloads: Mapping[str, bytes],
+    *,
+    contract_dir: Path,
+    generations: Path,
+    previous: str | None,
+    current_payloads: Mapping[str, bytes] | None,
+    expected_generation_id: str | None,
+    trusted_publics: tuple[TrustedPublic, ...],
+    store_root: Path,
+    replace_timeout: float,
+    precommit: Callable[[str], None] | None = None,
+) -> tuple[str, bool]:
+    """Verify and commit one complete postcondition under the writer lock."""
+    candidate = _verify_payloads(
+        ref,
+        payloads,
+        trusted_publics=trusted_publics,
+        identifier=None,
+        require_inventory_hash=False,
+    )
+    canonical_payloads = _snapshot_payloads(candidate)
+    desired = generation_id(canonical_payloads)
+    if previous is None:
+        if expected_generation_id is not None:
+            raise ContractStoreError(
+                "commit_conflict",
+                f"expected={expected_generation_id} current=None",
+            )
+        _validate_initial_history(generations, desired_identifier=desired)
+
+    repeated = False
+    if previous != expected_generation_id:
+        if (
+            current_payloads is not None
+            and previous == desired
+            and dict(current_payloads) == canonical_payloads
+        ):
+            repeated = True
+        else:
+            raise ContractStoreError(
+                "commit_conflict",
+                f"expected={expected_generation_id} current={previous}",
+            )
+    elif (
+        current_payloads is not None
+        and previous == desired
+        and dict(current_payloads) == canonical_payloads
+    ):
+        repeated = True
+
+    if not repeated:
+        if precommit is not None:
+            precommit(desired)
+            # The audit hook is application code.  Re-authenticate the exact
+            # postcondition, including its live code digest, after it returns
+            # so a faulty sink cannot make an already-invalid generation
+            # current.  The event is an authorization record, not a claim that
+            # the later filesystem commit succeeded.
+            _verify_payloads(
+                ref,
+                canonical_payloads,
+                trusted_publics=trusted_publics,
+                identifier=desired,
+                require_inventory_hash=False,
+            )
+        _install_generation(
+            ref,
+            canonical_payloads,
+            identifier=desired,
+            trusted_publics=trusted_publics,
+            store_root=store_root,
+        )
+        _write_current(
+            contract_dir,
+            desired,
+            replace_timeout=replace_timeout,
+        )
+    return desired, repeated
+
+
+def _verify_published_postcondition(
+    ref: ManifestRef,
+    payloads: Mapping[str, bytes],
+    *,
+    desired: str,
+    trusted_publics: tuple[TrustedPublic, ...],
+    store_root: Path,
+) -> VerifiedManifest:
+    fresh = current_manifest(
+        ref, trusted_publics=trusted_publics, store_root=store_root,
+    )
+    if (
+        fresh.generation_id != desired
+        or _snapshot_payloads(fresh) != dict(payloads)
+    ):
+        raise ContractStoreError(
+            "publication_superseded",
+            f"desired={desired} current={fresh.generation_id}",
+        )
+    return fresh
+
+
+def _record_surface_removal_locked(
+    removal: SurfaceRemoval | None,
+    audit_sink: Callable[[Mapping[str, object]], None] | None,
+    *,
+    ref: ManifestRef,
+    operation: str,
+    expected_generation_id: str | None,
+    candidate_generation_id: str,
+) -> None:
+    if removal is None:
+        return
+    _validated_removal(removal)
+    if not callable(audit_sink):
+        raise ContractStoreError("surface_removal_audit_required")
+    audit_sink({
+        "event": "contract_surface_removal_authorized",
+        "operation": operation,
+        "contract_id": ref.contract_id.value,
+        "expected_generation_id": expected_generation_id,
+        "candidate_generation_id": candidate_generation_id,
+        "selectors": removal.selectors,
+        "diff": {"removed_selectors": removal.selectors},
+        "actor": removal.actor.strip(),
+        "reason": removal.reason.strip(),
+    })
+
+
+def _signed_candidate_payloads(
+    ref: ManifestRef,
+    *,
+    manifest_bytes: bytes,
+    language_state_bytes: bytes,
+    private_key: Ed25519PrivateKey,
+    trusted_publics: tuple[TrustedPublic, ...],
+) -> dict[str, bytes]:
+    signature_bytes = sign_manifest_bytes(
+        manifest_bytes,
+        private_key=private_key,
+    )
+    payloads = {
+        "manifest.toml": manifest_bytes,
+        "manifest.toml.sig": signature_bytes,
+        "manifest.lang_state.json": language_state_bytes,
+    }
+    # Immediate verification makes signing-key/trust misconfiguration a
+    # pre-commit error and applies the real standard to the prepared bytes.
+    _verify_payloads(
+        ref,
+        payloads,
+        trusted_publics=trusted_publics,
+        identifier=None,
+        require_inventory_hash=False,
+    )
+    return payloads
+
+
+def _prepare_localization_payloads_locked(
+    ref: ManifestRef,
+    base: VerifiedManifest,
+    *,
+    source_language: str,
+    target_language: str,
+    patches: tuple[LocalizationPatch, ...],
+    private_key: Ed25519PrivateKey,
+    trusted_publics: tuple[TrustedPublic, ...],
+) -> dict[str, bytes]:
+    if not isinstance(patches, tuple) or not patches:
+        raise ContractStoreError("localization_patches_invalid", "non-empty tuple required")
+    source = _canonical_language(source_language, field="source_language")
+    target = _canonical_language(target_language, field="target_language")
+    if source == target:
+        raise ContractStoreError("localization_languages_invalid", source)
+
+    document = _editable_manifest(base.manifest_bytes)
+    try:
+        base_parsed = tomllib.loads(base.manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise ContractStoreError("manifest_toml", str(exc)) from exc
+    expected = copy.deepcopy(base_parsed)
+    base_tables = _linguistic_tables(base_parsed)
+    seen: set[str] = set()
+
+    if any(not isinstance(patch, LocalizationPatch) for patch in patches):
+        raise ContractStoreError("localization_patches_invalid", "wrong patch type")
+    for patch in sorted(patches, key=lambda item: item.selector):
+        selector = patch.selector
+        if selector in seen:
+            raise ContractStoreError("localization_patch_duplicate", selector)
+        seen.add(selector)
+        table = base_tables.get(selector)
+        if table is None:
+            raise ContractStoreError("localization_selector_missing", selector)
+        source_text = table.get(source)
+        if source_text is None:
+            raise ContractStoreError(
+                "localization_source_missing", f"{selector}:{source}",
+            )
+        _canonical_sha256(patch.source_hash, field=f"{selector}.source_hash")
+        if patch.source_hash != _sha256(source_text.encode("utf-8")):
+            raise ContractStoreError("localization_source_changed", selector)
+
+        previous_text = table.get(target)
+        expected_previous_hash = (
+            None if previous_text is None else _sha256(previous_text.encode("utf-8"))
+        )
+        _canonical_optional_sha256(
+            patch.previous_target_hash,
+            field=f"{selector}.previous_target_hash",
+        )
+        if patch.previous_target_hash != expected_previous_hash:
+            raise ContractStoreError("localization_target_changed", selector)
+        if not isinstance(patch.candidate_text, str) or not patch.candidate_text.strip():
+            raise ContractStoreError("localization_candidate_invalid", selector)
+        _canonical_sha256(patch.candidate_hash, field=f"{selector}.candidate_hash")
+        if patch.candidate_hash != _sha256(patch.candidate_text.encode("utf-8")):
+            raise ContractStoreError("localization_candidate_hash", selector)
+
+        editable_table = _selector_table(document, selector)
+        expected_table = _selector_table(expected, selector)
+        editable_table[target] = patch.candidate_text  # type: ignore[index]
+        expected_table[target] = patch.candidate_text  # type: ignore[index]
+
+    manifest_bytes, candidate_parsed = _manifest_from_document(document)
+    if candidate_parsed != expected:
+        raise ContractStoreError("localization_technical_change")
+    if _code_digest(ref, candidate_parsed) != base.verified_code_digest:
+        raise ContractStoreError("localization_code_changed")
+    _validate_linguistic_candidate(candidate_parsed)
+
+    try:
+        state = json.loads(base.language_state_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractStoreError("language_state_json", str(exc)) from exc
+    state_selectors = state.get("selectors") if isinstance(state, dict) else None
+    if not isinstance(state_selectors, dict):
+        raise ContractStoreError("language_state_selectors")
+    for patch in patches:
+        state_selectors[patch.selector][target] = {
+            "version_hash": patch.candidate_hash,
+            "source_lang": source,
+            "source_hash": patch.source_hash,
+        }
+    try:
+        state_bytes = encode_language_state(state, manifest=candidate_parsed)
+    except LanguageStateError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+    return _signed_candidate_payloads(
+        ref,
+        manifest_bytes=manifest_bytes,
+        language_state_bytes=state_bytes,
+        private_key=private_key,
+        trusted_publics=trusted_publics,
+    )
+
+
+def _decoded_generation_language_state(
+    payloads: Mapping[str, bytes],
+) -> tuple[dict[str, Any], Mapping[str, object]]:
+    try:
+        manifest = tomllib.loads(payloads["manifest.toml"].decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise ContractStoreError("generation_invalid", str(exc)) from exc
+    try:
+        state = decode_language_state(
+            payloads["manifest.lang_state.json"], manifest=manifest,
+        )
+    except LanguageStateError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+    return manifest, state
+
+
+def _rebase_current_localizations(
+    document: Any,
+    proposed: Mapping[str, Any],
+    proposed_state: dict[str, Any],
+    *,
+    authoring_base_payloads: Mapping[str, bytes] | None,
+    current_base_payloads: Mapping[str, bytes] | None,
+) -> None:
+    """Carry live translations across a technical authoring update.
+
+    The technical diff is authored from the last signed authoring generation,
+    which can legitimately lag the live generation in M3.  Existing prose may
+    therefore equal either that ancestor or the live value, but no third value
+    is accepted.  The live text and provenance are then overlaid before the
+    ordinary policy validates the final candidate against current.
+    """
+    if current_base_payloads is None:
+        if authoring_base_payloads is not None:
+            raise ContractStoreError("technical_ancestor_invalid")
+        return
+    if authoring_base_payloads is None:
+        raise ContractStoreError("technical_ancestor_missing")
+
+    ancestor, ancestor_state = _decoded_generation_language_state(
+        authoring_base_payloads,
+    )
+    current, current_state = _decoded_generation_language_state(
+        current_base_payloads,
+    )
+    ancestor_tables = _linguistic_tables(ancestor)
+    current_tables = _linguistic_tables(current)
+    proposed_tables = _linguistic_tables(proposed)
+    proposed_selectors = proposed_state.get("selectors")
+    ancestor_selectors = ancestor_state.get("selectors")
+    current_selectors = current_state.get("selectors")
+    if not all(isinstance(value, Mapping) for value in (
+        proposed_selectors, ancestor_selectors, current_selectors,
+    )):
+        raise ContractStoreError("language_state_selectors")
+
+    for selector, current_languages in current_tables.items():
+        proposed_languages = proposed_tables.get(selector)
+        if proposed_languages is None:
+            # A real schema removal is checked, authorized and audited by the
+            # final technical policy; there is nothing to rebase into it.
+            continue
+        editable_languages = _selector_table(document, selector)
+        proposed_state_languages = proposed_selectors.get(selector)  # type: ignore[union-attr]
+        current_state_languages = current_selectors.get(selector)  # type: ignore[union-attr]
+        ancestor_languages = ancestor_tables.get(selector, {})
+        ancestor_state_languages = ancestor_selectors.get(selector, {})  # type: ignore[union-attr]
+        if not isinstance(proposed_state_languages, dict) or not isinstance(
+            current_state_languages, Mapping,
+        ) or not isinstance(ancestor_state_languages, Mapping):
+            raise ContractStoreError("language_state_selectors", selector)
+
+        for language, current_text in current_languages.items():
+            proposed_text = proposed_languages.get(language)
+            ancestor_text = ancestor_languages.get(language)
+            current_entry = current_state_languages.get(language)
+            proposed_entry = proposed_state_languages.get(language)
+            ancestor_entry = ancestor_state_languages.get(language)
+            if not isinstance(current_entry, Mapping):
+                raise ContractStoreError(
+                    "language_state_entry", f"{selector}:{language}",
+                )
+            if proposed_text is not None:
+                matches_current = (
+                    proposed_text == current_text
+                    and proposed_entry == current_entry
+                )
+                matches_ancestor = (
+                    ancestor_text is not None
+                    and proposed_text == ancestor_text
+                    and proposed_entry == ancestor_entry
+                )
+                if not matches_current and not matches_ancestor:
+                    raise ContractStoreError(
+                        "existing_localization_changed",
+                        f"{selector}:{language}",
+                    )
+            editable_languages[language] = current_text  # type: ignore[index]
+            proposed_state_languages[language] = copy.deepcopy(dict(current_entry))
+
+
+def _prepare_technical_payloads_locked(
+    ref: ManifestRef,
+    base_payloads: Mapping[str, bytes] | None,
+    authoring_base_payloads: Mapping[str, bytes] | None,
+    *,
+    draft: TechnicalDraft,
+    private_key: Ed25519PrivateKey,
+    trusted_publics: tuple[TrustedPublic, ...],
+    removal: SurfaceRemoval | None,
+) -> dict[str, bytes]:
+    if not isinstance(draft, TechnicalDraft):
+        raise ContractStoreError("technical_draft_invalid", "wrong type")
+    for field_name in (
+        "authoring_manifest_hash",
+        "authoring_language_state_hash",
+        "authoring_code_digest",
+    ):
+        _canonical_sha256(getattr(draft, field_name), field=field_name)
+    _canonical_optional_sha256(
+        draft.authoring_signature_hash,
+        field="authoring_signature_hash",
+    )
+    if (
+        not isinstance(draft.manifest_bytes, bytes)
+        or not isinstance(draft.language_state_bytes, bytes)
+    ):
+        raise ContractStoreError("technical_draft_invalid", "payloads must be bytes")
+    if _sha256(draft.manifest_bytes) != draft.authoring_manifest_hash:
+        raise ContractStoreError("technical_draft_invalid", "manifest hash")
+    if _sha256(draft.language_state_bytes) != draft.authoring_language_state_hash:
+        raise ContractStoreError("technical_draft_invalid", "language-state hash")
+
+    authoring_manifest = _read_regular_file(
+        ref.manifest_dir / "manifest.toml", code="source_file_invalid",
+    )
+    authoring_state = _read_regular_file(
+        ref.manifest_dir / "manifest.lang_state.json", code="source_file_invalid",
+    )
+    signature_path = ref.manifest_dir / "manifest.toml.sig"
+    if _is_link_like(signature_path):
+        raise ContractStoreError("source_file_invalid", str(signature_path))
+    authoring_signature = (
+        _read_regular_file(signature_path, code="source_file_invalid")
+        if signature_path.exists()
+        else None
+    )
+    if (
+        authoring_manifest != draft.manifest_bytes
+        or authoring_state != draft.language_state_bytes
+        or (
+            None if authoring_signature is None else _sha256(authoring_signature)
+        ) != draft.authoring_signature_hash
+    ):
+        raise ContractStoreError("technical_draft_stale", str(ref.contract_id))
+    if base_payloads is not None and authoring_signature is None:
+        raise ContractStoreError(
+            "technical_draft_invalid", "existing contract signature is missing",
+        )
+
+    document = _editable_manifest(draft.manifest_bytes)
+    _unmodified_bytes, proposed = _manifest_from_document(document)
+    if ref.name is None or proposed.get("name") != ref.name:
+        raise ContractStoreError("contract_identity_mismatch", str(ref.contract_id))
+    try:
+        raw_state = json.loads(draft.language_state_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractStoreError("language_state_json", str(exc)) from exc
+    if not isinstance(raw_state, dict):
+        raise ContractStoreError("language_state_schema")
+    try:
+        decode_language_state(draft.language_state_bytes, manifest=proposed)
+    except LanguageStateError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+    _rebase_current_localizations(
+        document,
+        proposed,
+        raw_state,
+        authoring_base_payloads=authoring_base_payloads,
+        current_base_payloads=base_payloads,
+    )
+    _rebased_bytes, rebased = _manifest_from_document(document)
+    actual_code_digest = _code_digest(ref, rebased)
+    if actual_code_digest != draft.authoring_code_digest:
+        raise ContractStoreError("technical_draft_stale", "code changed")
+    code_table = document.get("code")
+    if not isinstance(code_table, Mapping):
+        raise ContractStoreError("code_files_invalid")
+    code_table["digest"] = actual_code_digest  # type: ignore[index]
+    manifest_bytes, candidate_parsed = _manifest_from_document(document)
+    expected = copy.deepcopy(rebased)
+    expected["code"]["digest"] = actual_code_digest
+    if candidate_parsed != expected:
+        raise ContractStoreError("technical_draft_changed")
+    try:
+        state_bytes = encode_language_state(raw_state, manifest=candidate_parsed)
+        candidate_state = decode_language_state(
+            state_bytes,
+            manifest=candidate_parsed,
+        )
+    except LanguageStateError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+    _validate_technical_policy(
+        base_payloads,
+        candidate_parsed,
+        candidate_state,
+        removal=removal,
+    )
+    return _signed_candidate_payloads(
+        ref,
+        manifest_bytes=manifest_bytes,
+        language_state_bytes=state_bytes,
+        private_key=private_key,
+        trusted_publics=trusted_publics,
+    )
+
+
+def publish_localization(
+    ref: ManifestRef,
+    *,
+    expected_generation_id: str,
+    source_language: str,
+    target_language: str,
+    patches: tuple[LocalizationPatch, ...],
+    private_key: Ed25519PrivateKey,
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
+) -> PublicationResult:
+    """Publish reviewed prose to an explicitly isolated M3 store."""
+    shadow_root = _m2_shadow_root(store_root)
+    _validate_manifest_ref(ref)
+    if ref.status is not ManifestStatus.ADMITTED:
+        raise ContractStoreError("source_not_admitted", str(ref.contract_id))
+    generation_directory_name(expected_generation_id)
+    trusted = _trusted_public_tuple(trusted_publics)
+    source = _canonical_language(source_language, field="source_language")
+    target = _canonical_language(target_language, field="target_language")
+
+    with _writer_lock(ref.contract_id, store_root=shadow_root, timeout=lock_timeout):
+        contract_dir, generations, previous, current_payloads = _publication_base_locked(
+            ref,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+            technical_base=False,
+        )
+        if previous is None or current_payloads is None:
+            raise ContractStoreError("commit_conflict", "localization requires a current base")
+        if previous == expected_generation_id:
+            base_payloads = current_payloads
+        else:
+            base_payloads = _snapshot_payloads(_load_generation(
+                ref,
+                expected_generation_id,
+                trusted_publics=trusted,
+                store_root=shadow_root,
+            ))
+        base = _verify_payloads(
+            ref,
+            base_payloads,
+            trusted_publics=trusted,
+            identifier=expected_generation_id,
+            require_inventory_hash=False,
+        )
+        payloads = _prepare_localization_payloads_locked(
+            ref,
+            base,
+            source_language=source,
+            target_language=target,
+            patches=patches,
+            private_key=private_key,
+            trusted_publics=trusted,
+        )
+        desired, repeated = _commit_payloads_locked(
+            ref,
+            payloads,
+            contract_dir=contract_dir,
+            generations=generations,
+            previous=previous,
+            current_payloads=current_payloads,
+            expected_generation_id=expected_generation_id,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+            replace_timeout=replace_timeout,
+        )
+    fresh = _verify_published_postcondition(
+        ref,
+        payloads,
+        desired=desired,
+        trusted_publics=trusted,
+        store_root=shadow_root,
+    )
+    return PublicationResult(
+        contract_id=ref.contract_id,
+        previous_generation_id=previous,
+        current_generation_id=str(fresh.generation_id),
+        operation="publish_localization",
+        repeated=repeated,
+    )
+
+
+def publish_technical_update(
+    ref: ManifestRef,
+    *,
+    expected_generation_id: str | None,
+    draft: TechnicalDraft,
+    private_key: Ed25519PrivateKey,
+    trusted_publics: Iterable[TrustedPublic],
+    removal: SurfaceRemoval | None = None,
+    removal_audit: Callable[[Mapping[str, object]], None] | None = None,
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
+) -> PublicationResult:
+    """Sign and publish one technical draft under a single writer lock."""
+    shadow_root = _m2_shadow_root(store_root)
+    _validate_manifest_ref(ref)
+    if ref.status is not ManifestStatus.ADMITTED:
+        raise ContractStoreError("source_not_admitted", str(ref.contract_id))
+    if expected_generation_id is not None:
+        generation_directory_name(expected_generation_id)
+    trusted = _trusted_public_tuple(trusted_publics)
+
+    with _writer_lock(ref.contract_id, store_root=shadow_root, timeout=lock_timeout):
+        contract_dir, generations, previous, current_payloads = _publication_base_locked(
+            ref,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+            technical_base=True,
+        )
+        policy_base = _technical_expected_base_locked(
+            ref,
+            expected_generation_id=expected_generation_id,
+            previous_generation_id=previous,
+            current_payloads=current_payloads,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+        )
+        authoring_base = _technical_authoring_base_locked(
+            ref,
+            draft,
+            current_payloads=current_payloads,
+            generations=generations,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+        )
+        payloads = _prepare_technical_payloads_locked(
+            ref,
+            policy_base,
+            authoring_base,
+            draft=draft,
+            private_key=private_key,
+            trusted_publics=trusted,
+            removal=removal,
+        )
+        desired, repeated = _commit_payloads_locked(
+            ref,
+            payloads,
+            contract_dir=contract_dir,
+            generations=generations,
+            previous=previous,
+            current_payloads=current_payloads,
+            expected_generation_id=expected_generation_id,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+            replace_timeout=replace_timeout,
+            precommit=(
+                None
+                if removal is None
+                else lambda candidate_id: _record_surface_removal_locked(
+                    removal,
+                    removal_audit,
+                    ref=ref,
+                    operation="publish_technical_update",
+                    expected_generation_id=expected_generation_id,
+                    candidate_generation_id=candidate_id,
+                )
+            ),
+        )
+    fresh = _verify_published_postcondition(
+        ref,
+        payloads,
+        desired=desired,
+        trusted_publics=trusted,
+        store_root=shadow_root,
+    )
+    return PublicationResult(
+        contract_id=ref.contract_id,
+        previous_generation_id=previous,
+        current_generation_id=str(fresh.generation_id),
+        operation="publish_technical_update",
+        repeated=repeated,
+    )
+
+
 def publish_signed_source(
     ref: ManifestRef,
     *,
     expected_generation_id: str | None,
     trusted_publics: Iterable[TrustedPublic],
+    removal: SurfaceRemoval | None = None,
+    removal_audit: Callable[[Mapping[str, object]], None] | None = None,
     store_root: Path | str | None = None,
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
     replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
@@ -1228,70 +2382,59 @@ def publish_signed_source(
     previous: str | None = None
     repeated = False
     with _writer_lock(ref.contract_id, store_root=shadow_root, timeout=lock_timeout):
-        contract_dir, generations = _ensure_store_directories(
-            ref.contract_id,
+        contract_dir, generations, previous, current_payloads = _publication_base_locked(
+            ref,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+            technical_base=True,
+        )
+        policy_base = _technical_expected_base_locked(
+            ref,
+            expected_generation_id=expected_generation_id,
+            previous_generation_id=previous,
+            current_payloads=current_payloads,
+            trusted_publics=trusted,
             store_root=shadow_root,
         )
-        _ensure_binding_locked(contract_dir, ref.contract_id)
-        previous = _read_current_optional(contract_dir)
-        current_payloads: dict[str, bytes] | None = None
-        if previous is not None:
-            current_payloads = _load_generation_for_commit(
-                ref,
-                previous,
-                trusted_publics=trusted,
-                store_root=shadow_root,
-            )
-        elif expected_generation_id is not None:
-            raise ContractStoreError(
-                "commit_conflict",
-                f"expected={expected_generation_id} current=None",
-            )
         candidate = verify_manifest_source(ref, trusted_publics=trusted)
         payloads = _snapshot_payloads(candidate)
-        desired = generation_id(payloads)
-        if previous is None:
-            _validate_initial_history(generations, desired_identifier=desired)
-        if previous != expected_generation_id:
-            if (
-                current_payloads is not None
-                and previous == desired
-                and current_payloads == payloads
-            ):
-                repeated = True
-            else:
-                raise ContractStoreError(
-                    "commit_conflict",
-                    f"expected={expected_generation_id} current={previous}",
-                )
-        elif (
-            current_payloads is not None
-            and previous == desired
-            and current_payloads == payloads
-        ):
-            repeated = True
-        if not repeated:
-            _install_generation(
-                ref,
-                payloads,
-                identifier=desired,
-                trusted_publics=trusted,
-                store_root=shadow_root,
-            )
-            _write_current(
-                contract_dir,
-                desired,
-                replace_timeout=replace_timeout,
-            )
-    fresh = current_manifest(ref, trusted_publics=trusted, store_root=shadow_root)
-    if (
-        fresh.generation_id != desired
-        or _snapshot_payloads(fresh) != payloads
-    ):
-        raise ContractStoreError(
-            "publication_superseded",
-            f"desired={desired} current={fresh.generation_id}",
+        _validate_technical_policy(
+            policy_base,
+            candidate.parsed,
+            candidate.language_state,
+            removal=removal,
         )
+        desired, repeated = _commit_payloads_locked(
+            ref,
+            payloads,
+            contract_dir=contract_dir,
+            generations=generations,
+            previous=previous,
+            current_payloads=current_payloads,
+            expected_generation_id=expected_generation_id,
+            trusted_publics=trusted,
+            store_root=shadow_root,
+            replace_timeout=replace_timeout,
+            precommit=(
+                None
+                if removal is None
+                else lambda candidate_id: _record_surface_removal_locked(
+                    removal,
+                    removal_audit,
+                    ref=ref,
+                    operation="publish_signed_source",
+                    expected_generation_id=expected_generation_id,
+                    candidate_generation_id=candidate_id,
+                )
+            ),
+        )
+    fresh = _verify_published_postcondition(
+        ref,
+        payloads,
+        desired=desired,
+        trusted_publics=trusted,
+        store_root=shadow_root,
+    )
     return PublicationResult(
         contract_id=ref.contract_id,
         previous_generation_id=previous,
@@ -1442,9 +2585,12 @@ __all__ = [
     "ContractBinding",
     "ContractStoreError",
     "GENERATION_FILES",
+    "LocalizationPatch",
     "PublicationResult",
     "SHADOW_RELATIVE",
     "StoreDiagnostic",
+    "SurfaceRemoval",
+    "TechnicalDraft",
     "VerifiedManifest",
     "WINDOWS_POWER_LOSS_LIMIT",
     "contract_storage_key",
@@ -1454,7 +2600,10 @@ __all__ = [
     "encode_binding",
     "generation_directory_name",
     "generation_id",
+    "prepare_technical_draft",
+    "publish_localization",
     "publish_signed_source",
+    "publish_technical_update",
     "read_binding",
     "verify_manifest_source",
 ]

@@ -57,6 +57,11 @@ hint = ["subprocess Python google_api.py contacts list"]
 name = "network:http"
 hint = ["Google People API HTTPS"]
 
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
 [output]
 schema_inline = "{ ok: bool, entries: array, error?: string }"
 
@@ -71,11 +76,6 @@ columns = [
 max_rows = 200
 max_chars = 16000
 overflow = "notice"
-
-[[capabilities]]
-name = "provider:access"
-hint = ["google-workspace"]
-when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "caso felice"
