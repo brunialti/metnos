@@ -388,6 +388,71 @@ un'identità diversa da entrambe produce `authoring_recovery_ambiguous` e blocca
 Su Windows vale il limite RM-0007: atomicità rispetto al crash del processo su
 NTFS, non durata dell'ultima voce in caso di perdita di alimentazione.
 
+Il contratto F4 è chiuso come segue. `commit_birth_snapshot()` riceve la
+`CandidateSnapshot` privata e un `request_id` digest SHA-256 canonico; non usa un
+`TechnicalDraft` che riapre l'authoring vivo. Il nuovo albero contiene
+esattamente `manifest.toml`, `manifest.toml.sig`,
+`manifest.lang_state.json` e tutti e soli i `code.files`. `authoring_tree_id` è
+il digest con dominio `metnos.executor-birth.authoring-tree/v1\0` della lista
+ordinata per byte UTF-8 degli oggetti `{relative_path,size,sha256}`.
+
+`AuthoringInstallJournalV1` è JSON UTF-8 canonico e contiene esattamente
+`schema_version=1`, `request_id`, `contract_id`, `source_origin`,
+`canonical_tree_id`, `old_tree_id`, `new_tree_id`, `candidate_id`,
+`semantic_core_id`, `admission_context_id`, `predecessor_generation_id`,
+`new_generation_id`, `staging_basename`, `backup_basename`,
+`recovery_action="restore_old_until_new_pointer"` e `state="prepared"`.
+Gli identificatori sono digest canonici; `old_tree_id` e predecessore sono
+nullable soltanto alla prima nascita. I basename sono core-generated come
+`.birth-stage-<64-hex-request-id>` e `.birth-backup-<64-hex-request-id>` e non
+contengono separatori. Nessun percorso libero entra nel journal.
+
+Non nasce una seconda chiave. La stessa `AdmissionReceipt` autentica il journal
+includendo il controllo obbligatorio `authoring_install_journal_v1` con
+`rule_version="1"`, `status="passed"` ed `evidence_hash` uguale al digest con
+dominio `metnos.executor-birth.authoring-journal/v1\0` del journal canonico. Il
+callback di emissione riceve anche `request_id` e `journal_hash`; la rilettura
+verifica firma, binding di ammissione e questo controllo. Un issuer che non
+accetta o non restituisce tali legami fallisce chiuso.
+
+Canonico, staging e backup sono directory sorelle sullo stesso filesystem. Una
+directory di controllo derivata dal `ContractId`, esterna all'albero sostituito,
+contiene soltanto `authoring.lock`, `version.json` e `journal.json`.
+`version.json` è canonico e contiene esattamente `schema_version=1`,
+`contract_id`, `version` intero non negativo distinto da booleano e `tree_id`.
+Un lettore acquisisce il token condiviso, legge versione e tree ID, acquisisce
+l'intero insieme chiuso, rilegge versione e accetta soltanto se coincidono; in
+caso contrario scarta e ripete entro la scadenza. Il writer acquisisce il token
+esclusivo e incrementa la versione soltanto dopo la postcondizione completa.
+POSIX usa `flock(LOCK_SH|LOCK_EX)`; Windows usa blocchi byte-range
+condivisi/esclusivi; entrambi hanno coordinamento RW intra-processo e timeout
+finito. Primitive assente o filesystem incompatibile produce
+`authoring_atomic_install_unsupported`.
+
+La sequenza vincolante è: blocco catalogo; token esclusivo; writer lock; verifica
+copia e calcolo payload firmati/generazione; emissione, persistenza e rilettura
+della ricevuta legata al journal; persistenza e `fsync` del journal `prepared`;
+rename canonico a backup; rename staging a canonico; rilettura tree ID;
+installazione generazione RM-0007; sostituzione del puntatore `current`;
+rilettura di generazione, ricevuta e authoring; incremento e sincronizzazione
+della versione; rimozione journal; rimozione backup.
+
+Il riconciliatore usa gli stessi tre blocchi e una matrice chiusa: puntatore
+vecchio e canonico vecchio elimina staging e journal; puntatore vecchio con
+canonico assente ripristina il backup vecchio; puntatore vecchio con canonico
+nuovo elimina il nuovo e ripristina il vecchio; puntatore nuovo e canonico nuovo
+completa rilettura/versione e pulisce. Puntatore nuovo con canonico vecchio o
+qualunque identità estranea produce `authoring_recovery_ambiguous`. Alla prima
+nascita, finché il puntatore è assente, il nuovo albero viene rimosso e torna
+l'assenza attestata. Journal, ricevuta, staging, backup o versione alterati o non
+reciprocamente legati bloccano il recupero.
+
+Prima dell'attivazione la guardia censisce tutti i lettori diretti di
+`manifest_dir` e li migra all'API con token. Le prove iniettano un crash dopo
+ogni frontiera fra ricevuta, journal, due rename, generazione, puntatore,
+rilettura, versione e pulizia; coprono prima nascita, aggiornamento, replay,
+conflitto, alterazione, lettori concorrenti Linux/Windows e timeout.
+
 ### 7.2 Ricevuta prima del puntatore
 
 Non si prevede `generation_id` e non si firma fuori dal blocco. RM-0007 prepara
