@@ -1132,15 +1132,27 @@ fra protocolli di commit diversi.
 ### 10.1 Incremento 2A — accesso sicuro
 
 - Introdurre il modulo comune di accesso a handle.
+- Autenticare la radice già aperta e adottare un descrittore consumabile una
+  volta, mantenendo identità e profilo vincolati alla sessione.
+- Validare volume e funzionalità del filesystem prima di ogni creazione.
+- Su Windows, costruire, applicare e verificare il descrittore di sicurezza
+  esatto e abilitare e ripristinare il privilegio minimo necessario.
+- Produrre un inventario relativo a handle con identità, tipo e metadati di
+  collegamento sufficienti a riconoscere oggetti estranei.
 - Sostituire nel caricatore dell'archivio chiavi le aperture vulnerabili con la
   nuova primitiva.
 - Riutilizzare la stessa lettura nel caricatore semantico e nel caricatore del
   registro di approvazione.
 - Introdurre il blocco condiviso/esclusivo comune e la rinomina Windows per
   handle, senza ancora predisporre dati.
+- Introdurre la disposizione sicura e riconciliata di un oggetto di transazione
+  isolato, senza journal o checkpoint.
 - Normalizzare ogni errore di sistema in codici Birth stabili, senza percorsi o
   dettagli ACL nel messaggio pubblico.
 - Non aggiungere ancora generazione di chiavi.
+
+Queste capacità restano operazioni di basso livello. Non scelgono radici,
+identità, profili, dati, politica transazionale o stato del predispositore.
 
 ### 10.2 Incremento 2B — archivio autore
 
@@ -1458,11 +1470,463 @@ una semplificazione editoriale.
 
 La prima modifica di prodotto è autorizzata soltanto dopo una revisione di questo
 documento contro il codice e RM-0008. Durante la codifica, ogni nuovo errore deve
-essere classificato rispetto a un'invariante di questa specifica. Se tre
-correzioni consecutive interessano la stessa area senza soddisfarne
-l'invariante, l'implementazione si arresta e torna alla diagnosi; non si aggiunge
-una quarta variante.
+essere classificato rispetto a un'invariante di questa specifica. Al secondo
+fallimento consecutivo della stessa classe, l'implementazione si arresta e torna
+alla diagnosi; non si aggiunge una terza variante finché una prova deterministica
+non ha identificato la causa e delimitato la correzione.
 
 Il documento non chiude RM-0008. Definisce il prossimo incremento controllabile
 e impedisce che un altro esito verde parziale venga scambiato per completamento
 del prodotto.
+
+## 16. Arresto diagnostico dell'incremento 2A del 25 agosto 2026
+
+### 16.1 Stato verificato e limite dell'evidenza
+
+Il codice esplorativo dell'incremento 2A resta locale e privo di registrazione
+Git. È basato sulla registrazione `83345c18`, che contiene soltanto questa
+specifica. La raccolta mirata riproducibile del 25 agosto 2026 contiene 75
+`node-id`: su Linux supera 63 prove e ne salta dodici perché specifiche per
+Windows. L'elenco nell'ordine di raccolta pytest ha impronta SHA-256
+`73c821eda82ee6908a3b20c8c06076bf2edc0d96d0a548d9bd4cfe83b204826c`; i
+quattro moduli e i sei file di prova hanno impronta aggregata
+`8069ebdd5f6bb6c7b110277c00a6a302d4d241c6d7a605dc50c8f8083c8c113b` con
+Python 3.12.3. Il comando completo è registrato nel pacchetto di revisione
+`rm0008-incremento-2a-pacchetto-review-adversarial.md`. Il dato resta una
+fotografia del prototipo locale, non un criterio futuro basato sul conteggio e
+non una certificazione dell'incremento.
+
+La matrice pubblica esistente esegue `tests/portable`, ma non raccoglie le prove
+causali collocate in `tests/runtime/contracts`. Non contiene neppure l'attività
+Windows dedicata alle ACL reali prescritta dal §12.2. L'esecuzione pubblica
+`32887571156`, verde sulla sola registrazione documentale `83345c18`, non prova
+il codice locale. Nessun esito verde corrente può quindi riempire le celle di
+sicurezza, concorrenza o compatibilità del §13.
+
+Il presente §16 è un piano diagnostico. Non autorizza da solo modifiche a test,
+matrice o prodotto. La ripresa richiede l'approvazione esplicita di questa
+sezione da parte dei tre revisori diagnostici; soltanto dopo tale approvazione
+si applica l'ordine del §16.8.
+
+### 16.2 Separazione obbligatoria fra diagnosi e accettazione
+
+Per ogni criterio devono esistere due artefatti distinti e nominati con lo stesso
+identificativo:
+
+- **D — riproduttore diagnostico.** Registra in modo deterministico la causa nel
+  prototipo. Può essere un inventario statico, una sonda dell'ordine delle
+  chiamate, una iniezione di errore o una prova dinamica. Un D può terminare con
+  successo proprio perché ha osservato il difetto; non entra mai fra i controlli
+  obbligatori di certificazione e non può produrre un verde di conformità.
+- **A — prova di accettazione.** Afferma l'invariante desiderata attraverso il
+  simbolo produttivo. Per una causa di prodotto già dimostrata deve essere
+  rossa sul prototipo vulnerabile e verde dopo la correzione. Per un requisito
+  di copertura non ancora provato può risultare verde alla prima esecuzione: in
+  quel caso chiude la lacuna probatoria senza autorizzare una modifica inutile
+  al prodotto. Soltanto gli A entrano come controlli obbligatori nella matrice.
+
+Un arresto reale mediante `SIGKILL` o `TerminateProcess` è una prova di
+integrazione e recuperabilità. Non sostituisce il D deterministico: un singolo
+arresto può non manifestare una finestra di durabilità pur se il ramo difettoso
+è presente. Analogamente, l'assenza di un simbolo è dimostrata staticamente e
+non richiede un arresto artificiale.
+
+Prima della modifica della matrice deve esistere un manifesto canonico con, per
+ogni A, identificativo del criterio, `node-id` di pytest, piattaforma proprietaria,
+simbolo produttivo attraversato e divieto di salto o successo inatteso. La
+raccolta viene certificata sugli identificativi, non sul numero totale dei test.
+Il nome di ogni prova, inclusa una prova preesistente, deve descrivere soltanto
+la garanzia realmente esercitata; una prova nello stesso processo non può essere
+nominata come certificazione multiprocesso.
+
+### 16.3 Criteri rossi: causa già individuata
+
+#### R1 — Proprietà strutturale della capacità di scrittura
+
+La causa è l'uso di un token Python raggiungibile come se fosse un sigillo. Il
+costruttore del descrittore, le funzioni di apertura della radice e la funzione
+di adozione sono importabili; il descrittore può inoltre essere modificato prima
+dell'adozione.
+
+- **D-R1:** inventario statico di ogni costruzione, adozione e operazione
+  mutante; costruzione diretta del token e sostituzione di handle, radice o
+  identità prima dell'adozione.
+- **A-R1:** la sola entrata supportata appartiene al modulo installatore;
+  radice e UID o SID sono risolti internamente; il descrittore è consumabile una
+  volta e i suoi valori non sono modificabili dopo la costruzione; nessuna
+  fabbrica o capacità mutante è transitivamente raggiungibile dalle facciate
+  pubbliche o dal runtime produttivo. La guardia controlla staticamente il grafo
+  di importazione e chiamata della distribuzione, non lo stack dinamico Python.
+
+Questa chiusura non promette inforgiabilità contro codice arbitrario eseguito
+nello stesso interprete e con lo stesso UID o SID. La sicurezza ulteriore deriva
+dai diritti del sistema operativo, dall'inventario chiuso della distribuzione e
+dalla guardia statica. Il limite deve restare dichiarato nel rapporto finale.
+
+#### R2 — Blocco globale esclusivo prima di ogni mutazione
+
+La causa è che lo stato autorevole abilita creazione e rinomina senza conservare
+la modalità condivisa o esclusiva del blocco globale.
+
+- **D-R2:** per ogni operazione mutante attualmente presente, invocazione senza
+  blocco e sotto blocco globale condiviso, con inventario prima e dopo per
+  mostrare che l'I/O viene raggiunto.
+- **A-R2:** nessuna mutazione è tentata senza blocco globale esclusivo; il
+  rifiuto precede apertura, creazione, rinomina o disposizione. Il blocco
+  condiviso resta sufficiente per i caricatori interni di sola lettura. Quando
+  viene introdotta, anche la disposizione appartiene a questa prova.
+
+#### R3 — Disposizione autenticata degli oggetti di transazione
+
+La causa è l'assenza di `dispose_transaction_object`. Il solo helper Windows di
+ripristino non è una capacità legata alla sessione e sopprime alcuni errori.
+
+- **D-R3:** verifica statica dell'assenza dell'operazione e inventario dei rami
+  di ripristino che chiamano direttamente helper di piattaforma.
+- **A-R3:** l'operazione è relativa a handle, richiede blocco globale esclusivo
+  e identità attesa, non segue link e rifiuta hard link, oggetti estranei e
+  directory non vuote. Su POSIX sincronizza il descrittore padre dopo
+  `unlinkat`; su Windows usa la disposizione sul medesimo handle e riconcilia
+  mediante rilettura. Restituisce un esito chiuso e l'identità osservata, ma non
+  conosce journal o checkpoint: la loro registrazione appartiene al chiamante
+  del 2B. Non rivendica un `fsync` generale delle directory Windows.
+
+#### R4 — Recupero durevole del file di blocco POSIX vuoto
+
+La causa è che la directory viene sincronizzata solo quando il processo
+corrente ha creato il file. Il recupero di un file vuoto lasciato da un arresto
+sincronizza il file, ma non necessariamente la sua voce di directory.
+
+- **D-R4:** sonda deterministica dell'ordine scrittura completa → `fsync` del
+  file → `fsync` della directory sul ramo di recupero di un file vuoto già
+  esistente.
+- **A-R4:** ogni transizione da file vuoto a byte canonico sincronizza file e
+  directory nello stesso ordine. Una prova separata termina il primo processo
+  dopo la creazione vuota e dimostra la convergenza del secondo.
+
+#### R5 — Profili Windows autenticati e verificati sul medesimo handle
+
+La radice viene già controllata per tipo, reparse point e percorso finale, ma
+non rispetto al proprietario e alla DACL richiesti. I profili degli oggetti
+creati non sono registrati in un catalogo autenticato e vengono poi inferiti
+dagli argomenti di lettura. Il percorso storico non può essere esentato mediante
+un generico stato `authoritative=False`: deve avere un profilo storico chiuso.
+
+- **D-R5:** su un processo amministrativo, aprire con successo una radice NTFS
+  e alterare separatamente proprietario, protezione della DACL, ordine e tipo
+  delle ACE, SID o maschera. Registrare che il prototipo raggiunge l'uso senza
+  il confronto richiesto oppure applica un profilo diverso da quello di
+  creazione.
+- **A-R5:** un oracolo di test indipendente usa `GetSecurityInfo`, `GetAce` ed
+  `EqualSid`, senza chiamare il generatore SDDL o il verificatore produttivo.
+  L'oracolo conferma anzitutto la singola alterazione; quindi l'entrata
+  produttiva, eseguita con diritti amministrativi sufficienti ad aprire
+  l'handle, deve rifiutarla nel confronto proprietario/DACL. Il catalogo dei profili è
+  chiuso e posseduto dal codice o dal proprietario installatore, non è un valore libero
+  reso soltanto immutabile.
+- **A-R5-accesso:** con un token reale dell'identità di servizio e con un secondo
+  utente ordinario, verificare lettura e dinieghi effettivi distinti per
+  `confidential` e `integrity_only`. Un processo non elevato deve restituire il
+  codice stabile e non lasciare segreti. L'indisponibilità dei token non diventa
+  salto o verde: l'attività obbligatoria resta non certificata.
+
+#### R6 — Rinomina Windows dopo ispezione e riconciliazione
+
+Esistono due cause distinte. Una directory già ispezionata è conservata con un
+handle privo del diritto di eliminazione e la rinomina riusa quell'handle. Una
+sorgente non presente nella cache può invece essere rinominata senza verifica
+completa del profilo.
+
+- **D-R6-memorizzata:** una seconda sessione apre e inventaria una transazione
+  esistente, poi tenta la rinomina; il prototipo deve esporre il fallimento di
+  accesso causato dall'handle memorizzato.
+- **D-R6-nuova:** una nuova sessione incontra una sorgente non memorizzata con
+  DACL alterata e registra che il ramo di rinomina raggiunge l'I/O senza il
+  confronto del profilo.
+- **A-R6:** la rinomina usa un handle sorgente distinto con i diritti minimi
+  necessari, valida volume, FileID a 128 bit, tipo e profilo, conserva identità
+  e inventario della directory finale e riconcilia sorgente e destinazione dopo
+  ogni errore. Destinazione già presente o creata alla barriera immediatamente
+  prima della chiamata produce conflitto, lasciando invariate entrambe le parti.
+
+#### R7 — Inventario comune completo e stabile
+
+Il record comune non distingue un collegamento simbolico da un file regolare e
+non contiene il tag di reparse. Su POSIX un collegamento simbolico entra con
+`directory=False`; su Windows la doppia enumerazione conserva nome, FileID e
+tipo di directory, ma forza il numero di link a uno e perde il reparse tag.
+
+- **D-R7-POSIX:** inventariare la directory padre che contiene un collegamento
+  simbolico e mostrare che il record prodotto non lo distingue da un file
+  regolare.
+- **D-R7-Windows:** inventariare la directory padre che contiene un hard link o
+  una junction e mutare un ingresso alla barriera fra le due enumerazioni.
+- **A-R7:** il record condiviso distingue almeno file regolare, directory,
+  collegamento simbolico e reparse point e conserva gli attributi specifici di
+  piattaforma necessari. Ogni ingresso è riaperto dal descrittore padre e porta
+  identità completa, tipo, tag reparse quando applicabile e numero reale di
+  link. Link non ammessi, identità discordante o mutazione fra enumerazioni
+  falliscono chiusi su entrambe le piattaforme.
+
+#### R8 — Tre caricatori interni vincolati alla stessa radice
+
+Soltanto l'archivio chiavi possiede un'entrata interna parziale. Approvazioni e
+autorità semantica usano ancora la facciata storica basata su percorso. Manca la
+contesa del blocco globale per tutti e tre e quella del blocco locale per il solo
+archivio chiavi.
+
+- **D-R8:** inventario statico delle entrate interne mancanti e prova che il
+  test corrente dell'archivio chiavi controlla la presenza logica del globale,
+  ma non una contesa locale fra processi.
+- **A-R8-globale:** per archivio chiavi, approvazioni e autorità semantica, il
+  processo A conserva il globale esclusivo. Il processo B adotta una sessione
+  distinta sulla stessa radice autenticata e sullo stesso identificativo di
+  oggetto, entra mediante l'API interna e non completa l'acquisizione globale
+  condivisa prima del rilascio di A.
+- **A-R8-locale:** soltanto per l'archivio chiavi, A e B adottano sessioni
+  distinte sulla stessa radice e conservano ciascuno il proprio globale
+  condiviso. A detiene il blocco locale esclusivo e B, mediante il caricatore
+  interno, non completa il blocco locale condiviso prima del rilascio. Per
+  approvazioni e autorità semantica non viene inventato un blocco locale non
+  previsto dalla specifica. L'ordine resta globale → locali ordinati.
+
+### 16.4 Criteri di copertura bloccanti non ancora provati
+
+Questi criteri non corrispondono ancora a una regressione del prodotto. Le loro
+prove A possono quindi risultare verdi alla prima esecuzione; in tal caso si
+registra l'evidenza e non si modifica il prodotto.
+
+#### C1 — Blocco Windows realmente multiprocesso
+
+Il test corrente crea e legge il blocco in sequenza; passerebbe anche senza una
+contesa reale.
+
+- **D-C1:** registrare che la prova corrente non contiene sovrapposizione né una
+  barriera fra processi.
+- **A-C1-contesa:** processi avviati con modalità `spawn` provano
+  condiviso/condiviso, condiviso/esclusivo ed esclusivo/condiviso, con barriera
+  e scadenza misurata.
+- **A-C1-recupero:** una barriera strumentata nel simbolo produttivo segnala il
+  punto successivo a `CREATE_NEW`, applicazione ACL e `LockFileEx`, ma precedente
+  alla prima `WriteFile`. Soltanto a quel punto il processo viene terminato con
+  `TerminateProcess`; un nuovo scrittore recupera il file vuoto e produce
+  esattamente il byte canonico. Un lettore non crea mai il file.
+
+#### C2 — Sostituzione Windows dopo il vincolo dell'handle
+
+Gli handle dei discendenti sono ora conservati fino alla chiusura della
+sessione, ma manca una prova Windows della proprietà.
+
+- **D-C2:** registrare il solo percorso nominale corrente e l'assenza di un
+  avversario sincronizzato; non trattarlo come prova di sicurezza.
+- **A-C2:** il processo A vincola radice, directory intermedia e file finale. Il
+  processo B tenta rinomina o sostituzione dopo ciascun segnale, usa una
+  junction soltanto per radice e intermedi di tipo directory e usa un reparse
+  point o collegamento simbolico per il file finale. L'operazione di B è negata
+  oppure A resta sullo stesso volume e FileID o fallisce chiuso; A non legge mai
+  i byte sostitutivi.
+
+#### C3 — Sostituzione POSIX fra aperture relative
+
+La prova corrente sostituisce oggetti nello stesso processo dopo che sono stati
+memorizzati, ma non sincronizza un avversario fra due `openat` consecutivi.
+
+- **D-C3:** inventariare le prove correnti e registrare l'assenza della barriera
+  fra apertura della radice, apertura di un intermedio e uso del componente
+  successivo.
+- **A-C3:** il processo A apre la radice o il primo intermedio e segnala una
+  barriera; il processo B sostituisce il componente successivo. A deve restare
+  sul medesimo `st_dev`/`st_ino` o fallire chiuso, senza leggere, inventariare o
+  modificare l'oggetto sostitutivo. La prova si ripete per radice, ogni
+  intermedio e oggetto finale.
+
+#### C4 — Blocco POSIX realmente multiprocesso
+
+La prova corrente usa più descrittori nello stesso processo e non dimostra la
+contesa richiesta fra caricatore e predispositore.
+
+- **D-C4:** registrare che la prova corrente non attraversa processi distinti e
+  non misura una scadenza monotona.
+- **A-C4:** processi distinti provano condiviso/condiviso,
+  condiviso/esclusivo ed esclusivo/condiviso con barriera, scadenza misurata e
+  rilascio dopo la terminazione del detentore. Il caricatore conserva il blocco
+  condiviso mentre il predispositore attende quello esclusivo; nessuna
+  mutazione avviene prima dell'acquisizione esclusiva.
+
+Le barriere C1-C4 appartengono al banco di prova: sono realizzate mediante
+orchestrazione dei processi o intercettazione confinata delle chiamate di
+sistema. Nessun callback, percorso, variabile d'ambiente, punto di arresto o
+politica selezionabile dal chiamante entra nella capacità distribuita.
+
+### 16.5 Criteri gialli ancora obbligatori
+
+I criteri seguenti non hanno tutti una regressione dimostrata, ma restano requisiti
+normativi dell'incremento 2A e devono diventare verdi prima della registrazione
+del codice.
+
+| ID | Ambito | Evidenza ancora necessaria |
+|---|---|---|
+| G1 | Inventario e snapshot comuni | Aggiunta, rimozione, rinomina e sostituzione dello stesso nome, incluso un file non JSON, mentre la directory è aperta; limite massimo dell'inventario; confronto completo prima e dopo tutte le letture. |
+| G2 | Compatibilità storica | `load_birth_keystore(Path)` su archivio esterno alla radice Birth usa soltanto il blocco locale e non crea né cerca `provisioning-v1.lock`; approvazioni e semantica pubbliche POSIX accettano materiale sicuro posseduto da UID diverso; gli entrypoint reali precedenti passano su Linux e Windows senza mutazioni. |
+| G3 | Durabilità POSIX di creazione e rinomina | Scrittura corta ed `EINTR`; stato dopo errore di sincronizzazione; rinomina fra parent distinti con sincronizzazione di entrambi; `EXDEV`, `ENOSYS` o assenza di `renameat2` producono `atomic_install_unsupported` senza ripiego. Arresti reali restano prove di integrazione separate. |
+| G4 | Ciclo di vita ed errori stabili | Errori di chiusura, sblocco e adozione non espongono `OSError`, non mascherano l'errore primario e chiudono ogni handle una sola volta. I messaggi pubblici non contengono percorso, SID, DACL o diagnostica di sistema. |
+| G5 | Ripristino del privilegio Windows | Iniezione deterministica del fallimento del secondo `AdjustTokenPrivileges`, incluse risposta falsa e `ERROR_NOT_ALL_ASSIGNED`, con un solo `CloseHandle`; confronto reale di `TokenPrivileges` prima e dopo un corpo che solleva. |
+| G6 | Raccolta pubblica tracciabile | Manifesto dei `node-id`, attività separate per portabilità, concorrenza e ACL, zero salti o successi inattesi nelle celle possedute dalla piattaforma, risultato associato alla registrazione Git esatta. |
+| G7 | Volume Windows | Rifiuto di volume non NTFS o privo di `FILE_PERSISTENT_ACLS` prima di ogni creazione, con inventario invariato e oracolo del volume indipendente. |
+| G8 | Proprietario POSIX autorevole | Radice, directory e file autorevoli con UID diverso da quello autenticato sono rifiutati prima dell'uso; la prova resta distinta da G2, dove il profilo pubblico storico può ammettere un proprietario differente purché non modificabile dal servizio. |
+| G9 | Percorsi Windows | Percorsi lunghi, prefisso `\\?\`, UNC e differenze di maiuscole/minuscole seguono la matrice positiva o il rifiuto chiuso del §12.2; l'assenza di un server UNC certificabile non diventa uno skip verde. |
+| G10 | ABI e identità volume Windows | Dimensioni e offset di `FILE_RENAME_INFO`, `FILE_ID_INFO`, `FILE_DISPOSITION_INFO_EX` e `OVERLAPPED` sono verificati su Windows Server 2022 x64; il seriale `8000000000000001` resta unsigned e viene reso con sedici cifre esadecimali. |
+| G11 | Byte binari Windows | Ogni byte da `0x00` a `0xff` viene scritto e riletto senza trasformazione di testo attraverso la primitiva produttiva. |
+| G12 | Fallimento sicurezza Windows | Un errore reale o iniettato di `SetSecurityInfo` produce il codice Birth stabile e nessuna destinazione marcata completa; inventario e residui vengono riconciliati. |
+
+### 16.6 Matrice minima di tracciabilità delle prove 2A
+
+La tabella seguente non sostituisce i dettagli dei §§12.1-12.3. Impedisce che un
+requisito essenziale venga perso durante la codifica.
+
+| Criterio | Piattaforma o attività | Simbolo produttivo | Barriera o errore causale | Oracolo distinto | Prima della correzione | Dopo la correzione |
+|---|---|---|---|---|---|---|
+| R1 | guardia statica | entrata installatore e capacità di scrittura | inventario transitivo | analizzatore AST | A rosso | A verde |
+| R2 | Linux e Windows | tutte le mutazioni | nessun globale / globale condiviso | inventario prima/dopo | A rosso | A verde |
+| R3 | Linux e Windows | `dispose_transaction_object` | identità, hard link, oggetto estraneo | inventario da handle | simbolo assente | A verde |
+| R4 | Linux | lock comune | file vuoto già esistente | sonda ordine `fsync` | A rosso | A verde |
+| R5 | Windows ACL | apertura e verifica profilo | una proprietà ACL alterata | API ACL indipendenti e token reali | A rosso | A verde |
+| R6 | Windows portabile | rinomina senza sostituzione | memorizzata, non memorizzata, destinazione concorrente | volume + FileID128 + inventario | A rosso | A verde |
+| R7 | Linux e Windows portabile | inventario comune | symlink POSIX; hard link, junction e mutazione Windows | handle dei figli + tipo indipendente | A rosso | A verde |
+| R8 | Linux e Windows concorrenza | tre caricatori interni | globale esclusivo per tutti; locale esclusivo per il solo keystore | sessioni distinte sulla stessa radice + barriera | API/prova assenti | A verde |
+| C1 | Windows concorrenza | blocco globale e locale | processi `spawn`, scadenza, barriera prima di `WriteFile`, terminazione | tempo monotono + byte canonico | non provato | A verde o difetto localizzato |
+| C2 | Windows concorrenza | capacità di directory e lettura | scambio dopo apertura | FileID128 e byte letti | non provato | A verde o difetto localizzato |
+| C3 | Linux concorrenza | catena `openat` e lettura | scambio fra due aperture relative | `st_dev` + `st_ino` + byte letti | non provato | A verde o difetto localizzato |
+| C4 | Linux concorrenza | blocco globale | processi distinti, scadenza e terminazione | tempo monotono + inventario | non provato | A verde o difetto localizzato |
+| G1 | Linux e Windows portabile | inventario e lettura | mutazione fra scansioni | identità completa | parziale | A verde |
+| G2 | Linux e Windows compatibilità | tre facciate `Path` | archivio esterno e UID diverso | assenza del globale + risultato reale | parziale | A verde |
+| G3 | Linux | creazione e rinomina | `EINTR`, `fsync`, parent distinti, `EXDEV` | ordine syscall + stato finale | parziale | A verde |
+| G4 | Linux e Windows, iniezione di errori | chiusura, sblocco, adozione | errore di pulizia | contatore handle + codice Birth | parziale | A verde |
+| G5 | Windows ACL | `_win_restore_privilege` | secondo `AdjustTokenPrivileges` | stato token indipendente | non provato | A verde |
+| G6 | matrice pubblica | raccolta pytest | manifesto `node-id` | confronto manifest/raccolta | assente | A verde |
+| G7 | Windows volume | apertura radice | volume non NTFS o senza ACL persistenti | API volume indipendente + inventario | parziale | A verde |
+| G8 | Linux | radice e oggetti autorevoli | UID diverso da quello autenticato | `fstat` indipendente | parziale | A verde |
+| G9 | Windows percorsi | apertura relativa | percorso lungo, `\\?\`, UNC, maiuscole/minuscole | percorso finale e identità | parziale | A verde |
+| G10 | Windows ABI | strutture Win32 e identità | layout x64 e seriale high-bit | dimensioni/offset e valore unsigned | parziale | A verde |
+| G11 | Windows binario | creazione, scrittura e lettura | byte `0x00`-`0xff` | confronto byte-per-byte | parziale | A verde |
+| G12 | Windows sicurezza | applicazione ACL | errore `SetSecurityInfo` | codice stabile + inventario residui | non provato | A verde |
+
+Ogni riga posseduta da 2A deve essere un controllo obbligatorio sulla
+piattaforma indicata. Una riga non eseguibile deve restare rossa; può diventare
+`N/A` soltanto se il testo normativo la assegna esplicitamente a un gruppo
+successivo e ne indica il proprietario.
+
+### 16.7 Prove insufficienti
+
+Non chiudono alcun criterio:
+
+- una contesa eseguita in sequenza o fra due handle dello stesso processo;
+- una ACL costruita e verificata dalla stessa funzione produttiva;
+- una junction o un link già presente senza sostituzione sincronizzata dopo
+  l'apertura;
+- un percorso nominale chiamato «handle-bound» senza processo avversario;
+- un token privato costruito direttamente dal test al posto dell'entrata
+  installatore;
+- una eccezione controllata al posto di un arresto reale quando si dichiara la
+  recuperabilità;
+- un verde pubblico che non raccoglie il simbolo produttivo e il relativo A;
+- un salto dovuto all'indisponibilità di privilegi, account o token richiesti.
+
+### 16.8 Ordine vincolante della ripresa
+
+Dopo l'approvazione esplicita prevista dal §16.1, la ripresa segue questo ordine:
+
+1. produrre e riesaminare tutti i D senza modificare il comportamento del
+   prodotto;
+2. scrivere gli A, il manifesto canonico e la raccolta pubblica; soltanto gli A
+   diventano controlli obbligatori, mentre i D restano allegati diagnostici;
+3. chiudere R1 e R2, che delimitano proprietario e mutazioni;
+4. provare C1, C2, C3 e C4, perché blocco multiprocesso e vincolo dell'handle su
+   entrambe le piattaforme sono prerequisiti del recupero;
+5. chiudere su POSIX R4, G3, G8, R3 e G4, in quest'ordine;
+6. predisporre nella matrice pubblica l'attività Windows bloccante con seconda
+   identità locale, processo non elevato e verifica indipendente dei diritti
+   effettivi. Nessuna correzione di prodotto R5-R7 è ammessa prima che questa
+   attività esista e dimostri di poter fallire sui controlli negativi;
+7. chiudere su Windows G7, G10, R5, G5, G12, R7, R6, R3, G9 e G11, in
+   quest'ordine: supporto del volume e ABI, profili ACL, ripristino del
+   privilegio e fallimenti di sicurezza, inventario e handle, rinomina e
+   riconciliazione, disposizione, percorsi e byte binari;
+8. chiudere R8, G1 e G2 sui tre caricatori reali;
+9. eseguire le prove di arresto reale, la sostituzione sincronizzata e l'intera
+   matrice sulle piattaforme proprietarie;
+10. richiedere una nuova revisione indipendente del codice e delle evidenze.
+
+Se manca un'evidenza causale deterministica, statica o dinamica, il criterio torna
+alla diagnosi e la correzione non parte. Se una prova di arresto non manifesta
+una finestra già dimostrata dal D, non annulla la causa: segnala soltanto che la
+prova di integrazione deve essere resa più controllabile. Al secondo fallimento
+consecutivo della stessa classe dopo la correzione si applica nuovamente
+l'arresto diagnostico del §15.
+
+### 16.9 Registrazioni candidate e criterio conclusivo del codice 2A
+
+Per eseguire GitHub Actions sullo stesso SHA del prototipo sono ammesse
+registrazioni candidate incrementali sul solo ramo di revisione. Ogni candidata:
+
+- è approvata in sola lettura prima della pubblicazione;
+- supera tutte le prove locali applicabili e non regredisce controlli già
+  certificati;
+- contiene nel messaggio il marcatore `RM-0008-Status: candidate-not-certified`;
+- non viene unita in `main`, etichettata, rilasciata o descritta come 2A
+  completata;
+- associa il risultato della matrice pubblica al proprio SHA esatto;
+- al secondo fallimento della stessa classe riattiva l'arresto diagnostico.
+
+La registrazione conclusiva, l'unione in `main` e qualunque dichiarazione di
+certificazione 2A sono consentite soltanto quando:
+
+1. tutte le righe R1-R8, C1-C4 e G1-G12 sono verdi sulla piattaforma proprietaria;
+2. il manifesto dimostra la raccolta pubblica esatta, senza salti o successi
+   inattesi nelle celle interessate;
+3. non restano rilievi P0 o P1, né P2 che violino un requisito normativo;
+4. ogni P3 ha una disposizione esplicita: corretto, rinviato con proprietario o
+   accettato con motivazione;
+5. limiti e requisiti non provati sono dichiarati, senza trasformarli in verde;
+6. la revisione indipendente ha approvato sia il codice sia l'evidenza.
+
+Queste condizioni si aggiungono al §13 e non autorizzano la chiusura di RM-0008
+o l'avvio dei gruppi successivi.
+
+### 16.10 Barriera Windows predisposta, non ancora certificata
+
+La prima attività ammessa dal passo 6 è stata predisposta senza modificare il
+prodotto. La calibrazione è uno step obbligatorio del controllo storico
+`Python 3.12 / windows-2022`; non è un'attività sorella che possa essere esclusa
+da una regola di protezione già esistente. Essa usa soltanto codice sotto
+`tests/windows_identity` e non importa moduli del runtime Metnos.
+
+Il controllore amministrativo crea tramite `NetUserAdd` due account locali
+temporanei e distinti, li associa al gruppo `Builtin Users` risolto mediante
+SID e non mediante nome localizzato, e conserva le password soltanto in buffer
+mutabili mai trasferiti in argomenti, ambiente, file, registri o artefatti. Ogni
+sonda nasce sospesa tramite `CreateProcessWithLogonW`: prima della ripresa il
+controllore verifica SID del token, assenza di elevazione e di appartenenza a
+`Builtin Administrators`, livello d'integrità inferiore ad alto e assenza di un
+token collegato inatteso.
+
+L'oracolo strutturale non usa il generatore SDDL né il verificatore produttivo.
+Legge proprietario, protezione della DACL, ACE, SID, ordine, flag e maschere con
+`GetSecurityInfo`, `GetSecurityDescriptorControl`,
+`GetSecurityDescriptorDacl`, `GetAclInformation`, `GetAce`, `IsValidSid` ed
+`EqualSid`. Le sonde eseguono accessi reali con `CreateFileW`, `ReadFile` ed
+enumerazione di directory. Tre controlli negativi noti dimostrano il rifiuto di
+un proprietario diverso da `SYSTEM`, di un lettore estraneo aggiunto a un
+oggetto `confidential` e di una maschera scrivibile assegnata al servizio.
+
+La raccolta contiene undici casi senza `skip` o `xfail` e verifica entrambi i
+profili su file e directory, le due identità reali e i dinieghi di scrittura,
+append, creazione di figli, eliminazione e modifica DACL. Timeout, API non
+disponibile, errore diverso da `ERROR_ACCESS_DENIED`, mancato ripristino del
+privilegio o pulizia incompleta rendono rosso il controllo. Una revisione
+statica indipendente non ha rilevato P0-P3 residui.
+
+Questa sezione registra soltanto la predisposizione. La barriera diventa
+evidenza utilizzabile per il passo 7 esclusivamente dopo un esito verde del
+runner pubblico `windows-2022` associato allo SHA esatto della candidata. Fino
+ad allora R5-R7 restano congelati.

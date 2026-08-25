@@ -52,6 +52,15 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y bubblewrap
 
+      - name: Calibrate real identities and the independent ACL oracle
+        if: runner.os == 'Windows'
+        env:
+          PYTHONPATH: tests/windows_identity
+        run: >-
+          python -m pytest -q -p no:cacheprovider --strict-markers --maxfail=1
+          --confcutdir=tests/windows_identity
+          tests/windows_identity/test_windows_real_identity_oracle.py
+
       - name: Run the portable certification suite
         run: python -m pytest -q -p no:cacheprovider --confcutdir=tests/portable tests/portable
 
