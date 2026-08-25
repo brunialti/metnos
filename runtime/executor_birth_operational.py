@@ -679,7 +679,14 @@ def _execute_intent_with_capability(
         raise ValueError("birth_producer_capability_untrusted")
     bundle = _runtime_bundle_snapshot()
     if bundle is None:
-        raise RuntimeError("birth_runtime_bundle_unavailable")
+        # Every mutating CLI/job facade crosses this same lazy boot gate.  A
+        # missing pre-provisioned key or incomplete recovery fails before any
+        # producer worker can observe a partial runtime.
+        from executor_birth_bootstrap import bootstrap_birth_runtime
+        try:
+            bundle = bootstrap_birth_runtime()
+        except Exception as exc:
+            raise RuntimeError("birth_runtime_bundle_unavailable") from exc
     factory = bundle.producer_factories.get(capability)
     if factory is None:
         raise ValueError("birth_producer_capability_unavailable")

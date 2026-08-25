@@ -360,6 +360,10 @@ def run_standalone(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:
         level=os.environ.get("METNOS_LOG_LEVEL", "INFO"),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    # RM-0008: recover and atomically install the complete Birth authority
+    # before the HTTP application can start any mutating background worker.
+    from executor_birth_bootstrap import require_birth_runtime_before_workers
+    require_birth_runtime_before_workers()
     lock = ProcessLock(LOCKFILE)
     lock.acquire()
     try:

@@ -73,7 +73,11 @@ def require_birth_intent_adapter() -> None:
     """Compatibility name: require the one complete runtime bundle."""
     from executor_birth_operational import _runtime_bundle_snapshot
     if _runtime_bundle_snapshot() is None:
-        raise RuntimeError("birth_runtime_bundle_unavailable")
+        from executor_birth_bootstrap import bootstrap_birth_runtime
+        try:
+            bootstrap_birth_runtime()
+        except Exception as exc:
+            raise RuntimeError("birth_runtime_bundle_unavailable") from exc
 
 
 def submit_change_extend_birth(intent: BirthIntent) -> "BirthResult":

@@ -865,6 +865,17 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "authenticate_birth_predecessor",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "reviewed administrative read-only or authoring scope",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "catalog_admission_lock",
       "role": "store_owner",
       "capabilities": [
@@ -1091,6 +1102,58 @@
       "phase": "M4"
     },
     {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_PostconditionAdapter.recover_authoring",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative read-only or authoring scope",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_build",
+      "role": "administrative_tool",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "reviewed administrative read-only or authoring scope",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "_manifest_ref",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "reviewed administrative read-only or authoring scope",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "bootstrap_birth_runtime",
+      "role": "administrative_tool",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "reviewed administrative read-only or authoring scope",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_bootstrap.py",
+      "scope": "require_birth_runtime_before_workers",
+      "role": "administrative_tool",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "reviewed administrative read-only or authoring scope",
+      "phase": "M4"
+    },
+    {
       "path": "runtime/executor_birth_intent.py",
       "scope": "submit_builtin_generation_birth",
       "role": "administrative_tool",
@@ -1178,6 +1241,17 @@
         "birth"
       ],
       "destination": "reviewed administrative authoring scope without live publication authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_postcondition.py",
+      "scope": "verify_birth_postcondition",
+      "role": "administrative_tool",
+      "capabilities": [
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative read-only or authoring scope",
       "phase": "M4"
     },
     {
