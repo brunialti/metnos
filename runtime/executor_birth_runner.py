@@ -1,0 +1,437 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+"""Hermetic execution foundation for RM-0008 birth tests.
+
+This module is deliberately independent from :mod:`test_runner`.  A birth
+test either runs with the complete v1 isolation contract or returns a typed
+``test_environment_unavailable`` result; it never falls back to host
+execution.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path, PurePosixPath
+from typing import Mapping, Sequence
+
+from bounded_subprocess import (
+    SubprocessOutputLimitExceeded,
+    SubprocessTerminationError,
+    run_bounded_subprocess,
+)
+
+
+PHASE_TIMEOUT_S = 10.0
+TOTAL_TIMEOUT_S = 30.0
+MEMORY_LIMIT_BYTES = 256 * 1024 * 1024
+STDOUT_LIMIT_BYTES = 1024 * 1024
+STDERR_LIMIT_BYTES = 1024 * 1024
+MAX_PROCESSES = 32
+TERMINATION_DRAIN_S = 2.0
+
+# Constructed from zero.  No value is copied from ``os.environ``.
+SANDBOX_ENV: Mapping[str, str] = {
+    "HOME": "/work",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "PATH": "/usr/bin:/bin",
+    "TMPDIR": "/tmp",
+    "TZ": "UTC",
+}
+
+_CGROUP_DELEGATE = Path("/sys/fs/cgroup/metnos-birth")
+
+
+class FixtureOpKind(str, Enum):
+    MKDIR = "mkdir"
+    WRITE_BYTES = "write_bytes"
+    SEED_JSON = "seed_json"
+
+
+class RunnerStatus(str, Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    UNAVAILABLE = "test_environment_unavailable"
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureOp:
+    kind: FixtureOpKind
+    path: str
+    payload: bytes | object | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RunnerPolicy:
+    phase_timeout_s: float = PHASE_TIMEOUT_S
+    total_timeout_s: float = TOTAL_TIMEOUT_S
+    memory_limit_bytes: int = MEMORY_LIMIT_BYTES
+    stdout_limit_bytes: int = STDOUT_LIMIT_BYTES
+    stderr_limit_bytes: int = STDERR_LIMIT_BYTES
+    max_processes: int = MAX_PROCESSES
+    termination_drain_s: float = TERMINATION_DRAIN_S
+
+
+V1_POLICY = RunnerPolicy()
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessAttestation:
+    backend: str
+    sandboxed: bool
+    network_unshared: bool
+    pid_unshared: bool
+    user_unshared: bool
+    ipc_unshared: bool
+    uts_unshared: bool
+    cgroup_v2: bool
+    cgroup_path: str | None
+    tree_empty: bool
+    termination_attested: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RunnerResult:
+    status: RunnerStatus
+    error_code: str | None
+    returncode: int | None
+    stdout: str
+    stderr: str
+    elapsed_s: float
+    attestation: ProcessAttestation
+
+
+class RunnerInputError(ValueError):
+    """A request violates the closed v1 runner contract."""
+
+
+def _empty_attestation(backend: str) -> ProcessAttestation:
+    return ProcessAttestation(
+        backend=backend,
+        sandboxed=False,
+        network_unshared=False,
+        pid_unshared=False,
+        user_unshared=False,
+        ipc_unshared=False,
+        uts_unshared=False,
+        cgroup_v2=False,
+        cgroup_path=None,
+        tree_empty=False,
+        termination_attested=False,
+    )
+
+
+def _relative_path(value: object) -> PurePosixPath:
+    if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
+        raise RunnerInputError("fixture_path_invalid")
+    path = PurePosixPath(value)
+    if (
+        path.is_absolute()
+        or not path.parts
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        raise RunnerInputError("fixture_path_invalid")
+    return path
+
+
+def validate_fixture_ops(ops: Sequence[FixtureOp]) -> tuple[FixtureOp, ...]:
+    if isinstance(ops, (str, bytes)) or not isinstance(ops, Sequence):
+        raise RunnerInputError("fixture_ops_invalid")
+    checked: list[FixtureOp] = []
+    occupied: set[str] = set()
+    for op in ops:
+        if not isinstance(op, FixtureOp) or not isinstance(op.kind, FixtureOpKind):
+            raise RunnerInputError("fixture_op_invalid")
+        relative = _relative_path(op.path).as_posix()
+        if relative in occupied:
+            raise RunnerInputError("fixture_path_duplicate")
+        occupied.add(relative)
+        if op.kind is FixtureOpKind.MKDIR:
+            if op.payload is not None:
+                raise RunnerInputError("fixture_mkdir_payload")
+        elif op.kind is FixtureOpKind.WRITE_BYTES:
+            if not isinstance(op.payload, bytes):
+                raise RunnerInputError("fixture_bytes_payload")
+        elif op.kind is FixtureOpKind.SEED_JSON:
+            try:
+                json.dumps(op.payload, ensure_ascii=False, allow_nan=False)
+            except (TypeError, ValueError) as exc:
+                raise RunnerInputError("fixture_json_payload") from exc
+        checked.append(FixtureOp(op.kind, relative, op.payload))
+    return tuple(checked)
+
+
+def materialize_fixture(root: Path, ops: Sequence[FixtureOp]) -> None:
+    """Apply the closed fixture language below an already-private directory."""
+    checked = validate_fixture_ops(ops)
+    root = root.resolve(strict=True)
+    for op in checked:
+        parts = PurePosixPath(op.path).parts
+        destination = root.joinpath(*parts)
+        cursor = root
+        for component in parts[:-1]:
+            cursor = cursor / component
+            try:
+                mode = cursor.lstat().st_mode
+            except FileNotFoundError as exc:
+                raise RunnerInputError("fixture_parent_missing") from exc
+            if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+                raise RunnerInputError("fixture_parent_invalid")
+        # Parents created by a prior mkdir remain required.  This prevents a
+        # write operation from silently expanding the fixture language.
+        if op.kind is FixtureOpKind.MKDIR:
+            destination.mkdir(mode=0o700, parents=False, exist_ok=False)
+            continue
+        if op.kind is FixtureOpKind.WRITE_BYTES:
+            payload = op.payload
+            assert isinstance(payload, bytes)
+        else:
+            payload = (
+                json.dumps(
+                    op.payload,
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ) + "\n"
+            ).encode("utf-8")
+        fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            try:
+                destination.unlink()
+            except OSError:
+                pass
+            raise
+
+
+def _command(command: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(command, (str, bytes)) or not isinstance(command, Sequence):
+        raise RunnerInputError("command_invalid")
+    value = tuple(command)
+    if not value or any(not isinstance(item, str) or not item or "\x00" in item for item in value):
+        raise RunnerInputError("command_invalid")
+    return value
+
+
+def _bwrap_command(bwrap: str, work: Path, command: tuple[str, ...]) -> tuple[str, ...]:
+    args = [
+        bwrap,
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-net",
+        "--unshare-pid",
+        "--unshare-user",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--bind", str(work), "/work",
+        "--chdir", "/work",
+        "--clearenv",
+    ]
+    for key, value in SANDBOX_ENV.items():
+        args.extend(("--setenv", key, value))
+    for host_path in ("/usr", "/bin", "/lib", "/lib64"):
+        if Path(host_path).exists():
+            args.extend(("--ro-bind", host_path, host_path))
+    args.append("--")
+    args.extend(command)
+    return tuple(args)
+
+
+def _cgroup_v2_delegate() -> tuple[Path | None, str | None]:
+    if not Path("/sys/fs/cgroup/cgroup.controllers").is_file():
+        return None, "cgroup_v2_unavailable"
+    delegate = _CGROUP_DELEGATE
+    if not delegate.is_dir():
+        return None, "cgroup_delegate_missing"
+    required = ("cgroup.procs", "cgroup.events", "memory.max", "pids.max")
+    if any(not (delegate / name).exists() for name in required):
+        return None, "cgroup_delegate_incomplete"
+    if not os.access(delegate, os.W_OK):
+        return None, "cgroup_delegate_not_writable"
+    return delegate, None
+
+
+def _write_control(path: Path, value: str) -> None:
+    with path.open("w", encoding="ascii") as handle:
+        handle.write(value)
+        handle.flush()
+
+
+def _tree_empty(scope: Path) -> bool:
+    try:
+        events = (scope / "cgroup.events").read_text(encoding="ascii")
+        populated = next(
+            line.split()[1] for line in events.splitlines()
+            if line.startswith("populated ")
+        )
+        procs = (scope / "cgroup.procs").read_text(encoding="ascii").strip()
+        return populated == "0" and not procs
+    except (OSError, StopIteration, IndexError):
+        return False
+
+
+def _unavailable(code: str, backend: str, started: float) -> RunnerResult:
+    return RunnerResult(
+        RunnerStatus.UNAVAILABLE,
+        code,
+        None,
+        "",
+        "",
+        max(0.0, time.monotonic() - started),
+        _empty_attestation(backend),
+    )
+
+
+def run_birth_phase(
+    command: Sequence[str],
+    *,
+    fixture_ops: Sequence[FixtureOp] = (),
+    phase: str = "candidate",
+) -> RunnerResult:
+    """Run one birth-test phase under the complete fixed v1 policy."""
+    started = time.monotonic()
+    argv = _command(command)
+    checked_ops = validate_fixture_ops(fixture_ops)
+    if phase not in {"candidate", "reference", "equivalence"}:
+        raise RunnerInputError("phase_invalid")
+    if os.name == "nt":
+        return _unavailable("windows_backend_unattested", "windows", started)
+    if not sys.platform.startswith("linux"):
+        return _unavailable("platform_backend_unavailable", sys.platform, started)
+    bwrap = shutil.which("bwrap")
+    if not bwrap:
+        return _unavailable("bwrap_unavailable", "linux-bwrap-cgroup-v2", started)
+    delegate, error = _cgroup_v2_delegate()
+    if delegate is None:
+        return _unavailable(error or "cgroup_delegate_unavailable", "linux-bwrap-cgroup-v2", started)
+
+    with tempfile.TemporaryDirectory(prefix="metnos-birth-runner-") as temporary:
+        work = Path(temporary) / "work"
+        work.mkdir(mode=0o700)
+        materialize_fixture(work, checked_ops)
+        scope = delegate / f"phase-{uuid.uuid4().hex}"
+        try:
+            scope.mkdir(mode=0o700)
+            _write_control(scope / "memory.max", str(MEMORY_LIMIT_BYTES))
+            _write_control(scope / "pids.max", str(MAX_PROCESSES))
+        except OSError:
+            try:
+                scope.rmdir()
+            except OSError:
+                pass
+            return _unavailable("cgroup_scope_unavailable", "linux-bwrap-cgroup-v2", started)
+
+        # The launcher joins the delegated cgroup before exec.  It contains no
+        # candidate-controlled shell and passes only the already-validated argv.
+        launcher = (
+            "import os,sys;"
+            "open(sys.argv[1]+'/cgroup.procs','w').write(str(os.getpid()));"
+            "os.execv(sys.argv[2],sys.argv[2:])"
+        )
+        wrapped = _bwrap_command(bwrap, work, argv)
+        host_command = (sys.executable, "-I", "-c", launcher, str(scope), *wrapped)
+        returncode: int | None = None
+        stdout = ""
+        stderr = ""
+        error_code: str | None = None
+        try:
+            completed = run_bounded_subprocess(
+                host_command,
+                input_text="",
+                timeout_s=min(PHASE_TIMEOUT_S, TOTAL_TIMEOUT_S),
+                env={},
+                stdout_limit_bytes=STDOUT_LIMIT_BYTES,
+                stderr_limit_bytes=STDERR_LIMIT_BYTES,
+            )
+            returncode = completed.returncode
+            stdout = completed.stdout
+            stderr = completed.stderr
+            if returncode != 0:
+                error_code = "candidate_process_failed"
+        except subprocess.TimeoutExpired as exc:
+            stdout = str(exc.output or "")
+            stderr = str(exc.stderr or "")
+            error_code = "phase_timeout"
+        except SubprocessOutputLimitExceeded as exc:
+            stdout, stderr = exc.stdout, exc.stderr
+            error_code = f"{exc.stream}_limit_exceeded"
+        except SubprocessTerminationError:
+            error_code = "process_termination_unattested"
+        except (OSError, ValueError):
+            error_code = "test_environment_unavailable"
+
+        deadline = time.monotonic() + TERMINATION_DRAIN_S
+        empty = _tree_empty(scope)
+        if not empty:
+            try:
+                _write_control(scope / "cgroup.kill", "1")
+            except OSError:
+                pass
+            while not empty and time.monotonic() < deadline:
+                time.sleep(0.01)
+                empty = _tree_empty(scope)
+        try:
+            scope.rmdir()
+        except OSError:
+            empty = False
+
+        attestation = ProcessAttestation(
+            backend="linux-bwrap-cgroup-v2",
+            sandboxed=True,
+            network_unshared=True,
+            pid_unshared=True,
+            user_unshared=True,
+            ipc_unshared=True,
+            uts_unshared=True,
+            cgroup_v2=True,
+            cgroup_path=str(scope),
+            tree_empty=empty,
+            termination_attested=empty,
+        )
+        if not empty:
+            error_code = "process_termination_unattested"
+        status = RunnerStatus.PASSED if error_code is None else RunnerStatus.FAILED
+        if error_code == "test_environment_unavailable":
+            status = RunnerStatus.UNAVAILABLE
+        return RunnerResult(
+            status,
+            error_code,
+            returncode,
+            stdout,
+            stderr,
+            time.monotonic() - started,
+            attestation,
+        )
+
+
+__all__ = [
+    "FixtureOp",
+    "FixtureOpKind",
+    "ProcessAttestation",
+    "RunnerInputError",
+    "RunnerPolicy",
+    "RunnerResult",
+    "RunnerStatus",
+    "SANDBOX_ENV",
+    "V1_POLICY",
+    "materialize_fixture",
+    "run_birth_phase",
+    "validate_fixture_ops",
+]

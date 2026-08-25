@@ -70,6 +70,9 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "translation.detection": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
     "skill.description": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
     "synt.semantic_verify": WorkloadContract("wise", None, "high_fidelity_exact", "json"),
+    "executor.birth.semantic_review": WorkloadContract(
+        "wise", None, "high_fidelity_exact", "json",
+    ),
     "tutor.compose": WorkloadContract("wise", None, "high_fidelity_exact", "text"),
     "planner.grammar": WorkloadContract("wise", None, "high_fidelity_exact", "grammar"),
     # Durable image preset: exact structured extraction and synthesis.  The
