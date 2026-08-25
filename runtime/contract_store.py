@@ -192,6 +192,10 @@ class BirthCommitAuthorization:
     predecessor_id: str | None
     issuer: BirthReceiptIssuer
     verifier: BirthReceiptVerifier
+    predecessor_snapshot_id: str | None = None
+    revision_facts_id: str | None = None
+    context_epoch: str | None = None
+    context_epoch_resolver: Callable[[], str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -4270,6 +4274,44 @@ def commit_birth_snapshot(
             contract_dir, generations, previous, current_payloads = _publication_base_locked(
                 ref, trusted_publics=trusted, store_root=root, technical_base=True,
             )
+
+            # Admission was performed outside the writer lock.  Reconstruct
+            # the authenticated predecessor from the selected immutable
+            # revision and re-confirm every pin before accepting its receipt.
+            from executor_birth_predecessor import (
+                derive_revision_facts, predecessor_snapshot,
+                revision_facts_id as canonical_revision_facts_id,
+            )
+            pinned_predecessor = predecessor_snapshot(
+                previous,
+                "absent" if previous is None else "generation",
+                current_payloads,
+            )
+            if (
+                birth_authorization.predecessor_snapshot_id is not None
+                and birth_authorization.predecessor_snapshot_id
+                != pinned_predecessor.snapshot_id
+            ):
+                raise ContractStoreError("birth_predecessor_changed")
+            if birth_authorization.revision_facts_id is not None:
+                locked_facts = derive_revision_facts(
+                    pinned_predecessor, current_payloads, snapshot,
+                )
+                if (
+                    canonical_revision_facts_id(locked_facts)
+                    != birth_authorization.revision_facts_id
+                ):
+                    raise ContractStoreError("birth_revision_facts_changed")
+            if birth_authorization.context_epoch is not None:
+                resolver = birth_authorization.context_epoch_resolver
+                if resolver is None:
+                    raise ContractStoreError("birth_context_resolver_required")
+                try:
+                    current_context_epoch = resolver()
+                except Exception as exc:
+                    raise ContractStoreError("birth_context_unavailable", str(exc)) from exc
+                if current_context_epoch != birth_authorization.context_epoch:
+                    raise ContractStoreError("birth_context_changed")
 
             pending = load_prepared_journal(control)
             if pending is not None:

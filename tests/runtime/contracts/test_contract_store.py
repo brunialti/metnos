@@ -2333,6 +2333,65 @@ def test_birth_receipt_is_durable_and_reread_before_pointer(tmp_path: Path) -> N
     assert receipt.generation_id == current_revision_id(ref, store_root=store)
 
 
+def test_birth_commit_rejects_changed_context_epoch(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None, trusted_publics=trusted, store_root=store,
+    )
+    snapshot = _birth_snapshot(ref, tmp_path)
+    base = _birth_authorization(
+        ref, initial.current_generation_id, Ed25519PrivateKey.generate(),
+    )
+    epoch = {"value": "sha256:" + "1" * 64}
+    authorization = BirthCommitAuthorization(
+        base.candidate_id, base.semantic_core_id, base.admission_context_id,
+        base.predecessor_id, base.issuer, base.verifier,
+        context_epoch="sha256:" + "0" * 64,
+        context_epoch_resolver=lambda: epoch["value"],
+    )
+
+    with pytest.raises(ContractStoreError, match="birth_context_changed"):
+        commit_birth_snapshot(
+            ref, expected_generation_id=initial.current_generation_id,
+            snapshot=snapshot, request_id="sha256:" + "2" * 64,
+            private_key=private, trusted_publics=trusted,
+            birth_authorization=authorization, store_root=store,
+        )
+    assert current_revision_id(ref, store_root=store) == initial.current_generation_id
+
+
+def test_birth_commit_rejects_changed_authenticated_predecessor(tmp_path: Path) -> None:
+    from executor_birth_predecessor import predecessor_snapshot
+
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref, expected_generation_id=None, trusted_publics=trusted, store_root=store,
+    )
+    snapshot = _birth_snapshot(ref, tmp_path)
+    base = _birth_authorization(
+        ref, initial.current_generation_id, Ed25519PrivateKey.generate(),
+    )
+    stale = predecessor_snapshot(
+        initial.current_generation_id, "generation",
+        {"manifest.toml": b"authenticated-old-revision"},
+    )
+    authorization = BirthCommitAuthorization(
+        base.candidate_id, base.semantic_core_id, base.admission_context_id,
+        base.predecessor_id, base.issuer, base.verifier,
+        predecessor_snapshot_id=stale.snapshot_id,
+    )
+
+    with pytest.raises(ContractStoreError, match="birth_predecessor_changed"):
+        commit_birth_snapshot(
+            ref, expected_generation_id=initial.current_generation_id,
+            snapshot=snapshot, request_id="sha256:" + "a" * 64,
+            private_key=private, trusted_publics=trusted,
+            birth_authorization=authorization, store_root=store,
+        )
+
+
 def test_birth_crash_after_receipt_before_generation_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
