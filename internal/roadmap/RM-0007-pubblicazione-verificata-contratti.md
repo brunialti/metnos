@@ -840,6 +840,11 @@ legacy invariato; primitive pure senza accessi al filesystem.
 **Gate:** da una stessa base committa un solo writer; il puntatore indica
 sempre una generazione completa; prova reale Linux e Windows.
 
+**Completata il 2026-08-25.** Il deposito minimo è nei commit `04da9cba` e
+`4ad21acf`. La copia pubblica `babdb95f05846eae43617db65e62dd71c2220708`
+ha superato il run GitHub Actions `32794475658` sia su Ubuntu sia su Windows
+Server 2022 con NTFS reale.
+
 ### M3 — Pubblicazione linguistica
 
 - implementare patch, confronto strutturale e digest preservato;
@@ -861,6 +866,16 @@ abilitarlo. M4 rimuove il blocco nello stesso cutover globale.
 validatore fallito lasciano invariato il puntatore; il retry post-commit è
 idempotente nelle fixture; flag produttivo ancora spento e nessun file vivo
 mutato.
+
+**Completata il 2026-08-25 nel commit `d1abd0e2`.** La pipeline usa
+`metnos.localization-candidate/2`, identità strutturale e `basis_id`; il
+registro applica CAS esatto a lease, revisione e qualità. Il publisher resta
+dormiente e accetta soltanto una radice isolata. Il gate combinato conta 454
+test e 1.136 sottoprove verdi; tre prove specifiche di piattaforma sono state
+saltate su Linux. È compresa la sequenza traduzione → modifica del solo codice
+→ pubblicazione tecnica: la firma individua la generazione di authoring, il
+diff tecnico viene ribasato sulla generazione viva e testo e provenienza
+restano identici. Nessun authoring o registro produttivo è stato modificato.
 
 ### M4 — Migrazione e cutover
 
@@ -1171,6 +1186,7 @@ riferita a un perimetro diverso.
 | 2026-08-25 | `ready` | B1-B4 e irrobustimenti integrati nei §§3-14; aggiunto cutover globale fail-closed; autorizzato l'aggiornamento coordinato di `CLAUDE.md` in M4 |
 | 2026-08-25 | `ready` | seconda revisione avversariale integrata: boundary irreversibile, binding strutturali, M3 non produttiva, singolo lock tecnico, quiescenza completa e politica evolutiva; ADR resta `proposed` fino a M4 |
 | 2026-08-25 | `in_progress` | M0 e M1 implementate e provate; M2 avviata sulla specifica consolidata |
+| 2026-08-25 | `in_progress` | M2 certificata su Linux e Windows/NTFS; M3 implementata, controrevisionata e confinata a depositi isolati; M4 avviabile |
 
 ## 17. Controrevisioni — tracciabilità
 
@@ -1192,5 +1208,6 @@ storico e non normativo; prevalgono sempre i §§1-14 di questa roadmap.
 | C6 · evoluzione tecnica delle superfici | coppie esistenti immutate; aggiunte sotto RM-0002; rimozioni esplicite e auditate (§6.3) | M3-M4 |
 | C7 · stato ADR prematuro | ADR 0223 resta `proposed` fino al gate M4 verde (§12) | M4 |
 
-RM-0007 è `in_progress`: i rilievi sono risolti nella specifica; M0 e M1 sono
-implementate, mentre M2-M4 e il cutover restano da completare.
+RM-0007 è `in_progress`: M0-M3 sono implementate e certificate. Restano M4,
+il cutover produttivo, la ricertificazione completa e l'accettazione finale
+dell'ADR 0223.
