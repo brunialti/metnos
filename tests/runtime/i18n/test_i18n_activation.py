@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
+from typing import Mapping
 
 import pytest
 
@@ -14,14 +15,30 @@ from i18n_activation import (
     ActivationBlocked,
     activate_language,
     gate,
+    synchronize_public_hreflang,
     validate_manifests,
 )
-from i18n_materializer import materialize
+from i18n_materializer import LocalizationPaths, materialize
 from i18n_pipeline import review_semantics, translate_pending
 from i18n_registry import LocalizationRegistry
 
 from test_i18n_materializer import _fixture
 from test_i18n_pipeline import _translator
+
+
+def _public_page(
+    *, lang: str, canonical: str, alternates: Mapping[str, str], title: str,
+) -> str:
+    links = "\n".join(
+        f'<link href="{href}" hreflang="{language}" rel="alternate">'
+        for language, href in alternates.items()
+    )
+    return (
+        '<!doctype html><html lang="' + lang + '"><head>'
+        '<meta name="robots" content="index, follow">'
+        '<link href="' + canonical + '" rel="canonical">'
+        + links + '</head><body><h1>' + title + '</h1></body></html>'
+    )
 
 
 def _prepared(tmp_path: Path):
@@ -99,6 +116,93 @@ def test_activation_passes_target_language_to_injected_validator(tmp_path: Path)
 
     assert calls
     assert {language for _path, language in calls} == {"nl"}
+
+
+def test_hreflang_synchronization_uses_declared_family_when_paths_differ(
+    tmp_path: Path,
+) -> None:
+    docs = tmp_path / "docs"
+    en_url = "https://metnos.com/en/Metnos_Dialogue_Executors_v1"
+    it_url = "https://metnos.com/it/Metnos_Dialogo_Executor_v1"
+    nl_url = "https://metnos.com/nl/Metnos_Dialogue_Executors_v1"
+    unrelated_url = "https://metnos.com/fr/unrelated"
+    family = {"en": en_url, "it": it_url}
+    pages = {
+        docs / "en" / "Metnos_Dialogue_Executors_v1.html": _public_page(
+            lang="en", canonical=en_url, alternates=family, title="Dialogue",
+        ),
+        docs / "it" / "Metnos_Dialogo_Executor_v1.html": _public_page(
+            lang="it", canonical=it_url, alternates=family, title="Dialogo",
+        ),
+        docs / "nl" / "Metnos_Dialogue_Executors_v1.html": _public_page(
+            lang="nl", canonical=nl_url, alternates=family, title="Dialoog",
+        ),
+        # The old path join would have modified this unrelated page merely
+        # because its relative filename happens to equal the Dutch one.
+        docs / "fr" / "Metnos_Dialogue_Executors_v1.html": _public_page(
+            lang="fr", canonical=unrelated_url,
+            alternates={"fr": unrelated_url}, title="Sans rapport",
+        ),
+    }
+    for path, text in pages.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    unrelated_before = next(
+        text for path, text in pages.items() if path.parts[-2] == "fr"
+    )
+
+    paths = LocalizationPaths(docs=docs)
+    assert synchronize_public_hreflang("nl", paths) == 3
+    assert synchronize_public_hreflang("nl", paths) == 0
+
+    for language, relative in (
+        ("en", "Metnos_Dialogue_Executors_v1.html"),
+        ("it", "Metnos_Dialogo_Executor_v1.html"),
+        ("nl", "Metnos_Dialogue_Executors_v1.html"),
+    ):
+        text = (docs / language / relative).read_text(encoding="utf-8")
+        assert f'hreflang="nl" href="{nl_url}"' in text
+    assert (
+        docs / "fr" / "Metnos_Dialogue_Executors_v1.html"
+    ).read_text(encoding="utf-8") == unrelated_before
+
+    from published_docs import catalog
+
+    documents = catalog(docs)
+    family_documents = [
+        document for document in documents if document.lang in {"en", "it", "nl"}
+    ]
+    assert len(family_documents) == 3
+    assert len({document.concept_key for document in family_documents}) == 1
+    assert next(
+        document for document in documents if document.lang == "fr"
+    ).concept_key not in {document.concept_key for document in family_documents}
+
+
+def test_hreflang_synchronization_fails_before_writing_an_invalid_family(
+    tmp_path: Path,
+) -> None:
+    docs = tmp_path / "docs"
+    en_url = "https://metnos.com/en/guide"
+    nl_url = "https://metnos.com/nl/guide"
+    missing_url = "https://metnos.com/it/guida-mancante"
+    source = docs / "en" / "guide.html"
+    target = docs / "nl" / "guide.html"
+    source.parent.mkdir(parents=True)
+    target.parent.mkdir(parents=True)
+    source.write_text(_public_page(
+        lang="en", canonical=en_url, alternates={"en": en_url}, title="Guide",
+    ), encoding="utf-8")
+    target.write_text(_public_page(
+        lang="nl", canonical=nl_url,
+        alternates={"en": en_url, "it": missing_url}, title="Gids",
+    ), encoding="utf-8")
+    before = {path: path.read_bytes() for path in (source, target)}
+
+    with pytest.raises(ActivationBlocked, match="not a published document"):
+        synchronize_public_hreflang("nl", LocalizationPaths(docs=docs))
+
+    assert {path: path.read_bytes() for path in (source, target)} == before
 
 
 def test_gate_blocks_before_semantic_review(tmp_path: Path):

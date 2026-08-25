@@ -350,54 +350,177 @@ def reconcile_device_catalog(
     return len(translated)
 
 
-def _extract_canonical(text: str) -> str:
-    match = re.search(
-        r'<link\b[^>]*\brel\s*=\s*["\']canonical["\'][^>]*\bhref\s*=\s*["\']([^"\']+)',
-        text, flags=re.I,
+@dataclass(frozen=True, slots=True)
+class _PublicLinks:
+    lang: str
+    canonical: str
+    alternates: Mapping[str, str]
+
+
+def _public_links(text: str) -> _PublicLinks:
+    # Use the deployment gate's parser so synchronization and publication
+    # interpret HTML identity with exactly the same rules.
+    from published_docs import _HeadParser
+
+    parser = _HeadParser()
+    try:
+        parser.feed(text)
+        parser.close()
+        head = parser.result()
+    except ValueError as exc:
+        raise ActivationBlocked(str(exc)) from exc
+    alternates: dict[str, str] = {}
+    for language, href in head.alternates:
+        if language in alternates:
+            raise ActivationBlocked(
+                f"public document has duplicate hreflang {language!r}"
+            )
+        alternates[language] = href
+    return _PublicLinks(
+        lang=head.lang,
+        canonical=head.canonical,
+        alternates=alternates,
     )
-    return match.group(1) if match else ""
+
+
+_LINK_TAG = re.compile(r"<link\b[^>]*>", flags=re.I)
+_HREF_ATTRIBUTE = re.compile(
+    r'''(\bhref\s*=\s*)(?:"[^"]*"|'[^']*'|[^\s>]+)''',
+    flags=re.I,
+)
 
 
 def _ensure_alternate(text: str, lang: str, href: str) -> str:
     if not href or "</head>" not in text.lower():
         return text
-    pattern = (
-        r'(<link\b[^>]*\brel\s*=\s*["\']alternate["\'][^>]*\bhreflang\s*=\s*["\']'
-        + re.escape(lang) + r'["\'][^>]*\bhref\s*=\s*["\'])[^"\']+(["\'])'
-    )
-    if re.search(pattern, text, flags=re.I):
-        return re.sub(pattern, lambda match: match.group(1) + href + match.group(2), text, flags=re.I)
+    wanted = lang.casefold()
+    matches: list[re.Match[str]] = []
+    for match in _LINK_TAG.finditer(text):
+        if wanted in _public_links(match.group(0)).alternates:
+            matches.append(match)
+    if len(matches) > 1:
+        raise ActivationBlocked(f"public document has duplicate hreflang {lang!r}")
+    if matches:
+        match = matches[0]
+        tag = match.group(0)
+        if _HREF_ATTRIBUTE.search(tag):
+            updated_tag = _HREF_ATTRIBUTE.sub(
+                lambda attribute: attribute.group(1) + f'"{href}"',
+                tag,
+                count=1,
+            )
+        else:
+            updated_tag = f'<link rel="alternate" hreflang="{lang}" href="{href}">'
+        return text[:match.start()] + updated_tag + text[match.end():]
     link = f'  <link rel="alternate" hreflang="{lang}" href="{href}">\n'
     return re.sub(r"</head>", link + "</head>", text, count=1, flags=re.I)
 
 
 def synchronize_public_hreflang(target_lang: str, paths: LocalizationPaths) -> int:
-    """Add the admitted locale to every existing reciprocal document group."""
+    """Complete reciprocal families using declared public identity, not paths.
+
+    A translated filename is prose and may legitimately differ by language.
+    Canonical and non-default hreflang URLs already identify the logical
+    family, so they are the sole cross-language join key.  The complete update
+    is planned before any file is written and fails closed on ambiguous URLs,
+    missing members, or language mismatches.
+    """
     target = normalize_language(target_lang)
     target_root = paths.docs / target
-    changed = 0
     if not target_root.is_dir():
         return 0
     language_roots = sorted(
         path for path in paths.docs.iterdir()
         if path.is_dir() and not path.name.startswith(".")
     )
-    for target_path in sorted(target_root.rglob("*.html")):
-        relative = target_path.relative_to(target_root)
-        target_text = target_path.read_text(encoding="utf-8")
-        href = _extract_canonical(target_text)
-        if not href:
-            continue
-        for root in language_roots:
-            sibling = root / relative
-            if not sibling.is_file():
+    texts: dict[Path, str] = {}
+    links_by_path: dict[Path, _PublicLinks] = {}
+    path_by_canonical: dict[str, Path] = {}
+    for root in language_roots:
+        for path in sorted(root.rglob("*.html")):
+            text = path.read_text(encoding="utf-8")
+            links = _public_links(text)
+            texts[path] = text
+            links_by_path[path] = links
+            if not links.canonical:
                 continue
-            original = sibling.read_text(encoding="utf-8")
-            updated = _ensure_alternate(original, target, href)
-            if updated != original:
-                _write_public_text(sibling, updated)
-                changed += 1
-    return changed
+            previous = path_by_canonical.get(links.canonical)
+            if previous is not None and previous != path:
+                raise ActivationBlocked(
+                    "duplicate public canonical URL: " + links.canonical
+                )
+            path_by_canonical[links.canonical] = path
+
+    planned: dict[Path, str] = {}
+    visited: set[str] = set()
+    for target_path in sorted(target_root.rglob("*.html")):
+        target_links = links_by_path.get(target_path)
+        if target_links is None or not target_links.canonical:
+            continue
+        if target_links.lang != target:
+            raise ActivationBlocked(
+                f"target document language is {target_links.lang!r}, expected {target!r}: "
+                f"{target_path}"
+            )
+        if target_links.canonical in visited:
+            continue
+        family: dict[str, Path] = {}
+        by_language: dict[str, str] = {}
+        pending = [target_links.canonical]
+        while pending:
+            canonical = pending.pop()
+            if canonical in family:
+                continue
+            path = path_by_canonical.get(canonical)
+            if path is None:
+                raise ActivationBlocked(
+                    "hreflang is not a published document: " + canonical
+                )
+            family[canonical] = path
+            language = links_by_path[path].lang
+            if not language:
+                raise ActivationBlocked(f"public document has no language: {path}")
+            previous = by_language.get(language)
+            if previous is not None and previous != canonical:
+                raise ActivationBlocked(
+                    f"translation family has two {language!r} documents"
+                )
+            by_language[language] = canonical
+            for alternate_lang, alternate_url in links_by_path[path].alternates.items():
+                if alternate_lang == "x-default":
+                    continue
+                alternate_path = path_by_canonical.get(alternate_url)
+                if alternate_path is None:
+                    raise ActivationBlocked(
+                        f"hreflang {alternate_lang!r} is not a published document: "
+                        f"{alternate_url}"
+                    )
+                actual_lang = links_by_path[alternate_path].lang
+                if actual_lang != alternate_lang:
+                    raise ActivationBlocked(
+                        f"hreflang {alternate_lang!r} points to lang {actual_lang!r}"
+                    )
+                pending.append(alternate_url)
+        visited.update(family)
+
+        for path in family.values():
+            updated = planned.get(path, texts[path])
+            for language, alternate_url in sorted(by_language.items()):
+                updated = _ensure_alternate(updated, language, alternate_url)
+            projected = _public_links(updated)
+            if any(
+                projected.alternates.get(language) != alternate_url
+                for language, alternate_url in by_language.items()
+            ):
+                raise ActivationBlocked(
+                    f"cannot write a complete hreflang family: {path}"
+                )
+            planned[path] = updated
+
+    changed_paths = [path for path, text in planned.items() if text != texts[path]]
+    for path in sorted(changed_paths):
+        _write_public_text(path, planned[path])
+    return len(changed_paths)
 
 
 def _write_public_text(path: Path, text: str) -> None:
