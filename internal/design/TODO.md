@@ -9,21 +9,22 @@ non restano artificialmente aperte.
 
 | Priorita' | Voce | Stato | Condizione di chiusura |
 |---:|---|---|---|
-| P0 MAX | **AFF-I18N-001** | analisi obbligatoria prima dello sviluppo | Confronto critico documentato, specifica approvata, implementazione generale, migrazione, benchmark di routing e copertura i18n verificati senza regressioni. |
-| P0 | **PUB-001 / RM-0007** | `in_progress`; M0-M1 completate, M2 in corso | Variante linguistica pubblicata da base verificata come generazione coerente; firma pura, loader sugli stessi byte, concorrenza e arresti provati su Linux e Windows. |
+| P0 MAX | **AFF-I18N-001** | analisi di dettaglio completata; revisione adversarial e approvazione richieste prima dello sviluppo | Specifica approvata, implementazione generale, migrazione, benchmark di routing e copertura i18n verificati senza regressioni. |
+| P0 | **RM-0008 / Birth Gate** | `active`; specifica candidata pronta per revisione adversarial; sviluppo non autorizzato | Porta deterministica senza bypass; solo i sintetizzati ricevono revisione semantica, test indipendenti, preesercizio e riesame frontier; certificazione interamente verde. |
 | P0 | **SEC-001** | attesa esterna | Audit indipendente svolto da un soggetto diverso dall'implementatore; finding classificati e chiusura verificata di quelli alti o bloccanti. |
-| P1 | **MAN-I18N-001 / RM-0002** | `in_progress`; L0-L4 completate, L5-L6 dopo RM-0007 | Lingua sempre esplicita, validatore reale coperto, confronto deterministico prima della pubblicazione, inventario comune in audit, nessun falso blocco e due cicli di regressione verdi. |
 | P1 | **EXEC-BIND-001** | analisi separata; nessuna implementazione autorizzata | Stabilire se e come legare i byte verificati a quelli eseguiti per processi locali, builtin e bundle remoti, censendo prima la chiusura reale delle dipendenze. |
 | P1 | **REL-001** | osservazione temporale | Almeno un ciclo di release con telemetria versionata e volume sufficiente per dominio; ratifica degli SLO sulla base dei dati osservati. |
 
-`AFF-I18N-001` è la massima priorità, ma non autorizza una modifica immediata:
-prima richiede analisi, confronto delle alternative e progettazione approvata.
-`PUB-001` è il prerequisito di sicurezza per rendere bloccanti le nuove regole
-di RM-0002. Di RM-0002 possono iniziare prima L0-L3; L2 produce l'inventario
-neutro condiviso che RM-0007 consuma, mentre L5 richiede il confine di
-pubblicazione già in servizio. I due progetti non devono essere fusi: uno
-governa la pubblicazione linguistica, l'altro controlla la lingua e gli
-invarianti macchina.
+`AFF-I18N-001` è la massima priorità. L'analisi tecnica e il confronto delle
+alternative sono conclusi in
+`internal/design/AFF-I18N-001-analysis-20260825.md`; la tabella per lingua è la
+soluzione KISS candidata. Il prossimo passo è una revisione adversarial, poi
+l'approvazione esplicita della specifica: questa voce non autorizza ancora lo
+sviluppo.
+`RM-0008` raccoglie le conclusioni approvate sulla Birth Gate. Deve ora essere
+confutata e corretta fino a convergenza. La porta deterministica riguarda ogni
+origine; revisione LLM, preesercizio, feedback frontier e revisione automatica
+riguardano soltanto gli executor sintetizzati.
 `EXEC-BIND-001` conserva il rischio deliberatamente escluso dalla revisione
 KISS di RM-0007. Prima di proporre copie di codice o binding di release deve
 censire file dichiarati, import, risorse locali, builtin già caricati,
@@ -35,6 +36,11 @@ atomico e test; il tempo di osservazione non puo' essere sostituito da dati
 sintetici.
 
 ### AFF-I18N-001 - Internazionalizzazione completa di `affinity` (priorità massima)
+
+**Stato corrente.** Le fasi di censimento, confronto e documento di analisi
+sono concluse in `internal/design/AFF-I18N-001-analysis-20260825.md`. Restano la
+revisione adversarial della soluzione candidata e l'approvazione esplicita
+della specifica prima di qualsiasi sviluppo.
 
 **Problema verificato.** Nei manifest correnti <code>affinity</code> è una lista
 piatta che mescola termini italiani e inglesi. Il loader la usa identica per
@@ -95,6 +101,13 @@ un bundle in un momento ancora diverso. La revisione KISS di RM-0007 impedisce
 a una traduzione di firmare codice cambiato, ma non pretende che queste tre
 forme eseguano necessariamente gli stessi byte osservati dal verificatore.
 
+Il bundle remoto ammette ora soltanto nomi relativi POSIX portabili e rifiuta
+prima della serializzazione nomi ambigui su Windows. Questa regola non crea una
+seconda identità: il nome wire resta il locator firmato in `[code].files`. Se un
+locator authoring non portabile dovrà essere pubblicato con un nome wire
+diverso, la rimappatura e il relativo legame crittografico appartengono a
+`EXEC-BIND-001`; non vanno inferiti dal nome dell'executor o dalla sua origine.
+
 **Analisi obbligatoria.** Prima di progettare una soluzione:
 
 1. censire per ogni trasporto file dichiarati, import Python, risorse lette a
@@ -145,6 +158,14 @@ nuova pubblicazione, aggiornamento release, rollback e matrice Linux/Windows.
 - Gap deliberato: i record anteriori alla telemetria restano `pre-telemetry` e
   non possono sostenere confronti fra release. Le soglie per dominio saranno
   fissate soltanto dopo un campione osservato sufficiente.
+
+## Completati il 25 agosto 2026
+
+- **MAN-I18N-001 / RM-0002** — L0-L6 chiuse: inventario senza errori, linter
+  entro budget, due cicli di routing e certificazione completa verdi.
+- **PUB-001 / RM-0007** — M0-M4 chiuse: deposito immutabile attivo, cutover
+  produttivo 122/122, secondo ciclo, readiness e certificazione completa
+  verdi; ADR 0223 accettata.
 
 ## Completati il 24 agosto 2026
 
