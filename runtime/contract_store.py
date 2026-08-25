@@ -3445,6 +3445,170 @@ def _birth_receipt_path(contract_dir: Path, generation_identifier: str) -> Path:
     )
 
 
+def acquire_current_reattestation_snapshot(
+    ref: ManifestRef,
+    generation_identifier: str,
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> object:
+    """Acquire owned bytes for one exact authenticated current generation.
+
+    This is the read half of the F4 reattestation protocol.  It deliberately
+    returns a private ``CandidateSnapshot`` rather than a path.  The later
+    receipt persistence half re-authenticates ``current`` under the same lock
+    order, closing the (necessarily unlocked) check interval without ever
+    publishing a generation or replacing the pointer.
+    """
+    from executor_birth_snapshot import acquire_candidate_snapshot
+
+    generation_directory_name(generation_identifier)
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            current = _load_revision(
+                ref, generation_identifier, trusted_publics=trusted, store_root=root,
+            )
+            if not isinstance(current, VerifiedManifest):
+                raise ContractStoreError("birth_reattestation_current_invalid")
+            snapshot = acquire_candidate_snapshot(ref.manifest_dir)
+            if (
+                snapshot.manifest_bytes != current.manifest_bytes
+                or snapshot.language_state_bytes != current.language_state_bytes
+            ):
+                snapshot.close()
+                raise ContractStoreError("birth_reattestation_source_changed")
+            # Authenticate the owned copy itself.  Merely authenticating the
+            # source tree before copying would leave a transient
+            # change-copy-restore interval in which checks could attest bytes
+            # other than those named by the signed generation.
+            code = current.parsed.get("code")
+            declared_files = code.get("files") if isinstance(code, Mapping) else None
+            if not isinstance(declared_files, list) or any(
+                not isinstance(name, str) or name not in snapshot.code_files
+                for name in declared_files
+            ):
+                snapshot.close()
+                raise ContractStoreError("birth_reattestation_snapshot_invalid")
+            digest = hashlib.sha256()
+            for name in declared_files:
+                digest.update(snapshot.code_files[name])
+            if "sha256:" + digest.hexdigest() != current.declared_code_digest:
+                snapshot.close()
+                raise ContractStoreError("birth_reattestation_source_changed")
+            return snapshot
+
+
+def persist_current_reattestation_receipt(
+    ref: ManifestRef,
+    generation_identifier: str,
+    encoded: bytes,
+    *,
+    verifier: Callable[[bytes], object],
+    expected_bindings: Mapping[str, object],
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+    replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
+) -> bytes:
+    """Persist only an exact reattestation receipt for the unchanged current.
+
+    An identical authenticated receipt is an idempotent success.  Any other
+    pre-existing receipt is preserved and reported as a conflict.  No code in
+    this function can create a generation or write the current pointer.
+    """
+    generation_directory_name(generation_identifier)
+    if not isinstance(encoded, bytes) or not encoded:
+        raise ContractStoreError("birth_receipt_invalid", "empty wire receipt")
+    if not callable(verifier) or not isinstance(expected_bindings, Mapping):
+        raise ContractStoreError("birth_reattestation_authorization_invalid")
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+
+    def verified(candidate: bytes) -> object:
+        try:
+            receipt = verifier(candidate)
+        except Exception as exc:
+            raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+        for field, wanted in expected_bindings.items():
+            actual = getattr(receipt, field, object())
+            if getattr(actual, "value", actual) != getattr(wanted, "value", wanted):
+                raise ContractStoreError("birth_receipt_binding_invalid", field)
+        return receipt
+
+    verified(encoded)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            current = _load_revision(
+                ref, generation_identifier, trusted_publics=trusted, store_root=root,
+            )
+            if not isinstance(current, VerifiedManifest):
+                raise ContractStoreError("birth_reattestation_current_invalid")
+            receipt_path = _birth_receipt_path(contract_dir, generation_identifier)
+            if receipt_path.exists() or _is_link_like(receipt_path):
+                existing = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+                verified(existing)
+                if existing != encoded:
+                    raise ContractStoreError("birth_reattestation_receipt_conflict")
+                return existing
+            receipt_dir = receipt_path.parent
+            if receipt_dir.exists():
+                _require_plain_directory(receipt_dir, code="birth_receipt_store_invalid")
+                _require_no_link_components(receipt_dir, code="birth_receipt_store_invalid")
+            else:
+                receipt_dir.mkdir(mode=0o700)
+                _sync_directory(receipt_dir.parent)
+            _atomic_replace_file(
+                receipt_path, encoded, replace_timeout=replace_timeout, mode=0o600,
+            )
+            reread = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+            if reread != encoded:
+                raise ContractStoreError("birth_receipt_reread_mismatch")
+            verified(reread)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            return reread
+
+
+def read_current_birth_receipt(
+    ref: ManifestRef,
+    generation_identifier: str,
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> bytes | None:
+    """Read the receipt for an exact authenticated current generation."""
+    generation_directory_name(generation_identifier)
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    root = _store_root(store_root)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(ref.contract_id, store_root=root)
+            if _read_current_optional(contract_dir) != generation_identifier:
+                raise ContractStoreError("birth_reattestation_current_changed")
+            current = _load_revision(
+                ref, generation_identifier, trusted_publics=trusted, store_root=root,
+            )
+            if not isinstance(current, VerifiedManifest):
+                raise ContractStoreError("birth_reattestation_current_invalid")
+            path = _birth_receipt_path(contract_dir, generation_identifier)
+            if not path.exists() and not _is_link_like(path):
+                return None
+            return _read_regular_file(path, code="birth_receipt_invalid")
+
+
 def authenticate_execution_binding(
     contract_id: ContractId,
     generation_identifier: str,

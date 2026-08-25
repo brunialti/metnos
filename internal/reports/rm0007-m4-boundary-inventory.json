@@ -926,6 +926,16 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "acquire_current_reattestation_snapshot",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sealed acquisition of owned bytes for an authenticated exact-current reattestation",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "authenticate_birth_predecessor",
       "role": "store_owner",
       "capabilities": [
@@ -945,6 +955,31 @@
         "verified_store_read"
       ],
       "destination": "sealed exact-generation and admission-receipt authority for dispatch",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "persist_current_reattestation_receipt",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sole exact-current authority for atomic non-publishing reattestation receipt persistence",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_current_birth_receipt",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "authenticated durable reread of the exact current generation receipt",
       "phase": "M4"
     },
     {
