@@ -1283,6 +1283,8 @@ sviluppo.
 | 2026-08-25 | `active` | F0 completata: la guardia congela 24 chiamanti da migrare; L5/L6 non espongono bypass; 12 residui non ammessi sono stati censiti, attestati con ricevute Ed25519 e spostati senza cancellazione nella quarantena sullo stesso filesystem. La verifica successiva trova zero residui. F1 è la fase successiva. |
 | 2026-08-25 | `active` | F1 completata: staging chiusa e snapshot privato anti-link/anti-race; codec tipizzato e vettori golden per le tre identità; contesto di ammissione chiuso; ricevute Producer e Admission autenticate come codec puri. Le prove strutturali e dinamiche confermano zero chiamate al publisher, nessun consumo e nessuna influenza sul loader. F2 è la fase successiva. |
 | 2026-08-25 | `active` | Interruzione prudenziale e verifica completa del residuo: F4-F6 dispongono di primitive significative, ma non sono integrate né certificabili in produzione. Il §23 rende esplicite le lacune e l'ordine non permutabile della ripresa. |
+| 2026-08-25 | `active` | Ripristinata la matrice pubblica: la scrittura binaria conserva firme Ed25519 di 64 byte anche su Windows; l'esecuzione GitHub 32868770779 è verde su Windows 2022 e Ubuntu 24.04. |
+| 2026-08-25 | `active` | La verifica precedente alla chiusura statica ha trovato tre prerequisiti non aggirabili: chiave autore assente dal pubblicatore Birth produttivo, 21 executor incorporati con involucro incompatibile e bootstrap iniziale dell'installatore ancora affidato a firma precedente. I §§23.6 e 23.8 correggono l'ordine di sviluppo senza ridurre i criteri di F4-F6. |
 
 ## 23. Verifica dello stato e piano esecutivo prima della ripresa
 
@@ -1303,7 +1305,7 @@ prove. F4, F5 e F6 non sono tuttavia completate in senso produttivo.
   statica e controllo preliminare di avvio. Manca il coordinatore posseduto da
   `root` che li componga; mancano inoltre la predisposizione delle autorità e il
   collegamento all'installatore e ai servizi. La guardia chiusa non è verde e
-  il diniego dei percorsi precedenti compilato resta `False`.
+  la politica compilata che nega i percorsi precedenti resta `False`.
 - F5 dispone di politica di preesercizio, archivio delle epoche, indice univoco
   dell'epoca corrente, coordinatore del ciclo, identità delle memorie
   temporanee e primitive di riscontro. Questi moduli si dichiarano inattivi e
@@ -1314,8 +1316,11 @@ prove. F4, F5 e F6 non sono tuttavia completate in senso produttivo.
   minima e coda d'uscita. Il registro produttivo degli adattatori è vuoto; non
   esistono raccoglitore, pianificazione o funzioni produttive di cancellazione.
   Non è quindi avvenuta alcuna conservazione reale governata dal grafo.
-- La matrice pubblica più recente è verde su Linux e rossa su Windows. Non può
-  costituire certificazione finale.
+- La matrice pubblica dell'esecuzione GitHub `32868770779` è verde su Ubuntu
+  24.04 e Windows 2022. Essa certifica la portabilità delle primitive attuali,
+  compresa la scrittura binaria delle firme, ma non costituisce la
+  certificazione finale: non attraversa ancora il coordinatore F4, il passaggio
+  produttivo, F5 e F6.
 
 ### 23.2 Evidenze e lacune per F4
 
@@ -1347,7 +1352,7 @@ richiesta corrispondenti. Assenza ambigua, firma errata, catena incompleta o
 artefatto precedente arrestano tutti i servizi dominati dal controllo
 preliminare.
 
-### 23.3 Diagnosi Windows da conservare
+### 23.3 Diagnosi Windows risolta e prova da conservare
 
 Il registro pubblico ha mostrato firme `.sig` con dimensione di 65 o 66 byte,
 mentre Ed25519 produce sempre 64 byte. Attributi, numero di link e tipo del file
@@ -1356,14 +1361,16 @@ erano corretti. La causa è `_write_temporary()` in
 modalità testo su Windows, perciò un byte `0x0a` della firma veniva espanso in
 CRLF.
 
-La correzione minima richiesta è aggiungere `O_BINARY` all'apertura e provare
-con una firma contenente esplicitamente `0x0a` che i byte scritti e riletti
-restino identici. L'insieme completo di prove reali Windows resta obbligatorio.
+La correzione è stata applicata aggiungendo `O_BINARY` all'apertura. La prova
+deterministica scrive tutti i 256 valori di byte e include quindi certamente
+`0x0a`; i byte riletti devono essere identici. La diagnostica temporanea dei
+metadati rifiutati è stata rimossa, mentre l'errore pubblico è rimasto stabile.
 La registrazione Git che usa `GetFileInformationByHandleEx` fornisce metadati
 Win32 con struttura stabile e va mantenuta come primitiva condivisa, riducendo
-eventuali duplicazioni. Il dettaglio diagnostico dei valori rifiutati non è una funzione
-del prodotto: dopo la conferma del difetto deve tornare a un errore stabile e
-non parametrico oppure restare soltanto nel log tecnico.
+eventuali duplicazioni. L'esecuzione pubblica `32868770779` ha superato l'intero
+insieme portabile su Windows 2022 e Ubuntu 24.04. La prova Windows finale resta
+comunque obbligatoria dopo l'integrazione dei percorsi produttivi F4-F6: il
+verde attuale non può attestare codice che non è ancora collegato.
 
 ### 23.4 Evidenze e lacune per F5
 
@@ -1433,28 +1440,45 @@ parte soltanto dopo il criterio di uscita del precedente.
 1. **Ripristino della matrice:** correzione binaria Windows, prova deterministica
    e reale, rimozione della sola diagnostica temporanea, insieme di prove
    portabili verdi su Linux e Windows.
-2. **Chiusura statica F4:** eliminazione o migrazione delle autorità precedenti
-   residue, inventario e manifest reali, guardia `--birth-closed` verde sullo
-   stesso albero destinato alla distribuzione. Il diniego compilato resta falso.
-3. **Autorità e coordinatore F4:** predisposizione delle chiavi con scopi
-   separati, fabbrica sigillata di riattestazione, prova canonica di
-   manutenzione, registro posseduto da `root` e recupero oltre il punto di non
-   ritorno.
-4. **Distribuzione e avvio F4:** assemblaggio firmato, installazione atomica,
+2. **Radice autore e predisposizione delle autorità:** autenticazione della
+   chiave autore predefinita contro il registro di fiducia e consegna privata al
+   pubblicatore Birth; creazione e installazione separate delle autorità
+   Admission e Producer, delle approvazioni e del contesto semantico. Questo
+   gruppo non migra chiamanti e non rende ancora vincolante la guardia.
+3. **Bootstrap iniziale e involucri incorporati:** bootstrap privato e sigillato
+   posseduto da Birth per il solo stato precedente al certificato; fabbrica
+   sigillata di riattestazione e tabella chiusa di provenienza e paternità;
+   controllo preliminare transitorio minimo installato prima dell'attivazione;
+   macchina di convergenza dell'installatore con ripresa; migrazione dei 21
+   executor incorporati verso involucri che attestino tutti i byte realmente
+   eseguiti. Generatore e installatore cessano di firmare direttamente soltanto
+   nello stesso cambiamento che rende operativo il percorso sostitutivo.
+4. **Chiusura statica F4:** eliminazione delle autorità precedenti residue,
+   classificazione esatta dei chiamanti, inventario `birth_closed` e guardia
+   `--birth-closed` verde sullo stesso albero destinato alla distribuzione. Non
+   sono ammesse eccezioni che nascondano una capacità produttiva. La politica
+   compilata che nega i percorsi precedenti resta falsa.
+5. **Autorità e coordinatore F4:** riuso della fabbrica sigillata di
+   riattestazione nel coordinatore, prova canonica di manutenzione, registro
+   posseduto da `root` e recupero oltre il punto di non ritorno. Le autorità e i
+   registri posseduti da `root` per `closed_distribution_v1`,
+   `ownership_cutover_v1` e `ownership_head_v1` devono essere distinti tra loro
+   e non possono riusare chiavi autore, Admission o Producer.
+6. **Distribuzione e avvio F4:** assemblaggio firmato, installazione atomica,
    catena completa, controllo preliminare transitorio e definitivo, copertura di
    tutti i servizi e dell'installatore.
-5. **Passaggio e artefatto chiuso F4:** prova generale isolata, passaggio reale
+7. **Passaggio e artefatto chiuso F4:** prova generale isolata, passaggio reale
    controllato, artefatto separato con diniego compilato vero, caricamento a
    freddo, riavvio, ripetizione equivalente e due cicli di instradamento. Solo
    questo gruppo può dichiarare F4.
-6. **Certificatore e migrazione F5:** soglia derivata da evidenze, migrazione
+8. **Certificatore e migrazione F5:** soglia derivata da evidenze, migrazione
    senza perdita e ritiro delle letture precedenti per nome.
-7. **Integrazione F5:** ciclo, preesercizio, epoche, memorie temporanee,
+9. **Integrazione F5:** ciclo, preesercizio, epoche, memorie temporanee,
    tentativi durevoli e riscontro attraversano i percorsi reali e superano prove
    di arresto e CAS su stato superato.
-8. **Integrazione F6:** adattatori completi, raccolta in osservazione, coda
+10. **Integrazione F6:** adattatori completi, raccolta in osservazione, coda
    d'uscita, cancellazione reale controllata e certificazione delle gare.
-9. **Certificazione finale:** insieme completo di prove Linux e Windows, due
+11. **Certificazione finale:** insieme completo di prove Linux e Windows, due
    cicli di instradamento reali consecutivi, prova non distruttiva, ADR 0224,
    documentazione italiana e inglese, note dell'installatore, procedura
    operativa di migrazione e recupero, pubblicazione e verifica della
@@ -1472,3 +1496,76 @@ una base di dati sintetica o una matrice che non esegua il percorso interessato.
 La roadmap resta `active`. Non deve essere marcata `implemented` o `closed`
 finché ogni riga dei §§15-17 e di questa sezione non dispone dell'evidenza
 autorevole corrispondente.
+
+### 23.8 Vincoli emersi prima della chiusura statica
+
+La chiusura statica originariamente prevista subito dopo il ripristino della
+matrice non è eseguibile senza rendere non funzionanti le nuove installazioni.
+La verifica del codice ha prodotto le seguenti evidenze:
+
+1. `executor_birth_bootstrap._build()` consegna al nucleo soltanto le chiavi
+   pubbliche fidate. `commit_birth_snapshot()` richiede invece anche la chiave
+   privata dell'autore. Il bootstrap Birth produttivo non può quindi completare
+   una pubblicazione. La correzione deve caricare esclusivamente la chiave
+   autore predefinita, verificarne la corrispondenza con la voce pubblica
+   fidata, mantenerla distinta dalle chiavi Admission e Producer e consegnarla
+   soltanto al collegamento privato del pubblicatore. Nessun chiamante può
+   scegliere nome, percorso o chiave.
+2. Tutti i 21 manifest incorporati osservati usano `code.files` con percorsi
+   `../../...`. Lo snapshot chiuso rifiuta correttamente ogni attraversamento
+   del genitore e il caricatore deve attestare il modulo realmente eseguito.
+   Non è lecito allentare la normalizzazione, copiare un modulo diverso da
+   quello caricato o firmare il solo manifest. Gli executor devono migrare verso
+   involucri posseduti dal contratto. Ogni modulo non appartenente alla libreria
+   standard e caricato transitivamente dall'entrata deve essere incluso nello
+   snapshot mediante un percorso canonico posseduto dal contratto, oppure deve
+   essere una dipendenza di runtime chiusa, autenticata sia da
+   `admission_context_id` sia dalla distribuzione. Il caricatore deve provare che
+   i byte eseguiti coincidano con quelli attestati. È vietato un involucro che si
+   limiti a delegare verso codice esterno non legato. Fino al completamento di
+   questa migrazione, la pubblicazione Birth del candidato deve fallire prima di
+   qualsiasi mutazione con un errore stabile.
+3. `install/phases/phase3_code.py` e
+   `scripts/generate_builtin_executor_contracts.py` possiedono ancora capacità
+   di firma diretta. Spostare la stessa chiamata in un modulo sigillato o
+   aggiungere un'eccezione alla guardia non cambia l'autorità e non soddisfa il
+   proprietario unico. Serve un bootstrap iniziale privato di Birth, ammesso
+   soltanto sotto quiescenza, nello stato precedente al certificato e con
+   inventario posseduto internamente. Non è un involucro di `sign_executor`, non
+   accetta percorso, chiave o inventario dal chiamante, censisce internamente
+   tutti e soli i contratti installati, prepara e firma soltanto come parte
+   della pubblicazione atomica dell'albero ombra e non restituisce firme
+   riutilizzabili. Phase 3 orchestra e conserva la prova di quiescenza, ma non
+   possiede la firma. Il bootstrap diventa irraggiungibile dopo il certificato;
+   da quel momento si usa soltanto il protocollo Birth ordinario.
+4. L'installatore non predispone ancora in modo completo archivio Admission,
+   archivi Producer, approvazioni, autorità semantica e contesto. La fabbrica
+   dei Producer non può usare una sola coppia fissa di provenienza e paternità
+   per un catalogo eterogeneo: deve derivare la coppia esatta da `ContractId`
+   mediante una tabella chiusa posseduta dal sistema, mai da campi autorevoli
+   forniti dal chiamante.
+5. Il passaggio dell'installatore deve essere una macchina di convergenza
+   recuperabile con una matrice esplicita. In `legacy` (precedente) crea
+   l'albero ombra e persiste il rapporto prima dell'attivazione. In
+   `recovery_required` (recupero obbligatorio) legge l'esatto rapporto di
+   preparazione e lo valida contro l'albero ombra. In `store_only` (solo
+   archivio) ignora ogni rapporto storico e ricostruisce lo stato dalla radice
+   produttiva autenticata. In `active` (attivo) verifica il catalogo corrente.
+   Il rapporto odierno non è firmato e non deve essere descritto o trattato come
+   autenticato. Una volta raggiunto in sicurezza lo stato `active`, il percorso
+   avvia Birth, riattesta le correnti mancanti mediante la fabbrica sigillata,
+   converge l'installatore tramite Birth e verifica a freddo il solo archivio.
+   Il controllo preliminare transitorio va installato prima di attivare
+   l'archivio o dichiarare complete le ricevute.
+6. La guardia chiusa rileva ancora sedici ambiti per i quali la politica
+   compilata richiede una specifica `closed_exception`, assente o non
+   corrispondente nell'inventario; rileva inoltre il proprietario Birth non
+   ancora classificato come tale e le due autorità di firma precedenti indicate
+   sopra. Il verde sarà significativo soltanto dopo aver rimosso le autorità
+   reali e classificato gli ambiti esatti; non costituisce una soluzione
+   trasformare il debito in eccezioni o cambiare soltanto il ruolo.
+
+Questi vincoli non ampliano né riducono RM-0008. Rendono espliciti i prerequisiti
+necessari affinché la rimozione dei vecchi firmatari non lasci un sistema senza
+un percorso di installazione valido. Per questo i gruppi 2-4 del §23.6
+sostituiscono l'ordine precedente e sono non permutabili.
