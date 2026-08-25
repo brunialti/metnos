@@ -151,6 +151,8 @@ class DurableExecutionBridge:
             str, Callable[[Mapping[str, Any], ExecutionContext], object]
         ] | None = None,
         device_selector: Callable[[Mapping[str, Any] | None], str | None] | None = None,
+        executor_generation_attestor: Callable[[object], object] | None = None,
+        require_generation_attestation: bool = False,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.store = store
@@ -162,6 +164,10 @@ class DurableExecutionBridge:
         self._workload_invoker = workload_invoker
         self._internal_runners = dict(internal_runners or {})
         self._device_selector = device_selector or self._source_device
+        if require_generation_attestation and executor_generation_attestor is None:
+            raise ValueError("generation attestation authority is required")
+        self._executor_generation_attestor = executor_generation_attestor
+        self._require_generation_attestation = bool(require_generation_attestation)
         self._clock = clock or _now
 
     @staticmethod
@@ -711,18 +717,56 @@ class DurableExecutionBridge:
             except Exception as exc:
                 raise self._failure(
                     "capability_unavailable",
-                    code="execution.executor_unavailable",
+                    code=("execution.runner_absent" if self._require_generation_attestation
+                          else "execution.executor_unavailable"),
                     message_key="ERR_DURABLE_RUNNER_UNAVAILABLE",
                     retry="manual",
                     details={"runner_name": contract.name},
                 ) from exc
+            lifecycle = str(getattr(executor, "lifecycle", "") or "")
+            if self._require_generation_attestation and lifecycle == "quarantined":
+                raise self._failure(
+                    "capability_unavailable", code="execution.quarantined",
+                    message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                    details={"runner_name": contract.name},
+                )
+            if self._require_generation_attestation and lifecycle in {"deprecated", "archived"}:
+                raise self._failure(
+                    "capability_unavailable", code="execution.retired",
+                    message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                    details={"runner_name": contract.name},
+                )
+            if self._require_generation_attestation and (
+                lifecycle != "active" or bool(getattr(executor, "dormant", False))
+            ):
+                raise self._failure(
+                    "capability_unavailable", code="execution.dormant",
+                    message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                    details={"runner_name": contract.name},
+                )
+            if self._require_generation_attestation:
+                try:
+                    assert self._executor_generation_attestor is not None
+                    self._executor_generation_attestor(executor)
+                except Exception as exc:
+                    code = getattr(exc, "code", "execution.runner_absent")
+                    if code not in {
+                        "execution.runner_absent", "execution.dormant",
+                        "execution.retired", "execution.quarantined",
+                    }:
+                        code = "execution.runner_absent"
+                    raise self._failure(
+                        "capability_unavailable", code=code,
+                        message_key="ERR_DURABLE_RUNNER_UNAVAILABLE", retry="manual",
+                        details={"runner_name": contract.name},
+                    ) from exc
             try:
                 attestor = getattr(self.runners, "attest_executor", None)
                 if callable(attestor):
                     loaded_contract = attestor(contract.name, executor)
                     if loaded_contract != contract:
                         raise ValueError("loaded executor contract changed")
-                else:
+                elif not self._require_generation_attestation:
                     # Lightweight compatibility check for test/custom
                     # resolvers that predate exact-object attestation.
                     loaded_name = getattr(executor, "name", contract.name)
@@ -733,6 +777,8 @@ class DurableExecutionBridge:
                         and loaded_digest != contract.implementation_digest
                     ):
                         raise ValueError("loaded executor identity changed")
+                else:
+                    raise ValueError("exact-object executor attestation is required")
             except Exception as exc:
                 raise self._failure(
                     "contract_violation",
