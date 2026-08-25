@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +21,8 @@ from executor_birth_authoring import (
     materialize_staging,
     persist_prepared_journal,
     read_authoring_versioned,
+    read_manifest_ref_versioned,
+    read_version,
     read_tree,
     replace_with_staging,
     rollback_prepared,
@@ -189,6 +192,38 @@ def test_new_pointer_completion_advances_version_and_cleans_backup(tmp_path: Pat
         paths, journal.contract_id, tuple(new), timeout=1,
     )
     assert dict(observed) == new
+
+
+def test_manifest_ref_reader_derives_and_checks_the_versioned_view(tmp_path: Path) -> None:
+    paths, journal, _old, new = _transaction(tmp_path)
+    materialize_staging(paths, journal, new)
+    persist_prepared_journal(paths, journal)
+    replace_with_staging(paths, journal)
+    advance_version(paths, journal.contract_id, journal.new_tree_id)
+    cleanup_transaction(paths, journal)
+    ref = SimpleNamespace(
+        manifest_dir=paths.canonical,
+        contract_id=SimpleNamespace(value=journal.contract_id),
+    )
+
+    observed = read_manifest_ref_versioned(
+        ref, tuple(new), timeout=1,
+    )
+
+    assert dict(observed) == new
+
+
+def test_recovery_does_not_advance_an_already_durable_tree_version(tmp_path: Path) -> None:
+    paths, journal, _old, new = _transaction(tmp_path)
+    materialize_staging(paths, journal, new)
+    persist_prepared_journal(paths, journal)
+    replace_with_staging(paths, journal)
+
+    first = advance_version(paths, journal.contract_id, journal.new_tree_id)
+    replay = advance_version(paths, journal.contract_id, journal.new_tree_id)
+
+    assert replay == first
+    assert read_version(paths, journal.contract_id) == first
 
 
 def test_recovery_rejects_foreign_canonical_tree(tmp_path: Path) -> None:

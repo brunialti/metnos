@@ -862,7 +862,8 @@
       "capabilities": [
         "authoring_read",
         "authoring_write",
-        "store_write"
+        "store_write",
+        "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
       "phase": "M4"
@@ -1049,6 +1050,16 @@
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_birth_authoring.py",
+      "scope": "read_manifest_ref_versioned",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_versioned_read"
+      ],
+      "destination": "single shared-token reader for a versioned authoring tree",
       "phase": "M4"
     },
     {

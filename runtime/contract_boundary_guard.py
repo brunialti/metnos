@@ -83,6 +83,9 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
         "inventory_manifests": ("authoring_read", "verified_store_read"),
         "inventory_store_manifests": ("verified_store_read",),
     },
+    "executor_birth_authoring": {
+        "read_manifest_ref_versioned": ("authoring_versioned_read",),
+    },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
@@ -102,6 +105,9 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
         "manifest_inventory",
         "runtime.manifest_inventory",
     }),
+    "executor_birth_authoring": frozenset({
+        "executor_birth_authoring", "runtime.executor_birth_authoring",
+    }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/executor_birth.py": "executor_birth",
@@ -112,6 +118,7 @@ BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
     "runtime/admin/i18n_migrate_manifests.py": "i18n_migrate_manifests",
     "runtime/contract_cutover_guard.py": "contract_cutover_guard",
     "runtime/manifest_inventory.py": "manifest_inventory",
+    "runtime/executor_birth_authoring.py": "executor_birth_authoring",
 }
 READ_OPERATIONS = frozenset({
     "exists",
@@ -242,6 +249,7 @@ class ScopeFacts:
     line: int
     capabilities: tuple[str, ...]
     calls: tuple[str, ...]
+    direct_manifest_dir_access: bool = False
 
     @property
     def key(self) -> str:
@@ -763,6 +771,12 @@ def _analyse_scope(
     capabilities: set[str] = set(
         _defined_boundary_capabilities(path, scope)
     )
+    manifest_dir_locator_used = any(
+        isinstance(item, ast.Attribute)
+        and item.attr == "manifest_dir"
+        and isinstance(item.ctx, ast.Load)
+        for item in nodes
+    )
     if dynamic_boundary_access:
         capabilities.add("dynamic_boundary_access")
     calls: set[str] = set()
@@ -951,6 +965,9 @@ def _analyse_scope(
         line=getattr(node, "lineno", 1),
         capabilities=tuple(sorted(capabilities)),
         calls=tuple(sorted(calls)),
+        direct_manifest_dir_access=(
+            manifest_dir_locator_used and "authoring_read" in capabilities
+        ),
     )
 
 
@@ -1135,6 +1152,7 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
             line=fact.line,
             capabilities=tuple(sorted(effective[index])),
             calls=fact.calls,
+            direct_manifest_dir_access=fact.direct_manifest_dir_access,
         )
         for index, fact in enumerate(direct)
     ]
@@ -1152,7 +1170,10 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
                 continue
             facts.extend(scan_file(path, repository_root=repository_root))
     return sorted(
-        (fact for fact in facts if fact.capabilities),
+        (
+            fact for fact in facts
+            if fact.capabilities or fact.direct_manifest_dir_access
+        ),
         key=lambda fact: (fact.path, fact.scope),
     )
 
@@ -1257,6 +1278,16 @@ def check(
             continue
 
         capabilities = set(fact.capabilities)
+        if fact.direct_manifest_dir_access and not (
+            role in {"offline_authoring", "migration_boundary", "store_owner"}
+            or fact.path == "runtime/executor_birth_authoring.py"
+        ):
+            findings.append(Finding(
+                "direct_manifest_dir_read_without_token",
+                key,
+                "ManifestRef.manifest_dir is private to the versioned reader; "
+                "use read_manifest_ref_versioned()",
+            ))
         if role == "birth_owner" and (
             fact.path != "runtime/executor_birth.py"
             or bool(capabilities & {

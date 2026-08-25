@@ -99,6 +99,57 @@ def test_live_reader_cannot_reopen_authoring_even_read_only(tmp_path: Path) -> N
     assert "live_reader_uses_authoring" in _codes(findings)
 
 
+def test_manifest_ref_locator_requires_the_versioned_reader(tmp_path: Path) -> None:
+    facts = _scan(
+        tmp_path,
+        "def inspect(ref):\n"
+        "    return (ref.manifest_dir / 'manifest.toml').read_bytes()\n",
+    )
+    inventory = _inventory(facts, {"inspect": "administrative_tool"})
+
+    findings = check(facts, inventory)
+
+    assert "direct_manifest_dir_read_without_token" in _codes(findings)
+
+
+def test_versioned_manifest_ref_reader_hides_authoring_locator(tmp_path: Path) -> None:
+    facts = _scan(
+        tmp_path,
+        "from executor_birth_authoring import read_manifest_ref_versioned\n"
+        "def inspect(ref):\n"
+        "    return read_manifest_ref_versioned(\n"
+        "        ref, ('manifest.toml',), timeout=1.0)\n",
+    )
+    inventory = _inventory(facts, {"inspect": "administrative_tool"})
+
+    assert _fact(facts, "inspect").capabilities == (
+        "authoring_versioned_read",
+    )
+    assert check(facts, inventory) == []
+
+
+def test_direct_manifest_ref_locator_exceptions_are_narrow(tmp_path: Path) -> None:
+    facts = _scan(
+        tmp_path,
+        "def offline(ref):\n"
+        "    return (ref.manifest_dir / 'manifest.toml').read_bytes()\n"
+        "def migration(ref):\n"
+        "    return (ref.manifest_dir / 'manifest.toml').read_bytes()\n"
+        "def owner(ref):\n"
+        "    return (ref.manifest_dir / 'manifest.toml').read_bytes()\n",
+    )
+    inventory = _inventory(facts, {
+        "offline": "offline_authoring",
+        "migration": "migration_boundary",
+        "owner": "store_owner",
+    })
+
+    # Migration scopes normally also carry the legacy-bootstrap capability.
+    # This focused assertion exercises only the direct-locator exception.
+    findings = check(facts, inventory)
+    assert _codes(findings) == {"migration_boundary_not_constrained"}
+
+
 def test_publication_store_write_is_forbidden_outside_owner(tmp_path: Path) -> None:
     facts = _scan(
         tmp_path,

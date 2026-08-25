@@ -2489,6 +2489,220 @@ def test_birth_post_cleanup_replay_requires_exact_request_id(tmp_path: Path) -> 
         )
 
 
+_BIRTH_COMMIT_CRASH_BOUNDARIES = (
+    "receipt",
+    "journal",
+    "rename_old",
+    "rename_new",
+    "generation",
+    "current",
+    "reread",
+    "version",
+    "cleanup",
+)
+
+
+def _inject_birth_commit_crash(
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+) -> None:
+    """Raise once immediately after the named durable F4 operation."""
+    import executor_birth_authoring as authoring
+
+    fired = False
+
+    def once_after(original, label: str):
+        def wrapped(*args, **kwargs):
+            nonlocal fired
+            result = original(*args, **kwargs)
+            if not fired:
+                fired = True
+                raise RuntimeError(f"injected birth crash after {label}")
+            return result
+        return wrapped
+
+    if boundary == "receipt":
+        monkeypatch.setattr(
+            contract_store_module,
+            "_persist_birth_receipt_locked",
+            once_after(contract_store_module._persist_birth_receipt_locked, boundary),
+        )
+    elif boundary == "journal":
+        monkeypatch.setattr(
+            authoring,
+            "persist_prepared_journal",
+            once_after(authoring.persist_prepared_journal, boundary),
+        )
+    elif boundary in {"rename_old", "rename_new"}:
+        original = authoring.os.replace
+
+        def replace_then_crash(source, destination):
+            nonlocal fired
+            result = original(source, destination)
+            destination_name = Path(destination).name
+            matches = (
+                boundary == "rename_old" and destination_name.startswith(".birth-backup-")
+            ) or (
+                boundary == "rename_new" and not destination_name.startswith(".birth-backup-")
+                and Path(source).name.startswith(".birth-stage-")
+            )
+            if matches and not fired:
+                fired = True
+                raise RuntimeError(f"injected birth crash after {boundary}")
+            return result
+
+        monkeypatch.setattr(authoring.os, "replace", replace_then_crash)
+    elif boundary == "generation":
+        monkeypatch.setattr(
+            contract_store_module,
+            "_install_generation",
+            once_after(contract_store_module._install_generation, boundary),
+        )
+    elif boundary == "current":
+        monkeypatch.setattr(
+            contract_store_module,
+            "_write_current",
+            once_after(contract_store_module._write_current, boundary),
+        )
+    elif boundary == "reread":
+        monkeypatch.setattr(
+            contract_store_module,
+            "_verify_published_postcondition",
+            once_after(contract_store_module._verify_published_postcondition, boundary),
+        )
+    elif boundary == "version":
+        monkeypatch.setattr(
+            authoring,
+            "advance_version",
+            once_after(authoring.advance_version, boundary),
+        )
+    elif boundary == "cleanup":
+        monkeypatch.setattr(
+            authoring,
+            "cleanup_transaction",
+            once_after(authoring.cleanup_transaction, boundary),
+        )
+    else:  # pragma: no cover - closed test-owned boundary registry
+        raise AssertionError(boundary)
+
+
+@pytest.mark.parametrize("boundary", _BIRTH_COMMIT_CRASH_BOUNDARIES)
+@pytest.mark.parametrize("first_birth", (True, False), ids=("first-birth", "update"))
+def test_birth_commit_recovers_every_durable_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+    first_birth: bool,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    predecessor = None
+    if not first_birth:
+        predecessor = publish_signed_source(
+            ref, expected_generation_id=None,
+            trusted_publics=trusted, store_root=store,
+        ).current_generation_id
+    snapshot = _birth_snapshot(ref, tmp_path)
+    observed: list[tuple[str, Mapping[str, str]]] = []
+    authorization = _birth_authorization(
+        ref, predecessor, Ed25519PrivateKey.generate(), observed=observed,
+    )
+    request_id = "sha256:" + ("1" if first_birth else "2") * 64
+    _inject_birth_commit_crash(monkeypatch, boundary)
+
+    with pytest.raises(RuntimeError, match=f"after {boundary}"):
+        commit_birth_snapshot(
+            ref, expected_generation_id=predecessor, snapshot=snapshot,
+            request_id=request_id, private_key=private,
+            trusted_publics=trusted, birth_authorization=authorization,
+            store_root=store,
+        )
+
+    recovered = commit_birth_snapshot(
+        ref, expected_generation_id=predecessor, snapshot=snapshot,
+        request_id=request_id, private_key=private,
+        trusted_publics=trusted, birth_authorization=authorization,
+        store_root=store,
+    )
+    assert recovered.current_generation_id == current_revision_id(
+        ref, store_root=store,
+    )
+    assert recovered.current_generation_id != predecessor
+    assert len(observed) == 1
+
+
+@pytest.mark.parametrize(
+    "tamper", ("receipt", "journal", "unjournaled_staging", "canonical", "generation"),
+)
+def test_birth_crash_recovery_rejects_tampered_durable_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    import executor_birth_authoring as authoring
+
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    predecessor = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    ).current_generation_id
+    snapshot = _birth_snapshot(ref, tmp_path)
+    authorization = _birth_authorization(
+        ref, predecessor, Ed25519PrivateKey.generate(),
+    )
+    request_id = "sha256:" + "d" * 64
+    crash_boundary = (
+        "generation" if tamper == "generation"
+        else "receipt" if tamper == "unjournaled_staging"
+        else "rename_new"
+    )
+    _inject_birth_commit_crash(monkeypatch, crash_boundary)
+    with pytest.raises(RuntimeError):
+        commit_birth_snapshot(
+            ref, expected_generation_id=predecessor, snapshot=snapshot,
+            request_id=request_id, private_key=private,
+            trusted_publics=trusted, birth_authorization=authorization,
+            store_root=store,
+        )
+
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    control = authoring.authoring_paths(ref.manifest_dir, ref.contract_id.value)
+    pending = authoring.load_prepared_journal(control)
+    if tamper != "unjournaled_staging":
+        assert pending is not None
+    if tamper == "receipt":
+        assert pending is not None
+        receipt = contract_dir / "admission-receipts" / (
+            generation_directory_name(pending.new_generation_id) + ".json"
+        )
+        receipt.write_bytes(b"{}")
+    elif tamper == "journal":
+        control.journal.write_bytes(control.journal.read_bytes() + b"\n")
+    elif tamper == "unjournaled_staging":
+        assert pending is None
+        staging = ref.manifest_dir.parent / (
+            ".birth-stage-" + request_id.removeprefix("sha256:")
+        )
+        (staging / "sample.py").write_bytes(b"tampered")
+    elif tamper == "canonical":
+        (control.canonical / "sample.py").write_bytes(b"tampered")
+    else:
+        assert pending is not None
+        generation = contract_dir / "generations" / generation_directory_name(
+            pending.new_generation_id,
+        )
+        (generation / "manifest.toml").write_bytes(b"tampered")
+
+    with pytest.raises(ContractStoreError):
+        commit_birth_snapshot(
+            ref, expected_generation_id=predecessor, snapshot=snapshot,
+            request_id=request_id, private_key=private,
+            trusted_publics=trusted, birth_authorization=authorization,
+            store_root=store,
+        )
+
+
 def test_technical_publication_rebases_and_preserves_live_localization(
     tmp_path: Path,
 ) -> None:

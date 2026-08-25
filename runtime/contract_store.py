@@ -4381,7 +4381,23 @@ def commit_birth_snapshot(
                 staging_basename=f".birth-stage-{suffix}",
                 backup_basename=f".birth-backup-{suffix}",
             )
-            staging = materialize_staging(control, journal, final_files)
+            staging, backup = control.transaction_paths(journal)
+            if staging.exists() or backup.exists():
+                # The receipt is deliberately made durable before the
+                # prepared journal.  A hard stop in that interval leaves the
+                # already verified, request-derived staging tree behind.  It
+                # is resumable only for the exact request and exact closed
+                # tree; a backup without a journal is never self-authorizing.
+                if backup.exists() or not staging.is_dir() or staging.is_symlink():
+                    raise ContractStoreError("authoring_recovery_ambiguous", "unjournaled staging")
+                staged_files = observe_tree(staging)
+                if (
+                    dict(staged_files) != final_files
+                    or authoring_tree_id(staged_files) != new_tree_id
+                ):
+                    raise ContractStoreError("authoring_recovery_ambiguous", "unjournaled staging")
+            else:
+                staging = materialize_staging(control, journal, final_files)
             staged_ref = replace(
                 ref, source_root=staging, manifest_path=staging / "manifest.toml",
                 allowed_code_roots=(staging,), manifest_hash=_sha256(snapshot.manifest_bytes),
