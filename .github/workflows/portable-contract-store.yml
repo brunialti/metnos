@@ -62,10 +62,12 @@ jobs:
           sudo systemd-run --quiet --wait --pipe --collect \
             --unit="metnos-birth-cert-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --property=Type=exec \
-            --property=Delegate=yes \
+            --property="Delegate=memory pids" \
             --property=DelegateSubgroup=metnos-birth-host \
             --property=MemoryAccounting=yes \
+            --property=MemoryMax=1G \
             --property=TasksAccounting=yes \
+            --property=TasksMax=256 \
             --working-directory="$GITHUB_WORKSPACE" \
             --setenv="PATH=$PATH" \
             --setenv=PYTHONPATH=runtime \
