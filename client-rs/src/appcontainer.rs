@@ -1028,14 +1028,16 @@ fn run_child(
         }
     }
 
-    let (stdout, stdout_truncated) = t_out.join().unwrap_or_default();
-    let (stderr, stderr_truncated) = t_err.join().unwrap_or_default();
+    // The root process may leave descendants alive with inherited stdout or
+    // stderr handles.  Kill the whole job before joining the readers, or those
+    // readers can wait forever for EOF even though the root has exited.
     let mut exit_code_u32 = 126u32;
     unsafe { windows_sys::Win32::System::Threading::GetExitCodeProcess(pi.hProcess, &mut exit_code_u32); }
-    // Closing the root is not sufficient proof: a descendant can still be
-    // active in the job.  Terminate the whole job after every phase, wait a
-    // bounded interval, then query the kernel-owned accounting record.
     unsafe { TerminateJobObject(job, if timed_out { 137 } else { 0 }); }
+    let (stdout, stdout_truncated) = t_out.join().unwrap_or_default();
+    let (stderr, stderr_truncated) = t_err.join().unwrap_or_default();
+    // Closing the root is not sufficient proof: query the kernel-owned job
+    // accounting record after the tree termination and bounded pipe drain.
     let drain_until = std::time::Instant::now() + std::time::Duration::from_secs(2);
     let (active_processes, termination_attested) = loop {
         let mut accounting: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
