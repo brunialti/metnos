@@ -7,12 +7,11 @@ Il flusso ordinario applica:
 * unicità del binding della skill tra le importazioni installate;
 * L1, forma canonica ``azione_oggetto[_qualifier]`` nel vocabolario runtime;
 * L2, sovrapposizione di affinità contro gli executor già installati;
-* L5, asserzione di instradamento quando esistono un caso e un runner;
+* L5, asserzione di instradamento oppure non applicabilità canonica;
 * L6, coerenza semantica tra manifest e codice generato.
 
-L5 può registrare uno skip per pattern non mappati o runner indisponibile. L6
-è fail-closed: divergenza, eccezione o verificatore indisponibile rifiutano il
-piano, salvo un bypass di sviluppo esplicitamente richiesto dal chiamante.
+L5 e L6 sono fail-closed: runner o verificatore indisponibili, payload non
+conformi ed eccezioni rifiutano il piano. Nessun bypass è esposto al chiamante.
 Le statistiche di efficacia successive all'uso appartengono al ciclo di vita,
 non all'ammissione iniziale.
 """
@@ -430,15 +429,15 @@ def _smoke_case_for_plan(plan) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# L6 — semantic verifier (stage 6 mock-able)
+# L6 — semantic verifier
 # ---------------------------------------------------------------------------
 
 
 def _stage6_verify_callable() -> Callable:
     """Risolve la callable di stage 6.
 
-    Risolve il verificatore runtime. I test devono iniettarne uno esplicito
-    attraverso ``admit_skill_import``; l'ambiente non può cambiare la policy.
+    Il verificatore è risolto internamente: API ed ambiente non possono
+    sostituirlo o disattivarlo. I test isolati possono sostituire questo resolver.
     """
     try:
         runtime_canonical = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
@@ -447,12 +446,8 @@ def _stage6_verify_callable() -> Callable:
         from synt_stage6_verify import verify_semantic_alignment  # type: ignore
         return verify_semantic_alignment
     except Exception:
-        def _unavailable(description, code_body, **kw):
-            return {
-                "aligned": False,
-                "mismatch": "semantic_verifier_unavailable",
-                "_fallback": True,
-            }
+        def _unavailable(*args, **kwargs):
+            raise RuntimeError("semantic_verifier_unavailable")
         return _unavailable
 
 
@@ -556,19 +551,30 @@ def _run_smoke_for_plan(plan, case: dict) -> tuple[bool, str]:
     """Esegue il routing assertion di smoke per UN plan accepted (ADR 0159 L5).
 
     Strict: se `expected_first_tool` del prefilter != atteso, reject.
-    Skip gracefully con ok=True se il case e' `_no_smoke=True` (pattern
-    non in mappa) o se prefilter/catalog non importabili.
+    L'unico esito non applicabile ammesso è il marker canonico `_no_smoke`
+    prodotto per un pattern privo di query realistica. Dipendenze indisponibili,
+    payload incompleti e risultati non conformi causano il rifiuto.
 
     Determinismo §7.9: usa `smoke._run_smoke_with_tool_assertion`
     (intent BoW + prefilter, no LLM).
 
-    Ritorna (ok, reason). ok=True implica smoke passato o skip ammesso.
+    Ritorna (ok, reason). ok=True implica smoke passato o non applicabilità
+    canonica e verificata.
     """
-    if not case or case.get("_no_smoke"):
-        return True, "no smoke case mapped (skip)"
+    if not isinstance(case, dict) or not case:
+        return False, "smoke_case_invalid"
+    if case.get("_no_smoke") is True:
+        reason = case.get("_reason")
+        if (
+            set(case) == {"_no_smoke", "_reason"}
+            and isinstance(reason, str)
+            and reason.startswith("no realistic query for pattern ")
+        ):
+            return True, f"not_applicable:{reason}"
+        return False, "smoke_case_invalid"
     expected = case.get("expected_first_tool")
-    if not expected:
-        return True, "case has no expected_first_tool (skip)"
+    if not isinstance(expected, str) or not expected.strip():
+        return False, "smoke_case_invalid"
     try:
         from smoke import _run_smoke_with_tool_assertion
     except Exception as ex:
@@ -577,6 +583,8 @@ def _run_smoke_for_plan(plan, case: dict) -> tuple[bool, str]:
         result = _run_smoke_with_tool_assertion(case, catalog=None)
     except Exception as ex:
         return False, f"smoke runner raised: {ex}"
+    if not isinstance(result, dict):
+        return False, "smoke_result_invalid"
     if result.get("skip"):
         return False, f"smoke_unavailable:{result.get('reason', 'skip')}"
     if result.get("ok"):
@@ -590,11 +598,8 @@ def _run_smoke_for_plan(plan, case: dict) -> tuple[bool, str]:
 def admit_skill_import(parsed_skill, plans, *,
                        executor_dir: Optional[Path] = None,
                        skip_l2: bool = False,
-                       skip_l5_exec: bool = False,
-                       skip_l6: bool = False,
                        skip_binding_check: bool = False,
-                       audit_log: bool = True,
-                       semantic_verifier: Callable | None = None) -> AdmissionReport:
+                       audit_log: bool = True) -> AdmissionReport:
     """Applica i controlli di binding, L1, L2, L5 e L6 a una skill.
 
     DEVI: passare parsed_skill (Task A) + plans (Task B).
@@ -604,7 +609,7 @@ def admit_skill_import(parsed_skill, plans, *,
     """
     verbs, objs, quals = _load_vocab()
     handcrafted_aff, synth_aff = _existing_affinity_sets()
-    verifier = semantic_verifier or _stage6_verify_callable()
+    verifier = _stage6_verify_callable()
     # Existing bindings = catalog corrente ON-DISK, escludendo la skill che
     # stiamo importando (la pipeline codegen ha gia' creato la dir prima
     # del check). Senza esclusione, ogni import fallirebbe self-collision.
@@ -656,9 +661,8 @@ def admit_skill_import(parsed_skill, plans, *,
         verdict.layer_results["L5_smoke_proposed"] = True
 
         # L5 smoke EXEC (ADR 0159): esegue il routing assertion al-import
-        # e rejecta se fail. Default ON. I test isolati usano il parametro
-        # esplicito ``skip_l5_exec``; l'ambiente non modifica la policy.
-        if not skip_l5_exec and verdict.accepted:
+        # e rejecta se fail. La policy non è disattivabile dal chiamante.
+        if verdict.accepted:
             s_ok, s_reason = _run_smoke_for_plan(plan, verdict.smoke_battery_case)
             verdict.layer_results["L5_smoke_exec"] = s_ok
             if not s_ok:
@@ -667,9 +671,8 @@ def admit_skill_import(parsed_skill, plans, *,
 
         # L6 semantic verifier — default ON per imported (ADR 0159):
         # confronta description (manifest) ↔ code body via il modello locale.
-        # Reject su ``aligned=false`` o schema non tipizzato. I test isolati
-        # iniettano il verificatore e possono usare ``skip_l6`` esplicitamente.
-        if not skip_l6 and verdict.accepted:
+        # Reject su ``aligned=false`` o schema non tipizzato.
+        if verdict.accepted:
             mp = None
             cp = None
             if executor_dir is not None:

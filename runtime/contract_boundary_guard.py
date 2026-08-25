@@ -33,6 +33,9 @@ AUTHORING_FILES = frozenset({
 # language, executor name or caller-chosen helper name.  Local wrappers inherit
 # these capabilities through the per-file call graph below.
 BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
+    "executor_birth": {
+        "birth_executor": ("birth",),
+    },
     "contract_store": {
         "verify_manifest_source": ("authoring_read", "authoring_verify"),
         "prepare_technical_draft": ("authoring_read", "authoring_verify"),
@@ -82,6 +85,7 @@ BOUNDARY_APIS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     },
 }
 BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
+    "executor_birth": frozenset({"executor_birth", "runtime.executor_birth"}),
     "contract_store": frozenset({"contract_store", "runtime.contract_store"}),
     "sign": frozenset({"sign", "runtime.sign"}),
     "loader": frozenset({"loader", "runtime.loader"}),
@@ -100,6 +104,7 @@ BOUNDARY_MODULES: Mapping[str, frozenset[str]] = {
     }),
 }
 BOUNDARY_SOURCE_OWNERS: Mapping[str, str] = {
+    "runtime/executor_birth.py": "executor_birth",
     "runtime/contract_store.py": "contract_store",
     "runtime/sign.py": "sign",
     "runtime/loader.py": "loader",
@@ -163,6 +168,7 @@ LIVE_READER_FORBIDDEN = frozenset({
     "authoring_read",
     "authoring_write",
     "authoring_verify",
+    "birth",
     "legacy_bootstrap",
     "publish_bootstrap",
     "publish_localization",
@@ -175,6 +181,7 @@ LIVE_READER_FORBIDDEN = frozenset({
     "dynamic_boundary_access",
 })
 PUBLISH_CAPABILITIES = frozenset({
+    "birth",
     "publish_bootstrap",
     "publish_localization",
     "publish_technical",
@@ -193,6 +200,7 @@ FLOW_CAPABILITIES = PUBLISH_CAPABILITIES | frozenset({
 })
 VALID_ROLES = frozenset({
     "administrative_tool",
+    "birth_owner",
     "documentation",
     "live_reader",
     "migration_boundary",
@@ -201,6 +209,7 @@ VALID_ROLES = frozenset({
     "store_owner",
 })
 LIVE_MUTATIONS = frozenset({
+    "birth",
     "publish_localization",
     "publish_technical",
     "reactivate",
@@ -247,6 +256,42 @@ class Finding:
 
     def __str__(self) -> str:
         return f"{self.code}: {self.scope}: {self.message}"
+
+
+def birth_migration_findings(
+    facts: Sequence[ScopeFacts],
+    inventory: Mapping[str, object],
+) -> list[Finding]:
+    """Describe the live RM-0008 bypass debt without enforcing cutover.
+
+    F0 is observational: existing producers remain valid until later phases
+    migrate them one at a time.  Keeping this report separate from ``check``
+    freezes the exact debt while the reviewed RM-0007 inventory stays green.
+    Retirement, rollback and localization retain dedicated boundaries.
+    Reactivation is included because it creates a new technical generation.
+    """
+
+    raw_entries = inventory.get("entries", [])
+    roles = {
+        _entry_key(entry): entry.get("role")
+        for entry in raw_entries
+        if isinstance(entry, dict)
+    } if isinstance(raw_entries, list) else {}
+    findings: list[Finding] = []
+    for fact in facts:
+        if roles.get(fact.key) not in {"administrative_tool", "operational_producer"}:
+            continue
+        bypasses = sorted(
+            set(fact.capabilities) & {"publish_technical", "reactivate", "sign"},
+        )
+        if not bypasses:
+            continue
+        findings.append(Finding(
+            "birth_migration_required",
+            fact.key,
+            f"path still owns {bypasses!r} instead of birth_executor",
+        ))
+    return sorted(findings, key=lambda finding: finding.scope)
 
 
 def _leaf_name(node: ast.AST) -> str | None:
@@ -1206,6 +1251,27 @@ def check(
             continue
 
         capabilities = set(fact.capabilities)
+        if role == "birth_owner" and (
+            fact.path != "runtime/executor_birth.py"
+            or bool(capabilities & {
+                "legacy_bootstrap", "publish_bootstrap", "publish_localization",
+                "retire", "rollback", "sign",
+            })
+        ):
+            findings.append(Finding(
+                "birth_owner_invalid",
+                key,
+                "birth ownership is restricted to runtime/executor_birth.py and "
+                "cannot absorb dedicated or migration boundaries",
+            ))
+        if role == "operational_producer" and "birth" in capabilities and (
+            capabilities & {"publish_technical", "reactivate", "sign"}
+        ):
+            findings.append(Finding(
+                "operational_birth_mixed_authority",
+                key,
+                "a migrated producer may request birth but cannot retain low-level authority",
+            ))
         if "ambiguous_local_authority" in capabilities:
             findings.append(Finding(
                 "ambiguous_local_authority",

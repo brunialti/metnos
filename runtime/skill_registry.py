@@ -6,9 +6,8 @@ parsati da `SKILL.md`:
 
 - `lang: <ISO 639-1>` (default `"any"`): filtro locale. Loader skip se
   `lang != "any"` e `lang != config.DEFAULT_LANG`.
-- `trust: <metnos-official|community>` (default `"community"`): determina
-  il regime di safety net (ADR 0159). `metnos-official` skip L6 LLM verify
-  (codice trusted by Metnos team).
+- `trust: <metnos-official|community>` (default `"community"`): metadato di
+  provenienza mostrato dal registry. Non disattiva i gate L5/L6 di ammissione.
 - `auto_enable: <bool>` (default `true`): se `false`, l'admin deve abilitarla
   esplicitamente via `metnos-skills enable <skill>`.
 
