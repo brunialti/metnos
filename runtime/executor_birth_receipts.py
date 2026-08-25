@@ -149,6 +149,8 @@ class AdmissionReceipt:
     candidate_id: str
     semantic_core_id: str
     admission_context_id: str
+    birth_request_id: str
+    authoring_journal_hash: str
     predecessor_id: str | None
     producer_receipt_hash: str
     revision_class: RevisionClass
@@ -327,7 +329,8 @@ def verify_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, now: da
 _ADMISSION_KEYS = frozenset({
     "schema_version", "policy_version", "identity_version", "receipt_id",
     "contract_id", "generation_id", "candidate_id", "semantic_core_id",
-    "admission_context_id", "predecessor_id", "producer_receipt_hash",
+    "admission_context_id", "birth_request_id", "authoring_journal_hash",
+    "predecessor_id", "producer_receipt_hash",
     "revision_class", "check_results", "semantic_review_hash", "approval_hash",
     "approved_lifecycle", "kind", "issued_at", "authentication",
 })
@@ -367,6 +370,7 @@ def _checks(value: object) -> dict[str, AdmissionCheck]:
 def issue_admission_receipt(
     *, policy_version: str, contract_id: ContractId, generation_id: str,
     candidate_id: str, semantic_core_id: str, admission_context_id: str,
+    birth_request_id: str, authoring_journal_hash: str,
     predecessor_id: str | None, producer_receipt_hash: str,
     revision_class: RevisionClass, check_results: Mapping[str, AdmissionCheck],
     semantic_review_hash: str | None, approval_hash: str | None,
@@ -382,6 +386,8 @@ def issue_admission_receipt(
         "identity_version": 1, "contract_id": contract_id.value,
         "generation_id": generation_id, "candidate_id": candidate_id,
         "semantic_core_id": semantic_core_id, "admission_context_id": admission_context_id,
+        "birth_request_id": birth_request_id,
+        "authoring_journal_hash": authoring_journal_hash,
         "predecessor_id": predecessor_id, "producer_receipt_hash": producer_receipt_hash,
         "revision_class": revision_class.value, "check_results": checks,
         "semantic_review_hash": semantic_review_hash, "approval_hash": approval_hash,
@@ -400,7 +406,7 @@ def _parse_admission(encoded: bytes) -> tuple[AdmissionReceipt, dict[str, object
         raise ReceiptError("receipt_invalid", "schema")
     if not _text(value.get("policy_version")):
         raise ReceiptError("receipt_invalid", "policy_version")
-    for field in ("receipt_id", "generation_id", "candidate_id", "semantic_core_id", "admission_context_id", "producer_receipt_hash"):
+    for field in ("receipt_id", "generation_id", "candidate_id", "semantic_core_id", "admission_context_id", "birth_request_id", "authoring_journal_hash", "producer_receipt_hash"):
         _digest(value.get(field), field=field)
     for field in ("predecessor_id", "semantic_review_hash", "approval_hash"):
         _digest(value.get(field), field=field, nullable=True)
@@ -422,6 +428,7 @@ def _parse_admission(encoded: bytes) -> tuple[AdmissionReceipt, dict[str, object
         1, str(value["policy_version"]), 1, str(value["receipt_id"]), contract,
         str(value["generation_id"]), str(value["candidate_id"]),
         str(value["semantic_core_id"]), str(value["admission_context_id"]),
+        str(value["birth_request_id"]), str(value["authoring_journal_hash"]),
         value["predecessor_id"], str(value["producer_receipt_hash"]), revision,
         MappingProxyType(checks), value["semantic_review_hash"], value["approval_hash"], lifecycle,
         kind, str(value["issued_at"]), auth,

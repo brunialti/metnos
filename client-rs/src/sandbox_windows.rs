@@ -348,6 +348,7 @@ pub async fn run_sandboxed(
             downgrade = Some(reason);
         } else {
             let params = appcontainer::ContainerParams {
+                profile_name: "Metnos.Executor".to_string(),
                 python: python.to_path_buf(),
                 entry: exec.entry.clone(),
                 shim_dir: shim_dir.to_path_buf(),
@@ -355,9 +356,12 @@ pub async fn run_sandboxed(
                 scratch_dir: scratch.path.clone(),
                 env_pairs: env_pairs.clone(),
                 args_json: args_json.to_string(),
+                command_args: Vec::new(),
                 deadline_ms: limits.wall.as_millis().min(u128::from(u64::MAX)) as u64,
                 grants,
                 want_net,
+                stdout_limit: 1024 * 1024,
+                stderr_limit: 1024 * 1024,
             };
             // FFI bloccante (job + pipe + CreateProcessW): fuori dai worker async.
             match tokio::task::spawn_blocking(move || appcontainer::run_in_container(params)).await
@@ -366,6 +370,7 @@ pub async fn run_sandboxed(
                     stdout,
                     stderr,
                     timed_out,
+                    ..
                 }) => {
                     if timed_out {
                         tracing::warn!(

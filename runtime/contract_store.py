@@ -30,7 +30,7 @@ import threading
 import time
 import tomllib
 import tomlkit
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, TypeAlias
@@ -163,7 +163,7 @@ class ContractRetirement:
 QuiescenceProof = Callable[[], bool]
 ContractRevision: TypeAlias = VerifiedManifest | ContractRetirement
 RegistryReconciler = Callable[[ContractRevision], None]
-BirthReceiptIssuer = Callable[[str, Mapping[str, str]], bytes]
+BirthReceiptIssuer = Callable[[str, Mapping[str, str], str, str], bytes]
 BirthReceiptVerifier = Callable[[bytes], object]
 
 
@@ -3344,6 +3344,8 @@ def _validate_birth_receipt_binding(
     generation_identifier: str,
     previous: str | None,
     authorization: BirthCommitAuthorization,
+    request_id: str | None = None,
+    journal_hash: str | None = None,
 ) -> None:
     expected = {
         "contract_id": ref.contract_id.value,
@@ -3361,6 +3363,23 @@ def _validate_birth_receipt_binding(
     for field, wanted in expected.items():
         if getattr(receipt, field, object()) != wanted:
             raise ContractStoreError("birth_receipt_binding_invalid", field)
+    if request_id is not None or journal_hash is not None:
+        _canonical_sha256(request_id, field="request_id")
+        _canonical_sha256(journal_hash, field="journal_hash")
+        checks = getattr(receipt, "check_results", None)
+        check = checks.get("authoring_install_journal_v1") if isinstance(checks, Mapping) else None
+        if (
+            getattr(receipt, "birth_request_id", None) != request_id
+            or getattr(receipt, "authoring_journal_hash", None) != journal_hash
+            or
+            check is None
+            or getattr(check, "rule_version", None) != "1"
+            or getattr(getattr(check, "status", None), "value", None) != "passed"
+            or getattr(check, "evidence_hash", None) != journal_hash
+        ):
+            raise ContractStoreError(
+                "birth_receipt_binding_invalid", "authoring_install_journal_v1",
+            )
 
 
 def _persist_birth_receipt_locked(
@@ -3372,6 +3391,8 @@ def _persist_birth_receipt_locked(
     contract_dir: Path,
     authorization: BirthCommitAuthorization,
     replace_timeout: float,
+    request_id: str | None = None,
+    journal_hash: str | None = None,
 ) -> bytes:
     """Authenticate, durably store and exactly reread AdmissionReceipt.
 
@@ -3410,7 +3431,11 @@ def _persist_birth_receipt_locked(
         encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
     else:
         try:
-            encoded = authorization.issuer(generation_identifier, digests)
+            if request_id is None or journal_hash is None:
+                raise ContractStoreError("birth_authorization_invalid", "journal binding")
+            encoded = authorization.issuer(
+                generation_identifier, digests, request_id, journal_hash,
+            )
         except ContractStoreError:
             raise
         except Exception as exc:
@@ -3424,6 +3449,7 @@ def _persist_birth_receipt_locked(
         _validate_birth_receipt_binding(
             receipt, ref=ref, generation_identifier=generation_identifier,
             previous=previous, authorization=authorization,
+            request_id=request_id, journal_hash=journal_hash,
         )
         _atomic_replace_file(
             receipt_path, encoded, replace_timeout=replace_timeout, mode=0o600,
@@ -3439,6 +3465,7 @@ def _persist_birth_receipt_locked(
     _validate_birth_receipt_binding(
         receipt, ref=ref, generation_identifier=generation_identifier,
         previous=previous, authorization=authorization,
+        request_id=request_id, journal_hash=journal_hash,
     )
     return reread
 
@@ -4082,6 +4109,8 @@ def publish_technical_update(
     replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
 ) -> PublicationResult:
     """Sign and publish one technical draft under a single writer lock."""
+    if birth_authorization is not None:
+        raise ContractStoreError("birth_commit_boundary_required")
     root, productive = _publication_root(store_root)
     _require_registry_reconciler(productive, registry_reconciler)
     _validate_manifest_ref(ref)
@@ -4189,7 +4218,8 @@ def commit_birth_snapshot(
     ref: ManifestRef,
     *,
     expected_generation_id: str | None,
-    draft: TechnicalDraft,
+    snapshot: object,
+    request_id: str,
     private_key: Ed25519PrivateKey,
     trusted_publics: Iterable[TrustedPublic],
     birth_authorization: BirthCommitAuthorization,
@@ -4198,34 +4228,215 @@ def commit_birth_snapshot(
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
     replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
 ) -> PublicationResult:
-    """Commit an admitted Birth snapshot through RM-0007's sole pointer.
+    """Install one admitted private snapshot and its RM-0007 generation."""
+    from executor_birth_authoring import (
+        AuthoringInstallError, AuthoringInstallJournalV1, advance_version,
+        authoring_paths, authoring_token, authoring_tree_id,
+        cleanup_transaction, load_prepared_journal, materialize_staging,
+        observe_tree, persist_prepared_journal, replace_with_staging,
+        rollback_prepared,
+    )
+    from executor_birth_snapshot import CandidateSnapshot
 
-    This deliberately has no removal-policy escape hatch.  The exact
-    AdmissionReceipt is authenticated, durably persisted and reread at the
-    precommit point before the immutable generation and ``current`` pointer.
-    Existing technical publishers retain their historical API while F4
-    callers migrate explicitly to this boundary.
-    """
     if not isinstance(birth_authorization, BirthCommitAuthorization):
         raise ContractStoreError("birth_authorization_required")
-    result = publish_technical_update(
-        ref,
-        expected_generation_id=expected_generation_id,
-        draft=draft,
-        private_key=private_key,
-        trusted_publics=trusted_publics,
-        registry_reconciler=registry_reconciler,
-        birth_authorization=birth_authorization,
-        store_root=store_root,
-        lock_timeout=lock_timeout,
-        replace_timeout=replace_timeout,
+    if not isinstance(snapshot, CandidateSnapshot):
+        raise ContractStoreError("candidate_snapshot_required")
+    _canonical_sha256(request_id, field="request_id")
+    root, productive = _publication_root(store_root)
+    _require_registry_reconciler(productive, registry_reconciler)
+    _validate_manifest_ref(ref)
+    _require_publishable_manifest(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    if expected_generation_id is not None:
+        generation_directory_name(expected_generation_id)
+
+    control = authoring_paths(ref.manifest_dir, ref.contract_id.value)
+    previous: str | None = None
+    repeated = False
+    payloads: dict[str, bytes]
+    desired: str
+    try:
+        with contextlib.ExitStack() as locks:
+            locks.enter_context(catalog_admission_lock(
+                store_root=root, timeout=lock_timeout,
+            ))
+            locks.enter_context(authoring_token(
+                control.lock, exclusive=True, timeout=lock_timeout,
+            ))
+            locks.enter_context(_writer_lock(
+                ref.contract_id, store_root=root, timeout=lock_timeout,
+            ))
+            contract_dir, generations, previous, current_payloads = _publication_base_locked(
+                ref, trusted_publics=trusted, store_root=root, technical_base=True,
+            )
+
+            pending = load_prepared_journal(control)
+            if pending is not None:
+                if pending.contract_id != ref.contract_id.value:
+                    raise ContractStoreError("authoring_recovery_ambiguous", "contract_id")
+                receipt_path = _birth_receipt_path(contract_dir, pending.new_generation_id)
+                encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+                try:
+                    receipt = birth_authorization.verifier(encoded)
+                except Exception as exc:
+                    raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+                _validate_birth_receipt_binding(
+                    receipt, ref=ref,
+                    generation_identifier=pending.new_generation_id,
+                    previous=pending.predecessor_generation_id,
+                    authorization=birth_authorization,
+                    request_id=pending.request_id,
+                    journal_hash=pending.journal_hash,
+                )
+                if previous == pending.new_generation_id:
+                    observed = observe_tree(control.canonical)
+                    if authoring_tree_id(observed) != pending.new_tree_id:
+                        raise ContractStoreError("authoring_recovery_ambiguous", "canonical")
+                    advance_version(control, pending.contract_id, pending.new_tree_id)
+                    cleanup_transaction(control, pending)
+                    if pending.request_id != request_id:
+                        raise ContractStoreError("commit_conflict", "recovered another request")
+                    return PublicationResult(
+                        ref.contract_id, pending.predecessor_generation_id,
+                        pending.new_generation_id, "commit_birth_snapshot", True,
+                    )
+                if previous != pending.predecessor_generation_id:
+                    raise ContractStoreError("authoring_recovery_ambiguous", "pointer")
+                rollback_prepared(control, pending)
+
+            if previous != expected_generation_id:
+                replay_signature = sign_manifest_bytes(
+                    snapshot.manifest_bytes, private_key=private_key,
+                )
+                replay_payloads = {
+                    "manifest.toml": snapshot.manifest_bytes,
+                    "manifest.toml.sig": replay_signature,
+                    "manifest.lang_state.json": snapshot.language_state_bytes,
+                }
+                replay_desired = generation_id(replay_payloads)
+                if (
+                    previous == replay_desired
+                    and current_payloads == replay_payloads
+                ):
+                    receipt_path = _birth_receipt_path(contract_dir, replay_desired)
+                    encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+                    try:
+                        receipt = birth_authorization.verifier(encoded)
+                    except Exception as exc:
+                        raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+                    receipt_journal_hash = getattr(
+                        receipt, "authoring_journal_hash", None,
+                    )
+                    _validate_birth_receipt_binding(
+                        receipt, ref=ref, generation_identifier=replay_desired,
+                        previous=expected_generation_id,
+                        authorization=birth_authorization,
+                        request_id=request_id,
+                        journal_hash=receipt_journal_hash,
+                    )
+                    replay_files = dict(snapshot.code_files)
+                    replay_files.update(replay_payloads)
+                    if (
+                        authoring_tree_id(replay_files)
+                        != authoring_tree_id(observe_tree(control.canonical))
+                    ):
+                        raise ContractStoreError(
+                            "authoring_recovery_ambiguous", "replay tree",
+                        )
+                    return PublicationResult(
+                        ref.contract_id, expected_generation_id,
+                        replay_desired, "commit_birth_snapshot", True,
+                    )
+                raise ContractStoreError(
+                    "commit_conflict", f"expected={expected_generation_id} current={previous}",
+                )
+            signature = sign_manifest_bytes(snapshot.manifest_bytes, private_key=private_key)
+            payloads = {
+                "manifest.toml": snapshot.manifest_bytes,
+                "manifest.toml.sig": signature,
+                "manifest.lang_state.json": snapshot.language_state_bytes,
+            }
+            desired = generation_id(payloads)
+            final_files = dict(snapshot.code_files)
+            final_files.update(payloads)
+            new_tree_id = authoring_tree_id(final_files)
+            old_tree_id = (
+                None if not control.canonical.exists()
+                else authoring_tree_id(observe_tree(control.canonical))
+            )
+            suffix = request_id.removeprefix("sha256:")
+            journal = AuthoringInstallJournalV1(
+                request_id=request_id,
+                contract_id=ref.contract_id.value,
+                source_origin=ref.origin.value,
+                canonical_tree_id=old_tree_id or new_tree_id,
+                old_tree_id=old_tree_id,
+                new_tree_id=new_tree_id,
+                candidate_id=birth_authorization.candidate_id,
+                semantic_core_id=birth_authorization.semantic_core_id,
+                admission_context_id=birth_authorization.admission_context_id,
+                predecessor_generation_id=previous,
+                new_generation_id=desired,
+                staging_basename=f".birth-stage-{suffix}",
+                backup_basename=f".birth-backup-{suffix}",
+            )
+            staging = materialize_staging(control, journal, final_files)
+            staged_ref = replace(
+                ref, source_root=staging, manifest_path=staging / "manifest.toml",
+                allowed_code_roots=(staging,), manifest_hash=_sha256(snapshot.manifest_bytes),
+            )
+            _verify_payloads(
+                staged_ref, payloads, trusted_publics=trusted, identifier=None,
+                require_inventory_hash=False,
+            )
+            _persist_birth_receipt_locked(
+                ref, desired, payloads, previous=previous,
+                contract_dir=contract_dir, authorization=birth_authorization,
+                replace_timeout=replace_timeout, request_id=request_id,
+                journal_hash=journal.journal_hash,
+            )
+            persist_prepared_journal(control, journal)
+            replace_with_staging(control, journal)
+            installed_ref = ref
+            installed = _verify_payloads(
+                installed_ref, payloads, trusted_publics=trusted,
+                identifier=None, require_inventory_hash=False,
+            )
+            if (
+                installed.declared_code_digest != installed.verified_code_digest
+                or authoring_tree_id(observe_tree(control.canonical)) != new_tree_id
+            ):
+                raise ContractStoreError("authoring_tree_reread_mismatch")
+            desired, repeated = _commit_payloads_locked(
+                installed_ref, payloads, contract_dir=contract_dir,
+                generations=generations, previous=previous,
+                current_payloads=current_payloads,
+                expected_generation_id=expected_generation_id,
+                trusted_publics=trusted, store_root=root,
+                replace_timeout=replace_timeout,
+            )
+            _verify_published_postcondition(
+                installed_ref, payloads, desired=desired,
+                trusted_publics=trusted, store_root=root,
+            )
+            advance_version(control, ref.contract_id.value, new_tree_id)
+            cleanup_transaction(control, journal)
+    except AuthoringInstallError as exc:
+        raise ContractStoreError(exc.code, exc.detail) from exc
+
+    fresh_ref = ref
+    fresh = _verify_published_postcondition(
+        fresh_ref, payloads, desired=desired, trusted_publics=trusted,
+        store_root=root,
+        registry_reconciler=(registry_reconciler if productive else None),
     )
     return PublicationResult(
-        contract_id=result.contract_id,
-        previous_generation_id=result.previous_generation_id,
-        current_generation_id=result.current_generation_id,
+        contract_id=ref.contract_id,
+        previous_generation_id=previous,
+        current_generation_id=str(fresh.generation_id),
         operation="commit_birth_snapshot",
-        repeated=result.repeated,
+        repeated=repeated,
     )
 
 

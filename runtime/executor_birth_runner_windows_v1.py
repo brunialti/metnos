@@ -40,7 +40,9 @@ _ATTESTATION_KEYS = frozenset({
 
 
 class WindowsBirthHelperError(ValueError):
-    pass
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,20 +252,28 @@ def validate_response(raw: bytes, *, request_id: str, candidate_id: str,
         raise WindowsBirthHelperError("attestation_schema_invalid")
     expected_helper_hash = _digest(expected_helper_hash, "helper_binary_hash")
     expected_runtime_hash = _digest(expected_runtime_hash, "runtime_binary_hash")
-    required = {
+    invariant = {
         "backend": BACKEND, "helper_binary_hash": expected_helper_hash,
         "runtime_binary_hash": expected_runtime_hash,
         "profile_name": PROFILE_NAME, "network_capability": False,
-        "assigned_before_resume": True, "active_processes": 0,
-        "tree_empty": True, "termination_attested": True,
         "memory_limit_bytes": MEMORY_LIMIT_BYTES, "process_limit": PROCESS_LIMIT,
         "stdout_limit_bytes": STDOUT_LIMIT_BYTES,
         "stderr_limit_bytes": STDERR_LIMIT_BYTES,
     }
-    if any(att.get(k) != v for k, v in required.items()):
+    if any(att.get(k) != v for k, v in invariant.items()):
         raise WindowsBirthHelperError("attestation_mismatch")
-    if not isinstance(att["appcontainer_sid"], str) or not att["appcontainer_sid"].startswith("S-1-15-2-"):
+    for field in ("assigned_before_resume", "tree_empty", "termination_attested"):
+        if not isinstance(att[field], bool):
+            raise WindowsBirthHelperError("attestation_schema_invalid")
+    active_processes = _uint(att["active_processes"], "active_processes")
+    if not isinstance(att["appcontainer_sid"], str):
         raise WindowsBirthHelperError("appcontainer_sid_invalid")
+    if status != "test_environment_unavailable" and (
+        not att["appcontainer_sid"].startswith("S-1-15-2-")
+        or not att["assigned_before_resume"] or active_processes != 0
+        or not att["tree_empty"] or not att["termination_attested"]
+    ):
+        raise WindowsBirthHelperError("attestation_mismatch")
     stdout_bytes = _uint(value["stdout_bytes"], "stdout_bytes")
     stderr_bytes = _uint(value["stderr_bytes"], "stderr_bytes")
     elapsed_ms = _uint(value["elapsed_ms"], "elapsed_ms")
