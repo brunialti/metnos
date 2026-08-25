@@ -320,15 +320,14 @@ def test_birth_owner_is_path_restricted_and_cannot_absorb_other_boundaries(
     assert "birth_owner_invalid" in _codes(check(mixed, mixed_inventory))
 
 
-def test_birth_shadow_debt_excludes_dedicated_and_migration_boundaries(
+def test_birth_shadow_debt_excludes_retire_localization_and_migration_boundaries(
     tmp_path: Path,
 ) -> None:
     facts = _scan(
         tmp_path,
-        "from contract_store import publish_localization, retire, rollback, publish_signed_source\n"
+        "from contract_store import publish_localization, retire, publish_signed_source\n"
         "def localize(ref): return publish_localization(ref)\n"
         "def remove(ref): return retire(ref)\n"
-        "def restore(ref): return rollback(ref)\n"
         "def bootstrap(ref): return publish_signed_source(ref)\n",
     )
     inventory = _inventory(
@@ -336,12 +335,46 @@ def test_birth_shadow_debt_excludes_dedicated_and_migration_boundaries(
         {
             "localize": "operational_producer",
             "remove": "operational_producer",
-            "restore": "operational_producer",
             "bootstrap": "migration_boundary",
         },
     )
 
     assert birth_migration_findings(facts, inventory) == []
+
+
+def test_technical_rollback_alias_is_birth_migration_debt(tmp_path: Path) -> None:
+    facts = _scan(
+        tmp_path,
+        "from contract_store import rollback as restore_generation\n"
+        "def restore(ref, current, target):\n"
+        "    operation = restore_generation\n"
+        "    return operation(ref, expected_generation_id=current, "
+        "target_generation_id=target)\n",
+    )
+    inventory = _inventory(facts, {"restore": "operational_producer"})
+
+    assert _fact(facts, "restore").capabilities == ("rollback",)
+    findings = birth_migration_findings(facts, inventory)
+    assert [(item.code, item.scope) for item in findings] == [
+        ("birth_migration_required", "runtime/sample.py:restore"),
+    ]
+
+
+def test_reflective_technical_rollback_is_birth_migration_debt(
+    tmp_path: Path,
+) -> None:
+    facts = _scan(
+        tmp_path,
+        "import contract_store as store\n"
+        "def restore(ref, current, target):\n"
+        "    operation = getattr(store, 'rollback')\n"
+        "    return operation(ref, expected_generation_id=current, "
+        "target_generation_id=target)\n",
+    )
+    inventory = _inventory(facts, {"restore": "operational_producer"})
+
+    assert _fact(facts, "restore").capabilities == ("rollback",)
+    assert len(birth_migration_findings(facts, inventory)) == 1
 
 
 def test_same_leaf_module_cannot_impersonate_the_publisher(tmp_path: Path) -> None:
@@ -722,11 +755,13 @@ def test_repository_birth_migration_debt_is_exact() -> None:
         "runtime/cli/skills_cli.py:_cmd_import",
         "runtime/cli/skills_cli.py:_try_publish_authoring_update",
         "runtime/jobs/promoter_promote.py:promote_to_catalog",
+        "runtime/jobs/promoter_rollback.py:rollback_promotion",
         "runtime/sign.py:<module>",
         "runtime/sign.py:main",
         "runtime/sign.py:publish_authoring_update",
         "runtime/sign.py:publish_executor",
         "runtime/sign.py:reactivate_executor_contract",
+        "runtime/sign.py:rollback_executor_contract",
         "runtime/stack_reconcile.py:<module>",
         "runtime/stack_reconcile.py:StackReconciler.restart",
         "runtime/stack_reconcile.py:StackReconciler.watchdog",

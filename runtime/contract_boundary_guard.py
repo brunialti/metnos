@@ -267,8 +267,12 @@ def birth_migration_findings(
     F0 is observational: existing producers remain valid until later phases
     migrate them one at a time.  Keeping this report separate from ``check``
     freezes the exact debt while the reviewed RM-0007 inventory stays green.
-    Retirement, rollback and localization retain dedicated boundaries.
-    Reactivation is included because it creates a new technical generation.
+    Retirement and localization retain dedicated boundaries.  Technical
+    rollback is Birth debt: although it points at an existing immutable
+    generation, it changes the live technical binding and must not remain an
+    independently callable producer bypass.  Migration/bootstrap remains a
+    separate, role-constrained boundary.  Reactivation is included because it
+    creates a new technical generation.
     """
 
     raw_entries = inventory.get("entries", [])
@@ -282,7 +286,9 @@ def birth_migration_findings(
         if roles.get(fact.key) not in {"administrative_tool", "operational_producer"}:
             continue
         bypasses = sorted(
-            set(fact.capabilities) & {"publish_technical", "reactivate", "sign"},
+            set(fact.capabilities) & {
+                "publish_technical", "reactivate", "rollback", "sign",
+            },
         )
         if not bypasses:
             continue
