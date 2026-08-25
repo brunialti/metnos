@@ -4,8 +4,10 @@
 # Cornice (decisioni 5/6/2026, [[project-public-release-initiative]]):
 #   - Baseline = versione in ESERCIZIO (/opt/metnos). NIENTE fork divergenti:
 #     una sola sorgente, il pubblico e' un EXPORT-subset deterministico di questa.
-#   - GitHub pubblico = SOLO run-essentials: niente ambienti di test/supporto,
-#     bench, stress, simulator, history, stato runtime, doc interne (CLAUDE.md).
+#   - GitHub pubblico = SOLO run-essentials e certificazione portabile:
+#     `tests/portable/**` e' l'unico sottoalbero di test pubblicato. Restano
+#     esclusi supporto, bench, stress, simulator, history, stato runtime e
+#     documentazione interna (CLAUDE.md).
 #   - ADR e rapporti interni non vanno su GitHub. La documentazione pubblica
 #     validata in docs/ viene invece distribuita: Tutor deve poter ricostruire
 #     lo stesso corpus anche in un'installazione nuova.
@@ -45,6 +47,7 @@ esac
 # --- EXCLUDE: anchored ERE su path tracciato. Cio' che NON e' run-essential. ---
 EXCLUDE='^(
 tests/|
+conftest\.py$|
 Documenti/|
 internal/|
 data/|
@@ -87,6 +90,11 @@ EXCLUDE_RE=$(printf '%s' "$EXCLUDE" | tr -d '\n ')
 # Estensioni binarie/dati mai distribuite (modelli/stato scaricati a parte).
 BIN_RE='\.(gguf|onnx|safetensors|sqlite|sqlite-journal|env|key|pem|p12|db)$'
 
+# Unica eccezione al confine `tests/`: prove di certificazione autonome che
+# devono poter girare anche dal repository pubblico. Le esclusioni binarie
+# continuano ad applicarsi al loro contenuto.
+PORTABLE_TEST_RE='^tests/portable/'
+
 # Eccezione binari: seed RUN-ESSENTIAL all'install (i18n) che NON e' stato/modello
 # scaricabile a parte. Incluso, ma SANIFICATO via SQL piu' sotto (sed lo
 # corromperebbe: le sostituzioni cambiano la lunghezza delle stringhe).
@@ -120,7 +128,9 @@ for f in "${ALL[@]}"; do
   if [[ "$f" =~ $BIN_KEEP_RE ]]; then
     KEEP+=("$f"); continue
   fi
-  if [[ "$f" =~ $EXCLUDE_RE ]] || [[ "$f" =~ $BIN_RE ]]; then
+  if [[ "$f" =~ $BIN_RE ]]; then
+    DROP+=("$f")
+  elif [[ "$f" =~ $EXCLUDE_RE ]] && [[ ! "$f" =~ $PORTABLE_TEST_RE ]]; then
     DROP+=("$f")
   else
     KEEP+=("$f")

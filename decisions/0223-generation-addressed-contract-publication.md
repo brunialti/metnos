@@ -66,11 +66,16 @@ authoring manifest.
 
 Localization state has one canonical v1 JSON representation: schema version,
 a `selectors` object, normalized language tags, sorted keys, compact UTF-8 and
-one final newline. Argument-description selectors are
-`args.properties.<name>.description`; the legacy `args.<name>.description`
-form is migrated once and thereafter rejected. The migration rebuilds the
-resource set from each parsed manifest, adds missing entries and drops orphaned
-ones with audit evidence. It preserves source provenance only when the old
+one final newline. Argument-description selectors follow the complete nested
+JSON-Schema path, for example
+`args.properties.messages.items.properties.body.description`; they are
+enumerated through the standard JSON-Schema child constructs rather than
+limited to first-level arguments. Structural position distinguishes the
+`description` keyword from a property itself named `description`. The
+legacy first-level form `args.<name>.description` is migrated once and
+thereafter rejected. The migration rebuilds the resource set from each parsed
+manifest and returns deterministic evidence for every added, normalized,
+dropped or provenance-cleared entry. It preserves source provenance only when the old
 version hash matches the current text; otherwise it records the current hash
 and clears provenance that can no longer be proven. Collisions fail, and the
 complete result passes strict v1 validation. Signing, synthesis and migration
@@ -101,9 +106,17 @@ This intentionally supports ordinary relative paths such as `../../...`
 without granting arbitrary traversal.
 
 After cutover the loader enumerates contract bindings, reconstructs structural
-`ManifestRef` values and calls `current_manifest(ref, ...)`. The inventory no
+`ManifestRef` values whose authoring observations (`name`, lifecycle and
+manifest hash) are absent, and calls `current_manifest(ref, ...)`. The inventory no
 longer parses authoring manifests for live name, lifecycle or content; those
 come only from `VerifiedManifest.parsed`.
+
+Technical publication treats its expected old generation as an authenticated
+CAS base: its stored bytes, signature, language state and generation digest
+must be valid, but its old declared code digest is not compared with code that
+is intentionally being updated. The candidate alone must match current code.
+Live loading and localization publication continue to require full code-digest
+verification.
 
 ### Linguistic authority
 

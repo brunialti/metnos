@@ -79,17 +79,26 @@ class ManifestSource:
 
 @dataclass(frozen=True, slots=True)
 class ManifestRef:
+    """A structural contract location plus optional authoring observations.
+
+    ``contract_id``, origin, status, paths and code roots are sufficient to
+    resolve an immutable published generation.  The remaining fields are
+    populated by the legacy/authoring inventory, but are deliberately nullable
+    so the post-cutover inventory can be reconstructed from ``binding.json``
+    without reopening an authoring manifest.
+    """
+
     contract_id: ContractId
     origin: ManifestOrigin
     status: ManifestStatus
     source_root: Path
     manifest_path: Path
     manifest_relative: str
-    manifest_hash: str
-    name: str
-    lifecycle: str
-    skill_name: str | None
     allowed_code_roots: tuple[Path, ...]
+    manifest_hash: str | None = None
+    name: str | None = None
+    lifecycle: str | None = None
+    skill_name: str | None = None
 
     @property
     def manifest_dir(self) -> Path:
@@ -323,6 +332,7 @@ def inventory_manifests(
     by_name: dict[str, list[ManifestRef]] = {}
     for ref in manifests:
         if ref.status is ManifestStatus.ADMITTED:
+            assert ref.name is not None
             by_name.setdefault(ref.name, []).append(ref)
     for name, refs in sorted(by_name.items()):
         if len(refs) < 2:

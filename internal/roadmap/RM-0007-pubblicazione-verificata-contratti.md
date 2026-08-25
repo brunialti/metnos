@@ -310,7 +310,16 @@ Il formato canonico v1 è un oggetto JSON con le sole chiavi di primo livello
 `selectors` sono:
 
 - `description` per la descrizione del contratto;
-- `args.properties.<name>.description` per la descrizione di un argomento.
+- il percorso strutturale completo di ogni descrizione nello schema `args`,
+  per esempio `args.properties.<name>.description` oppure
+  `args.properties.messages.items.properties.body.description`.
+
+L'enumeratore percorre ricorsivamente i costrutti standard JSON Schema che
+contengono uno schema singolo, una lista di schemi o una mappa di schemi; non
+contiene elenchi di executor o profondità speciali. La posizione strutturale
+distingue il keyword `description` da una proprietà che si chiama a sua volta
+`description`. I punti separano i segmenti nella v1; un nome di segmento che
+contiene un punto viene rifiutato come ambiguo.
 
 La forma legacy `args.<name>.description` non è un alias: viene rifiutata dal
 deposito. M4 migra una sola volta i companion esistenti e corregge tutti i
@@ -319,6 +328,9 @@ produttori, compresi `runtime/sign.py`, `runtime/synth_request.py` e
 manifest e ricostruisce l'insieme autorevole delle risorse localizzate: per
 ciascuna risorsa emette il selettore canonico, aggiunge le voci mancanti e
 scarta con evidenza di audit le voci che non corrispondono più a una risorsa.
+Il risultato della migrazione contiene sia i byte canonici sia liste ordinate
+di voci aggiunte, scartate, normalizzate e private di provenienza: il chiamante
+M4 registra queste liste prima del cutover e non può ignorare scarti silenziosi.
 Se il vecchio `version_hash` coincide con il testo corrente, conserva
 `source_lang` e `source_hash` soltanto se il tag sorgente è canonico, quella
 lingua esiste nella stessa risorsa e l'hash coincide con il suo testo corrente;
@@ -411,6 +423,10 @@ migrazione. Dopo il cutover usa una modalità strutturale distinta: enumera
 degli origin e non legge i byte del manifest sorgente. Il `ManifestRef` passato
 al deposito concede soltanto identità, directory sorgente e radici ammesse;
 `VerifiedManifest.parsed` concede il contenuto vivo.
+Nel tipo condiviso `manifest_hash`, `name`, `lifecycle` e `skill_name` sono
+osservazioni nullable dell'inventario authoring: `verify_manifest_source()` le
+pretende, mentre `current_manifest()` accetta il riferimento strutturale e
+ricava nome e lifecycle esclusivamente dai byte pubblicati e verificati.
 
 ### 5.2 Firma pura
 
@@ -633,8 +649,12 @@ possiede l'intera transazione:
 
 1. acquisisce una sola volta mutex e `writer.lock`; nessun chiamante e nessun
    helper interno li acquisisce di nuovo;
-2. rilegge e verifica integralmente `current` prima di confronto o
-   idempotenza. Per un contratto nuovo ammette `expected_generation_id=None`
+2. rilegge e autentica integralmente i byte persistiti di `current` prima di
+   confronto o idempotenza: struttura, firma, stato e generation digest devono
+   essere validi. Non confronta però il vecchio digest dichiarato col codice
+   che l'aggiornamento sta intenzionalmente sostituendo; il candidato viene
+   invece verificato contro il codice corrente. Per un contratto nuovo ammette
+   `expected_generation_id=None`
    soltanto se `current` e cronologia non esistono; crea quindi il binding
    immutabile prima della prima generazione o riusa un binding byte-identico
    lasciato da un tentativo interrotto. Una cronologia senza
@@ -809,6 +829,9 @@ legacy invariato; primitive pure senza accessi al filesystem.
   `contract_store.py`;
 - implementare `publish_signed_source()` e generazione iniziale soltanto su
   radice shadow/fixture;
+- rifiutare qualunque radice M2 che coincida, contenga o sia contenuta dalla
+  radice o dal marker produttivi; il lock mutante resta helper interno e non
+  offre un default che possa creare prematuramente la boundary produttiva;
 - provare mutex + lock multiprocesso, conflitto, idempotenza per generazione
   completa, riuso dopo arresto fra rename e puntatore, corruzione della
   destinazione, retry finiti di `os.replace()` e ogni confine di arresto;
@@ -1158,7 +1181,7 @@ storico e non normativo; prevalgono sempre i §§1-14 di questa roadmap.
 | Rilievo | Risoluzione normativa | Gate |
 |---|---|---|
 | B1 · base del digest | directory sorgente da `ManifestRef` e containment nelle radici ammesse (§§3.4, 5.1, 10.1) | M0-M2 |
-| B2 · selettore/stato canonico | `args.properties.<name>.description`, encoder unico e migrazione data-led (§4.4) | M4 |
+| B2 · selettore/stato canonico | percorsi completi dello schema `args`, encoder unico e migrazione data-led con report (§4.4) | M2-M4 |
 | B3 · retry dopo rename | verifica/riuso esatto della generazione e barriera ripetuta (§§4.2, 6) | M2 |
 | B4 · workflow operativo | `sign.py publish` e `CLAUDE.md` §7.10 nello stesso cutover (§§5.3, 9) | M4 |
 | C1 · ritorno implicito al legacy | shadow separata; marker durevole prima dello swap; marker **o** radice vietano fallback (§4.3) | M4 |
