@@ -29,7 +29,11 @@ from contract_store import (
 )
 from executor_birth import ObservedCandidate, observe_candidate
 from executor_birth_approval import approval_evidence_hash
-from executor_birth_identity import AdmissionContextV1
+from executor_birth_identity import AdmissionContextV1, admission_context_id
+from executor_birth_predecessor import (
+    AdmissionContextPin, AuthenticatedPredecessorSnapshot,
+    derive_revision_facts, revision_facts_id,
+)
 from executor_birth_producer_store import (
     ProducerReceiptBinding, claim_producer_receipt,
     finalize_producer_receipt, producer_receipt_hash,
@@ -69,7 +73,6 @@ def candidate_source_id(observed: ObservedCandidate) -> str:
 class BirthRequest:
     request_id: str
     manifest_ref: ManifestRef
-    expected_revision_id: str | None
     producer_receipt: bytes
     actor: str
     reason: str
@@ -241,8 +244,10 @@ def _require_digest(value: object, field: str) -> str:
     return value
 
 
-ContextResolver = Callable[[BirthRequest], AdmissionContextV1]
-FactsResolver = Callable[[BirthRequest], RevisionFacts]
+ContextResolver = Callable[[BirthRequest], tuple[AdmissionContextV1, AdmissionContextPin]]
+PredecessorResolver = Callable[
+    [BirthRequest], tuple[AuthenticatedPredecessorSnapshot, Mapping[str, bytes] | None]
+]
 Publisher = Callable[..., PublicationResult]
 PostconditionVerifier = Callable[
     [BirthRequest, PublicationResult | None, bytes | None],
@@ -257,7 +262,8 @@ class _BirthCore:
     producer_registry: IssuerRegistry
     producer_db: Path
     context_resolver: ContextResolver
-    facts_resolver: FactsResolver
+    predecessor_resolver: PredecessorResolver
+    context_epoch_resolver: Callable[[], str]
     shadow_dependencies: _BirthDependencies
     admission_private_key: object
     admission_verifier_keys: Mapping[str, object]
@@ -305,16 +311,30 @@ def _sealed_core_for_test(**values: object) -> _BirthCore:
 
 def _assemble_birth_core(
     *, producer_registry: IssuerRegistry, producer_db: Path,
-    context_resolver: ContextResolver, facts_resolver: FactsResolver,
+    context_resolver: ContextResolver,
+    context_epoch_resolver: Callable[[], str],
     shadow_dependencies: _BirthDependencies, admission_private_key: object,
     admission_verifier_keys: Mapping[str, object], admission_key_id: str, policy_version: str,
     now: Callable[[], datetime], publisher_options: Mapping[str, object],
     postcondition_verifier: PostconditionVerifier,
 ) -> _BirthCore:
     """Core bootstrap assembler; productive publication is not selectable."""
-    from contract_store import commit_birth_snapshot
+    from contract_store import authenticate_birth_predecessor, commit_birth_snapshot
+    options = dict(publisher_options)
+    trusted_publics = options.get("trusted_publics")
+    if trusted_publics is None:
+        raise ValueError("birth_predecessor_trust_missing")
+
+    def resolve_predecessor(request: BirthRequest):
+        return authenticate_birth_predecessor(
+            request.manifest_ref, trusted_publics=trusted_publics,
+            store_root=options.get("store_root"),
+            lock_timeout=float(options.get("lock_timeout", 10.0)),
+        )
+
     return _BirthCore(
-        producer_registry, producer_db, context_resolver, facts_resolver,
+        producer_registry, producer_db, context_resolver, resolve_predecessor,
+        context_epoch_resolver,
         shadow_dependencies, admission_private_key, admission_verifier_keys,
         admission_key_id, policy_version, now, commit_birth_snapshot, postcondition_verifier,
         publisher_options, _CORE_SEAL,
@@ -350,11 +370,16 @@ def _receipt_checks(report: BirthReport) -> Mapping[str, AdmissionCheck]:
     return MappingProxyType(result)
 
 
-def _publication_binding(request: BirthRequest, publication: PublicationResult) -> str:
+_PREDECESSOR_UNSET = object()
+
+
+def _publication_binding(request: BirthRequest, publication: PublicationResult,
+                         predecessor_id: str | None | object = _PREDECESSOR_UNSET) -> str:
     """Bind the complete replayable publication postcondition."""
     if publication.contract_id != request.manifest_ref.contract_id:
         raise ValueError("birth_publication_invalid: contract_id")
-    if publication.previous_generation_id != request.expected_revision_id:
+    if (predecessor_id is not _PREDECESSOR_UNSET
+            and publication.previous_generation_id != predecessor_id):
         raise ValueError("birth_publication_invalid: previous_generation_id")
     _require_digest(publication.current_generation_id, "current_generation_id")
     if publication.operation != "commit_birth_snapshot":
@@ -393,8 +418,11 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
         if not isinstance(core, _BirthCore) or core._seal is not _CORE_SEAL:
             raise ValueError("birth_core_untrusted")
         instant = core.now().astimezone(timezone.utc)
-        context = core.context_resolver(request)
-        facts = core.facts_resolver(request)
+        context, context_pin = core.context_resolver(request)
+        if (not isinstance(context_pin, AdmissionContextPin)
+                or context_pin.admission_context_id != admission_context_id(context)
+                or core.context_epoch_resolver() != context_pin.context_epoch):
+            raise ValueError("birth_context_pin_invalid")
         # The admission lock serializes receipt consumption and acquisition of
         # the only source snapshot.  All expensive checks run after release.
         lock_root = core.publisher_options.get("store_root")
@@ -441,6 +469,12 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
                     terminal_envelope=envelope, terminal_auth=auth,
                 )
                 return recovered
+        predecessor_snapshot, predecessor_payloads = core.predecessor_resolver(request)
+        if not isinstance(predecessor_snapshot, AuthenticatedPredecessorSnapshot):
+            raise ValueError("birth_predecessor_snapshot_invalid")
+        facts = derive_revision_facts(
+            predecessor_snapshot, predecessor_payloads, observed.snapshot,
+        )
         shadow = core.shadow_dependencies
         borrowed_dependencies = _BirthDependencies(
             observer=lambda *_args, **_kwargs: _BorrowedObserved(observed),
@@ -477,7 +511,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             if shadow.approval_evidence is not None else None
         )
         lifecycle = ApprovedLifecycle.PREEXERCISE if report.outcome is BirthOutcome.PREEXERCISE else ApprovedLifecycle.ACTIVE
-        predecessor = request.expected_revision_id
+        predecessor = predecessor_snapshot.revision_id
 
         issued_receipts: list[bytes] = []
         def issuer(generation_id: str, _payload_hashes: Mapping[str, str],
@@ -509,6 +543,10 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             lambda encoded: verify_admission_receipt(
                 encoded, verifier_keys=core.admission_verifier_keys,
             ),
+            predecessor_snapshot_id=predecessor_snapshot.snapshot_id,
+            revision_facts_id=revision_facts_id(facts),
+            context_epoch=context_pin.context_epoch,
+            context_epoch_resolver=core.context_epoch_resolver,
         )
         # The signed admitted report is sufficient for a read-only recovery
         # verifier to reconcile a crash after the publisher's durable point.
@@ -525,7 +563,7 @@ def _execute(request: BirthRequest, core: _BirthCore) -> BirthResult:
             snapshot=observed.snapshot, request_id=request.request_id,
             birth_authorization=authorization, **dict(core.publisher_options),
         )
-        _publication_binding(request, publication)
+        _publication_binding(request, publication, predecessor)
         successful = BirthResult(request.request_id, report, publication, None)
         envelope = _terminal_envelope(core, successful, issued_receipts[-1] if issued_receipts else None)
         finalize_producer_receipt(

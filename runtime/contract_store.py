@@ -4218,6 +4218,34 @@ def publish_technical_update(
     )
 
 
+def authenticate_birth_predecessor(
+    ref: ManifestRef, *, trusted_publics: Iterable[TrustedPublic],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> tuple[object, Mapping[str, bytes] | None]:
+    """Observe the verified immutable base and return a detached snapshot.
+
+    Publication reconstructs this snapshot under its writer lock and compares
+    its canonical identifier, closing the observation-to-commit interval.
+    """
+    from executor_birth_predecessor import predecessor_snapshot
+
+    root, _productive = _publication_root(store_root)
+    _validate_manifest_ref(ref)
+    trusted = _trusted_public_tuple(trusted_publics)
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(ref.contract_id, store_root=root, timeout=lock_timeout):
+            _contract_dir, _generations, revision_id, payloads = _publication_base_locked(
+                ref, trusted_publics=trusted, store_root=root, technical_base=True,
+            )
+            detached = None if payloads is None else {
+                name: bytes(value) for name, value in payloads.items()
+            }
+            return predecessor_snapshot(
+                revision_id, "absent" if revision_id is None else "generation", detached,
+            ), detached
+
+
 def commit_birth_snapshot(
     ref: ManifestRef,
     *,
@@ -5279,6 +5307,7 @@ __all__ = [
     "VerifiedManifest",
     "WINDOWS_POWER_LOSS_LIMIT",
     "activate_store",
+    "authenticate_birth_predecessor",
     "catalog_admission_lock",
     "commit_birth_snapshot",
     "contract_storage_key",
