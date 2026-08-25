@@ -71,8 +71,8 @@ try:
     open(sys.argv[1], "rb").read()
 except OSError: pass
 else: raise SystemExit(32)
-s=socket.socket(); s.settimeout(1)
 try:
+    s=socket.socket(); s.settimeout(1)
     s.connect(("1.1.1.1", 53))
 except OSError: pass
 else: raise SystemExit(33)
