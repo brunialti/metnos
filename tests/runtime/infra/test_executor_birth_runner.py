@@ -158,6 +158,7 @@ def test_delegate_is_service_scoped_and_requires_controllers(
     (mount / "cgroup.controllers").write_text("memory pids", encoding="ascii")
     for name in ("cgroup.procs", "cgroup.events", "memory.max", "pids.max"):
         (delegate / name).write_text("", encoding="ascii")
+    (delegate / "cgroup.controllers").write_text("memory pids", encoding="ascii")
     (delegate / "cgroup.subtree_control").write_text(
         "memory pids", encoding="ascii",
     )
@@ -174,6 +175,36 @@ def test_delegate_is_service_scoped_and_requires_controllers(
     assert runner._cgroup_v2_delegate() == (
         None, "cgroup_controllers_not_delegated",
     )
+
+
+def test_delegate_enables_available_controllers_in_its_service_parent(
+    monkeypatch, tmp_path,
+):
+    mount = tmp_path / "cgroup"
+    delegate = mount / "system.slice" / "metnos-http.service"
+    host = delegate / runner._CGROUP_HOST_SUBGROUP
+    host.mkdir(parents=True)
+    (mount / "cgroup.controllers").write_text("memory pids", encoding="ascii")
+    for name in ("cgroup.procs", "cgroup.events", "memory.max", "pids.max"):
+        (delegate / name).write_text("", encoding="ascii")
+    (delegate / "cgroup.controllers").write_text("memory pids", encoding="ascii")
+    control = delegate / "cgroup.subtree_control"
+    control.write_text("", encoding="ascii")
+    monkeypatch.setattr(runner, "_CGROUP_V2_MOUNT", mount)
+    monkeypatch.setattr(
+        runner, "_current_unified_cgroup",
+        lambda: runner.PurePosixPath(
+            "/system.slice/metnos-http.service/metnos-birth-host"
+        ),
+    )
+
+    def kernel_write(path, value):
+        assert path == control
+        assert set(value.split()) == {"+memory", "+pids"}
+        path.write_text("memory pids", encoding="ascii")
+
+    monkeypatch.setattr(runner, "_write_control", kernel_write)
+    assert runner._cgroup_v2_delegate() == (delegate, None)
 
 
 def test_delegate_rejects_process_outside_fixed_host_subgroup(
