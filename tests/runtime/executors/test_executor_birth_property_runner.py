@@ -239,7 +239,7 @@ def test_observed_runner_uses_relative_trusted_harness_protocol_on_windows(monke
         fixture_id="bounded_collection", isolation="private_read_only",
     )
     assert captured["command"] == (
-        "_metnos_birth_property_harness_v1.py", "candidate/candidate.py",
+        "_metnos_birth_property_harness_v1.py", "candidate.py",
     )
     assert captured["windows_registry"] is registry
 
