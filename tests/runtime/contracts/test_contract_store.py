@@ -1057,7 +1057,18 @@ def test_pointer_replace_does_not_retry_plain_windows_access_denied(
         error.winerror = 5
         raise error
 
+    probed: list[Path] = []
+
+    def no_delete_share_conflict(path: Path) -> bool:
+        probed.append(path)
+        return False
+
     monkeypatch.setattr(contract_store_module, "_windows_platform", lambda: True)
+    monkeypatch.setattr(
+        contract_store_module,
+        "_windows_delete_share_conflict",
+        no_delete_share_conflict,
+    )
     monkeypatch.setattr(contract_store_module.os, "replace", access_denied)
 
     with pytest.raises(PermissionError, match="access denied"):
@@ -1065,7 +1076,52 @@ def test_pointer_replace_does_not_retry_plain_windows_access_denied(
             source, destination, timeout=1.0,
         )
     assert attempts == 1
+    assert probed == [destination, source]
     assert destination.read_bytes() == b"old"
+
+
+def test_pointer_replace_retries_winerror_5_only_after_delete_share_probe(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "current"
+    source.write_bytes(b"new")
+    destination.write_bytes(b"old")
+    real_replace = os.replace
+    attempts = 0
+    probed: list[Path] = []
+
+    def transient_access_denied(first, second):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            error = PermissionError(errno.EACCES, "ambiguous access denied")
+            error.winerror = 5
+            raise error
+        real_replace(first, second)
+
+    def confirmed_delete_share_conflict(path: Path) -> bool:
+        probed.append(path)
+        return path == destination
+
+    monkeypatch.setattr(contract_store_module, "_windows_platform", lambda: True)
+    monkeypatch.setattr(
+        contract_store_module,
+        "_windows_delete_share_conflict",
+        confirmed_delete_share_conflict,
+    )
+    monkeypatch.setattr(
+        contract_store_module.os,
+        "replace",
+        transient_access_denied,
+    )
+
+    contract_store_module._replace_retry(source, destination, timeout=0.2)
+
+    assert attempts == 2
+    assert probed == [destination]
+    assert destination.read_bytes() == b"new"
 
 
 def test_native_no_replace_never_overwrites_file_or_directory(tmp_path: Path) -> None:
