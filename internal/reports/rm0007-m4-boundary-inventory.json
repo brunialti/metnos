@@ -700,6 +700,26 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "_read_current_optional",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "bounded shared-handle reader for the authenticated current pointer",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_read_windows_shared_regular_file",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "Win32 store reader that preserves atomic pointer replacement",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "_reconcile_authoring_locked",
       "role": "store_owner",
       "capabilities": [
@@ -708,6 +728,16 @@
         "store_write"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_reconcile_stable_current",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "store-owned stable-current reconciliation under publication locks",
       "phase": "M4"
     },
     {
@@ -777,6 +807,7 @@
       "role": "store_owner",
       "capabilities": [
         "authoring_read",
+        "store_write",
         "verified_store_read"
       ],
       "destination": "authenticated global candidate check before any contract pointer becomes authoritative",
@@ -794,12 +825,42 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "_verify_activation_catalog",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "store-owned activation catalog verification",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "_verify_pre_cutover_inventory",
       "role": "store_owner",
       "capabilities": [
         "authoring_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_verify_published_postcondition",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "store-owned authenticated publication postcondition",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_verify_retirement_postcondition",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "store-owned authenticated retirement postcondition",
       "phase": "M4"
     },
     {
@@ -876,6 +937,18 @@
     },
     {
       "path": "runtime/contract_store.py",
+      "scope": "authenticate_execution_binding",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sealed exact-generation and admission-receipt authority for dispatch",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
       "scope": "catalog_admission_lock",
       "role": "store_owner",
       "capabilities": [
@@ -902,6 +975,7 @@
       "scope": "current_contract",
       "role": "store_owner",
       "capabilities": [
+        "store_write",
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
@@ -912,6 +986,7 @@
       "scope": "current_manifest",
       "role": "store_owner",
       "capabilities": [
+        "store_write",
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
@@ -922,6 +997,7 @@
       "scope": "current_revision_id",
       "role": "store_owner",
       "capabilities": [
+        "store_write",
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
@@ -932,6 +1008,7 @@
       "scope": "diagnose_store",
       "role": "store_owner",
       "capabilities": [
+        "store_write",
         "verified_store_read"
       ],
       "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",

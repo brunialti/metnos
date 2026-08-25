@@ -34,6 +34,7 @@ from contract_store import (
     SurfaceRemoval,
     TechnicalDraft,
     activate_store,
+    authenticate_execution_binding,
     commit_birth_snapshot,
     contract_storage_key,
     contract_revision_id,
@@ -2331,6 +2332,102 @@ def test_birth_receipt_is_durable_and_reread_before_pointer(tmp_path: Path) -> N
         expected_key_id="birth-test-key",
     )
     assert receipt.generation_id == current_revision_id(ref, store_root=store)
+
+
+def _execution_binding_fixture(tmp_path, monkeypatch):
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    predecessor = publish_signed_source(
+        ref, expected_generation_id=None,
+        trusted_publics=trusted, store_root=store,
+    ).current_generation_id
+    snapshot = _birth_snapshot(ref, tmp_path)
+    admission_private = Ed25519PrivateKey.generate()
+    authorization = _birth_authorization(
+        ref, predecessor, admission_private,
+    )
+    publication = commit_birth_snapshot(
+        ref, expected_generation_id=predecessor, snapshot=snapshot,
+        request_id="sha256:" + "8" * 64, private_key=private,
+        trusted_publics=trusted, birth_authorization=authorization,
+        store_root=store,
+    )
+    monkeypatch.setattr(
+        manifest_inventory_module, "inventory_authoring_manifests",
+        lambda: ManifestInventory((ref,), ()),
+    )
+    return ref, store, trusted, admission_private, publication.current_generation_id
+
+
+def test_execution_binding_authenticates_exact_generation_and_receipt(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    ref, store, trusted, admission_private, generation = (
+        _execution_binding_fixture(tmp_path, monkeypatch)
+    )
+    binding = authenticate_execution_binding(
+        ref.contract_id, generation, trusted_publics=trusted,
+        admission_verifier_keys={"birth-test-key": admission_private.public_key()},
+        store_root=store,
+    )
+    assert binding.contract_id == ref.contract_id
+    assert binding.generation_id == generation
+    assert binding.executor_name == "read_files"
+    assert binding.candidate_id == _BIRTH_DIGEST
+
+
+def test_execution_binding_rejects_wrong_or_tampered_generation(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    ref, store, trusted, admission_private, generation = (
+        _execution_binding_fixture(tmp_path, monkeypatch)
+    )
+    with pytest.raises(ContractStoreError, match="execution_generation_stale"):
+        authenticate_execution_binding(
+            ref.contract_id, "sha256:" + "f" * 64, trusted_publics=trusted,
+            admission_verifier_keys={"birth-test-key": admission_private.public_key()},
+            store_root=store,
+        )
+    generation_path = (
+        store / contract_storage_key(ref.contract_id) / "generations"
+        / generation_directory_name(generation) / "manifest.toml"
+    )
+    generation_path.write_bytes(generation_path.read_bytes() + b"\n")
+    with pytest.raises(ContractStoreError):
+        authenticate_execution_binding(
+            ref.contract_id, generation, trusted_publics=trusted,
+            admission_verifier_keys={"birth-test-key": admission_private.public_key()},
+            store_root=store,
+        )
+
+
+def test_execution_binding_rejects_receipt_race(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    ref, store, trusted, admission_private, generation = (
+        _execution_binding_fixture(tmp_path, monkeypatch)
+    )
+    receipt_path = (
+        store / contract_storage_key(ref.contract_id) / "admission-receipts"
+        / (generation_directory_name(generation) + ".json")
+    )
+    original_read = contract_store_module._read_regular_file
+    receipt_reads = {"count": 0}
+
+    def racing_read(path, *, code):
+        if Path(path) == receipt_path:
+            receipt_reads["count"] += 1
+            if receipt_reads["count"] == 2:
+                receipt_path.write_bytes(b"{}")
+        return original_read(path, code=code)
+
+    monkeypatch.setattr(contract_store_module, "_read_regular_file", racing_read)
+    with pytest.raises(ContractStoreError, match="birth_receipt_reread_mismatch"):
+        authenticate_execution_binding(
+            ref.contract_id, generation, trusted_publics=trusted,
+            admission_verifier_keys={"birth-test-key": admission_private.public_key()},
+            store_root=store,
+        )
 
 
 def test_birth_commit_rejects_changed_context_epoch(tmp_path: Path) -> None:

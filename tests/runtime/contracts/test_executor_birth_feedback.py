@@ -1,15 +1,22 @@
 from dataclasses import asdict
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import agent_runtime
 from agent_runtime import StepLog
 from executor_birth_failure_review import FailureReview, FailureReviewVerdict
 from executor_birth_feedback import (
-    FeedbackError, FeedbackStatus, QuarantineCAS, RepairBirthRequest,
-    apply_negative_feedback, enqueue_failure_review_inactive,
-    make_execution_receipt, repair_birth_request,
+    EXECUTION_RECEIPT_RESULT_KEY, FeedbackError, FeedbackStatus, QuarantineCAS,
+    RepairBirthRequest,
+    apply_negative_feedback, apply_step_negative_feedback,
+    enqueue_failure_review_inactive, make_execution_receipt,
+    reduce_retainable_payload, reduced_query_reference, repair_birth_request,
 )
 from manifest_inventory import ContractId, ManifestOrigin
+from engine.executor import Executor as FrameworkExecutor
+from engine.types import Framework, StepSpec
 
 
 D1 = "sha256:" + "1" * 64
@@ -21,10 +28,11 @@ CID = ContractId(ManifestOrigin.USER, "demo/manifest.toml")
 
 def receipt(*, generation=D3):
     return make_execution_receipt(
-        request_id="request-1", turn_id="turn-1", reduced_query_ref=D1,
+        request_id=D4, turn_id=D1, reduced_query_ref=D1,
         arguments={"needle": "safe"}, reduced_output={"ok": False},
         contract_id=CID, executor_name="demo", candidate_id=D2,
         generation_id=generation, dispatched_at="2030-01-01T00:00:00Z",
+        completed_at="2030-01-01T00:00:01Z",
     )
 
 
@@ -45,8 +53,96 @@ def test_execution_receipt_rejects_tampered_retained_payload():
             value.reduced_query_ref, value.arguments_hash, {"needle": "changed"},
             value.output_hash, value.reduced_output, value.contract_id,
             value.executor_name, value.candidate_id, value.generation_id,
-            value.dispatched_at,
+            value.dispatched_at, value.completed_at,
         )
+
+
+def test_receipt_binds_completion_time_and_rejects_time_reversal():
+    value = receipt()
+    assert value.completed_at == "2030-01-01T00:00:01Z"
+    with pytest.raises(FeedbackError, match="completed_at"):
+        make_execution_receipt(
+            request_id=D4, turn_id=D1, reduced_query_ref=D1,
+            arguments={}, reduced_output={}, contract_id=CID,
+            executor_name="demo", candidate_id=D2, generation_id=D3,
+            dispatched_at="2030-01-01T00:00:02Z",
+            completed_at="2030-01-01T00:00:01Z",
+        )
+
+
+def test_reduction_redacts_secrets_and_bounds_retained_payload():
+    reduced = reduce_retainable_payload({
+        "password": "do-not-retain",
+        "safe": "x" * 5000,
+        "rows": list(range(100)),
+    })
+    assert "do-not-retain" not in repr(reduced)
+    assert reduced["password"] == {"_redacted": "sensitive-field"}
+    assert reduced["safe"]["_utf8_bytes"] == 5000
+    assert len(reduced["rows"]) == 65
+    assert reduced_query_reference("already <REDACTED>").startswith("sha256:")
+
+
+def test_incomplete_step_feedback_never_reaches_quarantine():
+    calls = []
+    with pytest.raises(FeedbackError, match="feedback_binding_invalid"):
+        apply_step_negative_feedback(
+            StepLog(step_num=1), failure_evidence_hash=D4,
+            error_code="wrong_result",
+            quarantine_exact=lambda *_: calls.append("quarantine") or QuarantineCAS.APPLIED,
+            enqueue_idempotent=lambda *_: calls.append("enqueue") or True,
+        )
+    assert calls == []
+
+
+def test_real_dispatch_builder_uses_authenticated_binding_and_reduced_payload(monkeypatch):
+    executor = SimpleNamespace(
+        name="demo", contract_id=CID.value, generation_id=D3,
+        manifest_path=Path("/immutable/generations/generation/manifest.toml"),
+    )
+    seen = []
+
+    def authenticated(actual, contract_id, generation_id):
+        seen.append((actual, contract_id, generation_id))
+        return D2
+
+    monkeypatch.setattr(agent_runtime, "_authenticated_dispatch_candidate_id", authenticated)
+    value = agent_runtime._execution_receipt_for_dispatch(
+        executor,
+        arguments={"password": "private", "needle": "safe"},
+        output={"ok": False, "token": "private-output"},
+        request_id=D4,
+        turn_id="turn-1",
+        reduced_query_ref=D1,
+        dispatched_at="2030-01-01T00:00:00Z",
+        completed_at="2030-01-01T00:00:01Z",
+    )
+    assert seen == [(executor, CID, D3)]
+    assert value.contract_id == CID and value.generation_id == D3
+    assert value.request_id == D4 and value.turn_id.startswith("sha256:")
+    assert value.arguments["password"] == {"_redacted": "sensitive-field"}
+    assert value.reduced_output["token"] == {"_redacted": "sensitive-field"}
+
+    with pytest.raises(FeedbackError, match="request_id"):
+        agent_runtime._execution_receipt_for_dispatch(
+            executor, arguments={}, output={"ok": False},
+            request_id="raw-channel-request", turn_id="turn-1",
+            reduced_query_ref=D1,
+            dispatched_at="2030-01-01T00:00:00Z",
+            completed_at="2030-01-01T00:00:01Z",
+        )
+
+
+def test_engine_moves_internal_receipt_out_of_executor_output():
+    value = receipt()
+    engine = FrameworkExecutor(invoke_executor=lambda _tool, _args: {
+        "ok": False, "error_code": "wrong_result",
+        EXECUTION_RECEIPT_RESULT_KEY: value,
+    })
+    run = engine.run(Framework(steps=[StepSpec(tool="demo", args={})]))
+    assert len(run.steps) == 1
+    assert run.steps[0].execution_receipt is value
+    assert EXECUTION_RECEIPT_RESULT_KEY not in run.steps[0].result
 
 
 def test_mutated_receipt_is_rejected_before_quarantine():
