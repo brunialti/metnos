@@ -466,6 +466,31 @@ nella copia privata. `arguments` contiene al massimo 32 stringhe senza NUL, di
 massimo 4.096 byte UTF-8 ciascuna. Ambiente, interprete, limiti, rete e grant non
 sono campi della richiesta: appartengono alla politica V1 dell'helper.
 
+La work root V1 contiene esattamente `candidate/` e `work/`: `candidate/` è la
+copia chiusa in sola lettura con manifest, stato linguistico e `code.files`;
+`work/` è la sola directory scrivibile e contiene le fixture core-owned. V1
+esegue esclusivamente entrypoint Python `.py`. L'interprete è il runtime Python
+bundled dell'installazione, risolto da una configurazione core-owned esterna alla
+richiesta; percorso assoluto e digest SHA-256 sono registrati nel registro
+sandbox incluso nell'`admission_context_id`. L'helper rifiuta interprete
+mancante, mutato, non regolare o fuori dalla radice runtime installata. Non usa
+`sys.executable`, `PATH`, associazioni file o un interprete indicato dal
+candidato. L'attestazione aggiunge `runtime_binary_hash`, che deve coincidere
+con il registro.
+
+Il registro sandbox V1 contiene inoltre percorso assoluto e hash SHA-256 del
+file di configurazione dell'helper. Birth avvia l'eseguibile registrato soltanto
+come `metnos-birth-sandbox --config <percorso> --config-hash <digest>` e invia la
+richiesta wire su stdin; nessun altro argomento è ammesso. Il file è regolare,
+senza reparse point, sotto la radice di installazione amministrata e con ACL di
+scrittura limitata ad amministratori e SYSTEM. È JSON UTF-8 canonico con
+esattamente `schema_version=1`, `runtime_root`, `runtime_binary` e
+`runtime_binary_hash`; i percorsi sono assoluti, il binario è contenuto nella
+radice e il digest è canonico. L'helper verifica prima l'hash del file ricevuto,
+poi schema, contenimento e hash del runtime. Percorso e digest attesi provengono
+dal registro sandbox dell'`admission_context_id`, non dal candidato, da variabili
+d'ambiente, dal registro Windows o da un path predefinito implicito.
+
 La risposta wire V1 è JSON UTF-8 canonico con esattamente `schema_version=1`,
 `request_id`, `candidate_id`, `status`, `error_code`, `exit_code`,
 `stdout_base64`, `stderr_base64`, `stdout_bytes`, `stderr_bytes`,
@@ -474,7 +499,7 @@ La risposta wire V1 è JSON UTF-8 canonico con esattamente `schema_version=1`,
 `exit_code` sono nullable soltanto dove coerente. I conteggi e il tempo sono
 interi non negativi, distinti da booleani. L'oggetto `attestation` contiene
 esattamente `backend=windows-appcontainer-job-v1`, `helper_binary_hash`,
-`profile_name`, `appcontainer_sid`, `network_capability=false`,
+`runtime_binary_hash`, `profile_name`, `appcontainer_sid`, `network_capability=false`,
 `assigned_before_resume`, `active_processes`, `tree_empty`,
 `termination_attested`, `memory_limit_bytes`, `process_limit`,
 `stdout_limit_bytes` e `stderr_limit_bytes`. Birth accetta un'esecuzione soltanto
