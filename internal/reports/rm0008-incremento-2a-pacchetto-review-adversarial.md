@@ -626,3 +626,19 @@ lunghezza esatti per `TokenElevation` e `TokenElevationType`, verifica
 `ReturnLength` e lascia invariato il doppio passaggio per `TokenUser` e
 `TokenIntegrityLevel`. Nessun codice di prodotto è stato modificato. Il nuovo
 esito pubblico resta necessario prima di autorizzare R5-R7.
+
+## 11. Esito della seconda esecuzione pubblica
+
+La correzione è registrata nella candidata
+`096284975579cb7fc21e0acb3b7f4e40eb605dd7` e nell'esecuzione pubblica
+`32903083843`. I controlli `Python 3.12 / ubuntu-24.04` e
+`Python 3.12 / windows-2022` sono entrambi verdi sul medesimo SHA.
+
+La barriera Windows ha superato gli undici casi con identità reali e oracolo
+ACL indipendente in 5,21 secondi, senza salti o esiti attesi invertiti. La suite
+portabile Windows successiva ha superato 111 prove e ne ha saltate sei in
+131,15 secondi; il controllo Linux ha superato suite portabile e prova delegata.
+
+La precondizione P1-a è quindi soddisfatta e R5-R7 possono entrare nella
+sequenza diagnostica e di accettazione del passo 7. L'esito non certifica tali
+requisiti di prodotto e non chiude l'incremento 2A o RM-0008.

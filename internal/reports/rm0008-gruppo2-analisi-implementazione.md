@@ -1953,3 +1953,21 @@ di quattro byte e richiede che `ReturnLength` coincida; conserva il doppio
 passaggio per le due informazioni variabili. R5-R7 restano invariati e
 congelati. Questo è il primo fallimento della classe e la correzione non è
 evidenza finché una nuova esecuzione pubblica sul relativo SHA non è verde.
+
+### 16.12 Certificazione pubblica della barriera Windows
+
+La candidata `096284975579cb7fc21e0acb3b7f4e40eb605dd7` ha avviato
+l'esecuzione pubblica `32903083843`. Entrambe le attività obbligatorie sono
+terminate con successo sul medesimo SHA: `Python 3.12 / ubuntu-24.04` e
+`Python 3.12 / windows-2022`.
+
+Sul runner Windows, la calibrazione con identità reali e oracolo ACL
+indipendente ha superato tutti gli undici casi in 5,21 secondi, senza salti o
+esiti attesi invertiti. La successiva suite portabile ha superato 111 prove e
+ne ha saltate sei, tutte estranee alla cella Windows posseduta dalla barriera,
+in 131,15 secondi. Il controllo Linux ha superato a sua volta sia la suite
+portabile sia la prova delegata prevista dal workflow.
+
+Questa evidenza chiude la precondizione P1-a e autorizza il passo 7 del §16.8.
+Non certifica da sola R5-R7, non rende verde alcuna prova di prodotto ancora da
+scrivere e non dichiara completato l'incremento 2A o RM-0008.
