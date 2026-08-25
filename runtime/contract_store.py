@@ -1655,7 +1655,7 @@ def _read_current_optional(contract_dir: Path) -> str | None:
         return None
     value = (
         _read_windows_shared_regular_file(
-            current, code="current_invalid", maximum_bytes=65,
+            current, code="current_invalid", maximum_bytes=72,
         )
         if _windows_platform()
         else _read_regular_file(current, code="current_invalid")
