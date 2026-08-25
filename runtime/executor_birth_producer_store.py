@@ -3,15 +3,17 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 from executor_birth_identity import ExecutorOrigin, RevisionAuthor
 from executor_birth_receipts import IssuerRegistry, ProducerReceipt, ReceiptError, verify_producer_receipt
 
-_VERSION = 3
-_SCHEMA = """
+_VERSION = 5
+_RECEIPT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS birth_producer_receipts (
  receipt_id TEXT PRIMARY KEY, receipt_hash TEXT NOT NULL UNIQUE, encoded BLOB NOT NULL,
  issuer_id TEXT NOT NULL, objective_hash TEXT NOT NULL, candidate_source_id TEXT NOT NULL,
@@ -24,6 +26,14 @@ CREATE TABLE IF NOT EXISTS birth_producer_receipts (
  OR (state='in_progress' AND request_id IS NOT NULL AND claimed_at IS NOT NULL AND lease_expires_at IS NOT NULL AND finalized_at IS NULL AND result_binding IS NULL AND rejection_code IS NULL)
  OR (state='committed' AND request_id IS NOT NULL AND claimed_at IS NOT NULL AND lease_expires_at IS NULL AND finalized_at IS NOT NULL AND result_binding IS NOT NULL AND rejection_code IS NULL)
  OR (state='rejected' AND request_id IS NOT NULL AND claimed_at IS NOT NULL AND lease_expires_at IS NULL AND finalized_at IS NOT NULL AND result_binding IS NULL AND rejection_code IS NOT NULL))
+);
+"""
+_ISSUANCE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS birth_producer_issuance (
+ request_id TEXT PRIMARY KEY, issuer_id TEXT NOT NULL, capability_id TEXT NOT NULL,
+ contract_id TEXT NOT NULL, objective_hash TEXT NOT NULL, candidate_source_id TEXT NOT NULL,
+ receipt_id TEXT NOT NULL UNIQUE, encoded BLOB NOT NULL UNIQUE,
+ FOREIGN KEY(receipt_id) REFERENCES birth_producer_receipts(receipt_id)
 );
 """
 
@@ -72,15 +82,17 @@ def _digest(value: object, field: str) -> str:
     return value
 
 def _migrate(db: sqlite3.Connection) -> None:
-    version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version > _VERSION:
-        raise ReceiptError("producer_receipt_store_invalid", "schema_too_new")
     db.execute("BEGIN IMMEDIATE")
     try:
+        # Read schema state only after acquiring the writer slot. Otherwise two
+        # first openers can both decide that the other's new schema is legacy.
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+        if version > _VERSION:
+            raise ReceiptError("producer_receipt_store_invalid", "schema_too_new")
         exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='birth_producer_receipts'").fetchone()
         if exists and version < 2:
             db.execute("ALTER TABLE birth_producer_receipts RENAME TO birth_producer_receipts_v1")
-            db.execute(_SCHEMA)
+            db.execute(_RECEIPT_SCHEMA)
             db.execute("""INSERT INTO birth_producer_receipts
              SELECT receipt_id,receipt_hash,encoded,issuer_id,objective_hash,candidate_source_id,
               executor_origin,revision_authorship,expires_at,
@@ -92,10 +104,29 @@ def _migrate(db: sqlite3.Connection) -> None:
              FROM birth_producer_receipts_v1""")
             db.execute("DROP TABLE birth_producer_receipts_v1")
         else:
-            db.execute(_SCHEMA)
+            db.execute(_RECEIPT_SCHEMA)
         if exists and version == 2:
             db.execute("ALTER TABLE birth_producer_receipts ADD COLUMN terminal_envelope BLOB")
             db.execute("ALTER TABLE birth_producer_receipts ADD COLUMN terminal_auth BLOB")
+        if version < 4:
+            db.execute(_ISSUANCE_SCHEMA)
+        elif version == 4:
+            # Version 4 existed briefly during development without a contract
+            # binding. Preserve any row, but make it permanently conflict with
+            # a productive request rather than guessing and reopening issuance.
+            columns = {row[1] for row in db.execute("PRAGMA table_info(birth_producer_issuance)")}
+            if "capability_id" not in columns:
+                db.execute("ALTER TABLE birth_producer_issuance RENAME TO birth_producer_issuance_v4")
+                db.execute(_ISSUANCE_SCHEMA)
+                db.execute("""INSERT INTO birth_producer_issuance
+                 (request_id,issuer_id,capability_id,contract_id,objective_hash,candidate_source_id,receipt_id,encoded)
+                 SELECT i.request_id,i.issuer_id,i.operation,'__legacy_unknown_contract__',
+                        i.objective_hash,i.candidate_source_id,r.receipt_id,i.encoded
+                 FROM birth_producer_issuance_v4 i
+                 JOIN birth_producer_receipts r ON r.encoded=i.encoded""")
+                db.execute("DROP TABLE birth_producer_issuance_v4")
+        else:
+            db.execute(_ISSUANCE_SCHEMA)
         db.execute(f"PRAGMA user_version={_VERSION}")
         db.commit()
     except Exception:
@@ -107,7 +138,20 @@ def _open(path: Path) -> sqlite3.Connection:
     db = sqlite3.connect(str(path), isolation_level=None, timeout=5)
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA foreign_keys=ON"); db.execute("PRAGMA busy_timeout=5000")
-    db.execute("PRAGMA journal_mode=WAL"); db.execute("PRAGMA synchronous=FULL")
+    # journal_mode does not consistently honor busy_timeout when several fresh
+    # processes open the database at once. Retry this one-time mode transition
+    # within the same bounded lock budget used by SQLite.
+    deadline = time.monotonic() + 5.0
+    while True:
+        try:
+            db.execute("PRAGMA journal_mode=WAL")
+            break
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                db.close()
+                raise
+            time.sleep(0.01)
+    db.execute("PRAGMA synchronous=FULL")
     _migrate(db)
     return db
 
@@ -174,6 +218,66 @@ def register_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, now: 
         db.commit(); return receipt
     finally:
         if db.in_transaction: db.rollback()
+        db.close()
+
+
+def get_or_issue_producer_receipt(
+    *, request_id: str, issuer_id: str, capability_id: str, contract_id: str,
+    objective_hash: str, candidate_source_id: str, registry: IssuerRegistry, now: datetime,
+    db_path: Path, issue: Callable[[], bytes],
+) -> bytes:
+    """Return the sole durable receipt issued for a fully-bound request.
+
+    The core-owned ``issue`` callback runs while a ``BEGIN IMMEDIATE``
+    transaction owns the writer slot and only when no issuance exists.  Thus
+    concurrent processes cannot manufacture competing receipt bytes.  Receipt
+    registration and the request ledger become durable in the same commit.
+    """
+    instant = _utc(now); request = _digest(request_id, "request_id")
+    if not all(isinstance(item, str) and item and "\0" not in item for item in (
+        issuer_id, capability_id, contract_id,
+    )):
+        raise ReceiptError("producer_receipt_invalid", "issuance identity")
+    _digest(objective_hash, "objective_hash"); _digest(candidate_source_id, "candidate_source_id")
+    if not callable(issue):
+        raise ReceiptError("producer_receipt_invalid", "issuer")
+    binding = (issuer_id, capability_id, contract_id, objective_hash, candidate_source_id)
+    db = _open(db_path)
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT issuer_id,capability_id,contract_id,objective_hash,candidate_source_id,encoded "
+            "FROM birth_producer_issuance WHERE request_id=?", (request,),
+        ).fetchone()
+        if row is not None:
+            if tuple(row[name] for name in (
+                "issuer_id", "capability_id", "contract_id", "objective_hash", "candidate_source_id",
+            )) != binding:
+                raise ReceiptError("producer_receipt_request_conflict")
+            encoded = bytes(row["encoded"])
+            db.commit()
+            return encoded
+        encoded = issue()
+        receipt = verify_producer_receipt(encoded, registry=registry, now=instant)
+        if (receipt.issuer_id, receipt.objective_hash, receipt.candidate_source_id) != (
+            issuer_id, objective_hash, candidate_source_id,
+        ):
+            raise ReceiptError("producer_receipt_binding_invalid", "issuance")
+        db.execute("INSERT INTO birth_producer_receipts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (receipt.receipt_id, producer_receipt_hash(encoded), encoded, receipt.issuer_id,
+                    receipt.objective_hash, receipt.candidate_source_id, receipt.executor_origin.value,
+                    receipt.revision_authorship.value, receipt.expires_at, "available", _iso(instant),
+                    None, None, None, None, None, None, None, None))
+        db.execute("INSERT INTO birth_producer_issuance VALUES (?,?,?,?,?,?,?,?)",
+                   (request, issuer_id, capability_id, contract_id,
+                    objective_hash, candidate_source_id, receipt.receipt_id, encoded))
+        db.commit()
+        return encoded
+    except Exception:
+        if db.in_transaction:
+            db.rollback()
+        raise
+    finally:
         db.close()
 
 def claim_producer_receipt(encoded: bytes, *, registry: IssuerRegistry, binding: ProducerReceiptBinding,
