@@ -81,6 +81,31 @@ def test_activation_is_fail_closed_and_threshold_is_authenticated():
                              verify_admission=lambda _: None)
 
 
+def test_activation_rejects_noncanonical_evidence_order_and_base64():
+    private = Ed25519PrivateKey.generate()
+    unordered = json.loads(certificate(private))
+    unordered["admission_receipt_ids"].reverse()
+    unsigned = {key: value for key, value in unordered.items()
+                if key not in {"certificate_id", "signature"}}
+    unordered["certificate_id"] = "sha256:" + hashlib.sha256(
+        CERTIFICATION_DOMAIN + canonical(unsigned)).hexdigest()
+    unsigned_with_id = {key: value for key, value in unordered.items()
+                        if key != "signature"}
+    unordered["signature"] = base64.b64encode(private.sign(
+        CERTIFICATION_DOMAIN + canonical(unsigned_with_id))).decode()
+    with pytest.raises(LifecycleError, match="evidence order"):
+        load_f5_activation(canonical(unordered), authorities={
+            "operator-2030": private.public_key(),
+        })
+
+    noncanonical = json.loads(certificate(private))
+    noncanonical["signature"] = noncanonical["signature"].rstrip("=")
+    with pytest.raises(LifecycleError, match="signature"):
+        load_f5_activation(canonical(noncanonical), authorities={
+            "operator-2030": private.public_key(),
+        })
+
+
 def test_replace_current_epoch_is_one_transaction_and_resets_counts(tmp_path):
     db = tmp_path / "epochs.sqlite"
     open_epoch(contract_id=CID, generation_id=G1, name="demo", source="synt",
