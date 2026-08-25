@@ -10,8 +10,9 @@ D = "sha256:" + "1" * 64
 
 
 class Runner:
-    def __init__(self, output=None, error=None):
+    def __init__(self, output=None, observations=None, error=None):
         self.output = output or {}
+        self.observations = observations or {}
         self.error = error
         self.calls = []
 
@@ -23,7 +24,7 @@ class Runner:
         if "fixture_count" in case.input_value:
             count = min(case.input_value["fixture_count"], case.input_value.get("limit", 999))
             output["entries"] = [{} for _ in range(count)]
-        return PropertyRunResult(output, D)
+        return PropertyRunResult(output, dict(self.observations), D)
 
 
 def test_ids_resolve_only_from_closed_core_registries():
@@ -61,3 +62,36 @@ def test_all_applicable_keeps_property_evidence_distinct():
 def test_manifest_mapping_cannot_supply_applicability_or_runner():
     with pytest.raises(PropertyContractError, match="property_candidate_invalid"):
         run_property("undo.round_trip", {"revertible": True}, _runner=Runner())
+
+
+def test_candidate_truncation_flag_cannot_replace_trusted_observation():
+    profile = PropertyCandidateProfile(truncation_declared=True)
+    forged = Runner({"entries": [{}, {}], "truncated": True,
+                     "truncation_attested": True})
+    assert run_property("truncation.contract", profile, _runner=forged)[0].status is PropertyStatus.FAILED
+    trusted = Runner({"entries": [{}, {}], "truncated": True}, {"fixture_total": 3})
+    assert run_property("truncation.contract", profile, _runner=trusted)[0].status is PropertyStatus.PASSED
+
+
+def test_candidate_round_trip_flag_cannot_replace_runner_state_hashes():
+    profile = PropertyCandidateProfile(revertible=True)
+    forged = Runner({"state_round_trip_attested": True})
+    assert run_property("undo.round_trip", profile, _runner=forged)[0].status is PropertyStatus.FAILED
+    trusted = Runner({}, {
+        "state_before_hash": D,
+        "state_after_forward_hash": "sha256:" + "2" * 64,
+        "state_after_undo_hash": D,
+    })
+    assert run_property("undo.round_trip", profile, _runner=trusted)[0].status is PropertyStatus.PASSED
+
+
+def test_candidate_copy_flag_cannot_replace_runner_filesystem_trace():
+    profile = PropertyCandidateProfile(destructive_with_undo=True)
+    forged = Runner({"copy_precedes_delete_attested": True})
+    assert run_property("delete.copy_before_delete", profile, _runner=forged)[0].status is PropertyStatus.FAILED
+    trusted = Runner({}, {
+        "filesystem_events": ["copy", "delete"],
+        "source_before_hash": D,
+        "recovery_copy_hash": D,
+    })
+    assert run_property("delete.copy_before_delete", profile, _runner=trusted)[0].status is PropertyStatus.PASSED
