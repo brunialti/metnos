@@ -714,6 +714,27 @@ def _token_information(token: int, information_class: int) -> ctypes.Array:
     return buffer
 
 
+def _fixed_token_information(
+    token: int,
+    information_class: int,
+    value_type: type[ctypes.Structure] | type[wintypes.DWORD],
+) -> ctypes.Structure | wintypes.DWORD:
+    value = value_type()
+    returned = wintypes.DWORD()
+    expected = ctypes.sizeof(value)
+    if not _ADVAPI32.GetTokenInformation(
+        token,
+        information_class,
+        ctypes.byref(value),
+        expected,
+        ctypes.byref(returned),
+    ):
+        _raise_last_error("GetTokenInformation(fixed)")
+    if returned.value != expected:
+        raise AssertionError("fixed token information returned an unexpected size")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class TokenFacts:
     user_sid: str
@@ -728,15 +749,18 @@ def inspect_token(token: int) -> TokenFacts:
     user_sid = ctypes.cast(user_buffer, ctypes.POINTER(_TOKEN_USER)).contents.User.Sid
     user_sid_string = _sid_to_string(user_sid)
 
-    elevation_buffer = _token_information(token, _TOKEN_ELEVATION_CLASS)
-    elevated = bool(
-        ctypes.cast(elevation_buffer, ctypes.POINTER(_TOKEN_ELEVATION))
-        .contents.TokenIsElevated
+    elevation = _fixed_token_information(
+        token, _TOKEN_ELEVATION_CLASS, _TOKEN_ELEVATION
     )
-    type_buffer = _token_information(token, _TOKEN_ELEVATION_TYPE_CLASS)
-    elevation_type = ctypes.cast(
-        type_buffer, ctypes.POINTER(wintypes.DWORD)
-    ).contents.value
+    if not isinstance(elevation, _TOKEN_ELEVATION):
+        raise AssertionError("TokenElevation returned the wrong structure")
+    elevated = bool(elevation.TokenIsElevated)
+    elevation_type_value = _fixed_token_information(
+        token, _TOKEN_ELEVATION_TYPE_CLASS, wintypes.DWORD
+    )
+    if not isinstance(elevation_type_value, wintypes.DWORD):
+        raise AssertionError("TokenElevationType returned the wrong structure")
+    elevation_type = elevation_type_value.value
 
     integrity_buffer = _token_information(token, _TOKEN_INTEGRITY_LEVEL_CLASS)
     integrity_sid = ctypes.cast(

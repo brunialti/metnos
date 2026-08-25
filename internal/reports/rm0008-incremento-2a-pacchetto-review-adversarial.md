@@ -611,3 +611,18 @@ La revisione statica indipendente dell'implementazione non ha rilevato P0-P3.
 Non essendo disponibile localmente Windows, questa non è ancora evidenza
 dinamica: R5-R7 restano congelati fino al verde pubblico sullo SHA esatto della
 candidata.
+
+## 10. Prima esecuzione pubblica e causa osservata
+
+La candidata `d677347c50a78c1d5c3f9a75df865407ab0aa460` corrisponde
+all'esecuzione `32902651884`. Linux è verde. Windows Server 2022 ha confermato
+NTFS, poi la calibrazione si è arrestata prima di account e ACL con
+`GetTokenInformation(size): WinError 24` sulla classe `TokenElevation`.
+
+La causa è delimitata nel wrapper: la richiesta preliminare con buffer nullo e
+lunghezza zero era applicata indiscriminatamente sia alle informazioni con SID
+variabile sia alle strutture di quattro byte. La correzione passa buffer e
+lunghezza esatti per `TokenElevation` e `TokenElevationType`, verifica
+`ReturnLength` e lascia invariato il doppio passaggio per `TokenUser` e
+`TokenIntegrityLevel`. Nessun codice di prodotto è stato modificato. Il nuovo
+esito pubblico resta necessario prima di autorizzare R5-R7.

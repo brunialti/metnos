@@ -1930,3 +1930,26 @@ Questa sezione registra soltanto la predisposizione. La barriera diventa
 evidenza utilizzabile per il passo 7 esclusivamente dopo un esito verde del
 runner pubblico `windows-2022` associato allo SHA esatto della candidata. Fino
 ad allora R5-R7 restano congelati.
+
+### 16.11 Prima esecuzione pubblica della barriera
+
+La candidata `d677347c50a78c1d5c3f9a75df865407ab0aa460` ha avviato
+l'esecuzione pubblica `32902651884`. Linux ha completato con successo suite
+portabile e prova delegata. Windows Server 2022, immagine
+`20260818.277.1`, ha confermato NTFS ma la calibrazione si è arrestata prima di
+creare account o oggetti ACL.
+
+Il log localizza il solo errore in `_token_information`: il wrapper applicava a
+ogni classe la richiesta preliminare con buffer nullo e lunghezza zero. Tale
+schema è necessario per `TokenUser` e `TokenIntegrityLevel`, che contengono SID
+a lunghezza variabile; sulla classe fissa `TokenElevation`, invece, il runner ha
+restituito immediatamente `ERROR_BAD_LENGTH` (`WinError 24`). Nessun ramo di
+account, privilegio, descrittore, accesso effettivo o pulizia era ancora stato
+raggiunto.
+
+La correzione candidata è quindi limitata al contratto ABI osservato: per
+`TokenElevation` e `TokenElevationType` passa direttamente un buffer tipizzato
+di quattro byte e richiede che `ReturnLength` coincida; conserva il doppio
+passaggio per le due informazioni variabili. R5-R7 restano invariati e
+congelati. Questo è il primo fallimento della classe e la correzione non è
+evidenza finché una nuova esecuzione pubblica sul relativo SHA non è verde.
