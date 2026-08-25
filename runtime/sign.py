@@ -369,6 +369,8 @@ def _sign_executor_under_catalog_lock(manifest_dir, key_name=DEFAULT_AUTHOR_KEY)
     al lifecycle prima che venga emessa una firma. In questo modo generatori e
     importatori non possono usare la firma come scorciatoia di attivazione.
     """
+    from executor_birth_legacy_gate import deny_legacy_signing_api
+    deny_legacy_signing_api("sign_executor")
     manifest_dir = Path(manifest_dir)
     manifest_path = manifest_dir / "manifest.toml"
     sig_path = manifest_dir / "manifest.toml.sig"
@@ -425,6 +427,8 @@ def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     La firma non pubblica una revisione. Il lock impedisce però che un cutover
     costruisca la propria fotografia mentre questi file sono a metà modifica.
     """
+    from executor_birth_legacy_gate import deny_legacy_signing_api
+    deny_legacy_signing_api("sign_executor")
     from contract_store import catalog_admission_lock
 
     with catalog_admission_lock():
@@ -519,6 +523,8 @@ def publish_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     one conditional operation.
     """
 
+    from executor_birth_legacy_gate import deny_legacy_signing_api
+    deny_legacy_signing_api("publish_executor")
     _refuse_store_only_bypass("publish")
     from contract_store import (
         ContractStoreError,
@@ -573,6 +579,8 @@ def publish_authoring_update(
     never implements a sign-then-publish sequence.
     """
 
+    from executor_birth_legacy_gate import deny_legacy_signing_api
+    deny_legacy_signing_api("publish_authoring_update")
     from manifest_inventory import ManifestLayout, resolve_manifest_layout
 
     if resolve_manifest_layout() is ManifestLayout.AUTHORING:
@@ -661,6 +669,8 @@ def reactivate_executor_contract(
     the wrapper authenticates the current tombstone again under the store's
     CAS protocol and records the authorization durably before committing.
     """
+    from executor_birth_legacy_gate import deny_legacy_signing_api
+    deny_legacy_signing_api("reactivate_executor_contract")
     _refuse_store_only_bypass("reactivate")
     from audit_jsonl import append_unique_jsonl
     from contract_store import (
@@ -713,6 +723,8 @@ def rollback_executor_contract(
     reason: str,
 ):
     """Move one live binding back to an authenticated immutable generation."""
+    from executor_birth_legacy_gate import deny_legacy_signing_api
+    deny_legacy_signing_api("rollback_executor_contract")
     _refuse_store_only_bypass("rollback")
     from audit_jsonl import append_unique_jsonl
     from contract_store import rollback

@@ -424,6 +424,19 @@ def _publication_root(store_root: Path | str | None) -> tuple[Path, bool]:
     return root, True
 
 
+def _deny_closed_legacy_api(
+    operation: str, store_root: Path | str | None,
+) -> None:
+    """Translate the build-level F4 gate into the store's stable error type."""
+    from executor_birth_legacy_gate import (
+        LegacyBirthAuthorityClosed, deny_legacy_contract_api,
+    )
+    try:
+        deny_legacy_contract_api(operation, store_root=store_root)
+    except LegacyBirthAuthorityClosed as exc:
+        raise ContractStoreError(exc.code, exc.operation) from None
+
+
 def _ensure_directory_chain(path: Path, *, code: str) -> None:
     """Create and durably link each missing directory without following links."""
     _require_no_link_components(path, code=code)
@@ -3048,6 +3061,11 @@ def activate_store(
     The locks are reentrant so the managed cutover guard can retain the same
     production exclusion through the first cold store-only load.
     """
+    # The one-shot bootstrap exists only in a pre-certificate build.  A closed
+    # F4 artifact must reject it before platform, catalog, path, key or
+    # quiescence-callback inspection; deleting state can therefore never
+    # recreate bootstrap authority.
+    _deny_closed_legacy_api("activate_store", None)
     if sys.platform != "linux":
         raise ContractStoreError(
             "cutover_platform_unsupported",
@@ -4474,6 +4492,7 @@ def publish_technical_update(
     replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
 ) -> PublicationResult:
     """Sign and publish one technical draft under a single writer lock."""
+    _deny_closed_legacy_api("publish_technical_update", store_root)
     if birth_authorization is not None:
         raise ContractStoreError("birth_commit_boundary_required")
     root, productive = _publication_root(store_root)
@@ -4899,6 +4918,7 @@ def publish_signed_source(
     lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
     replace_timeout: float = DEFAULT_REPLACE_TIMEOUT,
 ) -> PublicationResult:
+    _deny_closed_legacy_api("publish_signed_source", store_root)
     root, productive = _publication_root(store_root)
     _require_registry_reconciler(productive, registry_reconciler)
     _validate_manifest_ref(ref)
@@ -5174,6 +5194,7 @@ def reactivate_technical_update(
     tombstone is the CAS base, while its referenced manifest generation is the
     linguistic and schema-policy base for the new signed draft.
     """
+    _deny_closed_legacy_api("reactivate_technical_update", store_root)
     root, productive = _publication_root(store_root)
     _require_registry_reconciler(productive, registry_reconciler)
     _validate_manifest_ref(ref)
@@ -5345,6 +5366,7 @@ def rollback(
     ``audit_sink`` must be idempotent by the stable ``event_id`` supplied in
     every callback because an authorization can precede an interrupted commit.
     """
+    _deny_closed_legacy_api("rollback", store_root)
     root, productive = _publication_root(store_root)
     _require_registry_reconciler(productive, registry_reconciler)
     _validate_manifest_ref(ref)
