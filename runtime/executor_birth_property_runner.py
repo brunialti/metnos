@@ -25,6 +25,7 @@ class PropertyCase:
 @dataclass(frozen=True, slots=True)
 class PropertyRunResult:
     output: Mapping[str, object]
+    observations: Mapping[str, object]
     runner_attestation_hash: str
 
 
@@ -73,36 +74,70 @@ def _single(case_id: str):
     return generate
 
 
+def _truncation_cases(_candidate: PropertyCandidateProfile) -> tuple[PropertyCase, ...]:
+    expectation = {"fixture_total": 3, "limit": 2}
+    return (PropertyCase("truncation.boundary", expectation, expectation),)
+
+
 _GENERATORS = {
     "declared_output_cases": _single("output.actual"),
     "cardinality_cases": _collection_cases,
     "limit_boundary_cases": _limit_cases,
-    "truncation_cases": _single("truncation.boundary"),
+    "truncation_cases": _truncation_cases,
     "undo_round_trip_cases": _single("undo.round_trip"),
     "delete_copy_cases": _single("delete.copy_before"),
     "entries_results_cases": _single("entries.results"),
 }
 
 
-def _output_schema(output, candidate, _expect):
+def _output_schema(output, candidate, _expect, _observations):
     return bool(candidate.output_required) and all(key in output for key in candidate.output_required)
 
 
-def _cardinality(output, _candidate, expect):
+def _cardinality(output, _candidate, expect, _observations):
     entries = output.get("entries", output.get("results"))
     return isinstance(entries, list) and len(entries) == expect["count"]
 
 
-def _limit(output, _candidate, expect):
+def _limit(output, _candidate, expect, _observations):
     entries = output.get("entries", output.get("results"))
     return isinstance(entries, list) and len(entries) <= expect["max_count"]
 
 
-def _flag(name: str):
-    return lambda output, _candidate, _expect: output.get(name) is True
+def _truncation(output, _candidate, expect, observations):
+    entries = output.get("entries", output.get("results"))
+    return (
+        isinstance(entries, list)
+        and len(entries) == expect["limit"]
+        and output.get("truncated") is True
+        and observations.get("fixture_total") == expect["fixture_total"]
+    )
 
 
-def _coherent(output, _candidate, _expect):
+def _state_round_trip(_output, _candidate, _expect, observations):
+    before = observations.get("state_before_hash")
+    mutated = observations.get("state_after_forward_hash")
+    restored = observations.get("state_after_undo_hash")
+    return (
+        isinstance(before, str) and before.startswith("sha256:")
+        and isinstance(mutated, str) and mutated.startswith("sha256:")
+        and restored == before and mutated != before
+    )
+
+
+def _copy_precedes_delete(_output, _candidate, _expect, observations):
+    events = observations.get("filesystem_events")
+    return (
+        isinstance(events, list)
+        and events.count("copy") == 1
+        and events.count("delete") == 1
+        and events.index("copy") < events.index("delete")
+        and observations.get("recovery_copy_hash")
+        == observations.get("source_before_hash")
+    )
+
+
+def _coherent(output, _candidate, _expect, _observations):
     return isinstance(output.get("entries"), list) and output.get("entries") == output.get("results")
 
 
@@ -110,9 +145,9 @@ _ORACLES = {
     "output_schema": _output_schema,
     "cardinality": _cardinality,
     "limit_semantics": _limit,
-    "truncation": _flag("truncation_attested"),
-    "state_round_trip": _flag("state_round_trip_attested"),
-    "copy_precedes_delete": _flag("copy_precedes_delete_attested"),
+    "truncation": _truncation,
+    "state_round_trip": _state_round_trip,
+    "copy_precedes_delete": _copy_precedes_delete,
     "entries_results_coherence": _coherent,
 }
 
@@ -164,10 +199,17 @@ def run_property(
     for case in cases:
         try:
             result = _runner.run(case, fixture_id=spec.fixture_id, isolation=spec.isolation.value)
-            passed = oracle(result.output, candidate, case.expectation)
+            if not isinstance(result, PropertyRunResult):
+                raise PropertyContractError("property_runner_result_invalid")
+            passed = oracle(
+                result.output, candidate, case.expectation, result.observations,
+            )
             status = PropertyStatus.PASSED if passed else PropertyStatus.FAILED
             error = "" if passed else "property_oracle_failed"
-            output_hash = _hash(dict(result.output))
+            output_hash = _hash({
+                "output": dict(result.output),
+                "trusted_observations": dict(result.observations),
+            })
             attestation_hash = result.runner_attestation_hash
         except Exception as exc:  # runner unavailability is fail-closed evidence
             status = PropertyStatus.UNAVAILABLE
