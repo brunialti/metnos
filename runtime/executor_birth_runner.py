@@ -85,6 +85,26 @@ V1_POLICY = RunnerPolicy()
 
 
 @dataclass(frozen=True, slots=True)
+class BirthDeadline:
+    """Core-owned wall-clock budget shared by every phase of one birth."""
+
+    started_at: float
+    expires_at: float
+
+    @classmethod
+    def begin(cls) -> "BirthDeadline":
+        started = time.monotonic()
+        return cls(started, started + TOTAL_TIMEOUT_S)
+
+    def phase_budget(self) -> float:
+        return min(PHASE_TIMEOUT_S, max(0.0, self.expires_at - time.monotonic()))
+
+
+def begin_birth_deadline() -> BirthDeadline:
+    return BirthDeadline.begin()
+
+
+@dataclass(frozen=True, slots=True)
 class ProcessAttestation:
     backend: str
     sandboxed: bool
@@ -254,6 +274,25 @@ def _bwrap_command(bwrap: str, work: Path, command: tuple[str, ...]) -> tuple[st
     return tuple(args)
 
 
+def _read_setup_handshake(path: Path) -> tuple[bool, int | None]:
+    """Read the launcher-owned bwrap status channel, never candidate output."""
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return False, None
+    if not isinstance(value, dict) or set(value) != {"child_started", "exit_code"}:
+        return False, None
+    started = value["child_started"] is True
+    exit_code = value["exit_code"]
+    if not started:
+        return False, None
+    if exit_code is not None and (
+        isinstance(exit_code, bool) or not isinstance(exit_code, int)
+    ):
+        return False, None
+    return True, exit_code
+
+
 def _cgroup_v2_delegate() -> tuple[Path | None, str | None]:
     if not Path("/sys/fs/cgroup/cgroup.controllers").is_file():
         return None, "cgroup_v2_unavailable"
@@ -304,11 +343,23 @@ def run_birth_phase(
     *,
     fixture_ops: Sequence[FixtureOp] = (),
     phase: str = "candidate",
+    deadline: BirthDeadline | None = None,
 ) -> RunnerResult:
     """Run one birth-test phase under the complete fixed v1 policy."""
     started = time.monotonic()
     argv = _command(command)
     checked_ops = validate_fixture_ops(fixture_ops)
+    birth_deadline = deadline or begin_birth_deadline()
+    if not isinstance(birth_deadline, BirthDeadline):
+        raise RunnerInputError("deadline_invalid")
+    # A supplied deadline may only be the fixed v1 budget.  This prevents a
+    # caller from constructing a longer-lived lookalike.
+    duration = birth_deadline.expires_at - birth_deadline.started_at
+    if duration < 0 or duration > TOTAL_TIMEOUT_S + 1e-6:
+        raise RunnerInputError("deadline_invalid")
+    budget = birth_deadline.phase_budget()
+    if budget <= 0:
+        return _unavailable("total_timeout", "deadline", started)
     if phase not in {"candidate", "reference", "equivalence"}:
         raise RunnerInputError("phase_invalid")
     if os.name == "nt":
@@ -324,6 +375,7 @@ def run_birth_phase(
 
     with tempfile.TemporaryDirectory(prefix="metnos-birth-runner-") as temporary:
         work = Path(temporary) / "work"
+        handshake = Path(temporary) / "bwrap-status.json"
         work.mkdir(mode=0o700)
         materialize_fixture(work, checked_ops)
         scope = delegate / f"phase-{uuid.uuid4().hex}"
@@ -340,13 +392,46 @@ def run_birth_phase(
 
         # The launcher joins the delegated cgroup before exec.  It contains no
         # candidate-controlled shell and passes only the already-validated argv.
-        launcher = (
-            "import os,sys;"
-            "open(sys.argv[1]+'/cgroup.procs','w').write(str(os.getpid()));"
-            "os.execv(sys.argv[2],sys.argv[2:])"
-        )
+        launcher = """
+import json, os, subprocess, sys
+scope, status, *args = sys.argv[1:]
+open(scope + '/cgroup.procs', 'w').write(str(os.getpid()))
+r, w = os.pipe()
+args = [str(w) if item == '{STATUS_FD}' else item for item in args]
+p = subprocess.Popen(args, pass_fds=(w,))
+os.close(w)
+started = False
+exit_code = None
+with os.fdopen(r) as stream:
+    for line in stream:
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(event, dict) and isinstance(event.get('child-pid'), int):
+            started = True
+            with open(status, 'w') as out:
+                json.dump({'child_started': True, 'exit_code': None}, out,
+                          separators=(',', ':'))
+        if isinstance(event, dict) and isinstance(event.get('exit-code'), int):
+            exit_code = event['exit-code']
+rc = p.wait()
+result = {'child_started': started,
+          'exit_code': exit_code if exit_code is not None else rc}
+temporary = status + '.complete'
+with open(temporary, 'x') as out:
+    json.dump(result, out, separators=(',', ':'))
+os.replace(temporary, status)
+sys.exit(0 if started else 125)
+"""
         wrapped = _bwrap_command(bwrap, work, argv)
-        host_command = (sys.executable, "-I", "-c", launcher, str(scope), *wrapped)
+        # The placeholder is replaced in the launcher with a private pipe passed only to
+        # bwrap.  Its JSON event is emitted after namespaces and mounts exist.
+        wrapped = (wrapped[0], "--json-status-fd", "{STATUS_FD}", *wrapped[1:])
+        host_command = (
+            sys.executable, "-I", "-c", launcher, str(scope), str(handshake),
+            *wrapped,
+        )
         returncode: int | None = None
         stdout = ""
         stderr = ""
@@ -355,15 +440,18 @@ def run_birth_phase(
             completed = run_bounded_subprocess(
                 host_command,
                 input_text="",
-                timeout_s=min(PHASE_TIMEOUT_S, TOTAL_TIMEOUT_S),
+                timeout_s=budget,
                 env={},
                 stdout_limit_bytes=STDOUT_LIMIT_BYTES,
                 stderr_limit_bytes=STDERR_LIMIT_BYTES,
             )
-            returncode = completed.returncode
+            setup_ok, candidate_returncode = _read_setup_handshake(handshake)
+            returncode = candidate_returncode
             stdout = completed.stdout
             stderr = completed.stderr
-            if returncode != 0:
+            if not setup_ok:
+                error_code = "sandbox_setup_unattested"
+            elif returncode != 0:
                 error_code = "candidate_process_failed"
         except subprocess.TimeoutExpired as exc:
             stdout = str(exc.output or "")
@@ -392,15 +480,16 @@ def run_birth_phase(
         except OSError:
             empty = False
 
+        setup_attested = _read_setup_handshake(handshake)[0]
         attestation = ProcessAttestation(
             backend="linux-bwrap-cgroup-v2",
-            sandboxed=True,
-            network_unshared=True,
-            pid_unshared=True,
-            user_unshared=True,
-            ipc_unshared=True,
-            uts_unshared=True,
-            cgroup_v2=True,
+            sandboxed=setup_attested,
+            network_unshared=setup_attested,
+            pid_unshared=setup_attested,
+            user_unshared=setup_attested,
+            ipc_unshared=setup_attested,
+            uts_unshared=setup_attested,
+            cgroup_v2=setup_attested,
             cgroup_path=str(scope),
             tree_empty=empty,
             termination_attested=empty,
@@ -408,7 +497,7 @@ def run_birth_phase(
         if not empty:
             error_code = "process_termination_unattested"
         status = RunnerStatus.PASSED if error_code is None else RunnerStatus.FAILED
-        if error_code == "test_environment_unavailable":
+        if error_code in {"test_environment_unavailable", "sandbox_setup_unattested"}:
             status = RunnerStatus.UNAVAILABLE
         return RunnerResult(
             status,
@@ -422,6 +511,7 @@ def run_birth_phase(
 
 
 __all__ = [
+    "BirthDeadline",
     "FixtureOp",
     "FixtureOpKind",
     "ProcessAttestation",
@@ -431,6 +521,7 @@ __all__ = [
     "RunnerStatus",
     "SANDBOX_ENV",
     "V1_POLICY",
+    "begin_birth_deadline",
     "materialize_fixture",
     "run_birth_phase",
     "validate_fixture_ops",
