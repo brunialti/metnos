@@ -52,10 +52,8 @@ _QUALIFIER_MARKERS = {
 
 
 def _build_trie(catalog_list) -> TrieNode:
-    import hashlib
-    sig = hashlib.sha256(
-        "|".join(sorted(getattr(e, "name", "") for e in catalog_list)).encode()
-    ).hexdigest()[:16]
+    from ._catalog_sig import catalog_signature
+    sig = catalog_signature(catalog_list)
     cached = _TRIE_CACHE.get("current")
     if cached and cached[0] == sig:
         return cached[1]

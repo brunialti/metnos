@@ -28,6 +28,8 @@ from __future__ import annotations
 import hashlib
 from typing import Iterable, Optional
 
+from executor_catalog_identity import catalog_entry_identity, catalog_identity
+
 # Famiglia produttori (§2.2): per un verbo produttore la famiglia include i
 # fratelli-produttori sullo stesso oggetto (find/read/get/list interscambiabili
 # nel derive → una capacità nuova in QUALSIASI produttore della famiglia può
@@ -44,12 +46,12 @@ def _h(parts: Iterable[str]) -> str:
 
 
 def digest_map(catalog) -> dict:
-    """{nome: digest} dal catalogo caricato (digest='' per builtin/virtual)."""
+    """{nome: identità comune} dal catalogo caricato."""
     out: dict = {}
     for e in (catalog or []):
         n = getattr(e, "name", None)
         if n:
-            out[n] = getattr(e, "digest", "") or ""
+            out[n] = catalog_entry_identity(e)
     return out
 
 
@@ -59,8 +61,7 @@ def catalog_epoch(catalog) -> str:
     discriminazione; il chiamante di prod lo passa sempre)."""
     if catalog is None:
         return ""
-    dm = digest_map(catalog)
-    return _h(f"{n}:{dm[n]}" for n in sorted(dm))[:16]
+    return catalog_identity(catalog)
 
 
 def _plan_tools(framework) -> list[str]:
@@ -112,7 +113,7 @@ def tools_sig(framework, catalog) -> str:
     parts = [f"@epoch:{ROUTING_EPOCH}"]
     for t in sorted(set(_plan_tools(framework))):
         parts.append(f"{t}:{dm.get(t, '!missing')}")
-    return _h(parts)[:16]
+    return "cvs2-" + _h(parts)[:16]
 
 
 def _family(verb: str, obj: str, names: set) -> set:
@@ -147,7 +148,11 @@ def _family(verb: str, obj: str, names: set) -> set:
 def pool_sig(intent, catalog) -> str:
     """Firma delle FAMIGLIE di candidati per le clausole dell'intent.
     Intent senza actions → clausola primaria (verb, object)."""
-    names = {getattr(e, "name", None) for e in (catalog or [])}
+    entries = {
+        getattr(e, "name", None): catalog_entry_identity(e)
+        for e in (catalog or []) if getattr(e, "name", None)
+    }
+    names = set(entries)
     names.discard(None)
     clauses = []
     for a in (getattr(intent, "actions", None) or []):
@@ -161,7 +166,9 @@ def pool_sig(intent, catalog) -> str:
     fam: set = set()
     for v, o in clauses:
         fam |= _family(v, o, names)
-    return _h(sorted(fam))[:16]
+    # Bind the entire matching family, not only its names.  A manifest-only or
+    # lifecycle change in an unselected sibling can change the next decision.
+    return "cvs2-" + _h(f"{name}:{entries[name]}" for name in sorted(fam))[:16]
 
 
 def plan_sigs(framework, intent, catalog) -> tuple[str, str]:

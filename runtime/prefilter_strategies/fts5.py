@@ -15,7 +15,6 @@ query con termini rari (sparse-friendly).
 """
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 from pathlib import Path
 from typing import Callable
@@ -24,15 +23,9 @@ _INDEX_PATH = Path.home() / ".cache" / "metnos" / "prefilter_fts5.sqlite"
 
 
 def _catalog_signature(catalog_list) -> str:
-    """Hash deterministico del catalog: rileva quando il pool cambia."""
-    h = hashlib.sha256()
-    for e in sorted(catalog_list, key=lambda x: getattr(x, "name", "")):
-        name = getattr(e, "name", "") or ""
-        digest = (getattr(e, "code_digest", "")
-                  or getattr(e, "digest", "") or "")
-        h.update(name.encode())
-        h.update(digest.encode())
-    return h.hexdigest()[:16]
+    """Common whole-pool identity; legacy index signatures rebuild once."""
+    from ._catalog_sig import catalog_signature
+    return catalog_signature(catalog_list)
 
 
 def _build_index(catalog_list) -> tuple[sqlite3.Connection, str]:

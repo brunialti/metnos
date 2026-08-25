@@ -78,7 +78,13 @@ def _get_embedder():
 def _cache_key(executors: Iterable[Any]) -> str:
     """Hash sha256 di (executor.name, tag) ordinati. Invalida cache quando
     qualunque executor cambia affinity (re-sign manifest, nuovo synth)."""
+    from executor_catalog_identity import catalog_identity
     h = hashlib.sha256()
+    # Bind the same whole-pool identity used by deterministic prefilters.  The
+    # explicit affinity payload below remains useful as a local integrity
+    # check and documents exactly what is embedded.
+    h.update(catalog_identity(executors).encode("ascii"))
+    h.update(b"\0")
     pairs = []
     for e in executors:
         name = getattr(e, "name", "") or ""
@@ -88,7 +94,7 @@ def _cache_key(executors: Iterable[Any]) -> str:
     pairs.sort()
     for name, tag in pairs:
         h.update(f"{name}\t{tag}\n".encode("utf-8"))
-    return h.hexdigest()[:16]
+    return "sem2-" + h.hexdigest()[:16]
 
 
 def _load_cache(key: str) -> dict | None:

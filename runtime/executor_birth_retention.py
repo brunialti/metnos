@@ -8,8 +8,7 @@ or make a historical generation selectable.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
+import base64
 import json
 import re
 import sqlite3
@@ -18,6 +17,11 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Callable
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey, Ed25519PublicKey,
+)
 
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._/-]{0,255}$")
@@ -32,14 +36,49 @@ class RetentionError(RuntimeError):
 
 class NodeType(str, Enum):
     GENERATION = "generation"
+    RETIREMENT = "retirement"
     BIRTH_REPORT = "birth_report"
     ADMISSION_RECEIPT = "admission_receipt"
     PRODUCER_RECEIPT = "producer_receipt"
-    REVIEW = "review"
+    MINIMAL_RECEIPT = "minimal_receipt"
+    CANDIDATE_COPY = "candidate_copy"
+    PROPOSAL = "proposal"
+    BLOB = "blob"
     EVIDENCE = "evidence"
     APPROVAL = "approval"
+    FEEDBACK = "feedback"
+    REVISION = "revision"
     EPOCH = "epoch"
-    AUDIT = "audit"
+    AUDIT_SEGMENT = "audit_segment"
+    JOB = "job"
+
+
+class EdgeType(str, Enum):
+    SELECTS = "selects"
+    PREDECESSOR = "predecessor"
+    ADMITS = "admits"
+    PROVENANCE = "provenance"
+    EVIDENCE = "evidence"
+    APPROVAL = "approval"
+    EXECUTION = "execution"
+    REVISION = "revision"
+    REPAIR = "repair"
+    ROLLBACK_DESTINATION = "rollback_destination"
+    AUDIT_REFERENCE = "audit_reference"
+
+
+class RootKind(str, Enum):
+    CURRENT_POINTER = "current_pointer"
+    RETIREMENT_PREDECESSOR = "retirement_predecessor"
+    ADMITTED_ROLLBACKABLE = "admitted_rollbackable"
+    OPEN_FEEDBACK = "open_feedback"
+    OPEN_REVISION = "open_revision"
+    OPEN_APPROVAL = "open_approval"
+    OPEN_AUDIT = "open_audit"
+    IN_PROGRESS_JOB = "in_progress_job"
+    CURRENT_EPOCH = "current_epoch"
+    UNEXPIRED_WINDOW = "unexpired_window"
+    LEGAL_HOLD = "legal_hold"
 
 
 class NodeState(str, Enum):
@@ -55,6 +94,7 @@ class EdgeState(str, Enum):
 
 class CandidateStatus(str, Enum):
     MARKED = "marked"
+    DELETING = "deleting"
     DELETED = "deleted"
     REFERENCED = "referenced"
     WINDOW_OPEN = "window_open"
@@ -75,6 +115,16 @@ class NodeKey:
 class SweepResult:
     deleted: tuple[NodeKey, ...]
     preserved: tuple[tuple[NodeKey, CandidateStatus], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationDeletionGuard:
+    """Proof passed only by the collector to a generation delete callback."""
+    noncurrent: bool
+    no_retirement_requirement: bool
+    not_rollbackable: bool
+    unreferenced: bool
+    observed_version: int
 
 
 _SCHEMA = """
@@ -124,6 +174,19 @@ CREATE TABLE IF NOT EXISTS retention_receipts (
   authentication TEXT NOT NULL,
   PRIMARY KEY(node_type,node_id)
 );
+CREATE TRIGGER IF NOT EXISTS retention_no_root_while_deleting
+BEFORE INSERT ON retention_roots WHEN EXISTS (
+  SELECT 1 FROM retention_candidates c
+  WHERE c.node_type=NEW.node_type AND c.node_id=NEW.node_id AND c.status='deleting'
+) BEGIN SELECT RAISE(ABORT,'retention_deleting'); END;
+CREATE TRIGGER IF NOT EXISTS retention_no_edge_while_deleting
+BEFORE INSERT ON retention_edges WHEN EXISTS (
+  SELECT 1 FROM retention_candidates c
+  WHERE c.status='deleting' AND (
+    (c.node_type=NEW.source_type AND c.node_id=NEW.source_id) OR
+    (c.node_type=NEW.target_type AND c.node_id=NEW.target_id)
+  )
+) BEGIN SELECT RAISE(ABORT,'retention_deleting'); END;
 """
 
 
@@ -185,11 +248,12 @@ def put_node(key: NodeKey, *, state: NodeState, created_at: str,
         connection.close()
 
 
-def add_edge(source: NodeKey, target: NodeKey, *, edge_type: str,
+def add_edge(source: NodeKey, target: NodeKey, *, edge_type: EdgeType,
              state: EdgeState, created_at: str, db_path: Path) -> None:
-    edge, created = _text(edge_type, "edge_type"), _timestamp(created_at)
-    if not isinstance(state, EdgeState):
+    created = _timestamp(created_at)
+    if not isinstance(edge_type, EdgeType) or not isinstance(state, EdgeState):
         raise RetentionError("retention_invalid", "edge state")
+    edge = edge_type.value
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -209,6 +273,8 @@ def add_edge(source: NodeKey, target: NodeKey, *, edge_type: str,
         connection.execute("UPDATE retention_meta SET graph_version=graph_version+1 WHERE singleton=1")
         connection.commit()
     except sqlite3.IntegrityError as exc:
+        if "retention_deleting" in str(exc):
+            raise RetentionError("retention_state_changed", "object deleting") from exc
         raise RetentionError("retention_state_changed", "edge conflict") from exc
     finally:
         if connection.in_transaction:
@@ -216,8 +282,10 @@ def add_edge(source: NodeKey, target: NodeKey, *, edge_type: str,
         connection.close()
 
 
-def add_root(key: NodeKey, *, root_kind: str, db_path: Path) -> None:
-    kind = _text(root_kind, "root_kind")
+def add_root(key: NodeKey, *, root_kind: RootKind, db_path: Path) -> None:
+    if not isinstance(root_kind, RootKind):
+        raise RetentionError("retention_invalid", "root_kind")
+    kind = root_kind.value
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -229,8 +297,13 @@ def add_root(key: NodeKey, *, root_kind: str, db_path: Path) -> None:
             raise RetentionError("retention_referenced", "missing root")
         meta = connection.execute("SELECT root_version FROM retention_meta WHERE singleton=1").fetchone()
         version = int(meta[0]) + 1
-        connection.execute("INSERT OR REPLACE INTO retention_roots VALUES(?,?,?,?)",
-                           (kind, key.node_type.value, key.node_id, version))
+        try:
+            connection.execute("INSERT OR REPLACE INTO retention_roots VALUES(?,?,?,?)",
+                               (kind, key.node_type.value, key.node_id, version))
+        except sqlite3.IntegrityError as exc:
+            if "retention_deleting" in str(exc):
+                raise RetentionError("retention_state_changed", "object deleting") from exc
+            raise
         connection.execute("UPDATE retention_meta SET root_version=? WHERE singleton=1", (version,))
         connection.commit()
     finally:
@@ -239,8 +312,10 @@ def add_root(key: NodeKey, *, root_kind: str, db_path: Path) -> None:
         connection.close()
 
 
-def remove_root(key: NodeKey, *, root_kind: str, db_path: Path) -> None:
-    kind = _text(root_kind, "root_kind")
+def remove_root(key: NodeKey, *, root_kind: RootKind, db_path: Path) -> None:
+    if not isinstance(root_kind, RootKind):
+        raise RetentionError("retention_invalid", "root_kind")
+    kind = root_kind.value
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -260,9 +335,11 @@ def remove_root(key: NodeKey, *, root_kind: str, db_path: Path) -> None:
         connection.close()
 
 
-def close_edge(source: NodeKey, target: NodeKey, *, edge_type: str,
+def close_edge(source: NodeKey, target: NodeKey, *, edge_type: EdgeType,
                closed_at: str, db_path: Path) -> None:
-    edge, closed = _text(edge_type, "edge_type"), _timestamp(closed_at)
+    if not isinstance(edge_type, EdgeType):
+        raise RetentionError("retention_invalid", "edge_type")
+    edge, closed = edge_type.value, _timestamp(closed_at)
     connection = _open(db_path)
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -338,17 +415,48 @@ def mark(*, run_id: str, observed_at: str, db_path: Path) -> tuple[NodeKey, ...]
         connection.close()
 
 
-def _receipt(key: NodeKey, run_id: str, version: int, deleted_at: str, secret: bytes) -> str:
-    if not isinstance(secret, bytes) or len(secret) < 32:
+_RECEIPT_DOMAIN = b"metnos.executor-birth.retention-receipt/v1\0"
+
+
+def _receipt_payload(key: NodeKey, run_id: str, version: int, deleted_at: str) -> bytes:
+    return json.dumps({"deleted_at": deleted_at, "node_id": key.node_id,
+                       "node_type": key.node_type.value, "object_version": version,
+                       "run_id": run_id}, sort_keys=True,
+                      separators=(",", ":")).encode("utf-8")
+
+
+def _receipt(key: NodeKey, run_id: str, version: int, deleted_at: str,
+             key_id: str, private_key: Ed25519PrivateKey) -> str:
+    if not isinstance(private_key, Ed25519PrivateKey):
         raise RetentionError("retention_invalid", "receipt key")
-    payload = json.dumps({"deleted_at": deleted_at, "node_id": key.node_id,
-                          "node_type": key.node_type.value, "object_version": version,
-                          "run_id": run_id}, sort_keys=True, separators=(",", ":")).encode()
-    return "hmac-sha256:" + hmac.new(secret, b"metnos.retention-receipt/v1\0" + payload,
-                                     hashlib.sha256).hexdigest()
+    identity = _text(key_id, "receipt key id")
+    signature = private_key.sign(_RECEIPT_DOMAIN + _receipt_payload(
+        key, run_id, version, deleted_at))
+    return "ed25519:" + identity + ":" + base64.b64encode(signature).decode("ascii")
 
 
-def sweep(*, run_id: str, observed_at: str, receipt_key: bytes, db_path: Path,
+def verify_minimal_receipt(*, key: NodeKey, run_id: str, object_version: int,
+                           deleted_at: str, authentication: str,
+                           public_keys: dict[str, Ed25519PublicKey]) -> str:
+    """Verify an authenticated, deliberately non-personal deletion receipt."""
+    try:
+        algorithm, key_id, encoded = authentication.split(":", 2)
+        if algorithm != "ed25519" or not _ID.fullmatch(key_id):
+            raise ValueError
+        signature = base64.b64decode(encoded, validate=True)
+        public_key = public_keys[key_id]
+        if not isinstance(public_key, Ed25519PublicKey):
+            raise ValueError
+        public_key.verify(signature, _RECEIPT_DOMAIN + _receipt_payload(
+            key, _text(run_id, "run_id"), object_version, _timestamp(deleted_at)))
+    except (InvalidSignature, KeyError, TypeError, ValueError) as exc:
+        raise RetentionError("retention_invalid", "minimal receipt authentication") from exc
+    return key_id
+
+
+def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
+          receipt_private_key: Ed25519PrivateKey, db_path: Path,
+          delete_object: Callable[[NodeKey, GenerationDeletionGuard | None], None] | None = None,
           before_each: Callable[[NodeKey], None] | None = None) -> SweepResult:
     """Second pass: re-mark under a write lock and CAS every candidate."""
     run, now = _text(run_id, "run_id"), _timestamp(observed_at)
@@ -359,7 +467,8 @@ def sweep(*, run_id: str, observed_at: str, receipt_key: bytes, db_path: Path,
     probe = _open(db_path)
     try:
         rows = probe.execute(
-            "SELECT node_type,node_id FROM retention_candidates WHERE run_id=? AND status='marked' "
+            "SELECT node_type,node_id FROM retention_candidates WHERE run_id=? "
+            "AND status IN ('marked','deleting') "
             "ORDER BY node_type,node_id", (run,),
         ).fetchall()
         pending = {(row[0], row[1]) for row in rows}
@@ -395,7 +504,8 @@ def sweep(*, run_id: str, observed_at: str, receipt_key: bytes, db_path: Path,
                 "WHERE node_type=? AND node_id=?", (key.node_type.value, key.node_id),
             ).fetchone()
             status = CandidateStatus.DELETED
-            if marked is None or node is None or marked["status"] != CandidateStatus.MARKED.value:
+            if marked is None or node is None or marked["status"] not in {
+                    CandidateStatus.MARKED.value, CandidateStatus.DELETING.value}:
                 status = CandidateStatus.STATE_CHANGED
             elif int(node["object_version"]) != int(marked["observed_version"]) or node["state"] != NodeState.CLOSED.value:
                 status = CandidateStatus.STATE_CHANGED
@@ -404,15 +514,47 @@ def sweep(*, run_id: str, observed_at: str, receipt_key: bytes, db_path: Path,
             elif (key.node_type.value, key.node_id) in _reachable(connection):
                 status = CandidateStatus.REFERENCED
             if status is CandidateStatus.DELETED:
-                auth = _receipt(key, run, int(node["object_version"]), now, receipt_key)
+                # Persist the signed receipt and per-object intent first.  The
+                # triggers above freeze references to this object, so a crash
+                # can safely resume the idempotent callback.
+                auth = _receipt(key, run, int(node["object_version"]), now,
+                                receipt_key_id, receipt_private_key)
                 connection.execute("INSERT OR IGNORE INTO retention_receipts VALUES(?,?,?,?,?,?)",
                                    (run, key.node_type.value, key.node_id,
                                     node["object_version"], now, auth))
                 connection.execute(
-                    "DELETE FROM retention_edges WHERE (source_type=? AND source_id=?) "
-                    "OR (target_type=? AND target_id=?)",
-                    (key.node_type.value, key.node_id, key.node_type.value, key.node_id),
+                    "UPDATE retention_candidates SET status='deleting' WHERE run_id=? "
+                    "AND node_type=? AND node_id=?",
+                    (run, key.node_type.value, key.node_id),
                 )
+                connection.commit()
+
+                guard: GenerationDeletionGuard | None = None
+                if key.node_type is NodeType.GENERATION:
+                    roots = {row[0] for row in connection.execute(
+                        "SELECT root_kind FROM retention_roots WHERE node_type=? AND node_id=?",
+                        (key.node_type.value, key.node_id))}
+                    references = connection.execute(
+                        "SELECT 1 FROM retention_edges WHERE (source_type=? AND source_id=?) "
+                        "OR (target_type=? AND target_id=?) LIMIT 1",
+                        (key.node_type.value, key.node_id,
+                         key.node_type.value, key.node_id),
+                    ).fetchone()
+                    forbidden = {
+                        RootKind.CURRENT_POINTER.value,
+                        RootKind.RETIREMENT_PREDECESSOR.value,
+                        RootKind.ADMITTED_ROLLBACKABLE.value,
+                    }
+                    if roots & forbidden or references is not None:
+                        raise RetentionError("retention_referenced", "generation safeguard")
+                    if delete_object is None:
+                        raise RetentionError("retention_partial", "generation delete callback absent")
+                    guard = GenerationDeletionGuard(True, True, True, True,
+                                                    int(marked["observed_version"]))
+                if delete_object is not None:
+                    delete_object(key, guard)
+
+                connection.execute("BEGIN IMMEDIATE")
                 changed = connection.execute(
                     "UPDATE retention_nodes SET state='deleted',object_version=object_version+1 "
                     "WHERE node_type=? AND node_id=? AND object_version=? AND state='closed'",
@@ -420,14 +562,25 @@ def sweep(*, run_id: str, observed_at: str, receipt_key: bytes, db_path: Path,
                 )
                 if changed.rowcount != 1:
                     raise RetentionError("retention_state_changed")
+                connection.execute(
+                    "DELETE FROM retention_edges WHERE (source_type=? AND source_id=?) "
+                    "OR (target_type=? AND target_id=?)",
+                    (key.node_type.value, key.node_id, key.node_type.value, key.node_id),
+                )
+                connection.execute(
+                    "UPDATE retention_candidates SET status='deleted' WHERE run_id=? "
+                    "AND node_type=? AND node_id=?",
+                    (run, key.node_type.value, key.node_id),
+                )
+                connection.commit()
                 deleted.append(key)
             else:
                 preserved.append((key, status))
-            connection.execute(
-                "UPDATE retention_candidates SET status=? WHERE run_id=? AND node_type=? AND node_id=?",
-                (status.value, run, key.node_type.value, key.node_id),
-            )
-            connection.commit()
+                connection.execute(
+                    "UPDATE retention_candidates SET status=? WHERE run_id=? AND node_type=? AND node_id=?",
+                    (status.value, run, key.node_type.value, key.node_id),
+                )
+                connection.commit()
         finally:
             if connection.in_transaction:
                 connection.rollback()
