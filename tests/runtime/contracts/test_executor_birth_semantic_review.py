@@ -10,6 +10,7 @@ from executor_birth_semantic_review import (
     IndependentEvidence,
     IndependentEvidenceKind,
     ReviewPolicyV1,
+    ReviewRiskFacts,
     SemanticReviewError,
     SemanticReviewRequest,
     SemanticVerdict,
@@ -23,6 +24,7 @@ D1 = "sha256:" + "1" * 64
 D2 = "sha256:" + "2" * 64
 D3 = "sha256:" + "3" * 64
 D4 = "sha256:" + "4" * 64
+LOW_RISK = ReviewRiskFacts(0, 0, 0)
 
 
 def _canonical(value: object) -> str:
@@ -70,6 +72,8 @@ def test_workload_is_fixed_wise_json() -> None:
     contract = WORKLOADS["executor.birth.semantic_review"]
     assert contract.tier == "wise"
     assert contract.output_constraint == "json"
+    assert WORKLOADS["executor.birth.semantic_review.frontier"].tier == "frontier"
+    assert WORKLOADS["executor.birth.failure_review"].tier == "frontier"
 
 
 def test_strict_review_round_trip() -> None:
@@ -121,7 +125,7 @@ def test_aligned_requires_exact_independent_pass(monkeypatch: pytest.MonkeyPatch
         calls.append((system, user, kw)) or _review()
     ))
     without = review_candidate_semantics(
-        _request(), independent_evidence=(), policy=_policy(),
+        _request(), independent_evidence=(), policy=_policy(), risk_facts=LOW_RISK,
     )
     assert without.review.verdict is SemanticVerdict.ALIGNED
     assert without.operational_verdict is SemanticVerdict.UNCERTAIN
@@ -129,6 +133,7 @@ def test_aligned_requires_exact_independent_pass(monkeypatch: pytest.MonkeyPatch
 
     with_evidence = review_candidate_semantics(
         _request(), independent_evidence=(_evidence(),), policy=_policy(),
+        risk_facts=LOW_RISK,
     )
     assert with_evidence.operational_verdict is SemanticVerdict.ALIGNED
     assert with_evidence.independent_evidence_id == D3
@@ -153,6 +158,7 @@ def test_obsolete_or_untrusted_evidence_is_rejected(
     with pytest.raises(SemanticReviewError, match="evidence_obsolete"):
         review_candidate_semantics(
             _request(), independent_evidence=(_evidence(**change),), policy=_policy(),
+            risk_facts=LOW_RISK,
         )
 
 
@@ -163,6 +169,7 @@ def test_nonpassing_evidence_does_not_make_model_sufficient(
     monkeypatch.setattr(semantic, "_invoke_semantic_review", lambda *a, **k: _review())
     result = review_candidate_semantics(
         _request(), independent_evidence=(_evidence(status=status),), policy=_policy(),
+        risk_facts=LOW_RISK,
     )
     assert result.operational_verdict is SemanticVerdict.UNCERTAIN
 
@@ -178,6 +185,7 @@ def test_retry_once_only_for_malformed_same_tier(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(semantic, "_invoke_semantic_review", invoke)
     result = review_candidate_semantics(
         _request(), independent_evidence=(_evidence(),), policy=_policy(),
+        risk_facts=LOW_RISK,
     )
     assert result.operational_verdict is SemanticVerdict.ALIGNED
     assert len(calls) == 2
@@ -194,7 +202,10 @@ def test_two_malformed_payloads_fail_closed(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr(semantic, "_invoke_semantic_review", invoke)
     with pytest.raises(SemanticReviewError, match="semantic_review_failed"):
-        review_candidate_semantics(_request(), independent_evidence=(_evidence(),), policy=_policy())
+        review_candidate_semantics(
+            _request(), independent_evidence=(_evidence(),), policy=_policy(),
+            risk_facts=LOW_RISK,
+        )
     assert calls == 2
 
 
@@ -208,7 +219,10 @@ def test_transport_failure_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(semantic, "_invoke_semantic_review", invoke)
     with pytest.raises(SemanticReviewError, match="semantic_review_unavailable"):
-        review_candidate_semantics(_request(), independent_evidence=(_evidence(),), policy=_policy())
+        review_candidate_semantics(
+            _request(), independent_evidence=(_evidence(),), policy=_policy(),
+            risk_facts=LOW_RISK,
+        )
     assert calls == 1
 
 
@@ -220,7 +234,10 @@ def test_entire_ordered_candidate_is_sent_as_untrusted_data(monkeypatch: pytest.
         return _review()
 
     monkeypatch.setattr(semantic, "_invoke_semantic_review", invoke)
-    review_candidate_semantics(_request(), independent_evidence=(_evidence(),), policy=_policy())
+    review_candidate_semantics(
+        _request(), independent_evidence=(_evidence(),), policy=_policy(),
+        risk_facts=LOW_RISK,
+    )
     assert list(captured["payload"]["code_files"]) == ["main.py", "pkg/helper.py"]
     assert captured["payload"]["candidate_id"] == D1
     assert "untrusted data" in captured["system"]
@@ -233,5 +250,82 @@ def test_misaligned_is_not_overridden_by_independent_pass(monkeypatch: pytest.Mo
     ))
     result = review_candidate_semantics(
         _request(), independent_evidence=(_evidence(),), policy=_policy(),
+        risk_facts=LOW_RISK,
     )
     assert result.operational_verdict is SemanticVerdict.MISALIGNED
+
+
+@pytest.mark.parametrize(
+    ("facts", "expected_workload", "expected_tier"),
+    [
+        (ReviewRiskFacts(69, 79, 49), semantic.WORKLOAD, "wise"),
+        (ReviewRiskFacts(70, 0, 0), semantic.FRONTIER_WORKLOAD, "frontier"),
+        (ReviewRiskFacts(0, 80, 0), semantic.FRONTIER_WORKLOAD, "frontier"),
+        (ReviewRiskFacts(0, 0, 50), semantic.FRONTIER_WORKLOAD, "frontier"),
+        (ReviewRiskFacts(100, 100, 100), semantic.FRONTIER_WORKLOAD, "frontier"),
+    ],
+)
+def test_risk_threshold_boundaries_select_internal_workload(
+    monkeypatch: pytest.MonkeyPatch, facts: ReviewRiskFacts,
+    expected_workload: str, expected_tier: str,
+) -> None:
+    calls = []
+
+    def invoke(*args, **kwargs):
+        calls.append(kwargs)
+        return _review()
+
+    monkeypatch.setattr(semantic, "_invoke_semantic_review", invoke)
+    result = review_candidate_semantics(
+        _request(), independent_evidence=(_evidence(),), policy=_policy(),
+        risk_facts=facts,
+    )
+    assert result.workload == expected_workload
+    assert result.tier == expected_tier
+    assert calls == [{
+        "workload": expected_workload, "tier": expected_tier,
+        "timeout_s": semantic.REQUEST_TIMEOUT_S,
+    }]
+
+
+@pytest.mark.parametrize("values", [(-1, 0, 0), (0, 101, 0), (0, 0, True)])
+def test_risk_facts_are_strict(values: tuple[object, object, object]) -> None:
+    with pytest.raises(SemanticReviewError, match="birth_request_invalid"):
+        ReviewRiskFacts(*values)  # type: ignore[arg-type]
+
+
+def test_frontier_unavailable_has_no_wise_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    def unavailable(*args, **kwargs):
+        calls.append(kwargs)
+        raise LookupError("frontier missing")
+
+    monkeypatch.setattr(semantic, "_invoke_semantic_review", unavailable)
+    with pytest.raises(SemanticReviewError, match="semantic_review_unavailable"):
+        review_candidate_semantics(
+            _request(), independent_evidence=(_evidence(),), policy=_policy(),
+            risk_facts=ReviewRiskFacts(70, 0, 0),
+        )
+    assert len(calls) == 1
+    assert calls[0]["workload"] == semantic.FRONTIER_WORKLOAD
+    assert calls[0]["tier"] == "frontier"
+
+
+def test_environment_cannot_override_workload_or_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_VERIFY_MODELS", "fast")
+    monkeypatch.setenv("METNOS_SYNT_STAGE6_DISABLED", "1")
+    calls = []
+    monkeypatch.setattr(
+        semantic, "_invoke_semantic_review",
+        lambda *args, **kwargs: calls.append(kwargs) or _review(),
+    )
+    decision = review_candidate_semantics(
+        _request(), independent_evidence=(_evidence(),), policy=_policy(),
+        risk_facts=ReviewRiskFacts(70, 0, 0),
+    )
+    assert decision.workload == semantic.FRONTIER_WORKLOAD
+    assert decision.tier == "frontier"
+    assert calls[0]["tier"] == "frontier"
