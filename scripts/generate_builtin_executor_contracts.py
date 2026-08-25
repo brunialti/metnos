@@ -11,6 +11,8 @@ import json
 import os
 import sys
 import argparse
+import shutil
+import tempfile
 import tomllib
 from pathlib import Path
 
@@ -480,8 +482,14 @@ def main() -> None:
     extra = sorted(set(specs) - set(_META))
     if missing or extra:
         raise SystemExit(f"contract inventory mismatch missing={missing} extra={extra}")
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    store_only_birth = args.sign and resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+    staging_context = tempfile.TemporaryDirectory(prefix="metnos-builtin-birth-") if store_only_birth else None
+    write_root = Path(staging_context.name) if staging_context is not None else OUT
     for name in sorted(specs):
-        directory = OUT / name
+        directory = write_root / name
+        if store_only_birth and (OUT / name).is_dir():
+            shutil.copytree(OUT / name, directory)
         directory.mkdir(parents=True, exist_ok=True)
         tool_spec, module_path = specs[name]
         rendered = _render(name, tool_spec, module_path)
@@ -496,14 +504,35 @@ def main() -> None:
         )
     suffix = ""
     if args.sign:
-        from sign import publish_authoring_update
-
         published = 0
-        for name in sorted(specs):
-            _digest, _signature, publication = publish_authoring_update(
-                OUT / name,
+        if store_only_birth:
+            from executor_birth_intent import (
+                BirthIntent, require_birth_intent_adapter,
+                submit_builtin_generation_birth,
             )
-            published += int(publication is not None)
+            from manifest_inventory import ContractId, ManifestOrigin
+            require_birth_intent_adapter()
+            try:
+                for name in sorted(specs):
+                    birth = submit_builtin_generation_birth(BirthIntent(
+                        candidate_source_root=write_root / name,
+                        contract_id=ContractId(
+                            ManifestOrigin.BUILTIN, f"{name}/manifest.toml",
+                        ),
+                        reason="regenerate shipped builtin executor contract",
+                    ))
+                    if birth.error_code or birth.publication is None:
+                        raise RuntimeError(
+                            f"builtin Birth rejected for {name}: "
+                            f"{birth.error_code or 'publication_missing'}"
+                        )
+                    published += 1
+            finally:
+                staging_context.cleanup()
+        else:
+            from sign import sign_executor
+            for name in sorted(specs):
+                sign_executor(OUT / name)
         suffix = (
             " and admitted them with the local author key"
             if published == 0

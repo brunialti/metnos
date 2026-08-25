@@ -45,7 +45,8 @@ from generated_executor_contract import (  # noqa: E402
     validate_generated_manifest_text,
 )
 from executor_birth_synth import (  # noqa: E402
-    SynthBirthData, require_synth_birth_service, submit_synth_birth,
+    SynthBirthData, require_synth_birth_service, submit_synth_approve,
+    submit_synth_specialize,
 )
 from manifest_inventory import ContractId, ManifestOrigin  # noqa: E402
 
@@ -1242,13 +1243,11 @@ class Synt:
         # Admit through the single operational Birth boundary.  Synth supplies
         # no key, registry, check catalog or publisher authority.
         try:
-            birth = submit_synth_birth(SynthBirthData(
+            birth = submit_synth_specialize(SynthBirthData(
                 candidate_root=target_dir,
                 contract_id=ContractId(
                     ManifestOrigin.USER, f"{target_name}/manifest.toml",
                 ),
-                producer="synt_specialize",
-                operation="replay" if target_preexisting else "specialize",
                 reason=f"specialize {parent_name} as {target_name}",
             ))
             if birth.publication is None:
@@ -1627,11 +1626,9 @@ class Synt:
         # Human approval is data bound to this Birth; it is not publication
         # authority and cannot bypass the core-owned admission checks.
         try:
-            birth = submit_synth_birth(SynthBirthData(
+            birth = submit_synth_approve(SynthBirthData(
                 candidate_root=prop_dir,
                 contract_id=ContractId(ManifestOrigin.USER, f"{name}/manifest.toml"),
-                producer="synt_approve",
-                operation="replay" if target_preexisting else "approve",
                 reason=f"human approval of Synth proposal {proposal_id}",
                 approval_refs=(proposal_id,),
             ))

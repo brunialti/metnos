@@ -72,7 +72,7 @@ def test_reactive_synth_is_signed_as_quarantined_standard_candidate(
     monkeypatch.setattr(synth_request, "require_synth_birth_service", lambda: None)
     monkeypatch.setattr(
         synth_request,
-        "submit_synth_birth",
+        "submit_synth_multistage",
         lambda data: admitted.append(data) or admitted_manifests.append(
             tomllib.loads((data.candidate_root / "manifest.toml").read_text())
         ) or SimpleNamespace(
@@ -89,8 +89,8 @@ def test_reactive_synth_is_signed_as_quarantined_standard_candidate(
     assert output_dir == tmp_path / "find_files"
     assert not output_dir.exists()
     assert len(admitted) == 1
-    assert admitted[0].producer == "synt_multistage"
-    assert admitted[0].operation == "create"
+    assert not hasattr(admitted[0], "producer")
+    assert not hasattr(admitted[0], "operation")
     assert manifest["executor_standard"] == STANDARD_ID
     assert manifest["lifecycle"] == "synthesized"
     assert manifest["execution"]["parallelism_class"] == 0
@@ -110,7 +110,7 @@ def test_rejected_reactive_birth_leaves_authoring_byte_identical(
     monkeypatch.setattr(synth_request, "SYNTHESIZED_EXECUTORS_DIR", tmp_path)
     monkeypatch.setattr(synth_request, "require_synth_birth_service", lambda: None)
     monkeypatch.setattr(
-        synth_request, "submit_synth_birth",
+        synth_request, "submit_synth_multistage",
         lambda _data: SimpleNamespace(
             publication=None, error_code="semantic_review_rejected",
         ),
@@ -144,7 +144,7 @@ def test_rejected_synt_approval_leaves_authoring_byte_identical(
     sentinel.write_bytes(b"unrelated-existing-contract\n")
     monkeypatch.setattr("synt.require_synth_birth_service", lambda: None)
     monkeypatch.setattr(
-        "synt.submit_synth_birth",
+        "synt.submit_synth_approve",
         lambda _data: SimpleNamespace(
             publication=None, error_code="producer_receipt_replay",
         ),
@@ -247,7 +247,7 @@ def test_existing_store_candidate_reconciles_through_idempotent_publisher(
     published = []
     monkeypatch.setattr(
         synth_request,
-        "submit_synth_birth",
+        "submit_synth_multistage",
         lambda data: published.append(data) or SimpleNamespace(
             publication=SimpleNamespace(generation_id="sha256:" + "1" * 64),
             error_code=None,
@@ -261,7 +261,7 @@ def test_existing_store_candidate_reconciles_through_idempotent_publisher(
 
     assert result["candidate_existing"] is True
     assert [item.candidate_root for item in published] == [source.parent]
-    assert published[0].operation == "replay"
+    assert not hasattr(published[0], "operation")
     assert result["installed"] is False
     assert result["planner_visible"] is False
 

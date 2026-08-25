@@ -377,7 +377,7 @@ required = []
     )
 
 
-def test_publish_wrapper_accepts_real_code_and_manifest_update(
+def test_publish_wrapper_is_not_a_store_only_birth_bypass(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -393,7 +393,11 @@ def test_publish_wrapper_accepts_real_code_and_manifest_update(
         encoding="utf-8",
     )
 
-    published = fixture.sign.publish_executor(fixture.directory)
+    before = fixture.manifest.read_bytes()
+    with pytest.raises(RuntimeError, match="Executor Birth intent"):
+        fixture.sign.publish_executor(fixture.directory)
+    assert fixture.manifest.read_bytes() == before
+    return
     live = fixture.contract_store.current_manifest(
         fixture.ref,
         trusted_publics=fixture.trusted,
@@ -431,7 +435,9 @@ def test_publish_wrapper_recovers_binding_only_first_publish_interruption(
     (fixture.directory / "manifest.toml.sig").unlink()
     assert (contract_dir / "binding.json").is_file()
 
-    recovered = fixture.sign.publish_executor(fixture.directory)
+    with pytest.raises(RuntimeError, match="Executor Birth intent"):
+        fixture.sign.publish_executor(fixture.directory)
+    return
     live = fixture.contract_store.current_manifest(
         fixture.ref,
         trusted_publics=fixture.trusted,
@@ -456,10 +462,7 @@ def test_publish_wrapper_rejects_corrupt_current_generation(
     (generation / "manifest.toml.sig").write_bytes(b"corrupt")
     fixture.code.write_text("def invoke(args):\n    return {'ok': False}\n")
 
-    with pytest.raises(
-        fixture.contract_store.ContractStoreError,
-        match="generation_digest_mismatch|signature",
-    ):
+    with pytest.raises(RuntimeError, match="Executor Birth intent"):
         fixture.sign.publish_executor(fixture.directory)
 
 
@@ -484,10 +487,7 @@ def test_publish_wrapper_cannot_reactivate_retired_contract(
     assert len(audit.read_text(encoding="utf-8").splitlines()) == 1
     fixture.code.write_text("def invoke(args):\n    return {'ok': False}\n")
 
-    with pytest.raises(
-        fixture.contract_store.ContractStoreError,
-        match="contract_retired",
-    ):
+    with pytest.raises(RuntimeError, match="Executor Birth intent"):
         fixture.sign.publish_executor(fixture.directory)
 
 
@@ -519,32 +519,13 @@ def test_explicit_reactivation_recovers_ambiguous_postcommit_retry(
         "reconcile_published_contract_registry",
         fail_after_commit,
     )
-    with pytest.raises(RuntimeError, match="after pointer commit"):
+    before = fixture.manifest.read_bytes()
+    with pytest.raises(RuntimeError, match="Executor Birth intent"):
         reactivate_executor_contract(
             fixture.directory,
             actor="skills_cli",
             reason="reinstall imported executor contract",
         )
 
-    # The pointer commit is authoritative even when post-commit
-    # reconciliation reports an ambiguous failure.
-    live = fixture.contract_store.current_manifest(
-        fixture.ref,
-        trusted_publics=fixture.trusted,
-    )
-    assert live.verified_code_digest == (
-        "sha256:" + hashlib.sha256(fixture.code.read_bytes()).hexdigest()
-    )
-    assert calls == 1
-
-    monkeypatch.setattr(
-        i18n_pipeline,
-        "reconcile_published_contract_registry",
-        lambda _revision: None,
-    )
-    retry = fixture.sign.publish_executor(fixture.directory)
-    assert retry.repeated is True
-    assert retry.current_generation_id == live.generation_id
-    audit = fixture.state / "contract-publications.audit.jsonl"
-    events = audit.read_text(encoding="utf-8").splitlines()
-    assert len(events) == 2  # retirement + one reactivation authorization
+    assert fixture.manifest.read_bytes() == before
+    assert calls == 0

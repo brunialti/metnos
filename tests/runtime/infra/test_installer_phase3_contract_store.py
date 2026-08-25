@@ -174,26 +174,26 @@ def test_active_rerun_uses_only_layout_aware_publication(monkeypatch) -> None:
 
 
 def test_active_publication_preserves_a_tombstone(monkeypatch, tmp_path) -> None:
+    import executor_birth_intent
+    from manifest_inventory import ContractId, ManifestOrigin
     active = SimpleNamespace(
-        contract_id="core:active/manifest.toml",
+        contract_id=ContractId(ManifestOrigin.CORE, "active/manifest.toml"),
         manifest_dir=tmp_path / "active",
     )
     retired = SimpleNamespace(
-        contract_id="core:retired/manifest.toml",
+        contract_id=ContractId(ManifestOrigin.CORE, "retired/manifest.toml"),
         manifest_dir=tmp_path / "retired",
     )
     monkeypatch.setattr(
         phase3_code, "_clean_authoring_inventory", lambda: (active, retired),
     )
 
-    def publish(directory):
-        if directory == retired.manifest_dir:
-            raise contract_store.ContractStoreError("contract_retired", "signed")
-        return "sha256:" + "a" * 64, directory / "manifest.toml.sig", (
-            SimpleNamespace(repeated=False)
-        )
-
-    monkeypatch.setattr(sign, "publish_authoring_update", publish)
+    monkeypatch.setattr(executor_birth_intent, "require_birth_intent_adapter", lambda: None)
+    def submit(intent):
+        if intent.candidate_source_root == retired.manifest_dir:
+            return SimpleNamespace(error_code="contract_retired", publication=None)
+        return SimpleNamespace(error_code=None, publication=SimpleNamespace(repeated=False))
+    monkeypatch.setattr(executor_birth_intent, "submit_installer_birth", submit)
 
     result = phase3_code._publish_active_authoring_contracts()
 
@@ -209,19 +209,20 @@ def test_active_publication_preserves_a_tombstone(monkeypatch, tmp_path) -> None
 def test_active_publication_does_not_hide_a_cas_conflict(
     monkeypatch, tmp_path,
 ) -> None:
+    import executor_birth_intent
+    from manifest_inventory import ContractId, ManifestOrigin
     ref = SimpleNamespace(
-        contract_id="core:active/manifest.toml",
+        contract_id=ContractId(ManifestOrigin.CORE, "active/manifest.toml"),
         manifest_dir=tmp_path / "active",
     )
     monkeypatch.setattr(
         phase3_code, "_clean_authoring_inventory", lambda: (ref,),
     )
+    monkeypatch.setattr(executor_birth_intent, "require_birth_intent_adapter", lambda: None)
     monkeypatch.setattr(
-        sign,
-        "publish_authoring_update",
-        lambda _directory: (_ for _ in ()).throw(
-            contract_store.ContractStoreError("expected_generation_changed"),
-        ),
+        executor_birth_intent, "submit_installer_birth",
+        lambda _intent: (_ for _ in ()).throw(
+            contract_store.ContractStoreError("expected_generation_changed")),
     )
 
     with pytest.raises(

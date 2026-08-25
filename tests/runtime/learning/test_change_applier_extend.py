@@ -128,7 +128,7 @@ class TestExtendExecutor(unittest.TestCase):
     def test_extend_appends_section_and_creates_rollback(self):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("kind", "string")
-        with mock.patch("change_applier_extend.submit_birth_intent",
+        with mock.patch("change_applier_extend.submit_change_extend_birth",
                         side_effect=self._submit_success):
             effect = extend_executor_manifest(ci)
         self.assertEqual(effect["executor_name"], "find_things")
@@ -149,7 +149,7 @@ class TestExtendExecutor(unittest.TestCase):
     def test_extend_idempotent(self):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("kind", "string")
-        with mock.patch("change_applier_extend.submit_birth_intent",
+        with mock.patch("change_applier_extend.submit_change_extend_birth",
                         side_effect=self._submit_success):
             effect1 = extend_executor_manifest(ci)
             effect2 = extend_executor_manifest(ci)
@@ -183,7 +183,7 @@ class TestExtendExecutor(unittest.TestCase):
     def test_extend_boolean_type(self):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("recursive", "boolean")
-        with mock.patch("change_applier_extend.submit_birth_intent",
+        with mock.patch("change_applier_extend.submit_change_extend_birth",
                         side_effect=self._submit_success):
             effect = extend_executor_manifest(ci)
         self.assertEqual(effect["arg_type"], "boolean")
@@ -196,7 +196,7 @@ class TestExtendExecutor(unittest.TestCase):
         from change_applier_extend import extend_executor_manifest
         ci = self._make_ci("kind", "string")
         original_text = (self.target_dir / "manifest.toml").read_text()
-        with mock.patch("change_applier_extend.submit_birth_intent",
+        with mock.patch("change_applier_extend.submit_change_extend_birth",
                         return_value=self._birth_result(error="birth_unavailable")):
             with self.assertRaises(RuntimeError):
                 extend_executor_manifest(ci)
@@ -208,7 +208,7 @@ class TestExtendExecutor(unittest.TestCase):
         from change_applier_extend import extend_executor_manifest
 
         ci = self._make_ci("kind", "string")
-        with mock.patch("change_applier_extend.submit_birth_intent",
+        with mock.patch("change_applier_extend.submit_change_extend_birth",
                         return_value=self._birth_result(error="registry_unavailable")):
             with self.assertRaisesRegex(RuntimeError, "requires retry"):
                 extend_executor_manifest(ci)
@@ -227,7 +227,7 @@ class TestExtendExecutor(unittest.TestCase):
             manifest.read_text().rstrip()
             + '\n\n[args.properties.kind]\ntype = "string"\n',
         )
-        with mock.patch("change_applier_extend.submit_birth_intent",
+        with mock.patch("change_applier_extend.submit_change_extend_birth",
                         return_value=self._birth_result(error="producer_receipt_replay")) as publisher:
             with self.assertRaisesRegex(RuntimeError, "producer_receipt_replay"):
                 extend_executor_manifest(ci)

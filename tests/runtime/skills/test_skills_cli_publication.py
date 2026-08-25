@@ -17,7 +17,7 @@ def test_import_admission_fails_closed_without_birth_bootstrap(monkeypatch, tmp_
     import executor_birth_intent
     monkeypatch.delenv("METNOS_SKILLS_NO_SIGN", raising=False)
     monkeypatch.setattr(
-        executor_birth_intent, "submit_birth_intent",
+        executor_birth_intent, "submit_skills_birth",
         lambda _intent: (_ for _ in ()).throw(RuntimeError("adapter unavailable")),
     )
     assert skills_cli._try_submit_birth(
@@ -32,7 +32,7 @@ def test_import_admission_reports_store_publication(monkeypatch, tmp_path: Path)
 
     monkeypatch.delenv("METNOS_SKILLS_NO_SIGN", raising=False)
     monkeypatch.setattr(
-        executor_birth_intent, "submit_birth_intent",
+        executor_birth_intent, "submit_skills_birth",
         lambda _intent: SimpleNamespace(
             error_code=None,
             publication=SimpleNamespace(
@@ -52,7 +52,7 @@ def test_import_admission_keeps_failure_explicit(monkeypatch, tmp_path: Path) ->
 
     monkeypatch.delenv("METNOS_SKILLS_NO_SIGN", raising=False)
     monkeypatch.setattr(
-        executor_birth_intent, "submit_birth_intent",
+        executor_birth_intent, "submit_skills_birth",
         lambda _intent: (_ for _ in ()).throw(RuntimeError("commit ambiguous")),
     )
 
@@ -77,14 +77,14 @@ def test_import_reactivates_only_after_authenticated_retirement(
             error_code=None,
             publication=SimpleNamespace(operation="reactivate"),
         )
-    monkeypatch.setattr(executor_birth_intent, "submit_birth_intent", submit)
+    monkeypatch.setattr(executor_birth_intent, "submit_skills_birth", submit)
 
     assert skills_cli._try_submit_birth(
         tmp_path, contract_id=_contract_id(),
     ) == "reactivated"
     assert len(intents) == 1
-    assert intents[0].actor == "skills_cli"
-    assert intents[0].operation == "skill_import_or_reactivation"
+    assert not hasattr(intents[0], "actor")
+    assert not hasattr(intents[0], "operation")
 
 
 def _skill_contracts(tmp_path: Path) -> Path:

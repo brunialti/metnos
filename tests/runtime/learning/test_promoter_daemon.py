@@ -28,6 +28,7 @@ import os
 import shutil
 import sqlite3
 import sys
+from types import SimpleNamespace
 import tempfile
 import time
 import unittest
@@ -393,7 +394,7 @@ class TestAcceptVerdict(_BasePromoterTest):
                  mock.patch("manifest_inventory.resolve_manifest_layout",
                             return_value=ManifestLayout.AUTHORING), \
                  mock.patch("executor_birth_intent.require_birth_intent_adapter"), \
-                 mock.patch("executor_birth_intent.submit_birth_intent") as birth_m, \
+                 mock.patch("executor_birth_intent.submit_promote_birth") as birth_m, \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer2",
                             return_value=(True, "")), \
@@ -440,7 +441,7 @@ class TestAcceptVerdict(_BasePromoterTest):
         ), mock.patch(
             "executor_birth_intent.require_birth_intent_adapter",
         ), mock.patch(
-            "executor_birth_intent.submit_birth_intent",
+            "executor_birth_intent.submit_promote_birth",
             side_effect=[
                 RuntimeError("registry unavailable after pointer commit"),
                 mock.Mock(
@@ -645,7 +646,7 @@ class TestRollbackRestores(_BasePromoterTest):
                  mock.patch("manifest_inventory.resolve_manifest_layout",
                             return_value=ManifestLayout.AUTHORING), \
                  mock.patch("executor_birth_intent.require_birth_intent_adapter"), \
-                 mock.patch("executor_birth_intent.submit_birth_intent") as birth_m, \
+                 mock.patch("executor_birth_intent.submit_promote_birth") as birth_m, \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer2",
                             return_value=(True, "")), \
@@ -716,22 +717,25 @@ class TestRollbackRestores(_BasePromoterTest):
             active_generation_id=active,
         )
         from manifest_inventory import ManifestLayout
+        import executor_birth_intent
+        def submit_birth(intent):
+            shutil.copy2(intent.candidate_source_root / "manifest.toml", target / "manifest.toml")
+            return SimpleNamespace(
+                error_code=None,
+                publication=SimpleNamespace(current_generation_id=prepromotion),
+            )
         with mock.patch(
             "manifest_inventory.resolve_manifest_layout",
             return_value=ManifestLayout.STORE_ONLY,
         ), mock.patch(
-            "sign.rollback_executor_contract",
-        ) as rollback_pointer:
+            "executor_birth_intent.require_birth_intent_adapter",
+        ), mock.patch(
+            "executor_birth_intent.submit_promoter_rollback_birth", side_effect=submit_birth,
+        ) as birth_submit:
             result = rollback_mod.rollback_promotion("proptest_store_rb")
 
         self.assertTrue(result["ok"])
-        rollback_pointer.assert_called_once_with(
-            target,
-            expected_generation_id=active,
-            target_generation_id=prepromotion,
-            actor="promoter_rollback",
-            reason="rollback promotion proposal=proptest_store_rb",
-        )
+        birth_submit.assert_called_once()
         self.assertIn(
             'lifecycle = "synthesized"',
             (target / "manifest.toml").read_text(encoding="utf-8"),
@@ -766,6 +770,49 @@ class TestRollbackRestores(_BasePromoterTest):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "promotion_generation_ids_missing")
         self.assertEqual((target / "manifest.toml").read_bytes(), before)
+
+    def test_store_birth_failure_leaves_authoring_and_blob_unchanged(self):
+        state_mod = self._import_module("promoter_state")
+        promote_mod = self._import_module("promoter_promote")
+        rollback_mod = self._import_module("promoter_rollback")
+        prop = _build_synth_proposal(
+            proposal_id="proptest_store_birth_fail", name="find_packages",
+        )
+        target = _seed_active_ready_candidate(self._synth_dir, prop)
+        blob = self._blob_dir / "proptest_store_birth_fail.tar.gz"
+        promote_mod._write_rollback_blob(target, blob)
+        prepromotion = promote_mod._rollback_blob_generation_id(blob)
+        manifest = target / "manifest.toml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                'lifecycle = "synthesized"', 'lifecycle = "active"',
+            ), encoding="utf-8",
+        )
+        state_mod.upsert_promoted_grace(
+            proposal_id="proptest_store_birth_fail", name="find_packages",
+            blob_path=str(blob), verdict={"verdict": "accept"},
+            practical_example="example", grace_hours=72,
+            prepromotion_generation_id=prepromotion,
+            active_generation_id="sha256:" + "b" * 64,
+        )
+        before_manifest = manifest.read_bytes()
+        before_blob = blob.read_bytes()
+        from manifest_inventory import ManifestLayout
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ), mock.patch(
+            "executor_birth_intent.require_birth_intent_adapter",
+        ), mock.patch(
+            "executor_birth_intent.submit_promoter_rollback_birth",
+            side_effect=RuntimeError("admission rejected"),
+        ):
+            result = rollback_mod.rollback_promotion(
+                "proptest_store_birth_fail",
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(manifest.read_bytes(), before_manifest)
+        self.assertEqual(blob.read_bytes(), before_blob)
 
 
 # ─── 12. Rollback senza blob → fail-loud §2.8 ─────────────────────────────

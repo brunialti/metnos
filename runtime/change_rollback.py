@@ -33,7 +33,7 @@ from change_intents import (
     ChangeIntent,
 )
 from executor_birth_intent import (
-    BirthIntent, require_birth_intent_adapter, submit_birth_intent,
+    BirthIntent, require_birth_intent_adapter, submit_change_rollback_birth,
 )
 
 
@@ -130,11 +130,9 @@ def _rollback_extend_executor(ci: ChangeIntent) -> dict:
     # riconciliare l'authoring dopo l'ammissione.
     try:
         with _stage_candidate(mdir, rollback_bytes) as staging:
-            result = submit_birth_intent(BirthIntent(
+            result = submit_change_rollback_birth(BirthIntent(
                 candidate_source_root=staging, contract_id=contract_id,
-                actor="change_rollback",
                 reason=f"rollback extend_executor change_intent={ci.id}",
-                operation="rollback",
                 approval_refs=(ci.id,),
             ))
         if (getattr(result, "error_code", "invalid_result") is not None

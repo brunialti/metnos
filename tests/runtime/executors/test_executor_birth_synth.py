@@ -7,7 +7,7 @@ from contract_store import PublicationResult
 from executor_birth_operational import BirthResult
 from executor_birth_shadow import BirthOutcome, BirthReport
 from executor_birth_synth import (
-    SynthBirthData, _as_intent, submit_synth_birth,
+    SynthBirthData, _as_intent, submit_synth_approve, submit_synth_specialize,
 )
 from manifest_inventory import ContractId, ManifestOrigin
 
@@ -31,49 +31,47 @@ def _result(*, admitted: bool) -> BirthResult:
 
 
 def test_public_synth_adapter_accepts_data_not_trust_authorities(tmp_path: Path) -> None:
-    assert set(inspect.signature(submit_synth_birth).parameters) == {"data"}
+    assert set(inspect.signature(submit_synth_specialize).parameters) == {"data"}
     assert {"publisher", "registry", "private_key", "checks"}.isdisjoint(
         SynthBirthData.__dataclass_fields__
     )
     data = SynthBirthData(
-        tmp_path, CID, "synt_multistage", "create", "new synthesized executor",
+        tmp_path, CID, "new synthesized executor",
     )
     intent = _as_intent(data)
-    assert intent.actor == "synt_multistage"
-    assert intent.operation == "create"
+    assert not hasattr(intent, "actor")
+    assert not hasattr(intent, "operation")
 
 
 def test_adapter_preserves_specialize_identity_and_admits(tmp_path: Path, monkeypatch) -> None:
     seen = []
     data = SynthBirthData(
-        tmp_path, CID, "synt_specialize", "specialize", "fixed argument variant",
+        tmp_path, CID, "fixed argument variant",
     )
     monkeypatch.setattr(
-        "executor_birth_synth.submit_birth_intent",
+        "executor_birth_synth.submit_synth_specialize_birth",
         lambda intent: seen.append(intent) or _result(admitted=True),
     )
-    result = submit_synth_birth(data)
+    result = submit_synth_specialize(data)
     assert result.publication is not None
-    assert seen[0].actor == "synt_specialize"
-    assert seen[0].operation == "specialize"
+    assert seen[0].reason == "fixed argument variant"
 
 
 def test_rejected_and_replayed_approval_never_claim_publication(tmp_path: Path, monkeypatch) -> None:
     calls = 0
     def one_use(intent):
         nonlocal calls
-        assert intent.actor == "synt_approve"
         calls += 1
         return _result(admitted=calls == 1)
-    monkeypatch.setattr("executor_birth_synth.submit_birth_intent", one_use)
+    monkeypatch.setattr("executor_birth_synth.submit_synth_approve_birth", one_use)
 
     approval = SynthBirthData(
-        tmp_path, CID, "synt_approve", "approve", "human approval",
+        tmp_path, CID, "human approval",
         ("proposal-17",),
     )
-    first = submit_synth_birth(approval)
-    replay = submit_synth_birth(SynthBirthData(
-        tmp_path, CID, "synt_approve", "replay", "approval replay", ("proposal-17",),
+    first = submit_synth_approve(approval)
+    replay = submit_synth_approve(SynthBirthData(
+        tmp_path, CID, "approval replay", ("proposal-17",),
     ))
     assert first.publication is not None
     assert replay.publication is None

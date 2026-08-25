@@ -286,7 +286,7 @@ class TestRollback(unittest.TestCase):
         with mock.patch("change_rollback.require_birth_intent_adapter"), \
                 mock.patch("change_applier_extend._contract_id",
                            return_value=contract_id), \
-                mock.patch("change_rollback.submit_birth_intent",
+                mock.patch("change_rollback.submit_change_rollback_birth",
                            side_effect=submit) as birth:
             effect = self.cr.rollback_for_kind(ci)
         self.assertEqual(manifest.read_text(encoding="utf-8"), original)
@@ -300,7 +300,7 @@ class TestRollback(unittest.TestCase):
                 mock.patch("change_applier_extend._contract_id",
                            return_value=contract_id), \
                 mock.patch(
-                    "change_rollback.submit_birth_intent",
+                    "change_rollback.submit_change_rollback_birth",
                     return_value=self._birth_result(
                         contract_id, error="producer_receipt_replay"),
                 ):

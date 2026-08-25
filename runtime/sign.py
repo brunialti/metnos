@@ -53,6 +53,15 @@ class ManifestSignatureError(ValueError):
     """The supplied bytes are not authorized by any trusted public key."""
 
 
+def _refuse_store_only_bypass(operation: str) -> None:
+    """Keep this legacy/offline module from becoming a post-cutover writer."""
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        raise RuntimeError(
+            f"{operation} is unavailable in STORE_ONLY; submit an Executor Birth intent"
+        )
+
+
 def sign_manifest_bytes(
     manifest_bytes: bytes,
     *,
@@ -510,6 +519,7 @@ def publish_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     one conditional operation.
     """
 
+    _refuse_store_only_bypass("publish")
     from contract_store import (
         ContractStoreError,
         current_revision_id,
@@ -651,6 +661,7 @@ def reactivate_executor_contract(
     the wrapper authenticates the current tombstone again under the store's
     CAS protocol and records the authorization durably before committing.
     """
+    _refuse_store_only_bypass("reactivate")
     from audit_jsonl import append_unique_jsonl
     from contract_store import (
         ContractRetirement,
@@ -702,6 +713,7 @@ def rollback_executor_contract(
     reason: str,
 ):
     """Move one live binding back to an authenticated immutable generation."""
+    _refuse_store_only_bypass("rollback")
     from audit_jsonl import append_unique_jsonl
     from contract_store import rollback
     from i18n_pipeline import reconcile_published_contract_registry
@@ -739,6 +751,7 @@ def main():
         print(f"keypair generato: {priv.name} (priv 600), {pub.name} (pub 644) in {KEYS_DIR}")
 
     elif cmd == "sign":
+        _refuse_store_only_bypass("sign")
         if len(sys.argv) < 3:
             print("Usage: sign <manifest_dir> [key_name]"); sys.exit(2)
         manifest_dir = sys.argv[2]
@@ -750,6 +763,7 @@ def main():
         )
 
     elif cmd == "publish":
+        _refuse_store_only_bypass("publish")
         if len(sys.argv) < 3:
             print("Usage: publish <manifest_dir> [key_name]"); sys.exit(2)
         manifest_dir = sys.argv[2]
@@ -775,6 +789,7 @@ def main():
             sys.exit(1)
 
     elif cmd == "sign-all":
+        _refuse_store_only_bypass("sign-all")
         # Firma-di-massa per l'INSTALLAZIONE: genera la keypair locale 'author'
         # se manca, poi firma OGNI executor (manifest.toml) sotto la executors
         # dir. Senza questo passo una install fresca lascia il catalogo VUOTO:

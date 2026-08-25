@@ -487,21 +487,19 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
         directories.append((name, directory))
         if sign_first:
             try:
-                from executor_birth_intent import BirthIntent, submit_birth_intent
+                from executor_birth_intent import BirthIntent, submit_stack_reconcile_birth
                 from manifest_inventory import ContractId, ManifestOrigin
                 with tempfile.TemporaryDirectory(
                     prefix=f"metnos-reconcile-{name}-birth-",
                 ) as raw_staging:
                     staging = Path(raw_staging) / name
                     shutil.copytree(directory, staging)
-                    birth = submit_birth_intent(BirthIntent(
+                    birth = submit_stack_reconcile_birth(BirthIntent(
                         candidate_source_root=staging,
                         contract_id=ContractId(
                             ManifestOrigin.CORE, f"{name}/manifest.toml",
                         ),
-                        actor="stack_reconcile",
                         reason=f"restart admission executor={name}",
-                        operation="restart_sign_first",
                     ))
             except Exception as exc:
                 raise StackFailure("birth_unavailable", str(exc)) from exc

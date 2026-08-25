@@ -20,7 +20,7 @@ from pathlib import Path
 from synt_multistage import run_full as multistage_run_full
 from loader import SYNTHESIZED_EXECUTORS_DIR
 from executor_birth_synth import (
-    SynthBirthData, require_synth_birth_service, submit_synth_birth,
+    SynthBirthData, require_synth_birth_service, submit_synth_multistage,
 )
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
 from messages import get as _msg
@@ -275,11 +275,9 @@ def _install_synthesized(run, intent, user_query):
 
     import shutil
     try:
-        birth = submit_synth_birth(SynthBirthData(
+        birth = submit_synth_multistage(SynthBirthData(
             candidate_root=out_dir,
             contract_id=ContractId(ManifestOrigin.USER, f"{run.name}/manifest.toml"),
-            producer="synt_multistage",
-            operation="create",
             reason=f"synt multistage: {intent}",
         ))
     finally:
@@ -441,13 +439,11 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
                 authoring_path = _existing_candidate.authoring_manifest_path
                 if authoring_path is None:
                     raise RuntimeError("candidate authoring provenance missing")
-                birth = submit_synth_birth(SynthBirthData(
+                birth = submit_synth_multistage(SynthBirthData(
                     candidate_root=authoring_path.parent,
                     contract_id=ContractId(
                         ManifestOrigin.USER, f"{expected_name}/manifest.toml",
                     ),
-                    producer="synt_multistage",
-                    operation="replay",
                     reason=f"replay synthesized candidate {expected_name}",
                 ))
                 if birth.publication is None:

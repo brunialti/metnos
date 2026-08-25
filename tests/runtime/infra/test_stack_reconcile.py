@@ -644,7 +644,7 @@ def test_named_executor_store_verification_uses_live_catalog(
     )
     published = []
     monkeypatch.setattr(
-        executor_birth_intent, "submit_birth_intent",
+            executor_birth_intent, "submit_stack_reconcile_birth",
         lambda intent: (
             published.append(intent.candidate_source_root)
             or SimpleNamespace(
@@ -694,7 +694,7 @@ def test_named_executor_legacy_verification_keeps_signature_boundary(
     )
     published = []
     monkeypatch.setattr(
-        executor_birth_intent, "submit_birth_intent",
+            executor_birth_intent, "submit_stack_reconcile_birth",
         lambda intent: (
             published.append(intent.candidate_source_root)
             or SimpleNamespace(

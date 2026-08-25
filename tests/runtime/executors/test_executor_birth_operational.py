@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import inspect
 import shutil
+import threading
 import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from contract_store import PublicationResult
@@ -14,9 +16,12 @@ from executor_birth_identity import (
     AdmissionContextV1, ContextComponent, ExecutorOrigin, RevisionAuthor,
 )
 from executor_birth_operational import (
-    BirthRequest, _birth_executor_for_test, _sealed_core_for_test,
+    BirthRequest, _assemble_birth_runtime_bundle, _birth_executor_for_test,
+    _install_birth_runtime_bundle, _runtime_bundle_snapshot, _sealed_core_for_test,
     birth_executor, candidate_source_id,
 )
+import executor_birth_operational as operational
+import executor_birth_intent as intent_api
 from executor_birth_producer_store import register_producer_receipt
 from executor_birth_receipts import (
     IssuerKey, IssuerRegistry, issue_producer_receipt,
@@ -158,3 +163,73 @@ def test_publisher_failure_is_a_rejection_not_a_false_admission(tmp_path):
     assert result.report.outcome is BirthOutcome.REJECTED
     assert result.report.error_code == "birth_unavailable"
     assert result.publication is None
+
+
+def test_runtime_bundle_install_is_atomic_and_install_once(monkeypatch, tmp_path):
+    request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
+    capability = intent_api._producer_capabilities_for_bootstrap()[0]
+    bundle = _assemble_birth_runtime_bundle(core, {capability: lambda _intent: request})
+    monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
+    barrier = threading.Barrier(3)
+    outcomes = []
+
+    def install() -> None:
+        barrier.wait()
+        try:
+            _install_birth_runtime_bundle(bundle)
+            outcomes.append("installed")
+        except ValueError as exc:
+            outcomes.append(str(exc))
+
+    threads = [threading.Thread(target=install) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join()
+    assert outcomes.count("installed") == 1
+    assert outcomes.count("birth_runtime_bundle_already_installed") == 1
+    snapshot = _runtime_bundle_snapshot()
+    assert snapshot is bundle
+    assert snapshot.core is core
+    assert snapshot.producer_factories[capability](
+        intent_api.BirthIntent(tmp_path, request.manifest_ref.contract_id, "test")
+    ) is request
+
+
+def test_racing_readers_never_observe_a_partial_runtime(monkeypatch, tmp_path):
+    request, core = _fixture(tmp_path, lambda *_args, **_kwargs: None)
+    capability = intent_api._producer_capabilities_for_bootstrap()[0]
+    bundle = _assemble_birth_runtime_bundle(core, {capability: lambda _intent: request})
+    monkeypatch.setattr(operational, "_RUNTIME_BUNDLE", None)
+    barrier = threading.Barrier(9)
+    observations = []
+
+    def read() -> None:
+        barrier.wait()
+        snapshot = _runtime_bundle_snapshot()
+        observations.append(None if snapshot is None else (
+            snapshot.core, snapshot.producer_factories.get(capability),
+        ))
+
+    readers = [threading.Thread(target=read) for _ in range(8)]
+    for reader in readers:
+        reader.start()
+    barrier.wait()
+    _install_birth_runtime_bundle(bundle)
+    for reader in readers:
+        reader.join()
+    assert all(item is None or (item[0] is core and callable(item[1]))
+               for item in observations)
+
+
+def test_forged_actor_cannot_be_expressed_or_select_another_capability(tmp_path):
+    with pytest.raises(TypeError):
+        intent_api.BirthIntent(
+            tmp_path, ContractId(ManifestOrigin.USER, "x/manifest.toml"), "reason",
+            actor="promoter",  # type: ignore[call-arg]
+        )
+    capability = intent_api._producer_capabilities_for_bootstrap()[0]
+    forged = object()
+    assert capability is not forged
+    assert not intent_api._is_producer_capability(forged)
