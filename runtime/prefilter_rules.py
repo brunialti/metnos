@@ -290,6 +290,7 @@ _PRODUCER_COMPAT = {
 # Cache deterministica del corpus rare tokens.
 
 _RARE_TOKENS_CACHE: Optional[set[str]] = None
+_RARE_TOKENS_CATALOG_ID: Optional[str] = None
 
 
 def _build_rare_tokens(catalog) -> set[str]:
@@ -311,10 +312,14 @@ def _build_rare_tokens(catalog) -> set[str]:
 
 
 def init_rare_tokens(catalog) -> None:
-    """Inizializza cache rare-tokens al primo call. Idempotente."""
-    global _RARE_TOKENS_CACHE
-    if _RARE_TOKENS_CACHE is None:
+    """Build the token index once per common RM-0008 catalog identity."""
+    global _RARE_TOKENS_CACHE, _RARE_TOKENS_CATALOG_ID
+    from executor_catalog_identity import catalog_identity
+    catalog = list(catalog)
+    identity = catalog_identity(catalog)
+    if _RARE_TOKENS_CACHE is None or _RARE_TOKENS_CATALOG_ID != identity:
         _RARE_TOKENS_CACHE = _build_rare_tokens(catalog)
+        _RARE_TOKENS_CATALOG_ID = identity
 
 
 def compute_input_coverage_score(query_tokens: set, query_raw: str,

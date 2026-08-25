@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey, Ed25519PublicKey,
 )
@@ -210,6 +211,7 @@ def _open(path: Path) -> sqlite3.Connection:
     connection = sqlite3.connect(str(path), isolation_level=None, timeout=5)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys=ON")
+    connection.execute("PRAGMA synchronous=FULL")
     connection.executescript(_SCHEMA)
     return connection
 
@@ -232,6 +234,13 @@ def put_node(key: NodeKey, *, state: NodeState, created_at: str,
         version = 1 if row is None else int(row["object_version"]) + 1
         if row is not None and row["state"] == NodeState.DELETED.value:
             raise RetentionError("retention_state_changed", "deleted tombstone")
+        deleting = connection.execute(
+            "SELECT 1 FROM retention_candidates WHERE node_type=? AND node_id=? "
+            "AND status='deleting' LIMIT 1",
+            (key.node_type.value, key.node_id),
+        ).fetchone()
+        if deleting is not None:
+            raise RetentionError("retention_state_changed", "object deleting")
         connection.execute(
             "INSERT INTO retention_nodes VALUES(?,?,?,?,?,?,?) ON CONFLICT(node_type,node_id) "
             "DO UPDATE SET object_version=excluded.object_version,state=excluded.state,"
@@ -418,11 +427,16 @@ def mark(*, run_id: str, observed_at: str, db_path: Path) -> tuple[NodeKey, ...]
 _RECEIPT_DOMAIN = b"metnos.executor-birth.retention-receipt/v1\0"
 
 
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=True)
+
+
 def _receipt_payload(key: NodeKey, run_id: str, version: int, deleted_at: str) -> bytes:
-    return json.dumps({"deleted_at": deleted_at, "node_id": key.node_id,
-                       "node_type": key.node_type.value, "object_version": version,
-                       "run_id": run_id}, sort_keys=True,
-                      separators=(",", ":")).encode("utf-8")
+    return _canonical_json({"deleted_at": deleted_at, "node_id": key.node_id,
+                            "node_type": key.node_type.value,
+                            "object_version": version, "run_id": run_id,
+                            "schema_version": 1}).encode("ascii")
 
 
 def _receipt(key: NodeKey, run_id: str, version: int, deleted_at: str,
@@ -432,34 +446,77 @@ def _receipt(key: NodeKey, run_id: str, version: int, deleted_at: str,
     identity = _text(key_id, "receipt key id")
     signature = private_key.sign(_RECEIPT_DOMAIN + _receipt_payload(
         key, run_id, version, deleted_at))
-    return "ed25519:" + identity + ":" + base64.b64encode(signature).decode("ascii")
+    return _canonical_json({
+        "algorithm": "ed25519", "key_id": identity, "schema_version": 1,
+        "signature": base64.b64encode(signature).decode("ascii"),
+    })
+
+
+def _strict_json_object(raw: str) -> dict[str, object]:
+    def pairs(items: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for name, value in items:
+            if name in result:
+                raise ValueError("duplicate key")
+            result[name] = value
+        return result
+    if not isinstance(raw, str) or len(raw.encode("utf-8")) > 1024:
+        raise ValueError("authentication envelope")
+    value = json.loads(raw, object_pairs_hook=pairs)
+    if not isinstance(value, dict) or _canonical_json(value) != raw:
+        raise ValueError("noncanonical authentication envelope")
+    return value
 
 
 def verify_minimal_receipt(*, key: NodeKey, run_id: str, object_version: int,
                            deleted_at: str, authentication: str,
-                           public_keys: dict[str, Ed25519PublicKey]) -> str:
+                           public_keys: Mapping[str, Ed25519PublicKey]) -> str:
     """Verify an authenticated, deliberately non-personal deletion receipt."""
     try:
-        algorithm, key_id, encoded = authentication.split(":", 2)
-        if algorithm != "ed25519" or not _ID.fullmatch(key_id):
+        envelope = _strict_json_object(authentication)
+        if set(envelope) != {"algorithm", "key_id", "schema_version", "signature"}:
+            raise ValueError
+        algorithm, key_id = envelope["algorithm"], envelope["key_id"]
+        encoded = envelope["signature"]
+        if (algorithm != "ed25519" or envelope["schema_version"] != 1
+                or isinstance(envelope["schema_version"], bool)
+                or not isinstance(key_id, str) or not _ID.fullmatch(key_id)
+                or not isinstance(encoded, str)):
             raise ValueError
         signature = base64.b64decode(encoded, validate=True)
+        if len(signature) != 64 or base64.b64encode(signature).decode("ascii") != encoded:
+            raise ValueError
         public_key = public_keys[key_id]
         if not isinstance(public_key, Ed25519PublicKey):
             raise ValueError
         public_key.verify(signature, _RECEIPT_DOMAIN + _receipt_payload(
             key, _text(run_id, "run_id"), object_version, _timestamp(deleted_at)))
-    except (InvalidSignature, KeyError, TypeError, ValueError) as exc:
+    except (InvalidSignature, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise RetentionError("retention_invalid", "minimal receipt authentication") from exc
     return key_id
 
 
 def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
           receipt_private_key: Ed25519PrivateKey, db_path: Path,
+          receipt_public_keys: Mapping[str, Ed25519PublicKey],
           delete_object: Callable[[NodeKey, GenerationDeletionGuard | None], None] | None = None,
           before_each: Callable[[NodeKey], None] | None = None) -> SweepResult:
     """Second pass: re-mark under a write lock and CAS every candidate."""
     run, now = _text(run_id, "run_id"), _timestamp(observed_at)
+    active_key_id = _text(receipt_key_id, "receipt key id")
+    if delete_object is None:
+        raise RetentionError("retention_partial", "delete callback absent")
+    try:
+        registered_active = receipt_public_keys[active_key_id]
+        active_public = receipt_private_key.public_key()
+        registered_raw = registered_active.public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        active_raw = active_public.public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise RetentionError("retention_invalid", "receipt key registry") from exc
+    if registered_raw != active_raw:
+        raise RetentionError("retention_invalid", "active receipt key mismatch")
     deleted: list[NodeKey] = []
     preserved: list[tuple[NodeKey, CandidateStatus]] = []
     # A callback is a test/embedding seam and runs before acquiring the lock so
@@ -513,15 +570,40 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
                 status = CandidateStatus.WINDOW_OPEN
             elif (key.node_type.value, key.node_id) in _reachable(connection):
                 status = CandidateStatus.REFERENCED
+            elif key.node_type is NodeType.GENERATION and connection.execute(
+                    "SELECT 1 FROM retention_edges WHERE (source_type=? AND source_id=?) "
+                    "OR (target_type=? AND target_id=?) LIMIT 1",
+                    (key.node_type.value, key.node_id,
+                     key.node_type.value, key.node_id)).fetchone() is not None:
+                # Generations have a stricter rule than generic graph leaves:
+                # no closed reference may be removed merely as part of sweep.
+                status = CandidateStatus.REFERENCED
             if status is CandidateStatus.DELETED:
                 # Persist the signed receipt and per-object intent first.  The
                 # triggers above freeze references to this object, so a crash
                 # can safely resume the idempotent callback.
-                auth = _receipt(key, run, int(node["object_version"]), now,
-                                receipt_key_id, receipt_private_key)
-                connection.execute("INSERT OR IGNORE INTO retention_receipts VALUES(?,?,?,?,?,?)",
-                                   (run, key.node_type.value, key.node_id,
-                                    node["object_version"], now, auth))
+                existing_receipt = connection.execute(
+                    "SELECT run_id,object_version,deleted_at,authentication "
+                    "FROM retention_receipts WHERE node_type=? AND node_id=?",
+                    (key.node_type.value, key.node_id),
+                ).fetchone()
+                if existing_receipt is None:
+                    auth = _receipt(key, run, int(node["object_version"]), now,
+                                    receipt_key_id, receipt_private_key)
+                    connection.execute("INSERT INTO retention_receipts VALUES(?,?,?,?,?,?)",
+                                       (run, key.node_type.value, key.node_id,
+                                        node["object_version"], now, auth))
+                elif (existing_receipt["run_id"] != run
+                      or int(existing_receipt["object_version"]) != int(node["object_version"])):
+                    raise RetentionError("retention_state_changed", "receipt conflict")
+                else:
+                    verify_minimal_receipt(
+                        key=key, run_id=run,
+                        object_version=int(existing_receipt["object_version"]),
+                        deleted_at=existing_receipt["deleted_at"],
+                        authentication=existing_receipt["authentication"],
+                        public_keys=receipt_public_keys,
+                    )
                 connection.execute(
                     "UPDATE retention_candidates SET status='deleting' WHERE run_id=? "
                     "AND node_type=? AND node_id=?",
@@ -547,12 +629,12 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
                     }
                     if roots & forbidden or references is not None:
                         raise RetentionError("retention_referenced", "generation safeguard")
-                    if delete_object is None:
-                        raise RetentionError("retention_partial", "generation delete callback absent")
                     guard = GenerationDeletionGuard(True, True, True, True,
                                                     int(marked["observed_version"]))
-                if delete_object is not None:
+                try:
                     delete_object(key, guard)
+                except Exception as exc:
+                    raise RetentionError("retention_partial", "delete callback failed") from exc
 
                 connection.execute("BEGIN IMMEDIATE")
                 changed = connection.execute(
@@ -572,6 +654,9 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
                     "AND node_type=? AND node_id=?",
                     (run, key.node_type.value, key.node_id),
                 )
+                connection.execute(
+                    "UPDATE retention_meta SET graph_version=graph_version+1 WHERE singleton=1"
+                )
                 connection.commit()
                 deleted.append(key)
             else:
@@ -587,7 +672,11 @@ def sweep(*, run_id: str, observed_at: str, receipt_key_id: str,
             connection.close()
     connection = _open(db_path)
     try:
-        final_state = "complete" if not preserved else "partial"
+        unfinished = connection.execute(
+            "SELECT 1 FROM retention_candidates WHERE run_id=? AND status!='deleted' LIMIT 1",
+            (run,),
+        ).fetchone()
+        final_state = "partial" if unfinished is not None else "complete"
         connection.execute("UPDATE retention_runs SET state=? WHERE run_id=?", (final_state, run))
     finally:
         connection.close()

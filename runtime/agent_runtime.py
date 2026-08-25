@@ -47,10 +47,83 @@ from credential_intake import (
     is_password_label,
     scrub_sensitive_text as _scrub_credentials,
 )
-from executor_birth_feedback import ExecutionReceipt
+from executor_birth_feedback import (
+    EXECUTION_RECEIPT_RESULT_KEY, ExecutionReceipt, FeedbackError, make_execution_receipt,
+    dispatch_identifier_reference, reduce_retainable_payload,
+    reduced_query_reference, utc_now_seconds,
+)
+from manifest_inventory import ContractId, ManifestOrigin
 
 # Executor che PRODUCONO un file deliverable (consegna su ogni canale §7.3).
 _FILE_PRODUCER_PREFIXES = ("create_", "write_", "render_", "compress_")
+
+
+def _dispatch_contract_id(value: object) -> ContractId:
+    """Parse the catalog's authenticated structural identity, exactly."""
+    if not isinstance(value, str) or value.count(":") != 1:
+        raise FeedbackError("feedback_binding_invalid", "contract_id")
+    origin, relative = value.split(":", 1)
+    try:
+        contract = ContractId(ManifestOrigin(origin), relative)
+    except (TypeError, ValueError) as exc:
+        raise FeedbackError("feedback_binding_invalid", "contract_id") from exc
+    if contract.value != value:
+        raise FeedbackError("feedback_binding_invalid", "contract_id")
+    return contract
+
+
+def _authenticated_dispatch_candidate_id(
+    executor: object, contract_id: ContractId, generation_id: str,
+) -> str:
+    """Resolve candidate identity from the signed AdmissionReceipt.
+
+    Catalog objects intentionally do not accept a caller-provided candidate
+    identifier.  The productive Birth bundle owns the verifier keyring, and
+    the receipt adjacent to the immutable generation is the sole authority.
+    """
+    from contract_store import authenticate_execution_binding
+    from executor_birth_operational import _runtime_bundle_snapshot
+
+    bundle = _runtime_bundle_snapshot()
+    if bundle is None:
+        raise FeedbackError("feedback_binding_invalid", "candidate_id")
+    try:
+        binding = authenticate_execution_binding(
+            contract_id,
+            generation_id,
+            trusted_publics=bundle.core.publisher_options["trusted_publics"],
+            admission_verifier_keys=bundle.core.admission_verifier_keys,
+        )
+    except Exception as exc:
+        raise FeedbackError("feedback_binding_invalid", "candidate_id") from exc
+    if binding.executor_name != getattr(executor, "name", None):
+        raise FeedbackError("feedback_binding_invalid", "executor_name")
+    return binding.candidate_id
+
+
+def _execution_receipt_for_dispatch(
+    executor: object, *, arguments: dict, output: dict, request_id: str,
+    turn_id: str, reduced_query_ref: str, dispatched_at: str, completed_at: str,
+) -> ExecutionReceipt:
+    """Bind one completed call only when every authenticated field exists."""
+    contract_id = _dispatch_contract_id(getattr(executor, "contract_id", None))
+    generation_id = getattr(executor, "generation_id", None)
+    candidate_id = _authenticated_dispatch_candidate_id(
+        executor, contract_id, generation_id,
+    )
+    return make_execution_receipt(
+        request_id=request_id,
+        turn_id=dispatch_identifier_reference("turn", turn_id),
+        reduced_query_ref=reduced_query_ref,
+        arguments=reduce_retainable_payload(arguments),
+        reduced_output=reduce_retainable_payload(output),
+        contract_id=contract_id,
+        executor_name=getattr(executor, "name", None),
+        candidate_id=candidate_id,
+        generation_id=generation_id,
+        dispatched_at=dispatched_at,
+        completed_at=completed_at,
+    )
 
 
 def _derive_file_attachments(tool, res: dict) -> list:
@@ -6549,6 +6622,13 @@ def _run_engine(
     _catalog_by_name = {
         e.name: e for e in catalog if getattr(e, "name", None)
     }
+    try:
+        _dispatch_query_ref = reduced_query_reference(query)
+    except FeedbackError:
+        # A malformed query cannot acquire a durable feedback binding.  The
+        # ordinary invocation remains available; later negative feedback must
+        # fail closed before quarantine because StepLog has no receipt.
+        _dispatch_query_ref = ""
 
     def _attach_presentation_contract(tool_name: str, result: object) -> object:
         """Carry producer-owned rendering metadata into the shared engine.
@@ -6598,8 +6678,10 @@ def _run_engine(
             return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                      "error_class": "tool_unknown"}
         try:
+            _receipt_dispatched_at = utc_now_seconds()
+            _effective_args = _effective_executor_args(tool_name, args)
             result = invoke_executor(
-                exec_obj, _effective_executor_args(tool_name, args),
+                exec_obj, _effective_args,
                 timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
                 autonomy="supervised", turn_id=turn_id,
                 actor=actor, channel=channel, target_device=_target_name,
@@ -6627,32 +6709,116 @@ def _run_engine(
                     )
                     if bound is not None:
                         result = bound
+            # The receipt is created only after completion, from the exact
+            # authenticated catalog binding captured for this dispatch.  An
+            # incomplete/pre-cutover executor deliberately leaves StepLog
+            # without a receipt; feedback then returns
+            # ``feedback_binding_invalid`` before any quarantine callback.
+            if isinstance(result, dict) and _dispatch_query_ref:
+                try:
+                    receipt = _execution_receipt_for_dispatch(
+                        exec_obj,
+                        arguments=_effective_args,
+                        output=result,
+                        request_id=source_request_id,
+                        turn_id=turn_id,
+                        reduced_query_ref=_dispatch_query_ref,
+                        dispatched_at=_receipt_dispatched_at,
+                        completed_at=utc_now_seconds(),
+                    )
+                except (FeedbackError, TypeError, ValueError):
+                    receipt = None
+                if receipt is not None:
+                    result = dict(result)
+                    result[EXECUTION_RECEIPT_RESULT_KEY] = receipt
             return _attach_presentation_contract(tool_name, result)
         except Exception as ex:
-            return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
-                     "error_class": "exception"}
+            failure = {"ok": False, "error": f"{type(ex).__name__}: {ex}",
+                       "error_class": "exception"}
+            # Executor exceptions are completed dispatches too.  Preserve an
+            # exact binding when the authenticated identity is available;
+            # never let receipt construction disguise the original failure.
+            if (_dispatch_query_ref and "_receipt_dispatched_at" in locals()
+                    and "_effective_args" in locals()):
+                try:
+                    failure[EXECUTION_RECEIPT_RESULT_KEY] = (
+                        _execution_receipt_for_dispatch(
+                            exec_obj,
+                            arguments=_effective_args,
+                            output=failure,
+                            request_id=source_request_id,
+                            turn_id=turn_id,
+                            reduced_query_ref=_dispatch_query_ref,
+                            dispatched_at=_receipt_dispatched_at,
+                            completed_at=utc_now_seconds(),
+                        )
+                    )
+                except (FeedbackError, TypeError, ValueError):
+                    pass
+            return failure
 
     def _submit(tool_name: str, args: dict):
         """Async twin used only after the engine and scheduler both admit it."""
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None or tool_name in _BUILTIN_TOOL_HANDLERS:
             raise ValueError(f"tool '{tool_name}' is not async-admissible")
+        _receipt_dispatched_at = utc_now_seconds()
+        _effective_args = _effective_executor_args(tool_name, args)
         future = submit_executor(
-            exec_obj, _effective_executor_args(tool_name, args),
+            exec_obj, _effective_args,
             timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
             autonomy="supervised", turn_id=turn_id,
             actor=actor, channel=channel, target_device=_target_name,
             owner_user_id=owner_user_id)
         contract = getattr(exec_obj, "presentation", None)
-        if contract and hasattr(future, "add_done_callback"):
+        if hasattr(future, "add_done_callback"):
+            from concurrent.futures import Future
+            completed = Future()
+
             def _attach_when_done(done_future) -> None:
                 try:
                     result = done_future.result()
+                except Exception as ex:
+                    if type(ex).__name__ == "TimeoutExpired":
+                        result = {
+                            "ok": False, "error_class": "timeout",
+                            "error": msg(
+                                "ERR_EXECUTOR_TIMEOUT", tool=tool_name,
+                                seconds=int(getattr(ex, "timeout", None) or 0),
+                            ),
+                        }
+                    else:
+                        result = {
+                            "ok": False,
+                            "error": f"{type(ex).__name__}: {ex}",
+                            "error_class": "exception",
+                        }
+                try:
                     if isinstance(result, dict):
-                        result.setdefault("_presentation_contract", contract)
-                except Exception:
-                    pass
+                        result = dict(result)
+                        if _dispatch_query_ref:
+                            try:
+                                receipt = _execution_receipt_for_dispatch(
+                                    exec_obj,
+                                    arguments=_effective_args,
+                                    output=result,
+                                    request_id=source_request_id,
+                                    turn_id=turn_id,
+                                    reduced_query_ref=_dispatch_query_ref,
+                                    dispatched_at=_receipt_dispatched_at,
+                                    completed_at=utc_now_seconds(),
+                                )
+                            except (FeedbackError, TypeError, ValueError):
+                                receipt = None
+                            if receipt is not None:
+                                result[EXECUTION_RECEIPT_RESULT_KEY] = receipt
+                        if contract:
+                            result.setdefault("_presentation_contract", contract)
+                    completed.set_result(result)
+                except BaseException as exc:
+                    completed.set_exception(exc)
             future.add_done_callback(_attach_when_done)
+            return completed
         return future
 
     def _can_parallelize(tool_name: str) -> bool:
@@ -6814,7 +6980,13 @@ def _run_engine(
             sl.raw_args = dict(s.args)
             sl.resolved_args = dict(s.args)
             sl.exec_ms = s.latency_ms
-            sl.result = s.result
+            _step_result = dict(s.result) if isinstance(s.result, dict) else s.result
+            if isinstance(_step_result, dict):
+                _step_result.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
+            _receipt = getattr(s, "execution_receipt", None)
+            if isinstance(_receipt, ExecutionReceipt):
+                sl.execution_receipt = _receipt
+            sl.result = _step_result
             steps_out.append(sl)
             # §7.3: propaga needs_inputs all'upstream per dialog handling
             if isinstance(s.result, dict) and s.result.get("decision") == "needs_inputs":

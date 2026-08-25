@@ -12,6 +12,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+from collections.abc import Mapping
+from dataclasses import fields, is_dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -22,22 +26,17 @@ _ENTRY_LEGACY_DOMAIN = b"metnos.catalog-entry/legacy-fallback/v1\0"
 _CATALOG_DOMAIN = b"metnos.executor-catalog/v1\0"
 _IDENTITY_PREFIX = "eci1-"
 
-# These are the effective manifest/catalog attributes which can affect
-# selection, presentation, invocation, or a prefilter corpus.  Published
-# entries need no projection: generation_id already commits their admitted
-# material.  The projection is deliberately broad for the transitional
-# virtual/legacy domains so a manifest-only edit cannot retain stale caches.
-_FALLBACK_FIELDS = (
-    "name", "version", "description", "affinity", "args_schema",
-    "capabilities", "tests", "revertible", "superseded_by",
-    "reverse_pattern", "deprecation_ttl_hours", "dormant",
-    "dormant_reason", "sandbox_profile", "provenance", "placement", "undo",
-    "complexity", "planning_companions", "planning_object_aliases",
-    "platforms", "digest", "contract_id", "executor_standard",
-    "standard_state", "membership", "source", "intelligence", "transport",
-    "output_schema", "presentation", "execution_policy",
-    "execution_policy_declared", "managed_dependencies",
-)
+# These locations describe the installation, not the effective catalog
+# contract.  Their *field names* remain in the projection through a constant
+# marker, so adding/removing one is still visible without making identities
+# host-path-dependent.
+_DEPLOYMENT_PATH_FIELDS = frozenset({
+    "code_path", "manifest_path", "authoring_manifest_path",
+})
+
+
+class CatalogIdentityError(ValueError):
+    """An effective catalog value has no deterministic canonical encoding."""
 
 
 def _hash(domain: bytes, payload: bytes) -> str:
@@ -47,15 +46,35 @@ def _hash(domain: bytes, payload: bytes) -> str:
 
 def _json_value(value: Any) -> Any:
     """Convert loaded catalog values to a deterministic JSON projection."""
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, Path):
-        # Paths are deployment location, not executor semantics.
-        return value.name
-    if isinstance(value, dict):
+    if isinstance(value, Enum):
         return {
-            str(key): _json_value(item)
-            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            "$enum": f"{type(value).__module__}.{type(value).__qualname__}",
+            "value": _json_value(value.value),
+        }
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise CatalogIdentityError("non-finite float in catalog identity")
+        return value
+    if isinstance(value, bytes):
+        return {"$bytes_hex": value.hex()}
+    if isinstance(value, Path):
+        return {"$path": value.as_posix()}
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise CatalogIdentityError("non-string mapping key in catalog identity")
+        return {
+            key: _json_value(value[key])
+            for key in sorted(value)
+        }
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            "$dataclass": f"{type(value).__module__}.{type(value).__qualname__}",
+            "fields": {
+                field.name: _json_value(getattr(value, field.name))
+                for field in fields(value)
+            },
         }
     if isinstance(value, (list, tuple)):
         return [_json_value(item) for item in value]
@@ -63,9 +82,9 @@ def _json_value(value: Any) -> Any:
         normalized = [_json_value(item) for item in value]
         return sorted(normalized, key=lambda item: json.dumps(
             item, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
-    if hasattr(value, "__dict__"):
-        return _json_value(vars(value))
-    return repr(value)
+    raise CatalogIdentityError(
+        "unsupported catalog identity value: "
+        f"{type(value).__module__}.{type(value).__qualname__}")
 
 
 def _canonical_json(value: Any) -> bytes:
@@ -84,6 +103,28 @@ def _is_virtual(entry: Any) -> bool:
     return isinstance(manifest_path, (str, Path)) and Path(manifest_path).suffix == ".py"
 
 
+def _entry_fields(entry: Any) -> dict[str, Any]:
+    """Read every effective field; future fields are included automatically."""
+    if is_dataclass(entry) and not isinstance(entry, type):
+        names = [field.name for field in fields(entry)]
+    elif hasattr(entry, "__dict__"):
+        names = list(vars(entry))
+    else:
+        raise CatalogIdentityError("catalog entry has no inspectable fields")
+    private = sorted(name for name in names if name.startswith("_"))
+    if private:
+        raise CatalogIdentityError(
+            f"unknown private catalog fields: {', '.join(private)}")
+    projection = {}
+    for name in sorted(names):
+        projection[name] = (
+            {"$excluded": "deployment-path"}
+            if name in _DEPLOYMENT_PATH_FIELDS
+            else getattr(entry, name)
+        )
+    return projection
+
+
 def catalog_entry_identity(entry: Any) -> str:
     """Return the identity of an entry's effective cache-visible revision."""
     lifecycle = str(getattr(entry, "lifecycle", None) or "active")
@@ -95,10 +136,7 @@ def catalog_entry_identity(entry: Any) -> str:
         })
         return _hash(_ENTRY_GENERATION_DOMAIN, payload)
 
-    projection = {
-        field: getattr(entry, field, None)
-        for field in _FALLBACK_FIELDS
-    }
+    projection = _entry_fields(entry)
     projection["lifecycle"] = lifecycle
     domain = _ENTRY_VIRTUAL_DOMAIN if _is_virtual(entry) else _ENTRY_LEGACY_DOMAIN
     return _hash(domain, _canonical_json(projection))
@@ -113,4 +151,3 @@ def catalog_identity(catalog: Iterable[Any] | None) -> str:
         for entry in catalog
     )
     return _hash(_CATALOG_DOMAIN, _canonical_json(rows))
-

@@ -2798,9 +2798,18 @@ class Executor:
 
             _host = (r.get("_ran_on_device") or "server") if isinstance(r, dict) else "server"
             _data_host = _data_host_for_step(step, result.steps, _host)
+            _execution_receipt = None
+            if isinstance(r, dict):
+                from executor_birth_feedback import (
+                    EXECUTION_RECEIPT_RESULT_KEY, ExecutionReceipt,
+                )
+                _candidate_receipt = r.pop(EXECUTION_RECEIPT_RESULT_KEY, None)
+                if isinstance(_candidate_receipt, ExecutionReceipt):
+                    _execution_receipt = _candidate_receipt
             sr = StepRun(step_idx=i + 1, tool=_exec_tool, args=args,
                           result=r, ok=bool(r.get("ok")), latency_ms=lat_ms,
-                          host=_host, data_host=_data_host)
+                          host=_host, data_host=_data_host,
+                          execution_receipt=_execution_receipt)
             result.steps.append(sr)
             if sr.ok:
                 result.ok_count += 1

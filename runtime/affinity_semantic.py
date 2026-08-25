@@ -79,6 +79,7 @@ def _cache_key(executors: Iterable[Any]) -> str:
     """Hash sha256 di (executor.name, tag) ordinati. Invalida cache quando
     qualunque executor cambia affinity (re-sign manifest, nuovo synth)."""
     from executor_catalog_identity import catalog_identity
+    executors = tuple(executors)
     h = hashlib.sha256()
     # Bind the same whole-pool identity used by deterministic prefilters.  The
     # explicit affinity payload below remains useful as a local integrity

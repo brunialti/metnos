@@ -144,6 +144,16 @@ class VerifiedManifest:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionContractBinding:
+    """Authenticated immutable identity used to bind one executor dispatch."""
+
+    contract_id: ContractId
+    generation_id: str
+    executor_name: str
+    candidate_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class ContractRetirement:
     """Authenticated immutable evidence that a contract is not live."""
 
@@ -3435,6 +3445,99 @@ def _birth_receipt_path(contract_dir: Path, generation_identifier: str) -> Path:
     )
 
 
+def authenticate_execution_binding(
+    contract_id: ContractId,
+    generation_identifier: str,
+    *,
+    trusted_publics: Iterable[TrustedPublic],
+    admission_verifier_keys: Mapping[str, object],
+    store_root: Path | str | None = None,
+    lock_timeout: float = DEFAULT_LOCK_TIMEOUT,
+) -> ExecutionContractBinding:
+    """Authenticate the exact current generation and its AdmissionReceipt.
+
+    The lookup starts from ``ContractId`` and the configured authoring
+    inventory, never from a catalog-supplied filesystem path.  Generation,
+    pointer, receipt signature and receipt bindings are checked while holding
+    the catalog lock followed by the per-contract writer lock.  Exact rereads
+    make a non-cooperating pointer/receipt replacement fail closed too.
+    """
+    if not isinstance(contract_id, ContractId):
+        raise ContractStoreError("execution_binding_invalid", "contract_id")
+    generation_directory_name(generation_identifier)
+    trusted = _trusted_public_tuple(trusted_publics)
+    if not isinstance(admission_verifier_keys, Mapping):
+        raise ContractStoreError("execution_binding_invalid", "admission keyring")
+    from manifest_inventory import inventory_authoring_manifests
+    inventory = inventory_authoring_manifests()
+    if inventory.problems:
+        first = inventory.problems[0]
+        raise ContractStoreError(
+            "execution_binding_inventory_invalid",
+            f"{first.code}:{first.path}:{first.detail}",
+        )
+    refs = [ref for ref in inventory.manifests if ref.contract_id == contract_id]
+    if len(refs) != 1:
+        raise ContractStoreError("execution_binding_inventory_invalid", contract_id.value)
+    ref = refs[0]
+    root = _store_root(store_root)
+
+    with catalog_admission_lock(store_root=root, timeout=lock_timeout):
+        with _writer_lock(contract_id, store_root=root, timeout=lock_timeout):
+            contract_dir = _existing_contract_directory(contract_id, store_root=root)
+            current_before = _read_current_optional(contract_dir)
+            if current_before != generation_identifier:
+                raise ContractStoreError(
+                    "execution_generation_stale",
+                    f"expected={generation_identifier} current={current_before}",
+                )
+            payloads = _load_generation_for_commit(
+                ref,
+                generation_identifier,
+                trusted_publics=trusted,
+                store_root=root,
+            )
+            try:
+                parsed = tomllib.loads(payloads["manifest.toml"].decode("utf-8"))
+            except (KeyError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+                raise ContractStoreError("execution_binding_invalid", "manifest") from exc
+            executor_name = parsed.get("name")
+            if not isinstance(executor_name, str) or not executor_name.strip():
+                raise ContractStoreError("execution_binding_invalid", "executor_name")
+
+            receipt_path = _birth_receipt_path(contract_dir, generation_identifier)
+            try:
+                if receipt_path.stat(follow_symlinks=False).st_size > 64 * 1024:
+                    raise ContractStoreError("birth_receipt_invalid", "size")
+            except OSError as exc:
+                raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+            encoded = _read_regular_file(receipt_path, code="birth_receipt_invalid")
+            try:
+                from executor_birth_receipts import verify_admission_receipt
+                receipt = verify_admission_receipt(
+                    encoded, verifier_keys=admission_verifier_keys,
+                )
+            except Exception as exc:
+                raise ContractStoreError("birth_receipt_invalid", str(exc)) from exc
+            if (receipt.contract_id != contract_id.value
+                    or receipt.generation_id != generation_identifier):
+                raise ContractStoreError("birth_receipt_binding_invalid", "execution")
+            _canonical_sha256(receipt.candidate_id, field="candidate_id")
+
+            # Reopen both mutable locators after all cryptographic work.  A
+            # direct writer racing outside the lock cannot make a mixed
+            # receipt/pointer snapshot authoritative.
+            if _read_regular_file(receipt_path, code="birth_receipt_invalid") != encoded:
+                raise ContractStoreError("birth_receipt_reread_mismatch")
+            current_after = _read_current_optional(contract_dir)
+            if current_after != current_before:
+                raise ContractStoreError("execution_binding_race", "current")
+            return ExecutionContractBinding(
+                contract_id, generation_identifier, executor_name,
+                receipt.candidate_id,
+            )
+
+
 def _validate_birth_receipt_binding(
     receipt: object,
     *,
@@ -5385,6 +5488,7 @@ __all__ = [
     "ContractRetirement",
     "ContractRevision",
     "ContractStoreError",
+    "ExecutionContractBinding",
     "GENERATION_FILES",
     "LocalizationPatch",
     "ProductionStoreMode",
@@ -5401,6 +5505,7 @@ __all__ = [
     "VerifiedManifest",
     "WINDOWS_POWER_LOSS_LIMIT",
     "activate_store",
+    "authenticate_execution_binding",
     "authenticate_birth_predecessor",
     "catalog_admission_lock",
     "commit_birth_snapshot",

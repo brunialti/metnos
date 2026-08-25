@@ -151,6 +151,9 @@ class StepRun:
     # sul device. Separare i due concetti evita di interpretare C:\\... come un
     # path locale solo perche' il filtro e' computato su .33.
     data_host: str | None = None
+    # RM-0008 F5: typed exact dispatch binding.  ``None`` means the catalog
+    # identity was incomplete and therefore cannot authorize feedback.
+    execution_receipt: object | None = None
 
 
 @dataclass
