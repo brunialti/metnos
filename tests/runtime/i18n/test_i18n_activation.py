@@ -6,6 +6,7 @@ import json
 import shutil
 import sqlite3
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Mapping
 
@@ -21,8 +22,9 @@ from i18n_activation import (
 from i18n_materializer import LocalizationPaths, materialize
 from i18n_pipeline import review_semantics, translate_pending
 from i18n_registry import LocalizationRegistry
+from contract_store import current_contract, publish_localization, retire
 
-from test_i18n_materializer import _fixture
+from test_i18n_materializer import _fixture, _versioned_fixture
 from test_i18n_pipeline import _translator
 
 
@@ -53,7 +55,15 @@ def _prepared(tmp_path: Path):
         "nl", registry=registry, paths=paths,
         judge=lambda source, target, resource: bool(source and target and resource),
     )
-    return paths, registry
+    connection = sqlite3.connect(registry.path)
+    try:
+        connection.execute(
+            "DELETE FROM localization_resources WHERE layer='contract'",
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return replace(paths, manifest_roots=()), registry
 
 
 def _signed_target_only_lint_defect(tmp_path: Path, monkeypatch):
@@ -230,7 +240,6 @@ def test_activation_promotes_all_layers_then_flips_signed_authority(tmp_path: Pa
     digest = hashlib.sha256(b"tutor").hexdigest()
     result = activate_language(
         "nl", registry=registry, paths=paths,
-        signer=lambda _path: None,
         manifest_validator=lambda _path, _language: (True, ""),
         tutor_compiler=lambda: (digest, {"en", "nl"}),
         request_writer=writer,
@@ -263,12 +272,87 @@ def test_activation_does_not_flip_config_when_device_catalog_is_incomplete(tmp_p
     with pytest.raises(ActivationBlocked):
         activate_language(
             "nl", registry=registry, paths=paths,
-            signer=lambda _path: None,
             manifest_validator=lambda _path, _language: (True, ""),
             tutor_compiler=lambda: ("x", {"nl"}),
             request_writer=lambda **kwargs: (writes.append(kwargs), True),
         )
     assert writes == []
+
+
+def test_store_only_activation_omits_authenticated_retirement(
+    tmp_path: Path,
+) -> None:
+    (
+        base_paths,
+        ref,
+        private_key,
+        trusted,
+        store,
+        publication,
+        _snapshot_provider,
+    ) = _versioned_fixture(tmp_path)
+    paths = replace(
+        base_paths,
+        device_catalog=tmp_path / "device" / "messages_i18n.json",
+    )
+    retire(
+        ref,
+        expected_generation_id=publication.current_generation_id,
+        actor="i18n-activation-test",
+        reason="verify retirement remains absent",
+        private_key=private_key,
+        trusted_publics=trusted,
+        audit_sink=lambda _event: None,
+        store_root=store,
+    )
+    snapshot_provider = partial(
+        current_contract,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    publisher = partial(
+        publish_localization,
+        private_key=private_key,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    materialize(
+        "nl", registry=registry, paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+    )
+    translate_pending(
+        "nl", registry=registry, paths=paths, translator=_translator,
+        contract_snapshot_provider=snapshot_provider,
+    )
+    review_semantics(
+        "nl", registry=registry, paths=paths,
+        judge=lambda source, target, resource: bool(source and target and resource),
+        contract_snapshot_provider=snapshot_provider,
+    )
+    writes: list[dict] = []
+
+    result = activate_language(
+        "nl",
+        registry=registry,
+        paths=paths,
+        tutor_compiler=lambda: (hashlib.sha256(b"tutor").hexdigest(), {"en", "nl"}),
+        request_writer=lambda **kwargs: (writes.append(kwargs), True),
+        contract_snapshot_provider=snapshot_provider,
+        contract_publisher=publisher,
+    )
+
+    assert result.configuration_changed
+    assert writes and writes[0]["instance_lang"] == "nl"
+    assert not any(row.layer == "contract" for row in registry.resources("nl"))
+    final = gate(
+        "nl",
+        registry=registry,
+        paths=paths,
+        require_admitted=True,
+        contract_snapshot_provider=snapshot_provider,
+    )
+    assert final.ok, final.errors
 
 
 def test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale(
@@ -297,6 +381,15 @@ def test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale(
         "nl", registry=registry, paths=paths,
         judge=lambda source, target, resource: bool(source and target and resource),
     )
+    connection = sqlite3.connect(registry.path)
+    try:
+        connection.execute(
+            "DELETE FROM localization_resources WHERE layer='contract'",
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    paths = replace(paths, manifest_roots=())
 
     authority: dict[str, str] = {}
 
@@ -310,7 +403,6 @@ def test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale(
     arguments = dict(
         registry=registry,
         paths=paths,
-        signer=lambda _path: None,
         manifest_validator=lambda _path, _language: (True, ""),
         tutor_compiler=lambda: (digest, {"en", "nl"}),
         request_writer=writer,
@@ -328,11 +420,12 @@ def test_full_acceptance_is_idempotent_and_runtime_surfaces_share_locale(
     assert final.total > 0
     assert final.admitted + len(final.exceptions) == final.total
 
-    # Planner/proposer prompts, manifest prose, messages and input mappings
-    # all resolve from the same admitted target corpus.
+    # Planner/proposer prompts, messages and input mappings resolve from the
+    # same admitted target corpus. Contract prose is covered by the versioned
+    # store acceptance tests; the retired legacy writer never mutates it.
     prompt = paths.prompts / "nl" / "planner" / "core.j2"
     assert "Regel" in prompt.read_text(encoding="utf-8")
-    assert 'nl = "SCOPO: Lees een bestand.' in (
+    assert 'nl = "SCOPO: Lees een bestand.' not in (
         tmp_path / "executors" / "sample" / "manifest.toml"
     ).read_text(encoding="utf-8")
     connection = sqlite3.connect(paths.messages_db)

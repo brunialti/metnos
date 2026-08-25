@@ -258,6 +258,10 @@ def _process_one(proposal: dict, dry_run: bool, grace_hours: int) -> dict:
             verdict=verdict_dict,
             practical_example=example,
             grace_hours=grace_hours,
+            prepromotion_generation_id=promote_result.get(
+                "prepromotion_generation_id",
+            ),
+            active_generation_id=promote_result.get("active_generation_id"),
         )
         base_ev["action"] = (
             "promoted_finalized" if grace_hours == 0 else "promoted_grace"

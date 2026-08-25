@@ -174,16 +174,9 @@ def handle_set_skills(args: dict, *, actor: str | None = None, **_) -> dict:
             enabled = False
         else:
             return {"ok": False, "error": "param 'enabled' deve essere booleano"}
-    if name.lower() == "core":
-        return {"ok": False, "error": "la skill 'core' non è disattivabile",
-                "name": "core"}
     try:
         import skill_registry as _sr
-        known = {s.name for s in _sr.list_skills()}
-        if name not in known:
-            return {"ok": False, "error": f"skill sconosciuta: {name}",
-                    "name": name, "available": sorted(known)}
-        _sr.set_skill_enabled(name, enabled)
+        _sr.set_skill_enabled_checked(name, enabled)
     except Exception as e:
         return {"ok": False, "error": f"skill_registry: {e}", "name": name}
     return {"ok": True, "name": name, "enabled": enabled,

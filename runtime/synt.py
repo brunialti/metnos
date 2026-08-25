@@ -982,17 +982,27 @@ class Synt:
         # 2) manifest TOML draft (digest sara' calcolato in fase di firma)
         manifest = self._render_manifest_toml(gp)
         (gp.proposal_dir / "manifest.toml").write_text(manifest, encoding="utf-8")
-        # 3) schema args separato (utile per UX e test runner)
+        # 3) provenance linguistica canonica: il proposal e' cosi' completo
+        # prima di qualunque firma/pubblicazione e resta importabile anche
+        # dopo il cutover allo store immutabile.
+        import tomllib
+        from i18n_materializer import migrate_language_state_bytes
+        (gp.proposal_dir / "manifest.lang_state.json").write_bytes(
+            migrate_language_state_bytes(
+                b"{}", manifest=tomllib.loads(manifest),
+            ).state_bytes,
+        )
+        # 4) schema args separato (utile per UX e test runner)
         (gp.proposal_dir / "args_schema.json").write_text(
             json.dumps(gp.args_schema, indent=2, ensure_ascii=False), encoding="utf-8",
         )
-        # 4) profilo di sandbox (separato per leggibilita')
+        # 5) profilo di sandbox (separato per leggibilita')
         if gp.sandbox_profile is not None:
             (gp.proposal_dir / "sandbox_profile.json").write_text(
                 json.dumps(gp.sandbox_profile, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
-        # 5) metadati del proposal (origin request, LLM info, validazioni)
+        # 6) metadati del proposal (origin request, LLM info, validazioni)
         meta = {
             "proposal_id": gp.proposal_id,
             "request_id": gp.request_id,
@@ -1075,7 +1085,7 @@ class Synt:
             f'{cur_lang} = {json.dumps(gp.description, ensure_ascii=False)}\n\n'
             f"[code]\n"
             f'files  = ["{gp.name}.py"]\n'
-            f'digest = "sha256:PENDING_SIGN"  # populated by sign_executor()\n\n'
+            f'digest = "sha256:PENDING_SIGN"  # populated by admission boundary\n\n'
             f"[args]\n"
             f'type     = "{gp.args_schema.get("type","object")}"\n'
             f"required = [{required_arr}]\n"
@@ -1110,25 +1120,31 @@ class Synt:
         """
         import re
         import shutil as _sh
-        import subprocess as _sp
         import tomllib
-        from pathlib import Path as _P
+        from manifest_inventory import ManifestLayout, resolve_manifest_layout
 
         rid = f"specialize_{parent_name}_{arg_name}_{int(time.time())}"
         target_name = proposed_name or f"{parent_name}_{arg_name}_specialized"
         # Sanitize target_name (no spaces, no special chars)
         target_name = re.sub(r"[^A-Za-z0-9_]+", "_", target_name).strip("_")
 
-        # Locate parent manifest
-        candidates = [
-            _C.PATH_EXECUTORS / parent_name / "manifest.toml",
-            _P.home() / f".local/share/metnos/executors/{parent_name}/manifest.toml",
-        ]
-        parent_manifest_path = None
-        for p in candidates:
-            if p.exists():
-                parent_manifest_path = p
-                break
+        # Resolve the parent through the verified catalog. Before cutover its
+        # manifest path is the signed authoring source; afterwards it is the
+        # immutable generation selected by the live binding.
+        try:
+            from loader import SYNTHESIZED_EXECUTORS_DIR, load_catalog
+            parent = load_catalog(verify=True).get(parent_name)
+            parent_manifest_path = (
+                parent.manifest_path if parent is not None else None
+            )
+            layout = resolve_manifest_layout()
+        except Exception as exc:
+            return SynthProposal(
+                request_id=rid, strategy="specialize",
+                state="rejected", artefact={},
+                reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
+                rationale=f"catalog parent lookup failed: {exc}",
+            )
         if parent_manifest_path is None:
             return SynthProposal(
                 request_id=rid, strategy="specialize",
@@ -1146,85 +1162,139 @@ class Synt:
                 rationale=f"parse error parent manifest: {e}",
             )
 
-        # Build child manifest: inherit description + affinity + capabilities,
-        # remove `arg_name` from required + properties.
+        # Build child manifest: inherit description, affinity and authority.
+        # The fixed argument remains declared as runtime-resolved so signed
+        # capability annotations can still refer to it, but it is removed
+        # from required and from the planner-facing PATTERN.
         parent_args = pm.get("args", {}) or {}
         parent_props = (parent_args.get("properties") or {}).copy()
-        if arg_name in parent_props:
-            del parent_props[arg_name]
+        if arg_name not in parent_props or not isinstance(
+            parent_props[arg_name], dict,
+        ):
+            return SynthProposal(
+                request_id=rid, strategy="specialize",
+                state="rejected", artefact={},
+                reward=RewardBreakdown(
+                    0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0,
+                ),
+                rationale=f"parent arg is not declared: {arg_name}",
+            )
+        fixed_property = dict(parent_props[arg_name])
+        fixed_property["default"] = dominant_value
+        fixed_property["runtime_resolved"] = True
+        parent_props[arg_name] = fixed_property
         parent_required = [a for a in (parent_args.get("required") or []) if a != arg_name]
 
         # Wrapper code
         py_code = _wrapper_code(parent_name, arg_name, dominant_value)
 
-        # Target dir under SYNTHESIZED_EXECUTORS_DIR
-        from loader import SYNTHESIZED_EXECUTORS_DIR
-        target_dir = SYNTHESIZED_EXECUTORS_DIR / target_name
-        if target_dir.exists():
-            return SynthProposal(
-                request_id=rid, strategy="specialize",
-                state="rejected", artefact={"reason": "target_already_exists"},
-                reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
-                rationale=f"target dir already exists: {target_dir}",
-            )
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write code
-        code_path = target_dir / f"{target_name}.py"
-        code_path.write_text(py_code, encoding="utf-8")
-
-        # Write manifest
-        toml_text = _build_specialize_manifest(
-            target_name=target_name,
-            parent_name=parent_name,
-            parent_manifest=pm,
-            arg_name=arg_name,
-            dominant_value=dominant_value,
-            args_properties=parent_props,
-            args_required=parent_required,
-        )
-        manifest_path = target_dir / "manifest.toml"
-        manifest_path.write_text(toml_text, encoding="utf-8")
-
-        # Sign with synt key
         try:
-            sign_proc = _sp.run(
-                ["python3", str(_C.PATH_RUNTIME / "sign.py"), "sign",
-                 str(target_dir), "synt"],
-                capture_output=True, text=True, timeout=10,
+            toml_text = _build_specialize_manifest(
+                target_name=target_name,
+                parent_name=parent_name,
+                parent_manifest=pm,
+                arg_name=arg_name,
+                dominant_value=dominant_value,
+                args_properties=parent_props,
+                args_required=parent_required,
             )
-            if sign_proc.returncode != 0:
-                _sh.rmtree(target_dir, ignore_errors=True)
-                return SynthProposal(
-                    request_id=rid, strategy="specialize",
-                    state="rejected",
-                    artefact={"sign_stderr": sign_proc.stderr[:300]},
-                    reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
-                    rationale=f"sign failed: {sign_proc.stderr[:200]}",
-                )
-        except Exception as e:
-            _sh.rmtree(target_dir, ignore_errors=True)
+        except (TypeError, ValueError) as exc:
             return SynthProposal(
                 request_id=rid, strategy="specialize",
                 state="rejected", artefact={},
+                reward=RewardBreakdown(
+                    0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0,
+                ),
+                rationale=f"parent contract cannot be specialized: {exc}",
+            )
+
+        # Target dir under SYNTHESIZED_EXECUTORS_DIR
+        target_dir = SYNTHESIZED_EXECUTORS_DIR / target_name
+        target_preexisting = target_dir.exists()
+        code_path = target_dir / f"{target_name}.py"
+        manifest_path = target_dir / "manifest.toml"
+        if target_preexisting:
+            try:
+                expected_manifest = tomllib.loads(toml_text)
+                actual_manifest = tomllib.loads(
+                    manifest_path.read_text(encoding="utf-8"),
+                )
+                expected_manifest.get("code", {}).pop("digest", None)
+                actual_manifest.get("code", {}).pop("digest", None)
+                exact_retry = (
+                    expected_manifest == actual_manifest
+                    and code_path.read_text(encoding="utf-8") == py_code
+                )
+            except (OSError, UnicodeError, tomllib.TOMLDecodeError):
+                exact_retry = False
+            if not exact_retry:
+                return SynthProposal(
+                    request_id=rid, strategy="specialize",
+                    state="rejected", artefact={"reason": "target_already_exists"},
+                    reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
+                    rationale=f"target dir already exists: {target_dir}",
+                )
+        else:
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write code
+        if not target_preexisting:
+            code_path.write_text(py_code, encoding="utf-8")
+
+        # Write manifest
+        if not target_preexisting:
+            manifest_path.write_text(toml_text, encoding="utf-8")
+            from i18n_materializer import migrate_language_state_bytes
+            (target_dir / "manifest.lang_state.json").write_bytes(
+                migrate_language_state_bytes(
+                    b"{}", manifest=tomllib.loads(toml_text),
+                ).state_bytes,
+            )
+
+        # Admit with the synt key through the layout-aware boundary.
+        try:
+            from sign import publish_authoring_update
+            publish_authoring_update(target_dir, key_name="synt")
+        except Exception as e:
+            if layout is ManifestLayout.AUTHORING:
+                _sh.rmtree(target_dir, ignore_errors=True)
+            return SynthProposal(
+                request_id=rid, strategy="specialize",
+                state="rejected", artefact={"retryable": True},
                 reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
-                rationale=f"sign exception: {e}",
+                rationale=f"publication outcome requires retry: {e}",
             )
 
         # Verify
         try:
-            from sign import verify_executor
-            ok, info = verify_executor(target_dir)
+            if layout is ManifestLayout.STORE_ONLY:
+                loaded = load_catalog(verify=True).get(target_name)
+                ok = loaded is not None
+                info = {"reason": "published executor not in live catalog"}
+            else:
+                from sign import verify_executor
+                ok, info = verify_executor(target_dir)
             if not ok:
-                _sh.rmtree(target_dir, ignore_errors=True)
+                if layout is ManifestLayout.AUTHORING:
+                    _sh.rmtree(target_dir, ignore_errors=True)
                 return SynthProposal(
                     request_id=rid, strategy="specialize",
                     state="rejected", artefact={"verify_info": str(info)[:300]},
                     reward=RewardBreakdown(0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0),
-                    rationale="verify failed after sign",
+                    rationale="verify failed after admission",
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            if layout is ManifestLayout.AUTHORING:
+                _sh.rmtree(target_dir, ignore_errors=True)
+            return SynthProposal(
+                request_id=rid, strategy="specialize",
+                state="rejected",
+                artefact={"verify_info": str(exc)[:300]},
+                reward=RewardBreakdown(
+                    0.0, 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0,
+                ),
+                rationale="verification failed after admission",
+            )
 
         # Register in executor_aging with the proper source tag for the
         # history timeline (admin dashboard).
@@ -1543,26 +1613,85 @@ class Synt:
 
         name = meta["name"]
         target_dir = executors_dir / name
-        if target_dir.exists():
+        target_preexisting = target_dir.exists()
+        if target_preexisting:
+            # A publication may have advanced its pointer before a final
+            # registry callback failed. Accept only the exact target left by
+            # this proposal, so the caller can retry the same publication;
+            # never adopt an unrelated executor merely because names match.
+            import tomllib
+            try:
+                expected_manifest = tomllib.loads(
+                    (prop_dir / "manifest.toml").read_text(encoding="utf-8"),
+                )
+                actual_manifest = tomllib.loads(
+                    (target_dir / "manifest.toml").read_text(encoding="utf-8"),
+                )
+                expected_code = dict(expected_manifest.get("code") or {})
+                actual_code = dict(actual_manifest.get("code") or {})
+                expected_code.pop("digest", None)
+                actual_code.pop("digest", None)
+                expected_manifest["code"] = expected_code
+                actual_manifest["code"] = actual_code
+                exact_retry = expected_manifest == actual_manifest
+                for fname in (f"{name}.py", "args_schema.json"):
+                    source = prop_dir / fname
+                    target = target_dir / fname
+                    if source.exists() != target.exists() or (
+                        source.exists() and source.read_bytes() != target.read_bytes()
+                    ):
+                        exact_retry = False
+            except (OSError, UnicodeError, tomllib.TOMLDecodeError):
+                exact_retry = False
+            if not exact_retry:
+                return {
+                    "ok": False,
+                    "error": f"executor '{name}' gia' esistente in {target_dir}",
+                }
+
+        # Importa qui per evitare dipendenza al modulo se non si pubblica mai.
+        # Il confine sceglie una sola autorita': firma legacy oppure store.
+        sys.path.insert(0, str(Path(__file__).parent))
+        from sign import publish_authoring_update  # noqa: WPS433
+
+        import shutil
+        if not target_preexisting:
+            target_dir.mkdir(parents=True)
+            # Copia code + manifest + schema (non sandbox_profile e
+            # proposal.json, che restano nel proposal originale per audit).
+            for fname in (
+                f"{name}.py", "manifest.toml", "manifest.lang_state.json",
+                "args_schema.json",
+            ):
+                src = prop_dir / fname
+                if src.exists():
+                    shutil.copy2(src, target_dir / fname)
+            state_path = target_dir / "manifest.lang_state.json"
+            if not state_path.is_file():
+                # Backward compatibility for proposals created before the
+                # companion became part of their canonical artifact set.
+                import tomllib
+                from i18n_materializer import migrate_language_state_bytes
+                parsed = tomllib.loads(
+                    (target_dir / "manifest.toml").read_text(encoding="utf-8"),
+                )
+                state_path.write_bytes(
+                    migrate_language_state_bytes(
+                        b"{}", manifest=parsed,
+                    ).state_bytes,
+                )
+        # Firma nel layout legacy oppure pubblica atomicamente nello store.
+        try:
+            digest, sig_path, _publication = publish_authoring_update(
+                target_dir, key_name=key_name,
+            )
+        except Exception as exc:
             return {
                 "ok": False,
-                "error": f"executor '{name}' gia' esistente in {target_dir}",
+                "error": f"publication outcome requires retry: {exc}",
+                "executor_name": name,
+                "executor_dir": str(target_dir),
             }
-
-        # Importa qui per evitare dipendenza al modulo se non si firma mai
-        sys.path.insert(0, str(Path(__file__).parent))
-        from sign import sign_executor  # noqa: WPS433
-
-        target_dir.mkdir(parents=True)
-        # Copia code + manifest + schema (non sandbox_profile e proposal.json,
-        # che restano nel proposal originale per audit)
-        import shutil
-        for fname in (f"{name}.py", "manifest.toml", "args_schema.json"):
-            src = prop_dir / fname
-            if src.exists():
-                shutil.copy2(src, target_dir / fname)
-        # Firma
-        digest, sig_path = sign_executor(target_dir, key_name=key_name)
 
         # Sposta il proposal in archived/<id>
         archived_dir = self.proposals_dir.parent / "approved" / proposal_id
@@ -1682,12 +1811,11 @@ def _load_parent_invoke():
 
 
 def invoke(args: dict, ctx: dict | None = None) -> dict:
-    """Wrapper: cabla {arg_name}={val_repr} se non gia' passato."""
+    """Wrapper: impone il valore firmato di {arg_name}."""
     if not isinstance(args, dict):
         args = {{}}
     args = dict(args)  # don't mutate caller's args
-    if _CABLED_ARG not in args:
-        args[_CABLED_ARG] = _CABLED_VAL
+    args[_CABLED_ARG] = _CABLED_VAL
     parent_invoke = _load_parent_invoke()
     return parent_invoke(args, ctx)
 
@@ -1709,94 +1837,203 @@ def _build_specialize_manifest(
     args_properties: dict,
     args_required: list,
 ) -> str:
-    """Costruisce il TOML del manifest della variante specializzata."""
+    """Build and validate one fully standard specialized contract."""
     import json as _json
 
-    parent_desc = (parent_manifest.get("description") or "").strip()
-    parent_aff = parent_manifest.get("affinity") or []
+    def toml_literal(value):
+        if isinstance(value, str):
+            return _json.dumps(value, ensure_ascii=False)
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        if isinstance(value, list):
+            return "[" + ", ".join(toml_literal(item) for item in value) + "]"
+        if isinstance(value, dict):
+            return "{ " + ", ".join(
+                f"{_json.dumps(str(key), ensure_ascii=False)} = "
+                f"{toml_literal(item)}"
+                for key, item in value.items()
+            ) + " }"
+        raise TypeError(f"unsupported TOML value: {type(value).__name__}")
 
-    desc = (
-        f"Variante specializzata di `{parent_name}` con "
-        f"`{arg_name}={_json.dumps(dominant_value)}` cablato di default. "
-        f"Eredita 1:1 le capabilities del parent. "
-        f"Auto-creata dal Synt.specialize il {time.strftime('%Y-%m-%d')} "
-        f"sopra soglia (dom>=0.90, uses>=30). Reversibile via decay "
-        f"(`executor_aging`)."
-    )
-    if parent_desc:
-        desc += f"\\n\\nParent: {parent_desc[:200]}"
+    def chapters(text: str) -> dict[str, str]:
+        from manifest_rules import CHAPTERS
 
-    aff = list(parent_aff) + [f"specialized:{parent_name}", f"cable:{arg_name}",
-                               "auto-created", "synt"]
+        normalized = text.strip().replace("\n", " ")
+        positions = []
+        for marker in CHAPTERS:
+            if normalized.count(marker) != 1:
+                raise ValueError(
+                    f"parent description must contain one {marker}",
+                )
+            positions.append(normalized.index(marker))
+        if positions != sorted(positions) or positions[0] != 0:
+            raise ValueError("parent description chapters are not front-loaded")
+        result = {}
+        for index, marker in enumerate(CHAPTERS):
+            start = positions[index] + len(marker)
+            end = positions[index + 1] if index + 1 < len(CHAPTERS) else len(normalized)
+            result[marker] = normalized[start:end].strip()
+        return result
 
-    # Args block: inherit type, required (without arg_name), properties
-    # (without arg_name).
-    args_type = (parent_manifest.get("args") or {}).get("type", "object")
+    def specialized_pattern(pattern: str) -> str:
+        candidate = pattern.strip()
+        if candidate.endswith("."):
+            candidate = candidate[:-1].rstrip()
+        try:
+            expression = ast.parse(candidate, mode="eval")
+        except SyntaxError as exc:
+            raise ValueError(f"parent PATTERN is not one canonical call: {exc}") from exc
+        call = expression.body
+        if (
+            not isinstance(call, ast.Call)
+            or not isinstance(call.func, ast.Name)
+            or call.func.id != parent_name
+            or any(keyword.arg is None for keyword in call.keywords)
+        ):
+            raise ValueError("parent PATTERN must be one direct call to its executor")
+        call.func.id = target_name
+        call.keywords = [
+            keyword for keyword in call.keywords if keyword.arg != arg_name
+        ]
+        ast.fix_missing_locations(expression)
+        return ast.unparse(expression)
 
-    # Render properties
-    props_lines = []
-    for pname, pdef in args_properties.items():
-        if not isinstance(pdef, dict):
+    raw_descriptions = parent_manifest.get("description")
+    if not isinstance(raw_descriptions, dict) or not raw_descriptions:
+        raise ValueError("parent description must be a localized table")
+    from i18n_registry import normalize_language
+
+    notation = f"[parent={parent_name}; fixed_arg={arg_name}]"
+    descriptions: dict[str, str] = {}
+    for language, text in sorted(raw_descriptions.items()):
+        if not isinstance(language, str) or not isinstance(text, str):
+            raise ValueError("parent localized description is invalid")
+        canonical_language = normalize_language(language)
+        if canonical_language != language or canonical_language in descriptions:
+            raise ValueError("parent localized language key is not canonical")
+        parsed = chapters(text)
+        descriptions[canonical_language] = (
+            f"SCOPO: {notation} {parsed['SCOPO:']} "
+            f"PATTERN: {specialized_pattern(parsed['PATTERN:'])} "
+            f"NON: {parsed['NON:']} OUT: {parsed['OUT:']}"
+        )
+
+    if parent_manifest.get("revertible") or parent_manifest.get("reverse_pattern"):
+        raise ValueError("reversible parents require an explicit child undo design")
+    capabilities = parent_manifest.get("capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+        raise ValueError("parent capabilities are required")
+
+    # A child birth-test is real evidence only when a parent case exercised
+    # this exact fixed value. Removing that input makes the same assertion run
+    # through the generated wrapper, which must inject the value itself.
+    specialized_tests = []
+    for index, test in enumerate(parent_manifest.get("tests") or []):
+        if not isinstance(test, dict):
             continue
-        props_lines.append(f"\\n[args.properties.{pname}]")
-        for k, v in pdef.items():
-            if isinstance(v, str):
-                v_repr = _json.dumps(v)
-            elif isinstance(v, bool):
-                v_repr = "true" if v else "false"
-            elif isinstance(v, (int, float)):
-                v_repr = str(v)
-            elif isinstance(v, list):
-                v_repr = _json.dumps(v)
-            elif isinstance(v, dict):
-                v_repr = _json.dumps(v)
-            else:
-                continue
-            props_lines.append(f"{k} = {v_repr}")
+        test_input = test.get("input")
+        if (
+            not isinstance(test_input, dict)
+            or arg_name not in test_input
+            or test_input[arg_name] != dominant_value
+            or "expect" not in test
+        ):
+            continue
+        child_input = dict(test_input)
+        child_input.pop(arg_name)
+        specialized_tests.append({
+            "name": f"specialized_{index}_{test.get('name') or 'parent_case'}",
+            "input": child_input,
+            "expect": test["expect"],
+        })
+    if not specialized_tests:
+        raise ValueError(
+            "parent tests contain no birth case for the fixed argument value",
+        )
 
-    required_arr = ", ".join(_json.dumps(r) for r in args_required)
-    aff_arr = ", ".join(_json.dumps(a) for a in aff)
+    parent_affinity = parent_manifest.get("affinity") or []
+    if not isinstance(parent_affinity, list):
+        raise ValueError("parent affinity must be a list")
+    affinity = list(dict.fromkeys(
+        [*parent_affinity, f"specialized:{parent_name}", f"fixed_arg:{arg_name}"]
+    ))
+    contract_context = generated_contract_context(lifecycle="active")
+    root_lines = [
+        f"# Generated by Synt.specialize ({time.strftime('%Y-%m-%d')}).",
+        *contract_context["generated_header_toml"].splitlines(),
+        f"name = {toml_literal(target_name)}",
+        'version = "0.1.0"',
+        'author = "synt-multistage <synt@metnos.com>"',
+        f"affinity = {toml_literal(affinity)}",
+        "revertible = false",
+        'lifecycle = "active"',
+        f"tests = {toml_literal(specialized_tests)}",
+    ]
+    if "output" in parent_manifest:
+        root_lines.append(f"output = {toml_literal(parent_manifest['output'])}")
+    for field in ("platforms", "placement", "presentation", "intelligence"):
+        if field in parent_manifest:
+            root_lines.append(f"{field} = {toml_literal(parent_manifest[field])}")
 
-    parent_caps = parent_manifest.get("capabilities") or []
-    caps_blocks = []
-    if isinstance(parent_caps, list):
-        for c in parent_caps:
-            if not isinstance(c, dict):
-                continue
-            caps_blocks.append("\\n[[capabilities]]")
-            for k, v in c.items():
-                if isinstance(v, str):
-                    caps_blocks.append(f'{k} = {_json.dumps(v)}')
-                elif isinstance(v, list):
-                    caps_blocks.append(f'{k} = {_json.dumps(v)}')
+    lines = [*root_lines, "", "[description]"]
+    lines.extend(
+        f"{toml_literal(language)} = {toml_literal(text)}"
+        for language, text in sorted(descriptions.items())
+    )
+    lines.extend([
+        "", "[code]", f"files = [{toml_literal(target_name + '.py')}]",
+        'digest = "sha256:' + "0" * 64 + '"',
+        "", "[args]", 'type = "object"',
+        f"required = {toml_literal(args_required)}",
+    ])
+    for property_name, property_schema in sorted(args_properties.items()):
+        if not isinstance(property_schema, dict):
+            raise ValueError(f"arg {property_name} schema is invalid")
+        lines.extend(["", f"[args.properties.{property_name}]"])
+        lines.extend(
+            f"{key} = {toml_literal(value)}"
+            for key, value in property_schema.items()
+        )
+    for capability in capabilities:
+        if not isinstance(capability, dict):
+            raise ValueError("parent capability is invalid")
+        lines.extend(["", "[[capabilities]]"])
+        lines.extend(
+            f"{key} = {toml_literal(value)}"
+            for key, value in capability.items()
+        )
+    lines.extend([
+        "", contract_context["execution_policy_toml"],
+        "",
+    ])
+    rendered = "\n".join(lines)
 
-    revertible = parent_manifest.get("revertible", False)
-    rev_pat    = parent_manifest.get("reverse_pattern") or []
-
-    return (
-        f"# Manifest auto-generato dal Synt.specialize ({time.strftime('%Y-%m-%d')}).\\n"
-        f"# Variante specializzata di `{parent_name}` con\\n"
-        f"# `{arg_name}={_json.dumps(dominant_value)}` cablato di default.\\n\\n"
-        f'manifest_format = "1.0"\\n\\n'
-        f'name        = "{target_name}"\\n'
-        f'version     = "0.1.0"\\n'
-        f'author      = "synt-multistage <synt@metnos.com>"\\n'
-        f'description = {_json.dumps(desc)}\\n'
-        f'affinity    = [{aff_arr}]\\n'
-        f'revertible  = {"true" if revertible else "false"}\\n'
-        f'reverse_pattern = {_json.dumps(rev_pat)}\\n'
-        f'lifecycle   = "active"\\n\\n'
-        f"[code]\\n"
-        f'files  = ["{target_name}.py"]\\n'
-        f'digest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"\\n\\n'
-        f"[args]\\n"
-        f'type     = "{args_type}"\\n'
-        f'required = [{required_arr}]'
-        + "".join(props_lines)
-        + "\\n"
-        + "".join(caps_blocks)
-        + "\\n"
-    ).replace("\\n", "\n")
+    parsed_manifest = validate_generated_manifest_text(
+        rendered, expected_lifecycle="active",
+    )
+    from executor_standard import validate_for_lifecycle
+    standard_findings = validate_for_lifecycle(
+        parsed_manifest, require_declaration=True,
+    )
+    if standard_findings:
+        raise ValueError("; ".join(
+            f"{finding.code}:{finding.message}"
+            for finding in standard_findings[:8]
+        ))
+    from manifest_lint import lint_manifest
+    lint_errors = [
+        finding
+        for language in sorted(descriptions)
+        for finding in lint_manifest(parsed_manifest, language=language)
+        if finding.severity == "error"
+    ]
+    if lint_errors:
+        raise ValueError("; ".join(
+            f"{finding.check}:{finding.message}" for finding in lint_errors[:8]
+        ))
+    return rendered
 
 
 def derive_sandbox_profile(code: str, imports: list[str]) -> dict:

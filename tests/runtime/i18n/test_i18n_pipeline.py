@@ -7,6 +7,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from i18n_materializer import InventoryItem, materialize, sha256_text
 from i18n_pipeline import (
@@ -15,12 +16,18 @@ from i18n_pipeline import (
     _validate_common,
     promote_candidates,
     publish_versioned_contract_candidates,
+    reconcile_published_contract_registry,
     review_semantics,
     translate_pending,
 )
 from i18n_registry import CandidateConflict, LocalizationRegistry
-from contract_store import current_manifest, publish_localization
-
+from manifest_rules import DESC_MAX
+from contract_store import (
+    ContractRetirement,
+    LocalizationPatch,
+    current_manifest,
+    publish_localization,
+)
 from test_i18n_materializer import _fixture, _versioned_fixture
 
 
@@ -37,6 +44,33 @@ def _translator(text: str, _source: str, target: str, _context: str) -> str:
     for source, translated in replacements.items():
         out = out.replace(source, translated)
     return out.replace("lang: en", f"lang: {target}")
+
+
+def _logical_hash(text: str) -> str:
+    return "sha256:" + sha256_text(text)
+
+
+def _localization_patch(
+    snapshot,
+    *,
+    selector: str,
+    candidate: str,
+    source_language: str = "en",
+    target_language: str = "nl",
+) -> LocalizationPatch:
+    descriptions = snapshot.parsed
+    for component in selector.split("."):
+        descriptions = descriptions[component]
+    previous = descriptions.get(target_language)
+    return LocalizationPatch(
+        selector=selector,
+        source_hash=_logical_hash(descriptions[source_language]),
+        previous_target_hash=(
+            _logical_hash(previous) if isinstance(previous, str) else None
+        ),
+        candidate_text=candidate,
+        candidate_hash=_logical_hash(candidate),
+    )
 
 
 def _versioned_workflow(tmp_path: Path, target: str = "nl"):
@@ -68,6 +102,22 @@ def _versioned_workflow(tmp_path: Path, target: str = "nl"):
     )
 
 
+def _exclude_contracts_from_legacy_fixture(registry: LocalizationRegistry) -> None:
+    """Keep legacy-layout tests focused on non-contract publication.
+
+    Contract publication deliberately has no legacy writer after RM-0007; its
+    complete path is exercised by the versioned-store tests below.
+    """
+    connection = sqlite3.connect(registry.path)
+    try:
+        connection.execute(
+            "DELETE FROM localization_resources WHERE layer='contract'",
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def test_translate_validate_review_and_promote_all_nonmanual_layers(tmp_path: Path):
     paths = _fixture(tmp_path)
     registry = LocalizationRegistry(tmp_path / "registry.sqlite")
@@ -84,15 +134,16 @@ def test_translate_validate_review_and_promote_all_nonmanual_layers(tmp_path: Pa
         "nl", registry=registry, paths=paths,
         judge=lambda source, target, resource: bool(source and target and resource),
     )
-    promoted = promote_candidates(
-        "nl", registry=registry, paths=paths, signer=lambda _path: None,
-    )
+    with pytest.raises(CandidateValidationError, match="legacy contract publication"):
+        promote_candidates("nl", registry=registry, paths=paths)
+    _exclude_contracts_from_legacy_fixture(registry)
+    promoted = promote_candidates("nl", registry=registry, paths=paths)
     assert promoted.errors == {}
     assert (paths.prompts / "nl" / "planner/core.j2").is_file()
     assert (paths.docs / "nl" / "guide.html").read_text() == "<h1>Gids</h1>"
 
     manifest = (tmp_path / "executors/sample/manifest.toml").read_text()
-    assert 'nl = "SCOPO: Lees een bestand.' in manifest
+    assert 'nl = "SCOPO: Lees een bestand.' not in manifest
     assert 'schema_inline="{ok: bool}"' in manifest
     conn = sqlite3.connect(paths.detection_db)
     mapping = json.loads(conn.execute(
@@ -170,6 +221,84 @@ def test_contract_translation_exposes_structured_lint_findings():
     ) == (("pattern_atoms", "parity", ("en", "nl")),)
 
 
+def test_contract_warning_is_reported_and_does_not_block_publication(
+    tmp_path: Path,
+):
+    (
+        paths,
+        ref,
+        private_key,
+        trusted,
+        store,
+        initial,
+        snapshot_provider,
+        registry,
+    ) = _versioned_workflow(tmp_path)
+
+    def verbose_translation(
+        text: str,
+        source: str,
+        target: str,
+        context: str,
+    ) -> str:
+        translated = _translator(text, source, target, context)
+        if context == "contract:read_files:description":
+            extra = max(0, DESC_MAX + 1 - len(translated))
+            padding = ("uitvoerige toelichting " * (extra // 22 + 1))[:extra]
+            translated = translated.replace(
+                "SCOPO: ",
+                f"SCOPO: {padding} ",
+                1,
+            )
+        return translated
+
+    translated = translate_pending(
+        "nl",
+        registry=registry,
+        paths=paths,
+        translator=verbose_translation,
+        contract_snapshot_provider=snapshot_provider,
+    )
+
+    resource = "contract:read_files:description"
+    assert translated.failed == 0
+    description_warning = next(
+        finding for finding in translated.warnings[resource]
+        if finding.check == "description_length"
+    )
+    assert description_warning.severity == "warn"
+    assert description_warning.scope == "local"
+    assert description_warning.resource == "description"
+    assert description_warning.languages == ("nl",)
+    assert description_warning.evidence["length"] > description_warning.evidence["limit"]
+
+    review_semantics(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+        judge=lambda *_args: True,
+    )
+    published = publish_versioned_contract_candidates(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+        publisher=partial(
+            publish_localization,
+            private_key=private_key,
+            trusted_publics=trusted,
+            store_root=store,
+        ),
+    )
+    assert published.errors == {}
+    assert current_manifest(
+        ref,
+        trusted_publics=trusted,
+        store_root=store,
+    ).generation_id != initial.current_generation_id
+
+
 def test_contract_lint_failure_never_creates_candidate_artifact(tmp_path: Path):
     paths = _fixture(tmp_path)
     registry = LocalizationRegistry(tmp_path / "registry.sqlite")
@@ -202,7 +331,7 @@ def test_prompt_loader_does_not_consume_pending_candidate(tmp_path: Path, monkey
     assert prompt_loader.get("sample", "nl") == "fallback"
 
 
-def test_manifest_promotion_rolls_back_when_signing_fails(tmp_path: Path):
+def test_legacy_contract_promotion_is_rejected_without_touching_source(tmp_path: Path):
     paths = _fixture(tmp_path)
     manifest = tmp_path / "executors/sample/manifest.toml"
     signature = manifest.with_name("manifest.toml.sig")
@@ -218,14 +347,8 @@ def test_manifest_promotion_rolls_back_when_signing_fails(tmp_path: Path):
         judge=lambda source, target, resource: bool(source and target and resource),
     )
 
-    def broken_signer(_path):
-        signature.write_bytes(b"partial")
-        raise RuntimeError("signing failed")
-
-    report = promote_candidates(
-        "nl", registry=registry, paths=paths, signer=broken_signer,
-    )
-    assert any(key.startswith("contract:sample:") for key in report.errors)
+    with pytest.raises(CandidateValidationError, match="legacy contract publication"):
+        promote_candidates("nl", registry=registry, paths=paths)
     assert manifest.read_bytes() == before
     assert signature.read_bytes() == b"original-signature"
     assert all(
@@ -317,15 +440,8 @@ def test_versioned_artifact_and_isolated_publication_are_bound_and_dormant(
     conn.commit()
     conn.close()
 
-    signer_calls = []
     with pytest.raises(CandidateValidationError, match="explicit M3 publisher"):
-        promote_candidates(
-            "nl",
-            registry=registry,
-            paths=paths,
-            signer=lambda path: signer_calls.append(path),
-        )
-    assert signer_calls == []
+        promote_candidates("nl", registry=registry, paths=paths)
 
     invalid = publish_versioned_contract_candidates(
         "nl",
@@ -385,6 +501,47 @@ def test_versioned_artifact_and_isolated_publication_are_bound_and_dormant(
     assert repeated.errors == {}
     assert repeated.published_contracts == 1
     assert results[-1].repeated is True
+
+    published_snapshot = current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    )
+    reconciled = reconcile_published_contract_registry(
+        published_snapshot,
+        registry=registry,
+    )
+    contract_rows = [
+        row for row in registry.resources("nl") if row.layer == "contract"
+    ]
+    assert len(reconciled) == len(contract_rows) == 2
+    assert all(row.status == "admitted" for row in contract_rows)
+    assert all(row.basis_id == live.generation_id for row in contract_rows)
+    assert all(row.contract_id == str(ref.contract_id) for row in contract_rows)
+
+    retirement = ContractRetirement(
+        contract_id=ref.contract_id,
+        retirement_id="sha256:" + "f" * 64,
+        previous_generation_id=published_snapshot.generation_id,
+        actor="test operator",
+        reason="uninstall",
+        payload_bytes=b"retirement",
+        signature_bytes=b"signature",
+        signature_hash="sha256:" + "e" * 64,
+        signed_by="test",
+    )
+    assert reconcile_published_contract_registry(
+        retirement, registry=registry,
+    ) == ()
+    assert not any(
+        row.layer == "contract" for row in registry.resources("nl")
+    )
+
+    # The callback re-admits a contract only when contract_store supplies a
+    # manifest revision again (the explicit reactivation boundary).
+    restored = reconcile_published_contract_registry(
+        published_snapshot, registry=registry,
+    )
+    assert len(restored) == 2
+    assert all(row.status == "admitted" for row in restored)
 
 
 def test_versioned_translation_and_review_close_basis_races(
@@ -478,6 +635,133 @@ def test_versioned_translation_and_review_close_basis_races(
         for row in second.resources("nl")
         if row.layer == "contract"
     )
+
+
+def test_stale_contract_candidates_do_not_move_the_current_pointer(
+    tmp_path: Path,
+):
+    (
+        paths,
+        ref,
+        private_key,
+        trusted,
+        store,
+        initial,
+        snapshot_provider,
+        registry,
+    ) = _versioned_workflow(tmp_path)
+    translate_pending(
+        "nl",
+        registry=registry,
+        paths=paths,
+        translator=_translator,
+        contract_snapshot_provider=snapshot_provider,
+    )
+    review_semantics(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+        judge=lambda *_args: True,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    winner_text = (
+        'SCOPO: Actuele versie. PATTERN: sample(path="/tmp/example"). '
+        "NON: andere bewerkingen. OUT: ok=true."
+    )
+    winner_argument = "Actueel bestandspad { value }"
+    winner = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="en",
+        target_language="nl",
+        patches=(
+            _localization_patch(
+                base,
+                selector="description",
+                candidate=winner_text,
+            ),
+            _localization_patch(
+                base,
+                selector="args.properties.path.description",
+                candidate=winner_argument,
+            ),
+        ),
+        private_key=private_key,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    stale = publish_versioned_contract_candidates(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+        publisher=partial(
+            publish_localization,
+            private_key=private_key,
+            trusted_publics=trusted,
+            store_root=store,
+        ),
+    )
+
+    assert stale.published_contracts == 0
+    assert any("commit_conflict" in error for error in stale.errors.values())
+    assert current_manifest(
+        ref,
+        trusted_publics=trusted,
+        store_root=store,
+    ).generation_id == winner.current_generation_id
+
+
+def test_failed_contract_signature_does_not_move_the_current_pointer(
+    tmp_path: Path,
+):
+    (
+        paths,
+        ref,
+        _private_key,
+        trusted,
+        store,
+        initial,
+        snapshot_provider,
+        registry,
+    ) = _versioned_workflow(tmp_path)
+    translate_pending(
+        "nl",
+        registry=registry,
+        paths=paths,
+        translator=_translator,
+        contract_snapshot_provider=snapshot_provider,
+    )
+    review_semantics(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+        judge=lambda *_args: True,
+    )
+
+    rejected = publish_versioned_contract_candidates(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+        publisher=partial(
+            publish_localization,
+            private_key=Ed25519PrivateKey.generate(),
+            trusted_publics=trusted,
+            store_root=store,
+        ),
+    )
+
+    assert rejected.published_contracts == 0
+    assert any("signature_invalid" in error for error in rejected.errors.values())
+    assert current_manifest(
+        ref,
+        trusted_publics=trusted,
+        store_root=store,
+    ).generation_id == initial.current_generation_id
 
 
 def test_versioned_publisher_allows_existing_language_subset_but_not_new_gap(

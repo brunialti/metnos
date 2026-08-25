@@ -7,7 +7,8 @@ Strategia conservativa (no parser TOML lossy):
     purche' non duplichino sezioni esistenti.
   - Backup del manifest pre-modifica in
     `~/.local/share/metnos/rollback_blobs/<sha8>-<executor>.toml`.
-  - Re-sign via `sign.sign_executor(manifest_dir)`.
+  - Pubblicazione tramite il confine canonico
+    `sign.publish_authoring_update(manifest_dir)`.
 
 Limitazioni MVP:
   - Solo aggiunta di arg string/boolean/array semplici (no nested).
@@ -105,12 +106,25 @@ def extend_executor_manifest(ci: ChangeIntent) -> dict:
     mdir = _resolve_executor_dir(target)
     if mdir is None:
         raise RuntimeError(f"executor manifest dir not found for {target}")
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    layout = resolve_manifest_layout()
     manifest_path = mdir / "manifest.toml"
     text = manifest_path.read_text(encoding="utf-8")
 
     # Idempotenza: verifica se sezione gia' presente
     marker = f"[args.properties.{arg_name}]"
     if marker in text:
+        if layout is ManifestLayout.STORE_ONLY:
+            # Un tentativo precedente puo' avere committato la generazione ma
+            # fallito durante la riconciliazione finale. Il retry deve
+            # riattraversare il publisher, non fermarsi sul file authoring.
+            from sign import publish_authoring_update
+            try:
+                publish_authoring_update(mdir)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"publication outcome requires retry: {exc}; source retained"
+                ) from exc
         return {
             "executor_name": target,
             "manifest_path": str(manifest_path),
@@ -157,14 +171,25 @@ def extend_executor_manifest(ci: ChangeIntent) -> dict:
         manifest_path.write_text(text, encoding="utf-8")
         raise RuntimeError(f"post-extend manifest TOML invalid: {exc}; rolled back")
 
-    # Re-sign
+    # Rendi viva la modifica attraverso l'unico confine dipendente dal layout:
+    # firma nel layout legacy, pubblicazione immutabile dopo il cutover.
     try:
-        from sign import sign_executor
-        digest, sig_path = sign_executor(mdir)
+        from sign import publish_authoring_update
+        digest, sig_path, _publication = publish_authoring_update(mdir)
     except Exception as exc:
-        # Re-sign fallita → restore pre-modifica
-        manifest_path.write_text(text, encoding="utf-8")
-        raise RuntimeError(f"re-sign failed: {exc}; manifest restored")
+        if layout is ManifestLayout.AUTHORING:
+            # Nel layout legacy la firma e' l'ultimo passo e il ripristino
+            # conserva il contratto precedentemente ammesso.
+            manifest_path.write_text(text, encoding="utf-8")
+            raise RuntimeError(
+                f"re-sign failed: {exc}; manifest restored"
+            ) from exc
+        # Dopo l'ingresso nel publisher un'eccezione puo' seguire il commit.
+        # Non riscrivere la sorgente: il retry idempotente ripara mirror e
+        # registro senza creare divergenza con la generazione viva.
+        raise RuntimeError(
+            f"publication outcome requires retry: {exc}; source retained"
+        ) from exc
 
     return {
         "executor_name": target,

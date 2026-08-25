@@ -65,9 +65,13 @@ turn history, signing keys, session registry or mutable databases.
 2. **Infrastructure** installs the mandatory BGE-M3 text embedder, binds the
    logical LLM tiers and installs only the sidecars explicitly selected.
 3. **Metnos source** verifies `install/`, `runtime/` and `executors/`, creates
-   initial stores, copies the complete i18n seed, signs executors with a key
-   trusted by this installation and uses the same key to sign the accepted
-   instance-localization request.
+   initial stores, copies the complete i18n seed, publishes executor contracts
+   with a key trusted by this installation and uses the same key to sign the
+   accepted instance-localization request. On a fresh installation this phase
+   also performs the one-way switch to the immutable contract store before the
+   runtime services that admit work, read contracts or publish contract
+   translations are installed and started. Infrastructure prepared by phase 2,
+   such as a local language-model service, may already be running.
 4. **Sensitive data** creates the administrator key and can collect Telegram,
    IMAP/SMTP, Anthropic, OpenAI and GitHub credentials through the encrypted
    runtime store. It also records whether the Web UI listens on every private-
@@ -122,10 +126,44 @@ overwrites an existing translation. Consequently a release can add a string or
 a language without discarding that user's reviewed wording.
 
 Executor signatures distributed by the project do not grant trust on a new
-host. Phase 3 generates or reuses that installation's trusted signing material
-and runs the canonical `sign-all` operation before the catalog is considered
-available. Catalog verification must load the signed executors through the same
-loader used by the server.
+host. Phase 3 generates or reuses that installation's trusted signing material.
+It writes each key component atomically and the private component first. If a
+fresh key creation stops between the two writes, the next fresh-install retry
+derives the missing public component from the valid private key; a public-only
+or malformed remainder stays fail-closed. Phase 3 then normalizes the
+language-state companions, signs and verifies every installed, non-retired
+contract, prepares an isolated immutable generation catalog and activates it.
+This census also includes contracts belonging to disabled
+skills: disabling a skill controls visibility, but does not remove its installed
+contract or authorize a later fallback to mutable source files. The preparation
+report is written durably before activation, so a crash between the marker and
+the store move can be resumed without
+guessing. The activation is allowed only while the central lifecycle lock is
+held, HTTP and the contract readers, schedulers, publishers and restart
+controllers are proven inactive, and the browser broker reports no work in
+progress. Phase-2 utilities that do not consume contracts, such as an LLM or a
+search service, need not be stopped. An older live installation must therefore
+be stopped explicitly; a momentarily idle HTTP endpoint is not sufficient
+evidence of quiescence. Phase 3 does not stop or later restart a live stack on
+the operator's behalf: it fails with a stable diagnostic and leaves its phase
+sentinel uncommitted, so the phase can be resumed after an explicit maintenance
+stop.
+
+Once the immutable store is active, phase 3 never runs `sign-all` again. A
+re-run sends each installed, non-retired authoring source through the
+layout-aware technical publisher, which signs and publishes under one
+per-contract lock. The publisher preserves authenticated retirement tombstones:
+reinstalling does not
+silently reactivate an executor whose authoring directory still exists. The
+marker-only and root-only recovery states remain fail-closed for normal runtime
+readers. Under the same stopped-stack guard, the installer completes a
+marker-only recovery only from the exact saved preparation report. For a valid
+root-only store it instead reconstructs the current catalog by authenticating
+the bindings and revisions already present in that root; an old initial report
+would be stale after later publications. Missing, stale or inconsistent
+evidence blocks the phase with a diagnostic instead of inventing recovery
+state. Catalog verification finally authenticates every binding and loads the
+resulting contracts through the same loader used by the server.
 
 Phase 6 reads the first-party capability switches from
 `runtime/skills_catalog.py`; documentation must not maintain a competing list.

@@ -1,0 +1,2403 @@
+{
+  "schema": "metnos.contract-boundary-inventory/2",
+  "source_census": "internal/reports/rm0007-m0-census-20260825.md",
+  "scan_roots": [
+    "runtime",
+    "install",
+    "scripts",
+    "executors"
+  ],
+  "entries": [
+    {
+      "path": "executors/undo_last_turn/undo_last_turn.py",
+      "scope": "invoke",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_activate_prepared_report",
+      "role": "migration_boundary",
+      "capabilities": [
+        "cutover_guard",
+        "legacy_bootstrap"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_activate_prepared_report_locked",
+      "role": "migration_boundary",
+      "capabilities": [
+        "legacy_bootstrap"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_clean_authoring_inventory",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_install_executor_contracts",
+      "role": "migration_boundary",
+      "capabilities": [
+        "cutover_guard",
+        "legacy_bootstrap",
+        "publish_technical",
+        "sign"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_phase3_cutover_boundary",
+      "role": "administrative_tool",
+      "capabilities": [
+        "cutover_guard"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_publish_active_authoring_contracts",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_recover_store_only",
+      "role": "migration_boundary",
+      "capabilities": [
+        "cutover_guard",
+        "legacy_bootstrap"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_sign_and_verify_legacy_contracts",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_store_only_catalog",
+      "role": "administrative_tool",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "_verify_contract_store_for_installation",
+      "role": "administrative_tool",
+      "capabilities": [
+        "live_artifact_read",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "install/phases/phase3_code.py",
+      "scope": "run",
+      "role": "migration_boundary",
+      "capabilities": [
+        "cutover_guard",
+        "legacy_bootstrap",
+        "publish_technical",
+        "sign"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "<module>",
+      "role": "migration_boundary",
+      "capabilities": [
+        "authoring_write",
+        "cutover_guard",
+        "legacy_bootstrap",
+        "publish_bootstrap"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "_activate_prepared_contract_store_locked",
+      "role": "migration_boundary",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "legacy_bootstrap",
+        "verified_store_read"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "_migrate_contract_language_states_locked",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "offline authoring under the global catalog lock; never a live contract authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "_prepare_contract_store_shadow_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "publish_bootstrap",
+        "verified_store_read"
+      ],
+      "destination": "isolated immutable shadow preparation under the global cutover authority",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "activate_prepared_contract_store",
+      "role": "migration_boundary",
+      "capabilities": [
+        "legacy_bootstrap"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "main",
+      "role": "migration_boundary",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "cutover_guard",
+        "legacy_bootstrap",
+        "live_artifact_read",
+        "publish_bootstrap",
+        "verified_store_read"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "migrate_contract_language_states",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "migrate_manifest",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/i18n_migrate_manifests.py",
+      "scope": "prepare_contract_store_shadow",
+      "role": "migration_boundary",
+      "capabilities": [
+        "legacy_bootstrap",
+        "publish_bootstrap"
+      ],
+      "destination": "one-time legacy bootstrap under the shared quiescence and cold-load barrier",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/manifest_refactor.py",
+      "scope": "<module>",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/manifest_refactor.py",
+      "scope": "main",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/admin/manifest_refactor.py",
+      "scope": "refactor_manifest",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_runtime.py",
+      "scope": "TurnLog.write",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_runtime.py",
+      "scope": "_calendar_write_tools",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_runtime.py",
+      "scope": "_runtime_executor_descriptions",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_runtime.py",
+      "scope": "_strato3_routing_changed",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_runtime.py",
+      "scope": "run_turn",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/agent_server.py",
+      "scope": "_executor_bundle_payload",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/change_applier.py",
+      "scope": "apply_create_executor",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/change_applier_extend.py",
+      "scope": "_resolve_executor_dir",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/change_applier_extend.py",
+      "scope": "extend_executor_manifest",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/change_rollback.py",
+      "scope": "_rollback_create_executor",
+      "role": "operational_producer",
+      "capabilities": [
+        "retire"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/change_rollback.py",
+      "scope": "_rollback_extend_executor",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/channels/daemon.py",
+      "scope": "ChannelDaemon._consume_approval_required",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/cli/skills_cli.py",
+      "scope": "_cmd_import",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_technical",
+        "reactivate"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/cli/skills_cli.py",
+      "scope": "_cmd_list",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/cli/skills_cli.py",
+      "scope": "_cmd_status",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/cli/skills_cli.py",
+      "scope": "_cmd_uninstall",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "retire"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/cli/skills_cli.py",
+      "scope": "_try_publish_authoring_update",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_technical",
+        "reactivate"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/config.py",
+      "scope": "localization_corpus_version",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "dual-layout corpus identity boundary; STORE_ONLY hashes published revision identities",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_cutover_guard.py",
+      "scope": "_verify_store_only_catalog_locked",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "live_artifact_read",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_cutover_guard.py",
+      "scope": "contract_cutover_guard",
+      "role": "administrative_tool",
+      "capabilities": [
+        "cutover_guard"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_cutover_guard.py",
+      "scope": "verify_store_only_catalog",
+      "role": "administrative_tool",
+      "capabilities": [
+        "live_artifact_read",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_activate_store_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_activation_writer_locks",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_atomic_replace_file",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_code_digest",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_commit_payloads_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_ensure_binding_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_ensure_directory_chain",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_ensure_store_directories",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_exclusive_file_lock",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole portable lock-file authority for immutable publication and catalog transitions",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_install_generation",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_install_retirement",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write",
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_move_activation_container",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_pointer_replace_conflict",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_prepare_technical_payloads_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_publication_base_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_reconcile_authoring_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_recover_activation_staging",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_recover_and_verify_activation_catalog",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_recover_contract_staging_locked",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_remove_staging_recovery_plan",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_rename_no_replace",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_replace_retry",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_require_catalog_name_candidate",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "authenticated global candidate check before any contract pointer becomes authoritative",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_sync_directory",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_verify_pre_cutover_inventory",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_windows_delete_share_conflict",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_write_activation_marker",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_write_current",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_write_new_file",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "_writer_lock",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "activate_store",
+      "role": "store_owner",
+      "capabilities": [
+        "legacy_bootstrap",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "catalog_admission_lock",
+      "role": "store_owner",
+      "capabilities": [
+        "store_write"
+      ],
+      "destination": "sole global lock authority for publication, cutover, and visibility transitions",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "current_contract",
+      "role": "store_owner",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "current_manifest",
+      "role": "store_owner",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "current_revision_id",
+      "role": "store_owner",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "diagnose_store",
+      "role": "store_owner",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "prepare_technical_draft",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "publish_localization",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "publish_localization",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "publish_signed_source",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "publish_bootstrap",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "publish_technical_update",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "reactivate_technical_update",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "reactivate",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "read_binding",
+      "role": "store_owner",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "retire",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "retire",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "rollback",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_write",
+        "rollback",
+        "store_write"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/contract_store.py",
+      "scope": "verify_manifest_source",
+      "role": "store_owner",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify"
+      ],
+      "destination": "sole owner of immutable publication-store reads, commits, pointers, and recovery",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/credentials.py",
+      "scope": "credential_form_kinds",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/durable_runtime_registry.py",
+      "scope": "_verified_catalog_snapshot",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/durable_workloads/compiler.py",
+      "scope": "VerifiedCatalogResolver.resolve",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/durable_workloads/execution.py",
+      "scope": "DurableExecutionBridge._load_verified_executor",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/engine/fastpath.py",
+      "scope": "_catalog_objects",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/executor_standard.py",
+      "scope": "_manifest_paths",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/http_routes_admin.py",
+      "scope": "admin_device_test_invoke",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/http_routes_agent.py",
+      "scope": "_apply_cap_pending",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/http_routes_agent.py",
+      "scope": "_finish_oauth_callback_for_owner",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_activation.py",
+      "scope": "_validate_live_resource",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_activation.py",
+      "scope": "validate_manifests",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_activation.py",
+      "scope": "validate_manifests.validator",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_materializer.py",
+      "scope": "_iter_contract_items",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "dual-layout localization inventory; live mode receives verified contract snapshots",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_materializer.py",
+      "scope": "materialize",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_materializer.py",
+      "scope": "materialize_requested",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_pipeline.py",
+      "scope": "live_contract_context",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_localization",
+        "verified_store_read"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_translator.py",
+      "scope": "<module>",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_translator.py",
+      "scope": "_align_one_manifest",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/i18n_translator.py",
+      "scope": "align_manifest_descriptions",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/importer_verb_verify.py",
+      "scope": "audit_existing_imports",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/introvertiva.py",
+      "scope": "candidates_dedupe",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/invocations.py",
+      "scope": "load_executor_artifact",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/maintenance_tasks.py",
+      "scope": "_full_catalog_names",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/promoter_promote.py",
+      "scope": "_loader_admission",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/promoter_promote.py",
+      "scope": "_restore_rollback_blob",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/promoter_promote.py",
+      "scope": "_write_rollback_blob",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/promoter_promote.py",
+      "scope": "promote_to_catalog",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/jobs/promoter_rollback.py",
+      "scope": "rollback_promotion",
+      "role": "operational_producer",
+      "capabilities": [
+        "rollback"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_catalog_cache_signature",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_iter_executor_dirs",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_load_builtin_contract",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "verified_store_read"
+      ],
+      "destination": "canonical dual-layout loader boundary; STORE_ONLY uses authenticated generations only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_load_dir_into_catalog",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_load_parsed_manifest_into_catalog",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_load_catalog_under_catalog_lock",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "canonical dual-layout loader body; STORE_ONLY executes only under a stable global snapshot",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_load_store_into_catalog",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "canonical dual-layout loader boundary; STORE_ONLY uses authenticated generations only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_store_catalog_signature",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "_store_revision_ids",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/loader.py",
+      "scope": "load_catalog",
+      "role": "administrative_tool",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "canonical dual-layout loader boundary; STORE_ONLY uses authenticated generations only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_inventory.py",
+      "scope": "_iter_source_paths",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_inventory.py",
+      "scope": "inventory_authoring_manifests",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_inventory.py",
+      "scope": "inventory_manifests",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "canonical layout router; authoring before cutover, immutable bindings after cutover",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_inventory.py",
+      "scope": "inventory_store_manifests",
+      "role": "live_reader",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_lint.py",
+      "scope": "_load_all_affinities",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_lint.py",
+      "scope": "_load_catalog_names",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_lint.py",
+      "scope": "main",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_normalize.py",
+      "scope": "<module>",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_normalize.py",
+      "scope": "_set_description_block",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_normalize.py",
+      "scope": "_update_lang_state",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_normalize.py",
+      "scope": "apply_one",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_normalize.py",
+      "scope": "load_catalog",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/manifest_normalize.py",
+      "scope": "main",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/metnos_http_server.py",
+      "scope": "_build_catalog_provider.get",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/migrate_manifest_descriptions.py",
+      "scope": "<module>",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/migrate_manifest_descriptions.py",
+      "scope": "main",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/migrate_manifest_descriptions.py",
+      "scope": "migrate_dirs",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/migrate_manifest_descriptions.py",
+      "scope": "migrate_one",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/orchestration.py",
+      "scope": "_esegui_ramo",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/orchestration.py",
+      "scope": "_process_resume_executor_gate_tail",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/prefilter.py",
+      "scope": "<module>",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/proposal_evaluator.py",
+      "scope": "_check_affinity_overlap",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/proposal_evaluator.py",
+      "scope": "evaluate_proposal",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/proposals_cleanup.py",
+      "scope": "_fallback_catalog_names",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/proposals_cleanup.py",
+      "scope": "archive_aged_synth_proposals",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/proposals_cleanup.py",
+      "scope": "auto_decay_legacy_orphan_mnests",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "<module>",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical",
+        "sign"
+      ],
+      "destination": "explicit administrative dual-layout command; operational callers use canonical publishers",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "_authoring_manifest_ref",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "_ensure_lang_state_companion",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "_sign_executor_under_catalog_lock",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write"
+      ],
+      "destination": "offline authoring implementation reachable only through the global catalog exclusion",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "compute_code_digest",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "installation_manifest_paths",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "main",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical",
+        "sign"
+      ],
+      "destination": "explicit administrative dual-layout command; operational callers use canonical publishers",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "publish_authoring_update",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "publish_technical",
+        "sign"
+      ],
+      "destination": "explicit administrative dual-layout command; operational callers use canonical publishers",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "publish_executor",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "publish_technical",
+        "verified_store_read"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "reactivate_executor_contract",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "reactivate",
+        "verified_store_read"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "retire_executor_contract",
+      "role": "operational_producer",
+      "capabilities": [
+        "retire",
+        "verified_store_read"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "rollback_executor_contract",
+      "role": "operational_producer",
+      "capabilities": [
+        "rollback"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "sign_executor",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write",
+        "sign"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/sign.py",
+      "scope": "verify_executor",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admin.py",
+      "scope": "_catalog_skill_counts",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_existing_affinity_sets",
+      "role": "offline_authoring",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_existing_bindings",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_is_handcrafted",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "live_artifact_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_is_imported",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "live_artifact_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_is_synth",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read",
+        "live_artifact_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_read_affinity_from_manifest",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_scan_existing_executors",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_admission.py",
+      "scope": "_stage6_check",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_codegen.py",
+      "scope": "generate_executor_files",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_registry.py",
+      "scope": "_authoring_candidate_preflight",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_registry.py",
+      "scope": "_store_candidate_preflight",
+      "role": "administrative_tool",
+      "capabilities": [
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_registry.py",
+      "scope": "list_skills",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_wrapper.py",
+      "scope": "_get_skill_oauth_config",
+      "role": "administrative_tool",
+      "capabilities": [
+        "authoring_read",
+        "verified_store_read"
+      ],
+      "destination": "reviewed administrative or dual-layout boundary; not an ordinary live reader",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skill_wrapper.py",
+      "scope": "_legacy_skill_oauth_config",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/skills_paths.py",
+      "scope": "iter_skill_executor_dirs",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/smoke.py",
+      "scope": "_run_smoke_with_tool_assertion",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/smoke.py",
+      "scope": "check_invariants",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "<module>",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "StackReconciler.restart",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "StackReconciler.watchdog",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "_catalog_names",
+      "role": "operational_producer",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "main",
+      "role": "operational_producer",
+      "capabilities": [
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/stack_reconcile.py",
+      "scope": "verify_named_executors",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "live_artifact_read",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "<module>",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "Synt._generate",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "Synt._write_proposal_to_disk",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "Synt.approve_proposal",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "Synt.homeostasis",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "Synt.react",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "Synt.specialize",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_verify",
+        "authoring_write",
+        "live_artifact_read",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synt.py",
+      "scope": "_cli",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synth_request.py",
+      "scope": "_install_synthesized",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synth_request.py",
+      "scope": "_validate_birth_tests",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/synth_request.py",
+      "scope": "handle_synth_request",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_write",
+        "live_artifact_read",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/system/admin.py",
+      "scope": "_executor_name_in_argv",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/telos_introspect.py",
+      "scope": "run_for_telos",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/telos_proposals_store.py",
+      "scope": "_live_catalog_names",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/test_runner.py",
+      "scope": "main",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/test_runner.py",
+      "scope": "run_executor",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/tutor/probes.py",
+      "scope": "_executor_payload",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/tutor/service.py",
+      "scope": "_catalog_summary",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/tutor/sources.py",
+      "scope": "_capability_catalog_units",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/tutor/sources.py",
+      "scope": "_executor_units",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/tutor/sources.py",
+      "scope": "executor_catalog_stamp",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/vocab.py",
+      "scope": "_imports_signature",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/vocab.py",
+      "scope": "_legacy_imported_bindings_index",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/vocab.py",
+      "scope": "imported_bindings_index",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/bench_prefilter_corpus.py",
+      "scope": "misura",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/generate_builtin_executor_contracts.py",
+      "scope": "<module>",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/generate_builtin_executor_contracts.py",
+      "scope": "main",
+      "role": "operational_producer",
+      "capabilities": [
+        "authoring_read",
+        "authoring_write",
+        "publish_technical"
+      ],
+      "destination": "reviewed publication, retirement, reactivation, or rollback boundary",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/generate_domain_reference.py",
+      "scope": "load_operations",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/generate_executor_catalog.py",
+      "scope": "load_entries",
+      "role": "documentation",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "read-only documentation, lint, test, or reference inspection",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/manage_complex_query_fixture.py",
+      "scope": "RemoteFixture.__init__",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/normalize_installed_github_executors.py",
+      "scope": "<module>",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/normalize_installed_github_executors.py",
+      "scope": "_normalize_manifest",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_read"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    },
+    {
+      "path": "scripts/normalize_installed_github_executors.py",
+      "scope": "main",
+      "role": "offline_authoring",
+      "capabilities": [
+        "authoring_write"
+      ],
+      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
+      "phase": "M4"
+    }
+  ]
+}

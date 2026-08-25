@@ -8,7 +8,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from contract_store import current_manifest, publish_signed_source
+from contract_store import current_contract, current_manifest, publish_signed_source, retire
 from i18n_materializer import (
     LocalizationPaths,
     encode_language_state,
@@ -311,6 +311,67 @@ def test_versioned_contract_materialization_uses_verified_generation_without_mir
     ]
     assert all(item.contract_ref == ref for item in items)
     assert all(item.basis_id == publication.current_generation_id for item in items)
+    assert authoring == {
+        name: (ref.manifest_dir / name).read_bytes()
+        for name in authoring
+    }
+
+
+def test_authenticated_retirement_omits_contract_without_authoring_fallback(
+    tmp_path: Path,
+) -> None:
+    (
+        paths,
+        ref,
+        private_key,
+        trusted,
+        store,
+        publication,
+        _snapshot_provider,
+    ) = _versioned_fixture(tmp_path)
+    authoring = {
+        name: (ref.manifest_dir / name).read_bytes()
+        for name in (
+            "manifest.toml",
+            "manifest.toml.sig",
+            "manifest.lang_state.json",
+        )
+    }
+    retired = retire(
+        ref,
+        expected_generation_id=publication.current_generation_id,
+        actor="i18n-test",
+        reason="verify authenticated omission",
+        private_key=private_key,
+        trusted_publics=trusted,
+        audit_sink=lambda _event: None,
+        store_root=store,
+    )
+
+    def snapshot_provider(current_ref):
+        return current_contract(
+            current_ref,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    items = inventory(
+        paths,
+        source_lang="en",
+        contract_snapshot_provider=snapshot_provider,
+    )
+    registry = LocalizationRegistry(tmp_path / "retired-registry.sqlite")
+    report = materialize(
+        "nl",
+        registry=registry,
+        paths=paths,
+        contract_snapshot_provider=snapshot_provider,
+    )
+
+    assert retired.operation == "retire"
+    assert not any(item.layer == "contract" for item in items)
+    assert "contract" not in report.by_layer
+    assert not any(row.layer == "contract" for row in registry.resources("nl"))
     assert authoring == {
         name: (ref.manifest_dir / name).read_bytes()
         for name in authoring

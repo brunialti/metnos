@@ -18,7 +18,7 @@ import time
 
 from synt_multistage import run_full as multistage_run_full
 from loader import SYNTHESIZED_EXECUTORS_DIR
-from sign import sign_executor
+from sign import publish_authoring_update
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
 from messages import get as _msg
 from generated_executor_contract import (
@@ -169,7 +169,7 @@ def _install_synthesized(run, intent, user_query):
         '',
         '[code]',
         f'files  = ["{code_filename}"]',
-        'digest = "sha256:placeholder"',  # sign_executor lo aggiorna
+        'digest = "sha256:placeholder"',  # publication boundary lo aggiorna
         '',
         '[args]',
         'type     = "object"',
@@ -252,34 +252,19 @@ def _install_synthesized(run, intent, user_query):
         _manifest_text, expected_lifecycle="synthesized")
     (out_dir / "manifest.toml").write_text(_manifest_text, encoding="utf-8")
 
-    # Crea anche manifest.lang_state.json initial con sola entry per la lingua
-    # corrente. Il daemon notturno tradurra' nelle altre lingue.
-    from hashutil import sha256_prefixed as _h
-    lang_state = {
-        "description": {
-            cur_lang: {
-                "version_hash": _h(description),
-                "source_lang": None,
-                "source_hash": None,
-            },
-        },
-    }
-    for arg_name, arg_def in (args_schema.get("properties") or {}).items():
-        d = (arg_def or {}).get("description")
-        if isinstance(d, str):
-            lang_state[f"args.{arg_name}.description"] = {
-                cur_lang: {
-                    "version_hash": _h(d),
-                    "source_lang": None,
-                    "source_hash": None,
-                },
-            }
-    (out_dir / "manifest.lang_state.json").write_text(
-        _json.dumps(lang_state, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    # Derive the companion from the completed JSON-Schema tree.  The shared
+    # enumerator covers nested properties/items without generator-specific
+    # selector rules.
+    import tomllib
+    from i18n_materializer import migrate_language_state_bytes
+    parsed_manifest = tomllib.loads(_manifest_text)
+    (out_dir / "manifest.lang_state.json").write_bytes(
+        migrate_language_state_bytes(
+            b"{}", manifest=parsed_manifest,
+        ).state_bytes,
     )
 
-    sign_executor(out_dir)
+    publish_authoring_update(out_dir)
     # (Rimosso 21/6 il blocco i18n at-gen-time: leggeva run.description/
     # run.affinity_keywords — attributi INESISTENTI su MultistageRun → sempre
     # no-op, codice morto. Gli executor synth portano description/affinity nel
@@ -425,6 +410,23 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     )
     if _existing_candidate is not None and _existing_candidate.lifecycle in {
             "proposed", "synthesized"}:
+        # Store publication can become current before a final registry
+        # callback reports failure. Re-entering the same publisher on the
+        # existing candidate is idempotent and repairs that tail; merely
+        # returning "already exists" would strand the reconciliation.
+        try:
+            from manifest_inventory import ManifestLayout, resolve_manifest_layout
+            if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+                authoring_path = _existing_candidate.authoring_manifest_path
+                if authoring_path is None:
+                    raise RuntimeError("candidate authoring provenance missing")
+                publish_authoring_update(authoring_path.parent)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": f"candidate publication requires retry: {exc}",
+                "proposed_name": expected_name,
+            }
         return {
             "ok": True,
             "synthesized": True,

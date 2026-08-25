@@ -56,6 +56,11 @@ ARG_RENDER_HARD_MAX = _positive_env_int("METNOS_MANIFEST_ARG_RENDER_HARD_MAX", 3
 # ── Capitoli §2.5 ────────────────────────────────────────────────────────────
 CHAPTERS = ("SCOPO:", "PATTERN:", "NON:", "OUT:")
 
+# Eccezioni di schema per il carrier universale di pipeline. Questa e' la sola
+# autorita' della regola condivisa da linter, normalizzatore, coerce e typecheck;
+# non descrive gli altri argomenti che il runtime puo' iniettare in fasi diverse.
+UNIVERSAL_ARGS = frozenset({"from_step", "entries"})
+
 
 def _first_sentence(desc: str) -> str:
     """Prima frase robusta: spezza solo a '. ' (punto + spazio) o a fine stringa.

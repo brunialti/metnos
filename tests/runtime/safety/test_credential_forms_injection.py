@@ -98,6 +98,31 @@ def test_scheduler_health_source_overwrites_untrusted_value(monkeypatch):
     assert args["scheduler_health"] == observation
 
 
+def test_executor_description_source_is_localized_verified_and_bounded(
+        monkeypatch):
+    class FakeCatalog:
+        def __iter__(self):
+            return iter([
+                SimpleNamespace(name="zeta", description="Z" * 900),
+                SimpleNamespace(name="alpha", description="Descrizione alpha"),
+                SimpleNamespace(name="", description="invalid"),
+            ])
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "loader.load_catalog",
+        lambda *, lang: calls.append(lang) or FakeCatalog(),
+    )
+    monkeypatch.setattr("i18n.current_lang", lambda: "xx")
+
+    projection = agent_runtime._runtime_executor_descriptions()
+
+    assert list(projection) == ["alpha", "zeta"]
+    assert projection["alpha"] == "Descrizione alpha"
+    assert len(projection["zeta"]) == 512
+    assert calls == ["xx"]
+
+
 def test_server_side_collector_matches_live_catalog():
     """Nel processo server (chiavi trusted presenti) il collettore raccoglie
     i 4 domini dichiaranti correnti; l'iniezione end-to-end li consegna."""

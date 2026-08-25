@@ -172,6 +172,48 @@ class TestExtendExecutor(unittest.TestCase):
         post_text = (self.target_dir / "manifest.toml").read_text()
         self.assertEqual(original_text, post_text)
 
+    def test_store_publication_failure_retains_retryable_authoring(self):
+        from change_applier_extend import extend_executor_manifest
+        from manifest_inventory import ManifestLayout
+
+        ci = self._make_ci("kind", "string")
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ), mock.patch(
+            "sign.publish_authoring_update",
+            side_effect=RuntimeError("registry unavailable after commit"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "requires retry"):
+                extend_executor_manifest(ci)
+
+        self.assertIn(
+            "[args.properties.kind]",
+            (self.target_dir / "manifest.toml").read_text(),
+        )
+
+    def test_store_retry_reenters_publisher_when_section_already_exists(self):
+        from change_applier_extend import extend_executor_manifest
+        from manifest_inventory import ManifestLayout
+
+        ci = self._make_ci("kind", "string")
+        manifest = self.target_dir / "manifest.toml"
+        manifest.write_text(
+            manifest.read_text().rstrip()
+            + '\n\n[args.properties.kind]\ntype = "string"\n',
+        )
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ), mock.patch(
+            "sign.publish_authoring_update",
+            return_value=("sha256:fake", Path("/tmp/fake.sig"), mock.sentinel.publication),
+        ) as publisher:
+            effect = extend_executor_manifest(ci)
+
+        self.assertTrue(effect["already_extended"])
+        publisher.assert_called_once_with(self.target_dir)
+
 
 if __name__ == "__main__":
     unittest.main()

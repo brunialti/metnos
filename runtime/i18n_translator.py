@@ -771,35 +771,17 @@ def _save_lang_state(state_path: Path, state: dict) -> None:
 
 
 def _enumerate_textual_resources(manifest: dict) -> list[tuple[str, dict]]:
-    """Itera (resource_key, lang_table_dict) per tutte le risorse testuali
-    multilingua del manifest.
+    """Compatibility view over the canonical contract selector inventory.
 
-    resource_key = "description" per top-level, "args.<arg>.description"
-    per arg-level. Il dict ritornato e' RIFERIMENTO al table in-memory:
-    chi modifica il dict modifica il manifest dict in-place.
-
-    Salta risorse che non sono table (es. legacy scalari, anche se loader
-    li rifiuta gia' a load time).
+    Selector paths and the set of eligible localized surfaces are owned by
+    :func:`i18n_materializer.manifest_language_selectors`; keeping a second
+    recursive walker here previously confused schema properties literally
+    named ``description``, ``title`` or ``summary`` with localized tables.
+    The returned mappings are the original in-memory language tables.
     """
-    localizable = frozenset({
-        "description", "summary", "title", "label", "help", "message",
-    })
-    out: list[tuple[str, dict]] = []
+    from i18n_materializer import manifest_language_selectors
 
-    def visit(node: dict, prefix: tuple[str, ...] = ()) -> None:
-        for key, value in node.items():
-            if not isinstance(value, dict):
-                continue
-            path = prefix + (str(key),)
-            if path[-1] in localizable and any(
-                isinstance(text, str) for text in value.values()
-            ):
-                out.append((".".join(path), value))
-            else:
-                visit(value, path)
-
-    visit(manifest)
-    return out
+    return list(manifest_language_selectors(manifest).items())
 
 
 def _decide_edit_source(state: dict, resource_key: str,
@@ -862,6 +844,17 @@ def align_manifest_descriptions(executor_dirs: list[Path] | None = None,
     Returns:
         Lista di dict per-manifest con esito.
     """
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if (
+        resolve_manifest_layout() is ManifestLayout.STORE_ONLY
+        and not dry_run
+    ):
+        raise RuntimeError(
+            "align-manifests cannot mutate authoring after contract-store "
+            "cutover; use the versioned i18n candidate review and "
+            "publication pipeline (dry-run remains available for diagnosis)",
+        )
     if executor_dirs is None:
         from pathlib import Path as _P
         from config import PATH_EXECUTORS as _PE

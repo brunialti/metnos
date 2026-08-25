@@ -14,8 +14,10 @@ import json
 import shutil
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
@@ -27,6 +29,7 @@ from i18n_translator import (  # noqa: E402
     _sha256_text,
     align_manifest_descriptions,
 )
+from i18n_materializer import _normalize_contract_language_state  # noqa: E402
 
 
 def _h(text: str) -> str:
@@ -126,6 +129,39 @@ class TestEnumerateTextualResources(unittest.TestCase):
         manifest = {"description": "legacy string", "args": {"properties": {}}}
         out = _enumerate_textual_resources(manifest)
         self.assertEqual(out, [])
+
+    def test_schema_property_names_cannot_change_selector_structure(self):
+        manifest = {
+            "description": {"it": "Top", "en": "Top"},
+            "args": {
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": {"it": "Testo", "en": "Text"},
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": {"it": "Titolo", "en": "Title"},
+                    },
+                    "payload": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"it": "Etichetta", "en": "Label"},
+                        },
+                    },
+                },
+            },
+        }
+
+        selectors = dict(_enumerate_textual_resources(manifest))
+
+        self.assertIn("args.properties.description.description", selectors)
+        self.assertIn("args.properties.title.description", selectors)
+        self.assertNotIn("args.properties.description", selectors)
+        self.assertNotIn(
+            "args.properties.payload.properties.label", selectors,
+        )
 
 
 class TestDecideEditSource(unittest.TestCase):
@@ -282,9 +318,37 @@ class TestAlignManifestDescriptionsDryRun(unittest.TestCase):
         self.assertEqual(r["status"], "dry_run")
         self.assertEqual(r.get("n_would_translate", 0), 0)
 
+    def test_store_only_mutation_is_rejected_before_source_touch(self):
+        from manifest_inventory import ManifestLayout
+
+        directory = self._build_manifest(
+            "ex_store", desc_table={"it": "Ciao", "en": "Hello"},
+        )
+        before = {
+            path.name: path.read_bytes() for path in directory.iterdir()
+        }
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ), mock.patch(
+            "i18n_translator._align_one_manifest",
+            side_effect=AssertionError("source touched after cutover"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "versioned i18n"):
+                align_manifest_descriptions(
+                    executor_dirs=[self.tmp],
+                    target_langs=["it", "en"],
+                    resign=True,
+                    dry_run=False,
+                )
+
+        self.assertEqual(before, {
+            path.name: path.read_bytes() for path in directory.iterdir()
+        })
+
 
 class TestRealCatalogLangStatePresence(unittest.TestCase):
-    """Verifica che i 54 manifest reali abbiano manifest.lang_state.json."""
+    """Verify that real contracts carry valid versioned language state."""
 
     def test_real_executors_have_lang_state(self):
         roots = [
@@ -302,7 +366,7 @@ class TestRealCatalogLangStatePresence(unittest.TestCase):
                 if state.is_file():
                     n_with_state += 1
         self.assertGreaterEqual(n_total, 50)
-        # Tutti i 54 dovrebbero avere lang_state dopo migrazione.
+        # Every discovered contract must have language state after migration.
         self.assertEqual(n_with_state, n_total,
                          msg=f"manifest senza lang_state: {n_total - n_with_state}/{n_total}")
 
@@ -312,10 +376,14 @@ class TestRealCatalogLangStatePresence(unittest.TestCase):
         if not path.is_file():
             self.skipTest("find_files manifest.lang_state.json not present")
         data = json.loads(path.read_text(encoding="utf-8"))
-        self.assertIn("description", data)
-        # Per find_files dovrebbe esistere almeno la lingua "it".
-        self.assertIn("it", data["description"])
-        entry = data["description"]["it"]
+        manifest_path = path.with_name("manifest.toml")
+        manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+        state = _normalize_contract_language_state(data, manifest=manifest)
+        self.assertEqual(state["schema_version"], 1)
+        self.assertIn("description", state["selectors"])
+        # The canonical top-level description contains the installed language.
+        self.assertIn("it", state["selectors"]["description"])
+        entry = state["selectors"]["description"]["it"]
         self.assertIn("version_hash", entry)
         self.assertTrue(entry["version_hash"].startswith("sha256:"))
         # Initial state: source_lang/source_hash null.

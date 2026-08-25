@@ -3300,6 +3300,10 @@ _RUNTIME_ARG_SOURCES = {
     # The scheduler is co-hosted by the HTTP process.  Only that process can
     # attest whether its asyncio task is alive and, when it is not, why.
     "scheduler_health": lambda: _import_scheduler_health().snapshot(),
+    # Signed executors may opt in to a bounded view of the already-localized
+    # public catalog without receiving trust keys or reopening another
+    # executor's authoring manifest.
+    "executor_descriptions": lambda: _runtime_executor_descriptions(),
 }
 
 
@@ -3311,6 +3315,32 @@ def _import_credentials():
 def _import_scheduler_health():
     from scheduler_v2 import health
     return health
+
+
+_MAX_RUNTIME_EXECUTOR_DESCRIPTIONS = 512
+_MAX_RUNTIME_EXECUTOR_NAME_CHARS = 128
+_MAX_RUNTIME_EXECUTOR_DESCRIPTION_CHARS = 512
+
+
+def _runtime_executor_descriptions() -> dict[str, str]:
+    """Build a deterministic, bounded projection of the verified catalog."""
+    import i18n as _i18n
+    from loader import load_catalog
+
+    projection: dict[str, str] = {}
+    catalog = load_catalog(lang=_i18n.current_lang())
+    for item in sorted(catalog, key=lambda value: str(value.name)):
+        name = str(item.name or "").strip()
+        description = str(item.description or "").strip()
+        if (not name or not description
+                or len(name) > _MAX_RUNTIME_EXECUTOR_NAME_CHARS):
+            continue
+        projection[name] = description[
+            :_MAX_RUNTIME_EXECUTOR_DESCRIPTION_CHARS
+        ]
+        if len(projection) >= _MAX_RUNTIME_EXECUTOR_DESCRIPTIONS:
+            break
+    return projection
 
 
 def _fill_runtime_sourced_args(executor, args: dict) -> dict:

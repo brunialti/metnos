@@ -20,6 +20,7 @@ import pwd
 import signal
 import stat
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -49,6 +50,20 @@ STACK_UNITS = (
     "metnos-i18n-translator.timer",
     "metnos-stack-watchdog.timer",
 )
+# Canonical maintenance boundary for immutable executor-contract cutover.
+# Supporting services (LLM, search, geocoding and display) remain outside it;
+# Playwright is proved independently by ``require_quiescent()`` because the
+# broker may stay running while holding no browser work.
+CONTRACT_CUTOVER_UNITS = tuple(sorted({
+    TARGET_UNIT,
+    "metnos-http.service",
+    "metnos-durable-worker.service",
+    "metnos-telegram-daemon.service",
+    "metnos-i18n-translator.service",
+    "metnos-i18n-translator.timer",
+    *CONTROL_PLANE_UNITS,
+    "metnos-stack-watchdog.timer",
+}))
 RUNTIME_COMPONENT_UNITS = (
     "metnos-durable-worker.service",
     "metnos-side-display.service",
@@ -174,6 +189,44 @@ class ReconcileLock:
 
     def __exit__(self, *_args: object) -> None:
         self.release()
+
+
+@contextlib.contextmanager
+def catalog_reconcile_lock(
+    *,
+    lock: ReconcileLock | None = None,
+    path: Path | None = None,
+    owner_uid: int | None = None,
+    wait_s: float = 2.0,
+):
+    """Acquire the catalog and lifecycle boundaries in one canonical order."""
+    from contract_store import ContractStoreError, catalog_admission_lock
+
+    try:
+        catalog = catalog_admission_lock(timeout=wait_s)
+        catalog.__enter__()
+    except ContractStoreError as exc:
+        raise StackFailure(
+            "catalog_lock_unavailable", f"{exc.code}: {exc.detail}",
+        ) from exc
+    try:
+        if lock is not None and (path is not None or owner_uid is not None):
+            raise ValueError("lock cannot be combined with path or owner_uid")
+        selected = lock
+        if selected is None:
+            if path is None and owner_uid is None:
+                selected = ReconcileLock()
+            elif owner_uid is None:
+                selected = ReconcileLock(path)
+            else:
+                selected = ReconcileLock(path, owner_uid=owner_uid)
+        selected.acquire(wait_s=wait_s)
+        try:
+            yield selected
+        finally:
+            selected.release()
+    finally:
+        catalog.__exit__(*sys.exc_info())
 
 
 class Systemctl:
@@ -407,11 +460,18 @@ def _watched_service_ok(key: str, row: dict) -> bool:
 
 
 def verify_named_executors(names: list[str], *, sign_first: bool = False) -> list[dict]:
-    """Sign/verify only explicitly named, direct children of executors/."""
-    from sign import sign_executor, verify_executor
+    """Admit/verify explicitly named direct children of ``executors/``.
+
+    ``sign_first`` is retained as the public compatibility flag.  Admission
+    is layout-aware: legacy signing before cutover, immutable publication
+    afterwards.
+    """
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    from sign import publish_authoring_update, verify_executor
 
     root = (_repo_root() / "executors").resolve()
-    results: list[dict] = []
+    layout = resolve_manifest_layout()
+    directories: list[tuple[str, Path]] = []
     for name in names:
         if not name or name in {".", ".."} or "/" in name or "\\" in name:
             raise StackFailure("invalid_executor", "executor name is not canonical")
@@ -422,15 +482,39 @@ def verify_named_executors(names: list[str], *, sign_first: bool = False) -> lis
             raise StackFailure("invalid_executor", "executor escapes the catalog root") from exc
         if not (directory / "manifest.toml").is_file():
             raise StackFailure("unknown_executor", f"executor {name!r} is not installed")
+        directories.append((name, directory))
         if sign_first:
-            sign_executor(directory)
-        ok, info = verify_executor(directory)
-        row = {"name": name, "ok": bool(ok)}
-        if ok:
-            row["digest"] = info.get("digest", "")
-        else:
-            row["reason"] = info.get("reason", "verification failed")
-        results.append(row)
+            publish_authoring_update(directory)
+
+    results: list[dict] = []
+    if layout is ManifestLayout.STORE_ONLY:
+        # The authoring tree is deliberately unsigned after cutover.  The
+        # verified store loader is the live admission proof; checking source
+        # bytes with ``verify_executor`` would report a false signature
+        # failure even after a successful publication.
+        from loader import load_catalog
+
+        catalog = load_catalog(
+            include_synth=True,
+            include_verb_unique=False,
+        )
+        for name, _directory in directories:
+            executor = catalog.executors.get(name)
+            row = {"name": name, "ok": executor is not None}
+            if executor is None:
+                row["reason"] = "executor absent from verified store catalog"
+            else:
+                row["digest"] = executor.digest
+            results.append(row)
+    else:
+        for name, directory in directories:
+            ok, info = verify_executor(directory)
+            row = {"name": name, "ok": bool(ok)}
+            if ok:
+                row["digest"] = info.get("digest", "")
+            else:
+                row["reason"] = info.get("reason", "verification failed")
+            results.append(row)
     failed = [row["name"] for row in results if not row["ok"]]
     if failed:
         raise StackFailure(
@@ -711,8 +795,8 @@ class StackReconciler:
                 sign_first: bool = False, automatic: bool = False,
                 require_sidecar: str = "auto") -> dict:
         names = executor_names or []
-        lock = ReconcileLock()
-        lock.acquire(wait_s=2)
+        locks = contextlib.ExitStack()
+        locks.enter_context(catalog_reconcile_lock(wait_s=2))
         breaker = CircuitBreaker()
         try:
             if automatic:
@@ -753,7 +837,7 @@ class StackReconciler:
                 breaker.failure()
             raise
         finally:
-            lock.release()
+            locks.close()
 
     @staticmethod
     def _validate_watched_target(key: str, row: dict) -> tuple[str, str]:
@@ -790,8 +874,8 @@ class StackReconciler:
 
     def _repair_watched(self, keys: list[str], *,
                         require_sidecar: str = "auto") -> dict:
-        lock = ReconcileLock()
-        lock.acquire(wait_s=2)
+        locks = contextlib.ExitStack()
+        locks.enter_context(catalog_reconcile_lock(wait_s=2))
         breaker = CircuitBreaker()
         actions: list[dict] = []
         try:
@@ -877,7 +961,7 @@ class StackReconciler:
                 breaker.failure()
             raise
         finally:
-            lock.release()
+            locks.close()
 
     def watchdog(self, *, require_sidecar: str = "auto") -> dict:
         try:

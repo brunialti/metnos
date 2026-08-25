@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import argparse
+import tomllib
 from pathlib import Path
 
 
@@ -483,15 +484,31 @@ def main() -> None:
         directory = OUT / name
         directory.mkdir(parents=True, exist_ok=True)
         tool_spec, module_path = specs[name]
-        (directory / "manifest.toml").write_text(
-            _render(name, tool_spec, module_path), encoding="utf-8")
+        rendered = _render(name, tool_spec, module_path)
+        (directory / "manifest.toml").write_text(rendered, encoding="utf-8")
+        from i18n_materializer import migrate_language_state_bytes
+        state_path = directory / "manifest.lang_state.json"
+        previous_state = state_path.read_bytes() if state_path.is_file() else b"{}"
+        state_path.write_bytes(
+            migrate_language_state_bytes(
+                previous_state, manifest=tomllib.loads(rendered),
+            ).state_bytes,
+        )
     suffix = ""
     if args.sign:
-        from sign import sign_executor
+        from sign import publish_authoring_update
 
+        published = 0
         for name in sorted(specs):
-            sign_executor(OUT / name)
-        suffix = " and signed them with the local author key"
+            _digest, _signature, publication = publish_authoring_update(
+                OUT / name,
+            )
+            published += int(publication is not None)
+        suffix = (
+            " and admitted them with the local author key"
+            if published == 0
+            else f" and published {published} immutable contract generations"
+        )
     print(f"generated {len(specs)} builtin contracts under {OUT}{suffix}")
 
 

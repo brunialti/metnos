@@ -8,14 +8,13 @@ and HTML markup are never translated.
 """
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import os
 import re
 import sqlite3
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Protocol
 
@@ -28,10 +27,12 @@ from i18n_materializer import (
     LocalizationPaths,
     inventory,
     iter_localized_text_tables,
+    manifest_language_selectors,
     sha256_text,
 )
 from i18n_registry import (
     LocalizationRegistry,
+    PublishedTranslation,
     RegistryError,
     ResourceRecord,
     TranslationLease,
@@ -41,6 +42,7 @@ from manifest_inventory import ManifestRef
 
 if TYPE_CHECKING:
     from contract_store import LocalizationPatch, PublicationResult
+    from manifest_lint import Finding
 
 
 Translator = Callable[[str, str, str, str], str]
@@ -57,6 +59,50 @@ class VersionedContractPublisher(Protocol):
         target_language: str,
         patches: tuple["LocalizationPatch", ...],
     ) -> "PublicationResult": ...
+
+
+@dataclass(frozen=True, slots=True)
+class LiveContractContext:
+    """One layout-selected verified boundary shared by every i18n entry."""
+
+    store_only: bool
+    snapshot_provider: ContractSnapshotProvider | None
+    publisher: VersionedContractPublisher | None
+
+
+def live_contract_context(
+    registry: LocalizationRegistry,
+    *,
+    publication: bool = False,
+) -> LiveContractContext:
+    """Resolve the active contract authority once for an i18n operation."""
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+        return LiveContractContext(False, None, None)
+    from functools import partial
+    from contract_store import current_contract
+    from sign import list_trusted_publics
+
+    trusted = tuple(list_trusted_publics())
+    if not trusted:
+        raise ValueError("no trusted contract signing keys")
+    provider = partial(current_contract, trusted_publics=trusted)
+    publisher = None
+    if publication:
+        from contract_store import publish_localization
+        from sign import load_private
+
+        publisher = partial(
+            publish_localization,
+            private_key=load_private("author"),
+            trusted_publics=trusted,
+            registry_reconciler=partial(
+                reconcile_published_contract_registry,
+                registry=registry,
+            ),
+        )
+    return LiveContractContext(True, provider, publisher)
 
 _PROMPT_PROSE_FIELDS = frozenset({
     "body", "description", "error", "header", "help", "instruction",
@@ -106,6 +152,7 @@ class TranslationReport:
     failed: int
     skipped: int
     errors: Mapping[str, str]
+    warnings: Mapping[str, tuple["Finding", ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +172,145 @@ class VersionedContractPublicationReport:
     published_resources: int
     skipped: int
     errors: Mapping[str, str]
+
+
+def published_contract_registry_identity(
+    snapshot,
+) -> tuple[str, tuple[str, ...]]:
+    """Derive the exact registry ownership claimed by one verified revision."""
+
+    from contract_store import VerifiedManifest
+
+    if not isinstance(snapshot, VerifiedManifest):
+        raise TypeError("snapshot must be a verified manifest revision")
+    generation = snapshot.generation_id
+    if (
+        not isinstance(generation, str)
+        or _LOGICAL_SHA256_RE.fullmatch(generation) is None
+    ):
+        raise ValueError("published snapshot has no canonical generation")
+    name = snapshot.parsed.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("published snapshot has no executor name")
+    selectors = manifest_language_selectors(snapshot.parsed)
+    state_selectors = snapshot.language_state.get("selectors")
+    if not isinstance(state_selectors, Mapping):
+        raise ValueError("published snapshot has no canonical language state")
+    resource_ids = tuple(
+        f"contract:{name}:{selector}" for selector in selectors
+    )
+    if not resource_ids:
+        raise ValueError("published contract has no localized surfaces")
+    return str(snapshot.contract_id), resource_ids
+
+
+def preflight_published_contract_registry(
+    snapshots: tuple[object, ...],
+    *,
+    registry: LocalizationRegistry | None = None,
+) -> None:
+    """Read-only ownership check for an authenticated catalog snapshot."""
+
+    if not isinstance(snapshots, tuple) or not snapshots:
+        raise ValueError("snapshots must contain verified manifests")
+    assignments = tuple(
+        published_contract_registry_identity(snapshot)
+        for snapshot in snapshots
+    )
+    if registry is None:
+        LocalizationRegistry.preflight_published_contract_path(assignments)
+    else:
+        registry.preflight_published_contracts(assignments)
+
+
+def reconcile_published_contract_registry(
+    snapshot,
+    *,
+    registry: LocalizationRegistry | None = None,
+) -> tuple[ResourceRecord, ...]:
+    """Reconcile RM-0005 from a freshly re-read current contract revision.
+
+    A manifest admits only translations authenticated by its language state.
+    A retirement atomically stales the exact ContractId indexed during the
+    preceding publication; no executor-name inference is permitted.
+    """
+
+    from contract_store import ContractRetirement, VerifiedManifest
+
+    selected_registry = registry or LocalizationRegistry()
+    if isinstance(snapshot, ContractRetirement):
+        selected_registry.retire_published_contract(str(snapshot.contract_id))
+        return ()
+    contract_identity, expected_resource_ids = (
+        published_contract_registry_identity(snapshot)
+    )
+    assert isinstance(snapshot, VerifiedManifest)
+    generation = snapshot.generation_id
+    assert isinstance(generation, str)
+    manifest = snapshot.parsed
+    name = manifest.get("name")
+    assert isinstance(name, str)
+    tables = manifest_language_selectors(manifest)
+    state_selectors = snapshot.language_state.get("selectors")
+    assert isinstance(state_selectors, Mapping)
+
+    contract_id = snapshot.contract_id
+    language_hashes_by_selector = {
+        selector: {
+            language: "sha256:" + sha256_text(text)
+            for language, text in languages.items()
+        }
+        for selector, languages in tables.items()
+    }
+    publications: list[PublishedTranslation] = []
+    resource_ids: list[str] = []
+    for selector, languages in tables.items():
+        resource_id = f"contract:{name}:{selector}"
+        resource_ids.append(resource_id)
+        entries = state_selectors.get(selector)
+        if not isinstance(entries, Mapping):
+            raise ValueError(f"published language state missing selector: {selector}")
+        metadata = {
+            "manifest_relative": contract_id.relative_manifest,
+            "manifest_hash": snapshot.manifest_hash.removeprefix("sha256:"),
+            "selector": selector,
+            "executor": name,
+            "contract_id": str(contract_id),
+            "origin": contract_id.origin.value,
+            "status": "admitted",
+            "language_hashes": language_hashes_by_selector[selector],
+        }
+        for target, entry in entries.items():
+            if not isinstance(entry, Mapping):
+                raise ValueError(f"published language state invalid: {selector}:{target}")
+            source = entry.get("source_lang")
+            source_hash = entry.get("source_hash")
+            if source is None:
+                continue
+            if not isinstance(source, str) or source == target:
+                raise ValueError(f"published translation provenance invalid: {selector}:{target}")
+            source_text = languages.get(source)
+            target_text = languages.get(target)
+            if not isinstance(source_text, str) or not isinstance(target_text, str):
+                raise ValueError(f"published translation text missing: {selector}:{target}")
+            expected_source_hash = "sha256:" + sha256_text(source_text)
+            target_hash = "sha256:" + sha256_text(target_text)
+            if source_hash != expected_source_hash or entry.get("version_hash") != target_hash:
+                raise ValueError(f"published translation hash mismatch: {selector}:{target}")
+            publications.append(PublishedTranslation(
+                resource_id=resource_id,
+                source_lang=source,
+                target_lang=str(target),
+                source_hash=expected_source_hash,
+                translation_hash=target_hash,
+                basis_id=generation,
+                metadata=metadata,
+            ))
+    if tuple(resource_ids) != expected_resource_ids:
+        raise AssertionError("published registry identity derivation drifted")
+    return selected_registry.reconcile_published_contract(
+        contract_identity, tuple(resource_ids), tuple(publications),
+    )
 
 
 def _atomic_text(path: Path, text: str, *, mode: int = 0o600) -> None:
@@ -659,7 +845,67 @@ def _translate_input(item: InventoryItem, target: str, translator: Translator) -
     return translated
 
 
-def _translate_item(item: InventoryItem, target: str, translator: Translator) -> Any:
+def _contract_candidate_warnings(
+    item: InventoryItem,
+    *,
+    selector: str,
+    target_language: str,
+    candidate_text: str,
+) -> tuple["Finding", ...]:
+    """Lint one translated surface in its authenticated contract context.
+
+    Translation happens one resource at a time, while the canonical local
+    rules operate on a complete manifest.  Project the candidate into the
+    verified snapshot bytes and keep only warnings owned by that resource.
+    Other not-yet-translated surfaces may legitimately be missing the target
+    language and therefore must not leak diagnostics into this item report.
+    """
+    snapshot = item.contract_snapshot
+    if snapshot is None:
+        # Legacy authoring has no authenticated snapshot.  Its complete lint
+        # remains the responsibility of the authoring audit; productive M3
+        # candidates always carry a verified revision.
+        if item.basis_id is not None:
+            raise CandidateValidationError(
+                "verified contract snapshot is unavailable",
+            )
+        return ()
+    try:
+        manifest = tomllib.loads(snapshot.manifest_bytes.decode("utf-8"))
+    except (AttributeError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise CandidateValidationError(
+            "verified contract snapshot is unavailable",
+        ) from exc
+    table = manifest_language_selectors(manifest).get(selector)
+    if not isinstance(table, dict):
+        raise CandidateValidationError(
+            f"contract selector is unavailable: {selector}",
+        )
+    table[target_language] = candidate_text
+
+    from manifest_lint import lint_manifest
+
+    return tuple(
+        finding
+        for finding in lint_manifest(manifest, language=target_language)
+        if finding.severity == "warn" and finding.resource == selector
+    )
+
+
+def _translate_item(
+    item: InventoryItem,
+    target: str,
+    translator: Translator,
+    *,
+    finding_sink: list["Finding"] | None = None,
+) -> Any:
+    """Translate and validate one inventory item.
+
+    ``finding_sink`` is an optional structured diagnostic sink.  It preserves
+    the exact objects returned by the canonical manifest linter so callers
+    can report non-blocking warnings without parsing messages or
+    reimplementing any rule.
+    """
     if item.layer == "prompt":
         if item.metadata.get("format") == "yaml":
             return _translate_yaml(item, target, translator)
@@ -675,21 +921,34 @@ def _translate_item(item: InventoryItem, target: str, translator: Translator) ->
         if not isinstance(selector, str) or not selector.strip():
             raise CandidateValidationError("contract selector is unavailable")
         from manifest_lint import lint_contract_translation
-        findings = lint_contract_translation(
+        contract_findings = lint_contract_translation(
             item.source_text,
             translated,
             resource=selector,
             source_language=item.source_lang,
             target_language=target,
         )
-        errors = tuple(finding for finding in findings if finding.severity == "error")
+        if finding_sink is not None:
+            finding_sink.extend(contract_findings)
+        errors = tuple(
+            finding for finding in contract_findings
+            if finding.severity == "error"
+        )
         if errors:
             checks = ", ".join(sorted({finding.check for finding in errors}))
             raise CandidateValidationError(
                 f"contract translation invariants changed: {checks}",
                 findings=errors,
             )
-        return translated.strip()
+        candidate_text = translated.strip()
+        if finding_sink is not None:
+            finding_sink.extend(_contract_candidate_warnings(
+                item,
+                selector=selector,
+                target_language=target,
+                candidate_text=candidate_text,
+            ))
+        return candidate_text
     if item.layer == "message":
         translated = translator(item.source_text, item.source_lang, target, item.resource_id)
         _validate_common(item.source_text, translated)
@@ -805,6 +1064,7 @@ def translate_pending(
     provider = translator or _default_translator
     translated_count = failed = skipped = 0
     errors: dict[str, str] = {}
+    warnings: dict[str, tuple["Finding", ...]] = {}
     processed = 0
     for record in records:
         if limit > 0 and processed >= limit:
@@ -821,9 +1081,15 @@ def translate_pending(
             skipped += 1
             continue
         processed += 1
+        item_findings: list["Finding"] = []
         try:
             _require_versioned_contract_lease(lease, record, item)
-            translation = _translate_item(item, target, provider)
+            translation = _translate_item(
+                item,
+                target,
+                provider,
+                finding_sink=item_findings,
+            )
             candidate = _candidate_path(
                 item,
                 target,
@@ -855,9 +1121,17 @@ def translate_pending(
                 pass
             failed += 1
             errors[record.resource_id] = f"{error_class}: {exc}"
+        finally:
+            item_warnings = tuple(
+                finding for finding in item_findings
+                if finding.severity == "warn"
+            )
+            if item_warnings:
+                warnings[record.resource_id] = item_warnings
     return TranslationReport(
         target_lang=target, translated=translated_count, failed=failed,
         skipped=skipped, errors=dict(sorted(errors.items())),
+        warnings=dict(sorted(warnings.items())),
     )
 
 
@@ -1166,78 +1440,6 @@ def publish_versioned_contract_candidates(
     )
 
 
-def _replace_toml_language(text: str, selector: str, target: str, value: str) -> str:
-    from i18n_translator import _replace_lang_in_section
-    return _replace_lang_in_section(text, f"[{selector}]", target, value)
-
-
-def _strip_target_prose(manifest: dict[str, Any], target: str) -> dict[str, Any]:
-    clone = copy.deepcopy(manifest)
-
-    def visit(node: Any, key_name: str = "") -> None:
-        if not isinstance(node, dict):
-            return
-        if key_name in {"description", "summary", "title", "label", "help", "message"}:
-            node.pop(target, None)
-        for key, value in list(node.items()):
-            visit(value, str(key))
-
-    visit(clone)
-    return clone
-
-
-def _promote_contracts(
-    records: list[ResourceRecord], target: str, signer: Callable[[Path], Any],
-) -> tuple[int, dict[str, str]]:
-    grouped: dict[Path, list[ResourceRecord]] = {}
-    for record in records:
-        grouped.setdefault(Path(str(record.metadata["manifest_path"])), []).append(record)
-    promoted = 0
-    errors: dict[str, str] = {}
-    for manifest_path, manifest_records in grouped.items():
-        original_text = manifest_path.read_text(encoding="utf-8")
-        signature_path = manifest_path.with_name("manifest.toml.sig")
-        original_signature = (
-            signature_path.read_bytes() if signature_path.is_file() else None
-        )
-        try:
-            original = tomllib.loads(original_text)
-            changed = original_text
-            for record in manifest_records:
-                translated = _read_artifact(record)
-                if not isinstance(translated, str):
-                    raise CandidateValidationError("contract translation must be text")
-                changed = _replace_toml_language(
-                    changed, str(record.metadata["selector"]), target, translated,
-                )
-            parsed = tomllib.loads(changed)
-            if _strip_target_prose(original, target) != _strip_target_prose(parsed, target):
-                raise CandidateValidationError("manifest technical contract changed")
-            _atomic_text(manifest_path, changed, mode=0o644)
-            signer(manifest_path.parent)
-            state_path = manifest_path.with_name("manifest.lang_state.json")
-            for record in manifest_records:
-                _update_state(
-                    state_path, str(record.metadata["selector"]), target, record,
-                )
-            promoted += len(manifest_records)
-        except Exception as exc:
-            # The live contract must never be left modified with a missing or
-            # partial signature.  Configuration activation happens later, but
-            # the currently running locale still loads this same manifest.
-            _atomic_text(manifest_path, original_text, mode=0o644)
-            if original_signature is None:
-                try:
-                    signature_path.unlink()
-                except FileNotFoundError:
-                    pass
-            else:
-                _atomic_bytes(signature_path, original_signature)
-            for record in manifest_records:
-                errors[record.resource_id] = f"{type(exc).__name__}: {exc}"
-    return promoted, errors
-
-
 def _promote_message(db: Path, record: ResourceRecord, target: str, translation: str) -> None:
     conn = sqlite3.connect(str(db))
     try:
@@ -1279,27 +1481,33 @@ def promote_candidates(
     *,
     registry: LocalizationRegistry,
     paths: LocalizationPaths | None = None,
-    signer: Callable[[Path], Any] | None = None,
+    versioned_contracts_published: bool = False,
 ) -> PromotionReport:
     """Promote validated artifacts; instance configuration is untouched."""
     paths = paths or LocalizationPaths()
     target = normalize_language(target_lang)
-    if signer is None:
-        from sign import sign_executor
-        signer = sign_executor
     records = list(registry.resources(target))
-    if any(
+    has_versioned_contracts = any(
         record.layer == "contract" and record.basis_id is not None
         for record in records
-    ):
+    )
+    if has_versioned_contracts and not versioned_contracts_published:
         raise CandidateValidationError(
             "versioned contract candidates require the explicit M3 publisher"
         )
-    contract_records = [record for record in records if record.layer == "contract" and record.status == "translated"]
-    admitted, errors = _promote_contracts(contract_records, target, signer)
-    for record in contract_records:
-        if record.resource_id not in errors:
-            registry.admit(record.resource_id, target)
+    legacy_contract_records = [
+        record for record in records
+        if record.layer == "contract"
+        and record.status == "translated"
+        and record.basis_id is None
+    ]
+    if legacy_contract_records:
+        raise CandidateValidationError(
+            "legacy contract publication is retired; activate the verified "
+            "contract store and use the versioned publisher"
+        )
+    admitted = 0
+    errors: dict[str, str] = {}
     skipped = 0
     for record in records:
         if record.layer == "contract":

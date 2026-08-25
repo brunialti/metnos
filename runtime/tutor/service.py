@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 import time
-import tomllib
 
 from logging_setup import get_logger
 from messages import get as _msg
@@ -54,22 +53,10 @@ def _with_howto_boundary(answer: str, lang: str) -> str:
     return f"{text}\n\n{boundary}"
 
 
-def _executor_purpose(executor, lang: str) -> str:
-    """Read one localized, bounded purpose from the admitted manifest."""
+def _executor_purpose(executor) -> str:
+    """Bound the description already localized by the verified catalog."""
 
-    text = ""
-    try:
-        with executor.manifest_path.open("rb") as handle:
-            description = tomllib.load(handle).get("description") or {}
-        if isinstance(description, dict):
-            text = str(
-                description.get(lang) or description.get("en")
-                or description.get("it") or next(iter(description.values()), "")
-            )
-        else:
-            text = str(description)
-    except (OSError, tomllib.TOMLDecodeError, AttributeError):
-        text = str(getattr(executor, "description", "") or "")
+    text = str(getattr(executor, "description", "") or "")
     purpose = _PURPOSE_CUT.split(" ".join(text.split()), maxsplit=1)[0]
     purpose = _PURPOSE_PREFIX.sub("", purpose, count=1).strip(" .")
     return purpose[:180]
@@ -87,7 +74,7 @@ def _catalog_summary(card, lang: str, cards, audience: str) -> str:
     object_suffix = str(selector.get("object_suffix") or "")
     names = []
     overview_rows: list[tuple[str, object]] = []
-    for executor in load_catalog():
+    for executor in load_catalog(lang=lang):
         name = str(getattr(executor, "name", "") or "")
         membership = str(getattr(executor, "membership", "") or "")
         if not name:
@@ -125,7 +112,7 @@ def _catalog_summary(card, lang: str, cards, audience: str) -> str:
                     obj, {"actions": set(), "names": set(), "purposes": {}})
                 area["actions"].add(verb)
                 area["names"].add(name)
-                purpose = _executor_purpose(executor, lang)
+                purpose = _executor_purpose(executor)
                 if purpose:
                     area["purposes"].setdefault(verb, []).append((
                         0 if name == f"{verb}_{obj}" else 1,

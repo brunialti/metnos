@@ -59,17 +59,34 @@ def archive_aged_synth_proposals(*, max_age_days: int = 30,
         return {"archived": 0, "kept": 0, "errors": [], "archived_paths": []}
 
     catalog_names: set[str] = set()
+    errors: list[str] = []
+    catalog_available = True
     if archive_synthesized_in_catalog:
         try:
             from loader import load_catalog
             catalog_names = {e.name for e in load_catalog()}
-        except Exception:
-            # fallback: scan dir handcrafted + synth installed
-            catalog_names = _fallback_catalog_names()
+        except Exception as exc:
+            from manifest_inventory import (
+                ManifestLayout,
+                resolve_manifest_layout,
+            )
+
+            if resolve_manifest_layout() is ManifestLayout.AUTHORING:
+                # Pre-cutover compatibility only: these paths are still the
+                # live catalog authority in that layout.
+                catalog_names = _fallback_catalog_names()
+            else:
+                # A cleanup job must never convert unsigned authoring residue
+                # into live catalog truth.  Age-only archival can continue,
+                # but catalog-based decisions are disabled and reported.
+                catalog_available = False
+                errors.append(
+                    "verified catalog unavailable in store-only mode: "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
     now = time.time()
     archived: list[Path] = []
-    errors: list[str] = []
     kept = 0
     for p in sorted(SYNT_PROPOSALS_DIR.glob("*.json")):
         if "_archived" in p.parts:
@@ -85,7 +102,8 @@ def archive_aged_synth_proposals(*, max_age_days: int = 30,
         final_state = doc.get("final_state")
 
         should_archive = False
-        if archive_synthesized_in_catalog and final_state == "synthesized" \
+        if archive_synthesized_in_catalog and catalog_available \
+                and final_state == "synthesized" \
                 and name and name in catalog_names:
             should_archive = True
         elif age_days > max_age_days:

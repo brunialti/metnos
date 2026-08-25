@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import sys
 import tomllib
 from pathlib import Path
 
@@ -48,6 +47,22 @@ def test_proposals_declares_exact_read_only_server_resource() -> None:
         "name": "metnos:read",
         "hint": ["introvertiva_proposals:local"],
     }]
+    assert manifest["args"]["properties"]["executor_descriptions"] == {
+        "type": "object",
+        "runtime_resolved": True,
+        "runtime_source": "executor_descriptions",
+        "additionalProperties": {"type": "string"},
+        "description": {
+            "it": (
+                "Proiezione limitata delle descrizioni localizzate del "
+                "catalogo verificato, fornita dal runtime."
+            ),
+            "en": (
+                "Bounded projection of localized descriptions from the "
+                "verified catalog, supplied by the runtime."
+            ),
+        },
+    }
     assert "schema_inline" in manifest["output"]
 
 
@@ -203,3 +218,49 @@ def test_proposal_detail_follows_instance_not_process_environment(monkeypatch) -
     second = get_proposals._render_detail([entry], "dedupe", max_lines=20)
     assert second == first
     conn.close()
+
+
+def test_executor_brief_uses_runtime_projection_not_authoring_contract(
+    tmp_path: Path,
+) -> None:
+    authoring = tmp_path / "executors" / "read_files"
+    authoring.mkdir(parents=True)
+    (authoring / "manifest.toml").write_text(
+        '[description]\nit="SCOPO: TESTO NON PUBBLICATO."\n',
+        encoding="utf-8",
+    )
+    projection = {
+        "read_files": (
+            "SCOPO: descrizione pubblicata. PATTERN: read_files(path=\"x\"). "
+            "NON: modificare file. OUT: results=[]."
+        ),
+    }
+
+    brief = get_proposals._executor_brief("read_files", projection)
+
+    assert brief == "SCOPO: descrizione pubblicata"
+    assert "NON PUBBLICATO" not in brief
+
+
+def test_generalize_detail_uses_only_bounded_runtime_projection() -> None:
+    entry = {
+        "kind": "generalize",
+        "payload": {
+            "pattern": ["read_files", "write_files"],
+            "uses": 3,
+            "distinct_intents": 2,
+            "score": 0.8,
+        },
+    }
+    detail = get_proposals._render_detail(
+        [entry],
+        "generalize",
+        max_lines=20,
+        executor_descriptions={
+            "read_files": "SCOPO: legge file. PATTERN: read_files(...).",
+            "write_files": "SCOPO: scrive file. PATTERN: write_files(...).",
+        },
+    )
+
+    assert "read_files: SCOPO: legge file" in detail
+    assert "write_files: SCOPO: scrive file" in detail

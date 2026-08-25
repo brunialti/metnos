@@ -181,6 +181,13 @@ def _seed_active_ready_candidate(synth_dir: Path, prop: dict) -> Path:
         "",
     ))
     (target / "manifest.toml").write_text(manifest, encoding="utf-8")
+    import tomllib
+    from i18n_materializer import migrate_language_state_bytes
+    (target / "manifest.lang_state.json").write_bytes(
+        migrate_language_state_bytes(
+            b"{}", manifest=tomllib.loads(manifest),
+        ).state_bytes,
+    )
     (target / "manifest.toml.sig").write_text("candidate-signature\n", encoding="utf-8")
     return target
 
@@ -296,7 +303,8 @@ class TestSchemaMigration(_BasePromoterTest):
         ).fetchall()}
         for expected in (
             "proposal_id", "name", "state", "promoted_at", "grace_until",
-            "rollback_blob_path", "evaluator_verdict", "practical_example",
+            "rollback_blob_path", "prepromotion_generation_id",
+            "active_generation_id", "evaluator_verdict", "practical_example",
             "notified_at", "notified_ack", "rolled_back_at", "finalized_at",
             "archived_at", "created_at", "needs_human_review",
         ):
@@ -320,7 +328,8 @@ class TestSchemaMigration(_BasePromoterTest):
         added = state.ensure_schema(conn)
         # Tutte le colonne nuove vanno aggiunte.
         for expected in ("promoted_at", "grace_until", "rollback_blob_path",
-                           "needs_human_review"):
+                           "prepromotion_generation_id",
+                           "active_generation_id", "needs_human_review"):
             self.assertIn(expected, added)
         conn.close()
 
@@ -379,8 +388,11 @@ class TestAcceptVerdict(_BasePromoterTest):
                                       name="find_packages")
         _seed_proposal_json(self._proposals_dir, prop)
         _seed_active_ready_candidate(self._synth_dir, prop)
+        from manifest_inventory import ManifestLayout
         with mock.patch("proposal_evaluator.evaluate_proposal") as m, \
-                 mock.patch("jobs.promoter_promote.sign_executor",
+                 mock.patch("manifest_inventory.resolve_manifest_layout",
+                            return_value=ManifestLayout.AUTHORING), \
+                 mock.patch("jobs.promoter_promote.publish_authoring_update",
                             create=True) as sign_m, \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer2",
@@ -390,12 +402,14 @@ class TestAcceptVerdict(_BasePromoterTest):
                             return_value=(True, "")), \
                  mock.patch("jobs.promoter_promote._loader_admission",
                             return_value=(True, "")):
-            # Mocka sign_executor cosi' i test non richiedono keypair.
+            # Mocka il confine di admission cosi' i test non richiedono keypair.
             m.return_value = _mock_evaluator_result(
                 "accept", score=5.0,
                 proposal_id="proptest_acc", name="find_packages",
             )
-            sign_m.return_value = ("dummy_digest", Path("/tmp/dummy.sig"))
+            sign_m.return_value = (
+                "dummy_digest", Path("/tmp/dummy.sig"), None,
+            )
             result = promoter.task_promoter()
         self.assertEqual(result["ok_count"], 1)
         row = state_mod.load_proposal_state("proptest_acc")
@@ -404,6 +418,50 @@ class TestAcceptVerdict(_BasePromoterTest):
         self.assertTrue(row["grace_until"])
         # Blob esiste.
         self.assertTrue(Path(row["rollback_blob_path"]).exists())
+
+    def test_store_postcommit_failure_is_retryable_without_source_rollback(self):
+        promote = self._import_module("promoter_promote")
+        prop = _build_synth_proposal(
+            proposal_id="proptest_store_retry", name="find_packages",
+        )
+        target = _seed_active_ready_candidate(self._synth_dir, prop)
+        from manifest_inventory import ManifestLayout
+
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ), mock.patch.object(
+            promote, "_dry_run_admission_layer2", return_value=(True, ""),
+        ), mock.patch.object(
+            promote, "_dry_run_admission_layer5", return_value=(True, ""),
+        ), mock.patch.object(
+            promote, "_loader_admission", return_value=(True, ""),
+        ), mock.patch.object(
+            promote,
+            "publish_authoring_update",
+            side_effect=[
+                RuntimeError("registry unavailable after pointer commit"),
+                (
+                    "sha256:fake",
+                    Path("/tmp/fake.sig"),
+                    mock.Mock(
+                        current_generation_id="sha256:" + "b" * 64,
+                        previous_generation_id="sha256:" + "b" * 64,
+                        repeated=True,
+                    ),
+                ),
+            ],
+        ) as publisher:
+            first = promote.promote_to_catalog(prop)
+            self.assertIn("requires_retry", first["error"])
+            self.assertIn(
+                'lifecycle = "active"',
+                (target / "manifest.toml").read_text(encoding="utf-8"),
+            )
+            second = promote.promote_to_catalog(prop)
+
+        self.assertTrue(second["ok"])
+        self.assertEqual(publisher.call_count, 2)
 
 
 # ─── 5. Gray → review_needed ──────────────────────────────────────────────
@@ -580,8 +638,11 @@ class TestRollbackRestores(_BasePromoterTest):
                                       name="find_packages")
         _seed_proposal_json(self._proposals_dir, prop)
         _seed_active_ready_candidate(self._synth_dir, prop)
+        from manifest_inventory import ManifestLayout
         with mock.patch("proposal_evaluator.evaluate_proposal") as m, \
-                 mock.patch("jobs.promoter_promote.sign_executor",
+                 mock.patch("manifest_inventory.resolve_manifest_layout",
+                            return_value=ManifestLayout.AUTHORING), \
+                 mock.patch("jobs.promoter_promote.publish_authoring_update",
                             create=True) as sign_m, \
                  mock.patch("jobs.promoter_promote."
                             "_dry_run_admission_layer2",
@@ -595,7 +656,7 @@ class TestRollbackRestores(_BasePromoterTest):
                 "accept", score=5.0,
                 proposal_id="proptest_rb", name="find_packages",
             )
-            sign_m.return_value = ("digest", Path("/tmp/sig"))
+            sign_m.return_value = ("digest", Path("/tmp/sig"), None)
             promoter.task_promoter()
         # Verifica setup
         row = state_mod.load_proposal_state("proptest_rb")
@@ -620,6 +681,86 @@ class TestRollbackRestores(_BasePromoterTest):
         row2 = state_mod.load_proposal_state("proptest_rb")
         self.assertEqual(row2["state"], "rolled_back")
         self.assertTrue(row2["rolled_back_at"])
+
+    def test_store_rollback_uses_persisted_generation_ids(self):
+        state_mod = self._import_module("promoter_state")
+        promote_mod = self._import_module("promoter_promote")
+        rollback_mod = self._import_module("promoter_rollback")
+        prop = _build_synth_proposal(
+            proposal_id="proptest_store_rb", name="find_packages",
+        )
+        target = _seed_active_ready_candidate(self._synth_dir, prop)
+        blob = self._blob_dir / "proptest_store_rb.tar.gz"
+        promote_mod._write_rollback_blob(target, blob)
+        prepromotion = promote_mod._rollback_blob_generation_id(blob)
+        (target / "manifest.toml").write_text(
+            (target / "manifest.toml").read_text(encoding="utf-8").replace(
+                'lifecycle = "synthesized"', 'lifecycle = "active"',
+            ),
+            encoding="utf-8",
+        )
+        active = "sha256:" + "b" * 64
+        state_mod.upsert_promoted_grace(
+            proposal_id="proptest_store_rb",
+            name="find_packages",
+            blob_path=str(blob),
+            verdict={"verdict": "accept"},
+            practical_example="example",
+            grace_hours=72,
+            prepromotion_generation_id=prepromotion,
+            active_generation_id=active,
+        )
+        from manifest_inventory import ManifestLayout
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ), mock.patch(
+            "sign.rollback_executor_contract",
+        ) as rollback_pointer:
+            result = rollback_mod.rollback_promotion("proptest_store_rb")
+
+        self.assertTrue(result["ok"])
+        rollback_pointer.assert_called_once_with(
+            target,
+            expected_generation_id=active,
+            target_generation_id=prepromotion,
+            actor="promoter_rollback",
+            reason="rollback promotion proposal=proptest_store_rb",
+        )
+        self.assertIn(
+            'lifecycle = "synthesized"',
+            (target / "manifest.toml").read_text(encoding="utf-8"),
+        )
+
+    def test_store_rollback_fails_before_restore_when_ids_are_missing(self):
+        state_mod = self._import_module("promoter_state")
+        promote_mod = self._import_module("promoter_promote")
+        rollback_mod = self._import_module("promoter_rollback")
+        prop = _build_synth_proposal(
+            proposal_id="proptest_store_noids", name="find_packages",
+        )
+        target = _seed_active_ready_candidate(self._synth_dir, prop)
+        blob = self._blob_dir / "proptest_store_noids.tar.gz"
+        promote_mod._write_rollback_blob(target, blob)
+        state_mod.upsert_promoted_grace(
+            proposal_id="proptest_store_noids",
+            name="find_packages",
+            blob_path=str(blob),
+            verdict={"verdict": "accept"},
+            practical_example="example",
+            grace_hours=72,
+        )
+        before = (target / "manifest.toml").read_bytes()
+        from manifest_inventory import ManifestLayout
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ):
+            result = rollback_mod.rollback_promotion("proptest_store_noids")
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "promotion_generation_ids_missing")
+        self.assertEqual((target / "manifest.toml").read_bytes(), before)
 
 
 # ─── 12. Rollback senza blob → fail-loud §2.8 ─────────────────────────────

@@ -72,51 +72,40 @@ def _file_kind(p: Path) -> str | None:
     return m.group("kind") if m else None
 
 
-# Cache per i sommari executor (nome → 1ª frase della description del manifest).
-# Ogni invocazione di get_proposals e' un subprocess fresco, ma il cache vive
-# per il singolo turno (decine di lookup → costo trascurabile).
-_EXEC_BRIEF_CACHE: dict[str, str] = {}
-
-
-def _executor_brief(name: str) -> str:
-    """Ritorna una sintesi di 1 frase di cosa fa l'executor `name`,
-    leggendo dal suo manifest. Se non trovato, ritorna una string-fallback.
-    """
-    if name in _EXEC_BRIEF_CACHE:
-        return _EXEC_BRIEF_CACHE[name]
-    candidates = [_C.PATH_EXECUTORS / name / "manifest.toml"]
-    desc = None
-    for p in candidates:
-        if not p.exists():
-            continue
-        try:
-            import tomllib
-            with open(p, "rb") as f:
-                data = tomllib.load(f)
-            raw_description = data.get("description") or ""
-            if isinstance(raw_description, dict):
-                lang = os.environ.get("METNOS_LANG", "it").split("-", 1)[0]
-                d = str(raw_description.get(lang)
-                        or raw_description.get("en")
-                        or raw_description.get("it") or "").strip()
-            else:
-                d = str(raw_description).strip()
-            # First sentence
-            for sep in (". ", "! ", "? ", ".\n", "\n"):
-                idx = d.find(sep)
-                if 0 < idx < 200:
-                    d = d[:idx].strip()
-                    break
-            if len(d) > 160:
-                d = d[:157].rstrip() + "…"
-            desc = d
+def _executor_brief(name: str, descriptions: dict[str, str]) -> str:
+    """Return one sentence from the server-owned catalog projection."""
+    desc = descriptions.get(name)
+    if not isinstance(desc, str) or not desc.strip():
+        return _msg("MSG_PROPOSALS_EXECUTOR_MISSING", name=name)
+    brief = desc.strip()
+    for sep in (". ", "! ", "? ", ".\n", "\n"):
+        idx = brief.find(sep)
+        if 0 < idx < 200:
+            brief = brief[:idx].strip()
             break
-        except Exception:
+    if len(brief) > 160:
+        brief = brief[:157].rstrip() + "…"
+    return brief
+
+
+def _bounded_executor_descriptions(value: object) -> dict[str, str]:
+    """Validate the runtime carrier when the module is invoked directly."""
+    if not isinstance(value, dict):
+        return {}
+    descriptions: dict[str, str] = {}
+    for raw_name, raw_description in sorted(
+        value.items(), key=lambda item: str(item[0])
+    ):
+        if len(descriptions) >= 512:
+            break
+        if not isinstance(raw_name, str) or not isinstance(raw_description, str):
             continue
-    if not desc:
-        desc = _msg("MSG_PROPOSALS_EXECUTOR_MISSING", name=name)
-    _EXEC_BRIEF_CACHE[name] = desc
-    return desc
+        name = raw_name.strip()
+        description = raw_description.strip()
+        if not name or len(name) > 128 or not description:
+            continue
+        descriptions[name] = description[:512]
+    return descriptions
 
 
 def _suggest_macro_name(pattern: list[str]) -> tuple[str, str]:
@@ -423,7 +412,15 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     # tale e quale, senza dover riassumere a freddo le entries dal payload.
     # Per kind="all" il detail e' troppo lungo: lo costruiamo ugualmente con
     # tetto a 12 righe totali per non saturare il messaggio Telegram.
-    detail_md = _render_detail(entries, kind, max_lines=12 if kind == "all" else 20)
+    descriptions = _bounded_executor_descriptions(
+        args.get("executor_descriptions")
+    )
+    detail_md = _render_detail(
+        entries,
+        kind,
+        max_lines=12 if kind == "all" else 20,
+        executor_descriptions=descriptions,
+    )
 
     result = {
         "ok": not complete_failure,
@@ -459,7 +456,12 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     return result
 
 
-def _explain(idx: int, entry: dict) -> str:
+def _explain(
+    idx: int,
+    entry: dict,
+    *,
+    executor_descriptions: dict[str, str] | None = None,
+) -> str:
     """Renderizza UNA proposta come paragrafo auto-esplicativo localizzato.
 
     Ogni proposta segue la struttura:
@@ -512,8 +514,11 @@ def _explain(idx: int, entry: dict) -> str:
 
         # Costruzione del paragrafo con descrizioni reali degli step
         steps_lines = []
+        descriptions = executor_descriptions or {}
         for s_name in pattern:
-            steps_lines.append(f"    – {s_name}: {_executor_brief(s_name)}")
+            steps_lines.append(
+                f"    – {s_name}: {_executor_brief(s_name, descriptions)}"
+            )
         steps_block = "\n".join(steps_lines)
 
         # Esempi prima/dopo (semplificati)
@@ -554,7 +559,13 @@ def _explain(idx: int, entry: dict) -> str:
     )
 
 
-def _render_detail(entries: list[dict], kind: str, *, max_lines: int) -> str:
+def _render_detail(
+    entries: list[dict],
+    kind: str,
+    *,
+    max_lines: int,
+    executor_descriptions: dict[str, str] | None = None,
+) -> str:
     """Costruisce il detail multi-line leggibile delle entries.
 
     Per `kind` specifico (dedupe/generalize/specialize): ogni entry diventa
@@ -587,7 +598,11 @@ def _render_detail(entries: list[dict], kind: str, *, max_lines: int) -> str:
                 "MSG_PROPOSALS_GROUP_HEADER", kind=ks.upper(),
                 count=len(items),
             ))
-            blocks.append(_explain(idx_global, items[0]))
+            blocks.append(_explain(
+                idx_global,
+                items[0],
+                executor_descriptions=executor_descriptions,
+            ))
             if len(items) > 1:
                 blocks.append(_msg(
                     "MSG_PROPOSALS_MORE_KIND", count=len(items) - 1,
@@ -604,7 +619,11 @@ def _render_detail(entries: list[dict], kind: str, *, max_lines: int) -> str:
         "MSG_PROPOSALS_GROUP_HEADER", kind=kind.upper(), count=len(entries),
     ), ""]
     for i, e in enumerate(entries[:cap], start=1):
-        blocks.append(_explain(i, e))
+        blocks.append(_explain(
+            i,
+            e,
+            executor_descriptions=executor_descriptions,
+        ))
         blocks.append("")
     if len(entries) > cap:
         blocks.append(_msg(

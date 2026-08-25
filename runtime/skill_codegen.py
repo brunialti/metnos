@@ -4,7 +4,7 @@ Trasforma un `ExecutorPlan` (output di skill_translator.translate_subcommand)
 in tre file scritti su disco:
 - <executor_dir>/<name>/manifest.toml         (Jinja template)
 - <executor_dir>/<name>/<name>.py             (Jinja template)
-- <executor_dir>/<name>/manifest.lang_state.json   (placeholder)
+- <executor_dir>/<name>/manifest.lang_state.json   (canonical i18n state)
 
 Determinismo §7.9: zero LLM. Templates Jinja2 piloted da campi tipizzati
 dell'ExecutorPlan. Description IT+EN puo' essere prodotta da
@@ -954,25 +954,15 @@ def render_executor_py(context: dict) -> str:
     return tmpl.render(**context)
 
 
-def _lang_state_placeholder() -> str:
-    """Companion JSON `manifest.lang_state.json` (ADR 0092 multilingua).
-    Tutte le `version_hash` sono placeholder finche' il signer non
-    riscrive (Task E).
-    """
-    return json.dumps({
-        "description": {
-            "it": {
-                "version_hash": "sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE",
-                "source_lang": None,
-                "source_hash": None,
-            },
-            "en": {
-                "source_lang": "it",
-                "source_hash": "sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE",
-                "version_hash": "sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE",
-            },
-        },
-    }, indent=2)
+def _lang_state_for_manifest(manifest_text: str) -> str:
+    """Build canonical state from every localized manifest surface."""
+    import tomllib
+    from i18n_materializer import migrate_language_state_bytes
+
+    parsed = tomllib.loads(manifest_text)
+    return migrate_language_state_bytes(
+        b"{}", manifest=parsed,
+    ).state_bytes.decode("utf-8")
 
 
 def generate_executor_files(plan, parsed_skill, executor_dir, *,
@@ -998,7 +988,7 @@ def generate_executor_files(plan, parsed_skill, executor_dir, *,
 
     manifest_text = render_manifest(ctx)
     code_text = render_executor_py(ctx)
-    lang_state_text = _lang_state_placeholder()
+    lang_state_text = _lang_state_for_manifest(manifest_text)
 
     manifest_path = out_dir / "manifest.toml"
     code_path = out_dir / f"{plan.name}.py"

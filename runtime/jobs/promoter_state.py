@@ -17,6 +17,8 @@ Schema (idempotente via `CREATE TABLE IF NOT EXISTS`):
         promoted_at TEXT,             -- ISO UTC
         grace_until TEXT,             -- ISO UTC (end of grace window)
         rollback_blob_path TEXT,
+        prepromotion_generation_id TEXT,
+        active_generation_id TEXT,
         evaluator_verdict TEXT,       -- JSON serializzato del verdict
         practical_example TEXT,       -- markdown rendering deterministico
         notified_at TEXT,             -- ISO, popolato dal digest job
@@ -71,6 +73,8 @@ CREATE TABLE IF NOT EXISTS proposal_promote (
     promoted_at TEXT,
     grace_until TEXT,
     rollback_blob_path TEXT,
+    prepromotion_generation_id TEXT,
+    active_generation_id TEXT,
     evaluator_verdict TEXT,
     practical_example TEXT,
     notified_at TEXT,
@@ -89,6 +93,8 @@ _REQUIRED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("promoted_at", "TEXT"),
     ("grace_until", "TEXT"),
     ("rollback_blob_path", "TEXT"),
+    ("prepromotion_generation_id", "TEXT"),
+    ("active_generation_id", "TEXT"),
     ("evaluator_verdict", "TEXT"),
     ("practical_example", "TEXT"),
     ("notified_at", "TEXT"),
@@ -160,6 +166,8 @@ def insert_pending(proposal_id: str, name: str) -> None:
 def upsert_promoted_grace(
     *, proposal_id: str, name: str, blob_path: str,
     verdict: dict, practical_example: str, grace_hours: int,
+    prepromotion_generation_id: str | None = None,
+    active_generation_id: str | None = None,
 ) -> str:
     """Marca proposta come `promoted_grace` con grace_until = now+grace_hours.
 
@@ -188,14 +196,17 @@ def upsert_promoted_grace(
             INSERT INTO proposal_promote
                 (proposal_id, name, state, promoted_at, grace_until,
                  rollback_blob_path, evaluator_verdict, practical_example,
+                 prepromotion_generation_id, active_generation_id,
                  finalized_at, created_at, needs_human_review)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
             ON CONFLICT(proposal_id) DO UPDATE SET
                 name = excluded.name,
                 state = excluded.state,
                 promoted_at = excluded.promoted_at,
                 grace_until = excluded.grace_until,
                 rollback_blob_path = excluded.rollback_blob_path,
+                prepromotion_generation_id = excluded.prepromotion_generation_id,
+                active_generation_id = excluded.active_generation_id,
                 evaluator_verdict = excluded.evaluator_verdict,
                 practical_example = excluded.practical_example,
                 finalized_at = excluded.finalized_at,
@@ -203,6 +214,7 @@ def upsert_promoted_grace(
             """,
             (proposal_id, name, state, _now_iso(), grace_iso,
              blob_path, verdict_json, practical_example,
+             prepromotion_generation_id, active_generation_id,
              finalized_iso, _now_iso()),
         )
         conn.commit()

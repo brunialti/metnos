@@ -339,6 +339,45 @@ class TestL7Admission:
         idx2 = vocab.imported_bindings_index()
         assert idx2 is idx1  # stesso oggetto in memoria (cached)
 
+    def test_store_index_uses_verified_catalog_and_generation_signature(
+            self, monkeypatch):
+        import manifest_inventory
+        import loader
+        import vocab
+        from types import SimpleNamespace
+
+        generation = ["sha256:" + "1" * 64]
+
+        def catalog():
+            executor = SimpleNamespace(
+                name="read_events",
+                is_imported=True,
+                generation_id=generation[0],
+            )
+            return SimpleNamespace(executors={executor.name: executor})
+
+        monkeypatch.setattr(
+            manifest_inventory,
+            "resolve_manifest_layout",
+            lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+        )
+        monkeypatch.setattr(loader, "load_catalog", catalog)
+        monkeypatch.setattr(
+            vocab, "_legacy_imported_bindings_index",
+            lambda: (_ for _ in ()).throw(AssertionError("authoring reopened")),
+        )
+        vocab.invalidate_imported_bindings_cache()
+
+        first = vocab.imported_bindings_index()
+        second = vocab.imported_bindings_index()
+        generation[0] = "sha256:" + "2" * 64
+        third = vocab.imported_bindings_index()
+
+        assert first == {("read", "events"): ["read_events"]}
+        assert second is first
+        assert third == first
+        assert third is not first
+
 
 # ── 4. Bug live case ─────────────────────────────────────────────────────
 

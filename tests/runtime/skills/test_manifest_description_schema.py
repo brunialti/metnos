@@ -270,9 +270,8 @@ class TestHeadBudgetEnforced(unittest.TestCase):
     `9400d90`: la testa di find_images_indices era 956>240 -> il render del
     pool troncava la disambiguazione -> misroute. La scansione 10/6 ne ha
     trovate altre 32 (stessa classe di difetto latente): prima era solo un
-    WARN (`manifest_normalize.length_warn`), qui diventa ENFORCED.
-    SoT della logica: `manifest_rules.HEAD_MAX` + `manifest_normalize.length_warn`
-    (stessa estrazione testa del linter/render)."""
+    WARN, qui diventa ENFORCED. SoT della logica e del risultato strutturato:
+    `manifest_rules.HEAD_MAX` + `manifest_lint.lint_manifest`."""
 
     ROOTS = (
         Path(__file__).resolve().parents[3] / "executors",
@@ -281,7 +280,7 @@ class TestHeadBudgetEnforced(unittest.TestCase):
 
     def test_every_manifest_head_within_budget(self):
         import tomllib
-        from manifest_normalize import length_warn
+        from manifest_lint import lint_manifest
         from manifest_rules import HEAD_MAX
         bad = []
         seen = 0
@@ -301,11 +300,17 @@ class TestHeadBudgetEnforced(unittest.TestCase):
                     if not isinstance(text, str):
                         continue
                     seen += 1
-                    warn = length_warn(text)
-                    if warn and "testa" in warn:
-                        head_part = warn.split(",")[0].strip()  # "testa N>MAX"
-                        bad.append(f"{mp.parent.name} [{lang}]: {head_part} "
-                                   f"({mp})")
+                    findings = lint_manifest(parsed, language=lang)
+                    for finding in findings:
+                        if (
+                            finding.check == "head_length"
+                            and finding.evidence.get("limit") == HEAD_MAX
+                            and isinstance(finding.evidence.get("length"), int)
+                        ):
+                            bad.append(
+                                f"{mp.parent.name} [{lang}]: testa "
+                                f"{finding.evidence['length']}>{HEAD_MAX} ({mp})"
+                            )
         self.assertGreater(seen, 0, msg="scansione vuota: nessun manifest letto")
         self.assertFalse(
             bad,

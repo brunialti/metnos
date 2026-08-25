@@ -1349,7 +1349,7 @@ def test_generic_capability_question_uses_metadata_overview(monkeypatch):
     ] + [f"executor_{i}" for i in range(12)]
     monkeypatch.setattr(
         "loader.load_catalog",
-        lambda: [SimpleNamespace(
+        lambda *, lang=None: [SimpleNamespace(
             name=name, membership="builtin",
             capabilities=([{"name": "provider:access",
                             "hint": ["google-workspace"]}]
@@ -1429,7 +1429,7 @@ def test_github_answer_comes_from_live_builtin_catalog(monkeypatch):
     ]
     monkeypatch.setattr(
         "loader.load_catalog",
-        lambda: [SimpleNamespace(name=name, membership="builtin")
+        lambda *, lang=None: [SimpleNamespace(name=name, membership="builtin")
                  for name in names],
     )
     request = TutorRequest("Cosa fanno executor github", "it", _principal())
@@ -1460,6 +1460,38 @@ def test_capability_overview_projects_local_manifest_purposes():
     assert "find=cerca file per pattern" in files
     assert "hash SHA-256" in files
     assert "purposes=" in files
+
+
+def test_capability_overview_uses_catalog_description_for_requested_language(
+    monkeypatch,
+):
+    from tutor.service import _catalog_summary
+
+    cards = load_published()
+    card = next(item for item in cards
+                if item.kind == "capability_overview")
+    requested: list[str] = []
+    executors = [
+        SimpleNamespace(
+            name=f"read_object{index}",
+            membership="builtin",
+            capabilities=[],
+            description=(
+                f"SCOPO: localized-{index}. PATTERN: read_object{index}(). "
+                "NON: other operations. OUT: results=[]."
+            ),
+        )
+        for index in range(20)
+    ]
+    monkeypatch.setattr(
+        "loader.load_catalog",
+        lambda *, lang: requested.append(lang) or executors,
+    )
+
+    summary = _catalog_summary(card, "zz", cards, "user")
+
+    assert requested == ["zz"]
+    assert "read=localized-0" in summary
 
 
 def test_how_to_composer_contract_leads_with_a_natural_chat_example():
@@ -1599,7 +1631,7 @@ def test_composer_insufficient_is_a_lacuna_not_unavailable(monkeypatch):
     ][:16]
     monkeypatch.setattr(
         "loader.load_catalog",
-        lambda: [SimpleNamespace(
+        lambda *, lang=None: [SimpleNamespace(
             name=name, membership="builtin") for name in admitted],
     )
     monkeypatch.setattr(

@@ -13,8 +13,13 @@ from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 import config as _C
-from i18n_materializer import LocalizationPaths, inventory, materialize
-from i18n_pipeline import _read_artifact, promote_candidates
+from i18n_materializer import InventoryItem, LocalizationPaths, inventory, materialize
+from i18n_pipeline import (
+    _read_artifact,
+    live_contract_context,
+    promote_candidates,
+    publish_versioned_contract_candidates,
+)
 from i18n_registry import LocalizationRegistry, RegistryError, ResourceRecord, normalize_language
 
 
@@ -82,6 +87,7 @@ def _new_sensitive_tokens(source: str, candidate: str) -> set[str]:
 def _validate_live_resource(
     record: ResourceRecord,
     *,
+    item: InventoryItem,
     paths: LocalizationPaths,
     target: str,
 ) -> str | None:
@@ -109,8 +115,17 @@ def _validate_live_resource(
             if (state.get(relative) or {}).get("status") != "admitted":
                 return "prompt language state is not admitted"
         elif record.layer == "contract":
-            path = Path(str(record.metadata["manifest_path"]))
-            manifest = tomllib.loads(path.read_text(encoding="utf-8"))
+            if item.contract_snapshot is not None:
+                snapshot = item.contract_snapshot
+                if snapshot.contract_id != item.contract_ref.contract_id:
+                    return "verified contract identity changed"
+                if snapshot.generation_id != record.basis_id:
+                    return "verified contract generation differs from registry basis"
+                manifest = snapshot.parsed
+            else:
+                # Legacy authoring remains authoritative only before cutover.
+                path = Path(str(record.metadata["manifest_path"]))
+                manifest = tomllib.loads(path.read_text(encoding="utf-8"))
             node: Any = manifest
             for part in str(record.metadata["selector"]).split("."):
                 node = node[part]
@@ -161,12 +176,17 @@ def gate(
     paths: LocalizationPaths | None = None,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
     require_admitted: bool = False,
+    contract_snapshot_provider=None,
 ) -> GateReport:
     """Evaluate complete, current, reviewed coverage without changing state."""
     paths = paths or LocalizationPaths()
     target = normalize_language(target_lang)
     source_items = {
-        item.resource_id: item for item in inventory(paths, source_lang=source_lang)
+        item.resource_id: item for item in inventory(
+            paths,
+            source_lang=source_lang,
+            contract_snapshot_provider=contract_snapshot_provider,
+        )
     }
     records = registry.resources(target)
     record_ids = {record.resource_id for record in records}
@@ -204,7 +224,7 @@ def gate(
             admitted += 1
             if require_admitted:
                 live_error = _validate_live_resource(
-                    record, paths=paths, target=target,
+                    record, item=item, paths=paths, target=target,
                 )
                 if live_error:
                     errors.append(f"{record.resource_id}: {live_error}")
@@ -576,9 +596,59 @@ def validate_manifests(
     target_lang: str,
     *,
     registry: LocalizationRegistry,
+    paths: LocalizationPaths | None = None,
     validator: Callable[[Path, str], tuple[bool, str]] | None = None,
+    contract_snapshot_provider=None,
 ) -> None:
     target = normalize_language(target_lang)
+    if contract_snapshot_provider is not None:
+        from i18n_materializer import _manifest_sources
+        from manifest_inventory import inventory_manifests
+        from manifest_lint import lint_manifest
+
+        selected_paths = paths or LocalizationPaths()
+        manifest_inventory = inventory_manifests(
+            _manifest_sources(selected_paths.manifest_roots),
+        )
+        if manifest_inventory.problems:
+            raise ActivationBlocked("manifest inventory is not clean")
+        failures = []
+        evidence = hashlib.sha256()
+        count = 0
+        for ref in manifest_inventory.admitted():
+            snapshot = contract_snapshot_provider(ref)
+            from contract_store import ContractRetirement, VerifiedManifest
+
+            if isinstance(snapshot, ContractRetirement):
+                continue
+            if not isinstance(snapshot, VerifiedManifest):
+                raise ActivationBlocked(
+                    f"contract revision is not verified: {ref.contract_id}",
+                )
+            findings = [
+                finding for finding in lint_manifest(
+                    snapshot.parsed, language=target,
+                )
+                if finding.severity == "error"
+            ]
+            if findings:
+                failures.append(
+                    f"{ref.contract_id}: "
+                    + "; ".join(str(finding) for finding in findings[:3])
+                )
+            else:
+                evidence.update(snapshot.manifest_bytes)
+                count += 1
+        if failures:
+            raise ActivationBlocked(
+                "manifest admission failed: " + "; ".join(failures[:5]),
+            )
+        registry.record_check(
+            "manifest_admission", target, "passed",
+            evidence_hash=evidence.hexdigest(),
+            details={"manifests": count},
+        )
+        return
     if validator is None:
         from manifest_lint import lint_file
         from sign import verify_executor
@@ -629,25 +699,70 @@ def activate_language(
     registry: LocalizationRegistry | None = None,
     paths: LocalizationPaths | None = None,
     source_lang: str = _C.BOOTSTRAP_LANGUAGE,
-    signer: Callable[[Path], Any] | None = None,
     manifest_validator: Callable[[Path, str], tuple[bool, str]] | None = None,
     tutor_compiler: Callable[[], tuple[str, set[str]]] | None = None,
     request_writer: Callable[..., tuple[Any, bool]] | None = None,
     restart: Callable[[], None] | None = None,
+    contract_snapshot_provider=None,
+    contract_publisher=None,
 ) -> ActivationReport:
     """Promote a complete locale, flip signed authority, then restart."""
     target = normalize_language(target_lang)
     paths = paths or LocalizationPaths()
     registry = registry or LocalizationRegistry()
-    materialize(target, registry=registry, paths=paths, source_lang=source_lang)
+    injected_versioned = (
+        contract_snapshot_provider is not None
+        or contract_publisher is not None
+    )
+    if injected_versioned and (
+        contract_snapshot_provider is None or contract_publisher is None
+    ):
+        raise ValueError(
+            "contract snapshot provider and publisher must be supplied together",
+        )
+    if injected_versioned:
+        store_only = True
+        snapshot_provider = contract_snapshot_provider
+        publisher = contract_publisher
+    else:
+        context = live_contract_context(registry, publication=True)
+        store_only = context.store_only
+        snapshot_provider = context.snapshot_provider
+        publisher = context.publisher
+    materialize(
+        target, registry=registry, paths=paths, source_lang=source_lang,
+        contract_snapshot_provider=snapshot_provider,
+    )
     before = gate(
         target, registry=registry, paths=paths, source_lang=source_lang,
         require_admitted=False,
+        contract_snapshot_provider=snapshot_provider,
     )
     if not before.ok:
         raise ActivationBlocked("pre-activation gate failed: " + "; ".join(before.errors[:8]))
+    versioned_promoted = 0
+    if store_only:
+        assert snapshot_provider is not None and publisher is not None
+        versioned = publish_versioned_contract_candidates(
+            target,
+            registry=registry,
+            paths=paths,
+            contract_snapshot_provider=snapshot_provider,
+            publisher=publisher,
+            source_lang=source_lang,
+        )
+        if versioned.errors:
+            raise ActivationBlocked(
+                "versioned contract publication failed: "
+                + "; ".join(
+                    f"{key}: {value}"
+                    for key, value in list(versioned.errors.items())[:5]
+                ),
+            )
+        versioned_promoted = versioned.published_resources
     promoted = promote_candidates(
-        target, registry=registry, paths=paths, signer=signer,
+        target, registry=registry, paths=paths,
+        versioned_contracts_published=store_only,
     )
     if promoted.errors:
         raise ActivationBlocked(
@@ -659,13 +774,20 @@ def activate_language(
     device_templates = reconcile_device_catalog(
         target, registry=registry, paths=paths, source_lang=source_lang,
     )
-    validate_manifests(target, registry=registry, validator=manifest_validator)
+    validate_manifests(
+        target,
+        registry=registry,
+        paths=paths,
+        validator=manifest_validator,
+        contract_snapshot_provider=snapshot_provider,
+    )
     tutor_digest = reconcile_tutor_catalog(
         target, registry=registry, compiler=tutor_compiler,
     )
     after = gate(
         target, registry=registry, paths=paths, source_lang=source_lang,
         require_admitted=True,
+        contract_snapshot_provider=snapshot_provider,
     )
     if not after.ok:
         raise ActivationBlocked("post-activation gate failed: " + "; ".join(after.errors[:8]))
@@ -679,7 +801,7 @@ def activate_language(
         restart()
         restarted = True
     return ActivationReport(
-        target_lang=target, promoted=promoted.admitted,
+        target_lang=target, promoted=promoted.admitted + versioned_promoted,
         exceptions=after.exceptions, device_templates=device_templates,
         tutor_digest=tutor_digest, configuration_changed=bool(changed),
         restarted=restarted,

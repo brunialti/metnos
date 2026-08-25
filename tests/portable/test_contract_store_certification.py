@@ -269,12 +269,17 @@ def _crash_publish_worker(
             os._exit(_CRASH_EXIT)
 
         store_module._ensure_binding_locked = ensure_binding_then_crash
-    elif boundary in {"temp_generation", "temp_current"}:
+    elif boundary in {"temp_binding", "temp_generation", "temp_current"}:
         real_write_new = store_module._write_new_file
 
         def write_then_crash(path, payload, *, mode=0o600):
             real_write_new(path, payload, mode=mode)
             path = Path(path)
+            if boundary == "temp_binding" and (
+                path.name.startswith(f".{BINDING_FILE}.")
+                and path.name.endswith(".tmp")
+            ):
+                os._exit(_CRASH_EXIT)
             if (
                 boundary == "temp_generation"
                 and path.parent.name.startswith(".generation-")
@@ -743,6 +748,14 @@ def test_process_crash_exposes_only_a_complete_old_or_new_generation(
         allowed={initial.current_generation_id, desired},
     )
     assert visible == expected_visible
+    if boundary == "temp_current":
+        staged_current = tuple(
+            (store / contract_storage_key(ref.contract_id)).glob(
+                ".current.*.tmp"
+            )
+        )
+        assert len(staged_current) == 1
+        assert staged_current[0].read_bytes() == (desired + "\n").encode("ascii")
 
     desired_path = _generation_path(store, ref, desired)
     before_reuse: dict[str, tuple[int, int, int]] | None = None
@@ -765,6 +778,9 @@ def test_process_crash_exposes_only_a_complete_old_or_new_generation(
     )
     assert recovered.current_generation_id == desired
     assert recovered.repeated is (boundary == "post_replace")
+    assert not tuple(
+        (store / contract_storage_key(ref.contract_id)).glob(".current.*.tmp")
+    )
     assert _assert_complete_current(
         ref,
         trusted=trusted,
@@ -803,7 +819,7 @@ def test_process_crash_exposes_only_a_complete_old_or_new_generation(
     assert after == before
 
 
-def test_first_publish_crash_in_temp_generation_ignores_staging_on_retry(
+def test_first_publish_crash_in_temp_generation_recovers_staging_on_retry(
     tmp_path: Path,
 ) -> None:
     ref, private = _make_source(tmp_path)
@@ -858,7 +874,49 @@ def test_first_publish_crash_in_temp_generation_ignores_staging_on_retry(
     )
     assert not recovered.repeated
     assert recovered.current_generation_id == desired
-    assert staging[0].is_dir()
+    assert not staging[0].exists()
+    assert _assert_complete_current(
+        ref,
+        trusted=trusted,
+        store=store,
+        allowed={desired},
+    ) == desired
+
+
+def test_first_publish_crash_in_temp_binding_recovers_staging_on_retry(
+    tmp_path: Path,
+) -> None:
+    ref, private = _make_source(tmp_path)
+    trusted_raw = (("author", _raw_public(private)),)
+    trusted = _trusted_from_raw(trusted_raw)
+    store = tmp_path / "shadow" / "initial-temp-binding" / "v1"
+    desired = generation_id(_payloads(ref))
+    context = _new_context()
+    process = context.Process(
+        target=_crash_publish_worker,
+        args=(ref, trusted_raw, str(store), None, "temp_binding"),
+    )
+    process.start()
+    _join_process(process)
+    assert process.exitcode == _CRASH_EXIT
+
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    assert not (contract_dir / BINDING_FILE).exists()
+    assert not (contract_dir / "current").exists()
+    staging = tuple(contract_dir.glob(f".{BINDING_FILE}.*.tmp"))
+    assert len(staging) == 1
+    assert staging[0].read_bytes() == store_module.encode_binding(ref.contract_id)
+
+    recovered = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    assert recovered.previous_generation_id is None
+    assert recovered.current_generation_id == desired
+    assert not staging[0].exists()
+    assert read_binding(contract_dir).contract_id == ref.contract_id
     assert _assert_complete_current(
         ref,
         trusted=trusted,

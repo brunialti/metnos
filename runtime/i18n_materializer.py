@@ -29,7 +29,7 @@ from manifest_inventory import (
 )
 
 if TYPE_CHECKING:
-    from contract_store import VerifiedManifest
+    from contract_store import ContractRevision, VerifiedManifest
 
 
 _HUMAN_REVIEW_DETECTION_KINDS = frozenset({"regex"})
@@ -503,9 +503,12 @@ class InventoryItem:
     manual_review: bool = False
     basis_id: str | None = None
     contract_ref: ManifestRef | None = None
+    # Ephemeral verified object used by the activation gate.  It is never
+    # serialized into registry metadata, so paths cannot become authority.
+    contract_snapshot: "VerifiedManifest | None" = None
 
 
-ContractSnapshotProvider = Callable[[ManifestRef], "VerifiedManifest"]
+ContractSnapshotProvider = Callable[[ManifestRef], "ContractRevision"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -588,6 +591,13 @@ def _iter_contract_items(
     source_lang: str,
     contract_snapshot_provider: ContractSnapshotProvider | None = None,
 ) -> Iterator[InventoryItem]:
+    if contract_snapshot_provider is None:
+        from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+        if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+            raise ValueError(
+                "contract_snapshot_provider is required in store-only mode",
+            )
     manifest_inventory = inventory_manifests(
         _manifest_sources(paths.manifest_roots),
     )
@@ -605,12 +615,25 @@ def _iter_contract_items(
     for ref in refs:
         path = ref.manifest_path
         basis_id: str | None = None
+        verified_snapshot = None
         if contract_snapshot_provider is None:
             raw = path.read_bytes()
             manifest = tomllib.loads(raw.decode("utf-8"))
             manifest_hash = sha256_bytes(raw)
         else:
-            snapshot = contract_snapshot_provider(ref)
+            revision = contract_snapshot_provider(ref)
+            from contract_store import ContractRetirement, VerifiedManifest
+
+            if isinstance(revision, ContractRetirement):
+                # The tombstone is authenticated by the provider and is the
+                # live assertion that this contract contributes no surfaces.
+                continue
+            if not isinstance(revision, VerifiedManifest):
+                raise ValueError(
+                    f"verified contract revision unavailable: {ref.contract_id}",
+                )
+            snapshot = revision
+            verified_snapshot = snapshot
             if snapshot.contract_id != ref.contract_id:
                 raise ValueError(
                     "contract snapshot identity does not match inventory: "
@@ -677,6 +700,7 @@ def _iter_contract_items(
                 metadata=metadata,
                 basis_id=basis_id,
                 contract_ref=ref,
+                contract_snapshot=verified_snapshot,
             )
 
 
@@ -1036,6 +1060,7 @@ def materialize_requested(
     registry: LocalizationRegistry | None = None,
     paths: LocalizationPaths | None = None,
     request_path: Path | None = None,
+    contract_snapshot_provider: ContractSnapshotProvider | None = None,
 ) -> MaterializationReport | None:
     """Read the signed request and materialize only its requested locale."""
     request, error = _C.read_localization_request(request_path)
@@ -1045,8 +1070,17 @@ def materialize_requested(
         raise ValueError(f"localization request is not valid: {error}")
     if request.state != "bootstrap_english" or not request.requested_lang:
         return None
+    selected_registry = registry or LocalizationRegistry()
+    snapshot_provider = contract_snapshot_provider
+    if snapshot_provider is None:
+        from i18n_pipeline import live_contract_context
+
+        snapshot_provider = live_contract_context(
+            selected_registry,
+        ).snapshot_provider
     return materialize(
         request.requested_lang,
-        registry=registry or LocalizationRegistry(), paths=paths,
+        registry=selected_registry, paths=paths,
         source_lang=request.instance_lang,
+        contract_snapshot_provider=snapshot_provider,
     )

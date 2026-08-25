@@ -95,6 +95,30 @@ class TestArchiveSynthProposals(unittest.TestCase):
         # File ancora al posto originale
         self.assertTrue(p.exists())
 
+    def test_store_only_loader_failure_never_falls_back_to_authoring(self):
+        from manifest_inventory import ManifestLayout
+        from proposals_cleanup import archive_aged_synth_proposals
+
+        proposal = _write_proposal(
+            self.dir, int(time.time()) - 100, "unpublished_source_name",
+            final_state="synthesized",
+        )
+        with mock.patch(
+            "manifest_inventory.resolve_manifest_layout",
+            return_value=ManifestLayout.STORE_ONLY,
+        ), mock.patch(
+            "loader.load_catalog", side_effect=RuntimeError("store unavailable"),
+        ), mock.patch(
+            "proposals_cleanup._fallback_catalog_names",
+            side_effect=AssertionError("authoring fallback used"),
+        ):
+            result = archive_aged_synth_proposals(max_age_days=30)
+
+        self.assertEqual(result["archived"], 0)
+        self.assertEqual(result["kept"], 1)
+        self.assertTrue(proposal.exists())
+        self.assertTrue(any("store-only" in error for error in result["errors"]))
+
 
 class TestDedupeIntrovertiva(unittest.TestCase):
     def setUp(self):

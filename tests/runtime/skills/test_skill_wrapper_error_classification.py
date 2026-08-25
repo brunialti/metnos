@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from runtime.skill_wrapper import (
     _classify_error,
     _error_code_for_class,
+    _get_skill_oauth_config,
     _skill_code_home,
     _skill_home,
     _validate_skill_args,
@@ -55,3 +58,64 @@ def test_skill_code_override_is_independent_from_user_state(tmp_path, monkeypatc
 
     assert _skill_home("example") == state
     assert _skill_code_home("example") == code
+
+
+def test_oauth_config_uses_verified_generation_after_cutover(
+    tmp_path, monkeypatch,
+):
+    import contract_store
+    import manifest_inventory
+    import sign
+    import runtime.skill_wrapper as wrapper
+
+    executor_dir = tmp_path / "skills" / "mail" / "read_messages"
+    executor_dir.mkdir(parents=True)
+    executor_file = executor_dir / "read_messages.py"
+    executor_file.write_text("pass\n", encoding="utf-8")
+    (executor_dir / "manifest.toml").write_text(
+        '[oauth_provider]\nclient_secret_install_path="UNTRUSTED"\n',
+        encoding="utf-8",
+    )
+    ref = SimpleNamespace(contract_id="user_skill:mail/read_messages/manifest.toml")
+    snapshot = SimpleNamespace(
+        generation_id="sha256:" + "a" * 64,
+        parsed={
+            "oauth_provider": {
+                "client_secret_install_path": "verified/client.json",
+                "mirror_paths": ["verified/mirror.json"],
+                "scopes_options": [
+                    {"label": "Read", "scopes": ["scope:read"]},
+                ],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        manifest_inventory,
+        "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "inventory_manifests", lambda: object(),
+    )
+    monkeypatch.setattr(
+        manifest_inventory, "manifest_ref_for_source_path",
+        lambda _inventory, _path: ref,
+    )
+    monkeypatch.setattr(
+        contract_store, "current_revision_id", lambda _ref: snapshot.generation_id,
+    )
+    monkeypatch.setattr(
+        contract_store, "current_manifest", lambda _ref, **_kwargs: snapshot,
+    )
+    monkeypatch.setattr(sign, "list_trusted_publics", lambda: [("author", object())])
+    wrapper._OAUTH_CFG_CACHE.clear()
+
+    result = _get_skill_oauth_config(str(executor_file))
+
+    assert result == {
+        "client_secret_install_path": "verified/client.json",
+        "mirror_paths": ["verified/mirror.json"],
+        "scopes_options": [
+            {"label": "Read", "scopes": ["scope:read"]},
+        ],
+    }

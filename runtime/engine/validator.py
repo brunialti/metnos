@@ -25,6 +25,7 @@ from from_step_projection import (
     carries_upstream_payload, projection_can_fill,
     required_source_context_fields,
 )
+from manifest_rules import UNIVERSAL_ARGS
 from messages import get as _msg
 
 from .types import Framework
@@ -170,7 +171,7 @@ class Validator:
             )
         # Type check (basic)
         for k, v in args.items():
-            if k.startswith("_") or k in ("from_step", "entries"):
+            if k.startswith("_") or k in UNIVERSAL_ARGS:
                 continue  # runtime-injected / piping
             decl = props.get(k)
             if not decl:

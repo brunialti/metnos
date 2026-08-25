@@ -27,13 +27,22 @@ import json
 import sqlite3
 import sys
 import time
+import tomllib
 import uuid
+from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 import devices  # noqa: E402
-from sign import load_private, load_public  # noqa: E402
+from sign import (  # noqa: E402
+    ManifestSignatureError,
+    list_trusted_publics,
+    load_private,
+    load_public,
+    verify_manifest_bytes,
+)
 import config as _C  # noqa: E402  §7.11
 
 from logging_setup import get_logger
@@ -134,6 +143,169 @@ class InvocationConflictError(InvocationError):
     """An invocation id or dispatch key was reused with different facts."""
 
 
+class UnknownExecutorError(InvocationError):
+    """The live, verified catalog does not expose the requested executor."""
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutorArtifact:
+    """One self-consistent, reverified executor snapshot.
+
+    The manifest and signature always come from the catalog's live manifest
+    path.  After the RM-0007 cutover that path belongs to an immutable
+    generation; ``authoring_manifest_path`` is used only to locate the code
+    files named by that signed generation.  Code bytes are read once and the
+    digest is calculated over those exact bytes, so a remote bundle never
+    serves bytes different from the ones it verified.
+    """
+
+    name: str
+    manifest_path: Path
+    manifest_bytes: bytes
+    signature_bytes: bytes
+    parsed: Mapping[str, object]
+    manifest_sha256: str
+    code_sha256: str
+    code_files: tuple[tuple[str, bytes], ...]
+    signed_by: str
+    generation_id: str | None
+
+
+def load_executor_artifact(name: str) -> ExecutorArtifact:
+    """Resolve and reverify one executor through the live catalog.
+
+    This is the single read boundary shared by invocation signing and bundle
+    delivery.  It deliberately does not derive a manifest path from the
+    executor name and never opens an authoring manifest after cutover.
+    """
+
+    from loader import load_catalog
+
+    try:
+        catalog = load_catalog(
+            _C.PATH_EXECUTORS,
+            verify=True,
+            include_synth=True,
+            include_verb_unique=False,
+        )
+    except Exception as exc:
+        raise InvocationError(
+            f"catalogo executor non disponibile: {type(exc).__name__}: {exc}"
+        ) from exc
+    executor = catalog.get(name)
+    if executor is None:
+        raise UnknownExecutorError(f"executor sconosciuto: {name}")
+    if executor.transport == "in-process":
+        # The remote protocol transports subprocess executors.  Looking them
+        # up through the unified catalog must not accidentally broaden the old
+        # endpoint to server-only in-process implementations.
+        raise UnknownExecutorError(f"executor non trasportabile: {name}")
+
+    manifest_path = Path(executor.manifest_path)
+    signature_path = manifest_path.with_suffix(".toml.sig")
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        signature_bytes = signature_path.read_bytes()
+    except OSError as exc:
+        raise InvocationError(f"executor {name} senza contratto vivo: {exc}") from exc
+
+    try:
+        signer = verify_manifest_bytes(
+            manifest_bytes,
+            signature_bytes,
+            trusted_publics=list_trusted_publics(),
+        )
+    except (ManifestSignatureError, TypeError, ValueError) as exc:
+        raise InvocationError(f"firma del contratto vivo di {name} non valida") from exc
+    if signer.name != executor.signed_by:
+        raise InvocationError(f"firmatario del contratto vivo di {name} incoerente")
+
+    try:
+        manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise InvocationError(f"manifest vivo di {name} non valido: {exc}") from exc
+    if manifest.get("name") != executor.name or executor.name != name:
+        raise InvocationError(f"identita del contratto vivo di {name} incoerente")
+
+    generation_identifier = executor.generation_id
+    if generation_identifier is not None:
+        # Bind the exact bytes reopened here to the generation authenticated
+        # by the catalog.  The language-state companion participates in that
+        # identity even though it is not sent to the remote client.
+        try:
+            from contract_store import generation_id
+
+            state_bytes = manifest_path.with_name(
+                "manifest.lang_state.json"
+            ).read_bytes()
+            actual_generation = generation_id({
+                "manifest.toml": manifest_bytes,
+                "manifest.toml.sig": signature_bytes,
+                "manifest.lang_state.json": state_bytes,
+            })
+        except Exception as exc:
+            raise InvocationError(
+                f"generazione viva di {name} non verificabile: {exc}"
+            ) from exc
+        if actual_generation != generation_identifier:
+            raise InvocationError(f"generazione viva di {name} incoerente")
+        authoring_path = executor.authoring_manifest_path
+        if authoring_path is None:
+            raise InvocationError(
+                f"generazione viva di {name} senza base codice strutturale"
+            )
+        code_base = Path(authoring_path).parent
+    else:
+        # Pre-cutover compatibility: the verified manifest and code still
+        # share their historical authoring directory.
+        code_base = manifest_path.parent
+
+    code_table = manifest.get("code")
+    code_names = code_table.get("files") if isinstance(code_table, dict) else None
+    declared_digest = (
+        code_table.get("digest") if isinstance(code_table, dict) else None
+    )
+    if (
+        not isinstance(code_names, list)
+        or not code_names
+        or any(not isinstance(item, str) or not item for item in code_names)
+        or len(set(code_names)) != len(code_names)
+        or not isinstance(declared_digest, str)
+        or not declared_digest.startswith("sha256:")
+    ):
+        raise InvocationError(f"contratto codice di {name} non valido")
+    if declared_digest != executor.digest:
+        raise InvocationError(f"digest del contratto vivo di {name} incoerente")
+
+    digest = hashlib.sha256()
+    code_files: list[tuple[str, bytes]] = []
+    try:
+        for relative in code_names:
+            payload = (code_base / relative).read_bytes()
+            digest.update(payload)
+            code_files.append((relative, payload))
+    except OSError as exc:
+        raise InvocationError(f"codice vivo di {name} non leggibile: {exc}") from exc
+    actual_digest = "sha256:" + digest.hexdigest()
+    if actual_digest != declared_digest:
+        raise InvocationError(
+            f"codice vivo di {name} non corrisponde al contratto pubblicato"
+        )
+
+    return ExecutorArtifact(
+        name=name,
+        manifest_path=manifest_path,
+        manifest_bytes=manifest_bytes,
+        signature_bytes=signature_bytes,
+        parsed=manifest,
+        manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        code_sha256=actual_digest.removeprefix("sha256:"),
+        code_files=tuple(code_files),
+        signed_by=signer.name,
+        generation_id=generation_identifier,
+    )
+
+
 # --- canonical JSON + firma -------------------------------------------------
 
 def canonical_bytes(obj: dict) -> bytes:
@@ -226,24 +398,18 @@ def _provider_selectors(args: dict, dependency) -> tuple[list[str], list[str]] |
     return selected[0], selected[1]
 
 
-def _managed_provider_grants(executor: str, args: dict, invocation_id: str,
-                             manifest_sha256: str) -> list[dict]:
+def _managed_provider_grants(artifact: ExecutorArtifact, args: dict,
+                             invocation_id: str) -> list[dict]:
     """Create server-signed grants from one verified executor manifest.
 
     A grant is emitted only when both declared selector arguments are
     non-empty closed lists. Package IDs and interfaces are never accepted
     from invocation arguments.
     """
-    import tomllib
     from loader import _managed_dependencies
-    from sign import compute_code_digest
 
-    manifest_path = _C.PATH_EXECUTORS / executor / "manifest.toml"
     try:
-        manifest_bytes = manifest_path.read_bytes()
-        if hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha256:
-            raise InvocationError("executor manifest changed while enqueueing")
-        manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
+        manifest = artifact.parsed
         dependencies = _managed_dependencies(manifest.get("managed_dependencies"))
         selected = []
         for dependency in dependencies:
@@ -257,14 +423,12 @@ def _managed_provider_grants(executor: str, args: dict, invocation_id: str,
 
         # A provider grant crosses into the privileged helper. It therefore
         # requires the installation's own author signature and a current code
-        # digest, not merely a manifest that happens to exist on disk.
-        signature = manifest_path.with_suffix(".toml.sig").read_bytes()
-        load_public("author").verify(signature, manifest_bytes)
-        code_files = manifest.get("code", {}).get("files", [])
-        declared = manifest.get("code", {}).get("digest", "")
-        if (not isinstance(code_files, list) or not code_files
-                or compute_code_digest(manifest_path.parent, code_files) != declared):
-            raise InvocationError("managed provider executor code drift")
+        # digest, not merely a manifest trusted by another installation key.
+        # ``load_executor_artifact`` has already recomputed the digest over
+        # the exact code bytes observed for this invocation.
+        load_public("author").verify(
+            artifact.signature_bytes, artifact.manifest_bytes,
+        )
     except InvocationError:
         raise
     except Exception as exc:
@@ -274,7 +438,7 @@ def _managed_provider_grants(executor: str, args: dict, invocation_id: str,
     for dependency, (domains, sensor_types) in selected:
         grant = {
             "invocation_id": invocation_id,
-            "manifest_sha256": manifest_sha256,
+            "manifest_sha256": artifact.manifest_sha256,
             "dependency_key": dependency.key,
             "source": "winget",
             "package_id": dependency.package_id,
@@ -337,25 +501,14 @@ def server_public_key_b64(*, key_name: str = "author") -> str:
 # --- hash executor (per il pull-on-miss del client) --------------------------
 
 def executor_shas(name: str) -> tuple[str, str]:
-    """(manifest_sha256, code_sha256) dell'executor `name` sotto PATH_EXECUTORS.
+    """Return hashes from one reverified live executor artifact.
 
     manifest_sha256 = sha256 dei bytes di manifest.toml (quello firmato).
     code_sha256     = digest dichiarato nel manifest ([code].digest, senza
-                      prefisso 'sha256:'), che sign.py mantiene allineato.
+                      prefisso 'sha256:'), ricontrollato sui bytes del codice.
     """
-    import tomllib
-    ex_dir = _C.PATH_EXECUTORS / name
-    manifest_path = ex_dir / "manifest.toml"
-    if not manifest_path.is_file():
-        raise InvocationError(f"executor sconosciuto: {name}")
-    manifest_bytes = manifest_path.read_bytes()
-    manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
-    manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
-    declared = manifest.get("code", {}).get("digest", "")
-    code_sha = declared.removeprefix("sha256:")
-    if not code_sha:
-        raise InvocationError(f"manifest di {name} senza [code].digest")
-    return manifest_sha, code_sha
+    artifact = load_executor_artifact(name)
+    return artifact.manifest_sha256, artifact.code_sha256
 
 
 def _device_protocol_capabilities(dev: devices.Device) -> set[str]:
@@ -377,8 +530,8 @@ def _device_protocol_capabilities(dev: devices.Device) -> set[str]:
     }
 
 
-def _validate_operation(executor: str, args: dict, operation: str,
-                        manifest_sha: str, dev: devices.Device) -> None:
+def _validate_operation(artifact: ExecutorArtifact, args: dict, operation: str,
+                        dev: devices.Device) -> None:
     """Validate one signed executor operation before it reaches the queue."""
     if operation == "invoke":
         return
@@ -392,12 +545,7 @@ def _validate_operation(executor: str, args: dict, operation: str,
             or not isinstance(args.get("results"), dict)):
         raise InvocationError("reverse operation requires exact plan and results objects")
 
-    import tomllib
-    manifest_path = _C.PATH_EXECUTORS / executor / "manifest.toml"
-    manifest_bytes = manifest_path.read_bytes()
-    if hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha:
-        raise InvocationError("executor manifest changed while validating reverse")
-    manifest = tomllib.loads(manifest_bytes.decode("utf-8"))
+    manifest = artifact.parsed
     declared = manifest.get("reverse_pattern")
     patterns = [declared] if isinstance(declared, str) else declared
     if (manifest.get("revertible") is not True or not isinstance(patterns, list)
@@ -552,8 +700,10 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
     if dev is None or dev.revoked_at is not None:
         raise InvocationError(f"device sconosciuto o revocato: {device_id}")
 
-    manifest_sha, code_sha = executor_shas(executor)
-    _validate_operation(executor, args or {}, operation, manifest_sha, dev)
+    artifact = load_executor_artifact(executor)
+    manifest_sha = artifact.manifest_sha256
+    code_sha = artifact.code_sha256
+    _validate_operation(artifact, args or {}, operation, dev)
     chosen_id = (
         _new_invocation_id()
         if invocation_id is None
@@ -580,7 +730,7 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
     }
     payload_digest = _request_digest(semantic_request)
     provider_grants = _managed_provider_grants(
-        executor, args or {}, chosen_id, manifest_sha)
+        artifact, args or {}, chosen_id)
     payload = {
         "invocation_id": chosen_id,
         "turn_id": turn_id or "",

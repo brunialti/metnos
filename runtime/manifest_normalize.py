@@ -32,7 +32,8 @@ if str(_RT) not in sys.path:
     sys.path.insert(0, str(_RT))
 
 import prompt_loader  # noqa: E402
-from manifest_rules import HEAD_MAX, DESC_MAX  # noqa: E402
+from manifest_lint import lint_manifest  # noqa: E402
+from manifest_rules import CHAPTERS, HEAD_MAX, DESC_MAX  # noqa: E402
 
 try:
     from vocab import PRODUCER_VERBS, DESTRUCTIVE_VERBS  # noqa: E402
@@ -45,14 +46,12 @@ except Exception:
                                    "install", "run"})
 
 _EXEC = _RT.parent / "executors"
-_CHAPTERS = ("SCOPO:", "PATTERN:", "NON:", "OUT:")
 # Qualifier di FORMATO (§2.2 Famiglia 1, SoT vocab). Un tool con questo qualifier
 # e' scelto dal router PER FORMATO: lo SCOPO deve nominare il trigger concreto
 # (estensione/tipo) altrimenti il wise-LLM confonde .html con PDF (regressione 7/6).
 _FORMAT_QUALIFIERS = frozenset({
     "csv", "xlsx", "ocr", "zip", "pdf", "xml", "html", "json", "text",
     "gz", "tar", "video", "audio", "image", "hash", "spreadsheet", "doc"})
-_UNIVERSAL_ARGS = frozenset({"from_step", "entries"})
 # Marker di "coda implementativa" che NON deve sopravvivere dopo OUT: (smell).
 _TAIL_SMELL = ("User-Agent", "backend:", "Backend:", "pypdf", "openpyxl",
                "Tesseract", "stdlib", "apt:", "RFC822", "IMAP4")
@@ -114,7 +113,7 @@ def load_catalog() -> dict:
             "it": it, "en": en,
             "affinity": m.get("affinity") or [],
             "scopo1": _first_sentence(it),
-            "has_chapters": all(c in it for c in _CHAPTERS),
+            "has_chapters": all(c in it for c in CHAPTERS),
         }
     return cat
 
@@ -207,46 +206,77 @@ def _siblings_block(name: str, object_: str, cat: dict, cap: int = 6) -> str:
 # -------------------------------------------------------------------------
 # Validazione (hard = blocca; length = soft, spinge ma non blocca)
 # -------------------------------------------------------------------------
-def _pattern_call_args(desc: str, name: str) -> list[str]:
-    start = desc.find("PATTERN:")
-    end = desc.find("NON:", start) if start >= 0 else -1
-    span = desc[start:end] if start >= 0 and end > start else desc
-    args = []
-    for m in re.finditer(rf"{re.escape(name)}\s*\(([^)]*)\)", span):
-        args += re.findall(r"(?:^|[(,\s])([a-zA-Z_]\w*)\s*=(?!=)", m.group(1))
-    return args
+def _normalizer_lint_message(finding, props: dict) -> str:
+    """Preserva il feedback storico dove era gia' parte del retry LLM."""
+    if finding.check == "pattern_unknown_arg":
+        argument = finding.evidence.get("argument", "?")
+        return (
+            f"il PATTERN usa l'arg '{argument}' non nello schema "
+            f"{sorted(props.keys())}"
+        )
+    if finding.check == "non_reference":
+        reference = finding.evidence.get("reference", "?")
+        return (
+            f"NON: cita '{reference}' inesistente nel catalogo "
+            "(riferimento morto)"
+        )
+    if finding.check == "chapter_order":
+        counts = finding.evidence.get("counts")
+        if isinstance(counts, dict):
+            missing = [chapter for chapter in CHAPTERS if counts.get(chapter) == 0]
+            if missing:
+                return (
+                    f"capitoli mancanti {missing} "
+                    "(attesi SCOPO/PATTERN/NON/OUT)"
+                )
+        if "fuori ordine" in finding.message:
+            return "capitoli fuori ordine (SCOPO->PATTERN->NON->OUT)"
+    return f"{finding.check}: {finding.message}"
 
 
-def validate_head(name: str, s: str, props: dict, catalog_names: set) -> list[str]:
+def validate_head(
+    name: str,
+    s: str,
+    props: dict,
+    catalog_names: set,
+    *,
+    language: str,
+) -> list[str]:
     """Errori HARD che impediscono l'accettazione (retry con feedback)."""
-    errs = []
     if not isinstance(s, str) or len(s) < 60:
         return ["description troppo corta o non stringa (>=60 char)"]
+
+    # Il normalizzatore valida soltanto il testo candidato: le description
+    # degli argomenti appartengono al manifest sorgente e non devono produrre
+    # errori collaterali mentre si rigenera la testa.
+    lint_props = {
+        key: ({field: value for field, value in decl.items()
+               if field != "description"}
+              if isinstance(decl, dict) else decl)
+        for key, decl in props.items()
+    }
+    findings = lint_manifest(
+        {
+            "name": name,
+            "description": s,
+            "args": {"type": "object", "properties": lint_props},
+        },
+        language=language,
+        allow_flat_description=True,
+        catalog_names=catalog_names,
+    )
+    # I riferimenti morti restano WARN nel linter generale, ma sono HARD per
+    # questo generatore: il retry puo' correggerli prima che esista un file.
+    errs = [
+        _normalizer_lint_message(finding, props)
+        for finding in findings
+        if finding.severity == "error" or finding.check == "non_reference"
+    ]
+
+    # Vincoli propri del formato di output del normalizzatore, non regole del
+    # contratto condiviso.
     if "\n" in s:
         errs.append("contiene newline (deve essere stringa TOML monolinea)")
-    pos = [(c, s.find(c)) for c in _CHAPTERS]
-    missing = [c for c, p in pos if p < 0]
-    if missing:
-        errs.append(f"capitoli mancanti {missing} (attesi SCOPO/PATTERN/NON/OUT)")
-    else:
-        order = [p for _, p in pos]
-        if order != sorted(order):
-            errs.append("capitoli fuori ordine (SCOPO->PATTERN->NON->OUT)")
-    # PATTERN usa solo arg dello schema (errore C_PATTERN_ARGS: l'LLM copierebbe un arg fantasma)
-    allowed = set(props.keys()) | _UNIVERSAL_ARGS
-    for a in _pattern_call_args(s, name):
-        if a not in allowed:
-            errs.append(f"il PATTERN usa l'arg '{a}' non nello schema {sorted(props.keys())}")
-    # NON: cita solo tool ESISTENTI (riferimento morto -> confonde il planner).
-    # Reuse euristica lint C_NON_REFS, ma qui HARD (retry corregge).
-    ns = s.find("NON:")
-    ne = s.find("OUT:", ns) if ns >= 0 else -1
-    non_chap = s[ns:ne] if ns >= 0 and ne > ns else ""
-    known_verbs = PRODUCER_VERBS | DESTRUCTIVE_VERBS
-    for ref in re.findall(r"\b([a-z][a-z0-9]+_[a-z0-9_]+)\b", non_chap):
-        if (ref != name and ref not in catalog_names
-                and ref.split("_")[0] in known_verbs):
-            errs.append(f"NON: cita '{ref}' inesistente nel catalogo (riferimento morto)")
     # coda implementativa sopravvissuta dopo OUT:
     oc = s.find("OUT:")
     tail = s[oc:] if oc >= 0 else ""
@@ -331,8 +361,12 @@ def normalize_one(name: str, cat: dict, llm, *, max_retry=5) -> dict:
             feedback = "output non era JSON {it, en} valido"
             last = {"ok": False, "error": feedback, "raw": raw[:300]}
             continue
-        e_it = validate_head(name, out["it"], meta["props"], names)
-        e_en = validate_head(name, out["en"], meta["props"], names)
+        e_it = validate_head(
+            name, out["it"], meta["props"], names, language="it",
+        )
+        e_en = validate_head(
+            name, out["en"], meta["props"], names, language="en",
+        )
         if e_it or e_en:
             feedback = "; ".join(["IT: " + x for x in e_it] + ["EN: " + x for x in e_en])
             last = {"ok": False, "error": feedback, "it": out.get("it"), "en": out.get("en")}
@@ -363,26 +397,27 @@ def _set_description_block(name: str, it: str, en: str):
     p.write_text(new)
 
 
-def _update_lang_state(name: str, it: str, en: str):
-    from migrate_manifest_descriptions import _sha256_str
+def _update_lang_state(name: str):
+    from i18n_materializer import migrate_language_state_bytes
     sp = _EXEC / name / "manifest.lang_state.json"
-    state = {}
-    if sp.is_file():
-        try:
-            state = json.loads(sp.read_text())
-        except Exception:
-            state = {}
-    state["description"] = {
-        "it": {"version_hash": _sha256_str(it), "source_lang": None, "source_hash": None},
-        "en": {"version_hash": _sha256_str(en), "source_lang": "it",
-               "source_hash": _sha256_str(it)},
-    }
-    sp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n")
+    manifest = tomllib.loads((_EXEC / name / "manifest.toml").read_text())
+    legacy = sp.read_bytes() if sp.is_file() else b"{}"
+    sp.write_bytes(
+        migrate_language_state_bytes(legacy, manifest=manifest).state_bytes,
+    )
 
 
 def apply_one(name: str, it: str, en: str) -> str:
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        raise RuntimeError(
+            "manifest-normalize cannot mutate authoring after contract-store "
+            "cutover; preview remains available, publish a reviewed versioned "
+            "contract instead",
+        )
     _set_description_block(name, it, en)
-    _update_lang_state(name, it, en)
+    _update_lang_state(name)
     from sign import sign_executor
     sign_executor(_EXEC / name)
     return "applied+signed"

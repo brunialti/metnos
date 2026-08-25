@@ -7,7 +7,13 @@ from threading import Barrier
 
 import pytest
 
-from i18n_registry import CandidateConflict, LeaseConflict, LocalizationRegistry
+from i18n_registry import (
+    CandidateConflict,
+    LeaseConflict,
+    LocalizationRegistry,
+    PublishedTranslation,
+    RegistryError,
+)
 
 
 def _sha(value: str) -> str:
@@ -25,6 +31,173 @@ def test_register_is_idempotent_and_source_drift_stales_old_row(tmp_path):
     assert len(registry.resources("pt-BR")) == 1
     assert len(registry.resources("pt-BR", current_only=False)) == 2
     assert registry.resources("pt-BR", current_only=False)[0].status == "stale"
+
+
+def test_published_contract_reconciliation_is_atomic_and_exact(tmp_path):
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    contract_id = "user:reader/manifest.toml"
+    resource = "contract:reader:description"
+    source_hash = _sha("Read a file")
+    translated_hash = _sha("Datei lesen")
+    old_basis = "sha256:" + "1" * 64
+    new_basis = "sha256:" + "2" * 64
+
+    registry.register(
+        resource, "contract", "en", "de", source_hash,
+        basis_id=old_basis,
+        metadata={"contract_id": contract_id},
+    )
+    lease = registry.claim(resource, "de")
+    assert lease is not None
+    registry.complete(
+        resource, "de", translated_hash, "reviewed",
+        lease_token=lease.lease_token,
+    )
+    registry.admit(resource, "de")
+    registry.register(
+        resource, "contract", "en", "fr", source_hash,
+        basis_id=old_basis,
+        metadata={"contract_id": contract_id},
+    )
+
+    publication = PublishedTranslation(
+        resource_id=resource,
+        source_lang="en",
+        target_lang="de",
+        source_hash="sha256:" + source_hash,
+        translation_hash="sha256:" + translated_hash,
+        basis_id=new_basis,
+        metadata={"selector": "description", "contract_id": contract_id},
+    )
+    first = registry.reconcile_published_contract(
+        contract_id, (resource,), (publication,),
+    )
+    repeated = registry.reconcile_published_contract(
+        contract_id, (resource,), (publication,),
+    )
+
+    assert len(first) == len(repeated) == 1
+    assert repeated[0].status == "admitted"
+    assert repeated[0].basis_id == new_basis
+    assert repeated[0].translation_hash == translated_hash
+    assert repeated[0].quality == "reviewed"
+    assert repeated[0].contract_id == contract_id
+    assert registry.resources("fr") == ()
+    historical_fr = registry.resources("fr", current_only=False)
+    assert len(historical_fr) == 1
+    assert historical_fr[0].status == "stale"
+
+    assert registry.retire_published_contract(contract_id) == 1
+    assert registry.retire_published_contract(contract_id) == 0
+    assert registry.resources("de") == ()
+
+    # Returning the same ContractId to service is an explicit manifest
+    # reconciliation, never an implicit effect of removing the tombstone.
+    reactivated = registry.reconcile_published_contract(
+        contract_id, (resource,), (publication,),
+    )
+    assert len(reactivated) == 1
+    assert reactivated[0].status == "admitted"
+
+
+def test_contract_retirement_is_scoped_by_exact_structural_identity(tmp_path):
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    first_contract = "user:alpha/manifest.toml"
+    second_contract = "builtin:beta/manifest.toml"
+    first_resource = "contract:alpha:description"
+    second_resource = "contract:beta:description"
+    source_hash = _sha("source")
+
+    for contract_id, resource_id in (
+        (first_contract, first_resource),
+        (second_contract, second_resource),
+    ):
+        registry.register(
+            resource_id,
+            "contract",
+            "en",
+            "de",
+            source_hash,
+            basis_id="sha256:" + "3" * 64,
+            metadata={"contract_id": contract_id},
+        )
+
+    assert registry.retire_published_contract(first_contract) == 1
+    assert registry.resources("de") == (
+        next(
+            row
+            for row in registry.resources("de", current_only=False)
+            if row.resource_id == second_resource
+        ),
+    )
+    assert registry.resources("de")[0].contract_id == second_contract
+
+
+def test_contract_resource_cannot_be_reassigned_to_another_contract_id(tmp_path):
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    resource = "contract:shared:description"
+    digest = _sha("source")
+    registry.register(
+        resource,
+        "contract",
+        "en",
+        "de",
+        digest,
+        metadata={"contract_id": "user:first/manifest.toml"},
+    )
+
+    with pytest.raises(RegistryError, match="another ContractId"):
+        registry.register(
+            resource,
+            "contract",
+            "en",
+            "de",
+            digest,
+            metadata={"contract_id": "builtin:second/manifest.toml"},
+        )
+
+
+def test_cutover_preflight_reserves_stale_contract_resource_ownership(
+    tmp_path,
+):
+    registry = LocalizationRegistry(tmp_path / "registry.sqlite")
+    resource = "contract:shared:description"
+    historical_contract = "user:first/manifest.toml"
+    registry.register(
+        resource,
+        "contract",
+        "en",
+        "de",
+        _sha("source"),
+        metadata={"contract_id": historical_contract},
+    )
+    assert registry.retire_published_contract(historical_contract) == 1
+    assert registry.resources("de") == ()
+
+    with pytest.raises(RegistryError, match="another ContractId"):
+        registry.preflight_published_contracts((
+            ("builtin:second/manifest.toml", (resource,)),
+        ))
+
+    historical = registry.resources("de", current_only=False)
+    assert len(historical) == 1
+    assert historical[0].status == "stale"
+    assert historical[0].contract_id == historical_contract
+
+
+def test_cutover_preflight_does_not_create_a_missing_registry(tmp_path):
+    path = tmp_path / "state" / "i18n_registry.sqlite"
+
+    LocalizationRegistry.preflight_published_contract_path(
+        ((
+            "builtin:reader/manifest.toml",
+            ("contract:reader:description",),
+        ),),
+        registry_location=path,
+    )
+
+    assert not path.exists()
+    assert not path.parent.exists()
 
 
 def test_claim_is_exclusive_and_stale_worker_cannot_complete(tmp_path):

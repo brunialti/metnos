@@ -48,8 +48,8 @@ Vedi §2.1.
 ### 7.8 Italiano senza anglicismi
 Caccia ad anglicismi (peer, trigger, goal, plumbing, gate) e calchi (costosa/mordere/ci reagisce).
 
-### 7.10 Re-sign executor dopo edit
-Edit di `<executor>.py` O del solo `manifest.toml` → OBBLIGATORIO `python3 runtime/sign.py sign executors/<name>` (da repo root; `python -m runtime.sign` NON funziona) + restart del servizio; committare manifest+sig INSIEME. Senza firma il loader scarta l'executor in silenzio.
+### 7.10 Pubblicazione executor dopo edit
+Edit di `<executor>.py` O del solo `manifest.toml` → OBBLIGATORIO `python3 runtime/sign.py publish executors/<name>` (dalla radice del repository; `python -m runtime.sign` NON funziona) + riavvio controllato del servizio; committare codice, manifest e firma INSIEME. `publish` ricalcola il digest, firma una nuova generazione immutabile e la rende attiva in un solo passaggio. `sign` serve soltanto alla preparazione offline: non aggiorna la generazione attiva e quindi non rende viva la modifica.
 
 ### 7.11 No path assoluti hardcoded (rename-resilient)
 Niente `Path("/opt/...")` verso la install root nel codice attivo. Root auto-derivata in `runtime/config.py::PATH_ROOT`; ogni callsite usa `from runtime import config as C` → `C.PATH_*`. Override env `METNOS_INSTALL_ROOT`. ADR 0148.

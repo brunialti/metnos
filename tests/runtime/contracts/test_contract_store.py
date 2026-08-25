@@ -6,6 +6,7 @@ import hashlib
 import json
 import multiprocessing
 import os
+import shutil
 import threading
 import tomllib
 from dataclasses import replace
@@ -20,24 +21,36 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from contract_store import (
+    ACTIVE_BYTES,
     BINDING_FILE,
     GENERATION_FILES,
+    RETIREMENT_FILES,
+    ContractRetirement,
     ContractStoreError,
     LocalizationPatch,
+    ProductionStoreMode,
     SurfaceRemoval,
     TechnicalDraft,
+    activate_store,
     contract_storage_key,
+    contract_revision_id,
+    current_contract,
     current_manifest,
+    current_revision_id,
     decode_binding,
     diagnose_store,
     encode_binding,
     generation_directory_name,
     generation_id,
     prepare_technical_draft,
+    production_store_mode,
     publish_localization,
     publish_signed_source,
     publish_technical_update,
+    reactivate_technical_update,
     read_binding,
+    rollback,
+    retire,
     verify_manifest_source,
 )
 from i18n_materializer import (
@@ -49,11 +62,14 @@ from i18n_materializer import (
 )
 from manifest_inventory import (
     ContractId,
+    ManifestInventory,
     ManifestOrigin,
     ManifestRef,
     ManifestSource,
+    ManifestStatus,
     inventory_manifests,
 )
+import manifest_inventory as manifest_inventory_module
 from sign import sign_manifest_bytes
 import contract_store as contract_store_module
 from audit_jsonl import append_jsonl
@@ -70,7 +86,12 @@ def _manifest_text(
     code_digest: str,
     it_text: str = "SCOPO: prova. PATTERN: sample(). NON: modifica. OUT: results=[].",
     en_text: str = "SCOPO: test. PATTERN: sample(). NON: modify. OUT: results=[].",
+    placement_scope: str | None = None,
 ) -> str:
+    placement = (
+        f'\n[placement]\nscope = "{placement_scope}"\n'
+        if placement_scope is not None else ""
+    )
     return f'''manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 name = "{name}"
@@ -106,7 +127,7 @@ type = "string"
 [args.properties.query.description]
 it = "Testo da cercare."
 en = "Text to find."
-'''
+{placement}'''
 
 
 def _state_for(manifest: Mapping[str, Any]) -> dict[str, Any]:
@@ -230,6 +251,76 @@ def _create_source(
     return root, ref, private, trusted
 
 
+def _add_source_contract(
+    root: Path,
+    *,
+    directory_name: str,
+    name: str,
+    private: Ed25519PrivateKey,
+) -> ManifestRef:
+    directory = root / directory_name
+    directory.mkdir(parents=True)
+    code = directory / f"{directory_name}.py"
+    code.write_text(
+        "def invoke(args):\n    return {'results': []}\n",
+        encoding="utf-8",
+    )
+    digest = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest()
+    manifest = directory / "manifest.toml"
+    manifest.write_text(
+        _manifest_text(name=name, code_file=code.name, code_digest=digest),
+        encoding="utf-8",
+    )
+    parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    (directory / "manifest.lang_state.json").write_bytes(
+        encode_language_state(_state_for(parsed), manifest=parsed)
+    )
+    (directory / "manifest.toml.sig").write_bytes(sign_manifest_bytes(
+        manifest.read_bytes(), private_key=private,
+    ))
+    return _inventory_ref(root, name=name)
+
+
+def _create_productive_shadow(
+    tmp_path: Path,
+    monkeypatch,
+) -> tuple[
+    Path,
+    ManifestRef,
+    Ed25519PrivateKey,
+    tuple[tuple[str, Any], ...],
+    Path,
+    Any,
+]:
+    root, _explicit_ref, private, trusted = _create_source(tmp_path)
+    ref = _inventory_ref(root, name="read_files", origin=ManifestOrigin.CORE)
+    user_state = tmp_path / "user-state"
+    monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)
+    monkeypatch.setattr(contract_store_module._C, "PATH_EXECUTORS", root)
+    monkeypatch.setattr(contract_store_module._C, "PATH_RUNTIME", root)
+    # Keep the freshly regenerated activation inventory bounded to this
+    # fixture instead of inheriting contracts from the developer machine.
+    for attribute in (
+        "PATH_SKILLS_BUILTIN",
+        "PATH_SYNTH_EXECUTORS",
+        "PATH_SKILLS_USER",
+        "PATH_SKILLS_USER_LEGACY",
+    ):
+        monkeypatch.setattr(
+            contract_store_module._C,
+            attribute,
+            tmp_path / "empty-inventory" / attribute.lower(),
+        )
+    shadow = user_state / "contract-publications-shadow" / "attempt" / "v1"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=shadow,
+    )
+    return root, ref, private, trusted, shadow, initial
+
+
 def _generation_path(store: Path, ref: ManifestRef, identifier: str) -> Path:
     return (
         store / contract_storage_key(ref.contract_id) / "generations"
@@ -252,6 +343,18 @@ def _hold_writer_lock(
     ):
         ready.set()
         release.wait(5.0)
+
+
+def _try_catalog_lock_after_fork(store: str, result) -> None:
+    try:
+        with contract_store_module.catalog_admission_lock(
+            store_root=Path(store), timeout=0.05,
+        ):
+            result.send("acquired")
+    except ContractStoreError as exc:
+        result.send(exc.code)
+    finally:
+        result.close()
 
 
 def _publish_same_candidate(
@@ -540,6 +643,176 @@ def test_missing_binding_with_history_is_corruption_not_reinitialization(
     assert not (contract_dir / BINDING_FILE).exists()
 
 
+def test_first_publish_recovers_only_reserved_crash_staging(tmp_path: Path) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    staging = contract_dir / "generations" / ".generation-crashed-writer"
+    staging.mkdir(parents=True)
+    (contract_dir / BINDING_FILE).write_bytes(encode_binding(ref.contract_id))
+    # Each file is installed atomically, so a hard stop can leave any proper
+    # subset, including a partially useful manifest-only staging directory.
+    (staging / "manifest.toml").write_bytes(ref.manifest_path.read_bytes())
+
+    published = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    assert published.current_generation_id
+    assert not staging.exists()
+
+
+def test_first_publish_rejects_arbitrary_staging_debris_without_deleting_it(
+    tmp_path: Path,
+) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    staging = contract_dir / "generations" / ".generation-not-a-transaction"
+    staging.mkdir(parents=True)
+    (contract_dir / BINDING_FILE).write_bytes(encode_binding(ref.contract_id))
+    debris = staging / "unrelated.bin"
+    debris.write_bytes(b"not publication staging")
+
+    with pytest.raises(ContractStoreError, match="staging_invalid"):
+        publish_signed_source(
+            ref,
+            expected_generation_id=None,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert debris.read_bytes() == b"not publication staging"
+
+
+def test_direct_staging_is_all_validated_before_any_cleanup(
+    tmp_path: Path,
+) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    valid = contract_dir / ".binding.json.1.2.3.tmp"
+    mixed = contract_dir / ".current.4.5.6.tmp"
+    valid.write_bytes(encode_binding(ref.contract_id))
+    mixed.write_bytes(encode_binding(ref.contract_id))
+
+    with pytest.raises(ContractStoreError, match="staging_invalid"):
+        publish_signed_source(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert valid.read_bytes() == encode_binding(ref.contract_id)
+    assert mixed.read_bytes() == encode_binding(ref.contract_id)
+
+
+@pytest.mark.parametrize("staging_kind", ("binding", "current"))
+def test_direct_staging_requires_exact_authenticated_payload(
+    tmp_path: Path,
+    staging_kind: str,
+) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    if staging_kind == "binding":
+        staged = contract_dir / ".binding.json.1.2.3.tmp"
+        staged.write_bytes(b'{}\n')
+    else:
+        staged = contract_dir / ".current.1.2.3.tmp"
+        staged.write_bytes(("sha256:" + "0" * 64 + "\n").encode("ascii"))
+
+    with pytest.raises(ContractStoreError, match="staging_invalid"):
+        publish_signed_source(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert staged.exists()
+
+
+def test_direct_staging_rejects_noncanonical_name_without_cleanup(
+    tmp_path: Path,
+) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    valid = contract_dir / ".binding.json.1.2.3.tmp"
+    malformed = contract_dir / ".current.01.2.3.tmp"
+    valid.write_bytes(encode_binding(ref.contract_id))
+    malformed.write_bytes((initial.current_generation_id + "\n").encode("ascii"))
+
+    with pytest.raises(ContractStoreError, match="staging_invalid"):
+        publish_signed_source(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert valid.exists()
+    assert malformed.exists()
+
+
+def test_direct_staging_link_is_rejected_without_following_or_cleanup(
+    tmp_path: Path,
+) -> None:
+    _root, ref, _private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    contract_dir = store / contract_storage_key(ref.contract_id)
+    valid = contract_dir / ".binding.json.1.2.3.tmp"
+    linked = contract_dir / ".current.4.5.6.tmp"
+    valid.write_bytes(encode_binding(ref.contract_id))
+    try:
+        linked.symlink_to(contract_dir / "current")
+    except OSError as exc:
+        pytest.skip(f"symlinks unavailable: {exc}")
+
+    with pytest.raises(ContractStoreError, match="staging_invalid"):
+        publish_signed_source(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert valid.exists()
+    assert linked.is_symlink()
+    assert (contract_dir / "current").read_bytes() == (
+        initial.current_generation_id + "\n"
+    ).encode("ascii")
+
+
 def test_binding_link_is_rejected_without_following_it(tmp_path: Path) -> None:
     _root, ref, _private, trusted = _create_source(tmp_path)
     store = tmp_path / "store"
@@ -732,8 +1005,8 @@ def test_publish_and_idempotent_retry_verify_complete_current(tmp_path: Path) ->
     assert {path.name for path in generation.iterdir()} == set(GENERATION_FILES)
     assert all(path.is_file() and not path.is_symlink() for path in generation.iterdir())
     assert _source_payloads(ref) == authoring_before
-    assert not hasattr(contract_store_module, "activate_store")
-    assert not hasattr(contract_store_module, "rollback")
+    assert hasattr(contract_store_module, "activate_store")
+    assert hasattr(contract_store_module, "rollback")
     assert not hasattr(contract_store_module, "reconcile_authoring")
 
     (generation / "manifest.toml.sig").write_bytes(b"tampered")
@@ -744,6 +1017,154 @@ def test_publish_and_idempotent_retry_verify_complete_current(tmp_path: Path) ->
             trusted_publics=trusted,
             store_root=store,
         )
+
+
+def test_disabled_source_can_be_installed_without_becoming_a_retired_source(
+    tmp_path: Path,
+) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    manifest = ref.manifest_path
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'version = "1.0.0"\n',
+            'version = "1.0.0"\nlifecycle = "disabled"\n',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    (ref.manifest_dir / "manifest.toml.sig").write_bytes(
+        sign_manifest_bytes(manifest.read_bytes(), private_key=private),
+    )
+    disabled = _inventory_ref(root, name="read_files")
+    assert disabled.status is ManifestStatus.DISABLED
+
+    store = tmp_path / "store"
+    published = publish_signed_source(
+        disabled,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    live = current_manifest(
+        disabled, trusted_publics=trusted, store_root=store,
+    )
+    assert live.generation_id == published.current_generation_id
+    assert live.parsed["lifecycle"] == "disabled"
+
+
+@pytest.mark.parametrize("candidate_status", [
+    ManifestStatus.ADMITTED,
+    ManifestStatus.DISABLED,
+])
+def test_publication_rejects_duplicate_installed_name_before_creating_binding(
+    tmp_path: Path,
+    candidate_status: ManifestStatus,
+) -> None:
+    root, first_ref, private, trusted = _create_source(tmp_path)
+    second_ref = _add_source_contract(
+        root,
+        directory_name="second",
+        name="second_name",
+        private=private,
+    )
+    store = tmp_path / "store"
+    publish_signed_source(
+        first_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+
+    second_manifest = second_ref.manifest_path
+    second_manifest.write_text(
+        second_manifest.read_text(encoding="utf-8").replace(
+            'name = "second_name"',
+            'name = "read_files"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    (second_ref.manifest_dir / "manifest.toml.sig").write_bytes(
+        sign_manifest_bytes(second_manifest.read_bytes(), private_key=private),
+    )
+    colliding = replace(
+        second_ref,
+        status=candidate_status,
+        name="read_files",
+        manifest_hash=(
+            "sha256:" + hashlib.sha256(second_manifest.read_bytes()).hexdigest()
+        ),
+    )
+
+    with pytest.raises(ContractStoreError) as caught:
+        publish_signed_source(
+            colliding,
+            expected_generation_id=None,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert caught.value.code == "published_name_collision"
+    assert not (store / contract_storage_key(colliding.contract_id)).exists()
+
+
+def test_retirement_keeps_name_reserved_for_its_contract_identity(
+    tmp_path: Path,
+) -> None:
+    root, first_ref, private, trusted = _create_source(tmp_path)
+    second_ref = _add_source_contract(
+        root,
+        directory_name="second",
+        name="second_name",
+        private=private,
+    )
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        first_ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    retire(
+        first_ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="remove the executor without reassigning its identity",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=lambda _event: None,
+        store_root=store,
+    )
+
+    second_manifest = second_ref.manifest_path
+    second_manifest.write_text(
+        second_manifest.read_text(encoding="utf-8").replace(
+            'name = "second_name"', 'name = "read_files"', 1,
+        ),
+        encoding="utf-8",
+    )
+    (second_ref.manifest_dir / "manifest.toml.sig").write_bytes(
+        sign_manifest_bytes(second_manifest.read_bytes(), private_key=private),
+    )
+    colliding = replace(
+        second_ref,
+        name="read_files",
+        manifest_hash=(
+            "sha256:" + hashlib.sha256(second_manifest.read_bytes()).hexdigest()
+        ),
+    )
+
+    with pytest.raises(ContractStoreError) as caught:
+        publish_signed_source(
+            colliding,
+            expected_generation_id=None,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    assert caught.value.code == "published_name_collision"
+    assert not (store / contract_storage_key(colliding.contract_id)).exists()
 
 
 def test_stale_expected_generation_conflicts(tmp_path: Path) -> None:
@@ -897,13 +1318,13 @@ def test_publish_fails_loud_if_a_newer_writer_wins_after_unlock(
 ) -> None:
     _root, ref, _private, trusted = _create_source(tmp_path)
     store = tmp_path / "store"
-    real_current = contract_store_module.current_manifest
+    real_current = contract_store_module.current_contract
 
     def superseded(*args, **kwargs):
         snapshot = real_current(*args, **kwargs)
         return replace(snapshot, generation_id="sha256:" + "f" * 64)
 
-    monkeypatch.setattr(contract_store_module, "current_manifest", superseded)
+    monkeypatch.setattr(contract_store_module, "current_contract", superseded)
     with pytest.raises(ContractStoreError, match="publication_superseded"):
         publish_signed_source(
             ref, expected_generation_id=None,
@@ -989,6 +1410,33 @@ def test_lock_serializes_distinct_processes(tmp_path: Path) -> None:
         if process.is_alive():
             process.terminate()
             process.join(2.0)
+    assert process.exitcode == 0
+
+
+@pytest.mark.skipif(
+    "fork" not in multiprocessing.get_all_start_methods(),
+    reason="requires POSIX fork inheritance",
+)
+def test_catalog_lock_bookkeeping_is_reset_after_fork(tmp_path: Path) -> None:
+    store = tmp_path / "store"
+    context = multiprocessing.get_context("fork")
+    receive, send = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_try_catalog_lock_after_fork,
+        args=(str(store), send),
+    )
+
+    with contract_store_module.catalog_admission_lock(
+        store_root=store, timeout=0.2,
+    ):
+        process.start()
+        send.close()
+        assert receive.poll(2.0)
+        assert receive.recv() == "catalog_lock_timeout"
+    process.join(3.0)
+    if process.is_alive():
+        process.terminate()
+        process.join(2.0)
     assert process.exitcode == 0
 
 
@@ -1247,6 +1695,7 @@ def test_builtin_parent_paths_and_allowed_symlink_targets_are_general(
     manifest = directory / "manifest.toml"
     manifest.write_text(_manifest_text(
         name="read_files", code_file="../../shared.py", code_digest=digest,
+        placement_scope="server",
     ), encoding="utf-8")
     parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
     (directory / "manifest.lang_state.json").write_bytes(
@@ -1273,6 +1722,7 @@ def test_builtin_parent_paths_and_allowed_symlink_targets_are_general(
     outside_digest = "sha256:" + hashlib.sha256(outside.read_bytes()).hexdigest()
     manifest.write_text(_manifest_text(
         name="read_files", code_file="../../../outside.py", code_digest=outside_digest,
+        placement_scope="server",
     ), encoding="utf-8")
     parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
     (directory / "manifest.lang_state.json").write_bytes(
@@ -1650,6 +2100,58 @@ def test_localization_is_inactive_without_an_explicit_isolated_store(
             private_key=private,
             trusted_publics=trusted,
         )
+
+
+def test_localization_shares_the_catalog_writer_boundary(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=store)
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=(
+            "SCOPO: translated safely. PATTERN: sample(). "
+            "NON: modify. OUT: results=[]."
+        ),
+    )
+    outcome: list[str] = []
+
+    def publish_while_catalog_is_excluded() -> None:
+        try:
+            publish_localization(
+                ref,
+                expected_generation_id=initial.current_generation_id,
+                source_language="it",
+                target_language="en",
+                patches=(patch,),
+                private_key=private,
+                trusted_publics=trusted,
+                store_root=store,
+                lock_timeout=0.05,
+            )
+        except ContractStoreError as exc:
+            outcome.append(exc.code)
+
+    with contract_store_module.catalog_admission_lock(
+        store_root=store, timeout=0.2,
+    ):
+        worker = threading.Thread(target=publish_while_catalog_is_excluded)
+        worker.start()
+        worker.join(1.0)
+
+    assert not worker.is_alive()
+    assert outcome == ["catalog_lock_timeout"]
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
 
 
 def test_technical_publication_updates_code_without_regressing_localization(
@@ -2275,3 +2777,1254 @@ def test_technical_publisher_owns_exactly_one_writer_lock(
         store_root=store,
     )
     assert acquisitions == 1
+
+
+def test_activation_requires_quiescence_and_an_exact_verified_catalog(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    expected = {ref.contract_id: initial.current_generation_id}
+    marker = contract_store_module._C.PATH_USER_STATE / "contract-publications.ACTIVE"
+
+    with pytest.raises(ContractStoreError, match="activation_not_quiescent"):
+        activate_store(expected, shadow_root=shadow, trusted_publics=trusted)
+    with pytest.raises(ContractStoreError, match="activation_not_quiescent"):
+        activate_store(
+            expected,
+            shadow_root=shadow,
+            trusted_publics=trusted,
+            quiescence_guard=lambda: False,
+        )
+    assert production_store_mode() is ProductionStoreMode.LEGACY
+    assert not marker.exists()
+    assert shadow.is_dir()
+
+    wrong = {ref.contract_id: "sha256:" + "0" * 64}
+    with pytest.raises(ContractStoreError, match="activation_catalog_mismatch"):
+        activate_store(
+            wrong,
+            shadow_root=shadow,
+            trusted_publics=trusted,
+            quiescence_guard=lambda: True,
+        )
+    assert not marker.exists()
+
+    expanded = dict(expected)
+    expanded[ContractId(ManifestOrigin.CORE, "foreign/manifest.toml")] = (
+        initial.current_generation_id
+    )
+    with pytest.raises(ContractStoreError, match="activation_catalog_mismatch"):
+        activate_store(
+            expanded,
+            shadow_root=shadow,
+            trusted_publics=trusted,
+            quiescence_guard=lambda: True,
+        )
+    assert not marker.exists()
+
+    (shadow / "unexpected-contract").mkdir()
+    with pytest.raises(ContractStoreError, match="activation_catalog_mismatch"):
+        activate_store(
+            expected,
+            shadow_root=shadow,
+            trusted_publics=trusted,
+            quiescence_guard=lambda: True,
+        )
+    assert not marker.exists()
+
+
+def test_activation_owns_catalog_locks_in_production_then_shadow_order(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    production = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications" / "v1"
+    )
+    events: list[tuple[str, Path]] = []
+    real_lock = contract_store_module.catalog_admission_lock
+
+    @contextlib.contextmanager
+    def traced_lock(*, store_root=None, timeout=contract_store_module.DEFAULT_LOCK_TIMEOUT):
+        root = Path(store_root)
+        events.append(("enter", root))
+        with real_lock(store_root=root, timeout=timeout):
+            yield
+        events.append(("exit", root))
+
+    monkeypatch.setattr(
+        contract_store_module, "catalog_admission_lock", traced_lock,
+    )
+
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+
+    assert events == [
+        ("enter", production),
+        ("enter", shadow),
+        ("exit", shadow),
+        ("exit", production),
+    ]
+
+
+def test_activation_proves_quiescence_under_production_catalog_exclusion(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    production = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications" / "v1"
+    )
+    outcome: list[str] = []
+
+    def contend_as_offline_writer() -> None:
+        try:
+            with contract_store_module.catalog_admission_lock(
+                store_root=production,
+                timeout=0.05,
+            ):
+                outcome.append("acquired")
+        except ContractStoreError as exc:
+            outcome.append(exc.code)
+
+    def proof() -> bool:
+        worker = threading.Thread(target=contend_as_offline_writer)
+        worker.start()
+        worker.join(1.0)
+        assert not worker.is_alive()
+        return True
+
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=proof,
+    )
+
+    assert outcome == ["catalog_lock_timeout"]
+    assert production_store_mode() is ProductionStoreMode.ACTIVE
+
+
+def test_activation_excludes_direct_shadow_publication_through_global_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    real_verify = contract_store_module._recover_and_verify_activation_catalog
+    attempted = False
+    outcome: list[str] = []
+
+    def publish_directly() -> None:
+        try:
+            publish_signed_source(
+                ref,
+                expected_generation_id=initial.current_generation_id,
+                trusted_publics=trusted,
+                store_root=shadow,
+                lock_timeout=0.05,
+            )
+        except ContractStoreError as exc:
+            outcome.append(exc.code)
+
+    def verify_then_contend(root, expected_catalog, **kwargs):
+        nonlocal attempted
+        real_verify(root, expected_catalog, **kwargs)
+        if Path(root) == shadow and not attempted:
+            attempted = True
+            worker = threading.Thread(target=publish_directly)
+            worker.start()
+            worker.join(1.0)
+            assert not worker.is_alive()
+
+    monkeypatch.setattr(
+        contract_store_module,
+        "_recover_and_verify_activation_catalog",
+        verify_then_contend,
+    )
+
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+
+    assert attempted
+    assert outcome == ["catalog_lock_timeout"]
+    assert production_store_mode() is ProductionStoreMode.ACTIVE
+
+
+def test_pre_cutover_inventory_requires_admitted_and_disabled_contracts(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, admitted, _private, _trusted = _create_source(tmp_path)
+    disabled_id = ContractId(
+        ManifestOrigin.EXPLICIT, "disabled/manifest.toml",
+    )
+    disabled = replace(
+        admitted,
+        contract_id=disabled_id,
+        status=ManifestStatus.DISABLED,
+        manifest_path=admitted.source_root / "disabled" / "manifest.toml",
+        manifest_relative=disabled_id.relative_manifest,
+        name="disabled_executor",
+    )
+    inventory = ManifestInventory((admitted, disabled), ())
+    monkeypatch.setattr(
+        manifest_inventory_module,
+        "inventory_authoring_manifests",
+        lambda: inventory,
+    )
+
+    expected = {
+        admitted.contract_id: "sha256:" + "1" * 64,
+        disabled.contract_id: "sha256:" + "2" * 64,
+    }
+    contract_store_module._verify_pre_cutover_inventory(expected)
+
+    with pytest.raises(ContractStoreError, match="activation_catalog_mismatch"):
+        contract_store_module._verify_pre_cutover_inventory({
+            admitted.contract_id: "sha256:" + "1" * 64,
+        })
+
+
+@pytest.mark.parametrize("marker_present", (False, True))
+@pytest.mark.parametrize(
+    "incomplete_layout",
+    ("container_only", "empty_root", "root_debris"),
+)
+def test_production_mode_classifies_incomplete_or_empty_store_as_recovery(
+    tmp_path: Path,
+    monkeypatch,
+    marker_present: bool,
+    incomplete_layout: str,
+) -> None:
+    user_state = tmp_path / "user-state"
+    monkeypatch.setattr(contract_store_module._C, "PATH_USER_STATE", user_state)
+    container = user_state / "contract-publications"
+    root = container / "v1"
+    container.mkdir(parents=True)
+    if incomplete_layout != "container_only":
+        root.mkdir()
+    if incomplete_layout == "root_debris":
+        (root / "not-a-contract").write_bytes(b"incomplete")
+    if marker_present:
+        (user_state / "contract-publications.ACTIVE").write_bytes(ACTIVE_BYTES)
+
+    assert production_store_mode() is ProductionStoreMode.RECOVERY_REQUIRED
+
+
+def test_cutover_recovers_reserved_staging_before_verifying_shadow(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    staging = (
+        shadow / contract_storage_key(ref.contract_id) / "generations"
+        / ".generation-crashed-writer"
+    )
+    staging.mkdir()
+    (staging / "manifest.toml.sig").write_bytes(b"interrupted write")
+    contract_dir = shadow / contract_storage_key(ref.contract_id)
+    (contract_dir / ".binding.json.1.2.3.tmp").write_bytes(
+        encode_binding(ref.contract_id)
+    )
+    (contract_dir / ".current.4.5.6.tmp").write_bytes(
+        (initial.current_generation_id + "\n").encode("ascii")
+    )
+
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+
+    productive_generations = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications" / "v1"
+        / contract_storage_key(ref.contract_id) / "generations"
+    )
+    assert not any(
+        child.name.startswith(".generation-")
+        for child in productive_generations.iterdir()
+    )
+    productive_contract = productive_generations.parent
+    assert not tuple(productive_contract.glob(".binding.json.*.tmp"))
+    assert not tuple(productive_contract.glob(".current.*.tmp"))
+
+
+def test_cutover_rejects_unknown_debris_in_reserved_staging_namespace(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    staging = (
+        shadow / contract_storage_key(ref.contract_id) / "generations"
+        / ".generation-unrelated"
+    )
+    staging.mkdir()
+    debris = staging / "payload.bin"
+    debris.write_bytes(b"unrelated")
+
+    with pytest.raises(ContractStoreError, match="staging_invalid"):
+        activate_store(
+            {ref.contract_id: initial.current_generation_id},
+            shadow_root=shadow,
+            trusted_publics=trusted,
+            quiescence_guard=lambda: True,
+        )
+
+    assert debris.read_bytes() == b"unrelated"
+    assert not (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications.ACTIVE"
+    ).exists()
+
+
+def test_activation_is_global_exact_and_repairs_store_only_marker(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    expected = {ref.contract_id: initial.current_generation_id}
+    user_state = contract_store_module._C.PATH_USER_STATE
+    marker = user_state / "contract-publications.ACTIVE"
+    productive = user_state / "contract-publications" / "v1"
+
+    activate_store(
+        expected,
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+
+    assert marker.read_bytes() == ACTIVE_BYTES
+    assert productive.is_dir()
+    assert not shadow.parent.exists()
+    assert production_store_mode() is ProductionStoreMode.ACTIVE
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=productive,
+    ).generation_id == initial.current_generation_id
+
+    # A completed cutover is an exact verified no-op even though the old
+    # shadow path no longer exists.
+    activate_store(
+        expected,
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    marker.unlink()
+    assert production_store_mode() is ProductionStoreMode.STORE_ONLY
+    activate_store(
+        expected,
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    assert marker.read_bytes() == ACTIVE_BYTES
+    assert production_store_mode() is ProductionStoreMode.ACTIVE
+
+
+def test_activation_resumes_after_durable_marker_before_global_swap(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, _private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    expected = {ref.contract_id: initial.current_generation_id}
+    real_move = contract_store_module._move_activation_container
+
+    def interrupted_move(_source: Path, _destination: Path) -> None:
+        raise ContractStoreError("simulated_cutover_crash")
+
+    monkeypatch.setattr(
+        contract_store_module, "_move_activation_container", interrupted_move,
+    )
+    with pytest.raises(ContractStoreError, match="simulated_cutover_crash"):
+        activate_store(
+            expected,
+            shadow_root=shadow,
+            trusted_publics=trusted,
+            quiescence_guard=lambda: True,
+        )
+    assert production_store_mode() is ProductionStoreMode.RECOVERY_REQUIRED
+    assert shadow.is_dir()
+
+    monkeypatch.setattr(contract_store_module, "_move_activation_container", real_move)
+    activate_store(
+        expected,
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    assert production_store_mode() is ProductionStoreMode.ACTIVE
+
+
+def test_productive_publish_requires_registry_and_repairs_authoring_on_retry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    expected = {ref.contract_id: initial.current_generation_id}
+    activate_store(
+        expected,
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    productive = (
+        contract_store_module._C.PATH_USER_STATE / "contract-publications" / "v1"
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=productive)
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=(
+            "SCOPO: productive test. PATTERN: sample(). "
+            "NON: modify. OUT: results=[]."
+        ),
+    )
+
+    with pytest.raises(ContractStoreError, match="registry_reconciler_required"):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="en",
+            patches=(patch,),
+            private_key=private,
+            trusted_publics=trusted,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=productive,
+    ).generation_id == initial.current_generation_id
+
+    reconciled = []
+    published = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(patch,),
+        private_key=private,
+        trusted_publics=trusted,
+        registry_reconciler=reconciled.append,
+    )
+    live = current_manifest(ref, trusted_publics=trusted, store_root=productive)
+    assert _source_payloads(ref) == contract_store_module._snapshot_payloads(live)
+    assert reconciled[-1].generation_id == published.current_generation_id
+
+    # Simulate an interruption half way through the three-file authoring
+    # mirror.  The idempotent branch must repair it and still call RM-0005 from
+    # a fresh authoritative read.
+    (ref.manifest_dir / "manifest.toml").write_bytes(base.manifest_bytes)
+    repaired = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(patch,),
+        private_key=private,
+        trusted_publics=trusted,
+        registry_reconciler=reconciled.append,
+    )
+    assert repaired.repeated
+    assert _source_payloads(ref) == contract_store_module._snapshot_payloads(live)
+    assert reconciled[-1].generation_id == published.current_generation_id
+
+
+def test_productive_technical_retry_repairs_a_partial_authoring_mirror(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    productive = (
+        contract_store_module._C.PATH_USER_STATE / "contract-publications" / "v1"
+    )
+    (ref.manifest_dir / "sample.py").write_text(
+        "def invoke(args):\n    return {'results': [], 'revision': 2}\n",
+        encoding="utf-8",
+    )
+    draft = prepare_technical_draft(ref)
+    real_reconcile = contract_store_module._reconcile_authoring_locked
+    interrupted = False
+
+    def partial_reconcile(_ref, payloads, **_kwargs):
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            (_ref.manifest_dir / "manifest.toml").write_bytes(
+                payloads["manifest.toml"],
+            )
+            raise ContractStoreError("simulated_authoring_crash")
+        return real_reconcile(_ref, payloads, **_kwargs)
+
+    monkeypatch.setattr(
+        contract_store_module, "_reconcile_authoring_locked", partial_reconcile,
+    )
+    with pytest.raises(ContractStoreError, match="simulated_authoring_crash"):
+        publish_technical_update(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            registry_reconciler=lambda _snapshot: None,
+        )
+    committed = current_manifest(ref, trusted_publics=trusted, store_root=productive)
+
+    reconciled = []
+    retried = publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        registry_reconciler=reconciled.append,
+    )
+    assert retried.repeated
+    assert retried.current_generation_id == committed.generation_id
+    assert _source_payloads(ref) == contract_store_module._snapshot_payloads(committed)
+    assert reconciled[-1].generation_id == committed.generation_id
+
+
+def test_productive_rollback_is_pointer_only_audited_and_reconciled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    productive = (
+        contract_store_module._C.PATH_USER_STATE / "contract-publications" / "v1"
+    )
+    base = current_manifest(ref, trusted_publics=trusted, store_root=productive)
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=(
+            "SCOPO: rollback test. PATTERN: sample(). "
+            "NON: modify. OUT: results=[]."
+        ),
+    )
+    registry = []
+    localized = publish_localization(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        source_language="it",
+        target_language="en",
+        patches=(patch,),
+        private_key=private,
+        trusted_publics=trusted,
+        registry_reconciler=registry.append,
+    )
+    generations = productive / contract_storage_key(ref.contract_id) / "generations"
+    generation_names = {entry.name for entry in generations.iterdir()}
+    audit: list[Mapping[str, object]] = []
+
+    restored = rollback(
+        ref,
+        expected_generation_id=localized.current_generation_id,
+        target_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="verified recovery",
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        registry_reconciler=registry.append,
+    )
+    repeated = rollback(
+        ref,
+        expected_generation_id=localized.current_generation_id,
+        target_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="verified recovery",
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        registry_reconciler=registry.append,
+    )
+
+    live = current_manifest(ref, trusted_publics=trusted, store_root=productive)
+    assert restored.current_generation_id == initial.current_generation_id
+    assert repeated.repeated
+    assert live.generation_id == initial.current_generation_id
+    assert {entry.name for entry in generations.iterdir()} == generation_names
+    assert _source_payloads(ref) == contract_store_module._snapshot_payloads(live)
+    assert len(audit) == 1
+    assert audit[0] == {
+        "event": "contract_generation_rollback",
+        "contract_id": ref.contract_id.value,
+        "expected_generation_id": localized.current_generation_id,
+        "target_generation_id": initial.current_generation_id,
+        "actor": "operator",
+        "reason": "verified recovery",
+        "event_id": audit[0]["event_id"],
+    }
+    assert str(audit[0]["event_id"]).startswith("sha256:")
+    assert registry[-1].generation_id == initial.current_generation_id
+
+
+def test_rollback_authenticates_current_structurally_across_real_code_change(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    original_payloads = _source_payloads(ref)
+    code = ref.manifest_dir / "sample.py"
+    original_code = code.read_bytes()
+
+    code.write_text(
+        "def invoke(args):\n    return {'results': ['version-b']}\n",
+        encoding="utf-8",
+    )
+    ref.manifest_path.write_text(
+        ref.manifest_path.read_text(encoding="utf-8").replace(
+            'version = "1.0.0"', 'version = "2.0.0"', 1,
+        ),
+        encoding="utf-8",
+    )
+    draft = prepare_technical_draft(ref)
+    registry: list[object] = []
+    second = publish_technical_update(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        draft=draft,
+        private_key=private,
+        trusted_publics=trusted,
+        registry_reconciler=registry.append,
+    )
+
+    # A real technical rollback restores source/code first.  The live B
+    # generation must still authenticate as the CAS selector even though the
+    # authoring tree now contains A; only target A must match that code.
+    code.write_bytes(original_code)
+    for name, payload in original_payloads.items():
+        (ref.manifest_dir / name).write_bytes(payload)
+    audit: list[Mapping[str, object]] = []
+    restored = rollback(
+        ref,
+        expected_generation_id=second.current_generation_id,
+        target_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="restore source and contract A",
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        registry_reconciler=registry.append,
+    )
+
+    live = current_manifest(ref, trusted_publics=trusted)
+    assert restored.current_generation_id == initial.current_generation_id
+    assert live.generation_id == initial.current_generation_id
+    assert live.verified_code_digest == (
+        "sha256:" + hashlib.sha256(original_code).hexdigest()
+    )
+    assert _source_payloads(ref) == original_payloads
+    assert len(audit) == 1
+
+
+def test_retirement_is_signed_atomic_idempotent_and_source_independent(
+    tmp_path: Path,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    audit: list[Mapping[str, object]] = []
+
+    retired = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="remove synthesized executor",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        store_root=store,
+    )
+    state = current_contract(ref, trusted_publics=trusted, store_root=store)
+
+    assert isinstance(state, ContractRetirement)
+    assert current_revision_id(ref, store_root=store) == retired.current_generation_id
+    assert state.retirement_id == retired.current_generation_id
+    assert state.previous_generation_id == initial.current_generation_id
+    assert state.actor == "operator"
+    assert state.reason == "remove synthesized executor"
+    with pytest.raises(ContractStoreError, match="contract_retired"):
+        current_manifest(ref, trusted_publics=trusted, store_root=store)
+
+    revision = _generation_path(store, ref, retired.current_generation_id)
+    assert {path.name for path in revision.iterdir()} == set(RETIREMENT_FILES)
+    shutil.rmtree(ref.manifest_dir)
+
+    # Retirement, its retry and diagnostics never reopen deleted authoring
+    # code.  The original generation remains immutable audit evidence.
+    repeated = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="remove synthesized executor",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        store_root=store,
+    )
+    assert repeated.repeated
+    assert repeated.current_generation_id == retired.current_generation_id
+    assert len(audit) == 1
+    findings = diagnose_store((ref,), trusted_publics=trusted, store_root=store)
+    assert findings == ()
+
+
+def test_retirement_rejects_tampering_and_conflicting_retry(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    retired = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="uninstall skill",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=lambda _event: None,
+        store_root=store,
+    )
+    with pytest.raises(ContractStoreError, match="commit_conflict"):
+        retire(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            actor="operator",
+            reason="different authorization",
+            private_key=private,
+            trusted_publics=trusted,
+            audit_sink=lambda _event: None,
+            store_root=store,
+        )
+
+    revision = _generation_path(store, ref, retired.current_generation_id)
+    (revision / "retirement.json.sig").write_bytes(b"tampered")
+    with pytest.raises(ContractStoreError, match="retirement_signature_invalid"):
+        current_manifest(ref, trusted_publics=trusted, store_root=store)
+
+
+def test_retirement_audit_event_id_survives_crash_before_pointer(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    real_install = contract_store_module._install_retirement
+    interrupted = True
+    deliveries: list[Mapping[str, object]] = []
+    durable_by_id: dict[str, Mapping[str, object]] = {}
+
+    def idempotent_sink(event: Mapping[str, object]) -> None:
+        deliveries.append(dict(event))
+        event_id = str(event["event_id"])
+        durable_by_id.setdefault(event_id, dict(event))
+
+    def fail_once(*args, **kwargs) -> None:
+        nonlocal interrupted
+        if interrupted:
+            interrupted = False
+            raise ContractStoreError("simulated_pre_pointer_crash")
+        real_install(*args, **kwargs)
+
+    monkeypatch.setattr(
+        contract_store_module, "_install_retirement", fail_once,
+    )
+    with pytest.raises(ContractStoreError, match="simulated_pre_pointer_crash"):
+        retire(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            actor="operator",
+            reason="stable audit retry",
+            private_key=private,
+            trusted_publics=trusted,
+            audit_sink=idempotent_sink,
+            store_root=store,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
+
+    retired = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="stable audit retry",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=idempotent_sink,
+        store_root=store,
+    )
+
+    assert not retired.repeated
+    assert len(deliveries) == 2
+    assert deliveries[0] == deliveries[1]
+    assert len(durable_by_id) == 1
+
+
+def test_retired_contract_requires_explicit_reactivation(tmp_path: Path) -> None:
+    root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    retired = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="uninstall skill",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=lambda _event: None,
+        store_root=store,
+    )
+
+    # Reinstall the same ContractId with changed code and no inherited
+    # signature.  Merely publishing it remains forbidden while retired.
+    shutil.rmtree(ref.manifest_dir)
+    directory = root / "sample"
+    directory.mkdir(parents=True)
+    code = directory / "sample.py"
+    code.write_text(
+        "def invoke(args):\n    return {'results': [], 'revision': 2}\n",
+        encoding="utf-8",
+    )
+    digest = "sha256:" + hashlib.sha256(code.read_bytes()).hexdigest()
+    manifest = directory / "manifest.toml"
+    manifest.write_text(
+        _manifest_text(
+            name="read_files",
+            code_file=code.name,
+            code_digest=digest,
+        ),
+        encoding="utf-8",
+    )
+    parsed = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    (directory / "manifest.lang_state.json").write_bytes(
+        encode_language_state(_state_for(parsed), manifest=parsed),
+    )
+    reinstalled = _inventory_ref(root, name="read_files")
+    draft = prepare_technical_draft(reinstalled)
+
+    with pytest.raises(ContractStoreError, match="contract_retired"):
+        publish_technical_update(
+            reinstalled,
+            expected_generation_id=retired.current_generation_id,
+            draft=draft,
+            private_key=private,
+            trusted_publics=trusted,
+            store_root=store,
+        )
+
+    audit: list[Mapping[str, object]] = []
+    reactivated = reactivate_technical_update(
+        reinstalled,
+        expected_retirement_id=retired.current_generation_id,
+        draft=draft,
+        actor="operator",
+        reason="reinstall reviewed skill",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        store_root=store,
+    )
+    repeated = reactivate_technical_update(
+        reinstalled,
+        expected_retirement_id=retired.current_generation_id,
+        draft=draft,
+        actor="operator",
+        reason="reinstall reviewed skill",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        store_root=store,
+    )
+
+    assert reactivated.operation == "reactivate_technical_update"
+    assert repeated.repeated
+    assert repeated.current_generation_id == reactivated.current_generation_id
+    assert len(audit) == 1
+    live = current_manifest(
+        reinstalled, trusted_publics=trusted, store_root=store,
+    )
+    assert live.generation_id == reactivated.current_generation_id
+    assert live.verified_code_digest == digest
+
+
+def test_rollback_can_explicitly_restore_a_retired_generation(tmp_path: Path) -> None:
+    _root, ref, private, trusted = _create_source(tmp_path)
+    store = tmp_path / "store"
+    initial = publish_signed_source(
+        ref,
+        expected_generation_id=None,
+        trusted_publics=trusted,
+        store_root=store,
+    )
+    retired = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="temporary removal",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=lambda _event: None,
+        store_root=store,
+    )
+    audit: list[Mapping[str, object]] = []
+
+    restored = rollback(
+        ref,
+        expected_generation_id=retired.current_generation_id,
+        target_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="restore exact previous version",
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        store_root=store,
+    )
+
+    assert restored.current_generation_id == initial.current_generation_id
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=store,
+    ).generation_id == initial.current_generation_id
+    assert audit[0]["event"] == "contract_generation_rollback"
+
+
+def test_productive_retirement_requires_reconciliation_and_repairs_on_retry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    productive = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications"
+        / "v1"
+    )
+    audit: list[Mapping[str, object]] = []
+
+    with pytest.raises(ContractStoreError, match="registry_reconciler_required"):
+        retire(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            actor="operator",
+            reason="uninstall skill",
+            private_key=private,
+            trusted_publics=trusted,
+            audit_sink=audit.append,
+        )
+    assert current_manifest(
+        ref, trusted_publics=trusted, store_root=productive,
+    ).generation_id == initial.current_generation_id
+
+    def interrupted_reconcile(_retirement: ContractRetirement) -> None:
+        raise RuntimeError("registry unavailable")
+
+    with pytest.raises(RuntimeError, match="registry unavailable"):
+        retire(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            actor="operator",
+            reason="uninstall skill",
+            private_key=private,
+            trusted_publics=trusted,
+            audit_sink=audit.append,
+            registry_reconciler=interrupted_reconcile,
+        )
+    committed = current_contract(
+        ref, trusted_publics=trusted, store_root=productive,
+    )
+    assert isinstance(committed, ContractRetirement)
+
+    reconciled: list[ContractRetirement] = []
+    repaired = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="uninstall skill",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=audit.append,
+        registry_reconciler=reconciled.append,
+    )
+    assert repaired.repeated
+    assert len(audit) == 1
+    assert reconciled == [committed]
+
+
+def test_store_only_marker_recovery_accepts_authenticated_retirement_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    expected = {ref.contract_id: initial.current_generation_id}
+    activate_store(
+        expected,
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    retired = retire(
+        ref,
+        expected_generation_id=initial.current_generation_id,
+        actor="operator",
+        reason="remove before marker recovery",
+        private_key=private,
+        trusted_publics=trusted,
+        audit_sink=lambda _event: None,
+        registry_reconciler=lambda _revision: None,
+    )
+    shutil.rmtree(ref.manifest_dir)
+    marker = (
+        contract_store_module._C.PATH_USER_STATE
+        / "contract-publications.ACTIVE"
+    )
+    marker.unlink()
+    assert production_store_mode() is ProductionStoreMode.STORE_ONLY
+
+    # The cutover report contains the original generation ID.  Recovery owns
+    # only the identity set after cutover and accepts the newer authenticated
+    # tombstone plus its manifest history.
+    activate_store(
+        expected,
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+
+    assert production_store_mode() is ProductionStoreMode.ACTIVE
+    current = current_contract(ref, trusted_publics=trusted)
+    assert isinstance(current, ContractRetirement)
+    assert current.retirement_id == retired.current_generation_id
+
+
+def test_registry_converges_when_manifest_callbacks_finish_in_reverse_order(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    base = current_manifest(ref, trusted_publics=trusted)
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=(
+            "SCOPO: callback race. PATTERN: sample(). "
+            "NON: modify. OUT: results=[]."
+        ),
+    )
+    registry: dict[str, str] = {}
+    calls: list[tuple[str, str]] = []
+    triggered = False
+
+    def inner(revision) -> None:
+        identifier = contract_revision_id(revision)
+        registry[ref.contract_id.value] = identifier
+        calls.append(("inner", identifier))
+
+    def outer(revision) -> None:
+        nonlocal triggered
+        identifier = contract_revision_id(revision)
+        if not triggered:
+            triggered = True
+            rollback(
+                ref,
+                expected_generation_id=identifier,
+                target_generation_id=initial.current_generation_id,
+                actor="concurrent operator",
+                reason="win manifest race",
+                trusted_publics=trusted,
+                audit_sink=lambda _event: None,
+                registry_reconciler=inner,
+            )
+        # Deliberately finish A after B and overwrite the simulated registry.
+        registry[ref.contract_id.value] = identifier
+        calls.append(("outer", identifier))
+
+    with pytest.raises(ContractStoreError, match="publication_superseded"):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="en",
+            patches=(patch,),
+            private_key=private,
+            trusted_publics=trusted,
+            registry_reconciler=outer,
+        )
+
+    assert registry[ref.contract_id.value] == initial.current_generation_id
+    assert calls[-1] == ("outer", initial.current_generation_id)
+    assert current_manifest(
+        ref, trusted_publics=trusted,
+    ).generation_id == initial.current_generation_id
+
+
+def test_registry_converges_when_manifest_callback_finishes_after_retirement(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _root, ref, private, trusted, shadow, initial = _create_productive_shadow(
+        tmp_path, monkeypatch,
+    )
+    activate_store(
+        {ref.contract_id: initial.current_generation_id},
+        shadow_root=shadow,
+        trusted_publics=trusted,
+        quiescence_guard=lambda: True,
+    )
+    base = current_manifest(ref, trusted_publics=trusted)
+    patch = _localization_patch(
+        base,
+        selector="description",
+        source_language="it",
+        target_language="en",
+        candidate=(
+            "SCOPO: cross-type race. PATTERN: sample(). "
+            "NON: modify. OUT: results=[]."
+        ),
+    )
+    registry: dict[str, tuple[str, str]] = {}
+    calls: list[tuple[str, str, str]] = []
+    triggered = False
+
+    def assign(label: str, revision) -> None:
+        kind = (
+            "retirement"
+            if isinstance(revision, ContractRetirement)
+            else "manifest"
+        )
+        identifier = contract_revision_id(revision)
+        registry[ref.contract_id.value] = (kind, identifier)
+        calls.append((label, kind, identifier))
+
+    def inner(revision) -> None:
+        assign("inner", revision)
+
+    def outer(revision) -> None:
+        nonlocal triggered
+        if not triggered:
+            triggered = True
+            assert isinstance(revision, contract_store_module.VerifiedManifest)
+            retire(
+                ref,
+                expected_generation_id=str(revision.generation_id),
+                actor="concurrent operator",
+                reason="win cross-type race",
+                private_key=private,
+                trusted_publics=trusted,
+                audit_sink=lambda _event: None,
+                registry_reconciler=inner,
+            )
+        # Deliberately complete the stale manifest callback after retirement.
+        assign("outer", revision)
+
+    with pytest.raises(ContractStoreError, match="publication_superseded"):
+        publish_localization(
+            ref,
+            expected_generation_id=initial.current_generation_id,
+            source_language="it",
+            target_language="en",
+            patches=(patch,),
+            private_key=private,
+            trusted_publics=trusted,
+            registry_reconciler=outer,
+        )
+
+    current = current_contract(ref, trusted_publics=trusted)
+    assert isinstance(current, ContractRetirement)
+    assert registry[ref.contract_id.value] == (
+        "retirement", current.retirement_id,
+    )
+    assert calls[-1] == ("outer", "retirement", current.retirement_id)

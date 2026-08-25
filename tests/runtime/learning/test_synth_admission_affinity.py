@@ -7,7 +7,7 @@ handcrafted `find_urls`) ha hijackato il routing PLANNER per query web
 al code, 7 chiamate ritornavano 0 entries.
 
 Layer 2 = guard al catalog load: synth con Jaccard >= 0.5 verso UN
-handcrafted (o un altro synth piu' vecchio) viene rejected. Audit log
+handcrafted (o un altro synth con identita' strutturale prioritaria) viene rejected. Audit log
 JSONL in `~/.local/share/metnos/synth_audit/affinity_rejected.jsonl`.
 """
 from __future__ import annotations
@@ -233,29 +233,28 @@ class TestAuditLogAppended:
         assert set(entry["shared_terms"]) == {"x", "y", "z"}
 
 
-class TestOlderSynthWinsOverNewer:
-    """Tra due synth, il piu' vecchio per mtime vince; il piu' giovane viene
-    rifiutato se ha overlap >= soglia."""
+class TestStableSynthIdentityWins:
+    """Tra due synth vince l'identita' strutturale, non un mtime mutabile."""
 
-    def test_older_synth_kept(self, tmp_path, monkeypatch):
+    def test_lexical_identity_is_stable_when_mtimes_say_the_opposite(
+        self, tmp_path, monkeypatch,
+    ):
         import loader
         synth_root = tmp_path / "synth"; synth_root.mkdir()
-        # Vecchio synth (mtime piu' basso)
-        old_dir = synth_root / "find_a"
-        _make_executor(old_dir, "find_a", affinity=["k1", "k2", "k3"], mtime=1000.0)
-        # Giovane synth (mtime piu' alto)
-        new_dir = synth_root / "find_b"
-        _make_executor(new_dir, "find_b", affinity=["k1", "k2", "k3"], mtime=2000.0)
+        first_dir = synth_root / "find_a"
+        _make_executor(first_dir, "find_a", affinity=["k1", "k2", "k3"], mtime=2000.0)
+        second_dir = synth_root / "find_b"
+        _make_executor(second_dir, "find_b", affinity=["k1", "k2", "k3"], mtime=1000.0)
         catalog = _make_catalog_with({
             "find_a": {"affinity": ["k1", "k2", "k3"],
-                       "manifest_path": old_dir / "manifest.toml"},
+                       "manifest_path": first_dir / "manifest.toml"},
             "find_b": {"affinity": ["k1", "k2", "k3"],
-                       "manifest_path": new_dir / "manifest.toml"},
+                       "manifest_path": second_dir / "manifest.toml"},
         })
         monkeypatch.setattr(loader, "SYNTHESIZED_EXECUTORS_DIR", synth_root)
         monkeypatch.setattr(loader, "_AFFINITY_AUDIT_DIR", tmp_path / "audit")
         rejected = loader._check_affinity_overlap(catalog)
-        # find_b (piu' giovane) deve essere rifiutato; find_a sopravvive.
+        # find_a vince per identita', anche se il suo file ha mtime maggiore.
         assert len(rejected) == 1
         assert rejected[0]["name"] == "find_b"
         assert "find_a" in catalog.executors

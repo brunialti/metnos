@@ -31,13 +31,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+from manifest_rules import UNIVERSAL_ARGS
+
 log = logging.getLogger("engine.coerce_args")
-
-# Piping/universali (§4.1): il runtime li possiede e li risolve; restano
-# anche dove il manifest li marca runtime_resolved (es. write_files_spreadsheet
-# .entries). Allineata a manifest_lint._UNIVERSAL_ARGS.
-_UNIVERSAL_KEYS = frozenset({"from_step", "entries"})
-
 
 def _typed_props(schema) -> Optional[dict]:
     """Properties dict utilizzabile, o None (= no-op, mai bloccare)."""
@@ -86,7 +82,7 @@ def coerce_step_args(args: dict, schema,
         return out, changed
     coerced = {}
     for key, val in out.items():
-        if key in _UNIVERSAL_KEYS or key in guard_owned:
+        if key in UNIVERSAL_ARGS or key in guard_owned:
             coerced[key] = val
             continue
         decl = props.get(key)
@@ -144,7 +140,7 @@ def strip_unknown_args(framework, catalog):
             continue
         kept = {k: v for k, v in args.items()
                 if (not isinstance(k, str)) or k.startswith("_")
-                or k in _UNIVERSAL_KEYS or k in props}
+                or k in UNIVERSAL_ARGS or k in props}
         if len(kept) != len(args):
             log.info("[strip_unknown_args] %s: fuori schema=%s",
                      s.tool, sorted(set(args) - set(kept)))

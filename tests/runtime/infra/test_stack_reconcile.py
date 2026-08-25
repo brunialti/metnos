@@ -1,11 +1,13 @@
 """Transactional contract for metnos.target reconciliation."""
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +15,41 @@ import pytest
 RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 import stack_reconcile as sr
+
+
+def test_catalog_lifecycle_guard_acquires_catalog_before_reconcile(
+    monkeypatch,
+) -> None:
+    import contract_store
+
+    events: list[str] = []
+
+    @contextlib.contextmanager
+    def catalog_lock(*, timeout):
+        assert timeout == 0.25
+        events.append("catalog_enter")
+        try:
+            yield
+        finally:
+            events.append("catalog_exit")
+
+    class LifecycleLock:
+        def acquire(self, *, wait_s):
+            assert wait_s == 0.25
+            assert events == ["catalog_enter"]
+            events.append("lifecycle_enter")
+
+        def release(self):
+            events.append("lifecycle_exit")
+
+    monkeypatch.setattr(contract_store, "catalog_admission_lock", catalog_lock)
+    with sr.catalog_reconcile_lock(lock=LifecycleLock(), wait_s=0.25):
+        events.append("body")
+
+    assert events == [
+        "catalog_enter", "lifecycle_enter", "body",
+        "lifecycle_exit", "catalog_exit",
+    ]
 
 
 class FakeSystemctl:
@@ -587,6 +624,84 @@ def test_executor_name_cannot_escape_catalog():
     with pytest.raises(sr.StackFailure) as caught:
         sr.verify_named_executors(["../ssh"], sign_first=True)
     assert caught.value.code == "invalid_executor"
+
+
+def test_named_executor_store_verification_uses_live_catalog(
+        monkeypatch, tmp_path):
+    import loader
+    import manifest_inventory
+    import sign
+
+    directory = tmp_path / "executors" / "read_files"
+    directory.mkdir(parents=True)
+    (directory / "manifest.toml").write_text("name = 'read_files'\n")
+    monkeypatch.setattr(sr, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        manifest_inventory,
+        "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.STORE_ONLY,
+    )
+    published = []
+    monkeypatch.setattr(
+        sign,
+        "publish_authoring_update",
+        lambda path: published.append(path),
+    )
+    monkeypatch.setattr(
+        sign,
+        "verify_executor",
+        lambda _path: (_ for _ in ()).throw(
+            AssertionError("store-only must not verify unsigned authoring bytes"),
+        ),
+    )
+    monkeypatch.setattr(
+        loader,
+        "load_catalog",
+        lambda **_kwargs: SimpleNamespace(
+            executors={"read_files": SimpleNamespace(digest="sha256:live")},
+        ),
+    )
+
+    result = sr.verify_named_executors(["read_files"], sign_first=True)
+
+    assert published == [directory]
+    assert result == [{
+        "name": "read_files", "ok": True, "digest": "sha256:live",
+    }]
+
+
+def test_named_executor_legacy_verification_keeps_signature_boundary(
+        monkeypatch, tmp_path):
+    import manifest_inventory
+    import sign
+
+    directory = tmp_path / "executors" / "read_files"
+    directory.mkdir(parents=True)
+    (directory / "manifest.toml").write_text("name = 'read_files'\n")
+    monkeypatch.setattr(sr, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        manifest_inventory,
+        "resolve_manifest_layout",
+        lambda: manifest_inventory.ManifestLayout.AUTHORING,
+    )
+    published = []
+    monkeypatch.setattr(
+        sign,
+        "publish_authoring_update",
+        lambda path: published.append(path),
+    )
+    monkeypatch.setattr(
+        sign,
+        "verify_executor",
+        lambda path: (True, {"digest": f"sha256:{path.name}"}),
+    )
+
+    result = sr.verify_named_executors(["read_files"], sign_first=True)
+
+    assert published == [directory]
+    assert result == [{
+        "name": "read_files", "ok": True, "digest": "sha256:read_files",
+    }]
 
 
 def test_unreachable_active_http_never_guesses_quiescence(monkeypatch, tmp_path):

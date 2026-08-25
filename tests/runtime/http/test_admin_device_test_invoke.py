@@ -83,14 +83,24 @@ class AdminTestInvokeTests(AioHTTPTestCase):
     def _sign(self, raw: bytes) -> str:
         return _b64u(self.priv.sign(raw))
 
-    async def _simulate_client_completes(self, delay_s: float = 0.3):
-        """Simula il client: dopo un breve delay, preleva la prossima
-        invocazione in coda e la completa con un result onesto."""
-        await asyncio.sleep(delay_s)
+    async def _simulate_client_completes(self, timeout_s: float = 10.0):
+        """Simula il polling bounded del client e completa l'invocazione.
+
+        Il caricamento verificato del catalogo precede l'accodamento e la sua
+        durata non e' un contratto del protocollo. Un unico poll dopo un delay
+        fisso rendeva quindi il test dipendente dalla velocita' della macchina.
+        """
         loop = asyncio.get_running_loop()
-        inv = await loop.run_in_executor(
-            None, lambda: self.invocations.next_invocation(self.device.id))
-        self.assertIsNotNone(inv, "nessuna invocazione in coda da completare")
+        deadline = loop.time() + timeout_s
+        inv = None
+        while inv is None and loop.time() < deadline:
+            inv = await loop.run_in_executor(
+                None, lambda: self.invocations.next_invocation(self.device.id))
+            if inv is None:
+                await asyncio.sleep(0.05)
+        self.assertIsNotNone(
+            inv, "nessuna invocazione in coda entro il tempo massimo")
+        assert inv is not None
         result = {
             "invocation_id": inv["invocation_id"], "device_id": self.device.id,
             "ok": True, "entries": [{"path": "/tmp/x.py", "loc": 3}],

@@ -14,6 +14,7 @@ Per kind:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import shutil
 import sqlite3
@@ -45,10 +46,40 @@ def _rollback_create_executor(ci: ChangeIntent) -> dict:
     synth_dir = C.PATH_SYNTH_EXECUTORS / name
     if not synth_dir.is_dir():
         return {"executor_name": name, "note": "synth_dir already absent"}
-    archive_root = C.PATH_USER_DATA / "executors_archive"
-    archive_root.mkdir(parents=True, exist_ok=True)
-    dst = archive_root / f"{name}_{int(time.time())}"
-    shutil.move(str(synth_dir), str(dst))
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    try:
+        layout = resolve_manifest_layout()
+    except Exception as exc:
+        return {
+            "executor_name": name,
+            "error": f"publication layout invalid: {exc}",
+        }
+    boundary = contextlib.nullcontext()
+    if layout is ManifestLayout.STORE_ONLY:
+        from contract_store import catalog_admission_lock
+
+        boundary = catalog_admission_lock()
+    with boundary:
+        if layout is ManifestLayout.STORE_ONLY:
+            # Keep retirement and code archival indivisible to cooperating
+            # publishers.  Releasing between them lets a reactivation commit
+            # and then lose the very code it has just verified.
+            try:
+                from sign import retire_executor_contract
+                retire_executor_contract(
+                    synth_dir,
+                    actor="change_rollback",
+                    reason=f"rollback create_executor change_intent={ci.id}",
+                )
+            except Exception as exc:
+                return {
+                    "executor_name": name,
+                    "error": f"contract retirement requires retry: {exc}",
+                }
+        archive_root = C.PATH_USER_DATA / "executors_archive"
+        archive_root.mkdir(parents=True, exist_ok=True)
+        dst = archive_root / f"{name}_{int(time.time())}"
+        shutil.move(str(synth_dir), str(dst))
     # mark in executor_stats
     db = C.PATH_USER_STATE / "executor_stats.db"
     if db.exists():
@@ -80,20 +111,33 @@ def _rollback_extend_executor(ci: ChangeIntent) -> dict:
     mdir = _resolve_executor_dir(name)
     if mdir is None:
         return {"executor_name": name, "error": "manifest dir not found"}
+    from manifest_inventory import ManifestLayout, resolve_manifest_layout
+    try:
+        layout = resolve_manifest_layout()
+    except Exception as exc:
+        return {"executor_name": name,
+                "error": f"publication layout invalid: {exc}"}
     manifest_path = mdir / "manifest.toml"
     # Restore
     manifest_path.write_text(blob.read_text(encoding="utf-8"), encoding="utf-8")
-    # Re-sign
+    # Ripubblica lo stato ripristinato attraverso lo stesso confine usato
+    # dalla modifica originaria (firma legacy o store immutabile).
     try:
-        from sign import sign_executor
-        digest, sig_path = sign_executor(mdir)
+        from sign import publish_authoring_update
+        digest, sig_path, _publication = publish_authoring_update(mdir)
         return {"executor_name": name,
                 "manifest_restored_from": str(blob),
                 "new_digest": digest, "sig_path": str(sig_path)}
     except Exception as exc:
+        detail = (
+            str(exc)
+            if layout is ManifestLayout.AUTHORING
+            else f"publication outcome requires retry: {exc}"
+        )
         return {"executor_name": name,
                 "manifest_restored_from": str(blob),
-                "re_sign_error": str(exc)[:200]}
+                # Chiave storica preservata per i consumer del change log.
+                "re_sign_error": detail[:200]}
 
 
 def _rollback_dedupe_executors(ci: ChangeIntent) -> dict:

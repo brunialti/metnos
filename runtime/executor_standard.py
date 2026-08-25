@@ -537,6 +537,33 @@ def _validate_presentation(findings: list[StandardFinding], manifest: dict,
         _add(findings, "presentation_invalid", error)
 
 
+def _validate_code_files(findings: list[StandardFinding], manifest: dict) -> None:
+    """Apply the portable wire grammar when placement permits a device.
+
+    Server-only contracts retain authoring locators confined by the contract
+    store.  Device-capable contracts publish the same signed strings as bundle
+    names, so portability is part of their deterministic admission profile.
+    """
+    from code_file_paths import (
+        PortableCodePathError,
+        manifest_requires_portable_code_files,
+        validate_portable_code_files,
+    )
+
+    code = manifest.get("code")
+    files = code.get("files") if isinstance(code, dict) else None
+    if not manifest_requires_portable_code_files(manifest):
+        return
+    try:
+        validate_portable_code_files(files)
+    except PortableCodePathError as exc:
+        _add(
+            findings,
+            exc.code,
+            f"device-capable [code].files is not portable: {exc}",
+        )
+
+
 def validate_manifest(manifest: dict, *, require_declaration: bool = True,
                       active: bool = True) -> list[StandardFinding]:
     """Return deterministic conformance findings for one parsed manifest.
@@ -583,6 +610,7 @@ def validate_manifest(manifest: dict, *, require_declaration: bool = True,
     code = manifest.get("code")
     if not isinstance(code, dict) or not code.get("files"):
         _add(findings, "code_files", "[code].files must contain at least one file")
+    _validate_code_files(findings, manifest)
     if active:
         digest = code.get("digest") if isinstance(code, dict) else None
         if not isinstance(digest, str) or not _DIGEST_RE.fullmatch(digest):

@@ -15,11 +15,22 @@ Espone:
 import os
 import sys
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from sign import verify_executor
+from sign import list_trusted_publics, verify_executor
+from manifest_inventory import (
+    ManifestLayout,
+    ManifestOrigin,
+    ManifestStatus,
+    default_manifest_sources,
+    inventory_manifests,
+    manifest_name_collisions,
+    manifest_ref_for_source_path,
+    resolve_manifest_layout,
+)
 from executor_metadata import (
     execution_policy as _execution_policy,
     intelligence_kind as _intelligence_kind,
@@ -151,6 +162,29 @@ def _managed_dependencies(raw: object) -> tuple[ManagedDependency, ...]:
     return tuple(dependencies)
 
 
+def _thaw_manifest(value):
+    """Copy an immutable VerifiedManifest tree into loader-owned containers."""
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_manifest(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_thaw_manifest(item) for item in value]
+    return value
+
+
+def _published_manifest_path(ref, generation_id: str) -> Path:
+    """Return the already-verified generation manifest location."""
+    from contract_store import STORE_RELATIVE, generation_directory_name
+
+    return (
+        _C.PATH_USER_STATE
+        / STORE_RELATIVE
+        / ref.contract_id.storage_key
+        / "generations"
+        / generation_directory_name(generation_id)
+        / "manifest.toml"
+    )
+
+
 def _resolve_lang_text(value, *, where: str, current_lang: str) -> str:
     """Risolve un campo testuale multilingua del manifest (ADR 0092 Phase 4).
 
@@ -243,7 +277,10 @@ def _normalize_capabilities(raw) -> list[dict]:
     return out
 
 
-def _load_builtin_contract(name: str, module_path: Path) -> tuple[dict, Path, str]:
+def _load_builtin_contract(
+    name: str,
+    module_path: Path,
+) -> tuple[dict, Path, str, str | None]:
     """Load and verify the signed contract for one in-process builtin.
 
     The implementation stays in its runtime module, while the planner-facing
@@ -252,16 +289,37 @@ def _load_builtin_contract(name: str, module_path: Path) -> tuple[dict, Path, st
     """
     directory = BUILTIN_EXECUTOR_CONTRACTS_DIR / name
     path = directory / "manifest.toml"
-    if not path.is_file():
-        raise ValueError(f"builtin contract missing for {name!r}: {path}")
-    ok, signature = verify_executor(directory)
-    if not ok:
-        raise ValueError(
-            f"builtin contract signature invalid for {name!r}: "
-            f"{signature.get('reason', 'unknown')}"
-        )
-    with path.open("rb") as handle:
-        manifest = tomllib.load(handle)
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        try:
+            ref = manifest_ref_for_source_path(inventory_manifests(), path)
+            if ref.origin is not ManifestOrigin.BUILTIN:
+                raise ValueError("builtin contract has a non-builtin binding")
+            from contract_store import current_manifest
+            snapshot = current_manifest(
+                ref,
+                trusted_publics=list_trusted_publics(),
+            )
+        except Exception as exc:
+            raise ValueError(
+                f"builtin contract publication invalid for {name!r}: {exc}",
+            ) from exc
+        manifest = _thaw_manifest(snapshot.parsed)
+        signed_by = snapshot.signed_by
+        generation_id = snapshot.generation_id
+        path = _published_manifest_path(ref, str(generation_id))
+    else:
+        if not path.is_file():
+            raise ValueError(f"builtin contract missing for {name!r}: {path}")
+        ok, signature = verify_executor(directory)
+        if not ok:
+            raise ValueError(
+                f"builtin contract signature invalid for {name!r}: "
+                f"{signature.get('reason', 'unknown')}"
+            )
+        with path.open("rb") as handle:
+            manifest = tomllib.load(handle)
+        signed_by = str(signature.get("signed_by") or "")
+        generation_id = None
     if manifest.get("name") != name:
         raise ValueError(
             f"builtin contract identity mismatch: expected {name!r}, "
@@ -281,12 +339,14 @@ def _load_builtin_contract(name: str, module_path: Path) -> tuple[dict, Path, st
             f"builtin contract code mismatch for {name!r}: "
             f"{module_path.resolve()} is not signed"
         )
-    return manifest, path, str(signature.get("signed_by") or "")
+    return manifest, path, signed_by, generation_id
 
 
 def _localized_builtin_contract(name: str, module_path: Path,
                                 *, current_lang: str | None = None) -> tuple:
-    manifest, path, signed_by = _load_builtin_contract(name, module_path)
+    manifest, path, signed_by, generation_id = _load_builtin_contract(
+        name, module_path,
+    )
     if not current_lang:
         try:
             import i18n as _i18n
@@ -313,13 +373,13 @@ def _localized_builtin_contract(name: str, module_path: Path,
             )
         localized_props[arg_name] = spec
     args_schema["properties"] = localized_props
-    return manifest, path, signed_by, description, args_schema
+    return manifest, path, signed_by, generation_id, description, args_schema
 
 
 def builtin_contract_executor(name: str, module_path: Path,
                               *, current_lang: str | None = None) -> "Executor":
     """Build a catalog Executor from a verified builtin contract."""
-    manifest, path, signed_by, description, args_schema = (
+    manifest, path, signed_by, generation_id, description, args_schema = (
         _localized_builtin_contract(name, module_path, current_lang=current_lang)
     )
     return Executor(
@@ -343,6 +403,11 @@ def builtin_contract_executor(name: str, module_path: Path,
         undo=dict(manifest.get("undo") or {}),
         platforms=list(manifest.get("platforms") or ["linux"]),
         digest=str((manifest.get("code") or {}).get("digest") or ""),
+        generation_id=generation_id,
+        authoring_manifest_path=(
+            BUILTIN_EXECUTOR_CONTRACTS_DIR / name / "manifest.toml"
+            if generation_id is not None else None
+        ),
         executor_standard=str(manifest.get("executor_standard") or ""),
         standard_state=_standard_state(
             manifest.get("executor_standard"), manifest.get("lifecycle", "active")),
@@ -686,6 +751,15 @@ class Executor:
     # Vuoto per builtin/virtual (cambiano solo col deploy+restart, che azzera
     # la cache in-process; limite onesto documentato in ADR 0182).
     digest: str = ""
+    # Identita' dell'intera generazione pubblicata. ``None`` appartiene solo
+    # al layout authoring pre-cutover e ai virtuali senza contratto persistito.
+    generation_id: str | None = None
+    # Identita' strutturale stabile del binding. Non cambia a ogni publish.
+    contract_id: str | None = None
+    # Provenienza strutturale per strumenti di authoring/diagnostica. I
+    # consumer vivi usano ``manifest_path``, che post-cutover punta sempre ai
+    # byte della generazione verificata, e non aprono questo percorso.
+    authoring_manifest_path: Path | None = None
     # Executor Standard/catalog identity. ``standard_state='declared'`` means
     # the manifest declared the supported version and passed deterministic
     # loader checks; semantic conformance still requires its review/test gates.
@@ -747,6 +821,12 @@ class Catalog:
 # di cold load. Disabilitato per `verify=False` (path GC sensitive a corse)
 # e quando `executors_dir` non e' il default.
 _CATALOG_CACHE: dict[str, tuple] = {}  # key → (catalog, mtime_signature)
+_STORE_SNAPSHOT_ATTEMPTS = 2
+_STORE_SYNTHESIZED_ORIGINS = frozenset({
+    ManifestOrigin.USER,
+    ManifestOrigin.USER_SKILL,
+    ManifestOrigin.LEGACY_IMPORT,
+})
 
 
 def _catalog_cache_signature(dirs: list) -> tuple:
@@ -801,20 +881,116 @@ def _catalog_cache_signature(dirs: list) -> tuple:
     # Skill state (asse 2): enable/disable di una skill (skill_enabled.json)
     # cambia la dormancy first-party → visibility del catalog diversa. Il mtime
     # nella firma fa SÌ che set_skill_enabled invalidi la cache → gating live.
-    try:
-        from skill_registry import _state_file as _sf
-        try:
-            sig.append(("skill_state", _sf().stat().st_mtime))
-        except OSError:
-            sig.append(("skill_state", 0.0))
-    except Exception:
-        sig.append(("skill_state", 0.0))
+    from skill_registry import skill_state_cache_signature
+
+    sig.append(skill_state_cache_signature())
     return tuple(sig)
 
 
-def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
-                 include_synth=True, include_verb_unique=True,
-                 lang: str | None = None) -> Catalog:
+def _trusted_public_signature(trusted_publics: tuple) -> tuple:
+    """Return a stable identity for the trust set used by store admission."""
+    from cryptography.hazmat.primitives import serialization
+
+    return tuple(sorted(
+        (
+            str(name),
+            public_key.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            ).hex(),
+        )
+        for name, public_key in trusted_publics
+    ))
+
+
+def _store_catalog_signature(
+    inventory,
+    *,
+    include_synth: bool,
+    trusted_publics: tuple,
+    revision_ids: Mapping[str, str] | None = None,
+) -> tuple:
+    """Identify one structural inventory and its live revision pointers.
+
+    Pointer IDs, not mtimes, are the store's semantic change tokens.  The
+    lightweight reader validates the binding and canonical regular ``current``
+    file but deliberately leaves payload/code authentication to the cache-miss
+    loader.
+    """
+    from contract_store import ContractStoreError, current_revision_id
+
+    rows: list[tuple] = [
+        (
+            "problem",
+            problem.code,
+            problem.path,
+            problem.detail,
+            tuple(problem.contracts),
+        )
+        for problem in inventory.problems
+    ]
+    for ref in inventory.manifests:
+        base = (
+            "contract",
+            str(ref.contract_id),
+            ref.origin.value,
+            ref.status.value,
+        )
+        if ref.status is not ManifestStatus.ADMITTED:
+            rows.append((*base, None))
+            continue
+        key = str(ref.contract_id)
+        if revision_ids is not None:
+            revision_id = revision_ids[key]
+        else:
+            try:
+                revision_id = current_revision_id(ref)
+            except ContractStoreError as exc:
+                # An inventoried binding without a current revision is a stable,
+                # rejected contract (existing loader contract). Malformed/link
+                # pointers and every other store defect remain boot-fatal.
+                if exc.code != "current_missing":
+                    raise
+                revision_id = "<current-missing>"
+        rows.append((*base, revision_id))
+    # Aging and skill visibility remain mutable application state.  Their
+    # existing signatures are appended separately; mtimes are never used as
+    # a substitute for a contract revision identity.
+    external_state = _catalog_cache_signature([])
+    return (
+        "store-v1",
+        _trusted_public_signature(trusted_publics),
+        tuple(rows),
+        external_state,
+    )
+
+
+def _store_revision_ids(inventory, *, include_synth: bool) -> dict[str, str]:
+    """Capture the exact pointer identity each candidate must authenticate."""
+    from contract_store import ContractStoreError, current_revision_id
+
+    revisions: dict[str, str] = {}
+    for ref in inventory.manifests:
+        if ref.status is not ManifestStatus.ADMITTED:
+            continue
+        try:
+            revision = current_revision_id(ref)
+        except ContractStoreError as exc:
+            if exc.code != "current_missing":
+                raise
+            revision = "<current-missing>"
+        revisions[str(ref.contract_id)] = revision
+    return revisions
+
+
+def _load_catalog_under_catalog_lock(
+    executors_dir=DEFAULT_EXECUTORS_DIR,
+    verify=True,
+    *,
+    include_synth=True,
+    include_verb_unique=True,
+    lang: str | None = None,
+) -> Catalog:
     """Scansiona executors_dir + (opzionale) SYNTHESIZED_EXECUTORS_DIR.
 
     `include_synth=True` (default): carica anche gli executor sintetizzati
@@ -832,17 +1008,24 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
     Backup non distruttivo: la dir resta recoverable, ma esce dal pool
     cosi' che il prossimo load non la veda piu'.
 
-    Cache (ADR 0099, 7/5/2026): hit O(1) quando la firma mtime delle dirs
-    non e' cambiata. Cache key = (executors_dir, verify, include_synth).
-    Cache miss: full load + store. La firma copre handcrafted + synth +
-    .sig: qualunque modifica invalida la cache.
+    Cache (ADR 0099, 7/5/2026): nel layout legacy usa la firma mtime delle
+    sorgenti. Dopo il cutover usa invece l'identita' semantica dei pointer
+    (`generation_id` o `retirement_id`) ricavati dall'inventario strutturale.
+    Un cache miss autentica sempre revisione e codice completi.
     """
+    layout = resolve_manifest_layout()
+    store_only = layout is ManifestLayout.STORE_ONLY
     # Test/dev override: env `METNOS_LOADER_VERIFY=0` disabilita la verify
     # della firma. Use case: server tmp E2E che importa skill al volo via
     # CLI con `--no-sign`. Senza questo override, gli executor importati
     # vengono silenziosamente scartati (digest mismatch) e il PLANNER non
     # li vede mai. NIENTE in produzione.
-    if verify and os.environ.get("METNOS_LOADER_VERIFY", "1") == "0":
+    if store_only:
+        # A production binding never inherits the authoring test escape hatch.
+        # ``current_manifest`` authenticates signature, generation and code
+        # even when an old caller passes verify=False.
+        verify = True
+    elif verify and os.environ.get("METNOS_LOADER_VERIFY", "1") == "0":
         profile = os.environ.get("METNOS_RUNTIME_PROFILE", "").strip().lower()
         if profile in {"test", "dev", "development", "e2e"}:
             verify = False
@@ -868,26 +1051,96 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
                 _catalog_lang = "it"
     _hidden_env = os.environ.get("METNOS_HIDE_EXECUTORS", "")
     cache_key = f"{executors_dir}|{verify}|{include_synth}|{include_verb_unique}|{_catalog_lang}|{_hidden_env}"
-    dirs_for_sig = [Path(executors_dir)]
-    if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
-        dirs_for_sig.append(SYNTHESIZED_EXECUTORS_DIR)
-    current_sig = _catalog_cache_signature(dirs_for_sig)
-    cached = _CATALOG_CACHE.get(cache_key)
-    if cached is not None and cached[1] == current_sig:
-        return cached[0]
-
     catalog = Catalog()
-    dirs_to_scan = [Path(executors_dir)]
-    if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
-        dirs_to_scan.append(SYNTHESIZED_EXECUTORS_DIR)
+    current_sig = None
+    if store_only:
+        # Build one coherent store snapshot. A publisher may atomically move a
+        # pointer while a cold load is authenticating several contracts; a
+        # bounded retry prevents caching a mixed catalog and fails explicitly
+        # if the store never settles.
+        for attempt in range(_STORE_SNAPSHOT_ATTEMPTS):
+            inventory = inventory_manifests(default_manifest_sources())
+            trusted = tuple(list_trusted_publics())
+            expected_revisions = _store_revision_ids(
+                inventory,
+                include_synth=include_synth,
+            )
+            before = _store_catalog_signature(
+                inventory,
+                include_synth=include_synth,
+                trusted_publics=trusted,
+                revision_ids=expected_revisions,
+            )
+            cached = _CATALOG_CACHE.get(cache_key)
+            if cached is not None and cached[1] == before:
+                return cached[0]
 
-    for i, d in enumerate(dirs_to_scan):
-        if not d.exists():
-            continue
-        _load_dir_into_catalog(
-            d, catalog, verify, is_synthesized=(i > 0),
-            current_lang=_catalog_lang,
-        )
+            candidate = Catalog()
+            try:
+                _load_store_into_catalog(
+                    candidate,
+                    include_synth=include_synth,
+                    current_lang=_catalog_lang,
+                    inventory=inventory,
+                    trusted_publics=trusted,
+                    expected_revision_ids=expected_revisions,
+                )
+            except Exception as exc:
+                from manifest_inventory import ManifestBootstrapError
+
+                if not (
+                    isinstance(exc, ManifestBootstrapError)
+                    and exc.code == "store_snapshot_changed"
+                ):
+                    raise
+                if attempt + 1 == _STORE_SNAPSHOT_ATTEMPTS:
+                    raise ManifestBootstrapError(
+                        "store_snapshot_unstable",
+                        "contract revision changed while authenticating it",
+                    ) from exc
+                continue
+            after_inventory = inventory_manifests(default_manifest_sources())
+            after_trusted = tuple(list_trusted_publics())
+            after_revisions = _store_revision_ids(
+                after_inventory,
+                include_synth=include_synth,
+            )
+            after = _store_catalog_signature(
+                after_inventory,
+                include_synth=include_synth,
+                trusted_publics=after_trusted,
+                revision_ids=after_revisions,
+            )
+            if before == after:
+                catalog = candidate
+                current_sig = after
+                break
+            if attempt + 1 == _STORE_SNAPSHOT_ATTEMPTS:
+                from manifest_inventory import ManifestBootstrapError
+                raise ManifestBootstrapError(
+                    "store_snapshot_unstable",
+                    "contract revision pointers changed during catalog load",
+                )
+    else:
+        dirs_for_sig = [Path(executors_dir)]
+        if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
+            dirs_for_sig.append(SYNTHESIZED_EXECUTORS_DIR)
+        current_sig = _catalog_cache_signature(dirs_for_sig)
+        cached = _CATALOG_CACHE.get(cache_key)
+        if cached is not None and cached[1] == current_sig:
+            return cached[0]
+
+        dirs_to_scan = [Path(executors_dir)]
+        if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
+            dirs_to_scan.append(SYNTHESIZED_EXECUTORS_DIR)
+
+        for i, d in enumerate(dirs_to_scan):
+            if not d.exists():
+                continue
+            _load_dir_into_catalog(
+                d, catalog, verify, is_synthesized=(i > 0),
+                current_lang=_catalog_lang,
+            )
 
     # Hidden executors (env-driven): permette di nascondere selettivamente
     # executor dal catalog senza tocco filesystem. Use case principale: test
@@ -909,7 +1162,7 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
     # GC dei synth rifiutati per collision (ADR 0079, 4/5/2026): prima del
     # ramo executor_aging cosi' i path GC-ati non concorrono piu' agli
     # override.
-    if verify and include_synth:
+    if not store_only and verify and include_synth:
         _gc_collisions(catalog)
 
     # Inietta verb-unique builtin esposti al PLANNER (ADR 0088, 4/5/2026):
@@ -918,16 +1171,25 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
     # `include_verb_unique=False` (testing): salta l'iniezione per test che
     # asseriscono cardinalità sull'executors_dir custom (es. carica_*).
     if include_verb_unique:
-        try:
-            _inject_planner_visible_verb_unique(
-                catalog, current_lang=_catalog_lang,
-            )
-        except Exception as e:
-            log.warning("[loader] verb-unique injection failed: %s", e)
-        try:
-            _inject_inproc_tool_specs(catalog, current_lang=_catalog_lang)
-        except Exception as e:
-            log.warning("[loader] inproc-tool injection failed: %s", e)
+        if store_only:
+            # Store bindings already enumerate every persisted builtin
+            # contract. Registration supplies only its in-process callable;
+            # it must not reopen or synthesize a missing authoring manifest.
+            try:
+                boot_register_verb_unique_builtins()
+            except Exception as e:
+                log.warning("[loader] verb-unique registration failed: %s", e)
+        else:
+            try:
+                _inject_planner_visible_verb_unique(
+                    catalog, current_lang=_catalog_lang,
+                )
+            except Exception as e:
+                log.warning("[loader] verb-unique injection failed: %s", e)
+            try:
+                _inject_inproc_tool_specs(catalog, current_lang=_catalog_lang)
+            except Exception as e:
+                log.warning("[loader] inproc-tool injection failed: %s", e)
         # Registra gli store di PRODUZIONE (attiva i CRUD universali *_entries
         # su di essi via il gate di dormienza). Idempotente, best-effort.
         try:
@@ -943,20 +1205,18 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
         from executor_aging import (
             lifecycle_override_map, register as _exec_register,
         )
-        # Register each executor with its source for the history timeline.
-        # Synthesized = scanned in SYNTHESIZED_EXECUTORS_DIR (i>0 in scan
-        # loop above); we re-derive the source from the manifest path.
-        _skills_root = str(SYNTHESIZED_EXECUTORS_DIR / "skills")
+        # Register each executor from its admitted metadata. Post-cutover the
+        # live manifest path belongs to the generation store, so path shape is
+        # neither provenance nor a reason to reopen authoring.
         for ex in catalog.executors.values():
             try:
-                _mp = str(ex.manifest_path)
-                if _skills_root in _mp:
+                if ex.source == "imported":
                     # Bundle skill IMPORTATO (github, google-workspace, …): vive
                     # sotto executors/skills/<skill>/ — NON e' un synth REATTIVO.
                     # source='skill' = esente da aging come handcrafted: le skill
                     # NON invecchiano (§reference aging-inactivity-trap; ADR 0170).
                     src = "skill"
-                elif str(SYNTHESIZED_EXECUTORS_DIR) in _mp:
+                elif ex.source == "synthesized":
                     src = "synth:reactive"  # default; introvertive_specialize
                                             # writes its own register call
                 else:
@@ -996,6 +1256,30 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
     # Aggiorna cache (ADR 0099): memorizza catalog + firma corrente.
     _CATALOG_CACHE[cache_key] = (catalog, current_sig)
     return catalog
+
+
+def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
+                 include_synth=True, include_verb_unique=True,
+                 lang: str | None = None) -> Catalog:
+    """Load one catalog from a stable publication and visibility snapshot."""
+    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
+        from contract_store import catalog_admission_lock
+
+        with catalog_admission_lock():
+            return _load_catalog_under_catalog_lock(
+                executors_dir,
+                verify,
+                include_synth=include_synth,
+                include_verb_unique=include_verb_unique,
+                lang=lang,
+            )
+    return _load_catalog_under_catalog_lock(
+        executors_dir,
+        verify,
+        include_synth=include_synth,
+        include_verb_unique=include_verb_unique,
+        lang=lang,
+    )
 
 
 def invalidate_catalog_cache() -> None:
@@ -1081,7 +1365,7 @@ def check_affinity_pair(candidate_aff: set, existing_aff: set,
 
 def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
     """Pairwise Jaccard su affinity. Synth con Jaccard >= soglia verso
-    UN handcrafted o un altro synth piu' vecchio (manifest_path mtime)
+    UN handcrafted o un altro synth con identita' strutturale prioritaria
     viene rejected con motivo `affinity_overlap`. Audit JSONL append.
 
     Conserva la priorita' handcrafted-vince (ADR 0079): non viene MAI
@@ -1096,6 +1380,8 @@ def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
         ex = catalog.executors.get(name)
         if ex is None:
             return False
+        if getattr(ex, "source", "") == "synthesized":
+            return True
         try:
             return str(SYNTHESIZED_EXECUTORS_DIR) in str(ex.manifest_path)
         except Exception:
@@ -1110,20 +1396,26 @@ def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
         ex = catalog.executors.get(name)
         if ex is None:
             return False
+        if getattr(ex, "source", "") == "imported" or bool(
+            getattr(ex, "provenance", {}).get("imported_from")
+        ):
+            return True
         try:
             from skills_paths import is_skill_path as _isp
             return _isp(ex.manifest_path)
         except Exception:
             return False
 
-    def _mtime(name: str) -> float:
+    def _stable_identity(name: str) -> str:
+        """Tie-break with structural identity, never mutable file metadata."""
         ex = catalog.executors.get(name)
         if ex is None:
-            return 0.0
-        try:
-            return ex.manifest_path.stat().st_mtime
-        except OSError:
-            return 0.0
+            return name
+        if ex.contract_id:
+            return ex.contract_id
+        if ex.authoring_manifest_path is not None:
+            return ex.authoring_manifest_path.as_posix()
+        return ex.name
 
     to_remove: list[tuple[str, dict]] = []
     for synth_name, synth_aff in affinities.items():
@@ -1139,18 +1431,20 @@ def _check_affinity_overlap(catalog: Catalog) -> list[dict]:
             continue
 
         # Confronto verso TUTTI gli altri executor del catalog (handcrafted
-        # canonici + altri synth piu' vecchi). Vince il piu' vecchio.
+        # canonici + altri synth). Fra due synth vince la minore identita'
+        # strutturale: e' stabile fra restart, copy e nuova pubblicazione.
         overlap_with: str | None = None
         overlap_jaccard: float = 0.0
         overlap_shared: list[str] = []
-        synth_mtime = _mtime(synth_name)
+        synth_identity = _stable_identity(synth_name)
         for other_name, other_aff in affinities.items():
             if other_name == synth_name:
                 continue
             if not other_aff:
                 continue
-            # Skip altri synth piu' giovani (devono stare loro a evitarci).
-            if _is_synth(other_name) and _mtime(other_name) >= synth_mtime:
+            # Un solo lato della coppia decide: quello con identita' maggiore.
+            if (_is_synth(other_name)
+                    and _stable_identity(other_name) >= synth_identity):
                 continue
             # Imported (vs imported o vs altri): non bloccano un synth nativo
             # piu' giovane; il binding e' la sola garanzia di distinzione.
@@ -1314,6 +1608,49 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             continue
 
         lifecycle = str(manifest.get("lifecycle", "active"))
+        if lifecycle == "proposed":
+            signed_by = "(proposed, no code yet)"
+        elif verify:
+            ok, info = verify_executor(sub)
+            if not ok:
+                catalog.rejected.append((str(sub), info.get("reason", "verify failed")))
+                continue
+            signed_by = info.get("signed_by", "?")
+        else:
+            signed_by = "(verify disabled)"
+        _load_parsed_manifest_into_catalog(
+            manifest,
+            source_dir=sub,
+            manifest_path=manifest_path,
+            catalog=catalog,
+            signed_by=signed_by,
+            is_synthesized=is_synthesized,
+            current_lang=current_lang,
+        )
+
+
+def _load_parsed_manifest_into_catalog(
+    parsed,
+    *,
+    source_dir: Path,
+    manifest_path: Path,
+    catalog: Catalog,
+    signed_by: str,
+    is_synthesized: bool = False,
+    current_lang: str = "it",
+    in_process: bool = False,
+    generation_id: str | None = None,
+    contract_id: str | None = None,
+    authoring_manifest_path: Path | None = None,
+    reject_any_name_collision: bool = False,
+) -> None:
+    """Admit one already-authenticated manifest mapping into ``catalog``."""
+    manifest = _thaw_manifest(parsed)
+    sub = Path(source_dir)
+    # The historical body uses ``continue`` for readable rejection branches.
+    # A one-item loop preserves that linear flow without reopening any source.
+    for _manifest_once in (None,):
+        lifecycle = str(manifest.get("lifecycle", "active"))
         # Executor Standard v1: i legacy senza dichiarazione continuano a
         # caricarsi durante la migrazione. Chi dichiara conformita', invece,
         # deve provarla deterministicamente prima ancora della firma. Un draft
@@ -1344,15 +1681,6 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
                 catalog.rejected.append((
                     str(sub), "proposed_executor_must_not_bind_code"))
                 continue
-            signed_by = "(proposed, no code yet)"
-        elif verify:
-            ok, info = verify_executor(sub)
-            if not ok:
-                catalog.rejected.append((str(sub), info.get("reason", "verify failed")))
-                continue
-            signed_by = info.get("signed_by", "?")
-        else:
-            signed_by = "(verify disabled)"
 
         name = manifest.get("name", sub.name)
         # Collision detection: synth NON puo' shadow un handcrafted gia' caricato
@@ -1360,8 +1688,18 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         # Handcrafted vince per costruzione: il pool seed e' canonico, il synth
         # e' di crescita ma deve usare un nome che non collide. Stage 1 di synt
         # dovra' verificare il nome libero prima di proporlo.
-        if is_synthesized and name in catalog.executors:
-            catalog.rejected.append((str(sub), f"name collision with handcrafted '{name}' (synth ignored)"))
+        if name in catalog.executors and (
+            reject_any_name_collision or is_synthesized
+        ):
+            if reject_any_name_collision:
+                from manifest_inventory import ManifestBootstrapError
+
+                raise ManifestBootstrapError(
+                    "published_name_collision",
+                    f"duplicate published executor name {name!r}",
+                )
+            detail = f"name collision with handcrafted '{name}' (synth ignored)"
+            catalog.rejected.append((str(sub), detail))
             continue
         code_files = declared_code_files
         if not code_files and lifecycle != "proposed":
@@ -1377,7 +1715,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         # Reject deterministico al boot §7.9: il catalog non espone executor
         # degeneri al PLANNER, evitando il loop di retry su error class
         # `non_json` o `unknown` non risolvibile dal dispatcher.
-        if code_path is not None and lifecycle != "proposed":
+        if code_path is not None and lifecycle != "proposed" and not in_process:
             try:
                 _code_text = code_path.read_text(encoding="utf-8")
                 if '__name__ == "__main__"' not in _code_text \
@@ -1616,13 +1954,18 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             planning_object_aliases=_object_aliases,
             platforms=_platforms,
             digest=str((manifest.get("code") or {}).get("digest") or ""),
+            generation_id=generation_id,
+            contract_id=contract_id,
+            authoring_manifest_path=authoring_manifest_path,
             executor_standard=str(manifest.get("executor_standard") or ""),
             standard_state=_standard_state(
                 manifest.get("executor_standard"), lifecycle),
-            membership=_membership_kind(manifest),
-            source=_source_kind(manifest, synthesized=is_synthesized),
+            membership=_membership_kind(manifest, builtin=in_process),
+            source=_source_kind(
+                manifest, synthesized=is_synthesized, builtin=in_process,
+            ),
             intelligence=_intelligence_kind(manifest),
-            transport=_transport_kind(manifest),
+            transport=_transport_kind(manifest, in_process=in_process),
             output_schema=_declared_output_schema(manifest),
             execution_policy=_execution_policy(manifest),
             execution_policy_declared=isinstance(manifest.get("execution"), dict),
@@ -1630,6 +1973,124 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             managed_dependencies=_managed,
         )
         catalog.executors[name] = ex
+
+
+def _load_store_into_catalog(
+    catalog: Catalog,
+    *,
+    include_synth: bool,
+    current_lang: str,
+    inventory=None,
+    trusted_publics: tuple | None = None,
+    expected_revision_ids: Mapping[str, str] | None = None,
+) -> None:
+    """Load only bound, generation-verified contracts after cutover."""
+    if inventory is None:
+        inventory = inventory_manifests(default_manifest_sources())
+    if inventory.problems:
+        from manifest_inventory import ManifestBootstrapError
+
+        detail = "; ".join(
+            f"{problem.code}:{problem.path}:{problem.detail}"
+            for problem in inventory.problems[:12]
+        )
+        raise ManifestBootstrapError("store_inventory_invalid", detail)
+
+    if trusted_publics is None:
+        try:
+            trusted = tuple(list_trusted_publics())
+        except Exception as exc:
+            catalog.rejected.append(("contract-publications", f"trusted_keys:{exc}"))
+            return
+    else:
+        trusted = trusted_publics
+    from contract_store import ACTIVE_RELATIVE, ContractStoreError, current_manifest
+
+    marker = _C.PATH_USER_STATE / ACTIVE_RELATIVE
+    if not os.path.lexists(os.fspath(marker)):
+        log.warning(
+            "[loader] contract publication root is active without marker; "
+            "maintenance must restore contract-publications.ACTIVE",
+        )
+
+    resolved: list[tuple[object, object]] = []
+    for ref in inventory.manifests:
+        if ref.status is not ManifestStatus.ADMITTED:
+            continue
+        try:
+            snapshot = current_manifest(ref, trusted_publics=trusted)
+        except ContractStoreError as exc:
+            catalog.rejected.append((
+                str(ref.manifest_path),
+                f"{exc.code}: {exc.detail}",
+            ))
+            continue
+        except Exception as exc:
+            catalog.rejected.append((
+                str(ref.manifest_path),
+                f"contract_snapshot_error:{type(exc).__name__}:{exc}",
+            ))
+            continue
+        expected_revision = (
+            expected_revision_ids or {}
+        ).get(str(ref.contract_id))
+        if (
+            expected_revision is not None
+            and snapshot.generation_id != expected_revision
+        ):
+            from manifest_inventory import ManifestBootstrapError
+
+            raise ManifestBootstrapError(
+                "store_snapshot_changed",
+                f"{ref.contract_id}: expected={expected_revision} "
+                f"loaded={snapshot.generation_id}",
+            )
+        resolved.append((ref, snapshot))
+
+    # Name uniqueness is a property of the complete authenticated candidate,
+    # not an insertion-order preference.  Check it before admitting any row so
+    # a manually corrupted policy can never yield a partial "first wins"
+    # catalog.  Authenticated tombstones were rejected above and contribute no
+    # live name.
+    live_names = []
+    for ref, snapshot in resolved:
+        name = snapshot.parsed.get("name")
+        if not isinstance(name, str) or not name.strip():
+            from manifest_inventory import ManifestBootstrapError
+
+            raise ManifestBootstrapError(
+                "published_name_invalid", str(ref.contract_id),
+            )
+        live_names.append((ref.contract_id, name))
+    collisions = manifest_name_collisions(live_names)
+    if collisions:
+        from manifest_inventory import ManifestBootstrapError
+
+        detail = "; ".join(
+            f"{name}=[{','.join(contract_ids)}]"
+            for name, contract_ids in collisions[:8]
+        )
+        raise ManifestBootstrapError("published_name_collision", detail)
+
+    for ref, snapshot in resolved:
+        if not include_synth and ref.origin in _STORE_SYNTHESIZED_ORIGINS:
+            continue
+        _load_parsed_manifest_into_catalog(
+            snapshot.parsed,
+            source_dir=snapshot.source_manifest_dir,
+            manifest_path=_published_manifest_path(
+                ref, str(snapshot.generation_id),
+            ),
+            catalog=catalog,
+            signed_by=snapshot.signed_by,
+            is_synthesized=ref.origin in _STORE_SYNTHESIZED_ORIGINS,
+            current_lang=current_lang,
+            in_process=ref.origin is ManifestOrigin.BUILTIN,
+            generation_id=snapshot.generation_id,
+            contract_id=str(ref.contract_id),
+            authoring_manifest_path=ref.manifest_path,
+            reject_any_name_collision=True,
+        )
 
 
 # --- Visibility filter -----------------------------------------------------

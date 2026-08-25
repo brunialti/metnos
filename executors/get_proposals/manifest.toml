@@ -43,7 +43,7 @@ en = "SCOPO: reads introvertive proposals, including historical categories. PATT
 
 [code]
 files  = ["get_proposals.py"]
-digest = "sha256:723702d9fd7bd4f54497d7330b659880095839a233d15b0bd2c4ee4055e90ae0"
+digest = "sha256:d57e868056d850264f12b4b8a06c91778e746f5cb8d29548d85cd579ccfeb2cc"
 
 [args]
 type = "object"
@@ -81,6 +81,16 @@ default = false
 [args.properties.include_dormant.description]
 it = "Se true include anche le proposte in stato dormant. Default false."
 en = "If true, also includes proposals in dormant state. Default false."
+
+[args.properties.executor_descriptions]
+type = "object"
+runtime_resolved = true
+runtime_source = "executor_descriptions"
+additionalProperties = { type = "string" }
+
+[args.properties.executor_descriptions.description]
+it = "Proiezione limitata delle descrizioni localizzate del catalogo verificato, fornita dal runtime."
+en = "Bounded projection of localized descriptions from the verified catalog, supplied by the runtime."
 
 [output]
 schema_inline = """

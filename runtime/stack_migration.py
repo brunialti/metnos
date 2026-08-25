@@ -13,6 +13,7 @@ automatically on any failure.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -40,6 +41,7 @@ from stack_reconcile import (
     TARGET_UNIT,
     _atomic_json,
     _admin_key,
+    catalog_reconcile_lock,
 )
 
 
@@ -557,8 +559,11 @@ class HttpScopeMigration:
     def pilot(self, *, cycles: int = 2) -> dict:
         if cycles < 2:
             raise StackFailure("pilot_cycles_invalid", "at least two pilot cycles are required")
-        lock = self._lock()
-        lock.acquire(wait_s=2)
+        locks = contextlib.ExitStack()
+        locks.enter_context(catalog_reconcile_lock(
+            lock=self._lock(),
+            wait_s=2,
+        ))
         results: list[dict] = []
         started = time.time()
         baseline_user_units: tuple[str, ...] = ()
@@ -622,7 +627,7 @@ class HttpScopeMigration:
                     raise rollback_exc from exc
             raise
         finally:
-            lock.release()
+            locks.close()
 
     @staticmethod
     def validate_evidence(path: Path) -> dict:
@@ -653,8 +658,11 @@ class HttpScopeMigration:
                 "cutover must run as root with an explicit Metnos service user",
             )
         proof = self.validate_evidence(evidence)
-        lock = self._lock()
-        lock.acquire(wait_s=2)
+        locks = contextlib.ExitStack()
+        locks.enter_context(catalog_reconcile_lock(
+            lock=self._lock(),
+            wait_s=2,
+        ))
         baseline_user_units: tuple[str, ...] = ()
         try:
             prepared = self.prepare()
@@ -710,7 +718,7 @@ class HttpScopeMigration:
                 raise rollback_exc from exc
             raise
         finally:
-            lock.release()
+            locks.close()
 
 
 def _parser() -> argparse.ArgumentParser:
