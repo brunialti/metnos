@@ -22,6 +22,8 @@ from typing import Iterable, Mapping, Sequence
 
 
 SCHEMA = "metnos.contract-boundary-inventory/2"
+BIRTH_CLOSED_SCHEMA = "metnos.contract-boundary-birth-closed/1"
+BIRTH_CLOSED_GUARD_VERSION = f"{SCHEMA}+birth-closed/1"
 DEFAULT_INVENTORY = Path("internal/reports/rm0007-m4-boundary-inventory.json")
 SCAN_ROOTS = ("runtime", "install", "scripts", "executors")
 AUTHORING_FILES = frozenset({
@@ -235,6 +237,39 @@ FLOW_CAPABILITIES = PUBLISH_CAPABILITIES | frozenset({
     "store_write",
     "dynamic_boundary_access",
 })
+
+# These are implementation boundaries, not a caller-extensible allow-list.
+BIRTH_CLOSED_SEALED_MODULES = (
+    "runtime/contract_store.py",
+    "runtime/executor_birth.py",
+    "runtime/executor_birth_operational.py",
+    "runtime/sign.py",
+)
+BIRTH_CLOSED_OWNER = "runtime/executor_birth_operational.py:birth_executor"
+BIRTH_CLOSED_LEGACY_CAPABILITIES = frozenset({
+    "publish_technical", "reactivate", "rollback", "sign",
+})
+BIRTH_CLOSED_EXCEPTIONS = frozenset({
+    "localization_only", "retirement_only", "offline_nonproductive_authoring",
+})
+BIRTH_CLOSED_EXCEPTION_SCOPES: Mapping[str, str] = {
+    "runtime/admin/manifest_refactor.py:<module>": "offline_nonproductive_authoring",
+    "runtime/admin/manifest_refactor.py:main": "offline_nonproductive_authoring",
+    "runtime/admin/manifest_refactor.py:refactor_manifest": "offline_nonproductive_authoring",
+    "runtime/i18n_pipeline.py:live_contract_context": "localization_only",
+    "runtime/i18n_translator.py:<module>": "offline_nonproductive_authoring",
+    "runtime/i18n_translator.py:_align_one_manifest": "offline_nonproductive_authoring",
+    "runtime/i18n_translator.py:align_manifest_descriptions": "offline_nonproductive_authoring",
+    "runtime/manifest_normalize.py:<module>": "offline_nonproductive_authoring",
+    "runtime/manifest_normalize.py:apply_one": "offline_nonproductive_authoring",
+    "runtime/manifest_normalize.py:main": "offline_nonproductive_authoring",
+    "runtime/migrate_manifest_descriptions.py:<module>": "offline_nonproductive_authoring",
+    "runtime/migrate_manifest_descriptions.py:main": "offline_nonproductive_authoring",
+    "runtime/migrate_manifest_descriptions.py:migrate_dirs": "offline_nonproductive_authoring",
+    "runtime/migrate_manifest_descriptions.py:migrate_one": "offline_nonproductive_authoring",
+    "runtime/change_rollback.py:_rollback_create_executor": "retirement_only",
+    "runtime/cli/skills_cli.py:_cmd_uninstall": "retirement_only",
+}
 VALID_ROLES = frozenset({
     "administrative_tool",
     "birth_owner",
@@ -280,6 +315,7 @@ class ScopeFacts:
     capabilities: tuple[str, ...]
     calls: tuple[str, ...]
     direct_manifest_dir_access: bool = False
+    closed_dynamic_boundary: bool = False
 
     @property
     def key(self) -> str:
@@ -425,6 +461,29 @@ def _string_values(node: ast.AST) -> Iterable[str]:
     for item in ast.walk(node):
         if isinstance(item, ast.Constant) and isinstance(item.value, str):
             yield item.value
+
+
+def _static_string(node: ast.AST) -> str | None:
+    """Evaluate only syntax that is unambiguously a constant string."""
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _static_string(node.left)
+        right = _static_string(node.right)
+        return left + right if left is not None and right is not None else None
+    if isinstance(node, ast.JoinedStr):
+        parts = [_static_string(value) for value in node.values]
+        return "".join(parts) if all(part is not None for part in parts) else None
+    return None
+
+
+def _static_strings(node: ast.AST) -> set[str]:
+    return {
+        value
+        for item in ast.walk(node)
+        if (value := _static_string(item)) is not None
+    }
 
 
 def _is_authoring_filename(value: object) -> bool:
@@ -775,6 +834,15 @@ def _analyse_scope(
     nodes = _scope_nodes(node)
     aliases = dict(imported_aliases)
     dynamic_boundary_access = False
+    closed_dynamic_boundary = False
+    boundary_text = re.compile(
+        r"(?:contract_store|runtime\.sign|(?:^|[/\\])sign\.py|"
+        r"publish_technical_update|reactivate_technical_update|"
+        r"publish_signed_source|rollback_executor_contract)",
+    )
+    scope_boundary_strings = {
+        value for value in _static_strings(node) if boundary_text.search(value)
+    }
     for item in nodes:
         if isinstance(item, ast.ImportFrom) and item.module:
             if _relative_boundary_import(item):
@@ -830,6 +898,18 @@ def _analyse_scope(
         capabilities.update(_boundary_api_capabilities(canonical))
 
     for item in nodes:
+        if (
+            isinstance(item, ast.Attribute)
+            and item.attr == "__dict__"
+            and (module_name := _dotted_name(item.value)) is not None
+        ):
+            first_module, separator_module, remainder_module = module_name.partition(".")
+            resolved_module = aliases.get(first_module, first_module) + (
+                separator_module + remainder_module if separator_module else ""
+            )
+            if _boundary_owner(resolved_module) is not None:
+                closed_dynamic_boundary = True
+    for item in nodes:
         if not isinstance(item, ast.Call):
             continue
         leaf = _leaf_name(item.func)
@@ -868,6 +948,7 @@ def _analyse_scope(
                 )
                 owner = _boundary_owner(resolved_module)
                 if owner is not None:
+                    closed_dynamic_boundary = True
                     reflected = (
                         item.args[1].value
                         if len(item.args) > 1
@@ -885,11 +966,26 @@ def _analyse_scope(
                         capabilities.update(reflected_caps)
                     else:
                         capabilities.add("dynamic_boundary_access")
-        if api == "__import__" and any(
-            _boundary_owner(value) is not None for value in _string_values(item)
-        ):
-            capabilities.add("dynamic_boundary_access")
-        command_parts = set(_string_values(item))
+        if api == "vars" and item.args:
+            module_name = _dotted_name(item.args[0])
+            if module_name is not None:
+                first_module, separator_module, remainder_module = module_name.partition(".")
+                resolved_module = aliases.get(first_module, first_module) + (
+                    separator_module + remainder_module if separator_module else ""
+                )
+                if _boundary_owner(resolved_module) is not None:
+                    closed_dynamic_boundary = True
+        if api in {"eval", "exec"} and scope_boundary_strings:
+            closed_dynamic_boundary = True
+        dynamic_import = api in {"__import__", "import_module"}
+        if dynamic_import:
+            imported = tuple(set(_string_values(item)) | _static_strings(item))
+            if any(
+                _boundary_owner(value) is not None for value in imported
+            ):
+                capabilities.add("dynamic_boundary_access")
+                closed_dynamic_boundary = True
+        command_parts = set(_string_values(item)) | _static_strings(item)
         sign_entrypoint = any(
             part.endswith("sign.py") or part == "runtime.sign"
             for part in command_parts
@@ -907,6 +1003,12 @@ def _analyse_scope(
             )
         ):
             capabilities.add("sign")
+        if api in PROCESS_CALLS and (
+            scope_boundary_strings
+            or any(boundary_text.search(part) for part in command_parts)
+        ):
+            closed_dynamic_boundary = True
+
         target = _call_target(item)
         authoring_touch = _touches(
             target,
@@ -998,6 +1100,7 @@ def _analyse_scope(
         direct_manifest_dir_access=(
             manifest_dir_locator_used and "authoring_read" in capabilities
         ),
+        closed_dynamic_boundary=closed_dynamic_boundary,
     )
 
 
@@ -1183,6 +1286,7 @@ def scan_file(path: Path, *, repository_root: Path) -> list[ScopeFacts]:
             capabilities=tuple(sorted(effective[index])),
             calls=fact.calls,
             direct_manifest_dir_access=fact.direct_manifest_dir_access,
+            closed_dynamic_boundary=fact.closed_dynamic_boundary,
         )
         for index, fact in enumerate(direct)
     ]
@@ -1202,7 +1306,11 @@ def discover(repository_root: Path) -> list[ScopeFacts]:
     return sorted(
         (
             fact for fact in facts
-            if fact.capabilities or fact.direct_manifest_dir_access
+            if (
+                fact.capabilities
+                or fact.direct_manifest_dir_access
+                or fact.closed_dynamic_boundary
+            )
         ),
         key=lambda fact: (fact.path, fact.scope),
     )
@@ -1255,7 +1363,11 @@ def check(
             findings.append(Finding("inventory_duplicate", key, "duplicate scope"))
         entries[key] = raw
 
-    discovered = {fact.key: fact for fact in facts}
+    discovered = {
+        fact.key: fact
+        for fact in facts
+        if fact.capabilities or fact.direct_manifest_dir_access
+    }
     for key, fact in discovered.items():
         entry = entries.get(key)
         if entry is None:
@@ -1378,6 +1490,7 @@ def check(
             ))
         if capabilities & LIVE_MUTATIONS and role not in {
             "administrative_tool",
+            "birth_owner",
             "migration_boundary",
             "operational_producer",
             "store_owner",
@@ -1428,6 +1541,98 @@ def check(
     return sorted(findings, key=lambda finding: (finding.code, finding.scope))
 
 
+def birth_closed_findings(
+    facts: Sequence[ScopeFacts],
+    inventory: Mapping[str, object],
+) -> list[Finding]:
+    """Enforce the irreversible RM-0008 F4 closed-build boundary."""
+
+    findings = list(check(facts, inventory))
+    policy = inventory.get("birth_closed")
+    expected_policy = {
+        "schema": BIRTH_CLOSED_SCHEMA,
+        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
+        "owner": BIRTH_CLOSED_OWNER,
+        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
+        "exceptions": [
+            {"scope": scope, "exception": exception}
+            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
+        ],
+    }
+    if policy != expected_policy:
+        findings.append(Finding(
+            "birth_closed_inventory_invalid", "<inventory>",
+            "birth_closed policy must exactly match the compiled closed policy",
+        ))
+
+    raw_entries = inventory.get("entries", [])
+    entries = {
+        _entry_key(entry): entry
+        for entry in raw_entries
+        if isinstance(entry, dict)
+    } if isinstance(raw_entries, list) else {}
+    owners = sorted(
+        key for key, entry in entries.items() if entry.get("role") == "birth_owner"
+    )
+    if owners != [BIRTH_CLOSED_OWNER]:
+        findings.append(Finding(
+            "birth_closed_owner_invalid", "<inventory>",
+            f"expected exactly {[BIRTH_CLOSED_OWNER]!r}, found {owners!r}",
+        ))
+
+    fact_keys = {fact.key for fact in facts}
+    for scope in sorted(set(BIRTH_CLOSED_EXCEPTION_SCOPES) - fact_keys):
+        findings.append(Finding(
+            "birth_closed_exception_scope_missing", scope,
+            "compiled closed exception has no discovered boundary scope",
+        ))
+
+    for fact in facts:
+        capabilities = set(fact.capabilities)
+        entry = entries.get(fact.key, {})
+        exception = entry.get("closed_exception")
+        expected_exception = BIRTH_CLOSED_EXCEPTION_SCOPES.get(fact.key)
+        if exception != expected_exception:
+            findings.append(Finding(
+                "birth_closed_exception_invalid", fact.key,
+                f"expected compiled exception {expected_exception!r}, found {exception!r}",
+            ))
+            continue
+        if "dynamic_boundary_access" in capabilities or fact.closed_dynamic_boundary:
+            findings.append(Finding(
+                "birth_closed_dynamic_boundary", fact.key,
+                "closed builds permit no reflective, dynamic-import, or subprocess boundary",
+            ))
+
+        relevant_exception_capabilities = {
+            "localization_only": {"publish_localization"},
+            "retirement_only": {"retire"},
+            "offline_nonproductive_authoring": {"sign"},
+        }.get(exception, set())
+        forbidden = capabilities & BIRTH_CLOSED_LEGACY_CAPABILITIES
+        if not forbidden:
+            if exception is not None and not (
+                capabilities & relevant_exception_capabilities
+            ):
+                findings.append(Finding(
+                    "birth_closed_exception_unused", fact.key,
+                    "closed exception does not justify a discovered capability",
+                ))
+            continue
+        if fact.path in BIRTH_CLOSED_SEALED_MODULES:
+            continue
+        if not forbidden <= relevant_exception_capabilities:
+            findings.append(Finding(
+                "birth_closed_legacy_authority", fact.key,
+                f"legacy capabilities {sorted(forbidden)!r} remain outside sealed definitions",
+            ))
+
+    return sorted(
+        set(findings),
+        key=lambda finding: (finding.code, finding.scope, finding.message),
+    )
+
+
 def render_inventory(
     facts: Sequence[ScopeFacts],
     existing: Mapping[str, object] | None = None,
@@ -1443,6 +1648,8 @@ def render_inventory(
             }
     rendered = []
     for fact in facts:
+        if not (fact.capabilities or fact.direct_manifest_dir_access):
+            continue
         old = previous.get(fact.key, {})
         rendered.append({
             "path": fact.path,
@@ -1461,6 +1668,35 @@ def render_inventory(
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
 
 
+def render_birth_closed_inventory(
+    facts: Sequence[ScopeFacts],
+    existing: Mapping[str, object] | None = None,
+) -> str:
+    """Render a candidate without inventing closed exceptions or ownership."""
+
+    payload = json.loads(render_inventory(facts, existing))
+    payload["birth_closed"] = {
+        "schema": BIRTH_CLOSED_SCHEMA,
+        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
+        "owner": BIRTH_CLOSED_OWNER,
+        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
+        "exceptions": [
+            {"scope": scope, "exception": exception}
+            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
+        ],
+    }
+    previous = {
+        _entry_key(entry): entry
+        for entry in (existing or {}).get("entries", [])
+        if isinstance(entry, dict)
+    }
+    for entry in payload["entries"]:
+        old = previous.get(_entry_key(entry), {})
+        if "closed_exception" in old:
+            entry["closed_exception"] = old["closed_exception"]
+    return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
+
+
 def _repository_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
@@ -1468,6 +1704,10 @@ def _repository_root() -> Path:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--render", action="store_true", help="print candidate inventory")
+    parser.add_argument(
+        "--birth-closed", action="store_true",
+        help="enforce the irreversible RM-0008 F4 closed-build policy",
+    )
     parser.add_argument("--inventory", type=Path, default=DEFAULT_INVENTORY)
     parser.add_argument("--repository-root", type=Path, default=_repository_root())
     args = parser.parse_args(argv)
@@ -1479,10 +1719,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         inventory_path = root / inventory_path
     if args.render:
         existing = load_inventory(inventory_path) if inventory_path.exists() else None
-        print(render_inventory(facts, existing), end="")
+        rendered = (
+            render_birth_closed_inventory(facts, existing)
+            if args.birth_closed else render_inventory(facts, existing)
+        )
+        print(rendered, end="")
         return 0
     inventory = load_inventory(inventory_path)
-    findings = check(facts, inventory)
+    findings = (
+        birth_closed_findings(facts, inventory)
+        if args.birth_closed else check(facts, inventory)
+    )
     for finding in findings:
         print(finding)
     return 1 if findings else 0

@@ -4,12 +4,19 @@ import json
 from pathlib import Path
 
 from contract_boundary_guard import (
+    BIRTH_CLOSED_GUARD_VERSION,
+    BIRTH_CLOSED_EXCEPTION_SCOPES,
+    BIRTH_CLOSED_OWNER,
+    BIRTH_CLOSED_SCHEMA,
+    BIRTH_CLOSED_SEALED_MODULES,
     SCAN_ROOTS,
     SCHEMA,
     ScopeFacts,
     birth_migration_findings,
+    birth_closed_findings,
     check,
     discover,
+    render_birth_closed_inventory,
     render_inventory,
 )
 
@@ -41,6 +48,40 @@ def _inventory(
             for fact in facts
         ],
     }
+
+
+def _closed_inventory(
+    facts: list[ScopeFacts],
+    *,
+    exceptions: dict[str, str] | None = None,
+) -> dict:
+    payload = _inventory(facts)
+    exceptions = exceptions or {}
+    for entry in payload["entries"]:
+        key = f"{entry['path']}:{entry['scope']}"
+        compiled = BIRTH_CLOSED_EXCEPTION_SCOPES.get(key)
+        entry["role"] = "birth_owner" if key == BIRTH_CLOSED_OWNER else (
+            "offline_authoring" if compiled == "offline_nonproductive_authoring"
+            else "operational_producer" if compiled is not None
+            else "offline_authoring" if key in exceptions
+            else "administrative_tool"
+        )
+        compiled_exception = BIRTH_CLOSED_EXCEPTION_SCOPES.get(key)
+        if compiled_exception is not None:
+            entry["closed_exception"] = compiled_exception
+        if key in exceptions:
+            entry["closed_exception"] = exceptions[key]
+    payload["birth_closed"] = {
+        "schema": BIRTH_CLOSED_SCHEMA,
+        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
+        "owner": BIRTH_CLOSED_OWNER,
+        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
+        "exceptions": [
+            {"scope": scope, "exception": exception}
+            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
+        ],
+    }
+    return payload
 
 
 def _codes(findings) -> set[str]:
@@ -809,3 +850,149 @@ def test_repository_birth_migration_debt_is_exact() -> None:
         "scripts/generate_builtin_executor_contracts.py:<module>",
         "scripts/generate_builtin_executor_contracts.py:main",
     }
+
+
+def _closed_facts(
+    tmp_path: Path,
+    extra_source: str = "",
+    *,
+    relative: str = "runtime/sample.py",
+) -> list[ScopeFacts]:
+    _scan(
+        tmp_path,
+        "def birth_executor(request): return request\n",
+        relative="runtime/executor_birth_operational.py",
+    )
+    if extra_source:
+        _scan(tmp_path, extra_source, relative=relative)
+    facts = discover(tmp_path)
+    present = {fact.key for fact in facts}
+    for key, exception in BIRTH_CLOSED_EXCEPTION_SCOPES.items():
+        if key in present:
+            continue
+        path, scope = key.split(":", 1)
+        capability = {
+            "offline_nonproductive_authoring": "sign",
+            "localization_only": "publish_localization",
+            "retirement_only": "retire",
+        }[exception]
+        facts.append(ScopeFacts(path, scope, 1, (capability,), ()))
+    return sorted(facts, key=lambda fact: (fact.path, fact.scope))
+
+
+def test_birth_closed_requires_exactly_the_compiled_owner(tmp_path: Path) -> None:
+    facts = _closed_facts(tmp_path)
+    inventory = _closed_inventory(facts)
+    assert birth_closed_findings(facts, inventory) == []
+
+    owner = next(entry for entry in inventory["entries"] if entry["role"] == "birth_owner")
+    owner["role"] = "administrative_tool"
+    assert "birth_closed_owner_invalid" in _codes(
+        birth_closed_findings(facts, inventory)
+    )
+
+
+def test_birth_closed_rejects_legacy_direct_call_and_alias(tmp_path: Path) -> None:
+    facts = _closed_facts(
+        tmp_path,
+        "from contract_store import publish_technical_update as old_publish\n"
+        "def mutate(ref, draft):\n"
+        "    operation = old_publish\n"
+        "    return operation(ref, draft=draft)\n",
+    )
+    findings = birth_closed_findings(facts, _closed_inventory(facts))
+    assert "birth_closed_legacy_authority" in _codes(findings)
+
+
+def test_birth_closed_rejects_reflection_dynamic_import_and_subprocess(
+    tmp_path: Path,
+) -> None:
+    samples = (
+        "import contract_store as store\n"
+        "def mutate(): return getattr(store, 'publish_technical_update')\n",
+        "from importlib import import_module\n"
+        "def mutate(): return import_module('contract_store')\n",
+        "import subprocess\n"
+        "def mutate(): return subprocess.run(['python', '-m', 'runtime.sign', 'sign'])\n",
+        "import contract_store as store\n"
+        "def mutate(): return vars(store)['publish_technical_update']\n",
+        "import contract_store as store\n"
+        "def mutate(): return store.__dict__['rollback']\n",
+        "from importlib import import_module\n"
+        "def mutate(): return import_module('contract_' + 'store')\n",
+        "import subprocess\n"
+        "def mutate():\n"
+        "    command = ['python', '-m', 'runtime.' + 'sign', 'sign']\n"
+        "    return subprocess.run(command)\n",
+    )
+    for index, source in enumerate(samples):
+        root = tmp_path / str(index)
+        facts = _closed_facts(root, source)
+        assert "birth_closed_dynamic_boundary" in _codes(
+            birth_closed_findings(facts, _closed_inventory(facts))
+        )
+
+
+def test_birth_closed_offline_signing_requires_exact_exception(tmp_path: Path) -> None:
+    facts = _closed_facts(
+        tmp_path / "compiled",
+        "from sign import sign_executor\n"
+        "def refactor_manifest(directory): return sign_executor(directory)\n",
+        relative="runtime/admin/manifest_refactor.py",
+    )
+    assert birth_closed_findings(facts, _closed_inventory(facts)) == []
+
+    operational = _closed_facts(
+        tmp_path / "forged",
+        "from sign import sign_executor\n"
+        "def prepare(directory): return sign_executor(directory)\n",
+    )
+    key = "runtime/sample.py:prepare"
+    forged = _closed_inventory(
+        operational, exceptions={key: "offline_nonproductive_authoring"},
+    )
+    assert "birth_closed_exception_invalid" in _codes(
+        birth_closed_findings(operational, forged)
+    )
+
+
+def test_birth_closed_policy_and_exception_are_exact(tmp_path: Path) -> None:
+    facts = _closed_facts(tmp_path)
+    inventory = _closed_inventory(facts)
+    inventory["birth_closed"]["sealed_modules"].append("runtime/sample.py")
+    assert "birth_closed_inventory_invalid" in _codes(
+        birth_closed_findings(facts, inventory)
+    )
+
+    inventory = _closed_inventory(facts)
+    inventory["entries"][0]["closed_exception"] = "anything_goes"
+    assert "birth_closed_exception_invalid" in _codes(
+        birth_closed_findings(facts, inventory)
+    )
+
+
+def test_birth_closed_rejects_dormant_compiled_exception(tmp_path: Path) -> None:
+    facts = _closed_facts(tmp_path)
+    missing = next(iter(BIRTH_CLOSED_EXCEPTION_SCOPES))
+    facts = [fact for fact in facts if fact.key != missing]
+    assert "birth_closed_exception_scope_missing" in _codes(
+        birth_closed_findings(facts, _closed_inventory(facts))
+    )
+
+
+def test_birth_closed_render_binds_policy_without_inventing_exceptions(
+    tmp_path: Path,
+) -> None:
+    facts = _closed_facts(tmp_path)
+    rendered = json.loads(render_birth_closed_inventory(facts))
+    assert rendered["birth_closed"] == {
+        "schema": BIRTH_CLOSED_SCHEMA,
+        "guard_version": BIRTH_CLOSED_GUARD_VERSION,
+        "owner": BIRTH_CLOSED_OWNER,
+        "sealed_modules": list(BIRTH_CLOSED_SEALED_MODULES),
+        "exceptions": [
+            {"scope": scope, "exception": exception}
+            for scope, exception in sorted(BIRTH_CLOSED_EXCEPTION_SCOPES.items())
+        ],
+    }
+    assert all("closed_exception" not in entry for entry in rendered["entries"])
