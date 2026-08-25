@@ -230,6 +230,38 @@ def recover_producer_receipt_claim(encoded: bytes, *, registry: IssuerRegistry,
         if db.in_transaction: db.rollback()
         db.close()
 
+def record_producer_receipt_terminal_hint(
+    encoded: bytes, *, registry: IssuerRegistry, binding: ProducerReceiptBinding,
+    request_id: str, now: datetime, db_path: Path,
+    terminal_envelope: bytes, terminal_auth: bytes,
+) -> ProducerReceiptClaim:
+    """Durably retain signed recovery context while authority remains in progress."""
+    instant = _utc(now); request = _digest(request_id, "request_id")
+    if not isinstance(terminal_envelope, bytes) or not terminal_envelope or not isinstance(terminal_auth, bytes) or not terminal_auth:
+        raise ReceiptError("producer_receipt_invalid", "terminal_envelope")
+    receipt = _verify_claimed(encoded, registry=registry, now=instant, db_path=db_path); _require_binding(receipt, binding)
+    db = _open(db_path)
+    try:
+        db.execute("BEGIN IMMEDIATE"); row = _row(db, receipt, encoded)
+        if row["request_id"] != request:
+            raise ReceiptError("producer_receipt_replay", "owned_by_other_request")
+        if row["state"] != "in_progress":
+            raise ReceiptError("producer_receipt_final_invalid", str(row["state"]))
+        if row["lease_expires_at"] <= _iso(instant):
+            raise ReceiptError("producer_receipt_lease_expired", "explicit_recovery_required")
+        existing = (bytes(row["terminal_envelope"]) if row["terminal_envelope"] is not None else None,
+                    bytes(row["terminal_auth"]) if row["terminal_auth"] is not None else None)
+        if existing != (None, None) and existing != (terminal_envelope, terminal_auth):
+            raise ReceiptError("producer_receipt_final_conflict", "terminal_hint")
+        db.execute("UPDATE birth_producer_receipts SET terminal_envelope=?,terminal_auth=? WHERE receipt_id=? AND state='in_progress' AND request_id=?",
+                   (terminal_envelope, terminal_auth, receipt.receipt_id, request))
+        db.commit()
+        return ProducerReceiptClaim(receipt, request, "in_progress", row["lease_expires_at"], None, None,
+                                    terminal_envelope, terminal_auth)
+    finally:
+        if db.in_transaction: db.rollback()
+        db.close()
+
 def finalize_producer_receipt(encoded: bytes, *, registry: IssuerRegistry,
                               binding: ProducerReceiptBinding, request_id: str,
                               now: datetime, db_path: Path, result_binding: str | None = None,
