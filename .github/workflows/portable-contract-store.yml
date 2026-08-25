@@ -70,6 +70,6 @@ jobs:
             --setenv="PATH=$PATH" \
             --setenv=PYTHONPATH=runtime \
             --setenv=METNOS_REQUIRE_REAL_BIRTH_LINUX=1 \
-            python -m pytest -q -p no:cacheprovider \
+            "${pythonLocation}/bin/python" -m pytest -q -p no:cacheprovider \
             --confcutdir=tests/portable \
             tests/portable/test_executor_birth_runner_linux_real.py
