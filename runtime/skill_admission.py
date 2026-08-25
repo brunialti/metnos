@@ -437,22 +437,9 @@ def _smoke_case_for_plan(plan) -> dict:
 def _stage6_verify_callable() -> Callable:
     """Risolve la callable di stage 6.
 
-    1. METNOS_STAGE6_VERIFY_FAKE=mod.fn override (test).
-    2. /opt/metnos/runtime/synt_stage6_verify.py se importabile.
-    3. fallback fail-closed: il gate non può approvare ciò che non ha verificato.
+    Risolve il verificatore runtime. I test devono iniettarne uno esplicito
+    attraverso ``admit_skill_import``; l'ambiente non può cambiare la policy.
     """
-    fake = os.environ.get("METNOS_STAGE6_VERIFY_FAKE")
-    if fake:
-        mod_name, _, attr = fake.rpartition(".")
-        if mod_name and attr:
-            try:
-                mod = __import__(mod_name, fromlist=[attr])
-                fn = getattr(mod, attr, None)
-                if callable(fn):
-                    return fn
-            except Exception:
-                pass
-
     try:
         runtime_canonical = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
         if runtime_canonical.exists() and str(runtime_canonical) not in sys.path:
@@ -478,14 +465,19 @@ def _stage6_check(plan, manifest_path, code_path, verifier) -> tuple[bool, str]:
         if code_path:
             code_body = Path(code_path).read_text(encoding="utf-8")
         result = verifier(description, code_body, name_hint=plan.name)
-        if not isinstance(result, dict):
-            return True, ""
-        if result.get("aligned") is False:
+        from synt_stage6_verify import (
+            SemanticVerdictInvalid,
+            validate_stage6_verdict,
+        )
+        try:
+            verdict = validate_stage6_verdict(result)
+        except SemanticVerdictInvalid as exc:
+            return False, f"semantic_verdict_invalid:{exc}"
+        if verdict["aligned"] is False:
             return False, f"semantic_drift: {result.get('mismatch', 'unspecified')}"
         return True, ""
     except Exception as e:
-        # §2.8 fail-loud: log come reject ma con motivo chiaro.
-        return False, f"stage6 verifier raised: {e}"
+        return False, f"semantic_verifier_unavailable:{type(e).__name__}"
 
 
 # ---------------------------------------------------------------------------
@@ -580,13 +572,13 @@ def _run_smoke_for_plan(plan, case: dict) -> tuple[bool, str]:
     try:
         from smoke import _run_smoke_with_tool_assertion
     except Exception as ex:
-        return True, f"smoke runner not importable (skip): {ex}"
+        return False, f"smoke_unavailable:{type(ex).__name__}"
     try:
         result = _run_smoke_with_tool_assertion(case, catalog=None)
     except Exception as ex:
         return False, f"smoke runner raised: {ex}"
     if result.get("skip"):
-        return True, f"smoke skipped: {result.get('reason', '?')}"
+        return False, f"smoke_unavailable:{result.get('reason', 'skip')}"
     if result.get("ok"):
         return True, "smoke pass"
     return False, (
@@ -601,7 +593,8 @@ def admit_skill_import(parsed_skill, plans, *,
                        skip_l5_exec: bool = False,
                        skip_l6: bool = False,
                        skip_binding_check: bool = False,
-                       audit_log: bool = True) -> AdmissionReport:
+                       audit_log: bool = True,
+                       semantic_verifier: Callable | None = None) -> AdmissionReport:
     """Applica i controlli di binding, L1, L2, L5 e L6 a una skill.
 
     DEVI: passare parsed_skill (Task A) + plans (Task B).
@@ -611,7 +604,7 @@ def admit_skill_import(parsed_skill, plans, *,
     """
     verbs, objs, quals = _load_vocab()
     handcrafted_aff, synth_aff = _existing_affinity_sets()
-    verifier = _stage6_verify_callable()
+    verifier = semantic_verifier or _stage6_verify_callable()
     # Existing bindings = catalog corrente ON-DISK, escludendo la skill che
     # stiamo importando (la pipeline codegen ha gia' creato la dir prima
     # del check). Senza esclusione, ogni import fallirebbe self-collision.
@@ -663,10 +656,9 @@ def admit_skill_import(parsed_skill, plans, *,
         verdict.layer_results["L5_smoke_proposed"] = True
 
         # L5 smoke EXEC (ADR 0159): esegue il routing assertion al-import
-        # e rejecta se fail. Default ON. Bypass via `skip_l5_exec` (dev
-        # / unit test) o env `METNOS_SMOKE_AT_IMPORT=0` (legacy).
-        legacy_smoke_off = os.environ.get("METNOS_SMOKE_AT_IMPORT") == "0"
-        if not skip_l5_exec and not legacy_smoke_off and verdict.accepted:
+        # e rejecta se fail. Default ON. I test isolati usano il parametro
+        # esplicito ``skip_l5_exec``; l'ambiente non modifica la policy.
+        if not skip_l5_exec and verdict.accepted:
             s_ok, s_reason = _run_smoke_for_plan(plan, verdict.smoke_battery_case)
             verdict.layer_results["L5_smoke_exec"] = s_ok
             if not s_ok:
@@ -675,14 +667,9 @@ def admit_skill_import(parsed_skill, plans, *,
 
         # L6 semantic verifier — default ON per imported (ADR 0159):
         # confronta description (manifest) ↔ code body via il modello locale.
-        # Reject su `aligned=false`. Bypass via flag esplicito `--skip-l6`
-        # (escape hatch dev/CI). Disable globale via env
-        # `METNOS_SYNT_STAGE6_DISABLED=1` (test veloce). L'override
-        # storico `METNOS_STAGE6_VERIFY_IMPORTED=0` resta come kill-switch
-        # legacy per chi vuole il comportamento pre-0159.
-        legacy_off = os.environ.get("METNOS_STAGE6_VERIFY_IMPORTED") == "0"
-        global_off = os.environ.get("METNOS_SYNT_STAGE6_DISABLED") == "1"
-        if not skip_l6 and not legacy_off and not global_off and verdict.accepted:
+        # Reject su ``aligned=false`` o schema non tipizzato. I test isolati
+        # iniettano il verificatore e possono usare ``skip_l6`` esplicitamente.
+        if not skip_l6 and verdict.accepted:
             mp = None
             cp = None
             if executor_dir is not None:

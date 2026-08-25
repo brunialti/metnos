@@ -476,7 +476,8 @@ def _register_synth_keys(code: str) -> int:
 
 def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
              llm_call_creative=None, llm_call_fidelity=None,
-             progress=None) -> MultistageRun:
+             progress=None, lint_manifest_fn=None,
+             semantic_verify_fn=None) -> MultistageRun:
     """Orchestratore a 6 stadi, separato per contratto di workload.
 
     Stages 1-3 are procedural (middle), stage 4 is editorial (creative),
@@ -534,85 +535,91 @@ def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
     # Gira PRIMA del verifier LLM (stage6): becca i difetti di FORMA della scheda
     # (PATTERN con arg inventato, arg runtime_resolved citato, output-shape) senza
     # spendere una call LLM. Rigetta solo su severity 'error' (difetti genuini);
-    # i 'warn' (es. SCOPO lungo) sono loggati. Disable: METNOS_SYNT_LINT_DISABLED=1.
-    import os as _os_lint
-    if _os_lint.environ.get("METNOS_SYNT_LINT_DISABLED") != "1":
-        try:
-            import config as _C_lint
+    # i 'warn' (es. SCOPO lungo) sono loggati. La policy non è modificabile
+    # tramite ambiente; i test possono iniettare una funzione esplicita.
+    try:
+        import config as _C_lint
+        if lint_manifest_fn is None:
             from manifest_lint import lint_manifest as _lint
-            _man = {
-                "name": run.name or (s1.output.get("name") if s1.output else "") or "",
-                "description": (s4.output.get("description") if s4.output else "") or "",
-                "affinity": (s4.output.get("affinity") if s4.output else []) or [],
-                "args": {
-                    "properties": (s2.output.get("args_properties") if s2.output else {}) or {},
-                    "required": (s2.output.get("args_required") if s2.output else []) or [],
-                },
-            }
-            _findings = _lint(
-                _man, language=_C_lint.INSTANCE_LANG,
-                allow_flat_description=True,
-            )
-            _errs = [f for f in _findings if f.severity == "error"]
-            _warns = [f for f in _findings if f.severity == "warn"]
-            if _warns:
-                try:
-                    from logging_setup import get_logger
-                    get_logger(__name__).info(
-                        "[synt.lint] %s: %d warn — %s", _man["name"], len(_warns),
-                        "; ".join(w.message for w in _warns[:3]))
-                except Exception:
-                    pass
-            if _errs:
-                run.final_state = "rejected_lint_structural"
-                run.abandon_reason = "manifest_lint: " + "; ".join(
-                    e.message for e in _errs[:3])
-                return run
-        except Exception as ex:
-            # best-effort §7.9: un errore d'infra del linter non blocca la synt.
+        else:
+            _lint = lint_manifest_fn
+        _man = {
+            "name": run.name or (s1.output.get("name") if s1.output else "") or "",
+            "description": (s4.output.get("description") if s4.output else "") or "",
+            "affinity": (s4.output.get("affinity") if s4.output else []) or [],
+            "args": {
+                "properties": (s2.output.get("args_properties") if s2.output else {}) or {},
+                "required": (s2.output.get("args_required") if s2.output else []) or [],
+            },
+        }
+        _findings = _lint(
+            _man, language=_C_lint.INSTANCE_LANG,
+            allow_flat_description=True,
+        )
+        _errs = [f for f in _findings if f.severity == "error"]
+        _warns = [f for f in _findings if f.severity == "warn"]
+        if _warns:
             try:
                 from logging_setup import get_logger
-                get_logger(__name__).warning("[synt.lint] failed: %s", ex)
+                get_logger(__name__).info(
+                    "[synt.lint] %s: %d warn — %s", _man["name"], len(_warns),
+                    "; ".join(w.message for w in _warns[:3]))
             except Exception:
                 pass
+        if _errs:
+            run.final_state = "rejected_lint_structural"
+            run.abandon_reason = "manifest_lint: " + "; ".join(
+                e.message for e in _errs[:3])
+            return run
+    except Exception as ex:
+        run.final_state = "rejected_lint_unavailable"
+        run.abandon_reason = f"manifest_lint_unavailable: {type(ex).__name__}"
+        return run
 
     # Stage 6 — semantic verification (ADR 0114 Layer 6, 8/5/2026).
     # Confronta description (s4) vs code (s5). Se misaligned → rejected.
     # Determinismo §7.9: LLM solo per il giudizio, mai per la decisione.
-    # Disable via env: METNOS_SYNT_STAGE6_DISABLED=1 (test/dev).
-    import os as _os
-    if _os.environ.get("METNOS_SYNT_STAGE6_DISABLED") != "1":
-        try:
+    # La policy non è modificabile tramite ambiente; i test iniettano il
+    # verificatore quando devono isolare questo stadio.
+    try:
+        from synt_stage6_verify import SemanticVerdictInvalid, validate_stage6_verdict
+        if semantic_verify_fn is None:
             from synt_stage6_verify import verify_semantic_alignment
-            description = (s4.output.get("description") or "") if s4 and s4.output else ""
-            code_body = run.code_text or ""
-            if description and code_body:
-                def _v_llm(prompt, model):
-                    res = llm_call_fidelity(prompt, "", max_tokens=300)
-                    return res or {}
-                verdict = verify_semantic_alignment(
-                    description=description,
-                    code_body=code_body,
-                    llm_call=_v_llm,
-                    name_hint=run.name or run.proposal_id,
-                )
-                run.semantic_verdict = verdict
-                if not verdict.get("aligned", False):
-                    run.final_state = "rejected_semantic_drift"
-                    run.abandon_reason = (
-                        f"stage6 semantic drift: {verdict.get('mismatch', '')}"
-                    )
-                    return run
-        except Exception as ex:
-            # Best-effort §7.9: se lo stage 6 stesso fallisce, log warn e
-            # ammetti il synth (non blocchiamo la pipeline su un errore di
-            # infrastruttura del verifier; layer 2/3/5 sono ridondanti).
-            try:
-                from logging_setup import get_logger
-                _log = get_logger(__name__)
-                _log.warning("[synt.stage6] verify failed: %s", ex)
-            except Exception:
-                pass
+        else:
+            verify_semantic_alignment = semantic_verify_fn
+        description = (s4.output.get("description") or "") if s4 and s4.output else ""
+        code_body = run.code_text or ""
+        if not description or not code_body:
+            run.final_state = "rejected_semantic_input_invalid"
+            run.abandon_reason = "stage6 semantic input missing"
+            return run
+
+        def _v_llm(prompt, model):
+            res = llm_call_fidelity(prompt, "", max_tokens=300)
+            return res or {}
+
+        verdict = verify_semantic_alignment(
+            description=description,
+            code_body=code_body,
+            llm_call=_v_llm,
+            name_hint=run.name or run.proposal_id,
+        )
+        validate_stage6_verdict(verdict)
+        run.semantic_verdict = verdict
+        if not verdict.get("aligned", False):
+            run.final_state = "rejected_semantic_drift"
+            run.abandon_reason = (
+                f"stage6 semantic drift: {verdict.get('mismatch', '')}"
+            )
+            return run
+    except SemanticVerdictInvalid as ex:
+        run.final_state = "rejected_semantic_invalid"
+        run.abandon_reason = f"stage6 verdict invalid: {ex}"
+        return run
+    except Exception as ex:
+        run.final_state = "rejected_semantic_unavailable"
+        run.abandon_reason = f"stage6 verifier unavailable: {type(ex).__name__}"
+        return run
 
     run.final_state = "synthesized"
     return run
