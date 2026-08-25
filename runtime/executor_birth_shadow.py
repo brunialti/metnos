@@ -1,0 +1,278 @@
+"""Fail-closed observational Birth orchestration for RM-0008 F3.
+
+This module intentionally has no publisher, signer, receipt-store or lifecycle
+writer dependency.  It owns the candidate snapshot while checks run and emits
+only an immutable report describing the decision that a later commit phase
+could act on.
+"""
+from __future__ import annotations
+
+import hashlib
+import re
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, Iterable
+
+from executor_birth import ObservedCandidate, observe_candidate
+from executor_birth_identity import AdmissionContextV1, ExecutorOrigin, RevisionAuthor
+from manifest_inventory import ContractId
+
+
+_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+class RevisionClass(str, Enum):
+    FIRST_BIRTH = "first_birth"
+    CODE = "code_revision"
+    AUTHORITY = "authority_revision"
+    CONTRACT = "contract_revision"
+    LOCALIZATION = "localization_revision"
+    EQUIVALENT = "equivalent_republish"
+    PROMOTION = "promotion_revision"
+    REACTIVATION = "reactivation_revision"
+    REATTESTATION = "reattestation"
+
+
+class CheckStatus(str, Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    UNAVAILABLE = "unavailable"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class BirthOutcome(str, Enum):
+    ADMITTED = "admitted"
+    PREEXERCISE = "preexercise"
+    QUARANTINED = "quarantined"
+    REJECTED = "rejected"
+    NEEDS_HUMAN = "needs_human"
+
+
+@dataclass(frozen=True, slots=True)
+class RevisionFacts:
+    """Trusted comparison with the authenticated predecessor, not caller hints."""
+
+    first_birth: bool = False
+    promotion: bool = False
+    reactivation: bool = False
+    reattestation: bool = False
+    code_changed: bool = False
+    authority_changed: bool = False
+    contract_changed: bool = False
+    linguistic_surface_changed: bool = False
+    localization_proof_valid: bool = False
+    semantic_core_unchanged: bool = False
+    exact_republish: bool = False
+
+    def __post_init__(self) -> None:
+        state_modes = sum((self.first_birth, self.promotion, self.reactivation, self.reattestation))
+        if state_modes > 1:
+            raise ValueError("revision_state_ambiguous")
+
+
+@dataclass(frozen=True, slots=True)
+class RevisionDecision:
+    revision_class: RevisionClass
+    changed_dimensions: tuple[str, ...]
+
+
+def classify_revision(facts: RevisionFacts) -> RevisionDecision:
+    """Apply the conservative RM precedence and retain the complete union."""
+    dimensions = tuple(name for name, changed in (
+        ("code", facts.code_changed),
+        ("authority", facts.authority_changed),
+        ("contract", facts.contract_changed),
+        ("linguistic_surface", facts.linguistic_surface_changed),
+    ) if changed)
+    if facts.first_birth:
+        kind = RevisionClass.FIRST_BIRTH
+    elif facts.reactivation:
+        kind = RevisionClass.REACTIVATION
+    elif facts.promotion:
+        kind = RevisionClass.PROMOTION
+    elif facts.reattestation:
+        kind = RevisionClass.REATTESTATION
+    elif facts.exact_republish and not dimensions:
+        kind = RevisionClass.EQUIVALENT
+    elif facts.code_changed:
+        kind = RevisionClass.CODE
+    elif facts.authority_changed:
+        kind = RevisionClass.AUTHORITY
+    elif facts.contract_changed:
+        kind = RevisionClass.CONTRACT
+    elif (
+        facts.linguistic_surface_changed
+        and facts.localization_proof_valid
+        and facts.semantic_core_unchanged
+    ):
+        kind = RevisionClass.LOCALIZATION
+    else:
+        # No positive proof of equivalence/localization is never classified as
+        # the less restrictive class.
+        kind = RevisionClass.CONTRACT
+    return RevisionDecision(kind, dimensions)
+
+
+@dataclass(frozen=True, slots=True)
+class CheckResult:
+    check_id: str
+    rule_version: str
+    status: CheckStatus
+    error_code: str | None
+    evidence_hash: str
+    redacted_detail: str
+
+    def __post_init__(self) -> None:
+        if not self.check_id or not self.rule_version:
+            raise ValueError("check_result_invalid")
+        if not isinstance(self.status, CheckStatus):
+            raise ValueError("check_status_invalid")
+        if not isinstance(self.evidence_hash, str) or not _DIGEST_RE.fullmatch(self.evidence_hash):
+            raise ValueError("check_evidence_invalid")
+        if self.status is CheckStatus.PASSED and self.error_code is not None:
+            raise ValueError("check_result_invalid")
+        if self.status in {CheckStatus.FAILED, CheckStatus.UNAVAILABLE} and not self.error_code:
+            raise ValueError("check_result_invalid")
+
+
+Applicability = Callable[[RevisionDecision, ObservedCandidate], bool]
+CheckRunner = Callable[[ObservedCandidate, RevisionDecision], CheckResult]
+
+
+@dataclass(frozen=True, slots=True)
+class CheckSpec:
+    check_id: str
+    rule_version: str
+    mandatory: bool
+    applicable: Applicability
+    run: CheckRunner
+
+    def __post_init__(self) -> None:
+        if not self.check_id or not self.rule_version or type(self.mandatory) is not bool:
+            raise ValueError("check_spec_invalid")
+        if not callable(self.applicable) or not callable(self.run):
+            raise ValueError("check_spec_invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class BirthReport:
+    schema_version: int
+    contract_id: ContractId
+    candidate_id: str | None
+    semantic_core_id: str | None
+    admission_context_id: str | None
+    revision_class: RevisionClass | None
+    changed_dimensions: tuple[str, ...]
+    checks: tuple[CheckResult, ...]
+    outcome: BirthOutcome
+    error_code: str | None
+    publisher_call_count: int = 0
+
+    def __post_init__(self) -> None:
+        if self.schema_version != 1 or self.publisher_call_count != 0:
+            raise ValueError("birth_report_invalid")
+
+
+Observer = Callable[..., ObservedCandidate]
+
+
+def _shadow_evidence(*parts: str) -> str:
+    framed = b"".join(len(part.encode("utf-8")).to_bytes(8, "big") + part.encode("utf-8")
+                      for part in parts)
+    return "sha256:" + hashlib.sha256(b"metnos.executor-birth.shadow-evidence/v1\0" + framed).hexdigest()
+
+
+def _unavailable(spec: CheckSpec, exc: Exception) -> CheckResult:
+    # Exception text may contain secrets or paths and is deliberately excluded.
+    return CheckResult(spec.check_id, spec.rule_version, CheckStatus.UNAVAILABLE,
+                       "check_unavailable",
+                       _shadow_evidence(spec.check_id, spec.rule_version, type(exc).__name__),
+                       type(exc).__name__)
+
+
+def _outcome(results: Iterable[tuple[CheckSpec, CheckResult]], origin: ExecutorOrigin) -> tuple[BirthOutcome, str | None]:
+    for spec, result in results:
+        if not spec.mandatory:
+            continue
+        if result.status in {CheckStatus.FAILED, CheckStatus.UNAVAILABLE}:
+            if result.error_code in {"semantic_review_uncertain", "approval_required"}:
+                return BirthOutcome.NEEDS_HUMAN, result.error_code
+            if result.error_code == "candidate_quarantined":
+                return BirthOutcome.QUARANTINED, result.error_code
+            return BirthOutcome.REJECTED, result.error_code
+    if origin is ExecutorOrigin.SYNTHESIZED:
+        return BirthOutcome.PREEXERCISE, None
+    return BirthOutcome.ADMITTED, None
+
+
+def observe_birth(
+    source_root: object,
+    *,
+    contract_id: ContractId,
+    executor_origin: ExecutorOrigin,
+    revision_authorship: RevisionAuthor,
+    objective_hash: str,
+    admission_context: AdmissionContextV1,
+    revision_facts: RevisionFacts,
+    check_specs: Iterable[CheckSpec],
+    private_parent: object | None = None,
+    observer: Observer = observe_candidate,
+) -> BirthReport:
+    """Run an F3 shadow decision.  There is intentionally no publisher hook."""
+    decision = classify_revision(revision_facts)
+    specs = tuple(check_specs)
+    if len({spec.check_id for spec in specs}) != len(specs):
+        raise ValueError("check_spec_duplicate")
+    observed: ObservedCandidate | None = None
+    results: list[tuple[CheckSpec, CheckResult]] = []
+    try:
+        observed = observer(
+            source_root,
+            contract_id=contract_id,
+            executor_origin=executor_origin,
+            revision_authorship=revision_authorship,
+            objective_hash=objective_hash,
+            admission_context=admission_context,
+            private_parent=private_parent,
+        )
+        for spec in specs:
+            try:
+                applies = spec.applicable(decision, observed)
+                if type(applies) is not bool:
+                    raise TypeError("applicability_not_boolean")
+                if not applies:
+                    result = CheckResult(spec.check_id, spec.rule_version,
+                                         CheckStatus.NOT_APPLICABLE, None,
+                                         _shadow_evidence(
+                                             spec.check_id, spec.rule_version,
+                                             observed.identities.candidate_id,
+                                             observed.identities.admission_context_id,
+                                             decision.revision_class.value,
+                                         ),
+                                         "predicate_false")
+                else:
+                    result = spec.run(observed, decision)
+                    if not isinstance(result, CheckResult):
+                        raise TypeError("check_result_untyped")
+                    if (result.check_id, result.rule_version) != (spec.check_id, spec.rule_version):
+                        raise ValueError("check_result_binding_invalid")
+            except Exception as exc:
+                result = _unavailable(spec, exc)
+            results.append((spec, result))
+            if spec.mandatory and result.status in {CheckStatus.FAILED, CheckStatus.UNAVAILABLE}:
+                break
+        outcome, error = _outcome(results, executor_origin)
+        identities = observed.identities
+        return BirthReport(
+            1, contract_id, identities.candidate_id, identities.semantic_core_id,
+            identities.admission_context_id, decision.revision_class,
+            decision.changed_dimensions, tuple(result for _, result in results),
+            outcome, error,
+        )
+    except Exception:
+        return BirthReport(1, contract_id, None, None, None, decision.revision_class,
+                           decision.changed_dimensions, (), BirthOutcome.REJECTED,
+                           "candidate_observation_unavailable")
+    finally:
+        if observed is not None:
+            observed.close()
