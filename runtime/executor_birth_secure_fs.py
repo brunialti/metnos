@@ -2851,9 +2851,17 @@ class _SecureRootSession:
             components=components, kind=_ObjectKind.regular_file, role=role,
         )
         with contextlib.ExitStack() as reservation:
-            if create:
+            settled = self._role_overlay.get(components)
+            if create and (
+                settled is None
+                or settled[1] is not _BirthRoleBindingOriginV1.OVERLAY_COMMITTED
+                or settled[0] != requested
+            ):
                 # Section 16.13.1 requires the same transition for a file, a
-                # directory and the creation of the global lock.
+                # directory and the creation of the global lock.  A lock this
+                # session already created is not created again: its binding is
+                # settled and reserving it a second time would be a conflict
+                # with itself.
                 reservation.enter_context(
                     self._reserve_exact_role_binding_v1(requested)
                 )
