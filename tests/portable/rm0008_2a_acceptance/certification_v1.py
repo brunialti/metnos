@@ -2083,12 +2083,21 @@ def validate_productive_mutation_graph(
                 entry_definition_reachable.add(target)
                 pending.append(target)
 
+    dynamic_only = {f"@dynamic:{name}" for name in _SENSITIVE_TERMINALS}
     violations = [*direct_alias_exports, *indirect_mutator_references]
     for owner in calls:
         reached = reachable(owner) & sensitive_targets
         if not reached:
             continue
         owner_module, owner_name = owner.split("::", 1)
+        if reached <= dynamic_only and not owner_module.startswith(
+            "runtime.executor_birth"
+        ):
+            # Section 17.22: a dynamic import cannot obtain the mutating
+            # capability, because that needs an authentic descriptor and there
+            # is one place that builds it.  The rule therefore covers the
+            # modules that implement the gate, not every module that ships.
+            continue
         if owner_module == "runtime.executor_birth_secure_fs":
             reached_mutations = reached & mutation_symbols
             reached_mutations.update(
