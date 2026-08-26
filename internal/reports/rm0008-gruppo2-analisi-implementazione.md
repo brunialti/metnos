@@ -3982,3 +3982,36 @@ Queste correzioni si applicano tutte insieme, seguite da un solo nuovo
 congelamento con la stessa procedura del §17.8 passo 5, quando l'apparato non
 richiede piu' modifiche.
 
+### 17.22 Decisioni delegate all'agente su §17.13 e §17.16
+
+Roberto ha delegato le due scelte. Sono decise qui, con la ragione.
+
+**§17.16 — `swap-after-middle`: la proprietà appartiene al 2B.**
+La cella chiede di riconoscere un sottoalbero sostituito mentre il prodotto è
+fermo alla barriera, cioè **prima** che apra quel componente. Non esiste
+osservazione anteriore con cui confrontare: il catalogo dichiara nome, tipo e
+profilo, non identità, e la sessione non ha mai visto quell'oggetto. Le altre
+due sostituzioni dello stesso gruppo passano perché lì il prodotto tiene già
+in mano l'oggetto.
+
+Registrare l'identità attesa in modo durevole è esattamente ciò che il §16.13.2
+assegna al registro e ai checkpoint del **2B**: «la primitiva non conosce
+journal né checkpoint; registrare l'esito appartiene al chiamante del 2B». Il
+2A possiede la traversata legata ai manici, non una memoria fra sessioni.
+
+Decisione: il caso viene **ritirato dal contratto 2A** (235 → 234 celle) e la
+proprietà è assegnata al 2B, dove il registro durevole la rende dimostrabile.
+Il ritiro è dichiarato, non silenzioso: senza memoria durevole nessuna
+implementazione può superarlo, quindi tenerlo rosso non misura il prodotto.
+
+**§17.13 — importazione dinamica: la regola si restringe al grafo della
+nascita.** La contenzione reale è il punto unico di costruzione del
+descrittore, che un'importazione dinamica non aggira: senza descrittore
+autentico non esiste sessione mutante. Estendere la regola a tutto il prodotto
+imporrebbe un rifacimento di sottosistemi estranei a RM-0008 senza guadagno
+dimostrato. La cella limiterà quindi il divieto ai moduli che implementano il
+cancello.
+
+Entrambe le correzioni toccano l'apparato congelato ed entrano nella lista
+d'attesa del §17.21.
+
