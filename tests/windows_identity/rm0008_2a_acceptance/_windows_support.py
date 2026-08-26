@@ -296,7 +296,12 @@ def exact_role_catalog(sf, bindings=(), *, root: Path | None = None):
             )
         )
     )
-    if root is not None:
+    if root is None:
+        # Without a root nothing is inspected: the declared bindings are taken
+        # as they are, which is what a cell needs when it declares a name it is
+        # about to create.
+        values.extend(candidates)
+    else:
         for binding in candidates:
             path = root.joinpath(*binding.components)
             try:
@@ -361,7 +366,10 @@ def session(
         tuple(handles),
         absolute,
         sf._PlatformIdentity(None, sid),
-        exact_role_catalog(sf, role_bindings, root=root),
+        # The declared bindings are the caller's, as the helper that builds
+        # them states: filtering them by what already exists on disk would
+        # silently drop the name a cell is about to create and then dispose.
+        exact_role_catalog(sf, role_bindings),
     )
     try:
         adopted = required(sf, "_adopt_authenticated_root")(descriptor)

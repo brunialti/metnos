@@ -1350,7 +1350,9 @@ _NT_FILE_ACCESS_V1 = {
     _NtOpenPurposeV1.lock_reader: 0x00120081,
     _NtOpenPurposeV1.create_exclusive: _WIN_FILE_CREATE_ACCESS_V1,
     _NtOpenPurposeV1.mutating_open: 0x001f0080,
-    _NtOpenPurposeV1.disposition: 0x00130080,
+    # Removal also compares the bytes against the expectation, so it reads
+    # through the same handle it will delete through.
+    _NtOpenPurposeV1.disposition: 0x00130081,
 }
 _NT_DIRECTORY_ACCESS_V1 = {
     # Enumerating a container needs its own attributes as well: the volume and
@@ -1359,7 +1361,7 @@ _NT_DIRECTORY_ACCESS_V1 = {
     _NtOpenPurposeV1.lock_reader: 0x001200a1,
     _NtOpenPurposeV1.create_exclusive: _WIN_DIRECTORY_CREATE_ACCESS_V1,
     _NtOpenPurposeV1.mutating_open: 0x001f00a0,
-    _NtOpenPurposeV1.disposition: 0x00130080,
+    _NtOpenPurposeV1.disposition: 0x00130021,
 }
 _NT_SHARE_ACCESS_V1 = 0x00000003
 _NT_FILE_ATTRIBUTES_V1 = 0x00000080
