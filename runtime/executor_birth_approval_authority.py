@@ -61,6 +61,35 @@ def verify_decision(authority: ApprovalAuthority, *, token: str, subject_hash: s
         raise BirthApprovalError("approval_invalid", "signature") from exc
 
 
+MAXIMUM_APPROVAL_REGISTRY_BYTES = 64 * 1024
+
+
+def _load_approval_authority_in_session(
+    authority_file: tuple[str, ...],
+    session,
+) -> ApprovalAuthority:
+    """Load the registry through a session that already holds the global lock.
+
+    Section 16.13.3 fixes this entry: it never releases or reacquires the
+    global lock and it invents no local lock of its own, because only the key
+    store owns one.  The relative name comes from the closed catalogue, not
+    from a value declared inside the document.
+    """
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    if not session._holds_global_lock():
+        raise BirthApprovalError("approval_authority_unavailable")
+    try:
+        raw = session.read_file(
+            tuple(authority_file),
+            maximum=MAXIMUM_APPROVAL_REGISTRY_BYTES,
+            role=_BirthObjectRole.birth_integrity_only,
+        )
+    except BirthSecureFSError as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    return _decode_approval_authority(raw)
+
+
 def load_approval_authority(path: Path) -> ApprovalAuthority:
     """Load a canonical public-only registry; retained keys verify old decisions."""
     try:
@@ -75,8 +104,16 @@ def load_approval_authority(path: Path) -> ApprovalAuthority:
         if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns) != (
                 after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
             raise OSError("registry changed")
+    except OSError as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    return _decode_approval_authority(raw)
+
+
+def _decode_approval_authority(raw: bytes) -> ApprovalAuthority:
+    """Validate the canonical registry bytes, whatever produced them."""
+    try:
         value = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BirthApprovalError("approval_authority_unavailable") from exc
     canonical = json.dumps(value, ensure_ascii=False, sort_keys=True,
                            separators=(",", ":")).encode()
