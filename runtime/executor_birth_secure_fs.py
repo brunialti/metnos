@@ -1910,6 +1910,27 @@ class _SecureRootSession:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         return _ResolvedBirthRoleBindingV1(binding=binding, origin=origin)
 
+    def _catalog_directory_role_v1(
+        self, components: tuple[str, ...],
+    ) -> _BirthObjectRole | None:
+        """Role a traversed directory must already carry, when the catalogue says so.
+
+        The catalogue is the authority for profiles (section 16.13.2), so the
+        walk itself must consult it instead of assuming the root profile for
+        every intermediate name.  An absent row leaves the historical fallback
+        in place; a row that declares a regular file leaves the refusal to the
+        traversal syscall, which is what actually observes the object.
+        """
+        try:
+            resolved = self._resolve_effective_role_binding_v1(components)
+        except BirthSecureFSError as exc:
+            if exc.code == "birth_provisioning_recovery_ambiguous":
+                return None
+            raise
+        if resolved.binding.kind is not _ObjectKind.directory:
+            return None
+        return resolved.binding.role
+
     @contextlib.contextmanager
     def _reserve_exact_role_binding_v1(
         self, binding: _BirthRoleBindingV1,
@@ -1983,6 +2004,16 @@ class _SecureRootSession:
         components = _relative_components(components)
         current = self._root_handle
         current_path = self._root_path
+        # A role a caller declares for the last name is a claim about the
+        # catalogue, checked here once and before any traversal syscall.  The
+        # walk below then treats every component the same way, because the
+        # authority for a profile is the name itself, never its depth.
+        if final_role is not None and components:
+            declared = self._directory_roles.get(components)
+            if declared is None:
+                declared = self._catalog_directory_role_v1(components)
+            if declared is not None and declared is not final_role:
+                raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         try:
             prefix: tuple[str, ...] = ()
             for component in components:
@@ -1990,15 +2021,10 @@ class _SecureRootSession:
                 current_path = os.path.join(current_path, component)
                 child = self._directories.get(prefix)
                 role = self._directory_roles.get(prefix)
-                if (
-                    role is not None
-                    and prefix == components
-                    and final_role is not None
-                    and role is not final_role
-                ):
-                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
                 if role is None:
-                    role = final_role if prefix == components and final_role else self._root_role
+                    role = self._catalog_directory_role_v1(prefix)
+                if role is None:
+                    role = self._root_role
                 if child is None:
                     try:
                         if os.name == "nt":
