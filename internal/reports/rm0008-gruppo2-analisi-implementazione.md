@@ -3970,6 +3970,14 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   all'aiutante Windows: registrare il rifiuto invece di interrompere.
   Conservato in `apparato-pendente-2.patch`.
 
+- **sonda di causalita' della rinomina** — `_RenameCausalityProbe` sostituisce
+  la verifica di profilo con un metodo gia' legato alla sonda, ma la sua firma
+  attende `(session, handle, ...)`. Un metodo legato non e' un descrittore:
+  quando il prodotto chiama `session._verify_windows_profile(handle, ...)` la
+  sonda riceve il manico al posto della sessione e il manico manca. La
+  correzione minima e' installare la funzione della classe invece del metodo
+  legato, oppure togliere il parametro `session` dalla firma. Due celle.
+
 Queste correzioni si applicano tutte insieme, seguite da un solo nuovo
 congelamento con la stessa procedura del §17.8 passo 5, quando l'apparato non
 richiede piu' modifiche.
