@@ -2273,9 +2273,19 @@ class _SecureRootSession:
         with self._directory_chain(components) as (handle, _):
             try:
                 def resolve(relative, scope=components):
-                    return self._resolve_effective_role_binding_v1(
-                        scope + relative
-                    ).binding
+                    # Enumeration observes what exists; it does not decide who
+                    # may exist.  A name the catalogue does not declare is
+                    # reported with the neutral profile and left to the
+                    # comparison below, which is what turns an appearance
+                    # between two scans into a declared ambiguity.
+                    try:
+                        return self._resolve_effective_role_binding_v1(
+                            scope + relative
+                        ).binding
+                    except BirthSecureFSError as exc:
+                        if exc.code == "birth_provisioning_recovery_ambiguous":
+                            return None
+                        raise
 
                 shared = _InventoryBudgetV1() if budget is None else budget
                 before = (
@@ -2291,7 +2301,10 @@ class _SecureRootSession:
             except OSError as exc:
                 raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             if before != after:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable")
+                # The directory changed while it was being read: the two
+                # readings cannot be reconciled, which is an ambiguous
+                # recovery and not a failure of the device.
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
             if len({item.name for item in before}) != len(before):
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
             return before
