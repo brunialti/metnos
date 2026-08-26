@@ -598,6 +598,57 @@ class _DisposalExpectation:
                 pass
             else:
                 object.__setattr__(self, "content_sha256", "sha256:" + digest)
+        # The admitted combinations are closed: an expectation that mixes two
+        # classes is refused before the name is opened (section 16.13.2).
+        if not self.components:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        _relative_components(self.components)
+        if self.inventory is not None and (
+            not isinstance(self.inventory, tuple)
+            or any(
+                not isinstance(item, _InventoryEntry) for item in self.inventory
+            )
+        ):
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if self.disposal_class is _DisposalClass.complete_file:
+            valid = (
+                self.kind is _ObjectKind.regular_file
+                and self.links == 1
+                and isinstance(self.expected_size, int)
+                and not isinstance(self.expected_size, bool)
+                and self.expected_size >= 0
+                and self.maximum_partial_size is None
+                and _is_canonical_digest(self.content_sha256)
+                and self.inventory is None
+            )
+        elif self.disposal_class is _DisposalClass.partial_pending_file:
+            valid = (
+                self.kind is _ObjectKind.regular_file
+                and self.links == 1
+                and self.expected_size is None
+                and isinstance(self.maximum_partial_size, int)
+                and not isinstance(self.maximum_partial_size, bool)
+                and self.maximum_partial_size >= 0
+                and self.content_sha256 is None
+                and self.inventory is None
+            )
+        else:
+            valid = (
+                self.kind is _ObjectKind.directory
+                and self.links == (1 if os.name == "nt" else 2)
+                and self.expected_size is None
+                and self.maximum_partial_size is None
+                and self.content_sha256 is None
+                and self.inventory == ()
+            )
+        if not valid:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+
+
+def _is_canonical_digest(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        return False
+    return _is_hex(value[len("sha256:"):], 64)
 
 
 class _InventoryBudgetV1:
@@ -2398,6 +2449,7 @@ class _SecureRootSession:
                     else 0o644
                 )
                 fd = os.open(name, flags, mode, dir_fd=directory)
+                committed = False
                 try:
                     _verify_posix_file(
                         fd, role=role, expected_uid=self._expected_uid
@@ -2412,9 +2464,21 @@ class _SecureRootSession:
                         raise BirthSecureFSError("birth_provisioning_io_unavailable")
                     os.fsync(directory)
                     self._file_roles[components] = (before, role)
+                    committed = True
                     return before
                 finally:
                     os.close(fd)
+                    if not committed:
+                        # Section 16.13.1: any exception after the creation or
+                        # the write removes the new object, releases the
+                        # reservation and leaves the logical inventory
+                        # unchanged.  The primary error is preserved.
+                        self._file_roles.pop(components, None)
+                        try:
+                            os.unlink(name, dir_fd=directory)
+                            os.fsync(directory)
+                        except OSError:
+                            pass
             except FileExistsError as exc:
                 raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
             except BirthSecureFSError:
