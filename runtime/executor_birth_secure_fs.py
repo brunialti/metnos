@@ -3554,15 +3554,21 @@ class _SecureRootSession:
     ) -> _ObjectIdentity:
         source_parent, source_name = source[:-1], source[-1]
         target_parent, target_name = destination[:-1], destination[-1]
-        with self._directory_chain(source_parent) as (_, source_path):
+        with self._directory_chain(source_parent) as (source_fd, source_path):
             with self._directory_chain(target_parent) as (target_handle, target_path):
                 source_path = os.path.join(source_path, source_name)
                 source_handle = self._directories.get(source) if directory else None
                 close_source = source_handle is None
                 try:
                     if source_handle is None:
-                        source_handle = _win_open_path(
-                            source_path, directory=directory, delete=True
+                        # The object being moved is opened relative to its own
+                        # container: rebuilding its absolute name would let a
+                        # component substituted meanwhile decide what moves.
+                        source_handle = _win_open_relative_v1(
+                            source_fd,
+                            source_name,
+                            purpose=_NtOpenPurposeV1.mutating_open,
+                            directory=directory,
                         )
                     before = _verify_win_object(source_handle, source_path, directory=directory)
                     target_identity = _win_info(target_handle)[0]
@@ -3695,7 +3701,13 @@ class _SecureRootSession:
                     raise BirthSecureFSError(
                         "birth_provisioning_recovery_ambiguous"
                     )
-                if observed[2] != directory_expected or observed[3] != expectation.links:
+                # The tuple carries attributes, links, deletion pending, kind
+                # and size in this order after the identity.
+                if observed[4] != directory_expected or observed[2] != expectation.links:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                if observed[3]:
                     raise BirthSecureFSError(
                         "birth_provisioning_recovery_ambiguous"
                     )
