@@ -3583,13 +3583,19 @@ def _adopt_authenticated_root(
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
     elif identity.posix_uid is None or identity.windows_service_sid is not None:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-    return _SecureRootSession(
-        _SESSION_TOKEN,
-        descriptor.handles,
-        descriptor.root_path,
-        identity=descriptor.identity,
-        role_catalog=descriptor.role_catalog,
-    )
+    try:
+        return _SecureRootSession(
+            _SESSION_TOKEN,
+            descriptor.handles,
+            descriptor.root_path,
+            identity=descriptor.identity,
+            role_catalog=descriptor.role_catalog,
+        )
+    except OSError as exc:
+        # A descriptor the device cannot report on is unavailability, and the
+        # adoption boundary is where that becomes a stable code: no caller of
+        # this entry ever sees a raw system error.
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from exc
 
 
 def _read_path_once(
