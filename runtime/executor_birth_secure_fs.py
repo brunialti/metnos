@@ -1368,6 +1368,7 @@ _NT_DIRECTORY_ACCESS_V1 = {
     # compare the declared inventory, so both rights belong to this mask.
     _NtOpenPurposeV1.disposition: 0x001300a1,
 }
+_FILE_SHARE_DELETE = 0x00000004
 _NT_SHARE_ACCESS_V1 = 0x00000003
 _NT_FILE_ATTRIBUTES_V1 = 0x00000080
 
@@ -1428,6 +1429,14 @@ def _win_open_relative_v1(
         if directory
         else _NT_FILE_ACCESS_V1[purpose]
     )
+    # A container held open only to walk through it must not stop the object
+    # from being moved later: it shares deletion. A loader that reads a file,
+    # and every mutating purpose, do not.
+    share = (
+        _NT_SHARE_ACCESS_V1 | _FILE_SHARE_DELETE
+        if directory and purpose is _NtOpenPurposeV1.read_required
+        else _NT_SHARE_ACCESS_V1
+    )
     options = _FILE_OPEN_REPARSE_POINT | _FILE_SYNCHRONOUS_IO_NONALERT
     options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
     if create:
@@ -1455,7 +1464,7 @@ def _win_open_relative_v1(
         ctypes.byref(status_block),
         None,
         _NT_FILE_ATTRIBUTES_V1,
-        _NT_SHARE_ACCESS_V1,
+        share,
         _FILE_CREATE if create else _FILE_OPEN,
         options,
         None,
