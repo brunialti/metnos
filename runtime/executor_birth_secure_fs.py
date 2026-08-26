@@ -1814,6 +1814,33 @@ def _win_security_attributes(
         _KERNEL32.LocalFree(descriptor)
 
 
+def _win_dacl_parts_v1(sddl: str) -> tuple[str, frozenset[str], str]:
+    """Split one descriptor into owner, list control flags and entries."""
+    head, opened, entries = sddl.partition("(")
+    owner, marker, flags = head.partition("D:")
+    if not opened or not marker:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    return owner.casefold(), frozenset(flags.upper()), (opened + entries).casefold()
+
+
+def _require_equivalent_dacl_v1(expected: str, actual: str) -> None:
+    """Compare what the product decides, not what the system computes.
+
+    The owner and the whole ordered list of entries must match exactly, and
+    the list must be protected.  The system additionally marks a list it has
+    written itself as auto-inherited; that bit is not a decision of this code
+    and, with protection in force, it cannot bring in an inherited entry.
+    """
+    expected_owner, expected_flags, expected_entries = _win_dacl_parts_v1(expected)
+    actual_owner, actual_flags, actual_entries = _win_dacl_parts_v1(actual)
+    if expected_owner != actual_owner or expected_entries != actual_entries:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    if "P" not in actual_flags or not expected_flags <= actual_flags:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    if actual_flags - expected_flags - {"A", "I"}:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+
+
 def _win_descriptor_sddl(descriptor: int) -> str:
     encoded = wintypes.LPWSTR()
     length = wintypes.DWORD()
@@ -1889,14 +1916,14 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         ctypes.byref(actual_descriptor),
     )
     if result:
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe", OSError)(
-            result, "GetSecurityInfo"
+        raise BirthSecureFSError(
+            "birth_provisioning_acl_unsafe",
+            OSError(result, "GetSecurityInfo"),
         )
     try:
         expected = _win_descriptor_sddl(expected_descriptor)
         actual = _win_descriptor_sddl(actual_descriptor.value)
-        if actual.casefold() != expected.casefold():
-            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        _require_equivalent_dacl_v1(expected, actual)
     except OSError as exc:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
     finally:
