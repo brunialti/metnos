@@ -43,14 +43,18 @@ def _call_through_handles(
     real_fchdir = os.fchdir
 
     def traced_open(path, flags, mode=0o777, *, dir_fd=None):
-        # ``AT_FDCWD`` is an int like any other descriptor, so "dir_fd is not
-        # None" would accept a nominal reopen against the process directory.
-        # Only a descriptor whose identity descends from the authenticated
-        # root counts as handle-bound.
-        if dir_fd is not None and dir_fd == getattr(os, "AT_FDCWD", -100):
-            raise AssertionError("legacy loader opened relative to AT_FDCWD")
+        # A nominal reopen against the process directory passes ``AT_FDCWD``,
+        # which is an int like any other descriptor but names no object: it
+        # cannot be inspected.  Only a descriptor whose identity descends from
+        # the authenticated root counts as handle-bound.
         if dir_fd is not None:
-            parent = os.fstat(dir_fd)
+            try:
+                parent = os.fstat(dir_fd)
+            except OSError as exc:
+                raise AssertionError(
+                    "legacy loader opened relative to a descriptor that names "
+                    "no directory"
+                ) from exc
             descendant_parents.append((parent.st_dev, parent.st_ino))
         result = real_open(path, flags, mode, dir_fd=dir_fd)
         opened.append((os.fspath(path), flags, dir_fd))

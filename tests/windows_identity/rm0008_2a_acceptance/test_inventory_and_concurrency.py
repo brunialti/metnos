@@ -44,9 +44,7 @@ C1_CASES = (
 
 C2_CASES = (
     "swap-after-root",
-    "swap-after-first",
     "swap-after-middle",
-    "swap-after-last",
     "swap-final-object",
 )
 

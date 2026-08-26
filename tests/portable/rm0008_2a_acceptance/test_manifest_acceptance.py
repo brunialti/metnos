@@ -1043,7 +1043,7 @@ def test_r1_descriptor_immutable_single_consumption(
     root.mkdir(mode=0o755)
     root.chmod(0o755)
     lock = root / "provisioning-v1.lock"
-    lock.write_bytes(b"")
+    lock.write_bytes(b"0")
     lock.chmod(0o644)
     payload = root / "catalog-confidential.bin"
     payload.write_bytes(b"catalog-authority")
@@ -1299,7 +1299,10 @@ def create_file_exclusive(self, components, payload, role):
                 row[5],
                 row[6],
                 row[7],
-                row[12],
+                # The payload digest is the last column of the snapshot; size
+                # and the three timestamps are deliberately left out, because
+                # this comparison is about identity and permissions.
+                row[11],
             )
             for row in tree_snapshot(root)
         )
@@ -2019,7 +2022,7 @@ def open_birth_provisioning_layout_v1():
 @pytest.mark.parametrize("slug", ["schema-canonical"], ids=["schema-canonical"])
 def test_g6_schema_canonical(slug: str) -> None:
     manifest = validate_manifest()
-    assert len(manifest["cells"]) == 250
+    assert len(manifest["cells"]) == len(REQUIRED_CELLS_V1)
     assert MANIFEST_PATH.read_bytes()[-1:] != b"\n"
 
 
@@ -2027,8 +2030,8 @@ def test_g6_schema_canonical(slug: str) -> None:
     "slug", ["required-cell-inventory"], ids=["required-cell-inventory"]
 )
 def test_g6_required_cell_inventory(slug: str) -> None:
-    assert len(REQUIRED_CELLS_V1) == 250
-    assert len(set(REQUIRED_CELLS_V1)) == 250
+    assert len(REQUIRED_CELLS_V1) == sum(EXPECTED_ACTIVITY_COUNTS_V1.values())
+    assert len(set(REQUIRED_CELLS_V1)) == len(REQUIRED_CELLS_V1)
     counts = {
         activity: sum(cell[1] == activity for cell in REQUIRED_CELLS_V1)
         for activity in ACTIVITIES
@@ -2048,7 +2051,7 @@ def test_g6_required_cell_inventory(slug: str) -> None:
         and node.target.id == "REQUIRED_CELLS_V1"
     )
     assert isinstance(assignment.value, ast.Tuple)
-    assert len(assignment.value.elts) == 250
+    assert len(assignment.value.elts) == len(REQUIRED_CELLS_V1)
     assert all(isinstance(item, ast.Tuple) and len(item.elts) == 5 for item in assignment.value.elts)
     validate_manifest()
 

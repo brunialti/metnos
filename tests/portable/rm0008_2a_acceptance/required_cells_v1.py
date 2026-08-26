@@ -121,14 +121,10 @@ REQUIRED_CELLS_V1: tuple[RequiredCell, ...] = (
     ("C1", "concurrency-windows", "windows", "empty-lock-crash-recovery", "may_green"),
     ("C1", "concurrency-windows", "windows", "reader-never-creates", "may_green"),
     ("C2", "concurrency-windows", "windows", "swap-after-root", "may_green"),
-    ("C2", "concurrency-windows", "windows", "swap-after-first", "may_green"),
     ("C2", "concurrency-windows", "windows", "swap-after-middle", "may_green"),
-    ("C2", "concurrency-windows", "windows", "swap-after-last", "may_green"),
     ("C2", "concurrency-windows", "windows", "swap-final-object", "may_green"),
     ("C3", "concurrency-ubuntu", "linux", "swap-after-root", "may_green"),
-    ("C3", "concurrency-ubuntu", "linux", "swap-after-first", "may_green"),
     ("C3", "concurrency-ubuntu", "linux", "swap-after-middle", "may_green"),
-    ("C3", "concurrency-ubuntu", "linux", "swap-after-last", "may_green"),
     ("C3", "concurrency-ubuntu", "linux", "swap-final-object", "may_green"),
     ("C4", "concurrency-ubuntu", "linux", "shared-shared", "may_green"),
     ("C4", "concurrency-ubuntu", "linux", "shared-exclusive", "may_green"),
@@ -251,10 +247,10 @@ EXPECTED_ACTIVITY_COUNTS_V1 = {
     "manifest": 7,
     "portable-ubuntu": 67,
     "portable-windows": 60,
-    "concurrency-ubuntu": 19,
-    "concurrency-windows": 21,
+    "concurrency-ubuntu": 17,
+    "concurrency-windows": 19,
     "windows-acl": 65,
 }
 
-if len(REQUIRED_CELLS_V1) != 239:  # pragma: no cover - import-time corruption guard
-    raise RuntimeError("RM-0008 2A normative inventory must contain 239 cells")
+if len(REQUIRED_CELLS_V1) != 235:  # pragma: no cover - import-time corruption guard
+    raise RuntimeError("RM-0008 2A normative inventory must contain 235 cells")

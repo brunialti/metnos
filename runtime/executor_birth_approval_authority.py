@@ -61,22 +61,98 @@ def verify_decision(authority: ApprovalAuthority, *, token: str, subject_hash: s
         raise BirthApprovalError("approval_invalid", "signature") from exc
 
 
-def load_approval_authority(path: Path) -> ApprovalAuthority:
-    """Load a canonical public-only registry; retained keys verify old decisions."""
+MAXIMUM_APPROVAL_REGISTRY_BYTES = 64 * 1024
+
+
+def _load_approval_authority_in_session(
+    authority_file: tuple[str, ...],
+    session,
+) -> ApprovalAuthority:
+    """Load the registry through a session that already holds the global lock.
+
+    Section 16.13.3 fixes this entry: it never releases or reacquires the
+    global lock and it invents no local lock of its own, because only the key
+    store owns one.  The relative name comes from the closed catalogue, not
+    from a value declared inside the document.
+    """
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    if not session._holds_global_lock():
+        # Missing the global lock is a violation of the lock hierarchy, not a
+        # defect of the registry: the stable code belongs to the filesystem
+        # capability, so the caller cannot mistake one for the other.
+        raise BirthSecureFSError("birth_provisioning_lock_unsafe")
     try:
-        path = Path(path)
+        raw = session.read_file(
+            tuple(authority_file),
+            maximum=MAXIMUM_APPROVAL_REGISTRY_BYTES,
+            role=_BirthObjectRole.birth_integrity_only,
+        )
+    except BirthSecureFSError as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    return _decode_approval_authority(raw)
+
+
+def load_approval_authority(path: Path) -> ApprovalAuthority:
+    """Load a canonical public-only registry; retained keys verify old decisions.
+
+    The containing directory is the only absolute name resolved here; the
+    registry itself is opened relative to that descriptor, verified before the
+    first byte and compared again after the last, so a component substituted
+    after the anchor cannot redirect the read.
+    """
+    path = Path(path)
+    if os.name == "nt":
+        return _decode_approval_authority(_read_windows_registry(path))
+    from executor_birth_secure_fs import (
+        BirthSecureFSError,
+        _BirthObjectRole,
+        _open_posix_directory_root,
+        _read_posix_relative,
+    )
+
+    try:
+        directory = _open_posix_directory_root(os.fspath(path.parent))
+    except BirthSecureFSError as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    try:
+        raw = _read_posix_relative(
+            directory,
+            path.name,
+            maximum=MAXIMUM_APPROVAL_REGISTRY_BYTES,
+            role=_BirthObjectRole.historical_public,
+            expected_uid=None,
+        )
+    except (BirthSecureFSError, OSError) as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    finally:
+        os.close(directory)
+    return _decode_approval_authority(raw)
+
+
+def _read_windows_registry(path: Path) -> bytes:
+    """Historical Windows reading of the registry, unchanged by increment 2A."""
+    try:
         info = path.lstat()
         if (stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode)
-                or info.st_nlink != 1 or info.st_size > 64 * 1024
-                or (os.name != "nt" and info.st_mode & 0o022)):
+                or info.st_nlink != 1
+                or info.st_size > MAXIMUM_APPROVAL_REGISTRY_BYTES):
             raise OSError("unsafe registry")
         raw = path.read_bytes()
         after = path.stat()
         if (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns) != (
                 after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
             raise OSError("registry changed")
+    except OSError as exc:
+        raise BirthApprovalError("approval_authority_unavailable") from exc
+    return raw
+
+
+def _decode_approval_authority(raw: bytes) -> ApprovalAuthority:
+    """Validate the canonical registry bytes, whatever produced them."""
+    try:
         value = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BirthApprovalError("approval_authority_unavailable") from exc
     canonical = json.dumps(value, ensure_ascii=False, sort_keys=True,
                            separators=(",", ":")).encode()

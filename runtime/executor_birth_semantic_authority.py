@@ -14,7 +14,7 @@ import re
 import stat
 import ctypes
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
@@ -279,6 +279,8 @@ class PreprovisionedSemanticAuthority:
     verifier_keys: Mapping[str, Ed25519PublicKey]
 
     def __post_init__(self) -> None:
+        # ``evidence_dir`` is a historical Path or a directory capability bound
+        # to a Birth session; the second form cannot be reopened by name.
         if not isinstance(self.policy, ReviewPolicyV1) or not self.verifier_keys:
             raise SemanticReviewError("semantic_review_unavailable", "authority config")
         keys = dict(self.verifier_keys)
@@ -291,6 +293,10 @@ class PreprovisionedSemanticAuthority:
         return self.policy, derive_review_risk_facts(request), self._evidence_for(request)
 
     def _evidence_for(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
+        from executor_birth_secure_fs import _SecureDirectoryHandle
+
+        if isinstance(self.evidence_dir, _SecureDirectoryHandle):
+            return self._evidence_for_capability(request)
         if os.name == "nt":
             return self._evidence_for_windows(request)
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -326,6 +332,64 @@ class PreprovisionedSemanticAuthority:
             return tuple(result)
         finally:
             os.close(directory_fd)
+
+    def _evidence_for_capability(
+        self, request: SemanticReviewRequest
+    ) -> tuple[IndependentEvidence, ...]:
+        """Read the evidence store through the capability bound at load time.
+
+        The location is a directory this authority already holds, not a name to
+        resolve again: a store moved aside and replaced by another one at the
+        same name is therefore not consulted.  Once the session that produced
+        the capability is closed the store is simply unavailable, and the
+        refusal carries no location.
+        """
+        from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+        try:
+            names = sorted(
+                (
+                    name
+                    for name in self.evidence_dir.inventory()
+                    if name.endswith(".json")
+                ),
+                key=lambda name: name.encode(),
+            )
+        except BirthSecureFSError as exc:
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store"
+            ) from exc
+        if len(names) > _MAX_EVIDENCE_FILES:
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store bounds"
+            )
+        result: list[IndependentEvidence] = []
+        seen: set[str] = set()
+        for name in names:
+            try:
+                raw = self.evidence_dir.read_file(
+                    name,
+                    maximum=_MAX_EVIDENCE_BYTES,
+                    role=_BirthObjectRole.birth_integrity_only,
+                )
+            except BirthSecureFSError as exc:
+                raise SemanticReviewError(
+                    "semantic_review_unavailable", "evidence store"
+                ) from exc
+            item = self._decode_record(raw, name)
+            if item.candidate_id != request.candidate_id:
+                continue
+            if item.admission_context_id != request.admission_context_id:
+                raise SemanticReviewError("evidence_obsolete", item.evidence_id)
+            if item.owner_id == request.generator_owner_id:
+                raise SemanticReviewError(
+                    "evidence_forged", "candidate self-attestation"
+                )
+            if item.evidence_id in seen:
+                raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
+            seen.add(item.evidence_id)
+            result.append(item)
+        return tuple(result)
 
     def _evidence_for_windows(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
         handle = None
@@ -457,6 +521,124 @@ class PreprovisionedSemanticAuthority:
             raise SemanticReviewError("evidence_forged", name) from exc
 
 
+MAXIMUM_SEMANTIC_AUTHORITY_BYTES = 64 * 1024
+
+
+def _load_semantic_authority_in_session(
+    authority_file: tuple[str, ...],
+    public_directory: tuple[str, ...],
+    evidence_directory: tuple[str, ...],
+    session,
+) -> PreprovisionedSemanticAuthority:
+    """Load the authority through a session that already holds the global lock.
+
+    The three relative names come from the closed catalogue and never from a
+    value declared inside the document.  The evidence location is kept as a
+    directory capability bound to this session rather than a path to reopen,
+    so every use after the session is closed fails with the stable code and
+    without a path in the message (section 16.13.3).
+    """
+    import json
+
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    if not session._holds_global_lock():
+        raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+    public = _BirthObjectRole.birth_integrity_only
+    raw = session.read_file(
+        tuple(authority_file),
+        maximum=MAXIMUM_SEMANTIC_AUTHORITY_BYTES,
+        role=public,
+    )
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    if not isinstance(document, dict) or set(document) != {
+        "evidence_dir", "verifiers", "versions", "owners"
+    }:
+        raise SemanticReviewError("semantic_review_unavailable", "authority config")
+    try:
+        expected_kinds = {kind.value for kind in IndependentEvidenceKind}
+        if (set(document["versions"]) != expected_kinds
+                or set(document["owners"]) != expected_kinds):
+            raise ValueError("policy kinds")
+        versions = {
+            IndependentEvidenceKind(kind): frozenset(items)
+            for kind, items in document["versions"].items()
+        }
+        owners = {
+            IndependentEvidenceKind(kind): frozenset(items)
+            for kind, items in document["owners"].items()
+        }
+        verifiers = {}
+        for key_id, spec in document["verifiers"].items():
+            if (not isinstance(spec, dict) or set(spec) != {"status", "path"}
+                    or not isinstance(spec["path"], str)):
+                raise ValueError("verifier schema")
+            if spec["status"] == "revoked":
+                continue
+            name = PurePosixPath(spec["path"]).name
+            verifiers[key_id] = Ed25519PublicKey.from_public_bytes(
+                session.read_file(
+                    tuple(public_directory) + (name,),
+                    maximum=_MAX_KEY_BYTES,
+                    role=public,
+                )
+            )
+    except SemanticReviewError:
+        raise
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    evidence = session.open_directory(tuple(evidence_directory), role=public)
+    return PreprovisionedSemanticAuthority(
+        ReviewPolicyV1(versions, owners), evidence, verifiers,
+    )
+
+
+def _read_verifier_below(config_dir: Path, declared: PurePosixPath) -> bytes:
+    """Read one declared verifier key without ever resolving it as a path.
+
+    The configuration directory is the only absolute name resolved; each
+    declared component below it is then opened relative to the descriptor
+    obtained for the previous one, so the key that is read is the key that
+    hangs from the anchor and not one a substituted component points at.
+    """
+    from executor_birth_secure_fs import (
+        BirthSecureFSError,
+        _BirthObjectRole,
+        _open_posix_child_directory,
+        _open_posix_directory_root,
+        _read_posix_relative,
+    )
+
+    components = declared.parts
+    if not components or any(part in {"", ".", ".."} for part in components):
+        raise SemanticReviewError("semantic_review_unavailable", "authority config")
+    handles = [_open_posix_directory_root(os.fspath(config_dir))]
+    try:
+        for part in components[:-1]:
+            handles.append(_open_posix_child_directory(handles[-1], part))
+        return _read_posix_relative(
+            handles[-1],
+            components[-1],
+            maximum=_MAX_KEY_BYTES,
+            role=_BirthObjectRole.historical_public,
+            expected_uid=None,
+        )
+    except (BirthSecureFSError, OSError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    finally:
+        for handle in reversed(handles):
+            os.close(handle)
+
+
 def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSemanticAuthority:
     """Load an exact, explicitly provisioned productive authority configuration."""
     if not isinstance(value, dict) or set(value) != {"evidence_dir", "verifiers", "versions", "owners"}:
@@ -487,10 +669,16 @@ def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSe
                 raise ValueError("verifier schema")
             if spec["status"] == "revoked":
                 continue
-            path = Path(spec["path"])
-            path = path if path.is_absolute() else config_dir / path
+            declared = PurePosixPath(spec["path"])
             verifiers[key_id] = Ed25519PublicKey.from_public_bytes(
-                _secure_file_bytes(path, maximum=_MAX_KEY_BYTES, error="semantic_review_unavailable"))
+                _secure_file_bytes(
+                    Path(spec["path"]),
+                    maximum=_MAX_KEY_BYTES,
+                    error="semantic_review_unavailable",
+                )
+                if declared.is_absolute() or os.name == "nt"
+                else _read_verifier_below(config_dir, declared)
+            )
         evidence_dir = Path(value["evidence_dir"])
         evidence_dir = evidence_dir if evidence_dir.is_absolute() else config_dir / evidence_dir
         return PreprovisionedSemanticAuthority(ReviewPolicyV1(versions, owners), evidence_dir, verifiers)

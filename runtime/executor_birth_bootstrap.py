@@ -485,4 +485,28 @@ def bootstrap_birth_runtime(paths: BirthBootstrapPaths | None = None, *,
 
 
 def require_birth_runtime_before_workers() -> None:
-    bootstrap_birth_runtime()
+    """Install the Birth authority before any mutating worker starts.
+
+    The authority set is provisioned by increments 2B to 2F, which do not exist
+    yet, so an installation that still lacks ``birth/bootstrap.json`` has no
+    sealed runtime at all.  That is the declared ``prepared_not_active`` state,
+    not a failure: section 3.2 forbids group 2 from making the closed path
+    binding before the cutover.  Refusing to boot there makes the service
+    unstartable, which is exactly what happened on the reference installation
+    between the commit that added this gate and this change: the running
+    process was the last surviving instance and no restart could succeed.
+
+    Every other bootstrap error stays fatal.
+    """
+    try:
+        bootstrap_birth_runtime()
+    except BirthBootstrapError as exc:
+        if str(exc) != "birth_bootstrap_config_unavailable":
+            raise
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Birth runtime not provisioned yet (%s): continuing without the "
+            "sealed authority, as required before the RM-0008 cutover",
+            exc,
+        )

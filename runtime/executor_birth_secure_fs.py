@@ -31,11 +31,40 @@ _LOCK_DELAYS = (0.005, 0.010, 0.020, 0.040, 0.080, 0.100)
 
 
 class BirthSecureFSError(RuntimeError):
-    """Stable public failure without paths, ACLs or platform diagnostics."""
+    """Stable public failure without paths, ACLs or platform diagnostics.
 
-    def __init__(self, code: str) -> None:
+    The originating system error is retained privately for diagnosis but never
+    reaches the public chain: section 7.3 keeps the cause internal and section
+    11 forbids paths, security descriptors and platform diagnostics in the
+    public message.
+    """
+
+    def __init__(self, code: str, cause: BaseException | None = None) -> None:
         self.code = code
+        self._internal_cause = cause
         super().__init__(code)
+        self.__suppress_context__ = True
+
+    # Raising inside an ``except`` block sets the implicit context after the
+    # constructor has run, so clearing it there is not enough: the public
+    # chain is empty by construction and the system error stays private.
+    @property
+    def __context__(self) -> None:
+        return None
+
+    @__context__.setter
+    def __context__(self, value: BaseException | None) -> None:
+        if value is not None and self._internal_cause is None:
+            self._internal_cause = value
+
+    @property
+    def __cause__(self) -> None:
+        return None
+
+    @__cause__.setter
+    def __cause__(self, value: BaseException | None) -> None:
+        if value is not None and self._internal_cause is None:
+            self._internal_cause = value
 
 
 @dataclass(frozen=True, slots=True)
@@ -522,6 +551,13 @@ class _BirthRoleCatalogV1:
         if list(sorted(keys)) != keys:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
+    @property
+    def is_constant_subtree_v1(self) -> bool:
+        """One profile for a whole historical root, declared by its only row."""
+        return not self.patterns and len(self.exact_bindings) == 1 and (
+            self.exact_bindings[0].components == ()
+        )
+
     def _resolve_binding_v1(
         self, components: tuple[str, ...],
     ) -> _BirthRoleBindingV1:
@@ -594,28 +630,23 @@ class _DisposalExpectation:
     inventory: tuple[_InventoryEntry, ...] | None
 
     def __post_init__(self) -> None:
+        # Every refusal here concerns the shape of the request, which is known
+        # before anything is opened.  An ambiguous recovery is a different
+        # thing: it is what the object on disk turns out to be.
         if not isinstance(self.components, tuple):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if not isinstance(self.identity, _ObjectIdentity):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if not isinstance(self.kind, _ObjectKind) or not isinstance(
             self.role, _BirthObjectRole
         ) or not isinstance(self.disposal_class, _DisposalClass):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if isinstance(self.links, bool) or not isinstance(self.links, int) or self.links < 1:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-        digest = self.content_sha256
-        if isinstance(digest, str) and len(digest) == 64:
-            try:
-                int(digest, 16)
-            except ValueError:
-                pass
-            else:
-                object.__setattr__(self, "content_sha256", "sha256:" + digest)
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         # The admitted combinations are closed: an expectation that mixes two
         # classes is refused before the name is opened (section 16.13.2).
         if not self.components:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         _relative_components(self.components)
         if self.inventory is not None and (
             not isinstance(self.inventory, tuple)
@@ -623,7 +654,7 @@ class _DisposalExpectation:
                 not isinstance(item, _InventoryEntry) for item in self.inventory
             )
         ):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if self.disposal_class is _DisposalClass.complete_file:
             valid = (
                 self.kind is _ObjectKind.regular_file
@@ -656,7 +687,7 @@ class _DisposalExpectation:
                 and self.inventory == ()
             )
         if not valid:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
 
 def _is_canonical_digest(value: object) -> bool:
@@ -755,7 +786,7 @@ def _relative_components(value: Sequence[str]) -> tuple[str, ...]:
         try:
             encoded = component.encode("utf-8")
         except UnicodeEncodeError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         if len(encoded) > _MAX_COMPONENT_BYTES:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
         total += len(encoded) + (1 if result else 0)
@@ -895,7 +926,7 @@ def _open_posix_root(
     except OSError as exc:
         for fd in reversed(opened):
             os.close(fd)
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
 
 # The Windows constants and structures are defined on every platform so a
@@ -1404,7 +1435,7 @@ def _open_win_root(path: Path) -> tuple[list[int], str]:
     except OSError as exc:
         for handle in reversed(opened):
             _win_close(handle)
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
 
 def _win_require_supported_volume(handle: int) -> None:
@@ -1420,9 +1451,7 @@ def _win_require_supported_volume(handle: int) -> None:
         filesystem,
         len(filesystem),
     ):
-        raise BirthSecureFSError(
-            "birth_provisioning_atomic_install_unsupported"
-        ) from _win_error("GetVolumeInformationByHandleW")
+        raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported", _win_error)("GetVolumeInformationByHandleW")
     if filesystem.value.casefold() != "ntfs" or not flags.value & _FILE_PERSISTENT_ACLS:
         raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported")
 
@@ -1435,7 +1464,7 @@ def _windows_service_sid_for_current_process() -> str:
     if not _ADVAPI32.OpenProcessToken(
         _KERNEL32.GetCurrentProcess(), _TOKEN_QUERY, ctypes.byref(token)
     ):
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", _win_error)(
             "OpenProcessToken"
         )
     try:
@@ -1465,7 +1494,7 @@ def _windows_service_sid_for_current_process() -> str:
         finally:
             _KERNEL32.LocalFree(ctypes.cast(encoded, ctypes.c_void_p))
     except OSError as exc:
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
     finally:
         _win_close(token.value)
 
@@ -1478,7 +1507,7 @@ def _win_restore_privilege() -> Iterator[None]:
         _TOKEN_QUERY | _TOKEN_ADJUST_PRIVILEGES,
         ctypes.byref(token),
     ):
-        raise BirthSecureFSError("birth_provisioning_elevation_required") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_elevation_required", _win_error)(
             "OpenProcessToken"
         )
     previous = _TOKEN_PRIVILEGES()
@@ -1510,7 +1539,7 @@ def _win_restore_privilege() -> Iterator[None]:
         raise
     except OSError as exc:
         _win_close(token.value)
-        raise BirthSecureFSError("birth_provisioning_elevation_required") from exc
+        raise BirthSecureFSError("birth_provisioning_elevation_required", exc)
     try:
         yield
     finally:
@@ -1532,9 +1561,7 @@ def _win_restore_privilege() -> Iterator[None]:
                     else OSError(restore_error, "AdjustTokenPrivileges(restore)")
                 )
                 _win_close(token.value)
-                raise BirthSecureFSError(
-                    "birth_provisioning_elevation_required"
-                ) from failure
+                raise BirthSecureFSError("birth_provisioning_elevation_required", failure)
         _win_close(token.value)
 
 
@@ -1575,7 +1602,7 @@ def _win_security_attributes(
         ctypes.byref(descriptor),
         ctypes.byref(size),
     ):
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", _win_error)(
             "ConvertStringSecurityDescriptorToSecurityDescriptorW"
         )
     attributes = _SECURITY_ATTRIBUTES(
@@ -1619,7 +1646,7 @@ def _win_apply_and_verify_security(handle: int, expected_descriptor: int) -> Non
         ctypes.byref(dacl),
         ctypes.byref(dacl_defaulted),
     ):
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", _win_error)(
             "GetSecurityDescriptor"
         )
     if owner_defaulted or not dacl_present or not dacl or dacl_defaulted:
@@ -1662,7 +1689,7 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         ctypes.byref(actual_descriptor),
     )
     if result:
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from OSError(
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", OSError)(
             result, "GetSecurityInfo"
         )
     try:
@@ -1671,7 +1698,7 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         if actual.casefold() != expected.casefold():
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
     except OSError as exc:
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from exc
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
     finally:
         _KERNEL32.LocalFree(actual_descriptor)
 
@@ -1694,11 +1721,24 @@ def _win_dispose_created(handle: int) -> None:
 class _SecureDirectoryHandle:
     """Opaque directory capability; it never reveals an OS path or raw handle."""
 
-    __slots__ = ("_session", "_components")
+    __slots__ = ("_session", "_components", "_handle", "_path")
 
-    def __init__(self, session: "_SecureRootSession", components: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        session: "_SecureRootSession",
+        components: tuple[str, ...],
+        handle: int,
+        path: str,
+    ) -> None:
+        # The capability is bound to the directory that was opened, not to the
+        # name it was reached by: a store moved aside and replaced by another
+        # one at the same name is therefore never consulted through this
+        # handle.  Resolving the name again is what ``read_file`` on the
+        # session does, and it is a different operation.
         self._session = session
         self._components = components
+        self._handle = handle
+        self._path = path
 
     def read_file(
         self,
@@ -1707,14 +1747,21 @@ class _SecureDirectoryHandle:
         maximum: int,
         role: _BirthObjectRole | None = None,
     ) -> bytes:
-        return self._session.read_file(
+        return self._session._read_in_directory(
+            self._handle,
+            self._path,
             self._components + _relative_components((name,)),
             maximum=maximum,
             role=role,
         )
 
     def inventory(self) -> tuple[str, ...]:
-        return self._session.inventory(self._components)
+        return tuple(
+            item.name
+            for item in self._session._inventory_in_directory(
+                self._handle, self._components
+            )
+        )
 
     def open_directory(
         self, name: str, *, role: _BirthObjectRole | None = None
@@ -1848,7 +1895,7 @@ class _SecureRootSession:
                     failure = exc
         self._handles.clear()
         if failure is not None:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from failure
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", failure)
 
     def _require_open(self) -> None:
         if self._closed:
@@ -1883,6 +1930,52 @@ class _SecureRootSession:
         ):
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         return _ResolvedBirthRoleBindingV1(binding=binding, origin=origin)
+
+    def _required_read_role_v1(
+        self, components: tuple[str, ...], role: _BirthObjectRole,
+    ) -> None:
+        """Refuse a read the catalogue does not admit, before any traversal.
+
+        Reading is admission, not observation: a name the catalogue does not
+        declare cannot be reconciled with the layout, and a name it declares
+        with another profile is a security contradiction.  A historical root
+        carries one constant profile for its whole subtree, so there the
+        absence of a row is not a refusal.
+        """
+        try:
+            resolved = self._resolve_effective_role_binding_v1(components)
+        except BirthSecureFSError as exc:
+            if (
+                exc.code == "birth_provisioning_recovery_ambiguous"
+                and self._role_catalog.is_constant_subtree_v1
+            ):
+                return
+            raise
+        if resolved.binding.kind is not _ObjectKind.regular_file:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if resolved.binding.role is not role:
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+
+    def _catalog_role_v1(
+        self, components: tuple[str, ...], kind: _ObjectKind,
+    ) -> _BirthObjectRole | None:
+        """Profile the catalogue requires for one name, when it declares it.
+
+        The catalogue is the authority for profiles (section 16.13.2), so both
+        the traversal and the read consult it instead of trusting what the
+        caller declares.  An absent row leaves the historical fallback in
+        place; a row of the other kind leaves the refusal to the syscall,
+        which is what actually observes the object.
+        """
+        try:
+            resolved = self._resolve_effective_role_binding_v1(components)
+        except BirthSecureFSError as exc:
+            if exc.code == "birth_provisioning_recovery_ambiguous":
+                return None
+            raise
+        if resolved.binding.kind is not kind:
+            return None
+        return resolved.binding.role
 
     @contextlib.contextmanager
     def _reserve_exact_role_binding_v1(
@@ -1936,7 +2029,14 @@ class _SecureRootSession:
             rank == 0 and exclusive for rank, _, exclusive in self._lock_stack
         )
 
-    def _require_global_exclusive(self) -> None:
+    def _require_exclusive_global_lock(self) -> None:
+        """Refuse a mutation that is not covered by the exclusive global lock.
+
+        A session that is not authoritative can never hold it, so the two
+        conditions are one precondition and not two separate refusals.
+        """
+        if not self._authoritative:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if not self._holds_global_exclusive():
             raise BirthSecureFSError("birth_provisioning_lock_unsafe")
 
@@ -1957,6 +2057,16 @@ class _SecureRootSession:
         components = _relative_components(components)
         current = self._root_handle
         current_path = self._root_path
+        # A role a caller declares for the last name is a claim about the
+        # catalogue, checked here once and before any traversal syscall.  The
+        # walk below then treats every component the same way, because the
+        # authority for a profile is the name itself, never its depth.
+        if final_role is not None and components:
+            declared = self._directory_roles.get(components)
+            if declared is None:
+                declared = self._catalog_role_v1(components, _ObjectKind.directory)
+            if declared is not None and declared is not final_role:
+                raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         try:
             prefix: tuple[str, ...] = ()
             for component in components:
@@ -1964,15 +2074,10 @@ class _SecureRootSession:
                 current_path = os.path.join(current_path, component)
                 child = self._directories.get(prefix)
                 role = self._directory_roles.get(prefix)
-                if (
-                    role is not None
-                    and prefix == components
-                    and final_role is not None
-                    and role is not final_role
-                ):
-                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
                 if role is None:
-                    role = final_role if prefix == components and final_role else self._root_role
+                    role = self._catalog_role_v1(prefix, _ObjectKind.directory)
+                if role is None:
+                    role = self._root_role
                 if child is None:
                     try:
                         if os.name == "nt":
@@ -2031,7 +2136,7 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _verify_windows_role(
         self,
@@ -2078,9 +2183,10 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError(
-                "birth_provisioning_recovery_ambiguous"
-            ) from exc
+            # The device refused the reopen: that is unavailability.  Only the
+            # comparison above can declare an ambiguity, because only it has
+            # seen two different objects under one name.
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def open_directory(
         self,
@@ -2101,7 +2207,7 @@ class _SecureRootSession:
                     role=role,
                     expected_uid=self._expected_uid,
                 )
-        return _SecureDirectoryHandle(self, components)
+            return _SecureDirectoryHandle(self, components, handle, expected)
 
     def read_file(
         self,
@@ -2116,13 +2222,47 @@ class _SecureRootSession:
         role = self._root_role if role is None else role
         if not isinstance(role, _BirthObjectRole):
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-        parent, name = components[:-1], components[-1]
+        # A profile declared by the caller is a claim, not an authority: where
+        # the catalogue declares one it decides, and a weaker claim over a
+        # confidential name is refused before the object is opened.
+        declared = self._catalog_role_v1(components, _ObjectKind.regular_file)
+        if declared is not None and declared is not role:
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        # The profile is settled before the first traversal syscall: a request
+        # the catalogue refuses must not reach the filesystem at all.
+        self._required_read_role_v1(components, role)
+        parent = components[:-1]
         with self._directory_chain(parent) as (directory, directory_path):
-            if os.name == "nt":
-                return self._read_file_windows(
-                    components, directory_path, name, maximum, role
-                )
-            return self._read_file_posix(components, directory, name, maximum, role)
+            return self._read_in_directory(
+                directory, directory_path, components, maximum=maximum, role=role,
+            )
+
+    def _read_in_directory(
+        self,
+        directory: int,
+        directory_path: str,
+        components: tuple[str, ...],
+        *,
+        maximum: int,
+        role: _BirthObjectRole | None = None,
+    ) -> bytes:
+        """Read one name inside a directory that is already authenticated."""
+        self._require_open()
+        components = _relative_components(components)
+        if not components or isinstance(maximum, bool) or not isinstance(
+            maximum, int
+        ) or maximum < 0:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        role = self._root_role if role is None else role
+        if not isinstance(role, _BirthObjectRole):
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        self._required_read_role_v1(components, role)
+        name = components[-1]
+        if os.name == "nt":
+            return self._read_file_windows(
+                components, directory_path, name, maximum, role
+            )
+        return self._read_file_posix(components, directory, name, maximum, role)
 
     def _read_file_posix(
         self,
@@ -2132,39 +2272,34 @@ class _SecureRootSession:
         maximum: int,
         role: _BirthObjectRole,
     ) -> bytes:
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        observed: list[_ObjectIdentity] = []
+
+        def bind(identity: _ObjectIdentity) -> None:
+            bound = self._file_roles.get(components)
+            # A name that now holds a different object is an ambiguity; the
+            # same object under a different profile is a security
+            # contradiction.  The two refusals must not be confused.
+            if bound is not None and bound[0] != identity:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            if bound is not None and bound[1] is not role:
+                raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+            observed.append(identity)
+
         try:
-            fd = os.open(name, flags, dir_fd=directory)
-            try:
-                _verify_posix_file(
-                    fd,
-                    role=role,
-                    expected_uid=self._expected_uid,
-                )
-                before = _posix_snapshot(fd)
-                identity = _posix_identity(fd)
-                bound = self._file_roles.get(components)
-                if bound is not None and bound != (identity, role):
-                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-                if before[5] > maximum:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable")
-                result = bytearray()
-                while len(result) <= maximum:
-                    block = os.read(fd, min(8192, maximum + 1 - len(result)))
-                    if not block:
-                        break
-                    result.extend(block)
-                after = _posix_snapshot(fd)
-                if len(result) > maximum or before != after or len(result) != before[5]:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable")
-                self._file_roles.setdefault(components, (identity, role))
-                return bytes(result)
-            finally:
-                os.close(fd)
+            result = _read_posix_relative(
+                directory,
+                name,
+                maximum=maximum,
+                role=role,
+                expected_uid=self._expected_uid,
+                bind=bind,
+            )
+            self._file_roles.setdefault(components, (observed[0], role))
+            return result
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _read_file_windows(
         self,
@@ -2183,7 +2318,12 @@ class _SecureRootSession:
                 handle, directory=False, role=role
             )
             bound = self._file_roles.get(components)
-            if bound is not None and bound != (before[0], role):
+            # A name that now holds a different object is an ambiguity; the
+            # same object under a different profile is a security
+            # contradiction.  The two refusals must not be confused.
+            if bound is not None and bound[0] != before[0]:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            if bound is not None and bound[1] is not role:
                 raise BirthSecureFSError("birth_provisioning_acl_unsafe")
             size = before[5]
             if size > maximum:
@@ -2208,7 +2348,7 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         finally:
             if handle is not None:
                 _win_close(handle)
@@ -2217,30 +2357,52 @@ class _SecureRootSession:
         return tuple(item.name for item in self._inventory_state(components))
 
     def _inventory_state(
-        self, components: tuple[str, ...]
+        self, components: tuple[str, ...], budget=None,
     ) -> tuple[_InventoryEntry, ...]:
         components = _relative_components(components)
         with self._directory_chain(components) as (handle, _):
+            return self._inventory_in_directory(handle, components, budget)
+
+    def _inventory_in_directory(
+        self, handle: int, components: tuple[str, ...], budget=None,
+    ) -> tuple[_InventoryEntry, ...]:
+        """Enumerate a directory that is already authenticated."""
+        self._require_open()
+        if True:
             try:
                 def resolve(relative, scope=components):
-                    return self._resolve_effective_role_binding_v1(
-                        scope + relative
-                    ).binding
+                    # Enumeration observes what exists; it does not decide who
+                    # may exist.  A name the catalogue does not declare is
+                    # reported with the neutral profile and left to the
+                    # comparison below, which is what turns an appearance
+                    # between two scans into a declared ambiguity.
+                    try:
+                        return self._resolve_effective_role_binding_v1(
+                            scope + relative
+                        ).binding
+                    except BirthSecureFSError as exc:
+                        if exc.code == "birth_provisioning_recovery_ambiguous":
+                            return None
+                        raise
 
+                shared = _InventoryBudgetV1() if budget is None else budget
                 before = (
-                    _win_inventory(handle)
+                    _win_inventory(handle, resolve, shared, components)
                     if os.name == "nt"
-                    else _posix_inventory(handle, resolve)
+                    else _posix_inventory(handle, resolve, shared, components)
                 )
                 after = (
-                    _win_inventory(handle)
+                    _win_inventory(handle, resolve, shared, components)
                     if os.name == "nt"
-                    else _posix_inventory(handle, resolve)
+                    else _posix_inventory(handle, resolve, shared, components)
                 )
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             if before != after:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable")
+                # The directory changed while it was being read: the two
+                # readings cannot be reconciled, which is an ambiguous
+                # recovery and not a failure of the device.
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
             if len({item.name for item in before}) != len(before):
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
             return before
@@ -2320,31 +2482,78 @@ class _SecureRootSession:
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe")
         if rank == 0 and any(item_rank == 0 for item_rank, _, _ in self._lock_stack):
             raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+        # A local lock is subordinate: it may only be taken while the global
+        # lock is held, otherwise two owners could each hold one store lock and
+        # believe they had exclusive use of the layout.
+        if rank == 1 and not self._holds_global_lock():
+            raise BirthSecureFSError("birth_provisioning_lock_unsafe")
         parent, name = components[:-1], components[-1]
-        with self._directory_chain(parent) as (directory, directory_path):
-            if os.name == "nt":
-                with self._win_lock(directory_path, name, exclusive, create, timeout):
-                    self._lock_stack.append((rank, key, exclusive))
-                    try:
-                        yield
-                    finally:
-                        if self._lock_stack.pop() != (rank, key, exclusive):
-                            raise BirthSecureFSError("birth_provisioning_lock_unsafe")
-            else:
-                role = (
-                    _BirthObjectRole.birth_integrity_only
-                    if rank == 0
-                    else _BirthObjectRole.birth_confidential
+        # The role of a lock is a property of its rank, never of an argument:
+        # the global lock is integrity-only and a store lock is confidential.
+        role = (
+            _BirthObjectRole.birth_integrity_only
+            if rank == 0
+            else _BirthObjectRole.birth_confidential
+        )
+        requested = _BirthRoleBindingV1(
+            components=components, kind=_ObjectKind.regular_file, role=role,
+        )
+        with contextlib.ExitStack() as reservation:
+            if create:
+                # Section 16.13.1 requires the same transition for a file, a
+                # directory and the creation of the global lock.
+                reservation.enter_context(
+                    self._reserve_exact_role_binding_v1(requested)
                 )
-                with self._posix_lock(
-                    directory, name, exclusive, create, timeout, role
-                ):
-                    self._lock_stack.append((rank, key, exclusive))
-                    try:
-                        yield
-                    finally:
-                        if self._lock_stack.pop() != (rank, key, exclusive):
-                            raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+            with self._directory_chain(parent) as (directory, directory_path):
+                if os.name == "nt":
+                    with self._win_lock(
+                        directory_path, name, exclusive, create, timeout
+                    ):
+                        if create:
+                            self._commit_lock_binding(components, directory, name)
+                        self._lock_stack.append((rank, key, exclusive))
+                        try:
+                            yield
+                        finally:
+                            if self._lock_stack.pop() != (rank, key, exclusive):
+                                raise BirthSecureFSError(
+                                    "birth_provisioning_lock_unsafe"
+                                )
+                else:
+                    with self._posix_lock(
+                        directory, name, exclusive, create, timeout, role
+                    ):
+                        if create:
+                            self._commit_lock_binding(components, directory, name)
+                        self._lock_stack.append((rank, key, exclusive))
+                        try:
+                            yield
+                        finally:
+                            if self._lock_stack.pop() != (rank, key, exclusive):
+                                raise BirthSecureFSError(
+                                    "birth_provisioning_lock_unsafe"
+                                )
+
+    def _commit_lock_binding(
+        self, components: tuple[str, ...], directory: int, name: str,
+    ) -> None:
+        """Promote the reserved binding once the lock object is complete."""
+        if os.name == "nt":
+            self._commit_exact_role_binding_v1(components, _ObjectIdentity("", ""))
+            return
+        flags = (
+            getattr(os, "O_PATH", os.O_RDONLY)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        opened = os.open(name, flags, dir_fd=directory)
+        try:
+            self._commit_exact_role_binding_v1(
+                components, _posix_identity(opened),
+            )
+        finally:
+            os.close(opened)
 
     @contextlib.contextmanager
     def _posix_lock(
@@ -2393,10 +2602,10 @@ class _SecureRootSession:
                     break
                 except OSError as exc:
                     if exc.errno not in {errno.EACCES, errno.EAGAIN}:
-                        raise BirthSecureFSError("birth_provisioning_lock_unsafe") from exc
+                        raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        raise BirthSecureFSError("birth_provisioning_lock_unavailable") from exc
+                        raise BirthSecureFSError("birth_provisioning_lock_unavailable", exc)
                     delay = _LOCK_DELAYS[min(delay_index, len(_LOCK_DELAYS) - 1)]
                     delay_index += 1
                     time.sleep(min(delay, remaining))
@@ -2412,28 +2621,30 @@ class _SecureRootSession:
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe")
             yield
         except FileNotFoundError as exc:
-            raise BirthSecureFSError("birth_provisioning_lock_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_lock_unavailable", exc)
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_lock_unsafe") from exc
+            raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
         finally:
             if fd is not None:
                 primary = sys.exc_info()[1]
+                # A failed unlock must not skip the close: the descriptor is
+                # released exactly once and the first cleanup failure is
+                # reported only when it does not mask a primary error (G4).
+                failure: BaseException | None = None
                 try:
                     fcntl.flock(fd, fcntl.LOCK_UN)
                 except BaseException as exc:
-                    if primary is None:
-                        raise BirthSecureFSError(
-                            "birth_provisioning_lock_unsafe"
-                        ) from exc
+                    failure = exc
                 try:
                     os.close(fd)
                 except BaseException as exc:
-                    if primary is None:
-                        raise BirthSecureFSError(
-                            "birth_provisioning_lock_unsafe"
-                        ) from exc
+                    failure = failure if failure is not None else exc
+                if failure is not None and primary is None:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_lock_unsafe", failure
+                    )
 
     @contextlib.contextmanager
     def _win_lock(
@@ -2531,13 +2742,13 @@ class _SecureRootSession:
             code = "birth_provisioning_lock_unavailable" if exc.errno in {
                 _ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND
             } else "birth_provisioning_lock_unsafe"
-            raise BirthSecureFSError(code) from exc
+            raise BirthSecureFSError(code, exc)
         finally:
             if locked and not _KERNEL32.UnlockFileEx(
                 handle, 0, 1, 0, ctypes.byref(overlapped)
             ):
                 unlock_error = _win_error("UnlockFileEx")
-                raise BirthSecureFSError("birth_provisioning_lock_unsafe") from unlock_error
+                raise BirthSecureFSError("birth_provisioning_lock_unsafe", unlock_error)
             if handle is not None:
                 _win_close(handle)
 
@@ -2548,37 +2759,38 @@ class _SecureRootSession:
         *,
         role: _BirthObjectRole,
     ) -> _ObjectIdentity:
-        self._require_global_exclusive()
-        if not self._authoritative:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
-        components = _relative_components(components)
-        if (
-            not components
-            or not isinstance(payload, bytes)
-            or role not in {
-                _BirthObjectRole.birth_confidential,
-                _BirthObjectRole.birth_integrity_only,
-            }
-        ):
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        self._require_exclusive_global_lock()
+        components = _validate_components_v1(components, role)
         requested = _BirthRoleBindingV1(
-            components=components, kind=_ObjectKind.regular_file, role=role,
+            components=components, kind=_ObjectKind("regular_file"), role=role,
         )
+        # The exact binding is claimed before anything else is inspected: the
+        # payload is examined inside the reservation, which rolls back if this
+        # creation does not complete.
         with self._reserve_exact_role_binding_v1(requested):
+            if not isinstance(payload, bytes):
+                raise BirthSecureFSError("birth_provisioning_io_unavailable")
             resolved = self._resolve_effective_role_binding_v1(components)
-            return self._create_file_exclusive_bound(
-                resolved.binding, payload,
-            )
+            with self._directory_chain(components[:-1]) as (
+                directory, directory_path,
+            ):
+                return self._create_file_exclusive_bound(
+                    resolved.binding, payload, directory, directory_path,
+                )
 
     def _create_file_exclusive_bound(
-        self, binding: _BirthRoleBindingV1, payload: bytes,
+        self,
+        binding: _BirthRoleBindingV1,
+        payload: bytes,
+        directory: int,
+        directory_path: str,
     ) -> _ObjectIdentity:
         components = binding.components
         role = binding.role
         if binding.kind is not _ObjectKind.regular_file:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-        parent, name = components[:-1], components[-1]
-        with self._directory_chain(parent) as (directory, directory_path):
+        name = components[-1]
+        if True:
             if os.name == "nt":
                 return self._create_file_exclusive_windows(
                     components, directory_path, name, payload, role
@@ -2629,11 +2841,11 @@ class _SecureRootSession:
                         except OSError:
                             pass
             except FileExistsError as exc:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
             except BirthSecureFSError:
                 raise
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _create_file_exclusive_windows(
         self,
@@ -2697,8 +2909,8 @@ class _SecureRootSession:
                     return before[0]
         except OSError as exc:
             if exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         except BirthSecureFSError:
             raise
         finally:
@@ -2716,31 +2928,32 @@ class _SecureRootSession:
         *,
         role: _BirthObjectRole,
     ) -> _SecureDirectoryHandle:
-        self._require_global_exclusive()
-        if not self._authoritative:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
-        components = _relative_components(components)
-        if not components or role not in {
-            _BirthObjectRole.birth_confidential,
-            _BirthObjectRole.birth_integrity_only,
-        }:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        self._require_exclusive_global_lock()
+        components = _validate_components_v1(components, role)
         requested = _BirthRoleBindingV1(
-            components=components, kind=_ObjectKind.directory, role=role,
+            components=components, kind=_ObjectKind("directory"), role=role,
         )
         with self._reserve_exact_role_binding_v1(requested):
             resolved = self._resolve_effective_role_binding_v1(components)
-            return self._create_directory_exclusive_bound(resolved.binding)
+            with self._directory_chain(components[:-1]) as (
+                directory, directory_path,
+            ):
+                return self._create_directory_exclusive_bound(
+                    resolved.binding, directory, directory_path,
+                )
 
     def _create_directory_exclusive_bound(
-        self, binding: _BirthRoleBindingV1,
+        self,
+        binding: _BirthRoleBindingV1,
+        directory: int,
+        directory_path: str,
     ) -> _SecureDirectoryHandle:
         components = binding.components
         role = binding.role
         if binding.kind is not _ObjectKind.directory:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-        parent, name = components[:-1], components[-1]
-        with self._directory_chain(parent) as (directory, directory_path):
+        name = components[-1]
+        if True:
             if os.name == "nt":
                 handle = self._create_directory_exclusive_windows(
                     directory_path,
@@ -2759,23 +2972,29 @@ class _SecureRootSession:
                 )
                 os.mkdir(name, mode, dir_fd=directory)
                 os.fsync(directory)
+                # A descriptor opened for path resolution alone cannot be
+                # synchronised, so the new directory is reopened for reading:
+                # the parent carries the entry, but the directory itself must
+                # be durable before anything is created inside it (section 7.2).
                 opened = os.open(
                     name,
-                    getattr(os, "O_PATH", os.O_RDONLY)
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
                     | getattr(os, "O_CLOEXEC", 0)
                     | getattr(os, "O_NOFOLLOW", 0),
                     dir_fd=directory,
                 )
                 try:
+                    os.fsync(opened)
                     self._commit_exact_role_binding_v1(
                         components, _posix_identity(opened),
                     )
                 finally:
                     os.close(opened)
             except FileExistsError as exc:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         return self.open_directory(components, role=role)
 
     def _create_directory_exclusive_windows(
@@ -2816,8 +3035,8 @@ class _SecureRootSession:
                     return handle
         except OSError as exc:
             if exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         except BirthSecureFSError:
             raise
         finally:
@@ -2832,7 +3051,7 @@ class _SecureRootSession:
     def rename_no_replace(
         self, source: tuple[str, ...], destination: tuple[str, ...], *, directory: bool
     ) -> _ObjectIdentity:
-        self._require_global_exclusive()
+        self._require_exclusive_global_lock()
         if not self._authoritative:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
         source = _relative_components(source)
@@ -2909,7 +3128,7 @@ class _SecureRootSession:
                 except BirthSecureFSError:
                     raise
                 except OSError as exc:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                    raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         source_entries = self._inventory_state(source_parent)
         if any(item.name == source_name for item in source_entries):
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
@@ -2947,7 +3166,7 @@ class _SecureRootSession:
             except BirthSecureFSError:
                 raise
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         self._remap_cached_directories(source, destination)
         return identity
 
@@ -3008,7 +3227,7 @@ class _SecureRootSession:
                 except BirthSecureFSError:
                     raise
                 except OSError as exc:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                    raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
                 finally:
                     if source_handle is not None and close_source:
                         _win_close(source_handle)
@@ -3022,7 +3241,7 @@ class _SecureRootSession:
             except BirthSecureFSError:
                 raise
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             finally:
                 if final_handle is not None:
                     _win_close(final_handle)
@@ -3040,17 +3259,18 @@ class _SecureRootSession:
         it knows nothing about a journal or a checkpoint: recording the outcome
         belongs to the caller of increment 2B (section 16.13.2).
         """
-        self._require_global_exclusive()
+        self._require_exclusive_global_lock()
         if not isinstance(expectation, _DisposalExpectation):
             raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
         components = _relative_components(expectation.components)
         if not components:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         resolved = self._resolve_effective_role_binding_v1(components)
-        if (
-            resolved.binding.kind is not expectation.kind
-            or resolved.binding.role is not expectation.role
-        ):
+        # A kind that disagrees with the catalogue makes the object
+        # unrecognisable; a role that disagrees is a security contradiction.
+        if resolved.binding.kind is not expectation.kind:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if resolved.binding.role is not expectation.role:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         if expectation.disposal_class is _DisposalClass.partial_pending_file:
             # A partial pending carries no digest and no complete inventory, so
@@ -3083,13 +3303,9 @@ class _SecureRootSession:
             except FileNotFoundError as exc:
                 # An initial absence is not an idempotent success: increment 2A
                 # owns no journal that could prove an earlier disposal.
-                raise BirthSecureFSError(
-                    "birth_provisioning_recovery_ambiguous"
-                ) from exc
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous", exc)
             except OSError as exc:
-                raise BirthSecureFSError(
-                    "birth_provisioning_io_unavailable"
-                ) from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             try:
                 value = os.fstat(target)
                 observed_directory = stat.S_ISDIR(value.st_mode)
@@ -3135,15 +3351,12 @@ class _SecureRootSession:
                     os.unlink(name, dir_fd=directory)
                 os.fsync(directory)
             except OSError as exc:
-                raise BirthSecureFSError(
-                    "birth_provisioning_io_unavailable"
-                ) from exc
-            try:
-                os.open(name, flags, dir_fd=directory)
-            except FileNotFoundError:
-                pass
-            else:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable")
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
+        # Reconcile through the parent: the target is gone and nothing else in
+        # the directory changed (section 16.13.8).
+        remaining = self._inventory_state(parent)
+        if any(item.name == name for item in remaining):
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         self._file_roles.pop(components, None)
         self._directory_roles.pop(components, None)
         self._role_overlay.pop(components, None)
@@ -3276,6 +3489,27 @@ _ADOPTED_DESCRIPTOR_IDS: dict[int, weakref.ReferenceType[_AuthenticatedRootDescr
 _ADOPTED_DESCRIPTOR_LOCK = threading.Lock()
 
 
+# The two historical profiles are constants, not something computed for each
+# call: the only catalogue that is built at run time is the authoritative one
+# the installer entry hands to the descriptor.
+_HISTORICAL_ROLE_CATALOGS_V1 = {
+    role: _BirthRoleCatalogV1(
+        schema_version=1,
+        patterns=(),
+        exact_bindings=(
+            _BirthRoleBindingV1(
+                components=(), kind=_ObjectKind.directory, role=role,
+            ),
+        ),
+        generation=0,
+    )
+    for role in (
+        _BirthObjectRole.historical_private,
+        _BirthObjectRole.historical_public,
+    )
+}
+
+
 def _historical_role_catalog_v1(
     role: _BirthObjectRole,
 ) -> _BirthRoleCatalogV1:
@@ -3286,21 +3520,10 @@ def _historical_role_catalog_v1(
     the whole subtree carries the same historical profile and no Birth pattern
     is enabled.  The exact name set of the three loaders is closed by G2.
     """
-    if role not in {
-        _BirthObjectRole.historical_private,
-        _BirthObjectRole.historical_public,
-    }:
+    catalog = _HISTORICAL_ROLE_CATALOGS_V1.get(role)
+    if catalog is None:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-    return _BirthRoleCatalogV1(
-        schema_version=1,
-        patterns=(),
-        exact_bindings=(
-            _BirthRoleBindingV1(
-                components=(), kind=_ObjectKind.directory, role=role,
-            ),
-        ),
-        generation=0,
-    )
+    return catalog
 
 
 def _open_legacy_root_session(
@@ -3404,57 +3627,160 @@ def _read_all_posix(fd: int, size: int) -> bytes:
     return bytes(result)
 
 
-def _posix_inventory(directory: int, resolve=None) -> tuple[_InventoryEntry, ...]:
+def _validate_components_v1(
+    components: tuple[str, ...], role: _BirthObjectRole,
+) -> tuple[str, ...]:
+    """Validate the name and the profile a creation asks for.
+
+    Both creations share it so the refusal happens in one place and the caller
+    body stays free of any decision taken before the exact binding is claimed.
+    """
+    components = _relative_components(components)
+    if not components or role not in {
+        _BirthObjectRole.birth_confidential,
+        _BirthObjectRole.birth_integrity_only,
+    }:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
+    return components
+
+
+def _open_posix_directory_root(path: str) -> int:
+    """Open one absolute directory as the anchor of a handle-bound read.
+
+    This is the only absolute name a historical facade may resolve: every
+    other name below it is then opened relative to this descriptor, so a
+    component swapped after the anchor cannot redirect the read.
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        return os.open(path, flags)
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from exc
+
+
+def _open_posix_child_directory(directory: int, name: str) -> int:
+    """Open one child directory relative to an already authenticated parent."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        return os.open(name, flags, dir_fd=directory)
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from exc
+
+
+def _read_posix_relative(
+    directory: int,
+    name: str,
+    *,
+    maximum: int,
+    role: _BirthObjectRole,
+    expected_uid: int | None,
+    bind=None,
+) -> bytes:
+    """Read one regular file relative to an already authenticated directory.
+
+    The object is verified before the first byte is read and its metadata is
+    compared again afterwards, so a replacement during the read is refused
+    instead of returning a mixture of two objects.  ``bind`` observes the
+    identity between those two moments, which is where an owner can refuse a
+    name that changed identity since it was first seen.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(name, flags, dir_fd=directory)
+    try:
+        _verify_posix_file(fd, role=role, expected_uid=expected_uid)
+        before = _posix_snapshot(fd)
+        if bind is not None:
+            bind(_posix_identity(fd))
+        if before[5] > maximum:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        result = bytearray()
+        while len(result) <= maximum:
+            block = os.read(fd, min(8192, maximum + 1 - len(result)))
+            if not block:
+                break
+            result.extend(block)
+        after = _posix_snapshot(fd)
+        if len(result) > maximum or before != after or len(result) != before[5]:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        return bytes(result)
+    finally:
+        os.close(fd)
+
+
+def _posix_inventory(
+    directory: int, resolve=None, budget=None, scope: tuple[str, ...] = (),
+) -> tuple[_InventoryEntry, ...]:
     """Build the shared record for one directory, refusing foreign types.
 
     Every entry is reopened relative to the parent descriptor without following
     links.  A symbolic link, a hard link, any other type or an entry the
     catalogue cannot classify is refused before the record exists, so the
     closed kind never has to grow a third value (section 16.3, R7).
+
+    The enumeration is incremental: names are never materialised in one list
+    before the budget has seen them, so the 4096 limit is reached during the
+    scan rather than after it (section 16.13.5).
     """
     result: list[_InventoryEntry] = []
-    names = tuple(os.listdir(directory))
+    budget = _InventoryBudgetV1() if budget is None else budget
     flags = (
         getattr(os, "O_PATH", os.O_RDONLY)
         | getattr(os, "O_CLOEXEC", 0)
         | getattr(os, "O_NOFOLLOW", 0)
     )
-    for raw_name in names:
-        name = _relative_components((raw_name,))[0]
-        handle = os.open(name, flags, dir_fd=directory)
-        try:
-            value = os.fstat(handle)
-            directory_entry = stat.S_ISDIR(value.st_mode)
-            if not directory_entry and not stat.S_ISREG(value.st_mode):
-                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-            if not directory_entry and value.st_nlink != 1:
-                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-            kind = (
-                _ObjectKind.directory
-                if directory_entry
-                else _ObjectKind.regular_file
-            )
-            binding = resolve((name,)) if resolve is not None else None
-            if binding is not None and binding.kind is not kind:
-                raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-            result.append(
-                _InventoryEntry(
-                    name=name,
-                    identity=_ObjectIdentity(
-                        f"{value.st_dev:x}", f"{value.st_ino:x}"
-                    ),
-                    kind=kind,
-                    role=(
-                        binding.role
-                        if binding is not None
-                        else _BirthObjectRole.birth_integrity_only
-                    ),
-                    links=value.st_nlink,
-                    size=None if directory_entry else value.st_size,
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            name = _relative_components((entry.name,))[0]
+            handle = os.open(name, flags, dir_fd=directory)
+            try:
+                value = os.fstat(handle)
+                directory_entry = stat.S_ISDIR(value.st_mode)
+                if not directory_entry and not stat.S_ISREG(value.st_mode):
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                if not directory_entry and value.st_nlink != 1:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                kind = (
+                    _ObjectKind.directory
+                    if directory_entry
+                    else _ObjectKind.regular_file
                 )
-            )
-        finally:
-            os.close(handle)
+                binding = resolve((name,)) if resolve is not None else None
+                if binding is not None and binding.kind is not kind:
+                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+                identity = _ObjectIdentity(
+                    f"{value.st_dev:x}", f"{value.st_ino:x}"
+                )
+                budget.include(scope + (name,), identity)
+                result.append(
+                    _InventoryEntry(
+                        name=name,
+                        identity=identity,
+                        kind=kind,
+                        role=(
+                            binding.role
+                            if binding is not None
+                            else _BirthObjectRole.birth_integrity_only
+                        ),
+                        links=value.st_nlink,
+                        size=None if directory_entry else value.st_size,
+                    )
+                )
+            finally:
+                os.close(handle)
     return tuple(sorted(result, key=lambda item: item.name.encode("utf-8")))
 
 
@@ -3524,8 +3850,19 @@ def _win_destination_exists(parent_path: str, name: str, directory: bool) -> boo
             _win_close(handle)
 
 
-def _win_inventory(handle: int) -> tuple[_InventoryEntry, ...]:
+def _win_inventory(
+    handle: int, resolve=None, budget=None, scope: tuple[str, ...] = (),
+) -> tuple[_InventoryEntry, ...]:
+    """Build the shared record for one directory from the native enumeration.
+
+    The batch is decoded in place: each name is charged to the budget as soon
+    as it is decoded and before its record exists, so the limit is reached
+    during the scan and never after a full list has been materialised
+    (section 16.13.5).  A reparse point is refused like a symbolic link is on
+    the other platform, because the closed kind has only two values.
+    """
     result: list[_InventoryEntry] = []
+    budget = _InventoryBudgetV1() if budget is None else budget
     volume = _win_info(handle)[0].volume
     first = True
     buffer = ctypes.create_string_buffer(64 * 1024)
@@ -3554,12 +3891,38 @@ def _win_inventory(handle: int) -> tuple[_InventoryEntry, ...]:
             )
             if name not in {".", ".."}:
                 name = _relative_components((name,))[0]
+                if entry.FileAttributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                directory_entry = bool(
+                    entry.FileAttributes & _FILE_ATTRIBUTE_DIRECTORY
+                )
+                kind = (
+                    _ObjectKind.directory
+                    if directory_entry
+                    else _ObjectKind.regular_file
+                )
+                binding = resolve((name,)) if resolve is not None else None
+                if binding is not None and binding.kind is not kind:
+                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+                size = None if directory_entry else int(entry.EndOfFile)
+                identity = _ObjectIdentity(
+                    volume, bytes(entry.FileId.Identifier).hex()
+                )
+                budget.include(scope + (name,), identity)
                 result.append(
                     _InventoryEntry(
-                        name,
-                        _ObjectIdentity(volume, bytes(entry.FileId.Identifier).hex()),
-                        bool(entry.FileAttributes & _FILE_ATTRIBUTE_DIRECTORY),
-                        1,
+                        name=name,
+                        identity=identity,
+                        kind=kind,
+                        role=(
+                            binding.role
+                            if binding is not None
+                            else _BirthObjectRole.birth_integrity_only
+                        ),
+                        links=1,
+                        size=size,
                     )
                 )
             if entry.NextEntryOffset == 0:

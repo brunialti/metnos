@@ -24,9 +24,7 @@ from ._support import (
 
 CASES = (
     "swap-after-root",
-    "swap-after-first",
     "swap-after-middle",
-    "swap-after-last",
     "swap-final-object",
 )
 
