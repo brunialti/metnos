@@ -615,7 +615,8 @@ class _DisposalExpectation:
         # The admitted combinations are closed: an expectation that mixes two
         # classes is refused before the name is opened (section 16.13.2).
         if not self.components:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            # The root is a malformed request, not an ambiguous resolution.
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         _relative_components(self.components)
         if self.inventory is not None and (
             not isinstance(self.inventory, tuple)
@@ -3088,12 +3089,13 @@ class _SecureRootSession:
             raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
         components = _relative_components(expectation.components)
         if not components:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         resolved = self._resolve_effective_role_binding_v1(components)
-        if (
-            resolved.binding.kind is not expectation.kind
-            or resolved.binding.role is not expectation.role
-        ):
+        # A kind that disagrees with the catalogue makes the object
+        # unrecognisable; a role that disagrees is a security contradiction.
+        if resolved.binding.kind is not expectation.kind:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if resolved.binding.role is not expectation.role:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         if expectation.disposal_class is _DisposalClass.partial_pending_file:
             # A partial pending carries no digest and no complete inventory, so
