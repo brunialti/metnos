@@ -1885,6 +1885,26 @@ def _win_restore_privilege() -> Iterator[None]:
         _win_close(token.value)
 
 
+def _win_name_taken_v1(directory: int, name: str, is_directory: bool) -> bool:
+    """Whether one name is already used inside an authenticated container.
+
+    The question is asked of the container that is open, never by rebuilding
+    an absolute name: a refusal that mentions access or sharing may mean the
+    destination is occupied, and only the container can say so.
+    """
+    try:
+        handle = _win_open_relative_v1(
+            directory,
+            name,
+            purpose=_NtOpenPurposeV1.read_required,
+            directory=is_directory,
+        )
+    except (BirthSecureFSError, OSError):
+        return False
+    _win_close(handle)
+    return True
+
+
 def _win_profile_name_v1(role: _BirthObjectRole) -> str:
     """Name of the security profile that carries one Birth role."""
     if role is _BirthObjectRole.birth_confidential:
@@ -2067,7 +2087,10 @@ def _win_reconcile_disposed(handle: int) -> None:
     act through if the object were still there.
     """
     if not _win_info(handle)[3]:
-        raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        # The system accepted the removal and then does not report it pending:
+        # it did not do what it said, which is unavailability and not an
+        # ambiguity about what the object is.
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
 
 def _win_dispose_created(handle: int) -> None:
@@ -3695,10 +3718,23 @@ class _SecureRootSession:
                         source,
                         _ObjectKind.directory if directory else _ObjectKind.regular_file,
                     )
-                    if source_role is not None:
-                        self._verify_windows_profile(
-                            source_handle, directory=directory, profile=source_role,
+                    if source_role is None:
+                        # A container this session already holds carries the
+                        # profile it was opened with: moving an object whose
+                        # profile nobody can state is not admissible.
+                        bound = self._file_roles.get(source)
+                        source_role = (
+                            self._directory_roles.get(source)
+                            if directory
+                            else (bound[1] if bound is not None else None)
                         )
+                    if source_role is None:
+                        raise BirthSecureFSError(
+                            "birth_provisioning_recovery_ambiguous"
+                        )
+                    self._verify_windows_profile(
+                        source_handle, directory=directory, profile=source_role,
+                    )
                     target_identity = _win_info(target_handle)[0]
                     if before[0].volume != target_identity.volume:
                         raise BirthSecureFSError(
@@ -3724,7 +3760,16 @@ class _SecureRootSession:
                         # destination is not reopened by name to confirm it: the
                         # system already answered, and rebuilding that name is
                         # exactly what this primitive avoids everywhere else.
-                        if error in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
+                        if error in {
+                            _ERROR_FILE_EXISTS,
+                            _ERROR_ALREADY_EXISTS,
+                        } or (
+                            error
+                            in {_ERROR_ACCESS_DENIED, _ERROR_SHARING_VIOLATION}
+                            and _win_name_taken_v1(
+                                target_handle, target_name, directory
+                            )
+                        ):
                             raise BirthSecureFSError(
                                 "birth_provisioning_transaction_conflict"
                             )
