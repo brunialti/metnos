@@ -3764,3 +3764,40 @@ Sono possibili due esiti, e la scelta non spetta all'agente:
 La raccomandazione è la prima. Fino alla decisione la cella resta rossa e
 dichiarata tale: non viene aggirata, né la sua regola viene indebolita.
 
+### 17.14 Arresto: la fotografia pre-correzione non è più ottenibile in linea
+
+Le sei attività A rifiutano di partire prima di eseguire una sola cella:
+
+```
+frozen acceptance baseline differs from the pre-fix commit;
+missing=[], added=[], changed=['tests/portable/rm0008-2a-acceptance-manifest-v1.json', ...]
+```
+
+Il file `tests/portable/rm0008-2a-pre-fix-evidence-v1.json` indica come
+sorgente il commit `6bcd5488`, che non esiste in questo albero, e contiene 250
+risultati, cioè il contratto precedente alla riduzione a 235 celle. La
+fotografia registrata è quindi obsoleta due volte.
+
+Il §17.8 prescrive di congelare l'apparato e generare la fotografia **sul
+codice produttivo precedente alla correzione**, e vieta espressamente di
+rigenerarla dopo aver corretto il prodotto. La correzione del prodotto è però
+già avvenuta: fra `8ac47b9d` e la testa corrente ci sono 2677 righe aggiunte in
+sei file di prodotto.
+
+Esiti possibili:
+
+1. **Ricostruire l'ordine prescritto.** Riportare i sei file di prodotto allo
+   stato di `8ac47b9d` in un commit dedicato, generare la fotografia con
+   l'apparato corretto, registrarla, e riapplicare il prodotto nel commit
+   successivo. È l'unica strada che conserva la prova «rossa prima, verde
+   dopo». Costo: per la durata di due commit `main` e la proiezione pubblica
+   portano il prodotto precedente alla correzione.
+2. **Registrare una fotografia post-correzione**, dichiarandola per quello che
+   è. Le celle già corrette risulterebbero verdi in partenza e la loro prova di
+   regressione andrebbe perduta.
+
+La raccomandazione è la prima. La seconda non viene eseguita di iniziativa
+perché degrada in modo permanente il valore probatorio dell'apparato, e la
+prima comporta una pubblicazione di prodotto regredito, che richiede consenso
+esplicito.
+
