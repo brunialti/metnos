@@ -3064,21 +3064,57 @@ class _SecureRootSession:
             return self._rename_no_replace_windows(source, destination, directory)
         return self._rename_no_replace_posix(source, destination, directory)
 
+    def _reconcile_moved_away_v1(
+        self,
+        target_fd: int,
+        target_name: str,
+        directory: bool,
+        role: _BirthObjectRole | None,
+    ) -> None:
+        """Look once at the destination of a move whose source has vanished."""
+        if role is None:
+            return
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        if directory:
+            flags |= getattr(os, "O_DIRECTORY", 0)
+        try:
+            settled_fd = os.open(target_name, flags, dir_fd=target_fd)
+        except OSError:
+            return
+        try:
+            if directory:
+                _verify_posix_directory(
+                    settled_fd, role=role, expected_uid=self._expected_uid
+                )
+            else:
+                _verify_posix_file(
+                    settled_fd, role=role, expected_uid=self._expected_uid
+                )
+        except BirthSecureFSError:
+            return
+        finally:
+            os.close(settled_fd)
+        raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+
     def _rename_no_replace_posix(
         self, source: tuple[str, ...], destination: tuple[str, ...], directory: bool
     ) -> _ObjectIdentity:
         source_parent, source_name = source[:-1], source[-1]
         target_parent, target_name = destination[:-1], destination[-1]
-        if directory:
-            role = self._directory_roles.get(source)
-        else:
-            binding = self._file_roles.get(source)
-            role = binding[1] if binding is not None else None
-        if role not in {
+        # The profile of the object being moved comes from the catalogue, not
+        # from what this session happens to remember: after a crash the retry
+        # runs in a new session that has never opened the name, and the move
+        # must still know what it is moving.
+        kind = _ObjectKind.directory if directory else _ObjectKind.regular_file
+        # A source that no longer exists has no row in an exact catalogue, and
+        # that absence is not yet an answer: it is the reason to go and look at
+        # the destination once, below.
+        role = self._catalog_role_v1(source, kind)
+        if role is not None and role not in {
             _BirthObjectRole.birth_confidential,
             _BirthObjectRole.birth_integrity_only,
         }:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         with self._directory_chain(source_parent) as (source_fd, _):
             with self._directory_chain(target_parent) as (target_fd, _):
                 flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -3099,6 +3135,10 @@ class _SecureRootSession:
                                 role=role,
                                 expected_uid=self._expected_uid,
                             )
+                        if role is None:
+                            raise BirthSecureFSError(
+                                "birth_provisioning_recovery_ambiguous"
+                            )
                         identity = _posix_identity(object_fd)
                         if os.fstat(source_fd).st_dev != os.fstat(target_fd).st_dev:
                             raise BirthSecureFSError(
@@ -3108,6 +3148,22 @@ class _SecureRootSession:
                         os.fsync(source_fd)
                         if source_fd != target_fd:
                             os.fsync(target_fd)
+                        # The source name must be gone.  This is a lookup on a
+                        # descriptor already held, not a second opening of the
+                        # object: the destination is opened exactly once, by
+                        # the validation below.
+                        try:
+                            os.stat(
+                                source_name,
+                                dir_fd=source_fd,
+                                follow_symlinks=False,
+                            )
+                        except FileNotFoundError:
+                            pass
+                        else:
+                            raise BirthSecureFSError(
+                                "birth_provisioning_io_unavailable"
+                            )
                         # The object keeps its identity and role; only its name
                         # changes, so a reserved binding follows the rename and
                         # the post-validation can classify the destination.
@@ -3127,19 +3183,22 @@ class _SecureRootSession:
                         os.close(object_fd)
                 except BirthSecureFSError:
                     raise
+                except FileNotFoundError as exc:
+                    # The source is gone.  Before calling this a failure the
+                    # destination is looked at once: an object of the expected
+                    # shape already there means an earlier attempt completed,
+                    # and this session cannot claim that move as its own.
+                    self._reconcile_moved_away_v1(
+                        target_fd,
+                        target_name,
+                        directory,
+                        self._catalog_role_v1(destination, kind),
+                    )
+                    raise BirthSecureFSError(
+                        "birth_provisioning_io_unavailable", exc
+                    )
                 except OSError as exc:
                     raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
-        source_entries = self._inventory_state(source_parent)
-        if any(item.name == source_name for item in source_entries):
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
-        target_entries = (
-            source_entries
-            if target_parent == source_parent
-            else self._inventory_state(target_parent)
-        )
-        moved = [item for item in target_entries if item.name == target_name]
-        if len(moved) != 1 or moved[0].identity != identity:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         with self._directory_chain(target_parent) as (target_fd, _):
             flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
             if directory:
