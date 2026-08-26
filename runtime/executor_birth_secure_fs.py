@@ -975,6 +975,7 @@ _ERROR_CALL_NOT_IMPLEMENTED = 120
 _FILE_STANDARD_INFO_CLASS = 1
 _FILE_RENAME_INFO_CLASS = 3
 _FILE_DISPOSITION_INFO_EX_CLASS = 21
+_FILE_RENAME_INFORMATION_CLASS = 10
 _FILE_ATTRIBUTE_TAG_INFO_CLASS = 9
 _FILE_ID_INFO_CLASS = 18
 _FILE_ID_EXTD_DIRECTORY_INFO_CLASS = 19
@@ -1150,6 +1151,14 @@ if os.name == "nt":  # pragma: no cover - bindings exercised by Windows CI
     )
     _NTDLL.RtlNtStatusToDosError.restype = wintypes.ULONG
     _NTDLL.RtlNtStatusToDosError.argtypes = (ctypes.c_long,)
+    _NTDLL.NtSetInformationFile.restype = ctypes.c_long
+    _NTDLL.NtSetInformationFile.argtypes = (
+        wintypes.HANDLE,
+        ctypes.POINTER(_IO_STATUS_BLOCK),
+        ctypes.c_void_p,
+        wintypes.ULONG,
+        wintypes.ULONG,
+    )
     _ADVAPI32 = ctypes.WinDLL("advapi32", use_last_error=True)
     _KERNEL32.CreateFileW.argtypes = (
         wintypes.LPCWSTR,
@@ -3766,13 +3775,20 @@ class _SecureRootSession:
                     header.RootDirectory = target_handle
                     header.FileNameLength = len(encoded)
                     ctypes.memmove(ctypes.addressof(buffer) + offset, encoded, len(encoded))
-                    if not _KERNEL32.SetFileInformationByHandle(
+                    # The Win32 wrapper ignores the containing directory of
+                    # the request and refuses it with an invalid parameter,
+                    # measured on the platform; the native call honours it and
+                    # is the only way to move a name without rebuilding it.
+                    status_block = _IO_STATUS_BLOCK()
+                    status = _NTDLL.NtSetInformationFile(
                         source_handle,
-                        _FILE_RENAME_INFO_CLASS,
+                        ctypes.byref(status_block),
                         buffer,
                         len(buffer),
-                    ):
-                        error = ctypes.get_last_error()
+                        _FILE_RENAME_INFORMATION_CLASS,
+                    )
+                    if status < 0:
+                        error = _NTDLL.RtlNtStatusToDosError(status)
                         # A move that must not replace anything, refused because
                         # the name is taken, is a conflict of transactions. The
                         # destination is not reopened by name to confirm it: the

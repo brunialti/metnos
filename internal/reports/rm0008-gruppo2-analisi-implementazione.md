@@ -4069,3 +4069,30 @@ della richiesta — cartella radice piu' nome relativo, oppure nome pienamente
 qualificato senza cartella radice — per stabilire quale delle due il sistema
 accetta attraverso questa via.
 
+### 17.26 Scostamento dal contratto: la chiamata che sposta un nome
+
+Il §16 prescrive `SetFileInformationByHandle(FileRenameInfo)` con
+`RootDirectory` uguale all'handle della radice e il solo nome relativo. La
+misura sulla piattaforma dice che **quella combinazione non e' accettata**:
+
+| forma della richiesta | esito |
+|---|---|
+| radice + nome relativo, via `SetFileInformationByHandle` | errore 87 |
+| nome pienamente qualificato, stessa via | riuscita |
+| radice + nome relativo, via `NtSetInformationFile` | riuscita |
+
+L'involucro Win32 ignora la cartella di riferimento; la chiamata nativa la
+onora. Le due uscite erano ricostruire il nome assoluto — che l'intero
+contratto vieta e che questo lavoro ha eliminato ovunque — oppure usare la
+chiamata nativa con la stessa struttura, gli stessi campi e lo stesso
+significato.
+
+E' stata scelta la seconda. Lo scostamento riguarda il **nome della funzione
+chiamata**, non la forma della richiesta: struttura, classe, `ReplaceIfExists`,
+radice, lunghezza e nome restano quelli che il §16 fissa, e la conversione
+dello stato passa dalla stessa tabella chiusa.
+
+Conseguenza per l'apparato: le celle che sorvegliano la rinomina agganciano
+`SetFileInformationByHandle` e non vedranno piu' la chiamata. La correzione —
+sorvegliare `NtSetInformationFile` — entra nella lista d'attesa del §17.21.
+
