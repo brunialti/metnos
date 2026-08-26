@@ -4029,3 +4029,23 @@ Windows che confronti, per la sola creazione del lucchetto, la maschera, la
 disposizione e il descrittore passati dalle due strade. Va ripreso cosi', non
 a tentativi: e' l'unico punto rimasto e merita una misura propria.
 
+### 17.24 Sorgente gia' aperta e autorita' di spostare
+
+`cached-source-renames` pretende che la sorgente sia validata per identita' e
+per profilo prima della chiamata nativa, e riconosce quella validazione solo
+sul manico aperto con lo scopo di modifica. Quando la sessione tiene gia' un
+manico su quella cartella, il prodotto lo riusa e quello scopo non compare
+mai.
+
+Due tentativi, entrambi misurati:
+
+1. verificare il profilo anche del manico gia' tenuto — nessun effetto sulla
+   cella, la validazione non viene riconosciuta perche' manca lo scopo;
+2. aprire sempre un manico proprio con lo scopo di modifica — la cella resta
+   rossa e la misura complessiva peggiora di una cella.
+
+La regola del §17.9 ferma qui i tentativi. Il punto da chiarire, con una sonda
+propria, e' se un manico aperto per leggere possa portare l'autorita' di
+rimuovere un nome: se non puo', il riuso e' sbagliato in se' e il secondo
+tentativo va ripreso capendo prima quale altra cella rompe.
+
