@@ -3814,6 +3814,9 @@ class _SecureRootSession:
                     ctypes.sizeof(disposition),
                 ):
                     raise _win_error("SetFileInformationByHandle(disposition)")
+                # The removal is confirmed on the same handle, before it is
+                # closed: afterwards nothing would carry the authority to look.
+                _win_reconcile_disposed(target)
             finally:
                 _win_close(target)
         remaining = self._inventory_state(parent)
