@@ -3719,12 +3719,12 @@ class _SecureRootSession:
                         len(buffer),
                     ):
                         error = ctypes.get_last_error()
-                        if error in {
-                            _ERROR_FILE_EXISTS,
-                            _ERROR_ALREADY_EXISTS,
-                            _ERROR_ACCESS_DENIED,
-                            _ERROR_SHARING_VIOLATION,
-                        } and _win_destination_exists(target_path, target_name, directory):
+                        # A move that must not replace anything, refused because
+                        # the name is taken, is a conflict of transactions. The
+                        # destination is not reopened by name to confirm it: the
+                        # system already answered, and rebuilding that name is
+                        # exactly what this primitive avoids everywhere else.
+                        if error in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
                             raise BirthSecureFSError(
                                 "birth_provisioning_transaction_conflict"
                             )
@@ -3732,7 +3732,10 @@ class _SecureRootSession:
                             raise BirthSecureFSError(
                                 "birth_provisioning_atomic_install_unsupported"
                             )
-                        raise OSError(error, "SetFileInformationByHandle")
+                        raise BirthSecureFSError(
+                            _nt_birth_code_v1(error, _NtOpenPurposeV1.mutating_open),
+                            OSError(0, "SetFileInformationByHandle", None, error),
+                        )
                     after = _win_info(source_handle)
                     if after[0] != before[0]:
                         raise BirthSecureFSError("birth_provisioning_io_unavailable")
