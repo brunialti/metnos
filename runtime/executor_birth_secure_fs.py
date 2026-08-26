@@ -4415,10 +4415,20 @@ def _win_inventory(
                 binding = resolve((name,)) if resolve is not None else None
                 if binding is not None and binding.kind is not kind:
                     raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-                size = None if directory_entry else int(entry.EndOfFile)
-                identity = _ObjectIdentity(
-                    volume, bytes(entry.FileId.Identifier).hex()
+                # Each name is reopened once against this directory and the
+                # record is built from that handle: a name whose object is
+                # exchanged between the two scans is then observed.
+                child = _win_open_relative_v1(
+                    handle,
+                    name,
+                    purpose=_NtOpenPurposeV1.read_required,
+                    directory=directory_entry,
                 )
+                try:
+                    observed = _win_info(child)
+                finally:
+                    _win_close(child)
+                identity = observed[0]
                 budget.include(scope + (name,), identity)
                 result.append(
                     _InventoryEntry(
@@ -4430,8 +4440,8 @@ def _win_inventory(
                             if binding is not None
                             else _BirthObjectRole.birth_integrity_only
                         ),
-                        links=1,
-                        size=size,
+                        links=observed[2],
+                        size=None if directory_entry else observed[5],
                     )
                 )
             if entry.NextEntryOffset == 0:
