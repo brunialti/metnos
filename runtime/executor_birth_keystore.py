@@ -236,6 +236,7 @@ def _load_birth_keystore_below_windows(root: Path, forbidden) -> LoadedBirthKeyS
                     purpose=secure._NtOpenPurposeV1.read_required,
                     directory=True,
                 )
+                secure._require_protected_dacl_v1(subdirectories[name])
         except secure.BirthSecureFSError as exc:
             raise BirthKeyStoreError(
                 "birth_keystore_unsafe", f"directory permissions: {root}"

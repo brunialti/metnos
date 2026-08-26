@@ -1465,7 +1465,45 @@ def _win_open_relative_v1(
 
 def _open_win_directory_root(path: str) -> int:
     """Open one absolute directory as the anchor of a handle-bound read."""
-    return _win_open_path(path, directory=True)
+    handle = _win_open_path(path, directory=True)
+    try:
+        _require_protected_dacl_v1(handle)
+    except BaseException:
+        _win_close(handle)
+        raise
+    return handle
+
+
+def _require_protected_dacl_v1(handle: int) -> None:
+    """Refuse an object whose permissions are inherited from its container.
+
+    A historical root has no catalogue to compare against, so what is verified
+    is the property the contract fixes for it: the list is its own, protected,
+    and therefore carries no entry that arrived from an ancestor.
+    """
+    descriptor = ctypes.c_void_p()
+    result = _ADVAPI32.GetSecurityInfo(
+        handle,
+        _SE_FILE_OBJECT,
+        _DACL_SECURITY_INFORMATION,
+        None,
+        None,
+        None,
+        None,
+        ctypes.byref(descriptor),
+    )
+    if result:
+        raise BirthSecureFSError(
+            "birth_provisioning_acl_unsafe", OSError(result, "GetSecurityInfo")
+        )
+    try:
+        _, flags, _ = _win_dacl_parts_v1(_win_descriptor_sddl(descriptor.value))
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
+    finally:
+        _KERNEL32.LocalFree(descriptor)
+    if "P" not in flags:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
 
 
 def _read_win_relative_v1(directory: int, name: str, *, maximum: int) -> bytes:
@@ -1480,6 +1518,7 @@ def _read_win_relative_v1(directory: int, name: str, *, maximum: int) -> bytes:
         directory, name, purpose=_NtOpenPurposeV1.read_required, directory=False,
     )
     try:
+        _require_protected_dacl_v1(handle)
         before = _win_info(handle)
         if before[5] > maximum:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
