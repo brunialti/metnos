@@ -1461,6 +1461,46 @@ def _win_open_relative_v1(
     return handle.value
 
 
+def _open_win_directory_root(path: str) -> int:
+    """Open one absolute directory as the anchor of a handle-bound read."""
+    return _win_open_path(path, directory=True)
+
+
+def _read_win_relative_v1(directory: int, name: str, *, maximum: int) -> bytes:
+    """Read one regular file relative to an already authenticated directory.
+
+    The name is resolved by the object manager against the parent handle, so a
+    component substituted after the anchor cannot redirect the read; the object
+    is compared before and after, so a replacement during the read is refused
+    instead of returning a mixture of two objects.
+    """
+    handle = _win_open_relative_v1(
+        directory, name, purpose=_NtOpenPurposeV1.read_required, directory=False,
+    )
+    try:
+        before = _win_info(handle)
+        if before[5] > maximum:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        result = bytearray()
+        while len(result) <= maximum:
+            capacity = min(8192, maximum + 1 - len(result))
+            buffer = ctypes.create_string_buffer(capacity)
+            count = wintypes.DWORD()
+            if not _KERNEL32.ReadFile(
+                handle, buffer, capacity, ctypes.byref(count), None
+            ):
+                raise _win_error("ReadFile")
+            if not count.value:
+                break
+            result.extend(buffer.raw[: count.value])
+        after = _win_info(handle)
+        if len(result) > maximum or len(result) != before[5] or before != after:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        return bytes(result)
+    finally:
+        _win_close(handle)
+
+
 def _win_close(handle: int) -> None:
     if os.name == "nt" and handle not in {None, _INVALID_HANDLE_VALUE}:
         _KERNEL32.CloseHandle(handle)
