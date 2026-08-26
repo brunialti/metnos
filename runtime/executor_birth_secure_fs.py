@@ -1348,7 +1348,9 @@ class _NtOpenPurposeV1(str, Enum):
 # ask for DELETE on the same handle they will act through, never by name.
 _NT_FILE_ACCESS_V1 = {
     _NtOpenPurposeV1.read_required: 0x00120081,
-    _NtOpenPurposeV1.lock_reader: 0x00120081,
+    # A lock taker also writes its byte when it materialises the lock and
+    # needs write access for an exclusive byte-range lock.
+    _NtOpenPurposeV1.lock_reader: 0x00120083,
     _NtOpenPurposeV1.create_exclusive: _WIN_FILE_CREATE_ACCESS_V1,
     _NtOpenPurposeV1.mutating_open: 0x001f0080,
     # Removal also compares the bytes against the expectation, so it reads
@@ -3014,9 +3016,7 @@ class _SecureRootSession:
                     handle = _win_open_relative_v1(
                         directory,
                         name,
-                        purpose=_NtOpenPurposeV1.mutating_open
-                        if exclusive
-                        else _NtOpenPurposeV1.lock_reader,
+                        purpose=_NtOpenPurposeV1.lock_reader,
                         directory=False,
                     )
             except OSError as exc:
