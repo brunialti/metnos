@@ -3181,12 +3181,11 @@ class _SecureRootSession:
                 raise BirthSecureFSError(
                     "birth_provisioning_io_unavailable"
                 ) from exc
-            try:
-                os.open(name, flags, dir_fd=directory)
-            except FileNotFoundError:
-                pass
-            else:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        # Reconcile through the parent: the target is gone and nothing else in
+        # the directory changed (section 16.13.8).
+        remaining = self._inventory_state(parent)
+        if any(item.name == name for item in remaining):
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         self._file_roles.pop(components, None)
         self._directory_roles.pop(components, None)
         self._role_overlay.pop(components, None)
