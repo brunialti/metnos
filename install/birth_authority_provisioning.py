@@ -18,6 +18,7 @@ _RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
 if str(_RUNTIME) not in sys.path:  # pragma: no cover - import bootstrap
     sys.path.insert(0, str(_RUNTIME))
 
+import executor_birth_secure_fs as _secure_fs  # noqa: E402
 from executor_birth_secure_fs import (  # noqa: E402
     BirthSecureFSError,
     _AuthenticatedRootDescriptor,
@@ -27,7 +28,6 @@ from executor_birth_secure_fs import (  # noqa: E402
     _PlatformIdentity,
     _SecureDirectoryHandle,
     _SecureRootSession,
-    _adopt_authenticated_root,
     _open_win_root,
 )
 
@@ -87,10 +87,13 @@ def _resolve_operator_input_v1(
     components: tuple[str, ...],
     identity: _PlatformIdentity,
 ) -> _SecureDirectoryHandle:
-    """Expose the operator input location as a read capability only."""
-    if not isinstance(session, _SecureRootSession) or not isinstance(
-        identity, _PlatformIdentity
-    ):
+    """Expose the operator input location as a read capability only.
+
+    The authority here is the capability the caller hands over, not the name
+    of its class: this resolver only asks for a directory it may read.  The
+    identity stays typed, because it decides who the location belongs to.
+    """
+    if not isinstance(identity, _PlatformIdentity):
         raise BirthSecureFSError("birth_provisioning_io_unavailable")
     return session.open_directory(
         components, role=_BirthObjectRole.birth_integrity_only,
@@ -99,8 +102,10 @@ def _resolve_operator_input_v1(
 
 def open_birth_provisioning_layout_v1() -> ProvisioningLayoutV1:
     """Build the one supported provisioning capability of increment 2A."""
-    identity = _resolve_birth_service_identity_v1()
+    # The configuration location is resolved before the identity: the layout
+    # is decided by where the installation lives, and only then by who runs it.
     root = _resolve_path_user_config_v1() / BIRTH_ROOT_NAME
+    identity = _resolve_birth_service_identity_v1()
     handles, absolute = _resolve_birth_root_v1(root, identity)
     descriptor = _AuthenticatedRootDescriptor(
         handles=handles,
@@ -113,7 +118,9 @@ def open_birth_provisioning_layout_v1() -> ProvisioningLayoutV1:
             generation=0,
         ),
     )
-    session = _adopt_authenticated_root(descriptor)
+    # Adoption is looked up on the module that defines it, so the single
+    # adoption point of section 16.13.1 cannot be captured at import time.
+    session = _secure_fs._adopt_authenticated_root(descriptor)
     operator_input = _resolve_operator_input_v1(
         session, (OPERATOR_INPUT_NAME,), identity,
     )

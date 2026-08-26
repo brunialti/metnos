@@ -1043,7 +1043,7 @@ def test_r1_descriptor_immutable_single_consumption(
     root.mkdir(mode=0o755)
     root.chmod(0o755)
     lock = root / "provisioning-v1.lock"
-    lock.write_bytes(b"")
+    lock.write_bytes(b"0")
     lock.chmod(0o644)
     payload = root / "catalog-confidential.bin"
     payload.write_bytes(b"catalog-authority")

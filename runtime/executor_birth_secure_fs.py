@@ -1910,16 +1910,16 @@ class _SecureRootSession:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         return _ResolvedBirthRoleBindingV1(binding=binding, origin=origin)
 
-    def _catalog_directory_role_v1(
-        self, components: tuple[str, ...],
+    def _catalog_role_v1(
+        self, components: tuple[str, ...], kind: _ObjectKind,
     ) -> _BirthObjectRole | None:
-        """Role a traversed directory must already carry, when the catalogue says so.
+        """Profile the catalogue requires for one name, when it declares it.
 
-        The catalogue is the authority for profiles (section 16.13.2), so the
-        walk itself must consult it instead of assuming the root profile for
-        every intermediate name.  An absent row leaves the historical fallback
-        in place; a row that declares a regular file leaves the refusal to the
-        traversal syscall, which is what actually observes the object.
+        The catalogue is the authority for profiles (section 16.13.2), so both
+        the traversal and the read consult it instead of trusting what the
+        caller declares.  An absent row leaves the historical fallback in
+        place; a row of the other kind leaves the refusal to the syscall,
+        which is what actually observes the object.
         """
         try:
             resolved = self._resolve_effective_role_binding_v1(components)
@@ -1927,7 +1927,7 @@ class _SecureRootSession:
             if exc.code == "birth_provisioning_recovery_ambiguous":
                 return None
             raise
-        if resolved.binding.kind is not _ObjectKind.directory:
+        if resolved.binding.kind is not kind:
             return None
         return resolved.binding.role
 
@@ -2011,7 +2011,7 @@ class _SecureRootSession:
         if final_role is not None and components:
             declared = self._directory_roles.get(components)
             if declared is None:
-                declared = self._catalog_directory_role_v1(components)
+                declared = self._catalog_role_v1(components, _ObjectKind.directory)
             if declared is not None and declared is not final_role:
                 raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         try:
@@ -2022,7 +2022,7 @@ class _SecureRootSession:
                 child = self._directories.get(prefix)
                 role = self._directory_roles.get(prefix)
                 if role is None:
-                    role = self._catalog_directory_role_v1(prefix)
+                    role = self._catalog_role_v1(prefix, _ObjectKind.directory)
                 if role is None:
                     role = self._root_role
                 if child is None:
@@ -2165,6 +2165,12 @@ class _SecureRootSession:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
         role = self._root_role if role is None else role
         if not isinstance(role, _BirthObjectRole):
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        # A profile declared by the caller is a claim, not an authority: where
+        # the catalogue declares one it decides, and a weaker claim over a
+        # confidential name is refused before the object is opened.
+        declared = self._catalog_role_v1(components, _ObjectKind.regular_file)
+        if declared is not None and declared is not role:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         parent, name = components[:-1], components[-1]
         with self._directory_chain(parent) as (directory, directory_path):
