@@ -689,11 +689,70 @@ nome finale con `openat` e confronta identità e inventario.
 
 ### 7.3 Windows
 
-La realizzazione Windows deve usare `CreateFileW` con
-`FILE_FLAG_OPEN_REPARSE_POINT`; per le directory aggiunge
-`FILE_FLAG_BACKUP_SEMANTICS`. I caricatori finali non concedono
-`FILE_SHARE_DELETE`. La pubblicazione è diversa: la directory di transazione
-deve essere aperta con
+La realizzazione Windows usa `CreateFileW` soltanto per aprire il volume, la
+radice di condivisione UNC o la radice di unità già risolta dall'installatore.
+Questa sola apertura assoluta usa `FILE_FLAG_OPEN_REPARSE_POINT` e, per una
+directory, `FILE_FLAG_BACKUP_SEMANTICS`; non usa `FILE_FLAG_WRITE_THROUGH` per
+simulare una proprietà della radice.
+Ogni componente discendente viene aperto o creato dalla funzione privata
+`_win_open_relative_v1`, che chiama `NtCreateFile` da `ntdll` con
+`OBJECT_ATTRIBUTES.RootDirectory` uguale all'handle padre e `ObjectName`
+uguale a un solo componente UTF-16 già validato. Il componente non contiene
+separatori, punto o genitore. `OBJECT_ATTRIBUTES.Attributes` contiene
+`OBJ_CASE_INSENSITIVE`; `UNICODE_STRING.Length` e `MaximumLength` sono lunghezze
+in byte e non includono un terminatore.
+
+L'apertura usa `FILE_OPEN`; la creazione esclusiva usa `FILE_CREATE`. Le opzioni
+contengono `FILE_OPEN_REPARSE_POINT|FILE_SYNCHRONOUS_IO_NONALERT` e, in modo
+mutuamente esclusivo, `FILE_DIRECTORY_FILE` oppure
+`FILE_NON_DIRECTORY_FILE`. Un risultato è successo soltanto se
+`NT_SUCCESS(status)`; gli altri `NTSTATUS` sono convertiti una sola volta con
+`RtlNtStatusToDosError` e poi nella tassonomia Birth. Non è ammessa una
+riapertura assoluta di un discendente come ripiego.
+
+Le costanti appartengono al dominio NT e hanno valori chiusi:
+`FILE_OPEN=0x00000001`, `FILE_CREATE=0x00000002`,
+`FILE_DIRECTORY_FILE=0x00000001`, `FILE_WRITE_THROUGH=0x00000002`,
+`FILE_SYNCHRONOUS_IO_NONALERT=0x00000020`,
+`FILE_NON_DIRECTORY_FILE=0x00000040`,
+`FILE_OPEN_REPARSE_POINT=0x00200000` e
+`OBJ_CASE_INSENSITIVE=0x00000040`. La prova G10 rifiuta alias con le costanti
+Win32 `OPEN_EXISTING`, `CREATE_NEW` o `FILE_FLAG_*`.
+
+La conversione usa l'enumerazione privata
+`_NtOpenPurposeV1=read_required|lock_reader|create_exclusive|mutating_open|disposition`
+e la tabella chiusa seguente. `ERROR_FILE_EXISTS` e `ERROR_ALREADY_EXISTS`
+valgono `birth_provisioning_transaction_conflict` soltanto per
+`create_exclusive`. `ERROR_FILE_NOT_FOUND` e `ERROR_PATH_NOT_FOUND` valgono
+`birth_provisioning_lock_unavailable` per `lock_reader`,
+`birth_provisioning_recovery_ambiguous` per `disposition` e
+`birth_provisioning_io_unavailable` negli altri casi. `ERROR_ACCESS_DENIED` e
+`ERROR_PRIVILEGE_NOT_HELD` valgono `birth_provisioning_elevation_required` per
+`create_exclusive`, `mutating_open` e `disposition`, e
+`birth_provisioning_acl_unsafe` per `read_required` e `lock_reader`.
+`ERROR_SHARING_VIOLATION` vale `birth_provisioning_lock_unavailable` per
+`lock_reader` e `birth_provisioning_io_unavailable` negli altri casi.
+`ERROR_INVALID_PARAMETER`, `ERROR_NOT_SUPPORTED` ed
+`ERROR_CALL_NOT_IMPLEMENTED` valgono
+`birth_provisioning_atomic_install_unsupported`. Ogni altra risposta vale
+`birth_provisioning_io_unavailable`. La causa di sistema resta concatenata
+soltanto internamente; il messaggio pubblico contiene il solo codice Birth.
+
+Su x64 `UNICODE_STRING` ha dimensione 16 e offset `Length=0`,
+`MaximumLength=2`, `Buffer=8`; `OBJECT_ATTRIBUTES` ha dimensione 48 e offset
+`Length=0`, `RootDirectory=8`, `ObjectName=16`, `Attributes=24`,
+`SecurityDescriptor=32`, `SecurityQualityOfService=40`; `IO_STATUS_BLOCK` ha
+dimensione 16, unione `Status|Pointer` all'offset zero e `Information`
+all'offset 8. `NtCreateFile` restituisce `NTSTATUS` a 32 bit con segno e riceve,
+nell'ordine, puntatore a handle, `ACCESS_MASK`, puntatore a
+`OBJECT_ATTRIBUTES`, puntatore a `IO_STATUS_BLOCK`, puntatore opzionale a
+`LARGE_INTEGER`, attributi file, condivisione, disposizione di creazione,
+opzioni di creazione, buffer EA opzionale e lunghezza EA. G10 confronta queste
+definizioni ctypes con una sonda ABI indipendente compilata sul runner, non con
+le costanti del prodotto.
+
+I caricatori finali non concedono `FILE_SHARE_DELETE`. La pubblicazione è
+diversa: la directory di transazione deve essere aperta con
 `DELETE|SYNCHRONIZE|READ_CONTROL|WRITE_DAC|WRITE_OWNER|FILE_READ_ATTRIBUTES`,
 con `FILE_SHARE_READ|FILE_SHARE_WRITE` e senza `FILE_SHARE_DELETE`, perché il
 medesimo handle sarà rinominato mediante la propria autorizzazione `DELETE`.
@@ -719,9 +778,10 @@ lunghi. La normalizzazione non viene usata per riaprire l'oggetto.
 
 La pubblicazione di `author-root-v1`, dell'insieme immutabile e del marcatore
 usa un handle sorgente distinto e già convalidato per ciascuno dei tre oggetti.
-Le due directory usano anche `FILE_FLAG_BACKUP_SEMANTICS`; il file marcatore no.
-Tutti e tre usano `FILE_FLAG_WRITE_THROUGH`, `FILE_FLAG_OPEN_REPARSE_POINT`,
-accesso `DELETE` e nessuna condivisione di cancellazione:
+Le due directory vengono aperte con `FILE_DIRECTORY_FILE`; il file marcatore
+con `FILE_NON_DIRECTORY_FILE`. Tutti e tre usano le opzioni native
+`FILE_WRITE_THROUGH|FILE_OPEN_REPARSE_POINT`, accesso `DELETE` e nessuna
+condivisione di cancellazione:
 
 1. tutti i file discendenti sono chiusi dopo sincronizzazione e rilettura;
 2. restano aperti l'handle sorgente dell'oggetto da pubblicare e l'handle della
@@ -733,6 +793,19 @@ accesso `DELETE` e nessuna condivisione di cancellazione:
 5. destinazione esistente, comparsa concorrente o errore di rinomina lasciano
    invariati sia l'oggetto già finale sia la transazione; dopo il fallimento il
    codice rilegge entrambi per handle e classifica il conflitto.
+
+Per `SetFileInformationByHandle(FileRenameInfo)`, `ERROR_FILE_EXISTS` o
+`ERROR_ALREADY_EXISTS` producono `birth_provisioning_transaction_conflict`.
+`ERROR_ACCESS_DENIED` o `ERROR_SHARING_VIOLATION` producono lo stesso conflitto
+soltanto se la riconciliazione indipendente trova la destinazione; se questa è
+assente, `ERROR_ACCESS_DENIED` produce `birth_provisioning_elevation_required`
+e `ERROR_SHARING_VIOLATION` produce `birth_provisioning_io_unavailable`.
+`ERROR_NOT_SUPPORTED`, `ERROR_NOT_SAME_DEVICE` e `ERROR_INVALID_PARAMETER`
+producono `birth_provisioning_atomic_install_unsupported`.
+`ERROR_FILE_NOT_FOUND` o `ERROR_PATH_NOT_FOUND` producono
+`birth_provisioning_recovery_ambiguous`; ogni altro errore produce
+`birth_provisioning_io_unavailable`. Nessun ramo decide il codice prima di
+riconciliare sorgente e destinazione attraverso gli handle parent.
 
 Non si sostituisce mai una directory esistente e non si usa
 `MOVEFILE_REPLACE_EXISTING`. Dopo la rinomina il caricatore riapre dal nome
@@ -747,11 +820,12 @@ stesse garanzie, altrimenti verifica il rifiuto chiuso.
 
 Il proprietario e la lista di controllo degli accessi devono essere applicati
 con `SetSecurityInfo` sullo stesso handle, non mediante un secondo accesso per
-nome. I file nascono con `CreateFileW` e un descrittore restrittivo in
-`SECURITY_ATTRIBUTES`. Le directory nascono con
-`CreateDirectoryW`/`CreateDirectoryExW` e lo stesso descrittore, quindi vengono
-aperte immediatamente con `CreateFileW(OPEN_EXISTING)` e i flag di directory.
-Non è ammesso creare prima una directory ereditata e correggerla dopo.
+nome. File e directory discendenti nascono mediante `_win_open_relative_v1`
+con il descrittore restrittivo passato in
+`OBJECT_ATTRIBUTES.SecurityDescriptor`; l'handle restituito resta quello usato
+per applicazione, verifica, scrittura e rilettura. Non è ammesso usare
+`CreateDirectoryW`, creare prima un oggetto ereditato, correggerlo dopo o
+riaprirlo per percorso.
 
 Prima della prima scrittura il codice applica proprietario e DACL con
 `SetSecurityInfo`, tipo `SE_FILE_OBJECT` e mask composta da
@@ -795,7 +869,7 @@ proprietario. Il fallimento produce `birth_provisioning_elevation_required`
 senza lasciare materiale segreto. L'identità del servizio è derivata dal
 descrittore di installazione, non da un argomento libero.
 
-I file sono aperti con `FILE_FLAG_WRITE_THROUGH`, ricevono
+I file sono aperti con l'opzione nativa `FILE_WRITE_THROUGH`, ricevono
 `FlushFileBuffers()` dopo la scrittura e vengono riletti dallo stesso handle.
 Windows non offre un equivalente generale di `fsync` della directory: il
 documento non deve rivendicarlo. La garanzia V1 usa file completi sincronizzati,
@@ -806,15 +880,15 @@ misurate nella prova installata, non presunte.
 ### 7.4 File di blocco e arresto durante la creazione
 
 Predispositore e caricatori contendono sullo stesso intervallo ma non hanno gli
-stessi diritti. Soltanto il predispositore può creare con `CREATE_NEW` e
+stessi diritti. Soltanto il predispositore può creare con `FILE_CREATE` e
 inizializzare il file sotto blocco esclusivo; se il nome esiste usa
-`OPEN_EXISTING`. Un caricatore di sola lettura usa soltanto `OPEN_EXISTING`, non
+`FILE_OPEN`. Un caricatore di sola lettura usa soltanto `FILE_OPEN`, non
 crea, non scrive e fallisce con codice stabile se il file manca o è vuoto.
 
 Su Windows il predispositore apre con `GENERIC_READ|GENERIC_WRITE`, il
 caricatore con `GENERIC_READ`; entrambi concedono soltanto
 `FILE_SHARE_READ|FILE_SHARE_WRITE`, senza `FILE_SHARE_DELETE`, e usano
-`FILE_FLAG_OPEN_REPARSE_POINT`. `LockFileEx` opera sull'intervallo di un byte
+`FILE_OPEN_REPARSE_POINT`. `LockFileEx` opera sull'intervallo di un byte
 all'offset zero, descritto da `OVERLAPPED` azzerata: ogni tentativo usa
 `LOCKFILE_FAIL_IMMEDIATELY`, il predispositore aggiunge
 `LOCKFILE_EXCLUSIVE_LOCK`, il caricatore no. Su POSIX ogni tentativo usa
@@ -877,7 +951,8 @@ per identità, tipo e inventario con la registrazione osservata. Non si usano
 glob generici e non si rimuove mai una radice finale esistente.
 
 Su Windows la rimozione procede dal basso verso l'alto con handle aperti con
-`DELETE` e senza condivisione di cancellazione. Dopo una nuova verifica di
+le maschere esatte definite nel §16.13.2, sempre comprensive di `DELETE`, e
+senza condivisione di cancellazione. Dopo una nuova verifica di
 identità, tipo, link e proprietario/DACL, l'oggetto deve appartenere a uno di
 due insiemi chiusi: `payload_inventory`, oppure metadati del protocollo
 (`transaction-v1.json`, catena contigua dei checkpoint, unico pending ammesso e
@@ -901,11 +976,22 @@ e dal catalogo chiuso; devono inoltre coincidere parent aperto della
 transazione, proprietario/DACL, tipo regolare, link count uno, dimensione entro
 il limite e `FileId`/identità stabile prima e dopo. Soltanto allora viene
 cancellato sul medesimo handle. Qualunque secondo pending o divergenza è
-ambigua. La rimozione usa
-`SetFileInformationByHandle(FileDispositionInfoEx)` quando supportato, con
-flag POSIX/delete appropriati e nessuna riapertura per nome; la variante
-`FileDispositionInfo` è ammessa soltanto se conserva le stesse garanzie sul
-filesystem certificato. Su POSIX usa `unlinkat` relativo al descrittore padre,
+ambigua. La rimozione usa esclusivamente
+`SetFileInformationByHandle(FileDispositionInfoEx)` con i soli flag
+`FILE_DISPOSITION_FLAG_DELETE|FILE_DISPOSITION_FLAG_POSIX_SEMANTICS` e nessuna
+riapertura per nome. Un oggetto con `FILE_ATTRIBUTE_READONLY` viene rifiutato
+prima della disposizione; la primitiva non modifica attributi per renderlo
+cancellabile. Dopo la chiamata richiede
+`FileStandardInfo.DeletePending=true` sul medesimo handle; dopo la chiusura
+richiede l'assenza dall'inventario del padre. `ERROR_INVALID_PARAMETER` e
+`ERROR_NOT_SUPPORTED` producono
+`birth_provisioning_atomic_install_unsupported`, senza ripiego su
+`FileDispositionInfo`. `ERROR_ACCESS_DENIED` e `ERROR_PRIVILEGE_NOT_HELD`
+producono `birth_provisioning_elevation_required`; `ERROR_SHARING_VIOLATION` e
+ogni altro errore producono `birth_provisioning_io_unavailable`. Una chiamata
+riuscita che non porta `DeletePending` a vero produce anch'essa
+`birth_provisioning_io_unavailable` e non viene riportata come rimozione. Su
+POSIX usa `unlinkat` relativo al descrittore padre,
 con `AT_REMOVEDIR` per directory vuote. `os.walk`, `shutil.rmtree` e glob sono
 vietati nel percorso autorevole.
 
@@ -1345,14 +1431,16 @@ Windows deve inoltre provare:
   `AccessCheck` non sostituisce queste prove;
 - rinomina di directory tramite `SetFileInformationByHandle` con handle radice,
   destinazione assente e stesso volume, più rifiuto della destinazione esistente;
-- nomi lunghi, prefisso `\\?\`, percorso UNC quando disponibile e differenze di
-  maiuscole/minuscole senza riapertura per nome normalizzato;
+- nomi lunghi, prefisso `\\?\`, condivisione UNC loopback obbligatoria e
+  differenze di maiuscole/minuscole senza riapertura per nome normalizzato;
 - creazione di file e directory con DACL già restrittiva, seguita dal confronto
   canonico di owner, ordine ACE, mask e flag sul medesimo handle;
 - rifiuto di filesystem non NTFS o privo di `FILE_PERSISTENT_ACLS` prima della
   creazione di qualunque oggetto;
 - dimensione e offset ABI di `FILE_RENAME_INFO`, `FILE_ID_INFO`,
-  `FILE_DISPOSITION_INFO_EX` e `OVERLAPPED` su Windows Server 2022 x64.
+  `FILE_DISPOSITION_INFO_EX`, `OVERLAPPED`, `UNICODE_STRING`,
+  `OBJECT_ATTRIBUTES` e `IO_STATUS_BLOCK`, più le firme ctypes di
+  `NtCreateFile` e `RtlNtStatusToDosError`, su Windows Server 2022 x64;
 - seriale volume `8000000000000001` conservato come 16 cifre esadecimali senza
   segno o rifiuto spurio.
 
@@ -1707,7 +1795,7 @@ contesa reale.
   condiviso/condiviso, condiviso/esclusivo ed esclusivo/condiviso, con barriera
   e scadenza misurata.
 - **A-C1-recupero:** una barriera strumentata nel simbolo produttivo segnala il
-  punto successivo a `CREATE_NEW`, applicazione ACL e `LockFileEx`, ma precedente
+  punto successivo a `FILE_CREATE`, applicazione ACL e `LockFileEx`, ma precedente
   alla prima `WriteFile`. Soltanto a quel punto il processo viene terminato con
   `TerminateProcess`; un nuovo scrittore recupera il file vuoto e produce
   esattamente il byte canonico. Un lettore non crea mai il file.
@@ -1775,7 +1863,7 @@ del codice.
 | G7 | Volume Windows | Rifiuto di volume non NTFS o privo di `FILE_PERSISTENT_ACLS` prima di ogni creazione, con inventario invariato e oracolo del volume indipendente. |
 | G8 | Proprietario POSIX autorevole | Radice, directory e file autorevoli con UID diverso da quello autenticato sono rifiutati prima dell'uso; la prova resta distinta da G2, dove il profilo pubblico storico può ammettere un proprietario differente purché non modificabile dal servizio. |
 | G9 | Percorsi Windows | Percorsi lunghi, prefisso `\\?\`, UNC e differenze di maiuscole/minuscole seguono la matrice positiva o il rifiuto chiuso del §12.2; l'assenza di un server UNC certificabile non diventa uno skip verde. |
-| G10 | ABI e identità volume Windows | Dimensioni e offset di `FILE_RENAME_INFO`, `FILE_ID_INFO`, `FILE_DISPOSITION_INFO_EX` e `OVERLAPPED` sono verificati su Windows Server 2022 x64; il seriale `8000000000000001` resta unsigned e viene reso con sedici cifre esadecimali. |
+| G10 | ABI e identità volume Windows | Dimensioni e offset di `FILE_RENAME_INFO`, `FILE_ID_INFO`, `FILE_DISPOSITION_INFO_EX`, `OVERLAPPED`, `UNICODE_STRING`, `OBJECT_ATTRIBUTES` e `IO_STATUS_BLOCK`, nonché la firma ctypes di `NtCreateFile`, `RtlNtStatusToDosError`, apertura realmente relativa e tabella degli stati, sono verificati su Windows Server 2022 x64; il seriale `8000000000000001` resta unsigned e viene reso con sedici cifre esadecimali. |
 | G11 | Byte binari Windows | Ogni byte da `0x00` a `0xff` viene scritto e riletto senza trasformazione di testo attraverso la primitiva produttiva. |
 | G12 | Fallimento sicurezza Windows | Un errore reale o iniettato di `SetSecurityInfo` produce il codice Birth stabile e nessuna destinazione marcata completa; inventario e residui vengono riconciliati. |
 
@@ -1971,3 +2059,676 @@ portabile sia la prova delegata prevista dal workflow.
 Questa evidenza chiude la precondizione P1-a e autorizza il passo 7 del §16.8.
 Non certifica da sola R5-R7, non rende verde alcuna prova di prodotto ancora da
 scrivere e non dichiara completato l'incremento 2A o RM-0008.
+
+### 16.13 Decisioni chiuse necessarie al manifesto di accettazione 2A
+
+La rilettura successiva alla chiusura dei riproduttori D ha mostrato che otto
+dettagli non erano abbastanza determinati per affidare la codifica a un agente
+senza autorità normativa. Le decisioni seguenti appartengono al solo incremento
+2A, non introducono una seconda politica di predisposizione e sono vincolanti
+per i test A, per il manifesto e per l'implementazione.
+
+#### 16.13.1 Unica entrata installatore e descrittore consumabile
+
+L'unica entrata supportata che può produrre la capacità mutante 2A è
+`install/birth_authority_provisioning.py::open_birth_provisioning_layout_v1()`.
+Non accetta percorsi, UID, SID, handle, profili, descrittori o funzioni di
+risoluzione. Risolve una sola volta la radice fissa `PATH_USER_CONFIG/birth`, la
+collocazione fissa `operator-input-v1` e l'identità di servizio attraverso la
+configurazione dell'installatore. Restituisce un `ProvisioningLayoutV1`
+immutabile; la disposizione mantiene privati i descrittori già aperti e offre
+una sola adozione della sessione Birth. La collocazione di ingresso operatore è
+esposta alla sessione soltanto come capacità di lettura. Il descrittore della
+radice Birth porta il ruolo chiuso `birth_integrity_only`; i sottoalberi
+confidenziali vengono chiusi dal catalogo del §16.13.4.
+
+Le prove isolate possono sostituire le funzioni private di risoluzione del
+modulo installatore prima di invocare l'entrata senza argomenti. Questa
+sostituzione è un'iniezione del banco di prova, non una variante dell'API
+distribuita e non compare nel grafo del prodotto.
+
+`_AuthenticatedRootDescriptor` contiene handle come tupla, percorso di solo
+confronto e `_PlatformIdentity` immutabili. Nessun campo rappresenta lo stato di
+adozione. Il consumo singolo è conservato esternamente dal modulo di accesso,
+per identità dell'istanza, e una seconda adozione fallisce prima di trasferire o
+chiudere un handle. Il token globale `_DESCRIPTOR_TOKEN` viene eliminato: non è
+un sigillo.
+
+La guardia R1 non usa una lista parziale di directory. Il file versionato
+`tests/portable/rm0008_2a_acceptance/production-python-inventory-v1.json`
+classifica ogni file Python tracciato ed esportato nella distribuzione pubblica
+come `productive`, `test` oppure `documentation`. La classificazione non è una
+dichiarazione libera: `conftest.py` e ogni file sotto `tests/` sono `test`, ogni
+file sotto `docs/` è `documentation` e ogni altro file Python pubblico è
+`productive`. Non esiste una categoria generica `tooling` che possa esentare
+uno script distribuito. Ne segue che moduli alla radice,
+`runtime/**/*.py`, `install/**/*.py`, `executors/**/*.py`, `tutor/**/*.py` e
+tutti gli script Python distribuiti sono produttivi. La guardia confronta
+l'insieme completo dei file tracciati con l'inventario e ricalcola la classe da
+queste tre sole regole; fallisce se un file è assente, duplicato, non più
+presente o classificato diversamente. Un aggiornamento della distribuzione deve
+aggiornare nello stesso commit anche questo inventario.
+
+L'analisi AST e del grafo delle chiamate attraversa tutti i file classificati
+`productive`, compresi gli import e gli alias risolti fra moduli. Ammette la
+costruzione e l'adozione del descrittore e ogni chiamata mutante soltanto in
+`install/birth_authority_provisioning.py`. Nel modulo filesystem sono ammesse le
+sole definizioni delle primitive e i richiami privati indispensabili alla loro
+attuazione, non una seconda fabbrica o una seconda entrata mutante. Test,
+diagnostica, documentazione e strumenti non diventano per questo superficie
+produttiva; la loro classificazione è comunque esplicita e verificata.
+
+Questa proprietà resta strutturale. Non protegge contro codice arbitrario già
+eseguito con lo stesso UID o SID e nello stesso interprete; tale limite non può
+essere rimosso dal rapporto conclusivo.
+
+#### 16.13.2 Firma chiusa della disposizione 2A
+
+La sessione mutante espone esattamente:
+
+```python
+dispose_transaction_object(
+    expectation: _DisposalExpectation,
+) -> _DispositionResult
+```
+
+`_ObjectKind` è l'enumerazione chiusa `regular_file|directory` e
+`_DisposalClass` è l'enumerazione chiusa
+`complete_file|partial_pending_file|empty_directory`. Il record immutabile
+`_DisposalExpectation` contiene esattamente:
+
+```python
+components: tuple[str, ...]
+identity: _ObjectIdentity
+kind: _ObjectKind
+role: _BirthObjectRole
+disposal_class: _DisposalClass
+links: int
+expected_size: int | None
+maximum_partial_size: int | None
+content_sha256: str | None
+inventory: tuple[_InventoryEntry, ...] | None
+```
+
+Le combinazioni ammesse sono chiuse. `complete_file` richiede
+`kind=regular_file`, `links=1`, `expected_size` esatto, digest SHA-256 canonico,
+`maximum_partial_size=None` e `inventory=None`. `partial_pending_file` richiede
+`kind=regular_file`, `links=1`, `expected_size=None`, limite non negativo in
+`maximum_partial_size`, `content_sha256=None` e `inventory=None`; è ammesso
+soltanto per l'unico nome pending successivo autorizzato dal catalogo e dal
+journal come descritto nel §7.6. `empty_directory` richiede `kind=directory`,
+`links=2` su POSIX e `links=1` su Windows,
+`expected_size=None`, `maximum_partial_size=None`, `content_sha256=None` e
+`inventory=()`. Qualunque altra combinazione viene rifiutata prima di aprire il
+nome. `components` deve essere una tupla non vuota di componenti relativi
+canonici; `components=()` identifica la radice e viene sempre rifiutato prima
+di qualunque apertura o disposizione.
+
+`_InventoryEntry` è un record immutabile con i campi esatti `name`, `identity`,
+`kind`, `role`, `links` e `size`; `name` è un singolo componente canonico e
+`size` è un intero non negativo per il file oppure `None` per la directory. Un
+file regolare è autorizzabile soltanto con `links=1`. Una directory vuota è
+autorizzabile soltanto con `links=2` su POSIX e `links=1` su Windows; un valore
+diverso produce `birth_provisioning_recovery_ambiguous`. Su una piattaforma il
+cui filesystem non espone tale semantica l'operazione è non supportata, non
+allarga il predicato. I reparse point e i collegamenti simbolici hanno un tipo
+distinto e non sono mai autorizzabili dalla disposizione 2A. `expected_size` e
+`maximum_partial_size` devono inoltre rispettare il limite del ruolo e
+dell'oggetto nel catalogo prima di leggere i byte.
+
+`_DispositionResult` è immutabile e contiene esattamente `identity`, `kind` e
+`removed=True`. L'assenza iniziale dell'oggetto non è un successo idempotente:
+produce `birth_provisioning_recovery_ambiguous`, perché 2A non possiede ancora
+un journal che possa dimostrare una disposizione precedente. L'insieme dei
+nomi autorizzati non entra nella primitiva: dal 2B il solo predispositore,
+proprietario del catalogo e del journal, costruisce l'aspettativa per un nome
+già riconosciuto. R1 vieta la costruzione produttiva del record altrove.
+
+L'operazione richiede il blocco globale esclusivo prima di qualunque apertura
+del nome. Apre l'oggetto relativamente all'handle della directory padre, senza
+seguire collegamenti, e confronta sul medesimo handle identità completa, tipo,
+ruolo di sicurezza, numero di collegamenti, dimensione e inventario. Per un
+file completo legge e calcola il digest sullo stesso handle. Per il solo pending
+parziale verifica che la dimensione osservata non superi il limite. Una
+directory deve essere vuota e non può essere un reparse point. Ogni discordanza
+fallisce chiusa prima della disposizione.
+
+Su POSIX il codice esegue `fstat`, lettura e digest sul medesimo descrittore,
+poi usa `unlinkat` relativo al descrittore padre, con `AT_REMOVEDIR` soltanto per
+la directory vuota, sincronizza la directory padre e verifica l'assenza con un
+nuovo accesso relativo. Su Windows la sessione rimuove dalle proprie mappe e
+dalla lista di chiusura, una sola volta, ogni handle memorizzato del bersaglio e
+dei suoi discendenti e lo chiude prima dell'apertura di disposizione. Apre poi
+un nuovo handle relativo al padre. Per un file richiede esattamente
+`DELETE|SYNCHRONIZE|READ_CONTROL|FILE_READ_ATTRIBUTES|FILE_READ_DATA`; per una
+directory richiede esattamente
+`DELETE|SYNCHRONIZE|READ_CONTROL|FILE_READ_ATTRIBUTES|FILE_LIST_DIRECTORY|FILE_TRAVERSE`.
+In entrambi i casi concede `FILE_SHARE_READ|FILE_SHARE_WRITE` e non
+`FILE_SHARE_DELETE`. Verifica metadati, byte e digest su quell'handle, applica
+esclusivamente `SetFileInformationByHandle(FileDispositionInfoEx)` con i flag
+`DELETE|POSIX_SEMANTICS` fissati dal §7.6 e richiede
+che `FileStandardInfo.DeletePending` diventi vero sul medesimo handle. Chiude
+quindi l'handle di disposizione esattamente una volta. Soltanto dopo la chiusura
+riconcilia l'inventario attraverso l'handle del padre. Non riapre un
+percorso assoluto e non tratta un oggetto in cancellazione differita come
+assenza già riuscita. Ogni fallimento di pulizia conserva l'errore primario e
+viene normalizzato secondo G4.
+
+#### 16.13.3 Nomi e firme dei tre caricatori interni
+
+Le tre entrate interne in sessione sono fissate come segue:
+
+```python
+_load_birth_keystore_in_session(
+    directory: tuple[str, ...],
+    session: _SecureRootSession,
+    *,
+    forbidden_public_keys: Iterable[bytes | Ed25519PublicKey] = (),
+) -> LoadedBirthKeyStore
+
+_load_approval_authority_in_session(
+    authority_file: tuple[str, ...],
+    session: _SecureRootSession,
+) -> ApprovalAuthority
+
+_load_semantic_authority_in_session(
+    authority_file: tuple[str, ...],
+    public_directory: tuple[str, ...],
+    evidence_directory: tuple[str, ...],
+    session: _SecureRootSession,
+) -> PreprovisionedSemanticAuthority
+```
+
+Tutte richiedono che la sessione possieda il blocco globale condiviso o
+esclusivo. Nessuna rilascia o riacquisisce il globale. Il caricatore
+dell'archivio chiavi acquisisce inoltre il proprio blocco locale condiviso;
+approvazioni e semantica non inventano un blocco locale. I tre argomenti
+relativi della semantica devono coincidere con i nomi e con le relazioni
+contenute nel catalogo chiuso; non trasformano percorsi dichiarati dal file in
+autorità.
+
+L'autorità semantica conserva una `_SecureDirectoryHandle` per le evidenze,
+legata alla medesima sessione, invece di un `Path` da riaprire. L'autorità non
+chiude e non trasferisce la sessione. Il bundle del gruppo 3 è l'unico
+proprietario del ciclo di vita: mantiene la sessione aperta finché l'autorità è
+utilizzabile, rilascia il blocco globale prima dei blocchi runtime come imposto
+dal §7.5 e, dopo l'ultimo uso, invalida l'autorità e chiude la sessione
+esattamente una volta. Ogni uso dell'autorità dopo tale chiusura fallisce con
+`semantic_review_unavailable`, senza includere percorsi nel messaggio o nella
+catena pubblica dell'errore. Nel 2A la prova resta entro la vita esplicita della
+sessione e verifica anche questa invalidazione. Le tre facciate storiche basate
+su `Path` restano separate e di sola lettura per G2.
+
+#### 16.13.4 Ruoli e catalogo dei profili di sicurezza
+
+Nessuna API interna accetta più il booleano `exact_private` o le stringhe libere
+`confidential` e `integrity_only` come decisione autorevole. Usa
+`_BirthObjectRole`, enumerazione chiusa con i ruoli
+`birth_confidential`, `birth_integrity_only`, `historical_private` e
+`historical_public`. Il tipo file o directory rimane separato nel record
+tipizzato. La conversione ruolo e tipo → profilo di piattaforma è una tabella
+costante del modulo di accesso:
+
+- `birth_confidential`: proprietario POSIX uguale all'identità autenticata e
+  modi esatti `0700/0600`; su Windows profilo `confidential`;
+- `birth_integrity_only`: proprietario POSIX uguale all'identità autenticata e
+  modi esatti `0755/0644`, che consentono lettura senza concedere modifica a
+  gruppo o altri; su Windows profilo `integrity_only`;
+- `historical_private`: proprietario POSIX uguale all'utente efficace e modi
+  esatti `0700/0600`; su Windows proprietario uguale al SID utente del token
+  corrente e DACL storica privata descritta sotto;
+- `historical_public`: su POSIX il proprietario non è autorevole, ma gruppo e
+  altri non possono scrivere; su Windows proprietario uguale al SID utente del
+  token corrente e DACL storica pubblica descritta sotto.
+
+Il catalogo del modulo installatore assegna ruoli ai nomi fissi e ai soli
+schemi dinamici definiti dai §§4.1-4.3. Sono `birth_confidential` le directory
+che contengono private o configurazioni necessarie a usarle, i file privati e
+le configurazioni degli archivi. Sono `birth_integrity_only` il blocco globale,
+registri pubblici, chiavi pubbliche, journal e checkpoint privi di segreti,
+`set.json`, materiale del contesto e marcatori. La radice Birth e i contenitori
+misti `authority-sets`, `authority-sets/<set_id>` e `producers` sono
+`birth_integrity_only`, così i discendenti pubblici restano attraversabili.
+L'archivio `author-root-v1`, l'archivio Admission e ogni singolo archivio
+Producer sono `birth_confidential`.
+
+La directory di transazione non è interamente confidenziale. La sua radice è
+un contenitore misto `birth_integrity_only`; `transaction-v1.json`, la
+directory `checkpoints-v1`, i checkpoint, `prepared-v1.json`, il contenitore
+`authority-set`, `set.json`, `approval`, `semantic`, `context` e i relativi
+oggetti pubblici sono `birth_integrity_only`. Soltanto `author-root-v1`,
+`authority-set/admission` e ogni
+`authority-set/producers/p-<digest-capacità>` sono `birth_confidential`; il
+contenitore `authority-set/producers` resta `birth_integrity_only`. In questo
+modo i checkpoint sono realmente raggiungibili dal profilo pubblico previsto.
+La visibilità dei nomi nei contenitori misti è una proprietà accettata, non un
+segreto. Nessuna regola generica «un discendente privato rende privato ogni
+antenato» può sostituire la tabella chiusa.
+
+I caricatori storici possiedono cataloghi distinti e costanti: archivio chiavi
+e configurazione sono `historical_private`; registri di approvazione,
+configurazione semantica, pubbliche ed evidenze sono `historical_public`. Su
+Windows questi ruoli non riusano i profili Birth, che richiedono `SYSTEM` come
+proprietario e il SID del servizio. La facciata storica ricava internamente il
+SID utente da `TokenUser`; non accetta SID dal chiamante e non modifica ACL.
+La DACL deve essere protetta, priva di ereditarietà e contenere, in questo
+ordine, sole ACE `ACCESS_ALLOWED`: `SYSTEM` con controllo completo,
+`Administrators` con controllo completo e utente corrente con controllo
+completo. Per `historical_public` segue una quarta ACE
+`Authenticated Users`, con la maschera esatta di lettura e attraversamento
+`0x001200a9` per directory o di lettura `0x00120089` per file. Il profilo
+privato non contiene tale ACE. Owner, flag di controllo, numero, ordine, tipo,
+flag, SID e maschera di ogni ACE devono coincidere; materiale ereditato o
+altrimenti sicuro ma non canonico fallisce chiuso. G2 usa fixture reali con
+questi profili e dimostra che le facciate precedenti leggono senza mutarli.
+
+Ogni creazione registra nella sessione il ruolo contro `_ObjectIdentity`, non
+soltanto contro il nome. Ogni riapertura richiede che catalogo, identità e ruolo
+concordino. Un oggetto già aperto non acquisisce un nuovo ruolo da un argomento
+di lettura. La radice viene verificata all'adozione con il ruolo contenuto nel
+descrittore installatore. Il confronto Windows analizza owner, controllo DACL,
+numero, ordine, tipo e flag delle ACE, SID e maschere mediante le API native;
+non confronta stringhe SDDL.
+
+#### 16.13.5 Limite comune dell'inventario
+
+Il limite G1 mantiene il valore V1 già fissato dal §4.4 e ha due ambiti
+simultanei: al massimo 4.096 voci in una singola directory e al massimo 4.096
+voci distinte nell'intera operazione logica di inventario chiuso. La 4.097ª voce
+locale o aggregata produce `birth_provisioning_recovery_ambiguous` durante
+l'enumerazione incrementale, prima di costruire il record aggiuntivo.
+
+La sessione possiede il tipo privato `_InventoryBudgetV1`, inizializzato con il
+limite immutabile 4.096. Un caricamento o una fotografia completa crea un solo
+budget e lo passa a tutte le scansioni dell'albero. La stessa voce logica,
+identificata da percorso relativo canonico e identità di piattaforma, conta una
+sola volta anche se viene osservata nella scansione precedente e successiva o
+riaperta per il controllo tipizzato; un nome con identità diversa non viene
+deduplicato e produce prima l'errore di sostituzione previsto. Una chiamata
+autonoma `inventory()` su una sola directory crea invece un proprio budget.
+POSIX non può usare una funzione che materializzi prima tutti i nomi; Windows
+controlla entrambi i contatori mentre decodifica i record di enumerazione.
+
+#### 16.13.6 Matrice chiusa dei percorsi Windows
+
+La matrice G9 è la seguente e non ammette salti:
+
+| Caso | Esito richiesto |
+|---|---|
+| Percorso locale NTFS canonico | Accettato se percorso finale, volume e FileID coincidono. |
+| Percorso locale più lungo di 260 caratteri | Accettato mediante forma verbatim, senza troncare né riaprire la forma normalizzata. |
+| Prefisso locale `\\?\` | Accettato se rappresenta lo stesso oggetto e la stessa identità del percorso canonico. |
+| Variazione di maiuscole e minuscole | Accettata soltanto quando l'handle risolve allo stesso FileID; il testo normalizzato serve solo al confronto. |
+| UNC o `\\?\UNC\` raggiungibile | Accettato soltanto se l'oracolo indipendente conferma NTFS, `FILE_PERSISTENT_ACLS`, stesso volume e identità stabile. |
+| UNC non raggiungibile o privo delle garanzie | Rifiutato con `birth_provisioning_atomic_install_unsupported`, inventario invariato e nessun oggetto creato. |
+| Prefisso malformato, percorso relativo o attraversamento del genitore | Rifiutato prima dell'uso con il codice Birth stabile. |
+
+G9 possiede tre celle UNC distinte e obbligatorie. La cella positiva crea con un
+controllore amministrativo una condivisione SMB loopback dal nome casuale ma
+registrato, la cui directory sorgente si trova sullo stesso volume NTFS del
+workspace. L'oracolo indipendente verifica prima dell'uso che la forma
+`\\127.0.0.1\<share>` sia raggiungibile, che il volume dichiari NTFS e
+`FILE_PERSISTENT_ACLS` e che volume e FileID restino stabili. Attraverso il
+simbolo produttivo esegue poi, sulla condivisione, creazione relativa con
+descrittore di sicurezza, scrittura e rilettura, rinomina no-replace e
+disposizione `FileDispositionInfoEx`; verifica identità, destinazione,
+`DeletePending`, chiusura e inventario finale. Un errore di creazione, accesso
+o verifica della condivisione o di una di queste operazioni rende rossa la cella
+positiva; non viene trasformato in un rifiuto atteso. Il controllore rimuove la
+condivisione e la directory soltanto dopo aver verificato che nessun handle sia
+rimasto aperto.
+
+La cella negativa usa separatamente un nome UNC sicuramente non pubblicato dal
+controllore e verifica il rifiuto chiuso
+`birth_provisioning_atomic_install_unsupported`, inventario invariato e nessun
+oggetto creato. Una terza cella apre la condivisione loopback reale ma sostituisce
+nel solo processo di prova il risultato di `GetVolumeInformationByHandleW` con
+una risposta strutturalmente valida priva di `FILE_PERSISTENT_ACLS`; verifica
+che il simbolo produttivo rifiuti prima della creazione. L'oracolo del
+controllore conferma separatamente che la directory reale e il suo inventario
+non sono cambiati. L'intercettazione resta nel banco di prova e non introduce
+un callback o un'opzione nel prodotto. Nessuna cella usa `skip`, `xfail` o
+selezioni basate sulla capacità osservata.
+
+#### 16.13.7 Profondità sentinella per C2 e C3
+
+Le prove di sostituzione usano la catena fissa
+`first/middle/last/payload.bin`. Le barriere sono cinque e producono cinque
+`node-id` distinti: radice, primo intermedio, intermedio centrale, ultimo
+intermedio e oggetto finale. Una guardia AST separata rifiuta rami produttivi
+che trattino una posizione dell'intermedio in modo diverso dal ciclo comune.
+Questa profondità non riduce il contratto: il prodotto deve applicare la stessa
+regola a ogni componente fino al limite di 1.024 byte; la sentinella copre
+inizio, centro e fine del ciclo con un oracolo indipendente per ciascuna
+barriera.
+
+#### 16.13.8 Arresti posseduti da 2A e arresti rinviati
+
+L'incremento 2A possiede gli arresti reali delle proprie primitive, su radici
+isolate e senza inventare journal:
+
+- creazione vuota del lock, acquisizione e punto precedente alla prima
+  scrittura, con recupero del byte canonico;
+- file creato con sicurezza già restrittiva, scrittura parziale, scrittura
+  completa, sincronizzazione del file e sincronizzazione della directory padre
+  POSIX;
+- applicazione ACL Windows, scrittura parziale, scrittura completa e
+  `FlushFileBuffers`;
+- prima e dopo la chiamata nativa di rinomina e disposizione, richiedendo che lo
+  stato osservato sia uno dei soli stati atomici ammessi. Il 2A riconosce lo
+  stato, ma non adotta un successo incerto in assenza del journal 2B.
+
+La matrice di esito è chiusa:
+
+| Operazione e punto di arresto | Stato indipendente richiesto | Esito di un tentativo diretto 2A successivo |
+|---|---|---|
+| Rinomina, prima della chiamata nativa | Sorgente presente e destinazione assente. | Può ripetere la rinomina e riuscire. |
+| Rinomina, dopo il successo nativo ma prima del ritorno | Sorgente assente e destinazione presente con la stessa identità. | `birth_provisioning_recovery_ambiguous`; soltanto il journal 2B può adottare il risultato. |
+| Rinomina, errore nativo con destinazione inizialmente assente | Sorgente presente e invariata; destinazione assente. | Errore chiuso appropriato; nessuna adozione. |
+| Rinomina, destinazione già esistente o comparsa alla barriera | Sorgente e destinazione sono entrambe presenti e conservano le rispettive identità, byte e inventari. | `birth_provisioning_transaction_conflict`; nessuna adozione. |
+| Disposizione, prima della chiamata nativa | Oggetto presente con tutti i campi dell'aspettativa invariati. | Può ripetere la disposizione e riuscire. |
+| Disposizione, dopo il successo nativo ma prima del ritorno | Oggetto assente; nessun altro nome o oggetto è cambiato. | `birth_provisioning_recovery_ambiguous`; soltanto il journal 2B può adottare il risultato. |
+| Disposizione, errore nativo | Oggetto presente con identità, byte, metadati e inventario invariati. | Errore chiuso appropriato; nessuna assenza come successo. |
+
+Un ritorno normale da entrambe le primitive è ammesso soltanto dopo la
+post-validazione relativa al padre: la rinomina dimostra sorgente assente,
+destinazione presente e identità invariata; la disposizione dimostra bersaglio
+assente e inventario del padre altrimenti invariato. Le prove osservano lo stato
+con un processo indipendente che non importa la primitiva di prodotto.
+
+Le barriere sono intercettazioni confinate del banco di prova nel processo
+figlio. Non aggiungono callback, variabili d'ambiente o punti di arresto al
+prodotto. POSIX usa `SIGKILL` e il controllore richiede con `waitpid` che il
+figlio sia terminato dal segnale `SIGKILL` prima dell'oracolo filesystem.
+Windows usa `TerminateProcess` con il codice sentinella `0xEE`, richiede che la
+chiamata restituisca successo, attende al massimo trenta secondi con
+`WaitForSingleObject`, accetta soltanto `WAIT_OBJECT_0`, verifica con
+`GetExitCodeProcess` il codice `0xEE` e chiude gli handle di processo e thread.
+Soltanto dopo tali verifiche interroga filesystem, `DeletePending` e inventario.
+
+Dal 2B al 2F restano proprietari degli arresti legati a
+`transaction-v1.json`, ciascun payload reale, pending, checkpoint, journal,
+pubblicazione dei tre finali, `set_id`, marcatore e convergenza del
+predispositore. Nessuna prova generica 2A può colorare di verde quelle celle.
+
+### 16.14 Collocazione e schema del manifesto A
+
+Il manifesto pubblico canonico è
+`tests/portable/rm0008-2a-acceptance-manifest-v1.json`. Le prove A comuni e
+POSIX risiedono esclusivamente in
+`tests/portable/rm0008_2a_acceptance/`; le prove A Windows, comprese quelle con
+identità reali, risiedono esclusivamente in
+`tests/windows_identity/rm0008_2a_acceptance/`. Le prove storiche che hanno
+salti legittimi rimangono fuori da questi due alberi. Non si crea un albero
+escluso dall'esportazione pubblica.
+
+#### 16.14.1 Schema canonico
+
+L'oggetto superiore contiene esattamente:
+
+```json
+{"cells":[],"schema_version":1,"suite_id":"rm-0008-increment-2a"}
+```
+
+`cells` viene poi popolato con record che contengono esattamente, senza campi
+aggiuntivi, `criterion`, `node_id`, `activity`, `platform`,
+`production_symbols`, `certification_symbols`, `oracle`,
+`normative_subcase` e `pre_fix_disposition`. Tutte le stringhe presenti sono
+non vuote, normalizzate NFC e prive di caratteri di controllo. Si applicano
+inoltre i vincoli seguenti:
+
+- `criterion` soddisfa
+  `^(?:R[1-8]|C[1-4]|G(?:[1-9]|1[0-2]))$`;
+- `activity` appartiene all'enumerazione chiusa `manifest`,
+  `portable-ubuntu`, `portable-windows`, `concurrency-ubuntu`,
+  `concurrency-windows`, `windows-acl`;
+- `platform` vale `platform-independent` per `manifest`, `linux` per le due
+  attività Ubuntu e `windows` per le tre attività Windows;
+- `node_id` è l'identificativo pytest completo, relativo alla radice del
+  deposito e contenuto in uno dei due alberi A. Ogni parametrizzazione usa un
+  identificativo esplicito; spazi e caratteri di controllo sono vietati;
+- `production_symbols` e `certification_symbols` sono liste ordinate e senza
+  duplicati di stringhe ASCII che soddisfano
+  `^[A-Za-z_][A-Za-z0-9_.]*::[A-Za-z_][A-Za-z0-9_.]*$`. Per G6 la prima lista
+  è vuota e la seconda è non vuota, perché l'oggetto della prova è
+  l'infrastruttura di certificazione. Per ogni altro criterio la prima è non
+  vuota e la seconda è vuota. Nessun simbolo di test viene presentato come
+  simbolo produttivo;
+- `oracle` è una lista non vuota, ordinata e senza duplicati i cui valori
+  appartengono all'enumerazione chiusa `ast-call-graph`, `byte-comparison`,
+  `handle-counter`, `inventory-snapshot`, `monotonic-barrier`,
+  `posix-disk-state`, `posix-fstat`, `posix-syscall-trace`,
+  `process-exit-state`, `pytest-collection`, `win32-acl`,
+  `win32-file-identity`, `win32-token-access`, `win32-volume`,
+  `workflow-structure`;
+- `normative_subcase` è una stringa ASCII che soddisfa
+  `^[a-z0-9][a-z0-9-]*$`;
+- `pre_fix_disposition` appartiene all'enumerazione chiusa
+  `red|absent|may_green` ed è usato soltanto per la fotografia precedente alla
+  correzione, mai per attenuare la certificazione finale.
+
+Il file è JSON UTF-8 canonico: chiavi ordinate, separatori `,` e `:`, nessun
+ritorno a capo finale e `allow_nan=false`. Le liste `production_symbols`,
+`certification_symbols` e `oracle` sono ordinate per byte UTF-8. `cells` è
+ordinata per la tupla
+`(activity, criterion, node_id, normative_subcase)`, confrontata per byte
+UTF-8. Sono uniche sia `(activity, node_id)` sia
+`(criterion, activity, normative_subcase)`. Il medesimo `node_id` può comparire
+in due record soltanto nella coppia `portable-ubuntu` e `portable-windows`; in
+ogni altro caso la duplicazione è un errore.
+
+#### 16.14.2 Inventario normativo chiuso delle celle
+
+Il validatore contiene la costante letterale `REQUIRED_CELLS_V1`, indipendente
+dal file JSON, e confronta esattamente l'insieme delle tuple
+`(criterion, activity, platform, normative_subcase, pre_fix_disposition)`.
+La costante contiene 248 record: 12 per `manifest`, 67 per `portable-ubuntu`,
+60 per `portable-windows`, 17 per `concurrency-ubuntu`, 21 per
+`concurrency-windows` e 71 per `windows-acl`. Un insieme vuoto, una cella
+mancante, una cella aggiuntiva o una cardinalità diversa fallisce prima della
+raccolta pytest.
+
+Il valore precedente alla correzione appartiene alla tupla normativa e non è
+scelto dal record JSON. Il valore predefinito è `may_green`. Sono `red`
+esattamente le celle seguenti:
+
+- R1 `descriptor-immutable-single-consumption` e
+  `productive-graph-no-mutating-capability`;
+- R2 gli otto slug che terminano in `-no-global` o `-shared-global`;
+- R4 `empty-lock-fsync-order`;
+- R5 `reject-owner`, `reject-unprotected-dacl`, `reject-ace-order`,
+  `reject-ace-type-or-flags`, `reject-ace-sid`, `reject-ace-mask` e
+  `catalog-role-identity-binding`;
+- R6 `cached-source-renames` e `fresh-source-profile-rejected`;
+- R7 su Ubuntu `symlink-record-rejected` e `hardlink-rejected`; su Windows
+  `hardlink-rejected`, `junction-reparse-record-rejected` e
+  `mutation-between-scans-rejected`.
+
+Sono `absent` R1 `installer-only-entry`, tutte le celle R3 e, per entrambe le
+attività di concorrenza, R8 `approval-global-exclusive`,
+`semantic-global-exclusive` e `semantic-use-after-close`. Tutte le altre celle,
+compresi i controlli positivi R2, R4, R5-R7, le due celle keystore R8, C1-C4 e
+G1-G12, sono `may_green`. G6 appartiene a quest'ultima classe perché manifesto
+e validatore vengono aggiunti insieme agli A, prima di modificare il prodotto.
+
+Il `node_id` di ogni record deve terminare con `[<normative_subcase>]`, usando
+esattamente lo slug seguente come identificativo pytest esplicito. Le celle
+comuni R2, R3, G1 e G4 riusano il medesimo `node_id` nella sola coppia portabile
+Ubuntu/Windows; tutte le altre hanno un `node_id` distinto.
+
+L'inventario obbligatorio è il seguente. La cardinalità indicata è il numero di
+slug della riga, non un conteggio aggregato di asserzioni interne.
+
+| Criterio | Attività | Piattaforma | Slug normativi esatti | N |
+|---|---|---|---|---:|
+| R1 | `manifest` | `platform-independent` | `installer-only-entry`, `descriptor-immutable-single-consumption`, `productive-graph-no-mutating-capability` | 3 |
+| R2 | `portable-ubuntu` e `portable-windows` | rispettivamente `linux` e `windows` | `create-file-no-global`, `create-file-shared-global`, `create-directory-no-global`, `create-directory-shared-global`, `rename-no-global`, `rename-shared-global`, `dispose-no-global`, `dispose-shared-global`, `exclusive-allows-mutations`, `shared-allows-readers` | 10 per attività |
+| R3 | `portable-ubuntu` e `portable-windows` | rispettivamente `linux` e `windows` | `complete-file-success`, `empty-directory-success`, `reject-root-components`, `reject-absent`, `reject-identity`, `reject-kind`, `reject-role`, `reject-links`, `reject-size`, `reject-digest`, `reject-nonempty-directory`, `partial-pending-success`, `reject-partial-oversize`, `reject-foreign-pending` | 14 per attività |
+| R3 | `portable-windows` | `windows` | `disposition-relative-open`, `disposition-file-access-mask`, `disposition-directory-access-mask`, `disposition-ex-invalid-parameter-no-fallback`, `disposition-ex-not-supported-no-fallback`, `disposition-deletepending-false`, `disposition-readonly-rejected`, `disposition-access-denied-mapping`, `disposition-residual-error-mapping` | 9 |
+| R3 | `concurrency-ubuntu` e `concurrency-windows` | rispettivamente `linux` e `windows` | `dispose-crash-before-native`, `dispose-crash-after-native` | 2 per attività |
+| R4 | `portable-ubuntu` | `linux` | `empty-lock-fsync-order`, `empty-lock-kill-and-recover` | 2 |
+| R5 | `windows-acl` | `windows` | `reject-owner`, `reject-unprotected-dacl`, `reject-ace-order`, `reject-ace-type-or-flags`, `reject-ace-sid`, `reject-ace-mask`, `birth-confidential-file-access`, `birth-confidential-directory-access`, `birth-integrity-file-access`, `birth-integrity-directory-access`, `nonelevated-stable-error-no-secret`, `catalog-role-identity-binding` | 12 |
+| R6 | `portable-windows` | `windows` | `cached-source-renames`, `fresh-source-profile-rejected`, `destination-existing-conflict`, `native-error-destination-absent`, `success-postvalidation`, `different-volume-rejected`, `source-fileid128-preserved` | 7 |
+| R6 | `concurrency-windows` | `windows` | `destination-race-conflict`, `rename-crash-before-native`, `rename-crash-after-native` | 3 |
+| R7 | `portable-ubuntu` | `linux` | `regular-record`, `directory-record`, `symlink-record-rejected`, `hardlink-rejected`, `mutation-between-scans-rejected` | 5 |
+| R7 | `portable-windows` | `windows` | `regular-record`, `directory-record`, `hardlink-rejected`, `junction-reparse-record-rejected`, `mutation-between-scans-rejected` | 5 |
+| R8 | `concurrency-ubuntu` e `concurrency-windows` | rispettivamente `linux` e `windows` | `keystore-global-exclusive`, `approval-global-exclusive`, `semantic-global-exclusive`, `keystore-local-exclusive`, `semantic-use-after-close` | 5 per attività |
+| C1 | `concurrency-windows` | `windows` | `shared-shared`, `shared-exclusive`, `exclusive-shared`, `killed-holder-releases`, `empty-lock-crash-recovery`, `reader-never-creates` | 6 |
+| C2 | `concurrency-windows` | `windows` | `swap-after-root`, `swap-after-first`, `swap-after-middle`, `swap-after-last`, `swap-final-object` | 5 |
+| C3 | `concurrency-ubuntu` | `linux` | `swap-after-root`, `swap-after-first`, `swap-after-middle`, `swap-after-last`, `swap-final-object` | 5 |
+| C4 | `concurrency-ubuntu` | `linux` | `shared-shared`, `shared-exclusive`, `exclusive-shared`, `killed-holder-releases`, `loader-blocks-provisioner-before-mutation` | 5 |
+| G1 | `portable-ubuntu` e `portable-windows` | rispettivamente `linux` e `windows` | `add-between-scans`, `remove-between-scans`, `rename-between-scans`, `replace-same-name-between-scans`, `non-json-entry`, `local-4096`, `local-4097`, `aggregate-4096`, `aggregate-4097` | 9 per attività |
+| G2 | `portable-ubuntu` | `linux` | `keystore-external-local-only`, `approval-public-other-uid`, `semantic-public-other-uid`, `keystore-legacy-no-mutation`, `approval-legacy-no-mutation`, `semantic-legacy-no-mutation` | 6 |
+| G2 | `windows-acl` | `windows` | `keystore-historical-private`, `approval-historical-public`, `semantic-historical-public`, `keystore-no-global`, `historical-acl-no-mutation`, `historical-inherited-rejected` | 6 |
+| G3 | `portable-ubuntu` | `linux` | `short-write`, `eintr-write`, `file-fsync-error-state`, `parent-fsync-error-state`, `rename-two-parents-fsync`, `rename-exdev`, `rename-enosys`, `renameat2-unavailable`, `crash-created`, `crash-partial`, `crash-complete`, `crash-file-fsync`, `crash-parent-fsync` | 13 |
+| G4 | `portable-ubuntu` e `portable-windows` | rispettivamente `linux` e `windows` | `close-error-primary-preserved`, `unlock-error-primary-preserved`, `adoption-error-normalized`, `handle-close-exactly-once`, `public-error-redacted` | 5 per attività |
+| G5 | `windows-acl` | `windows` | `restore-false`, `restore-not-all-assigned`, `body-error-restore`, `real-token-roundtrip`, `token-handle-close-once` | 5 |
+| G6 | `manifest` | `platform-independent` | `schema-canonical`, `required-cell-inventory`, `production-inventory`, `collection-exact`, `no-skip-xfail`, `activity-selection`, `evidence-schema`, `pre-fix-snapshot`, `workflow-dependency` | 9 |
+| G7 | `windows-acl` | `windows` | `reject-non-ntfs-file-create`, `reject-non-ntfs-directory-create`, `reject-no-persistent-acl-file-create`, `reject-no-persistent-acl-directory-create` | 4 |
+| G8 | `portable-ubuntu` | `linux` | `reject-root-uid`, `reject-intermediate-uid`, `reject-file-uid` | 3 |
+| G9 | `windows-acl` | `windows` | `local-canonical`, `local-long`, `local-verbatim`, `local-case-variant`, `unc-loopback-positive`, `unc-unreachable-rejected`, `unc-no-persistent-acls-rejected`, `malformed-prefix-rejected`, `relative-rejected`, `parent-traversal-rejected` | 10 |
+| G10 | `windows-acl` | `windows` | `abi-file-rename-info`, `abi-file-id-info`, `abi-file-disposition-info-ex`, `abi-overlapped`, `abi-unicode-string`, `abi-object-attributes`, `abi-io-status-block`, `abi-ntdll-signatures`, `volume-serial-high-bit`, `ntcreate-relative-rootdirectory`, `ntcreate-no-createfilew-fallback`, `ntstatus-create-collision`, `ntstatus-lock-not-found`, `ntstatus-disposition-not-found`, `ntstatus-read-not-found`, `ntstatus-mutating-access-denied`, `ntstatus-read-access-denied`, `ntstatus-lock-sharing`, `ntstatus-other-sharing`, `ntstatus-unsupported`, `ntstatus-residual`, `rename-error-existing`, `rename-error-access-denied`, `rename-error-unsupported`, `rename-error-residual` | 25 |
+| G11 | `portable-windows` | `windows` | `all-byte-values-roundtrip` | 1 |
+| G12 | `windows-acl` | `windows` | `setsecurityinfo-access-denied-file`, `setsecurityinfo-access-denied-directory`, `setsecurityinfo-injected-dword-error`, `no-complete-destination`, `residues-reconciled`, `crash-after-acl-before-write`, `crash-partial-write`, `crash-complete-write`, `crash-flush` | 9 |
+
+Ogni slug rappresenta un rapporto `call` distinto. Un test può condividere
+fixture e funzione parametrizzata, ma non può fondere due slug in un rapporto o
+usare un'unica asserzione aggregata per ridurre la cardinalità. Il validatore
+ricostruisce la tabella dai record, verifica i subtotali per attività e il
+totale 248, quindi verifica i `node_id` raccolti.
+
+#### 16.14.3 Fotografia verificabile precedente alla correzione
+
+Prima di modificare un file classificato `productive`, gli A e il manifesto
+vengono pubblicati in un commit che modifica soltanto prove, inventari e
+workflow. Le sei attività sono eseguite sul prototipo senza `xfail`, inversioni
+di asserzione o trattamento speciale da parte di pytest. Un registratore
+esterno alle prove raccoglie i rapporti reali. Ogni cella dichiarata `red` o
+`absent` deve produrre esattamente un rapporto `call` con esito `failed`; un
+esito `passed`, `skipped`, `error`, una raccolta fallita o un rapporto mancante
+blocca la fotografia. Una cella `may_green` può produrre `passed` oppure
+`failed`, ma non un salto, un errore di raccolta o un risultato atteso.
+Una cella `absent` importa il modulo normalmente durante la raccolta e risolve
+il simbolo mancante dentro la funzione di prova, così l'assenza produce il solo
+rapporto `call=failed` previsto e non un errore di importazione o raccolta.
+
+Ogni attività produce l'evidenza per-attività con lo stesso schema del
+§16.14.5, salvo che `results` contiene record esatti
+`node_id`, `declared_disposition` e `observed_outcome`;
+`declared_disposition` ripete il valore del manifesto e
+`observed_outcome` appartiene a `passed|failed`. Un job di fotografia, distinto
+dal riepilogo di certificazione finale, verifica le regole precedenti e unisce
+le sei evidenze nel file canonico
+`tests/portable/rm0008-2a-pre-fix-evidence-v1.json`. L'oggetto contiene
+esattamente `schema_version=1`, `suite_id="rm-0008-increment-2a"`,
+`source_git_sha`, `manifest_sha256`, `production_inventory_sha256`,
+`activities` e `results`. `source_git_sha` ha quaranta cifre esadecimali
+minuscole; `manifest_sha256` e `production_inventory_sha256` usano il prefisso
+e le sessantaquattro cifre del §16.14.5.
+`activities` è la lista ordinata per byte del nome attività dei sei record
+esatti `activity` e `runner_image`; `results` è la lista ordinata dei record
+esatti `activity`,
+`node_id`, `declared_disposition` e `observed_outcome`, nello stesso ordine
+canonico delle celle.
+
+Il file aggregato viene revisionato e aggiunto nel commit immediatamente
+successivo, prima della prima modifica produttiva. Il suo `source_git_sha`
+identifica il commit pubblico delle sole prove e il suo `manifest_sha256`
+deve continuare a coincidere con il manifesto. Da quel momento schema e
+validatore dell'inventario, `REQUIRED_CELLS_V1`, manifesto, prove A e fotografia
+sono congelati. L'elenco meccanico `files` di
+`production-python-inventory-v1.json` è la sola eccezione: viene rigenerato
+deterministicamente nello stesso commit che aggiunge o rimuove un file Python,
+senza cambiare schema o classificazione. Il digest precedente resta registrato
+nella fotografia e quello corrente entra nelle evidenze finali.
+
+Qualunque correzione agli artefatti congelati prima del verde finale richiede
+una nuova fotografia su una base che conserva esattamente i byte produttivi del
+prototipo; non è ammesso rigenerarla contro il prodotto già corretto. La
+fotografia non è un'attività di certificazione, non entra nel riepilogo finale
+e non trasforma un fallimento atteso in verde di prodotto.
+
+#### 16.14.4 Inventario Python controllato da R1
+
+Il file
+`tests/portable/rm0008_2a_acceptance/production-python-inventory-v1.json`
+contiene esattamente `schema_version=1`,
+`inventory_id="rm-0008-production-python"` e `files`. Ogni elemento di `files`
+contiene esattamente `path` e `classification`; `classification` appartiene a
+`productive|test|documentation`. I percorsi sono relativi
+POSIX canonici, NFC, senza punto, genitore, backslash, componenti vuoti o link
+simbolici, terminano in `.py` e sono ordinati per byte UTF-8 senza duplicati.
+Anche questo file usa il JSON canonico del paragrafo precedente.
+
+Il validatore ottiene l'insieme autorevole con
+`git ls-files -z -- '*.py'` sullo stesso SHA pubblico, rifiuta link simbolici e
+lo confronta esattamente con `files`. In tal modo nessun nuovo file Python può
+sfuggire alla classificazione. Ricalcola poi `test` per `conftest.py` e
+`tests/**`, `documentation` per `docs/**` e `productive` per ogni altro
+percorso; la classe registrata deve coincidere. R1 analizza tutti e soli i
+record `productive` così determinati.
+
+#### 16.14.5 Raccolta ed esito delle celle
+
+Il validatore raccoglie integralmente i due alberi A e richiede che ogni
+`node_id` raccolto appartenga ad almeno un'attività e che ogni `node_id` del
+manifesto venga realmente raccolto. Confronta insieme e ordine esatti; non
+ammette prove aggiuntive, mancanti o non manifestate. Per l'attività corrente
+invoca gli identificativi elencati e confronta di nuovo insieme e ordine
+esatti.
+
+Nei due alberi A sono vietati `skip`, `skipif`, `xfail`, `xpass` e selezioni
+condizionali basate sulle capacità osservate. Il controllo combina analisi AST,
+marcatori raccolti ed esiti pytest, così un alias o un marcatore dinamico non
+aggira la regola. Ogni cella deve produrre esattamente un rapporto della fase
+`call` con esito `passed`; un salto, esito atteso, successo inatteso, rapporto
+mancante o rapporto aggiuntivo rende rossa l'attività.
+
+Ogni attività emette un documento di evidenza canonico con esattamente
+`schema_version=1`, `suite_id="rm-0008-increment-2a"`, `git_sha`,
+`manifest_sha256`, `production_inventory_sha256`, `runner_image`, `activity` e
+`results`. `git_sha` è il SHA Git completo di quaranta cifre esadecimali
+minuscole; entrambi i digest usano `sha256:` seguito da sessantaquattro cifre
+esadecimali minuscole;
+`runner_image` è la stringa non vuota pubblicata dal runner. `results` segue
+l'ordine delle celle dell'attività e contiene record esatti
+`{"node_id":...,"outcome":"passed"}`. Il documento non contiene orari,
+percorsi temporanei o altri valori non deterministici.
+
+#### 16.14.6 Attività pubbliche bloccanti
+
+Le sei attività di prova sono: validazione del manifesto, portabilità Ubuntu,
+portabilità Windows, concorrenza Ubuntu, concorrenza Windows e ACL con identità
+reali Windows. Il riepilogo di certificazione è un settimo job bloccante, ma
+non è un'attività del manifesto. Nel medesimo workflow dichiara in `needs` i
+sei job A e il job matrice storico `portable-contract-store`; viene eseguito con
+`if: always()` ma termina con successo soltanto se tutti e sette i risultati
+sono `success`. Scarica poi i sei documenti di evidenza e richiede per tutti lo
+stesso `git_sha`, lo stesso `manifest_sha256`, lo stesso
+`production_inventory_sha256`, lo stesso `suite_id`, attività distinte e
+insieme delle attività esattamente uguale all'enumerazione chiusa.
+Richiede inoltre che ogni risultato sia `passed` e che l'unione dei risultati
+corrisponda al manifesto secondo le regole di duplicazione precedenti. Poiché i
+job appartengono alla stessa esecuzione GitHub, il SHA del job storico coincide
+con quello delle evidenze; il riepilogo lo confronta comunque con
+`GITHUB_SHA`.
+
+Il job storico conserva la regressione precedente ma, su entrambe le gambe
+della matrice, invoca la suite portabile con l'esclusione letterale
+`--ignore=tests/portable/rm0008_2a_acceptance`. Non usa una selezione calcolata e
+non raccoglie alcun A: in particolare la gamba Windows non incontra gli A
+posseduti soltanto da Linux. I due alberi A sono raccolti e partizionati
+esclusivamente dai sei job dedicati. Questa esclusione di albero nel job
+storico non è uno `skip` di cella e il riepilogo continua a richiedere sia la
+regressione storica sia tutte le 248 celle A.
+
+La diagnostica D resta fuori dal manifesto A e da ogni hook pytest. In
+particolare `tests/windows_identity/conftest.py` non invoca alcun riproduttore
+D al termine di una sessione. Un'eventuale nuova diagnostica manuale è un passo
+esplicito che chiama direttamente lo strumento D ed è abilitato soltanto da un
+input `workflow_dispatch` dedicato; nessuna attività A imposta o eredita tale
+input. Il workflow ordinario storico continua a fornire la regressione
+generale, ma non sostituisce alcuna attività A. L'incremento 2A converge
+soltanto quando il workflow ordinario e tutti i sette job A bloccanti sono verdi
+sul medesimo commit pubblico: in tale stato il numero di errori, salti e
+risultati attesi nelle celle A è zero.
