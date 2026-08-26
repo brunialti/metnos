@@ -78,7 +78,10 @@ def _load_approval_authority_in_session(
     from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
 
     if not session._holds_global_lock():
-        raise BirthApprovalError("approval_authority_unavailable")
+        # Missing the global lock is a violation of the lock hierarchy, not a
+        # defect of the registry: the stable code belongs to the filesystem
+        # capability, so the caller cannot mistake one for the other.
+        raise BirthSecureFSError("birth_provisioning_lock_unsafe")
     try:
         raw = session.read_file(
             tuple(authority_file),
