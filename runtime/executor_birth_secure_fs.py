@@ -1027,7 +1027,7 @@ class _OVERLAPPED(ctypes.Structure):
         ("hEvent", wintypes.HANDLE),
     ]
 
-class _FILE_RENAME_INFO_HEADER(ctypes.Structure):
+class _FILE_RENAME_INFO(ctypes.Structure):
     _fields_ = [
         ("ReplaceIfExists", wintypes.BOOLEAN),
         ("RootDirectory", wintypes.HANDLE),
@@ -3602,9 +3602,9 @@ class _SecureRootSession:
                             "birth_provisioning_atomic_install_unsupported"
                         )
                     encoded = target_name.encode("utf-16-le")
-                    offset = _FILE_RENAME_INFO_HEADER.FileName.offset
+                    offset = _FILE_RENAME_INFO.FileName.offset
                     buffer = ctypes.create_string_buffer(offset + len(encoded))
-                    header = _FILE_RENAME_INFO_HEADER.from_buffer(buffer)
+                    header = _FILE_RENAME_INFO.from_buffer(buffer)
                     header.ReplaceIfExists = False
                     header.RootDirectory = target_handle
                     header.FileNameLength = len(encoded)
