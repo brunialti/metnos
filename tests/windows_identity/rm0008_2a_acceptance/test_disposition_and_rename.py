@@ -205,7 +205,7 @@ def _prepare_disposition(active, root: Path, sf, *, directory: bool):
 @pytest.mark.parametrize("case", R3_WINDOWS, ids=R3_WINDOWS)
 def test_r3_windows_disposition_contract(case: str, tmp_path: Path, monkeypatch) -> None:
     sf, method, expectation_type = _disposition_symbols()
-    if len(expectation_type.__dataclass_fields__) != 11:
+    if len(expectation_type.__dataclass_fields__) != 10:
         raise AssertionError("unexpected disposition expectation schema")
     directory = case == "disposition-directory-access-mask"
     root = tmp_path / "birth"

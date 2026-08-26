@@ -2156,7 +2156,7 @@ class _SecureRootSession:
         self._closed = False
         try:
             if os.name == "nt":
-                self._verify_windows_role(
+                self._verify_windows_profile(
                     self._root_handle, directory=True, role=root_role
                 )
             else:
@@ -2392,7 +2392,7 @@ class _SecureRootSession:
                         if os.name == "nt":
                             child = _win_open_path(current_path, directory=True)
                             _verify_win_object(child, current_path, directory=True)
-                            self._verify_windows_role(
+                            self._verify_windows_profile(
                                 child, directory=True, role=role
                             )
                         else:
@@ -2417,7 +2417,7 @@ class _SecureRootSession:
                     self._handles.append(child)
                 elif os.name == "nt":
                     _verify_win_object(child, current_path, directory=True)
-                    self._verify_windows_role(
+                    self._verify_windows_profile(
                         child, directory=True, role=role
                     )
                 else:
@@ -2452,7 +2452,7 @@ class _SecureRootSession:
                 raise
             raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
-    def _verify_windows_role(
+    def _verify_windows_profile(
         self,
         handle: int,
         *,
@@ -2628,7 +2628,7 @@ class _SecureRootSession:
         try:
             handle = _win_open_path(path, directory=False)
             before = _verify_win_object(handle, path, directory=False)
-            self._verify_windows_role(
+            self._verify_windows_profile(
                 handle, directory=False, role=role
             )
             bound = self._file_roles.get(components)
