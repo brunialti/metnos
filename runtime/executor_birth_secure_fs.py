@@ -2838,12 +2838,38 @@ class _SecureRootSession:
                         os.fsync(source_fd)
                         if source_fd != target_fd:
                             os.fsync(target_fd)
+                        # The object keeps its identity and role; only its name
+                        # changes, so a reserved binding follows the rename and
+                        # the post-validation can classify the destination.
+                        moved_binding = self._role_overlay.pop(source, None)
+                        if moved_binding is not None:
+                            binding, origin, observed = moved_binding
+                            self._role_overlay[destination] = (
+                                _BirthRoleBindingV1(
+                                    components=destination,
+                                    kind=binding.kind,
+                                    role=binding.role,
+                                ),
+                                origin,
+                                observed,
+                            )
                     finally:
                         os.close(object_fd)
                 except BirthSecureFSError:
                     raise
                 except OSError as exc:
                     raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+        source_entries = self._inventory_state(source_parent)
+        if any(item.name == source_name for item in source_entries):
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        target_entries = (
+            source_entries
+            if target_parent == source_parent
+            else self._inventory_state(target_parent)
+        )
+        moved = [item for item in target_entries if item.name == target_name]
+        if len(moved) != 1 or moved[0].identity != identity:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         with self._directory_chain(target_parent) as (target_fd, _):
             flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
             if directory:
