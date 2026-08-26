@@ -3900,3 +3900,22 @@ dipendenza. Installarla nel sito di sistema della macchina di prova
 risolverebbe il gruppo, ma è una modifica alla macchina e non viene fatta
 d'iniziativa.
 
+### 17.19 Il manico che la sessione conserva su un contenitore rimosso
+
+La rimozione di un contenitore riesce — lo stato di cancellazione pendente
+passa da falso a vero e la cartella sparisce alla chiusura — ma la
+riconciliazione successiva la trova ancora elencata nel padre. La ragione è
+osservata, non dedotta: la sessione conserva aperto il manico del contenitore
+che essa stessa ha creato, e finché un manico resta aperto il nome non lascia
+il padre.
+
+Il rimedio ovvio — rilasciare quel manico dentro la rimozione — è stato
+provato e **peggiora la misura** (59 → 58 celle verdi): altre celle usano
+quel contenitore dopo. La correzione giusta riguarda quindi il ciclo di vita
+dei manici della sessione, non la sola rimozione, e va decisa insieme al
+punto del §17.14 perché tocca il contratto della sessione.
+
+Verifica minima: `probe_dir.py` mostra la rimozione riuscita in isolamento;
+la cella `disposition-directory-access-mask` mostra il nome ancora presente
+nella riconciliazione.
+
