@@ -1701,11 +1701,17 @@ def _require_local_canonical_windows_root(absolute: str) -> None:
         or ".." in remainder.split("\\")
         or ntpath.normpath(absolute) != absolute
     ):
-        raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported")
+        # A name that is not a canonical local root is a malformed request;
+        # only a form this increment declines to support — a share or a name
+        # beyond the classic limit — is an unsupported installation.
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
 
 def _open_win_root(path: Path) -> tuple[list[int], str]:
-    absolute = os.path.abspath(os.fspath(path))
+    # The name is judged as it was given: completing a relative one against
+    # the process directory would turn a malformed request into a valid root
+    # and hide the refusal the contract asks for.
+    absolute = os.fspath(path)
     _require_local_canonical_windows_root(absolute)
     opened: list[int] = []
     try:
