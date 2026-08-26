@@ -3025,6 +3025,10 @@ class _SecureRootSession:
             if exclusive:
                 flags |= _LOCKFILE_EXCLUSIVE_LOCK
             while True:
+                # Each attempt gets its own zeroed structure: the system writes
+                # the outcome of a failed attempt into it, and a reused one
+                # would carry that state into the next call.
+                overlapped = _OVERLAPPED()
                 if _KERNEL32.LockFileEx(
                     handle, flags, 0, 1, 0, ctypes.byref(overlapped)
                 ):
@@ -3076,7 +3080,7 @@ class _SecureRootSession:
             raise BirthSecureFSError(code, exc)
         finally:
             if locked and not _KERNEL32.UnlockFileEx(
-                handle, 0, 1, 0, ctypes.byref(overlapped)
+                handle, 0, 1, 0, ctypes.byref(_OVERLAPPED())
             ):
                 unlock_error = _win_error("UnlockFileEx")
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe", unlock_error)
