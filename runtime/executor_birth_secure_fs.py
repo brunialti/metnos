@@ -3050,7 +3050,7 @@ class _SecureRootSession:
         handle = None
         locked = False
         acquired = False
-        overlapped = _OVERLAPPED()
+        acquired_overlapped = _OVERLAPPED()
         try:
             try:
                 if create and exclusive:
@@ -3103,6 +3103,10 @@ class _SecureRootSession:
                     handle, flags, 0, 1, 0, ctypes.byref(overlapped)
                 ):
                     locked = True
+                    # The release names the same range through the same
+                    # structure that took it: a different one would describe a
+                    # different request even with the same numbers in it.
+                    acquired_overlapped = overlapped
                     break
                 code = ctypes.get_last_error()
                 if code != _ERROR_LOCK_VIOLATION:
@@ -3150,7 +3154,7 @@ class _SecureRootSession:
             raise BirthSecureFSError(code, exc)
         finally:
             if locked and not _KERNEL32.UnlockFileEx(
-                handle, 0, 1, 0, ctypes.byref(_OVERLAPPED())
+                handle, 0, 1, 0, ctypes.byref(acquired_overlapped)
             ):
                 unlock_error = _win_error("UnlockFileEx")
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe", unlock_error)
