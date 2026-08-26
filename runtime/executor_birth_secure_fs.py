@@ -637,12 +637,12 @@ class _PlatformIdentity:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
 
 
-@dataclass(frozen=True, slots=True, weakref_slot=True)
+@dataclass(frozen=True, slots=True, eq=False, weakref_slot=True)
 class _AuthenticatedRootDescriptor:
     handles: tuple[int, ...]
     root_path: str
     identity: _PlatformIdentity
-    role: _BirthObjectRole = _BirthObjectRole.birth_integrity_only
+    role_catalog: _BirthRoleCatalogV1
 
     def __post_init__(self) -> None:
         if (
@@ -652,7 +652,7 @@ class _AuthenticatedRootDescriptor:
             or not isinstance(self.root_path, str)
             or not self.root_path
             or not isinstance(self.identity, _PlatformIdentity)
-            or not isinstance(self.role, _BirthObjectRole)
+            or not isinstance(self.role_catalog, _BirthRoleCatalogV1)
         ):
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
@@ -1628,6 +1628,8 @@ class _SecureRootSession:
     __slots__ = (
         "_closed",
         "_authoritative",
+        "_identity",
+        "_role_catalog",
         "_directories",
         "_directory_roles",
         "_file_roles",
@@ -1644,16 +1646,33 @@ class _SecureRootSession:
     def __init__(
         self,
         token: object,
-        handles: list[int],
+        handles,
         root_path: str,
         *,
-        root_role: _BirthObjectRole,
-        service_sid: str | None,
-        expected_uid: int | None,
-        authoritative: bool,
+        identity: _PlatformIdentity,
+        role_catalog: _BirthRoleCatalogV1,
     ) -> None:
         if token is not _SESSION_TOKEN:
             raise TypeError("private constructor")
+        if not isinstance(identity, _PlatformIdentity) or not isinstance(
+            role_catalog, _BirthRoleCatalogV1
+        ):
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        handles = list(handles)
+        self._identity = identity
+        self._role_catalog = role_catalog
+        service_sid = identity.windows_service_sid
+        expected_uid = identity.posix_uid
+        # A historical catalogue carries only historical roles and therefore
+        # never grants a mutating capability: the compatibility facade is
+        # bounded by its own closed profile, not by a free boolean.
+        historical = {
+            _BirthObjectRole.historical_private,
+            _BirthObjectRole.historical_public,
+        }
+        declared = {binding.role for binding in role_catalog.exact_bindings}
+        authoritative = bool(role_catalog.patterns) or not (declared & historical)
+        root_role = role_catalog._resolve_binding_v1(()).role
         self._handles = handles
         self._directories = {(): handles[-1]}
         self._directory_roles = {(): root_role}
@@ -2845,6 +2864,33 @@ _ADOPTED_DESCRIPTOR_IDS: dict[int, weakref.ReferenceType[_AuthenticatedRootDescr
 _ADOPTED_DESCRIPTOR_LOCK = threading.Lock()
 
 
+def _historical_role_catalog_v1(
+    role: _BirthObjectRole,
+) -> _BirthRoleCatalogV1:
+    """Constant profile of one historical compatibility root.
+
+    The legacy facades receive a Path chosen by a caller that predates the
+    Birth layout, so their catalogue is constant in role rather than in names:
+    the whole subtree carries the same historical profile and no Birth pattern
+    is enabled.  The exact name set of the three loaders is closed by G2.
+    """
+    if role not in {
+        _BirthObjectRole.historical_private,
+        _BirthObjectRole.historical_public,
+    }:
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+    return _BirthRoleCatalogV1(
+        schema_version=1,
+        patterns=(),
+        exact_bindings=(
+            _BirthRoleBindingV1(
+                components=(), kind=_ObjectKind.directory, role=role,
+            ),
+        ),
+        generation=0,
+    )
+
+
 def _open_legacy_root_session(
     root: Path, *, exact_private: bool = True
 ) -> _LegacyReadSession:
@@ -2870,10 +2916,10 @@ def _open_legacy_root_session(
         _SESSION_TOKEN,
         handles,
         absolute,
-        root_role=root_role,
-        service_sid=service_sid,
-        expected_uid=expected_uid,
-        authoritative=False,
+        identity=_PlatformIdentity(
+            posix_uid=expected_uid, windows_service_sid=service_sid
+        ),
+        role_catalog=_historical_role_catalog_v1(root_role),
     )
     return _LegacyReadSession(_LEGACY_TOKEN, session)
 
@@ -2902,15 +2948,12 @@ def _adopt_authenticated_root(
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
     elif identity.posix_uid is None or identity.windows_service_sid is not None:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-    handles = list(descriptor.handles)
     return _SecureRootSession(
         _SESSION_TOKEN,
-        handles,
+        descriptor.handles,
         descriptor.root_path,
-        root_role=descriptor.role,
-        service_sid=identity.windows_service_sid,
-        expected_uid=identity.posix_uid,
-        authoritative=True,
+        identity=descriptor.identity,
+        role_catalog=descriptor.role_catalog,
     )
 
 
