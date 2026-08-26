@@ -1058,6 +1058,58 @@ class _TOKEN_PRIVILEGES(ctypes.Structure):
 class _TOKEN_USER(ctypes.Structure):
     _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
 
+class _UNICODE_STRING(ctypes.Structure):
+    """Counted UTF-16 name; the two lengths are byte counts, not characters."""
+
+    _fields_ = [
+        ("Length", wintypes.USHORT),
+        ("MaximumLength", wintypes.USHORT),
+        ("Buffer", ctypes.c_void_p),
+    ]
+
+
+class _IO_STATUS_BLOCK_RESULT(ctypes.Union):
+    _fields_ = [("Status", ctypes.c_long), ("Pointer", ctypes.c_void_p)]
+
+
+class _IO_STATUS_BLOCK(ctypes.Structure):
+    _fields_ = [
+        ("Result", _IO_STATUS_BLOCK_RESULT),
+        ("Information", ctypes.c_size_t),
+    ]
+
+
+class _OBJECT_ATTRIBUTES(ctypes.Structure):
+    """Name resolved against ``RootDirectory``, which makes the open relative."""
+
+    _fields_ = [
+        ("Length", wintypes.ULONG),
+        ("RootDirectory", wintypes.HANDLE),
+        ("ObjectName", ctypes.POINTER(_UNICODE_STRING)),
+        ("Attributes", wintypes.ULONG),
+        ("SecurityDescriptor", ctypes.c_void_p),
+        ("SecurityQualityOfService", ctypes.c_void_p),
+    ]
+
+
+# Native create dispositions and options of the relative opening path.
+_FILE_OPEN = 0x00000001
+_FILE_CREATE = 0x00000002
+_FILE_DIRECTORY_FILE = 0x00000001
+_FILE_WRITE_THROUGH = 0x00000002
+_FILE_SYNCHRONOUS_IO_NONALERT = 0x00000020
+_FILE_NON_DIRECTORY_FILE = 0x00000040
+_FILE_OPEN_REPARSE_POINT = 0x00200000
+_OBJ_CASE_INSENSITIVE = 0x00000040
+
+# Exact access masks of the two exclusive creations.  They are written as one
+# literal each because the contract fixes the mask, not a way of composing it:
+# DELETE|SYNCHRONIZE|READ_CONTROL|WRITE_DAC|WRITE_OWNER|FILE_READ_ATTRIBUTES
+# plus data access for a file and directory access for a container.
+_WIN_FILE_CREATE_ACCESS_V1 = 0x001f0083
+_WIN_DIRECTORY_CREATE_ACCESS_V1 = 0x001f00a1
+
+
 class _FILE_ID_EXTD_DIR_INFO(ctypes.Structure):
     _fields_ = [
         ("NextEntryOffset", wintypes.DWORD),
