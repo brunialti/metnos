@@ -2182,35 +2182,25 @@ class _SecureRootSession:
         maximum: int,
         role: _BirthObjectRole,
     ) -> bytes:
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        observed: list[_ObjectIdentity] = []
+
+        def bind(identity: _ObjectIdentity) -> None:
+            bound = self._file_roles.get(components)
+            if bound is not None and bound != (identity, role):
+                raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+            observed.append(identity)
+
         try:
-            fd = os.open(name, flags, dir_fd=directory)
-            try:
-                _verify_posix_file(
-                    fd,
-                    role=role,
-                    expected_uid=self._expected_uid,
-                )
-                before = _posix_snapshot(fd)
-                identity = _posix_identity(fd)
-                bound = self._file_roles.get(components)
-                if bound is not None and bound != (identity, role):
-                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-                if before[5] > maximum:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable")
-                result = bytearray()
-                while len(result) <= maximum:
-                    block = os.read(fd, min(8192, maximum + 1 - len(result)))
-                    if not block:
-                        break
-                    result.extend(block)
-                after = _posix_snapshot(fd)
-                if len(result) > maximum or before != after or len(result) != before[5]:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable")
-                self._file_roles.setdefault(components, (identity, role))
-                return bytes(result)
-            finally:
-                os.close(fd)
+            result = _read_posix_relative(
+                directory,
+                name,
+                maximum=maximum,
+                role=role,
+                expected_uid=self._expected_uid,
+                bind=bind,
+            )
+            self._file_roles.setdefault(components, (observed[0], role))
+            return result
         except BirthSecureFSError:
             raise
         except OSError as exc:
@@ -3510,6 +3500,65 @@ def _read_all_posix(fd: int, size: int) -> bytes:
             break
         result.extend(block)
     return bytes(result)
+
+
+def _open_posix_directory_root(path: str) -> int:
+    """Open one absolute directory as the anchor of a handle-bound read.
+
+    This is the only absolute name a historical facade may resolve: every
+    other name below it is then opened relative to this descriptor, so a
+    component swapped after the anchor cannot redirect the read.
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        return os.open(path, flags)
+    except OSError as exc:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc) from exc
+
+
+def _read_posix_relative(
+    directory: int,
+    name: str,
+    *,
+    maximum: int,
+    role: _BirthObjectRole,
+    expected_uid: int | None,
+    bind=None,
+) -> bytes:
+    """Read one regular file relative to an already authenticated directory.
+
+    The object is verified before the first byte is read and its metadata is
+    compared again afterwards, so a replacement during the read is refused
+    instead of returning a mixture of two objects.  ``bind`` observes the
+    identity between those two moments, which is where an owner can refuse a
+    name that changed identity since it was first seen.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(name, flags, dir_fd=directory)
+    try:
+        _verify_posix_file(fd, role=role, expected_uid=expected_uid)
+        before = _posix_snapshot(fd)
+        if bind is not None:
+            bind(_posix_identity(fd))
+        if before[5] > maximum:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        result = bytearray()
+        while len(result) <= maximum:
+            block = os.read(fd, min(8192, maximum + 1 - len(result)))
+            if not block:
+                break
+            result.extend(block)
+        after = _posix_snapshot(fd)
+        if len(result) > maximum or before != after or len(result) != before[5]:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        return bytes(result)
+    finally:
+        os.close(fd)
 
 
 def _posix_inventory(
