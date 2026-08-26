@@ -93,7 +93,7 @@ def token_privileges_snapshot() -> bytes:
     try:
         return bytes(oracle._token_information(token.value, 3))
     finally:
-        oracle._close(token.value)
+        oracle._close_handle(token.value)
 
 
 def privilege_attributes(snapshot: bytes, privilege_name: str) -> int:
@@ -472,11 +472,11 @@ def identity(path: Path, *, directory: bool, open_reparse: bool = False):
 
             raise ctypes.WinError(ctypes.get_last_error())
     else:
-        handle = oracle._open_path(path, directory=directory)
+        handle = oracle._open_path(path, oracle._READ_CONTROL, directory=directory)
     try:
         return _identity_from_handle(handle)
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def volume_facts(path: Path, *, directory: bool = True) -> dict[str, object]:
@@ -498,7 +498,7 @@ def volume_facts(path: Path, *, directory: bool = True) -> dict[str, object]:
         wintypes.DWORD,
     )
     query_volume.restype = wintypes.BOOL
-    handle = oracle._open_path(path, directory=directory)
+    handle = oracle._open_path(path, oracle._READ_CONTROL, directory=directory)
     try:
         flags = wintypes.DWORD()
         filesystem = ctypes.create_unicode_buffer(64)
@@ -517,7 +517,7 @@ def volume_facts(path: Path, *, directory: bool = True) -> dict[str, object]:
         result.update(filesystem=filesystem.value, filesystem_flags=int(flags.value))
         return result
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def reparse_tag(path: Path, *, directory: bool) -> int:
@@ -558,7 +558,7 @@ def reparse_tag(path: Path, *, directory: bool) -> int:
             raise ctypes.WinError(ctypes.get_last_error())
         return int(info.ReparseTag)
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def _security_descriptor_bytes(
@@ -611,7 +611,7 @@ def _security_descriptor_bytes(
     finally:
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def acl_profile_facts(path: Path, *, directory: bool) -> dict[str, object]:
@@ -684,7 +684,7 @@ def acl_profile_facts(path: Path, *, directory: bool) -> dict[str, object]:
     finally:
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def windows_tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
@@ -812,7 +812,7 @@ def apply_sddl(
             raise OSError(result, "SetSecurityInfo")
     finally:
         if handle is not None:
-            oracle._close(handle)
+            oracle._close_handle(handle)
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
 
@@ -1017,7 +1017,7 @@ def assert_historical_profile(
     finally:
         if descriptor.value:
             oracle._KERNEL32.LocalFree(descriptor)
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def provision_authorities(root: Path, sid: str) -> dict[str, tuple[str, ...]]:
