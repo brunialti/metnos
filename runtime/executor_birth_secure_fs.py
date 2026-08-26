@@ -623,28 +623,22 @@ class _DisposalExpectation:
     inventory: tuple[_InventoryEntry, ...] | None
 
     def __post_init__(self) -> None:
+        # Every refusal here concerns the shape of the request, which is known
+        # before anything is opened.  An ambiguous recovery is a different
+        # thing: it is what the object on disk turns out to be.
         if not isinstance(self.components, tuple):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if not isinstance(self.identity, _ObjectIdentity):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if not isinstance(self.kind, _ObjectKind) or not isinstance(
             self.role, _BirthObjectRole
         ) or not isinstance(self.disposal_class, _DisposalClass):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if isinstance(self.links, bool) or not isinstance(self.links, int) or self.links < 1:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-        digest = self.content_sha256
-        if isinstance(digest, str) and len(digest) == 64:
-            try:
-                int(digest, 16)
-            except ValueError:
-                pass
-            else:
-                object.__setattr__(self, "content_sha256", "sha256:" + digest)
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         # The admitted combinations are closed: an expectation that mixes two
         # classes is refused before the name is opened (section 16.13.2).
         if not self.components:
-            # The root is a malformed request, not an ambiguous resolution.
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
         _relative_components(self.components)
         if self.inventory is not None and (
@@ -653,7 +647,7 @@ class _DisposalExpectation:
                 not isinstance(item, _InventoryEntry) for item in self.inventory
             )
         ):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if self.disposal_class is _DisposalClass.complete_file:
             valid = (
                 self.kind is _ObjectKind.regular_file
@@ -686,7 +680,7 @@ class _DisposalExpectation:
                 and self.inventory == ()
             )
         if not valid:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
 
 def _is_canonical_digest(value: object) -> bool:
@@ -2379,6 +2373,11 @@ class _SecureRootSession:
             ):
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe")
         if rank == 0 and any(item_rank == 0 for item_rank, _, _ in self._lock_stack):
+            raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+        # A local lock is subordinate: it may only be taken while the global
+        # lock is held, otherwise two owners could each hold one store lock and
+        # believe they had exclusive use of the layout.
+        if rank == 1 and not self._holds_global_lock():
             raise BirthSecureFSError("birth_provisioning_lock_unsafe")
         parent, name = components[:-1], components[-1]
         # The role of a lock is a property of its rank, never of an argument:
