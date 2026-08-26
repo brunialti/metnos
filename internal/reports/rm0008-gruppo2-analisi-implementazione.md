@@ -3638,3 +3638,52 @@ l'esportazione sono verdi (1.505 file, zero rilievi). Finché l'ambito non viene
 concesso, nessun incremento può essere certificato dalle attività pubbliche,
 perché il workflow corrente non contiene ancora `fetch-depth: 0` e `python -P`
 richiesti dal §17.7.
+
+### 17.11 Velocizzazioni approvate il 26 agosto 2026
+
+Roberto ha osservato che il lavoro rischia di essere pesante senza aumentare
+sicurezza e robustezza, e ha approvato le velocizzazioni seguenti. Non
+modificano alcun requisito normativo e non riducono la matrice pubblica: le 250
+celle restano invariate, bloccanti e possedute dalle rispettive piattaforme.
+
+**V1 — contratto nativo definito su ogni piattaforma.** Le costanti e le
+strutture `ctypes` del percorso Windows erano dichiarate dentro la guardia di
+piattaforma insieme ai riferimenti alle librerie. Ne seguiva che nessun fatto
+del contratto nativo — una maschera d'accesso, un flag di opzione, un offset,
+una mappatura di stato — era osservabile senza un runner Windows: l'unico modo
+di smentire un errore era un giro pubblico da circa quattro minuti, a volte con
+log non recuperabili. Soltanto `ctypes.WinDLL` è realmente esclusivo di
+Windows. Costanti e strutture vivono ora fuori dalla guardia, perché
+`ctypes.wintypes` si importa ovunque; i riferimenti alle librerie e le firme
+restano dentro. Le celle Windows continuano a osservare il sistema operativo
+esattamente come prima.
+
+**V2 — sonda diagnostica locale del contratto nativo.**
+`internal/tools/rm0008_2a_native_contract_probe.py` confronta con il §7.3 le
+dimensioni, gli offset, le costanti del dominio NT e le due maschere di
+creazione, e distingue tre esiti: conforme, difforme, non ancora definito. È un
+artefatto **D** ai sensi del §16.2: sta fuori dai due alberi A, fuori dal
+manifesto e fuori dall'esportazione pubblica, non colora alcuna cella e non
+sostituisce le attività Windows. Serve a smentire un errore in millisecondi
+invece che in un giro di integrazione, e la sua colonna «non ancora definito»
+funziona da elenco puntuale del lavoro Windows residuo. Prima misura sulla base
+corrente: 4 conformi, 0 difformi, 13 nomi normativi non ancora definiti.
+
+**Proposta di riduzione, non approvata e non applicata.** Nella stessa
+discussione è stata proposta una riduzione del contratto: ritiro della
+certificazione della certificazione (documenti di evidenza per attività,
+fotografia aggregata, riepilogo, inventario di 250 celle confrontato con una
+costante letterale), ritiro della batteria dei 47 mutanti di R1 — la cui
+proprietà il §16.3 dichiara non applicabile contro codice nello stesso
+interprete e con lo stesso UID o SID — e assegnazione a un gruppo successivo,
+con proprietario dichiarato, delle celle UNC, percorsi lunghi, varianti di
+maiuscole e giro completo dei byte. Stima: da 250 celle a 80-100 e da circa
+13.000 righe di apparato a circa 4.000, conservando le sei proprietà che
+proteggono davvero — attraversamento per handle, rifiuto dei tipi estranei,
+blocco esclusivo prima di ogni mutazione, rinomina senza sostituzione,
+annullamento dopo errore, unico proprietario del pubblicatore. Ciò che si
+perderebbe è la dimostrabilità a terzi che nessuno ha rimpicciolito la suite:
+un rischio di processo, non di prodotto. **La riduzione tocca artefatti
+congelati dal §16.14.3 e richiede una riapertura esplicita e una nuova
+fotografia: resta in attesa della decisione di Roberto e non è stata
+applicata.**
