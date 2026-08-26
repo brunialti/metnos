@@ -1599,6 +1599,32 @@ def _win_open_path(
     return handle
 
 
+def _win_object_facts_v1(handle: int) -> tuple[_ObjectIdentity, int]:
+    """Identity and attributes of one object, without asking for its standard info.
+
+    The removal may query the standard information exactly once, after it has
+    acted, to confirm that the deletion is pending: everything it needs to
+    decide beforehand comes from these two classes.
+    """
+    tagged = _FILE_ATTRIBUTE_TAG_INFO()
+    identity = _FILE_ID_INFO()
+    for info_class, target in (
+        (_FILE_ATTRIBUTE_TAG_INFO_CLASS, tagged),
+        (_FILE_ID_INFO_CLASS, identity),
+    ):
+        if not _KERNEL32.GetFileInformationByHandleEx(
+            handle, info_class, ctypes.byref(target), ctypes.sizeof(target)
+        ):
+            raise _win_error("GetFileInformationByHandleEx")
+    return (
+        _ObjectIdentity(
+            f"{int(identity.VolumeSerialNumber):016x}",
+            bytes(identity.FileId.Identifier).hex(),
+        ),
+        int(tagged.FileAttributes),
+    )
+
+
 def _win_info(handle: int) -> tuple[_ObjectIdentity, int, int, bool, bool, int]:
     standard = _FILE_STANDARD_INFO()
     tagged = _FILE_ATTRIBUTE_TAG_INFO()
@@ -3780,19 +3806,15 @@ class _SecureRootSession:
             except OSError as exc:
                 raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             try:
-                observed = _win_info(target)
-                identity = observed[0]
+                identity, attributes = _win_object_facts_v1(target)
                 if identity != expectation.identity:
                     raise BirthSecureFSError(
                         "birth_provisioning_recovery_ambiguous"
                     )
-                # The tuple carries attributes, links, deletion pending, kind
-                # and size in this order after the identity.
-                if observed[4] != directory_expected or observed[2] != expectation.links:
-                    raise BirthSecureFSError(
-                        "birth_provisioning_recovery_ambiguous"
-                    )
-                if observed[3]:
+                observed_directory = bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
+                if observed_directory != directory_expected or (
+                    attributes & _FILE_ATTRIBUTE_REPARSE_POINT
+                ):
                     raise BirthSecureFSError(
                         "birth_provisioning_recovery_ambiguous"
                     )
@@ -3806,7 +3828,7 @@ class _SecureRootSession:
                             "birth_provisioning_recovery_ambiguous"
                         )
                 else:
-                    self._verify_disposal_payload_windows(target, expectation, observed)
+                    self._verify_disposal_payload_windows(target, expectation)
                 disposition = _FILE_DISPOSITION_INFO_EX(
                     Flags=_FILE_DISPOSITION_FLAG_DELETE
                     | _FILE_DISPOSITION_FLAG_POSIX_SEMANTICS
@@ -3817,7 +3839,14 @@ class _SecureRootSession:
                     ctypes.byref(disposition),
                     ctypes.sizeof(disposition),
                 ):
-                    raise _win_error("SetFileInformationByHandle(disposition)")
+                    # The removal is refused by the system: the reason is
+                    # translated once, with the same closed table the opening
+                    # uses, and no other way of removing is attempted.
+                    error = ctypes.get_last_error()
+                    raise BirthSecureFSError(
+                        _nt_birth_code_v1(error, _NtOpenPurposeV1.disposition),
+                        OSError(0, "SetFileInformationByHandle", None, error),
+                    )
                 # The removal is confirmed on the same handle, before it is
                 # closed: afterwards nothing would carry the authority to look.
                 _win_reconcile_disposed(target)
@@ -3834,23 +3863,24 @@ class _SecureRootSession:
         )
 
     def _verify_disposal_payload_windows(
-        self, target: int, expectation: _DisposalExpectation, observed,
+        self, target: int, expectation: _DisposalExpectation,
     ) -> None:
-        """Compare the bytes of a file against the expectation, on its handle."""
-        size = observed[5]
-        if expectation.disposal_class is _DisposalClass.complete_file:
-            if size != expectation.expected_size:
-                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-        elif size > (expectation.maximum_partial_size or 0):
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-        if expectation.content_sha256 is None:
-            return
+        """Compare the bytes of a file against the expectation, on its handle.
+
+        The size is the one actually read, not one asked for separately: the
+        removal may query the standard information only after it has acted.
+        """
+        limit = (
+            expectation.expected_size
+            if expectation.disposal_class is _DisposalClass.complete_file
+            else expectation.maximum_partial_size or 0
+        )
         if not _KERNEL32.SetFilePointerEx(target, 0, None, 0):
             raise _win_error("SetFilePointerEx")
         digest = hashlib.sha256()
-        remaining = size
-        while remaining > 0:
-            capacity = min(8192, remaining)
+        read = 0
+        while read <= limit:
+            capacity = min(8192, limit + 1 - read)
             buffer = ctypes.create_string_buffer(capacity)
             count = wintypes.DWORD()
             if not _KERNEL32.ReadFile(
@@ -3860,8 +3890,15 @@ class _SecureRootSession:
             if not count.value:
                 break
             digest.update(buffer.raw[: count.value])
-            remaining -= count.value
-        if remaining or "sha256:" + digest.hexdigest() != expectation.content_sha256:
+            read += count.value
+        if expectation.disposal_class is _DisposalClass.complete_file:
+            if read != expectation.expected_size:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        elif read > limit:
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+        if expectation.content_sha256 is None:
+            return
+        if "sha256:" + digest.hexdigest() != expectation.content_sha256:
             raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
 
     def _dispose_transaction_object_posix(
