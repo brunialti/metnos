@@ -2039,15 +2039,20 @@ class _SecureRootSession:
         components = _relative_components(components)
         with self._directory_chain(components) as (handle, _):
             try:
+                def resolve(relative, scope=components):
+                    return self._role_catalog._resolve_binding_v1(
+                        scope + relative
+                    )
+
                 before = (
                     _win_inventory(handle)
                     if os.name == "nt"
-                    else _posix_inventory(handle)
+                    else _posix_inventory(handle, resolve)
                 )
                 after = (
                     _win_inventory(handle)
                     if os.name == "nt"
-                    else _posix_inventory(handle)
+                    else _posix_inventory(handle, resolve)
                 )
             except OSError as exc:
                 raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
@@ -2992,7 +2997,14 @@ def _read_all_posix(fd: int, size: int) -> bytes:
     return bytes(result)
 
 
-def _posix_inventory(directory: int) -> tuple[_InventoryEntry, ...]:
+def _posix_inventory(directory: int, resolve=None) -> tuple[_InventoryEntry, ...]:
+    """Build the shared record for one directory, refusing foreign types.
+
+    Every entry is reopened relative to the parent descriptor without following
+    links.  A symbolic link, a hard link, any other type or an entry the
+    catalogue cannot classify is refused before the record exists, so the
+    closed kind never has to grow a third value (section 16.3, R7).
+    """
     result: list[_InventoryEntry] = []
     names = tuple(os.listdir(directory))
     flags = (
@@ -3005,18 +3017,33 @@ def _posix_inventory(directory: int) -> tuple[_InventoryEntry, ...]:
         handle = os.open(name, flags, dir_fd=directory)
         try:
             value = os.fstat(handle)
-            if (
-                not stat.S_ISLNK(value.st_mode)
-                and not stat.S_ISDIR(value.st_mode)
-                and not stat.S_ISREG(value.st_mode)
-            ):
+            directory_entry = stat.S_ISDIR(value.st_mode)
+            if not directory_entry and not stat.S_ISREG(value.st_mode):
                 raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            if not directory_entry and value.st_nlink != 1:
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
+            kind = (
+                _ObjectKind.directory
+                if directory_entry
+                else _ObjectKind.regular_file
+            )
+            binding = resolve((name,)) if resolve is not None else None
+            if binding is not None and binding.kind is not kind:
+                raise BirthSecureFSError("birth_provisioning_acl_unsafe")
             result.append(
                 _InventoryEntry(
-                    name,
-                    _ObjectIdentity(f"{value.st_dev:x}", f"{value.st_ino:x}"),
-                    stat.S_ISDIR(value.st_mode),
-                    value.st_nlink,
+                    name=name,
+                    identity=_ObjectIdentity(
+                        f"{value.st_dev:x}", f"{value.st_ino:x}"
+                    ),
+                    kind=kind,
+                    role=(
+                        binding.role
+                        if binding is not None
+                        else _BirthObjectRole.birth_integrity_only
+                    ),
+                    links=value.st_nlink,
+                    size=None if directory_entry else value.st_size,
                 )
             )
         finally:
