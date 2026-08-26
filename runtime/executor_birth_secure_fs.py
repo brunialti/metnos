@@ -2482,6 +2482,8 @@ class _SecureRootSession:
                 # The chain was already open: this error came from the body and
                 # belongs to the caller, so it keeps its own identity.
                 raise
+            if isinstance(exc, PermissionError):
+                raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
             raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _verify_windows_profile(
@@ -4276,7 +4278,12 @@ def _read_posix_relative(
     name that changed identity since it was first seen.
     """
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-    fd = os.open(name, flags, dir_fd=directory)
+    try:
+        fd = os.open(name, flags, dir_fd=directory)
+    except PermissionError as exc:
+        # The object exists and the system refuses it to this owner: that is a
+        # matter of permissions, not a failure of the device.
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc) from exc
     try:
         _verify_posix_file(fd, role=role, expected_uid=expected_uid)
         before = _posix_snapshot(fd)
