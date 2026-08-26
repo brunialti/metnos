@@ -2217,7 +2217,7 @@ class _SecureRootSession:
         return tuple(item.name for item in self._inventory_state(components))
 
     def _inventory_state(
-        self, components: tuple[str, ...]
+        self, components: tuple[str, ...], budget=None,
     ) -> tuple[_InventoryEntry, ...]:
         components = _relative_components(components)
         with self._directory_chain(components) as (handle, _):
@@ -2227,15 +2227,16 @@ class _SecureRootSession:
                         scope + relative
                     ).binding
 
+                shared = _InventoryBudgetV1() if budget is None else budget
                 before = (
                     _win_inventory(handle)
                     if os.name == "nt"
-                    else _posix_inventory(handle, resolve)
+                    else _posix_inventory(handle, resolve, shared, components)
                 )
                 after = (
                     _win_inventory(handle)
                     if os.name == "nt"
-                    else _posix_inventory(handle, resolve)
+                    else _posix_inventory(handle, resolve, shared, components)
                 )
             except OSError as exc:
                 raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
@@ -3404,57 +3405,70 @@ def _read_all_posix(fd: int, size: int) -> bytes:
     return bytes(result)
 
 
-def _posix_inventory(directory: int, resolve=None) -> tuple[_InventoryEntry, ...]:
+def _posix_inventory(
+    directory: int, resolve=None, budget=None, scope: tuple[str, ...] = (),
+) -> tuple[_InventoryEntry, ...]:
     """Build the shared record for one directory, refusing foreign types.
 
     Every entry is reopened relative to the parent descriptor without following
     links.  A symbolic link, a hard link, any other type or an entry the
     catalogue cannot classify is refused before the record exists, so the
     closed kind never has to grow a third value (section 16.3, R7).
+
+    The enumeration is incremental: names are never materialised in one list
+    before the budget has seen them, so the 4096 limit is reached during the
+    scan rather than after it (section 16.13.5).
     """
     result: list[_InventoryEntry] = []
-    names = tuple(os.listdir(directory))
+    budget = _InventoryBudgetV1() if budget is None else budget
     flags = (
         getattr(os, "O_PATH", os.O_RDONLY)
         | getattr(os, "O_CLOEXEC", 0)
         | getattr(os, "O_NOFOLLOW", 0)
     )
-    for raw_name in names:
-        name = _relative_components((raw_name,))[0]
-        handle = os.open(name, flags, dir_fd=directory)
-        try:
-            value = os.fstat(handle)
-            directory_entry = stat.S_ISDIR(value.st_mode)
-            if not directory_entry and not stat.S_ISREG(value.st_mode):
-                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-            if not directory_entry and value.st_nlink != 1:
-                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
-            kind = (
-                _ObjectKind.directory
-                if directory_entry
-                else _ObjectKind.regular_file
-            )
-            binding = resolve((name,)) if resolve is not None else None
-            if binding is not None and binding.kind is not kind:
-                raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-            result.append(
-                _InventoryEntry(
-                    name=name,
-                    identity=_ObjectIdentity(
-                        f"{value.st_dev:x}", f"{value.st_ino:x}"
-                    ),
-                    kind=kind,
-                    role=(
-                        binding.role
-                        if binding is not None
-                        else _BirthObjectRole.birth_integrity_only
-                    ),
-                    links=value.st_nlink,
-                    size=None if directory_entry else value.st_size,
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            name = _relative_components((entry.name,))[0]
+            handle = os.open(name, flags, dir_fd=directory)
+            try:
+                value = os.fstat(handle)
+                directory_entry = stat.S_ISDIR(value.st_mode)
+                if not directory_entry and not stat.S_ISREG(value.st_mode):
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                if not directory_entry and value.st_nlink != 1:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                kind = (
+                    _ObjectKind.directory
+                    if directory_entry
+                    else _ObjectKind.regular_file
                 )
-            )
-        finally:
-            os.close(handle)
+                binding = resolve((name,)) if resolve is not None else None
+                if binding is not None and binding.kind is not kind:
+                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+                identity = _ObjectIdentity(
+                    f"{value.st_dev:x}", f"{value.st_ino:x}"
+                )
+                budget.include(scope + (name,), identity)
+                result.append(
+                    _InventoryEntry(
+                        name=name,
+                        identity=identity,
+                        kind=kind,
+                        role=(
+                            binding.role
+                            if binding is not None
+                            else _BirthObjectRole.birth_integrity_only
+                        ),
+                        links=value.st_nlink,
+                        size=None if directory_entry else value.st_size,
+                    )
+                )
+            finally:
+                os.close(handle)
     return tuple(sorted(result, key=lambda item: item.name.encode("utf-8")))
 
 
