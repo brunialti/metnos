@@ -31,11 +31,21 @@ _LOCK_DELAYS = (0.005, 0.010, 0.020, 0.040, 0.080, 0.100)
 
 
 class BirthSecureFSError(RuntimeError):
-    """Stable public failure without paths, ACLs or platform diagnostics."""
+    """Stable public failure without paths, ACLs or platform diagnostics.
 
-    def __init__(self, code: str) -> None:
+    The originating system error is retained privately for diagnosis but never
+    reaches the public chain: section 7.3 keeps the cause internal and section
+    11 forbids paths, security descriptors and platform diagnostics in the
+    public message.
+    """
+
+    def __init__(self, code: str, cause: BaseException | None = None) -> None:
         self.code = code
+        self._internal_cause = cause
         super().__init__(code)
+        self.__cause__ = None
+        self.__context__ = None
+        self.__suppress_context__ = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -756,7 +766,7 @@ def _relative_components(value: Sequence[str]) -> tuple[str, ...]:
         try:
             encoded = component.encode("utf-8")
         except UnicodeEncodeError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         if len(encoded) > _MAX_COMPONENT_BYTES:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
         total += len(encoded) + (1 if result else 0)
@@ -896,7 +906,7 @@ def _open_posix_root(
     except OSError as exc:
         for fd in reversed(opened):
             os.close(fd)
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
 
 # The Windows constants and structures are defined on every platform so a
@@ -1405,7 +1415,7 @@ def _open_win_root(path: Path) -> tuple[list[int], str]:
     except OSError as exc:
         for handle in reversed(opened):
             _win_close(handle)
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
 
 def _win_require_supported_volume(handle: int) -> None:
@@ -1421,9 +1431,7 @@ def _win_require_supported_volume(handle: int) -> None:
         filesystem,
         len(filesystem),
     ):
-        raise BirthSecureFSError(
-            "birth_provisioning_atomic_install_unsupported"
-        ) from _win_error("GetVolumeInformationByHandleW")
+        raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported", _win_error)("GetVolumeInformationByHandleW")
     if filesystem.value.casefold() != "ntfs" or not flags.value & _FILE_PERSISTENT_ACLS:
         raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported")
 
@@ -1436,7 +1444,7 @@ def _windows_service_sid_for_current_process() -> str:
     if not _ADVAPI32.OpenProcessToken(
         _KERNEL32.GetCurrentProcess(), _TOKEN_QUERY, ctypes.byref(token)
     ):
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", _win_error)(
             "OpenProcessToken"
         )
     try:
@@ -1466,7 +1474,7 @@ def _windows_service_sid_for_current_process() -> str:
         finally:
             _KERNEL32.LocalFree(ctypes.cast(encoded, ctypes.c_void_p))
     except OSError as exc:
-        raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+        raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
     finally:
         _win_close(token.value)
 
@@ -1479,7 +1487,7 @@ def _win_restore_privilege() -> Iterator[None]:
         _TOKEN_QUERY | _TOKEN_ADJUST_PRIVILEGES,
         ctypes.byref(token),
     ):
-        raise BirthSecureFSError("birth_provisioning_elevation_required") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_elevation_required", _win_error)(
             "OpenProcessToken"
         )
     previous = _TOKEN_PRIVILEGES()
@@ -1511,7 +1519,7 @@ def _win_restore_privilege() -> Iterator[None]:
         raise
     except OSError as exc:
         _win_close(token.value)
-        raise BirthSecureFSError("birth_provisioning_elevation_required") from exc
+        raise BirthSecureFSError("birth_provisioning_elevation_required", exc)
     try:
         yield
     finally:
@@ -1533,9 +1541,7 @@ def _win_restore_privilege() -> Iterator[None]:
                     else OSError(restore_error, "AdjustTokenPrivileges(restore)")
                 )
                 _win_close(token.value)
-                raise BirthSecureFSError(
-                    "birth_provisioning_elevation_required"
-                ) from failure
+                raise BirthSecureFSError("birth_provisioning_elevation_required", failure)
         _win_close(token.value)
 
 
@@ -1576,7 +1582,7 @@ def _win_security_attributes(
         ctypes.byref(descriptor),
         ctypes.byref(size),
     ):
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", _win_error)(
             "ConvertStringSecurityDescriptorToSecurityDescriptorW"
         )
     attributes = _SECURITY_ATTRIBUTES(
@@ -1620,7 +1626,7 @@ def _win_apply_and_verify_security(handle: int, expected_descriptor: int) -> Non
         ctypes.byref(dacl),
         ctypes.byref(dacl_defaulted),
     ):
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from _win_error(
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", _win_error)(
             "GetSecurityDescriptor"
         )
     if owner_defaulted or not dacl_present or not dacl or dacl_defaulted:
@@ -1663,7 +1669,7 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         ctypes.byref(actual_descriptor),
     )
     if result:
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from OSError(
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", OSError)(
             result, "GetSecurityInfo"
         )
     try:
@@ -1672,7 +1678,7 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         if actual.casefold() != expected.casefold():
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
     except OSError as exc:
-        raise BirthSecureFSError("birth_provisioning_acl_unsafe") from exc
+        raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
     finally:
         _KERNEL32.LocalFree(actual_descriptor)
 
@@ -1849,7 +1855,7 @@ class _SecureRootSession:
                     failure = exc
         self._handles.clear()
         if failure is not None:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from failure
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", failure)
 
     def _require_open(self) -> None:
         if self._closed:
@@ -2032,7 +2038,7 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _verify_windows_role(
         self,
@@ -2079,9 +2085,7 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError(
-                "birth_provisioning_recovery_ambiguous"
-            ) from exc
+            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous", exc)
 
     def open_directory(
         self,
@@ -2165,7 +2169,7 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _read_file_windows(
         self,
@@ -2209,7 +2213,7 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         finally:
             if handle is not None:
                 _win_close(handle)
@@ -2240,7 +2244,7 @@ class _SecureRootSession:
                     else _posix_inventory(handle, resolve, shared, components)
                 )
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             if before != after:
                 raise BirthSecureFSError("birth_provisioning_io_unavailable")
             if len({item.name for item in before}) != len(before):
@@ -2437,10 +2441,10 @@ class _SecureRootSession:
                     break
                 except OSError as exc:
                     if exc.errno not in {errno.EACCES, errno.EAGAIN}:
-                        raise BirthSecureFSError("birth_provisioning_lock_unsafe") from exc
+                        raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
-                        raise BirthSecureFSError("birth_provisioning_lock_unavailable") from exc
+                        raise BirthSecureFSError("birth_provisioning_lock_unavailable", exc)
                     delay = _LOCK_DELAYS[min(delay_index, len(_LOCK_DELAYS) - 1)]
                     delay_index += 1
                     time.sleep(min(delay, remaining))
@@ -2456,11 +2460,11 @@ class _SecureRootSession:
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe")
             yield
         except FileNotFoundError as exc:
-            raise BirthSecureFSError("birth_provisioning_lock_unavailable") from exc
+            raise BirthSecureFSError("birth_provisioning_lock_unavailable", exc)
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_lock_unsafe") from exc
+            raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
         finally:
             if fd is not None:
                 primary = sys.exc_info()[1]
@@ -2468,16 +2472,12 @@ class _SecureRootSession:
                     fcntl.flock(fd, fcntl.LOCK_UN)
                 except BaseException as exc:
                     if primary is None:
-                        raise BirthSecureFSError(
-                            "birth_provisioning_lock_unsafe"
-                        ) from exc
+                        raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
                 try:
                     os.close(fd)
                 except BaseException as exc:
                     if primary is None:
-                        raise BirthSecureFSError(
-                            "birth_provisioning_lock_unsafe"
-                        ) from exc
+                        raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
 
     @contextlib.contextmanager
     def _win_lock(
@@ -2575,13 +2575,13 @@ class _SecureRootSession:
             code = "birth_provisioning_lock_unavailable" if exc.errno in {
                 _ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND
             } else "birth_provisioning_lock_unsafe"
-            raise BirthSecureFSError(code) from exc
+            raise BirthSecureFSError(code, exc)
         finally:
             if locked and not _KERNEL32.UnlockFileEx(
                 handle, 0, 1, 0, ctypes.byref(overlapped)
             ):
                 unlock_error = _win_error("UnlockFileEx")
-                raise BirthSecureFSError("birth_provisioning_lock_unsafe") from unlock_error
+                raise BirthSecureFSError("birth_provisioning_lock_unsafe", unlock_error)
             if handle is not None:
                 _win_close(handle)
 
@@ -2673,11 +2673,11 @@ class _SecureRootSession:
                         except OSError:
                             pass
             except FileExistsError as exc:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
             except BirthSecureFSError:
                 raise
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _create_file_exclusive_windows(
         self,
@@ -2741,8 +2741,8 @@ class _SecureRootSession:
                     return before[0]
         except OSError as exc:
             if exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         except BirthSecureFSError:
             raise
         finally:
@@ -2823,9 +2823,9 @@ class _SecureRootSession:
                 finally:
                     os.close(opened)
             except FileExistsError as exc:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         return self.open_directory(components, role=role)
 
     def _create_directory_exclusive_windows(
@@ -2866,8 +2866,8 @@ class _SecureRootSession:
                     return handle
         except OSError as exc:
             if exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
-                raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
-            raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_transaction_conflict", exc)
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         except BirthSecureFSError:
             raise
         finally:
@@ -2959,7 +2959,7 @@ class _SecureRootSession:
                 except BirthSecureFSError:
                     raise
                 except OSError as exc:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                    raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         source_entries = self._inventory_state(source_parent)
         if any(item.name == source_name for item in source_entries):
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
@@ -2997,7 +2997,7 @@ class _SecureRootSession:
             except BirthSecureFSError:
                 raise
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         self._remap_cached_directories(source, destination)
         return identity
 
@@ -3058,7 +3058,7 @@ class _SecureRootSession:
                 except BirthSecureFSError:
                     raise
                 except OSError as exc:
-                    raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                    raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
                 finally:
                     if source_handle is not None and close_source:
                         _win_close(source_handle)
@@ -3072,7 +3072,7 @@ class _SecureRootSession:
             except BirthSecureFSError:
                 raise
             except OSError as exc:
-                raise BirthSecureFSError("birth_provisioning_io_unavailable") from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             finally:
                 if final_handle is not None:
                     _win_close(final_handle)
@@ -3134,13 +3134,9 @@ class _SecureRootSession:
             except FileNotFoundError as exc:
                 # An initial absence is not an idempotent success: increment 2A
                 # owns no journal that could prove an earlier disposal.
-                raise BirthSecureFSError(
-                    "birth_provisioning_recovery_ambiguous"
-                ) from exc
+                raise BirthSecureFSError("birth_provisioning_recovery_ambiguous", exc)
             except OSError as exc:
-                raise BirthSecureFSError(
-                    "birth_provisioning_io_unavailable"
-                ) from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
             try:
                 value = os.fstat(target)
                 observed_directory = stat.S_ISDIR(value.st_mode)
@@ -3186,9 +3182,7 @@ class _SecureRootSession:
                     os.unlink(name, dir_fd=directory)
                 os.fsync(directory)
             except OSError as exc:
-                raise BirthSecureFSError(
-                    "birth_provisioning_io_unavailable"
-                ) from exc
+                raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
         # Reconcile through the parent: the target is gone and nothing else in
         # the directory changed (section 16.13.8).
         remaining = self._inventory_state(parent)
