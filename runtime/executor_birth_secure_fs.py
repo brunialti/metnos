@@ -2487,16 +2487,22 @@ class _SecureRootSession:
         finally:
             if fd is not None:
                 primary = sys.exc_info()[1]
+                # A failed unlock must not skip the close: the descriptor is
+                # released exactly once and the first cleanup failure is
+                # reported only when it does not mask a primary error (G4).
+                failure: BaseException | None = None
                 try:
                     fcntl.flock(fd, fcntl.LOCK_UN)
                 except BaseException as exc:
-                    if primary is None:
-                        raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
+                    failure = exc
                 try:
                     os.close(fd)
                 except BaseException as exc:
-                    if primary is None:
-                        raise BirthSecureFSError("birth_provisioning_lock_unsafe", exc)
+                    failure = failure if failure is not None else exc
+                if failure is not None and primary is None:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_lock_unsafe", failure
+                    )
 
     @contextlib.contextmanager
     def _win_lock(
