@@ -2966,6 +2966,7 @@ class _SecureRootSession:
         path = os.path.join(directory_path, name)
         handle = None
         locked = False
+        acquired = False
         overlapped = _OVERLAPPED()
         try:
             try:
@@ -3043,6 +3044,7 @@ class _SecureRootSession:
                 raise _win_error("ReadFile")
             if count.value != 1 or buffer.raw[:1] != _LOCK_BYTE:
                 raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+            acquired = True
             yield
         except BirthSecureFSError:
             raise
@@ -3050,6 +3052,11 @@ class _SecureRootSession:
             code = "birth_provisioning_lock_unavailable" if exc.errno in {
                 _ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND
             } else "birth_provisioning_lock_unsafe"
+            if acquired:
+                # The lock was already held: this error came from the body and
+                # belongs to the caller, so it is not reclassified as a failure
+                # of the lock.
+                raise
             raise BirthSecureFSError(code, exc)
         finally:
             if locked and not _KERNEL32.UnlockFileEx(
