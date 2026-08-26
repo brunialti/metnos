@@ -3734,3 +3734,33 @@ che ora sono rifiutate anziché supportate. Nessuna delle sei proprietà che
 proteggono il prodotto è toccata: attraversamento per handle, rifiuto dei tipi
 estranei, blocco esclusivo prima di ogni mutazione, rinomina senza
 sostituzione, annullamento dopo errore, unico proprietario del pubblicatore.
+
+### 17.13 Punto aperto: importazione dinamica nel grafo produttivo
+
+La cella `productive-graph-no-mutating-capability` tratta ogni accesso
+dinamico a un modulo (`__import__`, `sys.modules`) come un bersaglio sensibile
+e lo dichiara una fuga della capacità mutante. Il grafo produttivo è però
+l'intero prodotto distribuito: la regola colpisce oggi 20 chiamate in
+sottosistemi che non hanno alcun rapporto con la nascita — `agent_runtime`,
+`loader`, `skill_wrapper`, `tutor`, `orchestration`, `prefilter_strategies`,
+due script di generazione — più un ritorno di capacità interno alla sessione
+Birth.
+
+Il contratto del §16.13.1 chiude la produzione della capacità mutante a una
+sola entrata; la contenzione reale è data dal punto unico di costruzione del
+descrittore e dal segno di sessione, che una importazione dinamica non
+aggira: senza descrittore autentico non esiste sessione mutante. La regola
+sull'importazione dinamica è quindi una seconda cintura, non la garanzia.
+
+Sono possibili due esiti, e la scelta non spetta all'agente:
+
+1. **Restringere la regola al grafo della nascita.** Le importazioni dinamiche
+   restano ammesse dove non possono raggiungere la capacità, e la cella
+   certifica ciò che il §16.13.1 afferma davvero.
+2. **Togliere l'importazione dinamica dal prodotto.** È un rifacimento di
+   sottosistemi estranei a RM-0008, con rischio di regressione proporzionato e
+   nessun guadagno di sicurezza dimostrato oltre la cintura già esistente.
+
+La raccomandazione è la prima. Fino alla decisione la cella resta rossa e
+dichiarata tale: non viene aggirata, né la sua regola viene indebolita.
+

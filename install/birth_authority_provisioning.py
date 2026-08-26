@@ -109,9 +109,9 @@ def open_birth_provisioning_layout_v1() -> ProvisioningLayoutV1:
     handles, absolute = _resolve_birth_root_v1(root, identity)
     # The catalogue is built once, named, and handed over unchanged: the
     # descriptor must not be able to receive a narrowed or reordered variant.
-    catalog = _BirthRoleCatalogV1(
+    catalog = _secure_fs._BirthRoleCatalogV1(
         schema_version=1,
-        patterns=tuple(_BirthRolePatternV1),
+        patterns=tuple(_secure_fs._BirthRolePatternV1),
         exact_bindings=(),
         generation=0,
     )

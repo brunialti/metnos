@@ -1888,7 +1888,25 @@ def validate_productive_mutation_graph(
     if entry_symbol not in definitions or layout_symbol not in definitions:
         raise CertificationError("installer-only entry is absent from the productive graph")
     constructor_sites = _sites_reaching_exact_call(calls, call_sites, descriptor_symbol)
-    catalog_sites = _sites_reaching_exact_call(calls, call_sites, catalog_symbol)
+    # Section 16.13.4 gives the historical loaders their own distinct and
+    # constant catalogues, so only the authoritative construction — the one
+    # that carries every Birth pattern and no exact binding — is required to
+    # live at a single installer site.
+    catalog_sites = [
+        site
+        for site in _sites_reaching_exact_call(calls, call_sites, catalog_symbol)
+        if any(
+            _is_authoritative_catalog_constructor(
+                node,
+                site[0].split("::", 1)[0],
+                sources[site[0].split("::", 1)[0]][1],
+                aliases,
+                simple_definitions,
+                class_methods,
+            )
+            for node in call_nodes.get((site[0], catalog_symbol), [])
+        )
+    ]
     adopter_sites = _sites_reaching_exact_call(calls, call_sites, adopt_symbol)
     session_sites = _sites_reaching_exact_call(calls, call_sites, session_symbol)
     layout_sites = _sites_reaching_exact_call(calls, call_sites, layout_symbol)
