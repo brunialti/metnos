@@ -3687,3 +3687,46 @@ un rischio di processo, non di prodotto. **La riduzione tocca artefatti
 congelati dal §16.14.3 e richiede una riapertura esplicita e una nuova
 fotografia: resta in attesa della decisione di Roberto e non è stata
 applicata.**
+
+### 17.12 Riduzione approvata del contratto 2A: rifiutare invece di provare
+
+Roberto ha approvato il 26 agosto 2026 la riduzione seguente, chiedendo
+esplicitamente «più veloce e più sicuro». Il criterio adottato non è provare
+meno, ma **smettere di supportare** ciò che l'installazione non usa: una
+configurazione rifiutata non può essere sbagliata, quindi la superficie si
+restringe mentre il costo della prova sparisce.
+
+**Forme di percorso Windows.** Il §7.3 e la matrice del §16.13.6 chiedevano di
+supportare e dimostrare condivisioni UNC, percorsi oltre il limite classico,
+prefisso verbatim e varianti di maiuscole, con una cella positiva che доveva
+creare una condivisione SMB reale sul runner. Da questa decisione la radice
+ammessa è **una sola**: un percorso locale canonico di unità. Ogni altra forma
+riceve `birth_provisioning_atomic_install_unsupported` prima di qualunque
+creazione, verificato da `_require_local_canonical_windows_root`. La regola usa
+`ntpath` e non `os.path`, quindi resta decidibile dalla sonda locale su
+qualunque piattaforma. G9 passa da dieci celle a quattro: la forma ammessa e i
+tre rifiuti. Le sei celle ritirate riguardano capacità che il prodotto non
+espone più; non sono rinviate a un gruppo successivo perché non esiste più il
+comportamento da provare. Se una futura installazione dovrà vivere su una
+condivisione di rete, quel supporto sarà un incremento con la propria prova.
+
+**Certificazione della certificazione.** Sono ritirate cinque celle G6:
+`evidence-schema`, `pre-fix-snapshot`, `production-inventory`,
+`activity-selection` e `workflow-dependency`. Proteggono il processo, non il
+prodotto. Restano le quattro che impediscono davvero di rimpicciolire la suite
+di nascosto: `schema-canonical`, `required-cell-inventory`, `collection-exact`
+e `no-skip-xfail`.
+
+**Effetto.** L'inventario normativo passa da 250 a **239 celle**; i sottototali
+diventano manifesto 7 e ACL Windows 65, gli altri invariati. La fotografia
+`rm0008-2a-pre-fix-evidence-v1.json` resta agli atti come registrazione storica
+dell'insieme precedente e non è più vincolante, perché la cella che la
+verificava è fra quelle ritirate.
+
+**Cosa si perde, dichiarato.** Si perde la dimostrabilità a terzi che l'insieme
+delle prove non è stato rimpicciolito senza decisione — sostituita da questa
+registrazione esplicita — e la copertura delle forme di percorso non locali,
+che ora sono rifiutate anziché supportate. Nessuna delle sei proprietà che
+proteggono il prodotto è toccata: attraversamento per handle, rifiuto dei tipi
+estranei, blocco esclusivo prima di ogni mutazione, rinomina senza
+sostituzione, annullamento dopo errore, unico proprietario del pubblicatore.

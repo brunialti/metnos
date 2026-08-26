@@ -1342,8 +1342,40 @@ def _verify_win_object(handle: int, expected_path: str, *, directory: bool) -> t
     return value
 
 
+_WINDOWS_LOCAL_ROOT_LIMIT = 260
+
+
+def _require_local_canonical_windows_root(absolute: str) -> None:
+    """Admit one local canonical drive path and refuse every other form.
+
+    A network share, a verbatim prefix, a path beyond the classic limit or a
+    form that differs from the canonical one is refused before any object is
+    created.  Supporting those forms would mean proving remote persistent
+    ACLs, verbatim traversal and case folding on every operation; refusing
+    them keeps the surface smaller than the proof would be.
+    """
+    import ntpath
+
+    # ntpath, not os.path: the rule is a property of the Windows form and must
+    # stay decidable by the local probe on any platform.
+    if absolute.startswith("\\\\") or len(absolute) > _WINDOWS_LOCAL_ROOT_LIMIT:
+        raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported")
+    drive, remainder = ntpath.splitdrive(absolute)
+    if (
+        len(drive) != 2
+        or drive[1] != ":"
+        or not drive[0].isascii()
+        or not drive[0].isalpha()
+        or not remainder.startswith("\\")
+        or ".." in remainder.split("\\")
+        or ntpath.normpath(absolute) != absolute
+    ):
+        raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported")
+
+
 def _open_win_root(path: Path) -> tuple[list[int], str]:
     absolute = os.path.abspath(os.fspath(path))
+    _require_local_canonical_windows_root(absolute)
     opened: list[int] = []
     try:
         for prefix in _win_prefixes(absolute):

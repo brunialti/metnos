@@ -197,13 +197,8 @@ REQUIRED_CELLS_V1: tuple[RequiredCell, ...] = (
     ("G5", "windows-acl", "windows", "token-handle-close-once", "may_green"),
     ("G6", "manifest", "platform-independent", "schema-canonical", "may_green"),
     ("G6", "manifest", "platform-independent", "required-cell-inventory", "may_green"),
-    ("G6", "manifest", "platform-independent", "production-inventory", "may_green"),
     ("G6", "manifest", "platform-independent", "collection-exact", "may_green"),
     ("G6", "manifest", "platform-independent", "no-skip-xfail", "may_green"),
-    ("G6", "manifest", "platform-independent", "activity-selection", "may_green"),
-    ("G6", "manifest", "platform-independent", "evidence-schema", "may_green"),
-    ("G6", "manifest", "platform-independent", "pre-fix-snapshot", "may_green"),
-    ("G6", "manifest", "platform-independent", "workflow-dependency", "may_green"),
     ("G7", "windows-acl", "windows", "reject-non-ntfs-file-create", "may_green"),
     ("G7", "windows-acl", "windows", "reject-non-ntfs-directory-create", "may_green"),
     ("G7", "windows-acl", "windows", "reject-no-persistent-acl-file-create", "may_green"),
@@ -212,12 +207,6 @@ REQUIRED_CELLS_V1: tuple[RequiredCell, ...] = (
     ("G8", "portable-ubuntu", "linux", "reject-intermediate-uid", "may_green"),
     ("G8", "portable-ubuntu", "linux", "reject-file-uid", "may_green"),
     ("G9", "windows-acl", "windows", "local-canonical", "may_green"),
-    ("G9", "windows-acl", "windows", "local-long", "may_green"),
-    ("G9", "windows-acl", "windows", "local-verbatim", "may_green"),
-    ("G9", "windows-acl", "windows", "local-case-variant", "may_green"),
-    ("G9", "windows-acl", "windows", "unc-loopback-positive", "may_green"),
-    ("G9", "windows-acl", "windows", "unc-unreachable-rejected", "may_green"),
-    ("G9", "windows-acl", "windows", "unc-no-persistent-acls-rejected", "may_green"),
     ("G9", "windows-acl", "windows", "malformed-prefix-rejected", "may_green"),
     ("G9", "windows-acl", "windows", "relative-rejected", "may_green"),
     ("G9", "windows-acl", "windows", "parent-traversal-rejected", "may_green"),
@@ -259,13 +248,13 @@ REQUIRED_CELLS_V1: tuple[RequiredCell, ...] = (
 )
 
 EXPECTED_ACTIVITY_COUNTS_V1 = {
-    "manifest": 12,
+    "manifest": 7,
     "portable-ubuntu": 67,
     "portable-windows": 60,
     "concurrency-ubuntu": 19,
     "concurrency-windows": 21,
-    "windows-acl": 71,
+    "windows-acl": 65,
 }
 
-if len(REQUIRED_CELLS_V1) != 250:  # pragma: no cover - import-time corruption guard
-    raise RuntimeError("RM-0008 2A normative inventory must contain 250 cells")
+if len(REQUIRED_CELLS_V1) != 239:  # pragma: no cover - import-time corruption guard
+    raise RuntimeError("RM-0008 2A normative inventory must contain 239 cells")
