@@ -3801,3 +3801,29 @@ perché degrada in modo permanente il valore probatorio dell'apparato, e la
 prima comporta una pubblicazione di prodotto regredito, che richiede consenso
 esplicito.
 
+### 17.15 Seconda contraddizione interna all'apparato: enumerare e aprire
+
+Due celle non possono essere verdi insieme.
+
+`test_r7_posix_inventory::mutation-between-scans-rejected` inietta la
+sostituzione agganciando `os.open` del nome enumerato e pretende
+`assert fired`: la cella è verde soltanto se l'enumerazione **apre** ogni voce.
+
+`test_g3_posix_durability::rename-two-parents-fsync` pretende che, dopo la
+rinomina nativa, il primo `os.open` dell'oggetto nel contenitore di
+destinazione sia la **verifica finale** (`profile: True`) e che non ne
+esistano altri (`reopened the target twice`). La stessa cella pretende però
+anche la doppia rilettura dei due contenitori. Se l'enumerazione apre le voci,
+apre due volte l'oggetto spostato prima della verifica.
+
+È stata mantenuta l'apertura per voce, cioè la proprietà più forte: apertura
+senza seguire collegamenti e ispezione sul descrittore osservano una
+sostituzione che una lettura dei metadati della sola voce di directory non
+garantisce. `rename-two-parents-fsync` resta quindi rossa e dichiarata.
+
+La correzione minima appartiene alla cella di durabilità: il suo contatore
+deve escludere le aperture eseguite dall'enumerazione, che essa già
+intercetta separatamente con `traced_inventory`. Non è stata applicata perché
+modifica una prova al di fuori della sequenza del §17.8 e va decisa insieme al
+punto del §17.14.
+

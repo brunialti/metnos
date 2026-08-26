@@ -3148,22 +3148,6 @@ class _SecureRootSession:
                         os.fsync(source_fd)
                         if source_fd != target_fd:
                             os.fsync(target_fd)
-                        # The source name must be gone.  This is a lookup on a
-                        # descriptor already held, not a second opening of the
-                        # object: the destination is opened exactly once, by
-                        # the validation below.
-                        try:
-                            os.stat(
-                                source_name,
-                                dir_fd=source_fd,
-                                follow_symlinks=False,
-                            )
-                        except FileNotFoundError:
-                            pass
-                        else:
-                            raise BirthSecureFSError(
-                                "birth_provisioning_io_unavailable"
-                            )
                         # The object keeps its identity and role; only its name
                         # changes, so a reserved binding follows the rename and
                         # the post-validation can classify the destination.
@@ -3199,6 +3183,19 @@ class _SecureRootSession:
                     )
                 except OSError as exc:
                     raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
+        # Both containers are re-read after the move, which is what shows the
+        # name has left one and arrived in the other.
+        source_entries = self._inventory_state(source_parent)
+        if any(item.name == source_name for item in source_entries):
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        target_entries = (
+            source_entries
+            if target_parent == source_parent
+            else self._inventory_state(target_parent)
+        )
+        moved = [item for item in target_entries if item.name == target_name]
+        if len(moved) != 1 or moved[0].identity != identity:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         with self._directory_chain(target_parent) as (target_fd, _):
             flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
             if directory:
@@ -3806,6 +3803,10 @@ def _posix_inventory(
     with os.scandir(directory) as entries:
         for entry in entries:
             name = _relative_components((entry.name,))[0]
+            # Each entry is opened without following links and inspected on the
+            # descriptor: a name whose object is exchanged between the two
+            # scans is then observed, which a metadata read of the directory
+            # entry alone could not guarantee.
             handle = os.open(name, flags, dir_fd=directory)
             try:
                 value = os.fstat(handle)
