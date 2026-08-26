@@ -160,6 +160,12 @@ if [ -d "$DEST/.github/workflows" ]; then
   )
   for relative in "${WORKFLOW_TEST_PATHS[@]}"; do
     if [ ! -e "$DEST/$relative" ]; then
+      # Un percorso dichiarato come output del workflow nasce durante il job e
+      # non deve esistere nel commit sorgente. Gli input e le suite citati
+      # soltanto come argomenti restano invece soggetti al controllo.
+      if grep -Rqs -- "--output $relative" "$DEST/.github/workflows"; then
+        continue
+      fi
       echo "ERRORE: workflow pubblico riferisce un percorso escluso: $relative" >&2
       exit 1
     fi
