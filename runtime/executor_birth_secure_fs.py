@@ -2604,7 +2604,7 @@ class _SecureRootSession:
         name = components[-1]
         if os.name == "nt":
             return self._read_file_windows(
-                components, directory_path, name, maximum, role
+                components, directory, directory_path, name, maximum, role
             )
         return self._read_file_posix(components, directory, name, maximum, role)
 
@@ -2648,6 +2648,7 @@ class _SecureRootSession:
     def _read_file_windows(
         self,
         components: tuple[str, ...],
+        directory: int,
         directory_path: str,
         name: str,
         maximum: int,
@@ -2656,7 +2657,14 @@ class _SecureRootSession:
         path = os.path.join(directory_path, name)
         handle = None
         try:
-            handle = _win_open_path(path, directory=False)
+            # The name is read where it lives, inside the container that is
+            # already open.
+            handle = _win_open_relative_v1(
+                directory,
+                name,
+                purpose=_NtOpenPurposeV1.read_required,
+                directory=False,
+            )
             before = _verify_win_object(handle, path, directory=False)
             self._verify_windows_profile(
                 handle, directory=False, profile=role
