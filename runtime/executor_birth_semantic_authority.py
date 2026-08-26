@@ -293,6 +293,10 @@ class PreprovisionedSemanticAuthority:
         return self.policy, derive_review_risk_facts(request), self._evidence_for(request)
 
     def _evidence_for(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
+        from executor_birth_secure_fs import _SecureDirectoryHandle
+
+        if isinstance(self.evidence_dir, _SecureDirectoryHandle):
+            return self._evidence_for_capability(request)
         if os.name == "nt":
             return self._evidence_for_windows(request)
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -328,6 +332,64 @@ class PreprovisionedSemanticAuthority:
             return tuple(result)
         finally:
             os.close(directory_fd)
+
+    def _evidence_for_capability(
+        self, request: SemanticReviewRequest
+    ) -> tuple[IndependentEvidence, ...]:
+        """Read the evidence store through the capability bound at load time.
+
+        The location is a directory this authority already holds, not a name to
+        resolve again: a store moved aside and replaced by another one at the
+        same name is therefore not consulted.  Once the session that produced
+        the capability is closed the store is simply unavailable, and the
+        refusal carries no location.
+        """
+        from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+        try:
+            names = sorted(
+                (
+                    name
+                    for name in self.evidence_dir.inventory()
+                    if name.endswith(".json")
+                ),
+                key=lambda name: name.encode(),
+            )
+        except BirthSecureFSError as exc:
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store"
+            ) from exc
+        if len(names) > _MAX_EVIDENCE_FILES:
+            raise SemanticReviewError(
+                "semantic_review_unavailable", "evidence store bounds"
+            )
+        result: list[IndependentEvidence] = []
+        seen: set[str] = set()
+        for name in names:
+            try:
+                raw = self.evidence_dir.read_file(
+                    name,
+                    maximum=_MAX_EVIDENCE_BYTES,
+                    role=_BirthObjectRole.birth_integrity_only,
+                )
+            except BirthSecureFSError as exc:
+                raise SemanticReviewError(
+                    "semantic_review_unavailable", "evidence store"
+                ) from exc
+            item = self._decode_record(raw, name)
+            if item.candidate_id != request.candidate_id:
+                continue
+            if item.admission_context_id != request.admission_context_id:
+                raise SemanticReviewError("evidence_obsolete", item.evidence_id)
+            if item.owner_id == request.generator_owner_id:
+                raise SemanticReviewError(
+                    "evidence_forged", "candidate self-attestation"
+                )
+            if item.evidence_id in seen:
+                raise SemanticReviewError("evidence_forged", "duplicate evidence_id")
+            seen.add(item.evidence_id)
+            result.append(item)
+        return tuple(result)
 
     def _evidence_for_windows(self, request: SemanticReviewRequest) -> tuple[IndependentEvidence, ...]:
         handle = None

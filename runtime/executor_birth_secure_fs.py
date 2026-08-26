@@ -1714,11 +1714,24 @@ def _win_dispose_created(handle: int) -> None:
 class _SecureDirectoryHandle:
     """Opaque directory capability; it never reveals an OS path or raw handle."""
 
-    __slots__ = ("_session", "_components")
+    __slots__ = ("_session", "_components", "_handle", "_path")
 
-    def __init__(self, session: "_SecureRootSession", components: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        session: "_SecureRootSession",
+        components: tuple[str, ...],
+        handle: int,
+        path: str,
+    ) -> None:
+        # The capability is bound to the directory that was opened, not to the
+        # name it was reached by: a store moved aside and replaced by another
+        # one at the same name is therefore never consulted through this
+        # handle.  Resolving the name again is what ``read_file`` on the
+        # session does, and it is a different operation.
         self._session = session
         self._components = components
+        self._handle = handle
+        self._path = path
 
     def read_file(
         self,
@@ -1727,14 +1740,21 @@ class _SecureDirectoryHandle:
         maximum: int,
         role: _BirthObjectRole | None = None,
     ) -> bytes:
-        return self._session.read_file(
+        return self._session._read_in_directory(
+            self._handle,
+            self._path,
             self._components + _relative_components((name,)),
             maximum=maximum,
             role=role,
         )
 
     def inventory(self) -> tuple[str, ...]:
-        return self._session.inventory(self._components)
+        return tuple(
+            item.name
+            for item in self._session._inventory_in_directory(
+                self._handle, self._components
+            )
+        )
 
     def open_directory(
         self, name: str, *, role: _BirthObjectRole | None = None
@@ -2145,7 +2165,7 @@ class _SecureRootSession:
                     role=role,
                     expected_uid=self._expected_uid,
                 )
-        return _SecureDirectoryHandle(self, components)
+            return _SecureDirectoryHandle(self, components, handle, expected)
 
     def read_file(
         self,
@@ -2166,13 +2186,40 @@ class _SecureRootSession:
         declared = self._catalog_role_v1(components, _ObjectKind.regular_file)
         if declared is not None and declared is not role:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-        parent, name = components[:-1], components[-1]
+        parent = components[:-1]
         with self._directory_chain(parent) as (directory, directory_path):
-            if os.name == "nt":
-                return self._read_file_windows(
-                    components, directory_path, name, maximum, role
-                )
-            return self._read_file_posix(components, directory, name, maximum, role)
+            return self._read_in_directory(
+                directory, directory_path, components, maximum=maximum, role=role,
+            )
+
+    def _read_in_directory(
+        self,
+        directory: int,
+        directory_path: str,
+        components: tuple[str, ...],
+        *,
+        maximum: int,
+        role: _BirthObjectRole | None = None,
+    ) -> bytes:
+        """Read one name inside a directory that is already authenticated."""
+        self._require_open()
+        components = _relative_components(components)
+        if not components or isinstance(maximum, bool) or not isinstance(
+            maximum, int
+        ) or maximum < 0:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        role = self._root_role if role is None else role
+        if not isinstance(role, _BirthObjectRole):
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        declared = self._catalog_role_v1(components, _ObjectKind.regular_file)
+        if declared is not None and declared is not role:
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        name = components[-1]
+        if os.name == "nt":
+            return self._read_file_windows(
+                components, directory_path, name, maximum, role
+            )
+        return self._read_file_posix(components, directory, name, maximum, role)
 
     def _read_file_posix(
         self,
@@ -2261,6 +2308,14 @@ class _SecureRootSession:
     ) -> tuple[_InventoryEntry, ...]:
         components = _relative_components(components)
         with self._directory_chain(components) as (handle, _):
+            return self._inventory_in_directory(handle, components, budget)
+
+    def _inventory_in_directory(
+        self, handle: int, components: tuple[str, ...], budget=None,
+    ) -> tuple[_InventoryEntry, ...]:
+        """Enumerate a directory that is already authenticated."""
+        self._require_open()
+        if True:
             try:
                 def resolve(relative, scope=components):
                     # Enumeration observes what exists; it does not decide who
