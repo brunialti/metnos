@@ -3827,3 +3827,33 @@ intercetta separatamente con `traced_inventory`. Non è stata applicata perché
 modifica una prova al di fuori della sequenza del §17.8 e va decisa insieme al
 punto del §17.14.
 
+### 17.16 Punto aperto: `swap-after-middle` senza osservazione precedente
+
+Delle tre sostituzioni raccolte, `swap-after-root` e `swap-final-object` sono
+verdi; `swap-after-middle` no. Il figlio riferisce `X AssertionError`, cioè la
+guardia del banco: il prodotto ha **letto** l'oggetto dell'attaccante.
+
+Quel che è stato stabilito leggendo apparato e prodotto:
+
+- la barriera scatta dentro l'apertura di `middle`; la sostituzione riguarda
+  `last`, che a quel punto **non è ancora stato aperto** dal prodotto;
+- il catalogo esatto del banco (`_support.exact_role_catalog`) filtra i legami
+  per esistenza ma **non registra alcuna identità**: al momento della
+  traversata non esiste un'osservazione precedente di `last` con cui
+  confrontare quella dell'oggetto sostituito;
+- il rimpiazzo ha lo stesso tipo, gli stessi modi e lo stesso proprietario
+  dichiarati dal catalogo, e contiene esattamente il nome atteso; nessuna
+  verifica di profilo, di inventario chiuso o di tipo lo distingue;
+- la doppia traversata non aiuta: entrambe le passate osservano l'oggetto
+  dell'attaccante, perché la sostituzione precede la prima apertura.
+
+Ne segue che, con la barriera dov'è, nessuna implementazione che osservi
+soltanto nomi e profili può distinguere il sottoalbero sostituito. Servirebbe
+un'osservazione anteriore alla sostituzione: identità iscritta nel catalogo,
+oppure inventario del contenitore padre eseguito **prima** che la barriera
+rilasci il controllo.
+
+Non è stata modificata né la cella né il prodotto: le due strade sono
+alternative di contratto e vanno decise insieme ai punti dei §§17.14-17.15.
+La cella resta rossa e dichiarata.
+
