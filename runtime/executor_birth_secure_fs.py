@@ -1997,7 +1997,14 @@ class _SecureRootSession:
             rank == 0 and exclusive for rank, _, exclusive in self._lock_stack
         )
 
-    def _require_global_exclusive(self) -> None:
+    def _require_exclusive_global_lock(self) -> None:
+        """Refuse a mutation that is not covered by the exclusive global lock.
+
+        A session that is not authoritative can never hold it, so the two
+        conditions are one precondition and not two separate refusals.
+        """
+        if not self._authoritative:
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
         if not self._holds_global_exclusive():
             raise BirthSecureFSError("birth_provisioning_lock_unsafe")
 
@@ -2144,7 +2151,10 @@ class _SecureRootSession:
         except BirthSecureFSError:
             raise
         except OSError as exc:
-            raise BirthSecureFSError("birth_provisioning_recovery_ambiguous", exc)
+            # The device refused the reopen: that is unavailability.  Only the
+            # comparison above can declare an ambiguity, because only it has
+            # seen two different objects under one name.
+            raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def open_directory(
         self,
@@ -2706,37 +2716,38 @@ class _SecureRootSession:
         *,
         role: _BirthObjectRole,
     ) -> _ObjectIdentity:
-        self._require_global_exclusive()
-        if not self._authoritative:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
-        components = _relative_components(components)
-        if (
-            not components
-            or not isinstance(payload, bytes)
-            or role not in {
-                _BirthObjectRole.birth_confidential,
-                _BirthObjectRole.birth_integrity_only,
-            }
-        ):
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        self._require_exclusive_global_lock()
+        components = _validate_components_v1(components, role)
         requested = _BirthRoleBindingV1(
-            components=components, kind=_ObjectKind.regular_file, role=role,
+            components=components, kind=_ObjectKind("regular_file"), role=role,
         )
+        # The exact binding is claimed before anything else is inspected: the
+        # payload is examined inside the reservation, which rolls back if this
+        # creation does not complete.
         with self._reserve_exact_role_binding_v1(requested):
+            if not isinstance(payload, bytes):
+                raise BirthSecureFSError("birth_provisioning_io_unavailable")
             resolved = self._resolve_effective_role_binding_v1(components)
-            return self._create_file_exclusive_bound(
-                resolved.binding, payload,
-            )
+            with self._directory_chain(components[:-1]) as (
+                directory, directory_path,
+            ):
+                return self._create_file_exclusive_bound(
+                    resolved.binding, payload, directory, directory_path,
+                )
 
     def _create_file_exclusive_bound(
-        self, binding: _BirthRoleBindingV1, payload: bytes,
+        self,
+        binding: _BirthRoleBindingV1,
+        payload: bytes,
+        directory: int,
+        directory_path: str,
     ) -> _ObjectIdentity:
         components = binding.components
         role = binding.role
         if binding.kind is not _ObjectKind.regular_file:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-        parent, name = components[:-1], components[-1]
-        with self._directory_chain(parent) as (directory, directory_path):
+        name = components[-1]
+        if True:
             if os.name == "nt":
                 return self._create_file_exclusive_windows(
                     components, directory_path, name, payload, role
@@ -2874,31 +2885,32 @@ class _SecureRootSession:
         *,
         role: _BirthObjectRole,
     ) -> _SecureDirectoryHandle:
-        self._require_global_exclusive()
-        if not self._authoritative:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
-        components = _relative_components(components)
-        if not components or role not in {
-            _BirthObjectRole.birth_confidential,
-            _BirthObjectRole.birth_integrity_only,
-        }:
-            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        self._require_exclusive_global_lock()
+        components = _validate_components_v1(components, role)
         requested = _BirthRoleBindingV1(
-            components=components, kind=_ObjectKind.directory, role=role,
+            components=components, kind=_ObjectKind("directory"), role=role,
         )
         with self._reserve_exact_role_binding_v1(requested):
             resolved = self._resolve_effective_role_binding_v1(components)
-            return self._create_directory_exclusive_bound(resolved.binding)
+            with self._directory_chain(components[:-1]) as (
+                directory, directory_path,
+            ):
+                return self._create_directory_exclusive_bound(
+                    resolved.binding, directory, directory_path,
+                )
 
     def _create_directory_exclusive_bound(
-        self, binding: _BirthRoleBindingV1,
+        self,
+        binding: _BirthRoleBindingV1,
+        directory: int,
+        directory_path: str,
     ) -> _SecureDirectoryHandle:
         components = binding.components
         role = binding.role
         if binding.kind is not _ObjectKind.directory:
             raise BirthSecureFSError("birth_provisioning_acl_unsafe")
-        parent, name = components[:-1], components[-1]
-        with self._directory_chain(parent) as (directory, directory_path):
+        name = components[-1]
+        if True:
             if os.name == "nt":
                 handle = self._create_directory_exclusive_windows(
                     directory_path,
@@ -2996,7 +3008,7 @@ class _SecureRootSession:
     def rename_no_replace(
         self, source: tuple[str, ...], destination: tuple[str, ...], *, directory: bool
     ) -> _ObjectIdentity:
-        self._require_global_exclusive()
+        self._require_exclusive_global_lock()
         if not self._authoritative:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
         source = _relative_components(source)
@@ -3204,7 +3216,7 @@ class _SecureRootSession:
         it knows nothing about a journal or a checkpoint: recording the outcome
         belongs to the caller of increment 2B (section 16.13.2).
         """
-        self._require_global_exclusive()
+        self._require_exclusive_global_lock()
         if not isinstance(expectation, _DisposalExpectation):
             raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
         components = _relative_components(expectation.components)
@@ -3570,6 +3582,23 @@ def _read_all_posix(fd: int, size: int) -> bytes:
             break
         result.extend(block)
     return bytes(result)
+
+
+def _validate_components_v1(
+    components: tuple[str, ...], role: _BirthObjectRole,
+) -> tuple[str, ...]:
+    """Validate the name and the profile a creation asks for.
+
+    Both creations share it so the refusal happens in one place and the caller
+    body stays free of any decision taken before the exact binding is claimed.
+    """
+    components = _relative_components(components)
+    if not components or role not in {
+        _BirthObjectRole.birth_confidential,
+        _BirthObjectRole.birth_integrity_only,
+    }:
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
+    return components
 
 
 def _open_posix_directory_root(path: str) -> int:

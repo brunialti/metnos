@@ -1299,7 +1299,10 @@ def create_file_exclusive(self, components, payload, role):
                 row[5],
                 row[6],
                 row[7],
-                row[12],
+                # The payload digest is the last column of the snapshot; size
+                # and the three timestamps are deliberately left out, because
+                # this comparison is about identity and permissions.
+                row[11],
             )
             for row in tree_snapshot(root)
         )
