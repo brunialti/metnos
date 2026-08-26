@@ -14,7 +14,7 @@ import os
 import re
 import stat
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PurePosixPath
 from types import MappingProxyType
 from typing import Iterable, Iterator, Mapping
 
@@ -209,8 +209,68 @@ def load_birth_keystore(
     root = Path(root)
     _check_directory(root)
     forbidden = _forbidden_raw(forbidden_public_keys)
+
+    def read(relative: str, limit: int) -> bytes:
+        return read(relative, limit)
+
+    def check_inventory(public_files: set[str], private_file: str) -> None:
+        _closed_inventory(root, public_files=public_files, private_file=private_file)
+
     with _store_lock(root / LOCK_BASENAME):
-        encoded = _read_checked(root / CONFIG_BASENAME, limit=64 * 1024)
+        return _decode_birth_keystore(read, check_inventory, forbidden)
+
+
+def _load_birth_keystore_in_session(
+    directory: tuple[str, ...],
+    session,
+    *,
+    forbidden_public_keys: Iterable[bytes | Ed25519PublicKey] = (),
+) -> LoadedBirthKeyStore:
+    """Load the store through a session that already holds the global lock.
+
+    Section 16.13.3 fixes this entry.  It never releases or reacquires the
+    global lock and it still takes its own shared local lock, because the key
+    store is the only store that owns one.  Every byte is read relative to the
+    authenticated root, so no name is ever reopened by path.
+    """
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    if not session._holds_global_lock():
+        raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+    base = tuple(directory)
+    forbidden = _forbidden_raw(forbidden_public_keys)
+
+    def read(relative: str, limit: int) -> bytes:
+        components = base + tuple(PurePosixPath(relative).parts)
+        role = (
+            _BirthObjectRole.birth_integrity_only
+            if relative.startswith("public/")
+            else _BirthObjectRole.birth_confidential
+        )
+        return session.read_file(components, maximum=limit, role=role)
+
+    def check_inventory(public_files: set[str], private_file: str) -> None:
+        observed = set(session.inventory(base))
+        expected = {CONFIG_BASENAME, LOCK_BASENAME, "private", "public"}
+        if observed != expected:
+            raise BirthKeyStoreError("birth_keystore_inventory_unexpected", "root")
+        if set(session.inventory(base + ("public",))) != {
+            PurePosixPath(item).name for item in public_files
+        }:
+            raise BirthKeyStoreError("birth_keystore_inventory_unexpected", "public")
+        if set(session.inventory(base + ("private",))) != {
+            PurePosixPath(private_file).name
+        }:
+            raise BirthKeyStoreError("birth_keystore_inventory_unexpected", "private")
+
+    with session.local_lock(base, exclusive=False, create=False):
+        return _decode_birth_keystore(read, check_inventory, forbidden)
+
+
+def _decode_birth_keystore(read, check_inventory, forbidden) -> LoadedBirthKeyStore:
+    """Validate one store from bytes, whatever handle produced them."""
+    if True:
+        encoded = read(CONFIG_BASENAME, 64 * 1024)
         try:
             config = json.loads(encoded.decode("utf-8"), object_pairs_hook=_pairs_no_duplicates)
         except BirthKeyStoreError:
@@ -251,7 +311,7 @@ def load_birth_keystore(
             if public_file != f"public/{key_id}.pub":
                 raise BirthKeyStoreError("birth_keystore_config_invalid", "public path")
             public_files.add(public_file)
-            raw = _read_checked(root / public_file, limit=32)
+            raw = read(public_file, 32)
             if len(raw) != 32 or not hmac.compare_digest(key_id, birth_key_id(raw)):
                 raise BirthKeyStoreError("birth_key_invalid", key_id)
             if any(hmac.compare_digest(raw, item) for item in forbidden):
@@ -269,9 +329,9 @@ def load_birth_keystore(
         if [entry["key_id"] for entry in config["keys"]] != sorted(verifier_keys):
             raise BirthKeyStoreError("birth_keystore_config_invalid", "keyring order")
 
-        _closed_inventory(root, public_files=public_files, private_file=private_file)
+        check_inventory(public_files, private_file)
 
-        private_raw = _read_checked(root / private_file, limit=32)
+        private_raw = read(private_file, 32)
         if len(private_raw) != 32:
             raise BirthKeyStoreError("birth_key_invalid", "private key must be exactly 32 bytes")
         try:
