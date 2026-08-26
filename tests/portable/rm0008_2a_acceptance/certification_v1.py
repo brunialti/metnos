@@ -352,7 +352,9 @@ def validate_manifest(path: Path = MANIFEST_PATH) -> dict[str, Any]:
         for cell in normalized
     }
     expected_required = set(REQUIRED_CELLS_V1)
-    if len(normalized) != 250 or observed_required != expected_required:
+    if len(normalized) != len(REQUIRED_CELLS_V1) or (
+        observed_required != expected_required
+    ):
         missing = sorted(expected_required - observed_required)
         extra = sorted(observed_required - expected_required)
         raise CertificationError(
@@ -2595,8 +2597,10 @@ def validate_snapshot_aggregate(
         for cell in manifest["cells"]
     ]
     results = evidence["results"]
-    if not isinstance(results, list) or len(results) != 250:
-        raise CertificationError("pre-fix aggregate must contain 250 results")
+    if not isinstance(results, list) or len(results) != len(REQUIRED_CELLS_V1):
+        raise CertificationError(
+            "pre-fix aggregate must contain one result per required cell"
+        )
     for result, expected in zip(results, expected_results, strict=True):
         if not isinstance(result, dict):
             raise CertificationError("pre-fix aggregate result must be an object")
