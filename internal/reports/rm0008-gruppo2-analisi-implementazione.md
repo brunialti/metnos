@@ -4015,3 +4015,17 @@ cancello.
 Entrambe le correzioni toccano l'apparato congelato ed entrano nella lista
 d'attesa del §17.21.
 
+### 17.23 Il lucchetto e' l'unico punto dove il nome assoluto resiste
+
+La creazione del lucchetto con il proprio descrittore e la sua riapertura
+quando esiste gia' sono gli ultimi due usi di un nome assoluto su Windows.
+Spostarli sull'ingresso relativo e' stato provato e **misurato in ambiente
+certificante**: tre celle in meno (portatile 32 -> 30, ACL 55 -> 54), e le due
+celle che chiedono proprio l'assenza del ripiego assoluto restano rosse. Il
+cambiamento e' stato annullato.
+
+Il principio resta valido; la realizzazione richiede una sonda mirata su
+Windows che confronti, per la sola creazione del lucchetto, la maschera, la
+disposizione e il descrittore passati dalle due strade. Va ripreso cosi', non
+a tentativi: e' l'unico punto rimasto e merita una misura propria.
+
