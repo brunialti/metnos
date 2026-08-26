@@ -3817,7 +3817,14 @@ class _SecureRootSession:
                     ctypes.byref(disposition),
                     ctypes.sizeof(disposition),
                 ):
-                    raise _win_error("SetFileInformationByHandle(disposition)")
+                    # The removal is refused by the system: the reason is
+                    # translated once, with the same closed table the opening
+                    # uses, and no other way of removing is attempted.
+                    error = ctypes.get_last_error()
+                    raise BirthSecureFSError(
+                        _nt_birth_code_v1(error, _NtOpenPurposeV1.disposition),
+                        OSError(0, "SetFileInformationByHandle", None, error),
+                    )
                 # The removal is confirmed on the same handle, before it is
                 # closed: afterwards nothing would carry the authority to look.
                 _win_reconcile_disposed(target)
