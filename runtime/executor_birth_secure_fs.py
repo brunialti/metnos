@@ -2322,30 +2322,72 @@ class _SecureRootSession:
         if rank == 0 and any(item_rank == 0 for item_rank, _, _ in self._lock_stack):
             raise BirthSecureFSError("birth_provisioning_lock_unsafe")
         parent, name = components[:-1], components[-1]
-        with self._directory_chain(parent) as (directory, directory_path):
-            if os.name == "nt":
-                with self._win_lock(directory_path, name, exclusive, create, timeout):
-                    self._lock_stack.append((rank, key, exclusive))
-                    try:
-                        yield
-                    finally:
-                        if self._lock_stack.pop() != (rank, key, exclusive):
-                            raise BirthSecureFSError("birth_provisioning_lock_unsafe")
-            else:
-                role = (
-                    _BirthObjectRole.birth_integrity_only
-                    if rank == 0
-                    else _BirthObjectRole.birth_confidential
+        # The role of a lock is a property of its rank, never of an argument:
+        # the global lock is integrity-only and a store lock is confidential.
+        role = (
+            _BirthObjectRole.birth_integrity_only
+            if rank == 0
+            else _BirthObjectRole.birth_confidential
+        )
+        requested = _BirthRoleBindingV1(
+            components=components, kind=_ObjectKind.regular_file, role=role,
+        )
+        with contextlib.ExitStack() as reservation:
+            if create:
+                # Section 16.13.1 requires the same transition for a file, a
+                # directory and the creation of the global lock.
+                reservation.enter_context(
+                    self._reserve_exact_role_binding_v1(requested)
                 )
-                with self._posix_lock(
-                    directory, name, exclusive, create, timeout, role
-                ):
-                    self._lock_stack.append((rank, key, exclusive))
-                    try:
-                        yield
-                    finally:
-                        if self._lock_stack.pop() != (rank, key, exclusive):
-                            raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+            with self._directory_chain(parent) as (directory, directory_path):
+                if os.name == "nt":
+                    with self._win_lock(
+                        directory_path, name, exclusive, create, timeout
+                    ):
+                        if create:
+                            self._commit_lock_binding(components, directory, name)
+                        self._lock_stack.append((rank, key, exclusive))
+                        try:
+                            yield
+                        finally:
+                            if self._lock_stack.pop() != (rank, key, exclusive):
+                                raise BirthSecureFSError(
+                                    "birth_provisioning_lock_unsafe"
+                                )
+                else:
+                    with self._posix_lock(
+                        directory, name, exclusive, create, timeout, role
+                    ):
+                        if create:
+                            self._commit_lock_binding(components, directory, name)
+                        self._lock_stack.append((rank, key, exclusive))
+                        try:
+                            yield
+                        finally:
+                            if self._lock_stack.pop() != (rank, key, exclusive):
+                                raise BirthSecureFSError(
+                                    "birth_provisioning_lock_unsafe"
+                                )
+
+    def _commit_lock_binding(
+        self, components: tuple[str, ...], directory: int, name: str,
+    ) -> None:
+        """Promote the reserved binding once the lock object is complete."""
+        if os.name == "nt":
+            self._commit_exact_role_binding_v1(components, _ObjectIdentity("", ""))
+            return
+        flags = (
+            getattr(os, "O_PATH", os.O_RDONLY)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0)
+        )
+        opened = os.open(name, flags, dir_fd=directory)
+        try:
+            self._commit_exact_role_binding_v1(
+                components, _posix_identity(opened),
+            )
+        finally:
+            os.close(opened)
 
     @contextlib.contextmanager
     def _posix_lock(
