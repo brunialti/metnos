@@ -1368,6 +1368,7 @@ _NT_DIRECTORY_ACCESS_V1 = {
     # compare the declared inventory, so both rights belong to this mask.
     _NtOpenPurposeV1.disposition: 0x001300a1,
 }
+_FILE_SHARE_DELETE = 0x00000004
 _NT_SHARE_ACCESS_V1 = 0x00000003
 _NT_FILE_ATTRIBUTES_V1 = 0x00000080
 
@@ -1428,6 +1429,14 @@ def _win_open_relative_v1(
         if directory
         else _NT_FILE_ACCESS_V1[purpose]
     )
+    # A container held open only to walk through it must not stop the object
+    # from being moved later: it shares deletion. A loader that reads a file,
+    # and every mutating purpose, do not.
+    share = (
+        _NT_SHARE_ACCESS_V1 | _FILE_SHARE_DELETE
+        if directory and purpose is _NtOpenPurposeV1.read_required
+        else _NT_SHARE_ACCESS_V1
+    )
     options = _FILE_OPEN_REPARSE_POINT | _FILE_SYNCHRONOUS_IO_NONALERT
     options |= _FILE_DIRECTORY_FILE if directory else _FILE_NON_DIRECTORY_FILE
     if create:
@@ -1455,7 +1464,7 @@ def _win_open_relative_v1(
         ctypes.byref(status_block),
         None,
         _NT_FILE_ATTRIBUTES_V1,
-        _NT_SHARE_ACCESS_V1,
+        share,
         _FILE_CREATE if create else _FILE_OPEN,
         options,
         None,
@@ -3703,8 +3712,11 @@ class _SecureRootSession:
         with self._directory_chain(source_parent) as (source_fd, source_path):
             with self._directory_chain(target_parent) as (target_handle, target_path):
                 source_path = os.path.join(source_path, source_name)
-                source_handle = self._directories.get(source) if directory else None
-                close_source = source_handle is None
+                # A handle opened to read cannot move a name: the system
+                # refuses it with access denied, measured on Windows. The move
+                # therefore always opens its own handle, with its own purpose.
+                source_handle = None
+                close_source = True
                 try:
                     if source_handle is None:
                         # The object being moved is opened relative to its own
