@@ -3374,7 +3374,10 @@ class _SecureRootSession:
                     try:
                         _win_dispose_created(handle)
                         _win_reconcile_disposed(handle)
-                    except OSError:
+                    except (BirthSecureFSError, OSError):
+                        # The cleanup of a residue must never hide the error
+                        # that caused it, nor keep the handle open: the primary
+                        # failure is the one the caller receives.
                         pass
                 _win_close(handle)
 
@@ -3507,7 +3510,10 @@ class _SecureRootSession:
                     try:
                         _win_dispose_created(handle)
                         _win_reconcile_disposed(handle)
-                    except OSError:
+                    except (BirthSecureFSError, OSError):
+                        # The cleanup of a residue must never hide the error
+                        # that caused it, nor keep the handle open: the primary
+                        # failure is the one the caller receives.
                         pass
                 _win_close(handle)
 
