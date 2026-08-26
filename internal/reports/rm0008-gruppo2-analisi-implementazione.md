@@ -702,13 +702,36 @@ separatori, punto o genitore. `OBJECT_ATTRIBUTES.Attributes` contiene
 `OBJ_CASE_INSENSITIVE`; `UNICODE_STRING.Length` e `MaximumLength` sono lunghezze
 in byte e non includono un terminatore.
 
-L'apertura usa `FILE_OPEN`; la creazione esclusiva usa `FILE_CREATE`. Le opzioni
-contengono `FILE_OPEN_REPARSE_POINT|FILE_SYNCHRONOUS_IO_NONALERT` e, in modo
-mutuamente esclusivo, `FILE_DIRECTORY_FILE` oppure
-`FILE_NON_DIRECTORY_FILE`. Un risultato è successo soltanto se
+L'apertura usa `FILE_OPEN`; la creazione esclusiva usa `FILE_CREATE`. Apertura
+e creazione contengono
+`FILE_OPEN_REPARSE_POINT|FILE_SYNCHRONOUS_IO_NONALERT` e, in modo mutuamente
+esclusivo, `FILE_DIRECTORY_FILE` oppure `FILE_NON_DIRECTORY_FILE`; la sola
+creazione aggiunge `FILE_WRITE_THROUGH`. Un risultato è successo soltanto se
 `NT_SUCCESS(status)`; gli altri `NTSTATUS` sono convertiti una sola volta con
 `RtlNtStatusToDosError` e poi nella tassonomia Birth. Non è ammessa una
 riapertura assoluta di un discendente come ripiego.
+
+La creazione esclusiva di un file usa la maschera `DesiredAccess` esatta
+`0x001f0083`, cioè
+`DELETE|SYNCHRONIZE|READ_CONTROL|WRITE_DAC|WRITE_OWNER|FILE_READ_ATTRIBUTES|
+FILE_READ_DATA|FILE_WRITE_DATA`. `FileAttributes` vale esattamente
+`FILE_ATTRIBUTE_NORMAL=0x00000080`; `ShareAccess` vale
+`FILE_SHARE_READ|FILE_SHARE_WRITE=0x00000003` e non contiene
+`FILE_SHARE_DELETE`. Il descrittore di sicurezza è presente negli
+`OBJECT_ATTRIBUTES`; `AllocationSize`, `EaBuffer` e `EaLength` valgono
+rispettivamente `NULL`, `NULL` e zero. G10 confronta questi valori letterali,
+non alias o costanti importate dal modulo produttivo.
+
+La creazione esclusiva di una directory usa invece `DesiredAccess` esatto
+`0x001f00a1`, cioè
+`DELETE|SYNCHRONIZE|READ_CONTROL|WRITE_DAC|WRITE_OWNER|FILE_READ_ATTRIBUTES|
+FILE_LIST_DIRECTORY|FILE_TRAVERSE`; non usa gli alias file incompatibili
+`FILE_READ_DATA` o `FILE_WRITE_DATA`. Mantiene `FileAttributes=0x00000080`,
+`ShareAccess=0x00000003`, `FILE_CREATE`, descrittore di sicurezza presente e
+parametri allocation/EA nulli. Le opzioni sostituiscono soltanto
+`FILE_NON_DIRECTORY_FILE` con `FILE_DIRECTORY_FILE`; conservano
+`FILE_OPEN_REPARSE_POINT|FILE_SYNCHRONOUS_IO_NONALERT|FILE_WRITE_THROUGH` e
+non contengono `FILE_DELETE_ON_CLOSE`.
 
 Le costanti appartengono al dominio NT e hanno valori chiusi:
 `FILE_OPEN=0x00000001`, `FILE_CREATE=0x00000002`,
@@ -718,6 +741,19 @@ Le costanti appartengono al dominio NT e hanno valori chiusi:
 `FILE_OPEN_REPARSE_POINT=0x00200000` e
 `OBJ_CASE_INSENSITIVE=0x00000040`. La prova G10 rifiuta alias con le costanti
 Win32 `OPEN_EXISTING`, `CREATE_NEW` o `FILE_FLAG_*`.
+
+La creazione non usa `FILE_DELETE_ON_CLOSE`. Tale opzione farebbe eliminare
+l'oggetto alla chiusura dell'ultimo handle e non può essere annullata ponendo
+`DeleteFile=FALSE`; non è quindi compatibile con il commit finale della stessa
+creazione. Il descrittore di sicurezza restrittivo è invece presente già negli
+`OBJECT_ATTRIBUTES` della chiamata `FILE_CREATE`. Se il processo termina dopo
+la creazione e prima del ritorno, può restare soltanto il nome richiesto, con la
+stessa identità, il profilo esatto e i byte determinati dalla barriera. Nessuna
+primitiva 2A adotta o sovrascrive quel residuo: un tentativo diretto successivo
+riceve `birth_provisioning_transaction_conflict`. La classificazione e la
+disposizione di un residuo dimostrato dal journal appartengono al 2B. Un errore
+catturato nello stesso processo, al contrario, riconcilia e rimuove l'oggetto
+appena creato prima di restituire l'errore normalizzato.
 
 La conversione usa l'enumerazione privata
 `_NtOpenPurposeV1=read_required|lock_reader|create_exclusive|mutating_open|disposition`
@@ -794,6 +830,14 @@ condivisione di cancellazione:
    invariati sia l'oggetto già finale sia la transazione; dopo il fallimento il
    codice rilegge entrambi per handle e classifica il conflitto.
 
+La chiamata usa come primo argomento lo stesso handle sorgente di cui sono già
+stati provati FileID, volume, tipo e profilo; `FileInformationClass` vale
+esattamente `FileRenameInfo`. `FileNameLength` è la lunghezza in byte UTF-16 del
+solo componente, mentre la dimensione del buffer è esattamente
+`offsetof(FILE_RENAME_INFO, FileName)+FileNameLength`. G10 decodifica il buffer
+prima della chiamata nativa e confronta letteralmente handle, classe,
+`ReplaceIfExists`, `RootDirectory`, lunghezza e nome.
+
 Per `SetFileInformationByHandle(FileRenameInfo)`, `ERROR_FILE_EXISTS` o
 `ERROR_ALREADY_EXISTS` producono `birth_provisioning_transaction_conflict`.
 `ERROR_ACCESS_DENIED` o `ERROR_SHARING_VIOLATION` producono lo stesso conflitto
@@ -833,6 +877,12 @@ Prima della prima scrittura il codice applica proprietario e DACL con
 `PROTECTED_DACL_SECURITY_INFORMATION`, controllando il valore `DWORD` restituito
 dalla funzione, non `GetLastError`. Rilegge poi con
 `GetSecurityInfo` sullo stesso handle e confronta la forma canonica seguente.
+G10 decodifica con l'oracolo indipendente il descrittore puntato dagli
+`OBJECT_ATTRIBUTES` prima che `NtCreateFile` venga eseguita, così una nascita
+ereditata o permissiva non può essere nascosta da una correzione successiva.
+G12 intercetta inoltre `SetSecurityInfo` e richiede lo stesso handle di
+creazione, `SE_FILE_OBJECT`, mask esatta `OWNER|DACL|PROTECTED_DACL`, owner e
+DACL non nulli, gruppo e SACL nulli, prima di qualunque barriera di arresto.
 
 Il proprietario esatto di ogni oggetto è `SYSTEM`. La DACL è non nulla,
 protetta e contiene soltanto ACE `ACCESS_ALLOWED` esplicite, con `AceFlags=0`,
@@ -949,6 +999,27 @@ corrente o una sola transazione precedente riconoscibile e coerente col journal.
 Il journal non è descritto come autenticato. Ogni oggetto deve coincidere
 per identità, tipo e inventario con la registrazione osservata. Non si usano
 glob generici e non si rimuove mai una radice finale esistente.
+
+Per la classe `partial_pending_file`, in 2A l'aspettativa non costituisce una
+prova di provenienza. Ogni sessione mantiene un registro privato non
+esportabile dei file creati con successo da quella stessa sessione. Il record
+contiene esattamente `components`, `identity`, `kind` e `role`; viene inserito
+atomicamente soltanto dopo che `create_file_exclusive` ha completato creazione,
+scrittura, sincronizzazione e verifica. Prima di aprire un pending per la
+disposizione, la sessione richiede una corrispondenza esatta nel registro.
+Assenza o discordanza producono `birth_provisioning_recovery_ambiguous` senza
+apertura né mutazione, anche quando catalogo, binding, aspettativa, nome, byte e
+ACL sono altrimenti perfetti. Dopo una disposizione riuscita e la chiusura
+dell'handle il record viene rimosso. Il registro non è richiesto per
+`complete_file` o `empty_directory`, per i quali l'aspettativa completa e il
+catalogo consentono la riconciliazione successiva a un arresto.
+
+Il gruppo 2B potrà recuperare un pending parziale di una sessione terminata
+soltanto attraverso un'unica entrata privata posseduta dall'installatore. Tale
+entrata, dopo la verifica del journal e del checkpoint, installerà nella nuova
+sessione lo stesso record di provenienza. Non sarà pubblica, non accetterà una
+sola `_DisposalExpectation` come autorizzazione e sarà inclusa dalla guardia R1
+fra le capacità che non possono uscire dal predispositore.
 
 Su Windows la rimozione procede dal basso verso l'alto con handle aperti con
 le maschere esatte definite nel §16.13.2, sempre comprensive di `DELETE`, e
@@ -1749,12 +1820,16 @@ tipo di directory, ma forza il numero di link a uno e perde il reparse tag.
   regolare.
 - **D-R7-Windows:** inventariare la directory padre che contiene un hard link o
   una junction e mutare un ingresso alla barriera fra le due enumerazioni.
-- **A-R7:** il record condiviso distingue almeno file regolare, directory,
-  collegamento simbolico e reparse point e conserva gli attributi specifici di
-  piattaforma necessari. Ogni ingresso è riaperto dal descrittore padre e porta
-  identità completa, tipo, tag reparse quando applicabile e numero reale di
-  link. Link non ammessi, identità discordante o mutazione fra enumerazioni
-  falliscono chiusi su entrambe le piattaforme.
+- **A-R7:** il record condiviso viene costruito soltanto per file regolare o
+  directory. Prima del costruttore `_InventoryEntry`, ogni ingresso è riaperto
+  relativamente al descrittore padre e un oracolo di piattaforma legge identità
+  completa, tipo, numero reale di link e, su Windows, tag reparse. Un link
+  simbolico, un reparse point, un hard link, un tipo diverso, un'identità
+  discordante o una mutazione fra enumerazioni produce
+  `birth_provisioning_recovery_ambiguous` senza creare un record per
+  quell'ingresso. `_ObjectKind` resta quindi chiuso a `regular_file|directory`:
+  il rifiuto dei tipi estranei è un fatto precedente alla rappresentazione,
+  non un terzo valore del record comune.
 
 #### R8 — Tre caricatori interni vincolati alla stessa radice
 
@@ -1799,6 +1874,13 @@ contesa reale.
   alla prima `WriteFile`. Soltanto a quel punto il processo viene terminato con
   `TerminateProcess`; un nuovo scrittore recupera il file vuoto e produce
   esattamente il byte canonico. Un lettore non crea mai il file.
+- **A-C1-ABI e temporizzazione:** ogni processo intercetta `LockFileEx` e
+  `UnlockFileEx`. La prova richiede lo stesso handle, la stessa `OVERLAPPED`
+  azzerata e lo stesso intervallo `[0,1)`; lo sblocco avviene una sola volta in
+  `finally`. Una contesa sintetica di sei fallimenti consecutivi con
+  `ERROR_LOCK_VIOLATION` misura, con orologio monotono controllato, le attese
+  esatte `5, 10, 20, 40, 80, 100 ms`, poi richiede successo al settimo tentativo
+  e nessuna attesa ulteriore.
 
 #### C2 — Sostituzione Windows dopo il vincolo dell'handle
 
@@ -2087,12 +2169,154 @@ modulo installatore prima di invocare l'entrata senza argomenti. Questa
 sostituzione è un'iniezione del banco di prova, non una variante dell'API
 distribuita e non compare nel grafo del prodotto.
 
-`_AuthenticatedRootDescriptor` contiene handle come tupla, percorso di solo
-confronto e `_PlatformIdentity` immutabili. Nessun campo rappresenta lo stato di
-adozione. Il consumo singolo è conservato esternamente dal modulo di accesso,
-per identità dell'istanza, e una seconda adozione fallisce prima di trasferire o
-chiudere un handle. Il token globale `_DESCRIPTOR_TOKEN` viene eliminato: non è
-un sigillo.
+Per evitare che «disposizione» resti un nome privo di contratto, 2A chiude
+anche la forma concreta dell'adattatore. Il modulo installatore dichiara:
+
+```python
+@dataclass(frozen=True, slots=True)
+class ProvisioningLayoutV1:
+    birth_session: _SecureRootSession
+    operator_input: _SecureDirectoryHandle
+    service_identity: _PlatformIdentity
+```
+
+`operator_input` è una capacità di sola lettura: non espone creazione,
+rinomina, disposizione o estensione del catalogo. Le quattro funzioni private
+di risoluzione hanno le firme chiuse seguenti e non sono esportate:
+
+```python
+_resolve_path_user_config_v1() -> Path
+_resolve_birth_service_identity_v1() -> _PlatformIdentity
+_resolve_birth_root_v1(
+    root: Path, identity: _PlatformIdentity
+) -> tuple[tuple[int, ...], str]
+_resolve_operator_input_v1(
+    session: _SecureRootSession,
+    components: tuple[str, ...],
+    identity: _PlatformIdentity,
+) -> _SecureDirectoryHandle
+```
+
+L'entrata invoca ciascun resolver una sola volta. Calcola la radice con
+`_resolve_path_user_config_v1() / "birth"`, passa esattamente quella radice e
+l'identità al resolver della radice, costruisce il catalogo autorevole e il
+descrittore, lo adotta una sola volta, quindi risolve soltanto
+`("operator-input-v1",)` come capacità di lettura. Costruisce
+`ProvisioningLayoutV1` con sole keyword `birth_session`, `operator_input` e
+`service_identity`, conservando per identità la sessione, la capacità e
+l'identità restituite. Nessun resolver legge JSON, ambiente del candidato o
+argomenti del chiamante; nessuna variante accetta percorsi o identità
+aggiuntive.
+
+`_AuthenticatedRootDescriptor` è dichiarato con
+`@dataclass(frozen=True, slots=True, eq=False, weakref_slot=True)` e contiene
+esattamente `handles: tuple[int, ...]`, `root_path: str`,
+`identity: _PlatformIdentity` e `role_catalog: _BirthRoleCatalogV1`. Nessun
+campo rappresenta lo stato di adozione. Il consumo singolo è conservato
+esternamente dal modulo di accesso, per identità dell'istanza, e una seconda
+adozione fallisce prima di trasferire o chiudere un handle. Due descrittori
+distinti ma uguali per valore possono essere adottati una volta ciascuno. Il
+token globale `_DESCRIPTOR_TOKEN` viene eliminato: non è un sigillo.
+
+L'adozione passa alla sessione esattamente lo stesso oggetto catalogo, non una
+copia, una tupla di binding ricostruita o un catalogo predefinito. La chiamata
+alla sola costruzione della sessione dentro `_adopt_authenticated_root` contiene
+obbligatoriamente e nell'ordine la forma
+`_SecureRootSession(_SESSION_TOKEN, descriptor.handles,
+descriptor.root_path, identity=descriptor.identity,
+role_catalog=descriptor.role_catalog)`. La sessione conserva per identità la
+stessa tupla di handle, la stessa identità di piattaforma e lo stesso catalogo
+per tutta la propria vita. Soltanto la sessione risultante possiede gli handle
+e li chiude esattamente una volta; un secondo tentativo sul medesimo descrittore
+fallisce prima di costruire una sessione e non chiude alcun handle. Il consumo
+è legato all'identità del descrittore, quindi un descrittore distinto ma uguale
+per valore ha una propria singola adozione. La guardia R1 verifica sia questa
+forma nel grafo AST sia, sostituendo il costruttore e l'operazione di chiusura,
+la corrispondenza esatta e per identità di tutti e quattro i valori e l'assenza
+di chiusure durante l'adozione.
+
+Ogni `open_directory`, `read_file`, inventario, creazione, rinomina e
+disposizione risolve prima `(components, kind)` mediante quel catalogo. Il
+parametro `role` della chiamata è una richiesta da confrontare col risultato,
+non una fonte alternativa di autorità: una differenza produce
+`birth_provisioning_acl_unsafe` prima di usare l'oggetto. In particolare la
+prova discriminante R1 installa per un file regolare una binding
+`birth_confidential`, lascia sul file il profilo POSIX integrity-only `0644` e
+lo apre richiedendo `birth_integrity_only`. Profilo e richiesta concordano tra
+loro, ma l'apertura deve fallire con `birth_provisioning_acl_unsafe`; un esito
+positivo dimostrerebbe che il catalogo trasferito viene ignorato.
+
+La sola modalità exact delle fixture, riconoscibile esclusivamente da
+`role_catalog.patterns == ()`, mantiene inoltre un overlay privato della
+sessione per gli oggetti creati dalla sessione stessa. L'origine della
+risoluzione e il record restituito hanno le dichiarazioni esatte seguenti:
+
+```python
+class _BirthRoleBindingOriginV1(str, Enum):
+    CATALOG = "catalog"
+    OVERLAY_RESERVED = "overlay_reserved"
+    OVERLAY_COMMITTED = "overlay_committed"
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedBirthRoleBindingV1:
+    binding: _BirthRoleBindingV1
+    origin: _BirthRoleBindingOriginV1
+```
+
+Il resolver autorevole di sola lettura ha firma esatta
+`_SecureRootSession._resolve_effective_role_binding_v1(self, components:
+tuple[str, ...]) -> _ResolvedBirthRoleBindingV1`: valida i componenti, cerca
+nel catalogo immutabile e nell'overlay e richiede un unico risultato
+concordante. Un'assenza produce `birth_provisioning_recovery_ambiguous`; due
+risultati non identici per gli stessi componenti producono
+`birth_provisioning_acl_unsafe`. Catalogo solo produce origine `catalog`;
+overlay solo produce lo stato corrente `overlay_reserved` oppure
+`overlay_committed`; catalogo e overlay identici conservano l'origine overlay.
+L'overlay non è esportabile o serializzabile, non cambia la generazione del
+catalogo e viene azzerato alla chiusura; un catalogo produttivo con pattern
+completi non lo usa.
+
+Tutte le aperture, letture, inventari, rinomine e disposizioni consumano
+`.binding` restituita da questo stesso resolver; nessun percorso alternativo
+legge direttamente catalogo o overlay. Nella modalità exact una creazione,
+dopo il controllo del blocco e degli
+argomenti ma prima della prima syscall di attraversamento, apertura o
+creazione, costruisce la binding completa `(components, kind, role)` e la passa
+alla sola primitive normativa
+`_SecureRootSession._reserve_exact_role_binding_v1(self, binding:
+_BirthRoleBindingV1) -> Iterator[None]`. Il corpo del relativo `with` assegna
+direttamente il risultato di `_resolve_effective_role_binding_v1(components)`
+e ogni ramo di piattaforma usa soltanto il suo campo `.binding`. Prima del
+`with` sono ammesse soltanto validazione pura degli argomenti e verifica del
+blocco: nessuna apertura, attraversamento, inventario o altra syscall. Non sono
+ammessi risultati ignorati, resolver differiti in lambda, risoluzioni prima
+della riserva o limitate a un ramo di piattaforma, né il riuso del parametro
+`role` dopo la risoluzione. Qualunque eccezione, anche successiva alla syscall
+di creazione o alla scrittura, rimuove il nuovo oggetto, annulla la riserva e
+lascia invariato l'inventario logico; soltanto l'uscita normale dopo verifica e
+durabilità rende la binding committed fino alla chiusura. La stessa transizione
+è obbligatoria per file, directory e creazione del blocco globale.
+
+Una binding identica presente sia nel catalogo sia nell'overlay risolve con
+origine overlay; una differenza di tipo o ruolo fallisce con
+`birth_provisioning_acl_unsafe` prima dell'I/O e senza modifiche. La binding
+committed conserva inoltre l'identità `_ObjectIdentity` verificata al commit:
+se lo stesso nome viene sostituito, la sessione fallisce con
+`birth_provisioning_recovery_ambiguous` prima di leggere byte dal sostituto.
+Una nuova sessione non eredita l'overlay: per accedere a un oggetto preesistente
+la fixture deve includere ex ante la sua binding esatta nel catalogo. Questo
+meccanismo non anticipa l'estensione persistente del 2B.
+
+Il ramo Windows reale dei resolver dell'installatore è esercitato, sul runner
+`windows-2022`, dal sottocaso G9 `local-canonical`: confronta il SID risolto
+con il token reale e lega l'ultimo handle, il percorso canonico e la radice
+fixture allo stesso volume e `FILE_ID_128`, verificando anche il profilo ACL
+Birth. Questa prova completa la cella R1 eseguita dal job manifesto Ubuntu;
+non è sostituita da mock né da una sola analisi AST. La cella G9 dichiara quindi
+nel manifesto anche
+`install.birth_authority_provisioning::_resolve_birth_service_identity_v1`,
+`install.birth_authority_provisioning::_resolve_birth_root_v1` e
+`runtime.executor_birth_secure_fs::_open_win_root`.
 
 La guardia R1 non usa una lista parziale di directory. Il file versionato
 `tests/portable/rm0008_2a_acceptance/production-python-inventory-v1.json`
@@ -2151,12 +2375,17 @@ inventory: tuple[_InventoryEntry, ...] | None
 ```
 
 Le combinazioni ammesse sono chiuse. `complete_file` richiede
-`kind=regular_file`, `links=1`, `expected_size` esatto, digest SHA-256 canonico,
+`kind=regular_file`, `links=1`, `expected_size` esatto, digest SHA-256 canonico
+formato da `sha256:` seguito da sessantaquattro cifre esadecimali minuscole,
 `maximum_partial_size=None` e `inventory=None`. `partial_pending_file` richiede
 `kind=regular_file`, `links=1`, `expected_size=None`, limite non negativo in
 `maximum_partial_size`, `content_sha256=None` e `inventory=None`; è ammesso
-soltanto per l'unico nome pending successivo autorizzato dal catalogo e dal
-journal come descritto nel §7.6. `empty_directory` richiede `kind=directory`,
+soltanto per un nome pending riconosciuto dal catalogo e, in 2A, con la
+corrispondenza esatta nel registro privato della sessione che lo ha creato.
+Binding e aspettativa, anche se perfette, non sostituiscono questa prova; il
+journal diventa rilevante soltanto per l'unico canale di recupero 2B descritto
+nel §7.6. `empty_directory`
+richiede `kind=directory`,
 `links=2` su POSIX e `links=1` su Windows,
 `expected_size=None`, `maximum_partial_size=None`, `content_sha256=None` e
 `inventory=()`. Qualunque altra combinazione viene rifiutata prima di aprire il
@@ -2330,6 +2559,279 @@ descrittore installatore. Il confronto Windows analizza owner, controllo DACL,
 numero, ordine, tipo e flag delle ACE, SID e maschere mediante le API native;
 non confronta stringhe SDDL.
 
+Il catalogo trasportato dal descrittore è un valore chiuso, non una callback o
+una mappa di glob. I tipi normativi sono:
+
+```python
+class _BirthRolePatternV1(str, Enum):
+    birth_root = "birth_root"
+    global_lock = "global_lock"
+    transaction_root = "transaction_root"
+    transaction_header = "transaction_header"
+    transaction_header_pending = "transaction_header_pending"
+    transaction_prepared = "transaction_prepared"
+    transaction_checkpoints = "transaction_checkpoints"
+    transaction_checkpoint = "transaction_checkpoint"
+    transaction_checkpoint_pending = "transaction_checkpoint_pending"
+    transaction_author_store = "transaction_author_store"
+    transaction_authority_set = "transaction_authority_set"
+    final_author_store = "final_author_store"
+    authority_sets = "authority_sets"
+    final_authority_set = "final_authority_set"
+    final_prepared = "final_prepared"
+    set_document = "set_document"
+    admission_store = "admission_store"
+    producers_container = "producers_container"
+    producer_store = "producer_store"
+    approval_container = "approval_container"
+    approval_authority = "approval_authority"
+    semantic_container = "semantic_container"
+    semantic_authority = "semantic_authority"
+    semantic_public_container = "semantic_public_container"
+    semantic_public_key = "semantic_public_key"
+    semantic_evidence_container = "semantic_evidence_container"
+    semantic_evidence_record = "semantic_evidence_record"
+    context_container = "context_container"
+    context_material = "context_material"
+    keystore_config = "keystore_config"
+    keystore_lock = "keystore_lock"
+    keystore_private_container = "keystore_private_container"
+    keystore_private_key = "keystore_private_key"
+    keystore_public_container = "keystore_public_container"
+    keystore_public_key = "keystore_public_key"
+    operator_input = "operator_input"
+    operator_approval = "operator_approval"
+    operator_semantic = "operator_semantic"
+    operator_semantic_public = "operator_semantic_public"
+    operator_semantic_public_key = "operator_semantic_public_key"
+    payload_pending = "payload_pending"
+
+@dataclass(frozen=True, slots=True)
+class _BirthRoleBindingV1:
+    components: tuple[str, ...]
+    kind: _ObjectKind
+    role: _BirthObjectRole
+
+@dataclass(frozen=True, slots=True)
+class _BirthRoleCatalogV1:
+    schema_version: int
+    patterns: tuple[_BirthRolePatternV1, ...]
+    exact_bindings: tuple[_BirthRoleBindingV1, ...]
+    generation: int
+```
+
+L'installatore costruisce direttamente il catalogo produttivo iniziale una
+sola volta e soltanto con questa forma:
+
+```python
+_BirthRoleCatalogV1(
+    schema_version=1,
+    patterns=tuple(_BirthRolePatternV1),
+    exact_bindings=(),
+    generation=0,
+)
+```
+
+Non sono equivalenti argomenti posizionali, alias del costruttore o di
+`tuple`, sottoinsiemi, riordinamenti, concatenazioni o binding iniziali.
+L'ordine è quello di dichiarazione dell'enumerazione e nessun chiamante può
+omettere, riordinare o aggiungere un pattern. Le binding esatte installate da
+un'estensione sono ordinate per componenti, tipo e ruolo, non contengono
+duplicati e non possono contraddire un pattern. Sono usate per congelare
+oggetti concreti già verificati e dalle fixture A per i soli nomi sentinella;
+non sostituiscono la grammatica produttiva.
+
+Le sole fixture A possono costruire un catalogo esatto con `patterns=()`; ogni
+istanza contiene obbligatoriamente la binding della radice `()` come directory
+`birth_integrity_only`, compresi i cataloghi usati per limiti e conflitti. Per
+un oggetto preesistente la fixture osserva il componente finale una sola volta
+senza seguire collegamenti: POSIX ammette soltanto `S_IFREG` o `S_IFDIR` esatto,
+Windows rifiuta sempre `FILE_ATTRIBUTE_REPARSE_POINT` e poi ammette soltanto
+file regolare o directory esatta. Symlink, junction, FIFO, socket, device e tipo
+discordante non diventano binding. Una binding per un nome ancora assente può
+essere inserita manualmente soltanto dalla prova R1 che esercita la concordanza
+o il conflitto catalogo-overlay; non viene ricavata dal filesystem e non è una
+facoltà dell'entrata prodotto. In modalità exact una creazione di prova registra
+atomicamente, prima di qualunque I/O, la binding concreta ricavata dal parametro
+`role`; tutti gli altri accessi a oggetti preesistenti richiedono invece una
+binding esatta già presente. La guardia R1 rifiuta qualunque costruzione
+produttiva di un catalogo vuoto e verifica che l'installatore costruisca
+l'intero enum. Questa è una capacità privata del banco di prova, non una
+modalità o un parametro dell'entrata distribuita.
+
+Il matcher non riceve espressioni regolari, callback, mode, owner, DACL o byte
+del contenuto. La sua firma privata esatta è:
+
+```python
+_BirthRoleCatalogV1._resolve_binding_v1(
+    components: tuple[str, ...],
+) -> _BirthRoleBindingV1
+```
+
+Nella tabella chiusa seguente `/` denota concatenazione di tuple, non un
+percorso da risolvere. Le metavariabili hanno queste sole espansioni:
+
+- `tid` è composto da esattamente 32 cifre esadecimali minuscole e
+  `T=(".birth-provisioning-v1.txn." + tid,)`;
+- `sid` è composto da esattamente 64 cifre esadecimali minuscole,
+  `F=("authority-sets", sid)` e `S=T+("authority-set",)`; `A` si espande
+  separatamente e soltanto in `F` oppure `S`;
+- `producer="p-"+digest`, con `digest` di esattamente 64 cifre esadecimali
+  minuscole;
+- `seq` è composto da esattamente 20 cifre decimali e il corrispondente intero
+  appartiene a `0..8191`;
+- `key="birth-ed25519-v1-sha256-"+digest`, con lo stesso dominio lessicale di
+  `digest` ma cattura indipendente;
+- `public_name` ed `evidence_name` sono componenti NFC ASCII lunghi 1–128,
+  interamente nel dominio `[A-Za-z0-9._-]`, con radice non vuota e suffisso
+  rispettivamente `.pub` e `.json`;
+- `K` si espande separatamente e soltanto nelle sei tuple complete
+  `("author-root-v1",)`, `T/("author-root-v1",)`,
+  `F/("admission",)`, `S/("admission",)`,
+  `F/("producers",producer)` oppure `S/("producers",producer)`.
+
+`file` e `directory` nella colonna tipo sono rispettivamente i valori
+`regular_file` e `directory` di `_ObjectKind`; `integrity` e `confidential`
+sono rispettivamente `birth_integrity_only` e `birth_confidential` di
+`_BirthObjectRole`.
+
+| `_BirthRolePatternV1` | Sequenza completa di componenti | Tipo | Ruolo | Catture e uguaglianze ulteriori |
+|---|---|---|---|---|
+| `birth_root` | `()` | directory | integrity | nessuna |
+| `global_lock` | `("provisioning-v1.lock",)` | file | integrity | nessuna |
+| `transaction_root` | `T` | directory | integrity | cattura `tid` |
+| `transaction_header` | `T/("transaction-v1.json",)` | file | integrity | stesso `T.tid` |
+| `transaction_header_pending` | `T/(".transaction-v1.pending."+pending_tid,)` | file | integrity | `pending_tid == T.tid` |
+| `transaction_prepared` | `T/("prepared-v1.json",)` | file | integrity | stesso `T.tid` |
+| `transaction_checkpoints` | `T/("checkpoints-v1",)` | directory | integrity | stesso `T.tid` |
+| `transaction_checkpoint` | `T/("checkpoints-v1",seq+".json")` | file | integrity | `seq` nel limite chiuso |
+| `transaction_checkpoint_pending` | `T/("checkpoints-v1",".checkpoint-pending-"+seq+"-"+pending_tid)` | file | integrity | `pending_tid == T.tid`; `seq` nel limite chiuso |
+| `transaction_author_store` | `T/("author-root-v1",)` | directory | confidential | stesso `T.tid` |
+| `transaction_authority_set` | `S` | directory | integrity | stesso `T.tid` |
+| `final_author_store` | `("author-root-v1",)` | directory | confidential | nessuna |
+| `authority_sets` | `("authority-sets",)` | directory | integrity | nessuna |
+| `final_authority_set` | `F` | directory | integrity | cattura `sid` |
+| `final_prepared` | `("prepared-v1.json",)` | file | integrity | nessuna |
+| `set_document` | `A/("set.json",)` | file | integrity | `A` è una delle due espansioni complete |
+| `admission_store` | `A/("admission",)` | directory | confidential | `A` è una delle due espansioni complete |
+| `producers_container` | `A/("producers",)` | directory | integrity | `A` è una delle due espansioni complete |
+| `producer_store` | `A/("producers",producer)` | directory | confidential | `producer` nel dominio chiuso |
+| `approval_container` | `A/("approval",)` | directory | integrity | `A` è una delle due espansioni complete |
+| `approval_authority` | `A/("approval","authority.json")` | file | integrity | `A` è una delle due espansioni complete |
+| `semantic_container` | `A/("semantic",)` | directory | integrity | `A` è una delle due espansioni complete |
+| `semantic_authority` | `A/("semantic","authority.json")` | file | integrity | `A` è una delle due espansioni complete |
+| `semantic_public_container` | `A/("semantic","public")` | directory | integrity | `A` è una delle due espansioni complete |
+| `semantic_public_key` | `A/("semantic","public",public_name)` | file | integrity | nome canonico con suffisso `.pub` |
+| `semantic_evidence_container` | `A/("semantic","evidence")` | directory | integrity | `A` è una delle due espansioni complete |
+| `semantic_evidence_record` | `A/("semantic","evidence",evidence_name)` | file | integrity | nome canonico con suffisso `.json` |
+| `context_container` | `A/("context",)` | directory | integrity | `A` è una delle due espansioni complete |
+| `context_material` | `A/("context","material-v1.json")` | file | integrity | `A` è una delle due espansioni complete |
+| `keystore_config` | `K/("keystore.json",)` | file | confidential | `K` è una delle sei espansioni complete |
+| `keystore_lock` | `K/("birth-keystore.lock",)` | file | confidential | `K` è una delle sei espansioni complete |
+| `keystore_private_container` | `K/("private",)` | directory | confidential | `K` è una delle sei espansioni complete |
+| `keystore_private_key` | `K/("private",key+".key")` | file | confidential | `key` nel dominio chiuso |
+| `keystore_public_container` | `K/("public",)` | directory | integrity | `K` è una delle sei espansioni complete |
+| `keystore_public_key` | `K/("public",key+".pub")` | file | integrity | `key` nel dominio chiuso |
+| `operator_input` | `("operator-input-v1",)` | directory | integrity | nessuna |
+| `operator_approval` | `("operator-input-v1","approval-authority.json")` | file | integrity | nessuna |
+| `operator_semantic` | `("operator-input-v1","semantic-authority.json")` | file | integrity | nessuna |
+| `operator_semantic_public` | `("operator-input-v1","semantic-public")` | directory | integrity | nessuna |
+| `operator_semantic_public_key` | `("operator-input-v1","semantic-public",public_name)` | file | integrity | nome canonico con suffisso `.pub` |
+| `payload_pending` | `T/P/(".payload-pending-"+seq+"-"+pending_tid,)` | file | ruolo del padre `T/P` | `T/P` deve già avere un solo risultato; `pending_tid == T.tid`; `seq` nel limite chiuso |
+
+Nell'ultima riga `P` non è una nuova grammatica: è l'intera coda, non vuota,
+di un percorso già classificabile da una delle righe della tabella sotto la
+stessa `T`, dopo aver escluso un altro pending. Il risultato del padre deve
+avere `_ObjectKind.directory`; un file classificato non può diventare padre di
+un pending. Il tipo del pending resta sempre file e soltanto il ruolo viene
+ereditato. R1 deriva meccanicamente un caso positivo per **ogni** risultato
+directory della tabella che sia un discendente stretto di `T`, non soltanto per
+due genitori rappresentativi, e verifica sia i ruoli integrity sia
+confidential; questa è l'unica derivazione da un padre. Il journal 2B deve ancora
+dimostrare che il pending sia l'unico oggetto successivo autorizzato e che nome,
+limite e contenuto coincidano; il catalogo da solo non ne autorizza la
+disposizione.
+
+Ogni componente viene prima validato isolatamente: punto, genitore, separatori,
+componenti vuoti, Unicode non NFC e caratteri fuori dominio sono vietati. La
+risoluzione cerca poi la binding esatta, valuta ogni riga sull'intera sequenza,
+applica le uguaglianze delle catture e richiede un solo risultato
+`(kind, role)`. Sovrapposizioni tra righe, per esempio tra un'ancora `K` e la
+sua riga strutturale, sono coalescenti soltanto quando producono la stessa
+coppia. Binding e pattern concordanti sono accettati; risultati assenti o
+multipli differenti producono `birth_provisioning_recovery_ambiguous`, mentre
+una contraddizione produce `birth_provisioning_acl_unsafe`. Il tipo osservato
+viene confrontato prima di usare l'oggetto. Mode, owner, DACL, suffisso isolato
+e contenuto JSON non determinano mai il ruolo: verificano soltanto il ruolo già
+risolto.
+
+Una tupla o un componente non canonico rifiutato dalla validazione generale
+dei nomi produce `birth_provisioning_io_unavailable`. Una sequenza di componenti
+canonici che non appartiene alla grammatica, eccede un dominio lessicale o
+numerico, viola un'uguaglianza di cattura oppure rende ambigua la risoluzione
+produce invece `birth_provisioning_recovery_ambiguous`. La distinzione è
+stabile e viene provata senza usare messaggi nativi.
+
+La cella R1 `descriptor-immutable-single-consumption`, senza aggiungere un
+nuovo node-id, costruisce il catalogo produttivo con l'intero enum e prova
+funzionalmente almeno un'espansione di ogni riga e di ogni alternativa `A` e
+`K`. Per ogni valore dell'enumerazione rimuove poi quel solo pattern e richiede
+che l'esempio rappresentativo non sia più risolvibile, salvo rifiuto diretto di
+un catalogo incompleto. La matrice negativa copre per `tid`, `sid`, digest
+Producer e digest chiave lunghezze −1/+1, maiuscole e caratteri estranei; per
+`seq` larghezza, dominio `0..8191` e caratteri; per i nomi pubblici e di
+evidenza radice vuota, limite 128, caratteri, ASCII, NFC e suffisso isolato.
+Copre inoltre uguaglianze dei pending, pending fuori radice e binding esatte
+duplicate, discordanti o in conflitto con un pattern. La cella R1
+adotta inoltre una sessione reale con il catalogo produttivo completo, apre
+oggetti preesistenti appartenenti alla grammatica e dimostra che un ruolo
+richiesto discordante viene respinto prima dell'I/O. Con un catalogo exact
+esercita separatamente riserva osservabile alla prima syscall, rollback precoce
+e successivo alla creazione, commit di blocco/file/directory, concordanza e
+conflitto catalogo-overlay, nuova sessione priva dell'overlay e sostituzione
+dell'identità committed. La cella R1
+`productive-graph-no-mutating-capability` verifica sull'AST che la sola
+costruzione produttiva sia la forma installatore sopra riportata e respinge
+schema o generazione diversi, enum vuoto, riordinato o aliasato e qualunque
+esportazione del costruttore.
+
+Nel manifesto la stessa cella R1 dichiara esplicitamente i simboli produttivi
+`_AuthenticatedRootDescriptor`, `_BirthRolePatternV1`,
+`_BirthRoleBindingV1`, `_BirthRoleCatalogV1`,
+`_BirthRoleBindingOriginV1`, `_ResolvedBirthRoleBindingV1`,
+`_SecureRootSession` e `_adopt_authenticated_root`; gli oracoli dichiarati
+sono `ast-call-graph`, `byte-comparison`, `inventory-snapshot` e
+`posix-fstat`. La tracciabilità non può quindi omettere il catalogo o le prove
+funzionali incorporate nel node-id.
+
+L'estensione seguente appartiene all'incremento 2B e non alla baseline 2A:
+
+```python
+@dataclass(frozen=True, slots=True)
+class _BirthRoleCatalogExtensionV1:
+    expected_generation: int
+    bindings: tuple[_BirthRoleBindingV1, ...]
+
+_SecureRootSession._extend_role_catalog_v1(
+    extension: _BirthRoleCatalogExtensionV1,
+) -> None
+```
+
+La baseline 2A non richiede questi due simboli. L'incremento 2B deve
+introdurli insieme alle proprie prove di schema, costruzione
+riservata all'installatore e comportamento funzionale; non è lecito anticipare
+un'API priva della relativa certificazione. Quando viene introdotta,
+l'estensione non modifica il valore precedente: installa un nuovo catalogo con
+`generation+1`, non aggiunge pattern e contiene sole binding concrete. La
+generazione deve coincidere; nessuna binding può riguardare un percorso già
+aperto, creato o inventariato, cambiare un risultato di pattern o confliggere
+con un'altra binding. Una binding già implicata da un pattern è ammessa soltanto
+se identica. Dal 2B, R1 consente costruzione e chiamata produttive esclusivamente
+all'installatore e vieta di restituire o aliasare il metodo legato, anche
+annidandolo in attributi, subscript, argomenti o contenitori. Il recupero
+2B non usa estensioni per trovare una transazione sopravvissuta: il pattern
+`transaction_root` la riconosce prima di fidarsi del journal.
+
 #### 16.13.5 Limite comune dell'inventario
 
 Il limite G1 mantiene il valore V1 già fissato dal §4.4 e ha due ambiti
@@ -2338,8 +2840,19 @@ voci distinte nell'intera operazione logica di inventario chiuso. La 4.097ª voc
 locale o aggregata produce `birth_provisioning_recovery_ambiguous` durante
 l'enumerazione incrementale, prima di costruire il record aggiuntivo.
 
-La sessione possiede il tipo privato `_InventoryBudgetV1`, inizializzato con il
-limite immutabile 4.096. Un caricamento o una fotografia completa crea un solo
+Il limite conta ogni voce osservata, compreso `provisioning-v1.lock` quando la
+radice Birth è la directory inventariata. Le prove di soglia locale operano in
+una sottodirectory priva del blocco, oppure sottraggono esplicitamente quella
+voce dal numero di payload; non è ammesso filtrare il blocco dall'inventario.
+
+La sessione possiede il tipo privato `_InventoryBudgetV1`. La sua API V1 è
+congelata: il costruttore senza argomenti inizializza `limit=4096`; il metodo
+`include(path: tuple[str, ...], identity: _ObjectIdentity) -> None` inserisce
+la chiave esatta `(path, identity)` nel solo contenitore privato `_seen`, che è
+un `set` e costituisce l'unico stato di deduplicazione. `_seen` e `include` non
+possono essere rinominati o sostituiti da rappresentazioni equivalenti nella
+V1, perché sono punti di osservazione della certificazione. Un caricamento o
+una fotografia completa crea un solo
 budget e lo passa a tutte le scansioni dell'albero. La stessa voce logica,
 identificata da percorso relativo canonico e identità di piattaforma, conta una
 sola volta anche se viene osservata nella scansione precedente e successiva o
@@ -2347,7 +2860,24 @@ riaperta per il controllo tipizzato; un nome con identità diversa non viene
 deduplicato e produce prima l'errore di sostituzione previsto. Una chiamata
 autonoma `inventory()` su una sola directory crea invece un proprio budget.
 POSIX non può usare una funzione che materializzi prima tutti i nomi; Windows
-controlla entrambi i contatori mentre decodifica i record di enumerazione.
+controlla entrambi i contatori mentre decodifica i record di enumerazione. Il
+decoder Windows resta direttamente dentro `_win_inventory`: nessun helper
+riceve il buffer nativo, un suo alias, indirizzo, header o vista. Questa forma
+chiusa rende ispezionabile l'ordine query-decodifica-`include`-`_InventoryEntry`.
+Ogni query di enumerazione riceve come terzo argomento lo stesso nome locale
+del buffer; sono vietati walrus, destructuring, attributi e subscript come
+argomento della query. Il buffer viene letto soltanto mediante le viste ABI
+`from_buffer` e `wstring_at`: sono vietati indici Python anche scalari,
+`__getitem__`, slice, `.raw` e `.value`. L'unica copia in `bytes` o `tuple`
+ammessa è il `FileId.Identifier` di 16 byte, anche dopo una sua assegnazione a
+un nome locale.
+Il buffer nativo Windows ha dimensione fissa e non diventa una collezione Python
+di batch o record grezzi. Prima di richiedere il batch successivo, ogni nome del
+batch precedente deve essere decodificato, contabilizzato e trasformato nel
+proprio `_InventoryEntry`. `tuple`, `list`, `set`, `sorted`, `deque`,
+comprehension e accumuli `append/extend` non possono materializzare record
+nativi prima del budget; sono ammessi soltanto per ordinare e congelare la
+lista già limitata degli `_InventoryEntry` finali.
 
 #### 16.13.6 Matrice chiusa dei percorsi Windows
 
@@ -2378,8 +2908,9 @@ positiva; non viene trasformato in un rifiuto atteso. Il controllore rimuove la
 condivisione e la directory soltanto dopo aver verificato che nessun handle sia
 rimasto aperto.
 
-La cella negativa usa separatamente un nome UNC sicuramente non pubblicato dal
-controllore e verifica il rifiuto chiuso
+La cella negativa usa separatamente un nome di condivisione casuale, verificato
+come non pubblicato sul medesimo host loopback `127.0.0.1`, e verifica il
+rifiuto chiuso
 `birth_provisioning_atomic_install_unsupported`, inventario invariato e nessun
 oggetto creato. Una terza cella apre la condivisione loopback reale ma sostituisce
 nel solo processo di prova il risultato di `GetVolumeInformationByHandleW` con
@@ -2418,6 +2949,14 @@ isolate e senza inventare journal:
   stato osservato sia uno dei soli stati atomici ammessi. Il 2A riconosce lo
   stato, ma non adotta un successo incerto in assenza del journal 2B.
 
+Per la disposizione, il processo figlio crea il bersaglio e raggiunge il punto
+di arresto nella medesima sessione, così la barriera non dipende da uno stato
+preparato da un processo estraneo. Le celle di arresto usano `complete_file`:
+per questa classe l'aspettativa completa e il catalogo permettono a una nuova
+sessione di riconciliare lo stato ancora presente. Il registro privato non
+esportabile resta obbligatorio esclusivamente per `partial_pending_file`, come
+stabilito dai §§7.6 e 16.13.2.
+
 La matrice di esito è chiusa:
 
 | Operazione e punto di arresto | Stato indipendente richiesto | Esito di un tentativo diretto 2A successivo |
@@ -2426,9 +2965,23 @@ La matrice di esito è chiusa:
 | Rinomina, dopo il successo nativo ma prima del ritorno | Sorgente assente e destinazione presente con la stessa identità. | `birth_provisioning_recovery_ambiguous`; soltanto il journal 2B può adottare il risultato. |
 | Rinomina, errore nativo con destinazione inizialmente assente | Sorgente presente e invariata; destinazione assente. | Errore chiuso appropriato; nessuna adozione. |
 | Rinomina, destinazione già esistente o comparsa alla barriera | Sorgente e destinazione sono entrambe presenti e conservano le rispettive identità, byte e inventari. | `birth_provisioning_transaction_conflict`; nessuna adozione. |
-| Disposizione, prima della chiamata nativa | Oggetto presente con tutti i campi dell'aspettativa invariati. | Può ripetere la disposizione e riuscire. |
+| Disposizione, prima della chiamata nativa | Oggetto presente con tutti i campi dell'aspettativa invariati. | Può ripetere la disposizione completa e riuscire; questa regola non autorizza l'adozione di un `partial_pending_file`. |
 | Disposizione, dopo il successo nativo ma prima del ritorno | Oggetto assente; nessun altro nome o oggetto è cambiato. | `birth_provisioning_recovery_ambiguous`; soltanto il journal 2B può adottare il risultato. |
 | Disposizione, errore nativo | Oggetto presente con identità, byte, metadati e inventario invariati. | Errore chiuso appropriato; nessuna assenza come successo. |
+
+Per una creazione Windows interrotta con `TerminateProcess`, il nome richiesto
+resta l'unico residuo oltre al blocco globale. Dopo la barriera successiva alla
+prima applicazione ACL il file è regolare, ha un solo collegamento, conserva lo
+stesso volume e `FileId128` e possiede già il profilo restrittivo esatto. I byte
+sono vuoti prima della scrittura, un prefisso non vuoto e proprio del payload
+dopo la scrittura parziale, e il payload completo dopo la scrittura completa o
+`FlushFileBuffers`. L'oracolo indipendente confronta identità, ACL, byte e
+inventario; quindi ripete `create_exclusive` e richiede
+`birth_provisioning_transaction_conflict` senza alcuna mutazione. Non usa
+`FILE_DELETE_ON_CLOSE`, non considera il nome un finale valido e non lo adotta.
+I fallimenti sincroni di `SetSecurityInfo`, scrittura o flush restano distinti:
+il processo è vivo, deve rimuovere l'oggetto creato e deve dimostrare
+l'inventario riconciliato prima di restituire l'errore.
 
 Un ritorno normale da entrambe le primitive è ammesso soltanto dopo la
 post-validazione relativa al padre: la rinomina dimostra sorgente assente,
@@ -2443,7 +2996,10 @@ figlio sia terminato dal segnale `SIGKILL` prima dell'oracolo filesystem.
 Windows usa `TerminateProcess` con il codice sentinella `0xEE`, richiede che la
 chiamata restituisca successo, attende al massimo trenta secondi con
 `WaitForSingleObject`, accetta soltanto `WAIT_OBJECT_0`, verifica con
-`GetExitCodeProcess` il codice `0xEE` e chiude gli handle di processo e thread.
+`GetExitCodeProcess` il codice `0xEE` e chiude esattamente una volta l'handle di
+processo posseduto da `subprocess.Popen`. L'handle di thread, già chiuso dalla
+creazione del processo di `subprocess`, non viene inventato o chiuso una
+seconda volta dal controllore.
 Soltanto dopo tali verifiche interroga filesystem, `DeletePending` e inventario.
 
 Dal 2B al 2F restano proprietari degli arresti legati a
@@ -2522,8 +3078,8 @@ ogni altro caso la duplicazione è un errore.
 Il validatore contiene la costante letterale `REQUIRED_CELLS_V1`, indipendente
 dal file JSON, e confronta esattamente l'insieme delle tuple
 `(criterion, activity, platform, normative_subcase, pre_fix_disposition)`.
-La costante contiene 248 record: 12 per `manifest`, 67 per `portable-ubuntu`,
-60 per `portable-windows`, 17 per `concurrency-ubuntu`, 21 per
+La costante contiene 250 record: 12 per `manifest`, 67 per `portable-ubuntu`,
+60 per `portable-windows`, 19 per `concurrency-ubuntu`, 21 per
 `concurrency-windows` e 71 per `windows-acl`. Un insieme vuoto, una cella
 mancante, una cella aggiuntiva o una cardinalità diversa fallisce prima della
 raccolta pytest.
@@ -2551,6 +3107,11 @@ compresi i controlli positivi R2, R4, R5-R7, le due celle keystore R8, C1-C4 e
 G1-G12, sono `may_green`. G6 appartiene a quest'ultima classe perché manifesto
 e validatore vengono aggiunti insieme agli A, prima di modificare il prodotto.
 
+Le due celle G3 POSIX `rename-crash-before-native` e
+`rename-crash-after-native` appartengono a `concurrency-ubuntu` e usano
+rispettivamente `may_green` e `red` come fotografia precedente alla correzione.
+I loro oracoli sono `process-exit-state`, `posix-disk-state` e `posix-fstat`.
+
 Il `node_id` di ogni record deve terminare con `[<normative_subcase>]`, usando
 esattamente lo slug seguente come identificativo pytest esplicito. Le celle
 comuni R2, R3, G1 e G4 riusano il medesimo `node_id` nella sola coppia portabile
@@ -2566,6 +3127,7 @@ slug della riga, non un conteggio aggregato di asserzioni interne.
 | R3 | `portable-ubuntu` e `portable-windows` | rispettivamente `linux` e `windows` | `complete-file-success`, `empty-directory-success`, `reject-root-components`, `reject-absent`, `reject-identity`, `reject-kind`, `reject-role`, `reject-links`, `reject-size`, `reject-digest`, `reject-nonempty-directory`, `partial-pending-success`, `reject-partial-oversize`, `reject-foreign-pending` | 14 per attività |
 | R3 | `portable-windows` | `windows` | `disposition-relative-open`, `disposition-file-access-mask`, `disposition-directory-access-mask`, `disposition-ex-invalid-parameter-no-fallback`, `disposition-ex-not-supported-no-fallback`, `disposition-deletepending-false`, `disposition-readonly-rejected`, `disposition-access-denied-mapping`, `disposition-residual-error-mapping` | 9 |
 | R3 | `concurrency-ubuntu` e `concurrency-windows` | rispettivamente `linux` e `windows` | `dispose-crash-before-native`, `dispose-crash-after-native` | 2 per attività |
+| G3 | `concurrency-ubuntu` | `linux` | `rename-crash-before-native`, `rename-crash-after-native` | 2 |
 | R4 | `portable-ubuntu` | `linux` | `empty-lock-fsync-order`, `empty-lock-kill-and-recover` | 2 |
 | R5 | `windows-acl` | `windows` | `reject-owner`, `reject-unprotected-dacl`, `reject-ace-order`, `reject-ace-type-or-flags`, `reject-ace-sid`, `reject-ace-mask`, `birth-confidential-file-access`, `birth-confidential-directory-access`, `birth-integrity-file-access`, `birth-integrity-directory-access`, `nonelevated-stable-error-no-secret`, `catalog-role-identity-binding` | 12 |
 | R6 | `portable-windows` | `windows` | `cached-source-renames`, `fresh-source-profile-rejected`, `destination-existing-conflict`, `native-error-destination-absent`, `success-postvalidation`, `different-volume-rejected`, `source-fileid128-preserved` | 7 |
@@ -2595,7 +3157,7 @@ Ogni slug rappresenta un rapporto `call` distinto. Un test può condividere
 fixture e funzione parametrizzata, ma non può fondere due slug in un rapporto o
 usare un'unica asserzione aggregata per ridurre la cardinalità. Il validatore
 ricostruisce la tabella dai record, verifica i subtotali per attività e il
-totale 248, quindi verifica i `node_id` raccolti.
+totale 250, quindi verifica i `node_id` raccolti.
 
 #### 16.14.3 Fotografia verificabile precedente alla correzione
 
@@ -2661,12 +3223,27 @@ simbolici, terminano in `.py` e sono ordinati per byte UTF-8 senza duplicati.
 Anche questo file usa il JSON canonico del paragrafo precedente.
 
 Il validatore ottiene l'insieme autorevole con
-`git ls-files -z -- '*.py'` sullo stesso SHA pubblico, rifiuta link simbolici e
-lo confronta esattamente con `files`. In tal modo nessun nuovo file Python può
-sfuggire alla classificazione. Ricalcola poi `test` per `conftest.py` e
-`tests/**`, `documentation` per `docs/**` e `productive` per ogni altro
-percorso; la classe registrata deve coincidere. R1 analizza tutti e soli i
-record `productive` così determinati.
+`git ls-files --cached --stage -z -- '*.py'` sullo stesso SHA pubblico. Ogni
+record deve appartenere allo stage zero e avere mode Git regolare `100644` o
+`100755`; `120000` viene rifiutato anche quando un checkout Windows con
+`core.symlinks=false` lo presenta nel filesystem come un apparente file
+regolare. Il validatore ripete poi `lstat` sul worktree e confronta l'elenco
+esattamente con `files`. In tal modo nessun nuovo file Python, link o stage di
+conflitto può sfuggire alla classificazione. Ricalcola quindi `test` per
+`conftest.py` e `tests/**`, `documentation` per `docs/**` e `productive` per
+ogni altro percorso; la classe registrata deve coincidere. R1 analizza tutti e
+soli i record `productive` così determinati.
+
+La proiezione pubblica contiene `executors/list_dirs/path_alias.py` come copia
+regolare byte-identica di `runtime/path_alias.py`; G6 verifica mode, assenza di
+link e uguaglianza dei byte. La conversione iniziale dal precedente mode
+`120000` a `100644` non modifica i byte risolti né il digest firmato
+`sha256:050904d1457a6806790100f6201fa16bb147a57650d0281e129c69eb8cf664a1`.
+È registrata come prerequisito multipiattaforma della fotografia, separato
+dalle correzioni funzionali di 2A. Il commento storico nel manifesto firmato
+non viene riscritto mediante la API di firma precedente: sarà aggiornato
+soltanto attraverso il confine Birth autorizzato previsto dagli incrementi
+successivi.
 
 #### 16.14.5 Raccolta ed esito delle celle
 
@@ -2720,7 +3297,7 @@ non raccoglie alcun A: in particolare la gamba Windows non incontra gli A
 posseduti soltanto da Linux. I due alberi A sono raccolti e partizionati
 esclusivamente dai sei job dedicati. Questa esclusione di albero nel job
 storico non è uno `skip` di cella e il riepilogo continua a richiedere sia la
-regressione storica sia tutte le 248 celle A.
+regressione storica sia tutte le 250 celle A.
 
 La diagnostica D resta fuori dal manifesto A e da ogni hook pytest. In
 particolare `tests/windows_identity/conftest.py` non invoca alcun riproduttore
@@ -2732,3 +3309,332 @@ generale, ma non sostituisce alcuna attività A. L'incremento 2A converge
 soltanto quando il workflow ordinario e tutti i sette job A bloccanti sono verdi
 sul medesimo commit pubblico: in tale stato il numero di errori, salti e
 risultati attesi nelle celle A è zero.
+
+## 17. Stato consolidato e mandato per la finalizzazione esterna
+
+Questa sezione registra lo stato operativo verificato al 26 agosto 2026 e
+costituisce il punto di ingresso per il successivo responsabile esterno. In caso
+di contrasto sui fatti contingenti — registrazioni Git, conteggi, esiti delle
+prove o avanzamento — prevale sulle fotografie storiche dei §§1, 16.1,
+16.10-16.12. Non modifica invece i requisiti normativi dei §§1-16.14, che
+restano integralmente vincolanti.
+
+### 17.1 Mandato e limite della finalizzazione
+
+Il mandato è completare realmente RM-0008 dalle fasi F2 a F6, non soltanto
+chiudere l'apparato documentale o la barriera dell'incremento 2A. Il risultato
+deve comprendere implementazione di prodotto, migrazione dei chiamanti, prove
+Linux e Windows, certificazione pubblica portabile, documentazione finale in
+italiano e registrazioni Git incrementali esclusivamente sul ramo pubblico
+`main`.
+
+RM-0008 non può essere dichiarata chiusa finché, sul medesimo stato pubblico:
+
+1. 2A e tutti gli incrementi 2B-2F sono implementati nel prodotto;
+2. i chiamanti previsti dalla roadmap sono stati migrati e le superfici
+   precedenti sono state ritirate o negate nel punto stabilito;
+3. le prove proprietarie e le regressioni generali terminano senza errori,
+   salti, esiti attesi o celle mancanti;
+4. tutte le attività GitHub Linux e Windows sono verdi;
+5. inventario, manifesto, fotografia, evidenze e codice si riferiscono allo
+   stesso stato Git pubblico;
+6. la documentazione descrive fedelmente il codice installato, i limiti di
+   sicurezza residui e le responsabilità rinviate, senza eliminare decisioni
+   già concordate.
+
+La parola «convergenza» significa quindi errore noto uguale a zero, non una
+riduzione del numero di fallimenti e non un verde ottenuto restringendo la
+raccolta.
+
+### 17.2 Stato Git e conservazione del lavoro
+
+Il lavoro da esaminare si trova nel worktree
+`/tmp/metnos-rm0008-a-only`, sul ramo `main`, alla base locale completa
+`0990327edbcd399b4ebfdd38474ebad4ed8351bc`. Il checkout `/opt/metnos` contiene
+lavoro estraneo e non deve essere usato per modificare RM-0008.
+
+Al momento della consegna:
+
+- esistono modifiche non registrate in 34 file dell'apparato di accettazione,
+  del workflow, dell'esportazione e di questo documento, per circa 14.962
+  aggiunte e 977 rimozioni;
+- `executors/list_dirs/path_alias.py` è predisposto come file regolare al posto
+  del precedente collegamento simbolico e
+  `test_g3_posix_rename_crash.py` contiene anche modifiche già in indice;
+- `tests/portable/rm0008_2a_acceptance/pytest-certification.ini` è un nuovo file
+  non tracciato;
+- nessuna di queste modifiche è stata registrata o pubblicata;
+- `stash@{0}`, denominato `rm0008-2a-product-after-baseline-audit`, contiene
+  il prototipo di prodotto 2A in
+  `runtime/executor_birth_secure_fs.py`, con circa 433 aggiunte e 117
+  rimozioni;
+- lo stash deve restare intatto finché la base di accettazione non è stata
+  corretta, revisionata una sola volta e congelata;
+- l'ultimo controllo del repository GitHub pubblico mostrava un solo ramo,
+  `main`, con registrazione osservata `2c587b...`; questo dato deve essere
+  verificato nuovamente prima di pubblicare.
+
+Non è autorizzata la creazione di un ramo di recupero o revisione. I futuri
+commit devono essere piccoli, tematici, incrementali e pubblicati soltanto su
+`main`, dopo esito locale verde pertinente. Il workflow pubblico Linux/Windows
+del singolo commit deve essere controllato prima dell'incremento successivo.
+
+### 17.3 Avanzamento reale
+
+La specifica e l'apparato di accettazione 2A sono molto avanzati, ma non sono
+ancora coerenti né congelati. L'implementazione di prodotto 2A esiste soltanto
+nello stash e non è integrata. Gli incrementi 2B, 2C, 2D, 2E e 2F non sono
+implementati. L'avanzamento complessivo rispetto alla chiusura effettiva di
+RM-0008 è pertanto stimato nel 10-15 per cento.
+
+Il manifesto corrente contiene 250 celle e la raccolta osservata contiene 212
+`node-id` unici. La fotografia pubblica precedente ne rappresenta 248 e non è
+riutilizzabile come evidenza del manifesto corrente. L'inventario della
+proiezione pubblica materializzata contiene 681 percorsi Python, compreso
+`docs/serve.py`; il repository sorgente privato ne contiene molti di più e non
+può essere usato direttamente come oracolo dell'inventario pubblico.
+
+La crescita dell'apparato di certificazione — circa 14.700 righe contro circa
+430 righe del prototipo 2A — è un rischio di qualità. Da questo punto non deve
+essere aggiunta metacertificazione che non chiuda una contraddizione dimostrata
+o un requisito normativo già presente.
+
+### 17.4 Evidenze positive già ottenute e loro limite
+
+Sull'albero corrente sono state ottenute le seguenti evidenze:
+
+- compilazione sintattica dei file dell'apparato A riuscita;
+- controllo delle anomalie testuali delle patch riuscito;
+- `tests/internal/test_release_gate.py`: 18 prove superate;
+- sette prove G6 applicabili superate, escludendo le verifiche che richiedono
+  inventory e fotografia della proiezione pubblica;
+- raccolta di 212 `node-id` unici coerente con il manifesto di 250 celle;
+- generazione dell'inventario pubblico materializzato di 681 percorsi.
+
+Questi risultati sono controlli parziali. Non certificano il manifesto completo,
+non certificano Windows, non autorizzano il commit e non costituiscono
+avanzamento dell'implementazione 2A-2F.
+
+### 17.5 Contraddizioni P1 ancora aperte
+
+Prima di qualsiasi modifica di prodotto devono essere chiuse causalmente le
+quattro contraddizioni seguenti.
+
+#### P1-1 — G1 e R1: catalogo dei ruoli prima della creazione
+
+`_support.exact_role_catalog` elimina le binding per i percorsi non ancora
+esistenti, mentre `test_g1_inventory_limits` apre la sessione prima di creare
+le voci anchor, opaque, root e local. Un resolver esatto conforme può quindi
+rifiutare la richiesta prima che venga esercitato l'oracolo delle due scansioni
+e del limite 4096/4097. La correzione deve predisporre un catalogo esatto valido
+per i nomi di prova senza consentire al prodotto di derivare autorità dal
+filesystem o dal parametro `role`.
+
+La prova di chiusura deve mostrare contemporaneamente che il resolver conforme
+raggiunge realmente l'oracolo di inventario e che un resolver che ignora il
+catalogo o il limite continua a fallire.
+
+#### P1-2 — G2 POSIX: autorità della radice e blocco locale
+
+`_call_through_handles` accetta attualmente qualunque `dir_fd` diverso da
+`None` e non impedisce `chdir` o l'uso di `AT_FDCWD`. Un caricatore può quindi
+apparire relativo a un handle pur riaprendo nominalmente senza l'autorità della
+radice autenticata. Inoltre il sottocaso `local-only` verifica il blocco sotto
+`tmp_path`, mentre il blocco autorevole appartiene a `keystore_root`.
+
+La correzione deve dimostrare, con handle e identità osservati da un oracolo
+indipendente, che ogni componente viene aperto relativamente alla stessa radice
+autenticata, senza cambio di directory o fallback nominale, e che la contesa
+del blocco locale avviene nella gerarchia dell'archivio corretta.
+
+#### P1-3 — G3: rollback dopo errore di sincronizzazione
+
+Le prove degli errori di `fsync` si aspettano attualmente un residuo del
+payload. Ciò contraddice il §16.13.1: qualunque eccezione catturata dopo
+creazione o scrittura deve rimuovere il nuovo oggetto, annullare la riserva
+dell'overlay e lasciare invariato l'inventario logico.
+
+La specifica non deve essere modificata per adattarla ai test. Le prove devono
+richiedere rollback completo sia per l'errore di sincronizzazione del file sia
+per quello della directory padre e devono verificare assenza del nome, binding
+non committed e inventario invariato.
+
+#### P1-4 — G3: ordine della sincronizzazione dopo la rinomina
+
+Le prove contano i `fsync` delle directory genitore, ma non dimostrano che essi
+avvengano dopo la rinomina nativa. Un mutante che sincronizza prima della
+rinomina può quindi passare.
+
+L'oracolo deve registrare la sequenza causale completa e imporre, per entrambi i
+genitori quando distinti, rinomina riuscita, sincronizzazione successiva e
+rilettura finale. Deve essere mostrato che il mutante con sincronizzazione
+anticipata fallisce per la ragione attesa.
+
+Una revisione indipendente di follow-up su G4 e G10 era ancora incompleta al
+momento dell'arresto. Le correzioni presenti non devono essere considerate
+accettate per inerzia: dopo i quattro P1 è ammessa una sola revisione
+sequenziale, limitata ai requisiti già scritti e senza modifiche del revisore.
+
+### 17.6 Problema di complessità della barriera R1
+
+Nel repository pubblico materializzato,
+`test_r1_productive_graph_no_mutating_capability` ha superato due minuti senza
+terminare ed è stato interrotto. La prova non deve essere rilanciata senza un
+limite temporale. Prima occorre isolare le fasi di raccolta, costruzione del
+grafo, risoluzione degli alias e analisi delle chiamate, misurarne separatamente
+tempo e cardinalità e individuare la crescita dominante.
+
+La correzione è accettabile soltanto se conserva l'intero inventario produttivo
+e le proprietà normative di R1. Ridurre directory, simboli, alias o casi per
+ottenere velocità non è una soluzione. Deve esistere un limite riproducibile e
+un caso sentinella che dimostri che la versione precedente eccede il limite
+mentre quella corretta termina con margine sul runner pubblico.
+
+### 17.7 Correzioni presenti da preservare e riesaminare
+
+Le modifiche locali comprendono correzioni importanti che non devono essere
+perdute, ma che richiedono la revisione integrata prevista dal §17.5:
+
+- G6 verifica esistenza e ascendenza di `source_git_sha`, congela storicamente
+  mode e blob degli artefatti normativi, confronta il digest storico
+  dell'inventario, propaga il taint di capability e piattaforma, rifiuta alias
+  di `contextlib.suppress`, controlla con AST il recorder, autentica la
+  provenienza di pytest e del certificatore, disabilita plugin ambientali e usa
+  configurazione dedicata, `python -P` e checkout con storia completa;
+- R1 rafforza descrittore consumabile, catalogo, overlay, identità committed,
+  limiti e grafo produttivo;
+- G1-G4 rafforzano inventario, autorità degli handle, durabilità, disposizione
+  e gestione esatta delle chiusure;
+- sul percorso Windows sono state predisposte correzioni per G9, C1, R5, R6,
+  R7 e G10, comprese firme ABI, identità completa, profili ACL, rinomina sullo
+  stesso handle e mappatura degli errori nativi.
+
+La presenza di queste correzioni non equivale a certificazione. Devono essere
+valutate contro i requisiti già scritti, non contro le loro stesse fixture, e
+non devono essere riscritte in blocco senza una causa dimostrata.
+
+### 17.8 Sequenza vincolante di ripresa
+
+Il nuovo responsabile esegue una sola sequenza, senza lavoro concorrente sugli
+stessi file:
+
+1. legge integralmente questo documento e confronta i §§17.2-17.7 con lo stato
+   reale del worktree, senza modificare nulla;
+2. produce una diagnosi indipendente dei quattro P1 e del costo della prova R1,
+   indicando per ciascuno causa, mutante o caso negativo, correzione minima e
+   comando di prova limitato;
+3. corregge i quattro P1 uno alla volta e risolve la complessità senza ridurre
+   la copertura normativa;
+4. esegue una sola revisione read-only e sequenziale dell'intera base 2A,
+   includendo il follow-up G4/G10; il revisore non modifica file e non amplia il
+   contratto;
+5. in assenza di nuove contraddizioni P1, congela manifesto, inventario e prove,
+   materializza la proiezione pubblica e genera una nuova fotografia completa
+   sul codice produttivo precedente alla correzione;
+6. applica con cautela lo stash 2A, risolve manualmente eventuali conflitti e
+   implementa il prodotto contro la base congelata;
+7. completa e verifica 2A, quindi sviluppa separatamente 2B, 2C, 2D, 2E e 2F,
+   usando per ciascuno specifica stabile, prove mirate, regressione completa,
+   documentazione e un commit incrementale su `main`;
+8. dopo ogni commit pubblico attende e verifica il workflow Linux/Windows; un
+   fallimento interrompe l'incremento successivo e viene diagnosticato dalla
+   prima evidenza causale disponibile;
+9. aggiorna la documentazione finale e chiude RM-0008 soltanto quando il
+   criterio del §17.1 è integralmente soddisfatto.
+
+Non sono ammessi revisori concorrenti che modifichino le prove, alternanza
+continua fra specifica e implementazione o rigenerazione della fotografia dopo
+aver già corretto il prodotto.
+
+### 17.9 Regola di arresto e rapporto obbligatorio
+
+Ogni modifica deve derivare da una previsione falsificabile: il responsabile
+indica prima quale osservazione deve cambiare e quale deve restare invariata.
+Se lo stesso errore ricompare dopo due correzioni, non viene tentata una terza
+variante. Il lavoro si arresta e il rapporto registra:
+
+- requisito e invariante coinvolti;
+- comando minimo e risultato osservato;
+- assunzione dimostrata falsa;
+- causa ancora non risolta;
+- stato esatto dei file e assenza di pubblicazioni non certificate;
+- decisione esterna eventualmente necessaria.
+
+Un errore non riprodotto, una prova eccessivamente lenta o una piattaforma non
+disponibile non diventano verdi. Restano requisiti non certificati e impediscono
+la chiusura. Il responsabile deve distinguere sempre specifica approvata,
+apparato di prova, implementazione di prodotto ed evidenza pubblica: nessuno dei
+quattro può sostituire gli altri.
+
+### 17.10 Ripresa del 26 agosto 2026: diagnosi indipendente e prime correzioni
+
+Questa sottosezione registra i passi 1-3 del §17.8 eseguiti dal responsabile
+esterno. Non modifica alcun requisito normativo.
+
+**Stato confrontato con i §§17.2-17.7.** Base locale `0990327e`, stash
+`rm0008-2a-product-after-baseline-audit` intatto (433 aggiunte, 117 rimozioni su
+`runtime/executor_birth_secure_fs.py`), `pytest-certification.ini` non tracciato,
+`main` pubblico osservato `2c587bfb`: tutti conformi. Le modifiche non registrate
+erano cresciute a 35 file, circa 15.700 aggiunte e 973 rimozioni. Lo stash
+contiene un prodotto **parziale**: espone `_BirthObjectRole` e `_ObjectKind`, ma
+non `_BirthRoleCatalogV1`, `_BirthRolePatternV1`, `_BirthRoleBindingV1` né
+`dispose_transaction_object`. L'implementazione 2A resta quindi in massima parte
+da scrivere, coerentemente con la stima del §17.3.
+
+**Causa della complessità R1 (§17.6), individuata e chiusa.** Non è una crescita
+dominante del grafo: è una **non convergenza per oscillazione**. Il punto fisso
+dei testi costanti in `certification_v1.validate_productive_mutation_graph`
+accettava qualunque nuovo valore per un nome già noto; un proprietario che lega
+lo stesso nome a due letterali diversi — per esempio i due rami di un
+`try/except` — faceva alternare il valore a ogni passata e `changed` restava
+vero per sempre. Il caso riproduttore osservato è
+`executors/consult_frontier/consult_frontier.py::_now_vars`, dove `tzname` vale
+`"Europe/Rome"` oppure `"local"`. Il reticolo è ora monotono — non assegnato,
+testo, ambiguo — e un nome legato a due letterali diversi diventa
+definitivamente sconosciuto. Misure: analisi sintattica dei 636 file produttivi
+presenti 0,78 s; grafo completo sui 681 percorsi dell'inventario **7,16 s**
+contro un'esecuzione che non terminava entro 500 s. La copertura normativa non è
+ridotta: nessuna directory, simbolo, alias o caso è stato eliminato, e il grafo
+completo termina ora con l'errore normativo atteso «installer-only entry is
+absent from the productive graph», cioè la fotografia `red` prevista dal
+§16.14.2 finché `install/birth_authority_provisioning.py` non esiste.
+
+**Le quattro contraddizioni P1, confermate nel codice e corrette.**
+
+- `P1-1` — `_support.exact_role_catalog` conserva soltanto le binding dei nomi
+  già esistenti, mentre `test_g1_inventory_limits` creava `anchor.bin`,
+  `opaque.bin`, le voci di radice e `local` **dopo** l'adozione. Ogni oggetto
+  preesistente viene ora materializzato prima della sessione; i nomi creati
+  dalla mutazione stessa restano legittimamente sconosciuti, come impone il
+  §16.13.4.
+- `P1-2` — `_call_through_handles` accettava qualunque `dir_fd` diverso da
+  `None`: `AT_FDCWD` è un intero e superava il controllo, e il cambio di
+  directory non era vietato. Ogni apertura relativa deve ora discendere da un
+  descrittore realmente aperto dalla chiamata o dalla radice autenticata;
+  `AT_FDCWD`, `chdir` e `fchdir` sono rifiutati. Il sottocaso `local-only`
+  verifica ora l'assenza del blocco globale nella radice dell'archivio, non
+  soltanto sotto `tmp_path`.
+- `P1-3` — le prove di errore di sincronizzazione pretendevano il residuo del
+  payload, contro il §16.13.1. Entrambe richiedono ora il rollback completo:
+  nome assente, inventario logico invariato e riserva rilasciata, dimostrata
+  ricreando lo stesso nome attraverso la sessione.
+- `P1-4` — le sincronizzazioni dei genitori dopo la rinomina erano verificate
+  per sola presenza. L'oracolo registra ora la sequenza causale e richiede, per
+  ciascun genitore distinto, rinomina, poi sincronizzazione, poi rilettura
+  finale.
+
+**Limite dichiarato.** Le quattro correzioni sono verificabili end-to-end
+soltanto quando il prodotto espone il catalogo dei ruoli: oggi le celle A
+falliscono con l'assenza del simbolo, che è la fotografia `red`/`absent`
+prevista. L'apparato però **si esegue**: la raccolta completa dell'albero A
+termina in circa tre secondi con 91 fallimenti e 7 successi, dove prima non
+terminava affatto.
+
+**Blocco di pubblicazione da risolvere fuori dal codice.** La pubblicazione
+incrementale su `main` è stata rifiutata da GitHub: il token personale usato da
+`scripts/publish-public.sh` non possiede l'ambito `workflow` e non può quindi
+aggiornare `.github/workflows/portable-contract-store.yml`. Il gate anti-PII e
+l'esportazione sono verdi (1.505 file, zero rilievi). Finché l'ambito non viene
+concesso, nessun incremento può essere certificato dalle attività pubbliche,
+perché il workflow corrente non contiene ancora `fetch-depth: 0` e `python -P`
+richiesti dal §17.7.
