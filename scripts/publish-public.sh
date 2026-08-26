@@ -95,6 +95,25 @@ google_client_secret.json
 GI
 }
 
+# RM-0008 §16.14.4: l'inventario Python nasce dall'indice del worktree
+# pubblico materializzato, non dal repository sorgente privato. Il generatore
+# non sceglie filtri o classi: legge soltanto `git ls-files --cached` dopo che
+# l'export finale e' stato interamente aggiunto all'indice.
+refresh_rm0008_public_inventory() {
+  local public_tree="$1"
+  local generator="tests/portable/rm0008_2a_acceptance/generate_production_inventory_v1.py"
+  local inventory="tests/portable/rm0008_2a_acceptance/production-python-inventory-v1.json"
+  if [ ! -f "$public_tree/$generator" ] || [ ! -f "$public_tree/$inventory" ]; then
+    echo "ABORT: gate RM-0008 incompleto nell'export pubblico" >&2
+    return 1
+  fi
+  (
+    cd "$public_tree"
+    "$PYTHON" "$generator" --write
+  )
+  git -C "$public_tree" add "$inventory"
+}
+
 GIT_AUTH=(-c "credential.helper=!f() { echo username=x-access-token; echo \"password=\$GHTOKEN\"; }; f")
 export GHTOKEN="$TOK"
 
@@ -105,6 +124,7 @@ if [ "$MODE" = "snapshot" ]; then
   git -C "$DEST" config user.name "brunialti"
   git -C "$DEST" config user.email "brunialti@users.noreply.github.com"
   git -C "$DEST" add -A
+  refresh_rm0008_public_inventory "$DEST"
   git -C "$DEST" commit -q -m "$MSG"
   git -C "$DEST" remote add origin "https://github.com/$REPO.git"
   git -C "$DEST" "${GIT_AUTH[@]}" push --force -q origin main
@@ -121,6 +141,7 @@ else
   cp -r "$DEST"/. "$WC"/; rm -rf "$WC/.git/index.lock" 2>/dev/null || true
   write_pub_gitignore "$WC"
   git -C "$WC" add -A
+  refresh_rm0008_public_inventory "$WC"
   if git -C "$WC" diff --cached --quiet; then
     # Un tentativo precedente può avere creato il commit locale ma fallito il
     # push (per esempio per un'interruzione di rete). In quel caso l'export è

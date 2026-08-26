@@ -19,8 +19,9 @@
 #   - I manifest FIRMATI e i .sig NON vengono toccati (la firma deve restare valida).
 #
 # Uso:
-#   scripts/export-public.sh [DEST]      # default DEST=dist/metnos-public
-#   scripts/export-public.sh --check     # solo audit del subset, niente copia
+#   scripts/export-public.sh [DEST]        # default DEST=dist/metnos-public
+#   scripts/export-public.sh --check       # solo audit del subset, niente copia
+#   scripts/export-public.sh --list-python # paths Python della proiezione pubblica
 #
 # Deterministico (§7.9): nessun LLM, solo regex + git. Idempotente.
 set -euo pipefail
@@ -38,9 +39,11 @@ fi
 "$PYTHON" runtime/published_docs.py validate >/dev/null
 
 CHECK_ONLY=0
+LIST_PYTHON=0
 DEST="dist/metnos-public"
 case "${1:-}" in
   --check) CHECK_ONLY=1 ;;
+  --list-python) LIST_PYTHON=1 ;;
   "") : ;;
   *) DEST="$1" ;;
 esac
@@ -137,6 +140,20 @@ for f in "${ALL[@]}"; do
     KEEP+=("$f")
   fi
 done
+
+# RM-0008 R1 congela tutti e soli i file Python tracciati ed esportati. Questa
+# modalita' espone direttamente l'insieme KEEP calcolato sopra: il validatore
+# privato e il publisher condividono cosi' la stessa autorita', senza duplicare
+# la regex di esclusione. I link con suffisso .py restano nell'elenco: il gate
+# G6 deve poterli osservare e rifiutare esplicitamente.
+if [ "$LIST_PYTHON" = 1 ]; then
+  for f in "${KEEP[@]}"; do
+    if [[ "$f" == *.py ]]; then
+      printf '%s\n' "$f"
+    fi
+  done
+  exit 0
+fi
 
 echo "== Export subset =="
 echo "tracciati totali : ${#ALL[@]}"

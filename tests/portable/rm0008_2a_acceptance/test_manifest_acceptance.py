@@ -13,9 +13,11 @@ from .certification_v1 import (
     ACTIVITIES,
     CertificationError,
     FINAL_EVIDENCE_FIELDS,
+    INVENTORY_PATH,
     MANIFEST_PATH,
     REPO_ROOT,
     SUITE_ID,
+    canonical_json_bytes,
     collect_a_node_ids,
     digest_file,
     select_cells,
@@ -28,6 +30,7 @@ from .certification_v1 import (
     validate_snapshot_aggregate,
     validate_workflow_structure,
 )
+from .generate_production_inventory_v1 import build_production_inventory_v1
 from .required_cells_v1 import EXPECTED_ACTIVITY_COUNTS_V1, REQUIRED_CELLS_V1
 
 
@@ -223,6 +226,9 @@ def test_g6_required_cell_inventory(slug: str) -> None:
 
 @pytest.mark.parametrize("slug", ["production-inventory"], ids=["production-inventory"])
 def test_g6_production_inventory(slug: str) -> None:
+    assert INVENTORY_PATH.read_bytes() == canonical_json_bytes(
+        build_production_inventory_v1()
+    )
     inventory = validate_production_inventory()
     assert inventory["inventory_id"] == "rm-0008-production-python"
 
