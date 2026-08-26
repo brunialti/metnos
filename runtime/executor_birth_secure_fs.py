@@ -3585,6 +3585,17 @@ class _SecureRootSession:
                             directory=directory,
                         )
                     before = _verify_win_object(source_handle, source_path, directory=directory)
+                    # The profile of what is moving is verified on its own
+                    # handle, before the native call: afterwards the object is
+                    # no longer where the catalogue declares it.
+                    source_role = self._catalog_role_v1(
+                        source,
+                        _ObjectKind.directory if directory else _ObjectKind.regular_file,
+                    )
+                    if source_role is not None:
+                        self._verify_windows_profile(
+                            source_handle, directory=directory, role=source_role,
+                        )
                     target_identity = _win_info(target_handle)[0]
                     if before[0].volume != target_identity.volume:
                         raise BirthSecureFSError(
