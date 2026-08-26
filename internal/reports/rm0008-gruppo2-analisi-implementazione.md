@@ -3947,3 +3947,22 @@ Aggiornamento §17.15: la correzione minima e' stata applicata dopo la
 decisione sul §17.14. Il contatore della cella di durabilita' esclude ora le
 aperture eseguite dall'enumerazione, che essa gia' intercetta separatamente;
 restano contate le sole aperture della validazione finale.
+
+### 17.21 Correzioni dell'apparato in attesa del prossimo congelamento
+
+Dopo il congelamento l'apparato non cambia: qualunque modifica sotto i due
+alberi congelati fa rifiutare l'esecuzione finale prima di misurare il
+prodotto, e la capacita' di misura vale piu' di una singola cella.
+
+Una correzione e' stata scritta, provata e poi rimessa in attesa:
+
+- **§17.15** — il contatore della cella `rename-two-parents-fsync` deve
+  escludere le aperture eseguite dall'enumerazione, che essa gia' intercetta
+  separatamente. Provata: porta i verdi locali da 83 a 84. Il testo esatto e'
+  conservato in `apparato-pendente.patch` nella cartella di lavoro della
+  sessione.
+
+Queste correzioni si applicano tutte insieme, seguite da un solo nuovo
+congelamento con la stessa procedura del §17.8 passo 5, quando l'apparato non
+richiede piu' modifiche.
+
