@@ -2279,12 +2279,12 @@ class _SecureRootSession:
 
                 shared = _InventoryBudgetV1() if budget is None else budget
                 before = (
-                    _win_inventory(handle)
+                    _win_inventory(handle, resolve, shared, components)
                     if os.name == "nt"
                     else _posix_inventory(handle, resolve, shared, components)
                 )
                 after = (
-                    _win_inventory(handle)
+                    _win_inventory(handle, resolve, shared, components)
                     if os.name == "nt"
                     else _posix_inventory(handle, resolve, shared, components)
                 )
@@ -3632,8 +3632,19 @@ def _win_destination_exists(parent_path: str, name: str, directory: bool) -> boo
             _win_close(handle)
 
 
-def _win_inventory(handle: int) -> tuple[_InventoryEntry, ...]:
+def _win_inventory(
+    handle: int, resolve=None, budget=None, scope: tuple[str, ...] = (),
+) -> tuple[_InventoryEntry, ...]:
+    """Build the shared record for one directory from the native enumeration.
+
+    The batch is decoded in place: each name is charged to the budget as soon
+    as it is decoded and before its record exists, so the limit is reached
+    during the scan and never after a full list has been materialised
+    (section 16.13.5).  A reparse point is refused like a symbolic link is on
+    the other platform, because the closed kind has only two values.
+    """
     result: list[_InventoryEntry] = []
+    budget = _InventoryBudgetV1() if budget is None else budget
     volume = _win_info(handle)[0].volume
     first = True
     buffer = ctypes.create_string_buffer(64 * 1024)
@@ -3662,12 +3673,38 @@ def _win_inventory(handle: int) -> tuple[_InventoryEntry, ...]:
             )
             if name not in {".", ".."}:
                 name = _relative_components((name,))[0]
+                if entry.FileAttributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+                    raise BirthSecureFSError(
+                        "birth_provisioning_recovery_ambiguous"
+                    )
+                directory_entry = bool(
+                    entry.FileAttributes & _FILE_ATTRIBUTE_DIRECTORY
+                )
+                kind = (
+                    _ObjectKind.directory
+                    if directory_entry
+                    else _ObjectKind.regular_file
+                )
+                binding = resolve((name,)) if resolve is not None else None
+                if binding is not None and binding.kind is not kind:
+                    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+                size = None if directory_entry else int(entry.EndOfFile)
+                identity = _ObjectIdentity(
+                    volume, bytes(entry.FileId.Identifier).hex()
+                )
+                budget.include(scope + (name,), identity)
                 result.append(
                     _InventoryEntry(
-                        name,
-                        _ObjectIdentity(volume, bytes(entry.FileId.Identifier).hex()),
-                        bool(entry.FileAttributes & _FILE_ATTRIBUTE_DIRECTORY),
-                        1,
+                        name=name,
+                        identity=identity,
+                        kind=kind,
+                        role=(
+                            binding.role
+                            if binding is not None
+                            else _BirthObjectRole.birth_integrity_only
+                        ),
+                        links=1,
+                        size=size,
                     )
                 )
             if entry.NextEntryOffset == 0:
