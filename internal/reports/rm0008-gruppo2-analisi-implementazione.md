@@ -3943,3 +3943,7 @@ manifestano.
 Un'attivita' finale fallisce se contiene un solo esito non verde: i numeri
 sopra sono lo stato di avanzamento, non un verdetto.
 
+Aggiornamento §17.15: la correzione minima e' stata applicata dopo la
+decisione sul §17.14. Il contatore della cella di durabilita' esclude ora le
+aperture eseguite dall'enumerazione, che essa gia' intercetta separatamente;
+restano contate le sole aperture della validazione finale.
