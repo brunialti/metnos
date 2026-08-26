@@ -311,7 +311,7 @@ def _independent_path_facts(path: Path, *, directory: bool) -> dict[str, object]
     try:
         return _independent_handle_facts(handle)
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def _local_roundtrip(
@@ -416,7 +416,7 @@ def _exclusive_delete_probe(path: Path, *, directory: bool) -> None:
         if facts["delete_pending"] or facts["directory"] is not directory:
             raise AssertionError("exclusive delete probe observed unsafe object state")
     finally:
-        oracle._close(handle)
+        oracle._close_handle(handle)
 
 
 def _remove_unc_fixture(backing: Path, birth: Path, share: str) -> None:
@@ -1202,7 +1202,7 @@ def test_g10_windows_native_contract(
             try:
                 identity = sf._win_info(handle)[0]
             finally:
-                oracle._close(handle)
+                oracle._close_handle(handle)
         if identity.volume != "8000000000000001" or identity.object_id != bytes(range(16)).hex():
             raise AssertionError("product signed or truncated volume/FileId information")
         return

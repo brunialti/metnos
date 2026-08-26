@@ -2022,18 +2022,14 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         _KERNEL32.LocalFree(actual_descriptor)
 
 
-def _win_reconcile_disposed(directory: int, name: str) -> None:
-    """Confirm on the container that a disposed residue is really gone.
+def _win_reconcile_disposed(handle: int) -> None:
+    """Confirm on the object itself that its removal is really pending.
 
-    The check runs while the handle of the object is still open, because that
-    handle is what carries the authority to remove it: closing first would
-    leave nothing to act through if the name were still there.
+    The check runs while the handle is still open, because that handle is what
+    carries the authority to remove it: closing first would leave nothing to
+    act through if the object were still there.
     """
-    try:
-        remaining = {item.name for item in _win_inventory(directory)}
-    except (BirthSecureFSError, OSError):
-        return
-    if name in remaining:
+    if not _win_info(handle)[3]:
         raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
 
 
@@ -2608,7 +2604,7 @@ class _SecureRootSession:
         name = components[-1]
         if os.name == "nt":
             return self._read_file_windows(
-                components, directory_path, name, maximum, role
+                components, directory, directory_path, name, maximum, role
             )
         return self._read_file_posix(components, directory, name, maximum, role)
 
@@ -2652,6 +2648,7 @@ class _SecureRootSession:
     def _read_file_windows(
         self,
         components: tuple[str, ...],
+        directory: int,
         directory_path: str,
         name: str,
         maximum: int,
@@ -2660,7 +2657,14 @@ class _SecureRootSession:
         path = os.path.join(directory_path, name)
         handle = None
         try:
-            handle = _win_open_path(path, directory=False)
+            # The name is read where it lives, inside the container that is
+            # already open.
+            handle = _win_open_relative_v1(
+                directory,
+                name,
+                purpose=_NtOpenPurposeV1.read_required,
+                directory=False,
+            )
             before = _verify_win_object(handle, path, directory=False)
             self._verify_windows_profile(
                 handle, directory=False, profile=role
@@ -2847,9 +2851,17 @@ class _SecureRootSession:
             components=components, kind=_ObjectKind.regular_file, role=role,
         )
         with contextlib.ExitStack() as reservation:
-            if create:
+            settled = self._role_overlay.get(components)
+            if create and (
+                settled is None
+                or settled[1] is not _BirthRoleBindingOriginV1.OVERLAY_COMMITTED
+                or settled[0] != requested
+            ):
                 # Section 16.13.1 requires the same transition for a file, a
-                # directory and the creation of the global lock.
+                # directory and the creation of the global lock.  A lock this
+                # session already created is not created again: its binding is
+                # settled and reserving it a second time would be a conflict
+                # with itself.
                 reservation.enter_context(
                     self._reserve_exact_role_binding_v1(requested)
                 )
@@ -3283,7 +3295,7 @@ class _SecureRootSession:
                 if created and not complete:
                     try:
                         _win_dispose_created(handle)
-                        _win_reconcile_disposed(directory, name)
+                        _win_reconcile_disposed(handle)
                     except OSError:
                         pass
                 _win_close(handle)
@@ -3416,7 +3428,7 @@ class _SecureRootSession:
                 if created and not complete:
                     try:
                         _win_dispose_created(handle)
-                        _win_reconcile_disposed(directory, name)
+                        _win_reconcile_disposed(handle)
                     except OSError:
                         pass
                 _win_close(handle)
