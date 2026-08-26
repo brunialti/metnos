@@ -3703,8 +3703,11 @@ class _SecureRootSession:
         with self._directory_chain(source_parent) as (source_fd, source_path):
             with self._directory_chain(target_parent) as (target_handle, target_path):
                 source_path = os.path.join(source_path, source_name)
-                source_handle = self._directories.get(source) if directory else None
-                close_source = source_handle is None
+                # A handle opened to read cannot move a name: the system
+                # refuses it with access denied, measured on Windows. The move
+                # therefore always opens its own handle, with its own purpose.
+                source_handle = None
+                close_source = True
                 try:
                     if source_handle is None:
                         # The object being moved is opened relative to its own
