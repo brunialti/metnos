@@ -43,9 +43,28 @@ class BirthSecureFSError(RuntimeError):
         self.code = code
         self._internal_cause = cause
         super().__init__(code)
-        self.__cause__ = None
-        self.__context__ = None
         self.__suppress_context__ = True
+
+    # Raising inside an ``except`` block sets the implicit context after the
+    # constructor has run, so clearing it there is not enough: the public
+    # chain is empty by construction and the system error stays private.
+    @property
+    def __context__(self) -> None:
+        return None
+
+    @__context__.setter
+    def __context__(self, value: BaseException | None) -> None:
+        if value is not None and self._internal_cause is None:
+            self._internal_cause = value
+
+    @property
+    def __cause__(self) -> None:
+        return None
+
+    @__cause__.setter
+    def __cause__(self, value: BaseException | None) -> None:
+        if value is not None and self._internal_cause is None:
+            self._internal_cause = value
 
 
 @dataclass(frozen=True, slots=True)
