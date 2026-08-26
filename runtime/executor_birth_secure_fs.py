@@ -1885,6 +1885,15 @@ def _win_restore_privilege() -> Iterator[None]:
         _win_close(token.value)
 
 
+def _win_profile_name_v1(role: _BirthObjectRole) -> str:
+    """Name of the security profile that carries one Birth role."""
+    if role is _BirthObjectRole.birth_confidential:
+        return "confidential"
+    if role is _BirthObjectRole.birth_integrity_only:
+        return "integrity_only"
+    raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+
+
 def _win_sddl(
     profile: Literal["confidential", "integrity_only"],
     *,
@@ -2898,7 +2907,13 @@ class _SecureRootSession:
             with self._directory_chain(parent) as (directory, directory_path):
                 if os.name == "nt":
                     with self._win_lock(
-                        directory, directory_path, name, exclusive, create, timeout
+                        directory,
+                        directory_path,
+                        name,
+                        exclusive,
+                        create,
+                        timeout,
+                        role,
                     ):
                         if create:
                             self._commit_lock_binding(components, directory, name)
@@ -3045,6 +3060,7 @@ class _SecureRootSession:
         exclusive: bool,
         create: bool,
         timeout: float,
+        role: _BirthObjectRole,
     ) -> Iterator[None]:
         path = os.path.join(directory_path, name)
         handle = None
@@ -3059,7 +3075,7 @@ class _SecureRootSession:
                     _win_require_supported_volume(self._root_handle)
                     with _win_restore_privilege():
                         with _win_security_attributes(
-                            "integrity_only",
+                            _win_profile_name_v1(role),
                             directory=False,
                             service_sid=self._service_sid,
                         ) as (attributes, descriptor):
@@ -3119,8 +3135,13 @@ class _SecureRootSession:
                 time.sleep(min(delay, remaining))
             before = _verify_win_object(handle, path, directory=False)
             if self._service_sid is not None:
+                # The profile of a lock follows its rank, exactly as on the
+                # other platform: the global lock is integrity-only and a store
+                # lock is confidential.
                 with _win_security_attributes(
-                    "integrity_only", directory=False, service_sid=self._service_sid
+                    _win_profile_name_v1(role),
+                    directory=False,
+                    service_sid=self._service_sid,
                 ) as (_, descriptor):
                     _win_verify_security(handle, descriptor)
             size = before[5]
