@@ -1075,6 +1075,7 @@ class _IO_STATUS_BLOCK_RESULT(ctypes.Union):
 
 
 class _IO_STATUS_BLOCK(ctypes.Structure):
+    _anonymous_ = ("Result",)
     _fields_ = [
         ("Result", _IO_STATUS_BLOCK_RESULT),
         ("Information", ctypes.c_size_t),
@@ -2832,7 +2833,7 @@ class _SecureRootSession:
             with self._directory_chain(parent) as (directory, directory_path):
                 if os.name == "nt":
                     with self._win_lock(
-                        directory_path, name, exclusive, create, timeout
+                        directory, directory_path, name, exclusive, create, timeout
                     ):
                         if create:
                             self._commit_lock_binding(components, directory, name)
@@ -2973,6 +2974,7 @@ class _SecureRootSession:
     @contextlib.contextmanager
     def _win_lock(
         self,
+        directory: int,
         directory_path: str,
         name: str,
         exclusive: bool,
@@ -3006,11 +3008,16 @@ class _SecureRootSession:
                             )
                             _win_apply_and_verify_security(handle, descriptor)
                 else:
-                    handle = _win_open_path(
-                        path,
+                    # The lock lives inside a container that is already open:
+                    # it is reached from that handle, never by rebuilding its
+                    # absolute name.
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.mutating_open
+                        if exclusive
+                        else _NtOpenPurposeV1.lock_reader,
                         directory=False,
-                        writable=exclusive,
-                        generic_read=not exclusive,
                     )
             except OSError as exc:
                 if create and exclusive and exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
