@@ -711,7 +711,14 @@ def windows_tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
         facts = identity(path, directory=directory, open_reparse=True)
         payload_sha256 = None
         if not directory:
-            payload_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            # A byte-range lock is mandatory on this platform: the object the
+            # product holds cannot be read while it holds it.  The refusal is
+            # recorded as such, so the comparison still notices an object that
+            # becomes readable or stops being so.
+            try:
+                payload_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            except PermissionError:
+                payload_sha256 = "locked"
         rows.append(
             (
                 relative,

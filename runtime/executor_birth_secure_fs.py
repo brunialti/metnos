@@ -2365,6 +2365,7 @@ class _SecureRootSession:
         components = _relative_components(components)
         current = self._root_handle
         current_path = self._root_path
+        established = False
         # A role a caller declares for the last name is a claim about the
         # catalogue, checked here once and before any traversal syscall.  The
         # walk below then treats every component the same way, because the
@@ -2440,10 +2441,15 @@ class _SecureRootSession:
                     finally:
                         os.close(rebound)
                 current = child
+            established = True
             yield current, current_path
         except BirthSecureFSError:
             raise
         except OSError as exc:
+            if established:
+                # The chain was already open: this error came from the body and
+                # belongs to the caller, so it keeps its own identity.
+                raise
             raise BirthSecureFSError("birth_provisioning_io_unavailable", exc)
 
     def _verify_windows_role(
