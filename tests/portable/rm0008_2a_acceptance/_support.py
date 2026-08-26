@@ -251,7 +251,13 @@ def tree_snapshot(root: Path) -> tuple[tuple[object, ...], ...]:
         value = path.lstat()
         payload_hash = None
         if stat.S_ISREG(value.st_mode):
-            payload_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            # A byte-range lock is mandatory on Windows: an object the product
+            # holds cannot be read while it holds it, and the refusal is
+            # recorded as such instead of ending the snapshot.
+            try:
+                payload_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            except PermissionError:
+                payload_hash = "locked"
         rows.append(
             (
                 relative,
