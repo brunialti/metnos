@@ -14,7 +14,7 @@ import re
 import stat
 import ctypes
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
@@ -279,6 +279,8 @@ class PreprovisionedSemanticAuthority:
     verifier_keys: Mapping[str, Ed25519PublicKey]
 
     def __post_init__(self) -> None:
+        # ``evidence_dir`` is a historical Path or a directory capability bound
+        # to a Birth session; the second form cannot be reopened by name.
         if not isinstance(self.policy, ReviewPolicyV1) or not self.verifier_keys:
             raise SemanticReviewError("semantic_review_unavailable", "authority config")
         keys = dict(self.verifier_keys)
@@ -455,6 +457,85 @@ class PreprovisionedSemanticAuthority:
         except (UnicodeError, json.JSONDecodeError, ValueError, TypeError,
                 InvalidSignature, KeyError) as exc:
             raise SemanticReviewError("evidence_forged", name) from exc
+
+
+MAXIMUM_SEMANTIC_AUTHORITY_BYTES = 64 * 1024
+
+
+def _load_semantic_authority_in_session(
+    authority_file: tuple[str, ...],
+    public_directory: tuple[str, ...],
+    evidence_directory: tuple[str, ...],
+    session,
+) -> PreprovisionedSemanticAuthority:
+    """Load the authority through a session that already holds the global lock.
+
+    The three relative names come from the closed catalogue and never from a
+    value declared inside the document.  The evidence location is kept as a
+    directory capability bound to this session rather than a path to reopen,
+    so every use after the session is closed fails with the stable code and
+    without a path in the message (section 16.13.3).
+    """
+    import json
+
+    from executor_birth_secure_fs import BirthSecureFSError, _BirthObjectRole
+
+    if not session._holds_global_lock():
+        raise BirthSecureFSError("birth_provisioning_lock_unsafe")
+    public = _BirthObjectRole.birth_integrity_only
+    raw = session.read_file(
+        tuple(authority_file),
+        maximum=MAXIMUM_SEMANTIC_AUTHORITY_BYTES,
+        role=public,
+    )
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    if not isinstance(document, dict) or set(document) != {
+        "evidence_dir", "verifiers", "versions", "owners"
+    }:
+        raise SemanticReviewError("semantic_review_unavailable", "authority config")
+    try:
+        expected_kinds = {kind.value for kind in IndependentEvidenceKind}
+        if (set(document["versions"]) != expected_kinds
+                or set(document["owners"]) != expected_kinds):
+            raise ValueError("policy kinds")
+        versions = {
+            IndependentEvidenceKind(kind): frozenset(items)
+            for kind, items in document["versions"].items()
+        }
+        owners = {
+            IndependentEvidenceKind(kind): frozenset(items)
+            for kind, items in document["owners"].items()
+        }
+        verifiers = {}
+        for key_id, spec in document["verifiers"].items():
+            if (not isinstance(spec, dict) or set(spec) != {"status", "path"}
+                    or not isinstance(spec["path"], str)):
+                raise ValueError("verifier schema")
+            if spec["status"] == "revoked":
+                continue
+            name = PurePosixPath(spec["path"]).name
+            verifiers[key_id] = Ed25519PublicKey.from_public_bytes(
+                session.read_file(
+                    tuple(public_directory) + (name,),
+                    maximum=_MAX_KEY_BYTES,
+                    role=public,
+                )
+            )
+    except SemanticReviewError:
+        raise
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise SemanticReviewError(
+            "semantic_review_unavailable", "authority config"
+        ) from exc
+    evidence = session.open_directory(tuple(evidence_directory), role=public)
+    return PreprovisionedSemanticAuthority(
+        ReviewPolicyV1(versions, owners), evidence, verifiers,
+    )
 
 
 def load_semantic_authority(value: object, config_dir: Path) -> PreprovisionedSemanticAuthority:
