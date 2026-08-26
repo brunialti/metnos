@@ -1353,8 +1353,10 @@ _NT_FILE_ACCESS_V1 = {
     _NtOpenPurposeV1.disposition: 0x00130080,
 }
 _NT_DIRECTORY_ACCESS_V1 = {
-    _NtOpenPurposeV1.read_required: 0x00120021,
-    _NtOpenPurposeV1.lock_reader: 0x00120021,
+    # Enumerating a container needs its own attributes as well: the volume and
+    # the object identity are read from the same handle that lists the names.
+    _NtOpenPurposeV1.read_required: 0x001200a1,
+    _NtOpenPurposeV1.lock_reader: 0x001200a1,
     _NtOpenPurposeV1.create_exclusive: _WIN_DIRECTORY_CREATE_ACCESS_V1,
     _NtOpenPurposeV1.mutating_open: 0x001f00a0,
     _NtOpenPurposeV1.disposition: 0x00130080,
