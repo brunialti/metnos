@@ -1681,6 +1681,7 @@ class _SecureRootSession:
         "_authoritative",
         "_identity",
         "_role_catalog",
+        "_role_overlay",
         "_directories",
         "_directory_roles",
         "_file_roles",
@@ -1712,6 +1713,14 @@ class _SecureRootSession:
         handles = list(handles)
         self._identity = identity
         self._role_catalog = role_catalog
+        self._role_overlay: dict[
+            tuple[str, ...],
+            tuple[
+                _BirthRoleBindingV1,
+                _BirthRoleBindingOriginV1,
+                _ObjectIdentity | None,
+            ],
+        ] = {}
         service_sid = identity.windows_service_sid
         expected_uid = identity.posix_uid
         # A historical catalogue carries only historical roles and therefore
@@ -1793,6 +1802,78 @@ class _SecureRootSession:
     def _require_open(self) -> None:
         if self._closed:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
+
+    def _resolve_effective_role_binding_v1(
+        self, components: tuple[str, ...],
+    ) -> _ResolvedBirthRoleBindingV1:
+        """Single authoritative read-only resolution of one relative name.
+
+        The immutable catalogue and the private overlay are consulted together
+        and must agree.  An absence is ambiguous; two different results for the
+        same components contradict each other (section 16.13.1).
+        """
+        components = _relative_components(components)
+        overlay = self._role_overlay.get(components)
+        catalog: _BirthRoleBindingV1 | None
+        try:
+            catalog = self._role_catalog._resolve_binding_v1(components)
+        except BirthSecureFSError as exc:
+            if overlay is None or exc.code != "birth_provisioning_recovery_ambiguous":
+                raise
+            catalog = None
+        if overlay is None:
+            assert catalog is not None
+            return _ResolvedBirthRoleBindingV1(
+                binding=catalog, origin=_BirthRoleBindingOriginV1.CATALOG,
+            )
+        binding, origin, _identity = overlay
+        if catalog is not None and (
+            catalog.kind is not binding.kind or catalog.role is not binding.role
+        ):
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
+        return _ResolvedBirthRoleBindingV1(binding=binding, origin=origin)
+
+    @contextlib.contextmanager
+    def _reserve_exact_role_binding_v1(
+        self, binding: _BirthRoleBindingV1,
+    ) -> Iterator[None]:
+        """Reserve one concrete binding before the first traversal syscall.
+
+        Only the exact fixture mode keeps an overlay: a productive catalogue
+        classifies every admitted name through its grammar.  An exception of
+        any kind cancels the reservation, so the logical inventory is unchanged
+        unless the creation completed and became durable.
+        """
+        if self._role_catalog.patterns:
+            yield
+            return
+        if not isinstance(binding, _BirthRoleBindingV1):
+            raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        components = _relative_components(binding.components)
+        existing = self._role_overlay.get(components)
+        if existing is not None:
+            raise BirthSecureFSError("birth_provisioning_transaction_conflict")
+        self._role_overlay[components] = (
+            binding, _BirthRoleBindingOriginV1.OVERLAY_RESERVED, None,
+        )
+        committed = False
+        try:
+            yield
+            committed = True
+        finally:
+            if not committed:
+                self._role_overlay.pop(components, None)
+
+    def _commit_exact_role_binding_v1(
+        self, components: tuple[str, ...], identity: _ObjectIdentity,
+    ) -> None:
+        entry = self._role_overlay.get(components)
+        if entry is None:
+            return
+        binding, _origin, _identity = entry
+        self._role_overlay[components] = (
+            binding, _BirthRoleBindingOriginV1.OVERLAY_COMMITTED, identity,
+        )
 
     def _holds_global_lock(self) -> bool:
         self._require_open()
@@ -2091,9 +2172,9 @@ class _SecureRootSession:
         with self._directory_chain(components) as (handle, _):
             try:
                 def resolve(relative, scope=components):
-                    return self._role_catalog._resolve_binding_v1(
+                    return self._resolve_effective_role_binding_v1(
                         scope + relative
-                    )
+                    ).binding
 
                 before = (
                     _win_inventory(handle)
@@ -2429,6 +2510,22 @@ class _SecureRootSession:
             }
         ):
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        requested = _BirthRoleBindingV1(
+            components=components, kind=_ObjectKind.regular_file, role=role,
+        )
+        with self._reserve_exact_role_binding_v1(requested):
+            resolved = self._resolve_effective_role_binding_v1(components)
+            return self._create_file_exclusive_bound(
+                resolved.binding, payload,
+            )
+
+    def _create_file_exclusive_bound(
+        self, binding: _BirthRoleBindingV1, payload: bytes,
+    ) -> _ObjectIdentity:
+        components = binding.components
+        role = binding.role
+        if binding.kind is not _ObjectKind.regular_file:
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         parent, name = components[:-1], components[-1]
         with self._directory_chain(parent) as (directory, directory_path):
             if os.name == "nt":
@@ -2464,6 +2561,7 @@ class _SecureRootSession:
                         raise BirthSecureFSError("birth_provisioning_io_unavailable")
                     os.fsync(directory)
                     self._file_roles[components] = (before, role)
+                    self._commit_exact_role_binding_v1(components, before)
                     committed = True
                     return before
                 finally:
@@ -2576,6 +2674,20 @@ class _SecureRootSession:
             _BirthObjectRole.birth_integrity_only,
         }:
             raise BirthSecureFSError("birth_provisioning_io_unavailable")
+        requested = _BirthRoleBindingV1(
+            components=components, kind=_ObjectKind.directory, role=role,
+        )
+        with self._reserve_exact_role_binding_v1(requested):
+            resolved = self._resolve_effective_role_binding_v1(components)
+            return self._create_directory_exclusive_bound(resolved.binding)
+
+    def _create_directory_exclusive_bound(
+        self, binding: _BirthRoleBindingV1,
+    ) -> _SecureDirectoryHandle:
+        components = binding.components
+        role = binding.role
+        if binding.kind is not _ObjectKind.directory:
+            raise BirthSecureFSError("birth_provisioning_acl_unsafe")
         parent, name = components[:-1], components[-1]
         with self._directory_chain(parent) as (directory, directory_path):
             if os.name == "nt":
@@ -2596,6 +2708,19 @@ class _SecureRootSession:
                 )
                 os.mkdir(name, mode, dir_fd=directory)
                 os.fsync(directory)
+                opened = os.open(
+                    name,
+                    getattr(os, "O_PATH", os.O_RDONLY)
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=directory,
+                )
+                try:
+                    self._commit_exact_role_binding_v1(
+                        components, _posix_identity(opened),
+                    )
+                finally:
+                    os.close(opened)
             except FileExistsError as exc:
                 raise BirthSecureFSError("birth_provisioning_transaction_conflict") from exc
             except OSError as exc:
