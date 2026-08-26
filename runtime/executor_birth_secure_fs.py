@@ -1027,7 +1027,7 @@ class _OVERLAPPED(ctypes.Structure):
         ("hEvent", wintypes.HANDLE),
     ]
 
-class _FILE_RENAME_INFO_HEADER(ctypes.Structure):
+class _FILE_RENAME_INFO(ctypes.Structure):
     _fields_ = [
         ("ReplaceIfExists", wintypes.BOOLEAN),
         ("RootDirectory", wintypes.HANDLE),
@@ -1075,6 +1075,7 @@ class _IO_STATUS_BLOCK_RESULT(ctypes.Union):
 
 
 class _IO_STATUS_BLOCK(ctypes.Structure):
+    _anonymous_ = ("Result",)
     _fields_ = [
         ("Result", _IO_STATUS_BLOCK_RESULT),
         ("Information", ctypes.c_size_t),
@@ -1347,7 +1348,9 @@ class _NtOpenPurposeV1(str, Enum):
 # ask for DELETE on the same handle they will act through, never by name.
 _NT_FILE_ACCESS_V1 = {
     _NtOpenPurposeV1.read_required: 0x00120081,
-    _NtOpenPurposeV1.lock_reader: 0x00120081,
+    # A lock taker also writes its byte when it materialises the lock and
+    # needs write access for an exclusive byte-range lock.
+    _NtOpenPurposeV1.lock_reader: 0x00120083,
     _NtOpenPurposeV1.create_exclusive: _WIN_FILE_CREATE_ACCESS_V1,
     _NtOpenPurposeV1.mutating_open: 0x001f0080,
     # Removal also compares the bytes against the expectation, so it reads
@@ -1698,11 +1701,17 @@ def _require_local_canonical_windows_root(absolute: str) -> None:
         or ".." in remainder.split("\\")
         or ntpath.normpath(absolute) != absolute
     ):
-        raise BirthSecureFSError("birth_provisioning_atomic_install_unsupported")
+        # A name that is not a canonical local root is a malformed request;
+        # only a form this increment declines to support — a share or a name
+        # beyond the classic limit — is an unsupported installation.
+        raise BirthSecureFSError("birth_provisioning_io_unavailable")
 
 
 def _open_win_root(path: Path) -> tuple[list[int], str]:
-    absolute = os.path.abspath(os.fspath(path))
+    # The name is judged as it was given: completing a relative one against
+    # the process directory would turn a malformed request into a valid root
+    # and hide the refusal the contract asks for.
+    absolute = os.fspath(path)
     _require_local_canonical_windows_root(absolute)
     opened: list[int] = []
     try:
@@ -2011,6 +2020,21 @@ def _win_verify_security(handle: int, expected_descriptor: int) -> None:
         raise BirthSecureFSError("birth_provisioning_acl_unsafe", exc)
     finally:
         _KERNEL32.LocalFree(actual_descriptor)
+
+
+def _win_reconcile_disposed(directory: int, name: str) -> None:
+    """Confirm on the container that a disposed residue is really gone.
+
+    The check runs while the handle of the object is still open, because that
+    handle is what carries the authority to remove it: closing first would
+    leave nothing to act through if the name were still there.
+    """
+    try:
+        remaining = {item.name for item in _win_inventory(directory)}
+    except (BirthSecureFSError, OSError):
+        return
+    if name in remaining:
+        raise BirthSecureFSError("birth_provisioning_recovery_ambiguous")
 
 
 def _win_dispose_created(handle: int) -> None:
@@ -2832,7 +2856,7 @@ class _SecureRootSession:
             with self._directory_chain(parent) as (directory, directory_path):
                 if os.name == "nt":
                     with self._win_lock(
-                        directory_path, name, exclusive, create, timeout
+                        directory, directory_path, name, exclusive, create, timeout
                     ):
                         if create:
                             self._commit_lock_binding(components, directory, name)
@@ -2973,6 +2997,7 @@ class _SecureRootSession:
     @contextlib.contextmanager
     def _win_lock(
         self,
+        directory: int,
         directory_path: str,
         name: str,
         exclusive: bool,
@@ -3006,11 +3031,14 @@ class _SecureRootSession:
                             )
                             _win_apply_and_verify_security(handle, descriptor)
                 else:
-                    handle = _win_open_path(
-                        path,
+                    # The lock lives inside a container that is already open:
+                    # it is reached from that handle, never by rebuilding its
+                    # absolute name.
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.lock_reader,
                         directory=False,
-                        writable=exclusive,
-                        generic_read=not exclusive,
                     )
             except OSError as exc:
                 if create and exclusive and exc.errno in {_ERROR_FILE_EXISTS, _ERROR_ALREADY_EXISTS}:
@@ -3128,7 +3156,7 @@ class _SecureRootSession:
         if True:
             if os.name == "nt":
                 return self._create_file_exclusive_windows(
-                    components, directory_path, name, payload, role
+                    components, directory, directory_path, name, payload, role
                 )
             flags = (
                 os.O_RDWR
@@ -3185,6 +3213,7 @@ class _SecureRootSession:
     def _create_file_exclusive_windows(
         self,
         components: tuple[str, ...],
+        directory: int,
         directory_path: str,
         name: str,
         payload: bytes,
@@ -3207,14 +3236,15 @@ class _SecureRootSession:
                 with _win_security_attributes(
                     profile, directory=False, service_sid=self._service_sid
                 ) as (attributes, descriptor):
-                    handle = _win_open_path(
-                        path,
+                    # The object is created inside the container that is
+                    # already open, with its restrictive descriptor present
+                    # from the first instant of its existence.
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.create_exclusive,
                         directory=False,
-                        writable=True,
-                        delete=True,
-                        create=True,
-                        security_attributes=ctypes.byref(attributes),
-                        security_write=True,
+                        security_descriptor=attributes.lpSecurityDescriptor,
                     )
                     created = True
                     before = _verify_win_object(handle, path, directory=False)
@@ -3253,6 +3283,7 @@ class _SecureRootSession:
                 if created and not complete:
                     try:
                         _win_dispose_created(handle)
+                        _win_reconcile_disposed(directory, name)
                     except OSError:
                         pass
                 _win_close(handle)
@@ -3291,6 +3322,7 @@ class _SecureRootSession:
         if True:
             if os.name == "nt":
                 handle = self._create_directory_exclusive_windows(
+                    directory,
                     directory_path,
                     name,
                     role,
@@ -3336,6 +3368,7 @@ class _SecureRootSession:
 
     def _create_directory_exclusive_windows(
         self,
+        directory: int,
         directory_path: str,
         name: str,
         role: _BirthObjectRole,
@@ -3357,15 +3390,17 @@ class _SecureRootSession:
                 with _win_security_attributes(
                     profile, directory=True, service_sid=self._service_sid
                 ) as (attributes, descriptor):
-                    if not _KERNEL32.CreateDirectoryW(path, ctypes.byref(attributes)):
-                        raise _win_error("CreateDirectoryW")
-                    created = True
-                    handle = _win_open_path(
-                        path,
+                    # One native creation inside the open container returns
+                    # the handle of the object it just created: nothing is
+                    # created by name and then reopened by name.
+                    handle = _win_open_relative_v1(
+                        directory,
+                        name,
+                        purpose=_NtOpenPurposeV1.create_exclusive,
                         directory=True,
-                        delete=True,
-                        security_write=True,
+                        security_descriptor=attributes.lpSecurityDescriptor,
                     )
+                    created = True
                     _verify_win_object(handle, path, directory=True)
                     _win_apply_and_verify_security(handle, descriptor)
                     complete = True
@@ -3381,6 +3416,7 @@ class _SecureRootSession:
                 if created and not complete:
                     try:
                         _win_dispose_created(handle)
+                        _win_reconcile_disposed(directory, name)
                     except OSError:
                         pass
                 _win_close(handle)
@@ -3602,9 +3638,9 @@ class _SecureRootSession:
                             "birth_provisioning_atomic_install_unsupported"
                         )
                     encoded = target_name.encode("utf-16-le")
-                    offset = _FILE_RENAME_INFO_HEADER.FileName.offset
+                    offset = _FILE_RENAME_INFO.FileName.offset
                     buffer = ctypes.create_string_buffer(offset + len(encoded))
-                    header = _FILE_RENAME_INFO_HEADER.from_buffer(buffer)
+                    header = _FILE_RENAME_INFO.from_buffer(buffer)
                     header.ReplaceIfExists = False
                     header.RootDirectory = target_handle
                     header.FileNameLength = len(encoded)
@@ -3641,11 +3677,19 @@ class _SecureRootSession:
                 finally:
                     if source_handle is not None and close_source:
                         _win_close(source_handle)
-        with self._directory_chain(target_parent) as (_, target_path):
+        with self._directory_chain(target_parent) as (target_fd, target_path):
             final_path = os.path.join(target_path, target_name)
             final_handle = None
             try:
-                final_handle = _win_open_path(final_path, directory=directory)
+                # The destination is observed where it now lives, relative to
+                # its container: rebuilding its absolute name would verify a
+                # different object if a component were substituted meanwhile.
+                final_handle = _win_open_relative_v1(
+                    target_fd,
+                    target_name,
+                    purpose=_NtOpenPurposeV1.read_required,
+                    directory=directory,
+                )
                 if _verify_win_object(final_handle, final_path, directory=directory)[0] != identity:
                     raise BirthSecureFSError("birth_provisioning_io_unavailable")
             except BirthSecureFSError:

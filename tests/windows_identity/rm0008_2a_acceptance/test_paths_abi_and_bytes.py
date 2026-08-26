@@ -1180,7 +1180,9 @@ def test_g10_windows_native_contract(
                 active, ("identity.bin",), b"identity", "birth_confidential"
             )
             oracle = support.identity_oracle()
-            handle = oracle._open_path(root / "identity.bin", directory=False)
+            handle = oracle._open_path(
+                root / "identity.bin", oracle._READ_CONTROL, directory=False
+            )
             original = sf._KERNEL32.GetFileInformationByHandleEx
 
             def high_bit(handle_value, information_class, buffer, size):
