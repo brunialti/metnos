@@ -3962,6 +3962,14 @@ Una correzione e' stata scritta, provata e poi rimessa in attesa:
   conservato in `apparato-pendente.patch` nella cartella di lavoro della
   sessione.
 
+- **fotografia condivisa** — `tests/portable/rm0008_2a_acceptance/_support.py`
+  legge il contenuto di ogni file per calcolarne l'impronta e termina con
+  «accesso negato» sull'oggetto che il prodotto tiene bloccato: su Windows il
+  blocco e' vincolante. E' la causa singola piu' frequente dell'esecuzione
+  pubblica Windows (undici celle). Il rimedio e' lo stesso gia' applicato
+  all'aiutante Windows: registrare il rifiuto invece di interrompere.
+  Conservato in `apparato-pendente-2.patch`.
+
 Queste correzioni si applicano tutte insieme, seguite da un solo nuovo
 congelamento con la stessa procedura del §17.8 passo 5, quando l'apparato non
 richiede piu' modifiche.
