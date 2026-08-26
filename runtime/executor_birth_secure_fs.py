@@ -3271,7 +3271,9 @@ class _SecureRootSession:
                 self._directories[components] = handle
                 self._directory_roles[components] = role
                 self._handles.append(handle)
-                return _SecureDirectoryHandle(self, components)
+                return _SecureDirectoryHandle(
+                    self, components, handle, os.path.join(directory_path, name),
+                )
             try:
                 mode = (
                     0o700
